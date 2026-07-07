@@ -49,7 +49,9 @@ class Settings(BaseSettings):
     # <slug>.<base_domain> or a custom domain resolves to an org (CLAUDE.md §7).
     base_domain: str = "localhost"
     # Config-level modules mounted by main.py; per-tenant enablement lives in org_settings.
-    enabled_modules: list[str] = Field(default_factory=lambda: ["companies"])
+    enabled_modules: list[str] = Field(
+        default_factory=lambda: ["companies", "contacts", "tasks", "projects", "time"]
+    )
     default_locale: str = "nl"
     supported_locales: list[str] = Field(default_factory=lambda: ["nl", "en"])
 
@@ -68,6 +70,11 @@ class Settings(BaseSettings):
     oidc_discovery_url: str | None = None
     oidc_client_id: str | None = None
     oidc_client_secret: str | None = None
+    # On SSO login, auto-grant a membership in the resolved org so JIT-provisioned users aren't
+    # locked out (they'd otherwise have an identity but no org access). Disable to require an
+    # explicit invite first.
+    oidc_auto_provision_membership: bool = True
+    oidc_default_role: str = "member"
 
     # --- Google Workspace OAuth (stub for P3) ---
     google_client_id: str | None = None

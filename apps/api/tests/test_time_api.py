@@ -1,0 +1,203 @@
+"""time module API coverage (CLAUDE.md §6, §10): timer, manual entries, summary, timesheet."""
+
+from __future__ import annotations
+
+import uuid
+from datetime import UTC, datetime
+
+from tests.conftest import auth_cookie, make_tenant
+
+
+async def test_timer_start_stop(client_for) -> None:
+    t = await make_tenant("time-timer")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        started = await c.post("/api/v1/time/timer/start", json={}, headers=headers)
+        assert started.status_code == 201
+        assert started.json()["ended_at"] is None
+
+        current = await c.get("/api/v1/time/timer", headers=headers)
+        assert current.json() is not None
+
+        stopped = await c.post("/api/v1/time/timer/stop", headers=headers)
+        assert stopped.status_code == 200
+        assert stopped.json()["ended_at"] is not None
+
+        # No running timer now.
+        assert (await c.get("/api/v1/time/timer", headers=headers)).json() is None
+
+
+async def test_starting_new_timer_stops_previous(client_for) -> None:
+    t = await make_tenant("time-switch")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        first = (await c.post("/api/v1/time/timer/start", json={}, headers=headers)).json()
+        second = (await c.post("/api/v1/time/timer/start", json={}, headers=headers)).json()
+
+        # Only the second is running; the first was auto-stopped.
+        first_after = await c.get(f"/api/v1/time/entries/{first['id']}", headers=headers)
+        assert first_after.json()["ended_at"] is not None
+        running = await c.get("/api/v1/time/timer", headers=headers)
+        assert running.json()["id"] == second["id"]
+
+
+async def test_manual_entry_and_summary(client_for) -> None:
+    t = await make_tenant("time-manual")
+    headers = await auth_cookie(t.user)
+    now = datetime.now(UTC)
+    async with client_for(t.host) as c:
+        created = await c.post(
+            "/api/v1/time/entries",
+            json={"started_at": now.isoformat(), "minutes": 30, "description": "Design"},
+            headers=headers,
+        )
+        assert created.status_code == 201
+        entry = created.json()
+        assert entry["minutes"] == 30
+        assert entry["ended_at"] is not None
+
+        summary = await c.get(
+            "/api/v1/time/summary", params={"date": now.date().isoformat()}, headers=headers
+        )
+        assert summary.status_code == 200
+        assert summary.json()["minutes"] == 30
+
+
+async def test_timesheet_grid(client_for) -> None:
+    t = await make_tenant("time-sheet")
+    headers = await auth_cookie(t.user)
+    now = datetime.now(UTC)
+    week_start = now.date()
+    async with client_for(t.host) as c:
+        await c.post(
+            "/api/v1/time/entries",
+            json={"started_at": now.isoformat(), "minutes": 45},
+            headers=headers,
+        )
+        sheet = await c.get(
+            "/api/v1/time/timesheet",
+            params={"week_start": week_start.isoformat()},
+            headers=headers,
+        )
+        assert sheet.status_code == 200
+        data = sheet.json()
+        assert len(data["days"]) == 7
+        assert data["total"] == 45
+        assert data["day_totals"][0] == 45
+
+
+async def test_start_end_with_break_derives_minutes(client_for) -> None:
+    t = await make_tenant("time-startend")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        project = await c.post("/api/v1/projects", json={"name": "P"}, headers=headers)
+        project_id = project.json()["id"]
+        start = datetime(2026, 7, 7, 9, 0, tzinfo=UTC)
+        end = datetime(2026, 7, 7, 11, 0, tzinfo=UTC)
+        created = await c.post(
+            "/api/v1/time/entries",
+            json={
+                "started_at": start.isoformat(),
+                "ended_at": end.isoformat(),
+                "break_minutes": 15,
+                "project_id": project_id,
+                "billable": True,
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201
+        entry = created.json()
+        # 2h span − 15m break = 105 worked minutes.
+        assert entry["minutes"] == 105
+        assert entry["project_id"] == project_id
+        assert entry["is_running"] is False
+
+
+async def test_day_view(client_for) -> None:
+    t = await make_tenant("time-day")
+    headers = await auth_cookie(t.user)
+    day = datetime(2026, 7, 7, 9, 0, tzinfo=UTC)
+    async with client_for(t.host) as c:
+        await c.post(
+            "/api/v1/time/entries",
+            json={"started_at": day.isoformat(), "minutes": 60, "billable": True},
+            headers=headers,
+        )
+        await c.post(
+            "/api/v1/time/entries",
+            json={"started_at": day.isoformat(), "minutes": 30, "billable": False},
+            headers=headers,
+        )
+        view = await c.get("/api/v1/time/day", params={"date": "2026-07-07"}, headers=headers)
+        assert view.status_code == 200
+        body = view.json()
+        assert len(body["entries"]) == 2
+        assert body["total_minutes"] == 90
+        assert body["billable_minutes"] == 60
+
+
+async def test_logged_by_project(client_for) -> None:
+    t = await make_tenant("time-logged")
+    headers = await auth_cookie(t.user)
+    now = datetime(2026, 7, 7, 9, 0, tzinfo=UTC)
+    async with client_for(t.host) as c:
+        proj = await c.post("/api/v1/projects", json={"name": "Burn"}, headers=headers)
+        pid = proj.json()["id"]
+        await c.post(
+            "/api/v1/time/entries",
+            json={
+                "started_at": now.isoformat(),
+                "minutes": 120,
+                "project_id": pid,
+                "billable": True,
+            },
+            headers=headers,
+        )
+        await c.post(
+            "/api/v1/time/entries",
+            json={
+                "started_at": now.isoformat(),
+                "minutes": 30,
+                "project_id": pid,
+                "billable": False,
+            },
+            headers=headers,
+        )
+        logged = await c.get("/api/v1/time/logged", params={"project_id": pid}, headers=headers)
+        assert logged.status_code == 200
+        assert logged.json()["minutes"] == 150
+        assert logged.json()["billable_minutes"] == 120
+
+
+async def test_member_cannot_read_other_users_time(client_for) -> None:
+    t = await make_tenant("time-scope", role="member")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        r = await c.get(
+            "/api/v1/time/entries", params={"user_id": str(uuid.uuid4())}, headers=headers
+        )
+        assert r.status_code == 403
+
+
+async def test_time_tenant_isolation(client_for) -> None:
+    a = await make_tenant("time-iso-a")
+    b = await make_tenant("time-iso-b")
+    a_headers = await auth_cookie(a.user)
+    b_headers = await auth_cookie(b.user)
+    now = datetime.now(UTC)
+
+    async with client_for(a.host) as ca:
+        created = await ca.post(
+            "/api/v1/time/entries",
+            json={"started_at": now.isoformat(), "minutes": 15},
+            headers=a_headers,
+        )
+        a_entry_id = created.json()["id"]
+
+    async with client_for(b.host) as cb:
+        assert (
+            await cb.get("/api/v1/time/entries", headers=b_headers)
+        ).json()["total"] == 0
+        assert (
+            await cb.get(f"/api/v1/time/entries/{a_entry_id}", headers=b_headers)
+        ).status_code == 404

@@ -155,6 +155,20 @@ class TenantScopedRepository(Generic[ModelT]):
     def _scoped(self):
         return select(self.model).where(self.model.org_id == self.org_id)
 
+    def scoped_select(self):
+        """A ``select(model)`` already filtered to this tenant.
+
+        Use for reads that need conditions beyond simple equality (date ranges, ``IS NULL``):
+        the caller adds ``.where(...)`` but the ``org_id`` filter is always present, so a query
+        built this way can never leak across tenants (Golden Rule 1).
+        """
+        return self._scoped()
+
+    def _apply_filters(self, stmt, filters: dict[str, Any]):
+        for key, value in filters.items():
+            stmt = stmt.where(getattr(self.model, key) == value)
+        return stmt
+
     async def get(self, entity_id: uuid.UUID) -> ModelT | None:
         return await self.session.scalar(self._scoped().where(self.model.id == entity_id))
 
@@ -170,15 +184,17 @@ class TenantScopedRepository(Generic[ModelT]):
         limit: int = 50,
         offset: int = 0,
         order_by: Any | None = None,
+        **filters: Any,
     ) -> Sequence[ModelT]:
-        stmt = self._scoped().limit(limit).offset(offset)
+        stmt = self._apply_filters(self._scoped(), filters).limit(limit).offset(offset)
         stmt = stmt.order_by(order_by if order_by is not None else self.model.created_at.desc())
         return (await self.session.execute(stmt)).scalars().all()
 
-    async def count(self) -> int:
+    async def count(self, **filters: Any) -> int:
         stmt = select(func.count()).select_from(self.model).where(
             self.model.org_id == self.org_id
         )
+        stmt = self._apply_filters(stmt, filters)
         return int(await self.session.scalar(stmt) or 0)
 
     async def create(self, **values: Any) -> ModelT:

@@ -10,6 +10,7 @@
   const user = $derived(page.data.user);
   const nav = $derived(navItemsFor(theme?.enabledModules ?? []));
   const path = $derived(page.url.pathname);
+  const canManage = $derived(user?.canManage ?? false);
 </script>
 
 <div class="flex min-h-screen">
@@ -37,6 +38,15 @@
           {item.label()}
         </a>
       {/each}
+      {#if canManage}
+        <a
+          href="/settings"
+          class="block rounded-lg px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-100"
+          class:bg-neutral-100={path.startsWith("/settings")}
+        >
+          {t("nav.settings")}
+        </a>
+      {/if}
     </nav>
   </aside>
 
@@ -57,7 +67,13 @@
           {/each}
         </select>
       </form>
-      <span class="text-neutral-600">{user?.full_name || user?.email}</span>
+      <a
+        href="/settings/account"
+        class="text-neutral-600 hover:text-neutral-900"
+        class:font-medium={path.startsWith("/settings/account")}
+      >
+        {user?.full_name || user?.email}
+      </a>
       <form method="POST" action="/logout">
         <button class="text-neutral-500 hover:text-neutral-900">{t("auth.sign_out")}</button>
       </form>

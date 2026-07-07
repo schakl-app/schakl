@@ -23,6 +23,18 @@ async def test_local_login_then_crud_with_custom_fields(client_for) -> None:
         )
         assert login.status_code in (200, 204)
 
+        # Define a per-tenant custom field on companies (proves the framework end-to-end).
+        definition = await c.post(
+            "/api/v1/custom-fields/definitions",
+            json={
+                "entity_type": "company",
+                "key": "vat",
+                "label_i18n": {"nl": "BTW", "en": "VAT"},
+                "data_type": "text",
+            },
+        )
+        assert definition.status_code == 201
+
         # Create with a per-tenant custom value; it round-trips.
         created = await c.post(
             "/api/v1/companies",

@@ -19,3 +19,6 @@ class User(SQLAlchemyBaseUserTableUUID, TimestampMixin, Base):
     __tablename__ = "users"
 
     full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Personal display-language preference (CLAUDE.md §8). NULL → fall back to the org default.
+    # It follows the user across devices: seeded into the PARAGLIDE_LOCALE cookie on login.
+    locale: Mapped[str | None] = mapped_column(String(10), nullable=True)

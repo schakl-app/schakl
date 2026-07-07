@@ -11,7 +11,12 @@ export interface SessionUser {
   id: string;
   email: string;
   full_name: string | null;
-  is_superuser: boolean;
+  /** Membership role within the resolved tenant (owner/admin/member/client). */
+  role: string;
+  /** True for owner/admin — gates management UI (e.g. Settings). */
+  canManage: boolean;
+  /** Personal display-language preference (null → org default). */
+  locale: string | null;
 }
 
 // Minimal shape shared by SvelteKit load events and action/request events.
@@ -43,12 +48,15 @@ export async function fetchTenant(event: ApiEvent): Promise<OrgTheme> {
 }
 
 export async function fetchUser(event: ApiEvent): Promise<SessionUser | null> {
-  const { data } = await apiFor(event).GET("/api/v1/users/me");
+  // /meta/me resolves the user *within the tenant*, so it also carries the membership role.
+  const { data } = await apiFor(event).GET("/api/v1/meta/me");
   if (!data) return null;
   return {
     id: data.id,
     email: data.email,
     full_name: data.full_name ?? null,
-    is_superuser: data.is_superuser,
+    role: data.role,
+    canManage: data.can_manage,
+    locale: data.locale ?? null,
   };
 }

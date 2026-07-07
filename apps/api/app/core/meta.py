@@ -7,14 +7,15 @@ its settings through the RLS GUC (no membership required for public branding).
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 
 from app.config import settings
+from app.core.auth.models import User
 from app.core.customfields import customizable_entity_types
 from app.core.models import OrgSettings
-from app.core.tenancy import request_hostname, resolve_org
+from app.core.tenancy import RequestContext, request_hostname, require_context, resolve_org
 from app.db import async_session_maker, set_current_org
 from app.errors import AppError
 from app.registry import registry
@@ -40,6 +41,68 @@ class ModulesMeta(BaseModel):
     supported_locales: list[str]
     local_login_enabled: bool
     oidc_enabled: bool
+
+
+class MeInfo(BaseModel):
+    """The current user *within the resolved tenant* — includes their membership role."""
+
+    id: str
+    email: str
+    full_name: str | None
+    role: str
+    can_manage: bool
+    locale: str | None
+
+
+class MeUpdate(BaseModel):
+    """Personal, self-service preferences any member may set for their own account."""
+
+    full_name: str | None = None
+    locale: str | None = None
+
+
+def _me_info(ctx: RequestContext, user: User) -> MeInfo:
+    return MeInfo(
+        id=str(user.id),
+        email=user.email,
+        full_name=user.full_name,
+        role=ctx.role.value,
+        can_manage=ctx.role.can_manage,
+        locale=user.locale,
+    )
+
+
+@router.get("/me", response_model=MeInfo)
+async def me(ctx: RequestContext = Depends(require_context)) -> MeInfo:
+    return _me_info(ctx, ctx.user)
+
+
+@router.patch("/me", response_model=MeInfo)
+async def update_me(
+    payload: MeUpdate, ctx: RequestContext = Depends(require_context)
+) -> MeInfo:
+    """Update the current user's own profile/preferences.
+
+    Not role-gated: even a read-only ``client`` may set their own name and display language.
+    """
+    data = payload.model_dump(exclude_unset=True)
+    if "locale" in data and data["locale"] is not None:
+        if data["locale"] not in settings.supported_locales:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"locale": "errors.validation"},
+            )
+    # ``ctx.user`` comes from the auth session; load a copy on the tenant session to persist.
+    user = await ctx.session.get(User, ctx.user.id)
+    if user is None:
+        raise AppError("not_found", "errors.not_found", status_code=404)
+    for key, value in data.items():
+        setattr(user, key, value)
+    await ctx.session.flush()
+    await ctx.session.refresh(user)
+    return _me_info(ctx, user)
 
 
 @router.get("/tenant", response_model=TenantBranding)

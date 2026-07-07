@@ -9,7 +9,7 @@
 import { sequence } from "@sveltejs/kit/hooks";
 import type { Handle } from "@sveltejs/kit";
 
-import "$lib/core/paraglide-strategy"; // register custom locale strategy (server)
+import "$lib/core/paraglide-strategy.server"; // register custom locale strategy (server)
 import "$lib/modules"; // self-register web modules
 
 import { fetchTenant, fetchUser } from "$lib/core/session";
