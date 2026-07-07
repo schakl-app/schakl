@@ -1,0 +1,34 @@
+{
+  "name": "@vlotr/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "machine:messages": "paraglide-js compile --project ../../project.inlang --outdir ./src/lib/paraglide --strategy cookie custom-vlotrDefault baseLocale --is-server import.meta.env.SSR",
+    "dev": "pnpm run machine:messages && vite dev",
+    "build": "pnpm run machine:messages && vite build",
+    "preview": "vite preview",
+    "check": "pnpm run machine:messages && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "lint": "prettier --check . && eslint .",
+    "gen:client": "openapi-typescript ./openapi.json -o ./src/lib/core/api/schema.d.ts"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-node": "^5.2.9",
+    "@sveltejs/kit": "^2.8.0",
+    "@sveltejs/vite-plugin-svelte": "^5.0.0",
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/node": "^22.20.0",
+    "@vite-pwa/sveltekit": "^0.6.7",
+    "openapi-typescript": "^7.4.0",
+    "svelte": "^5.2.0",
+    "svelte-check": "^4.1.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.6.0",
+    "vite": "^6.0.0"
+  },
+  "dependencies": {
+    "@inlang/paraglide-js": "^2.0.0",
+    "bits-ui": "^1.0.0",
+    "openapi-fetch": "^0.13.0"
+  }
+}

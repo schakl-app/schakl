@@ -1,0 +1,18 @@
+{
+  "name": "vlotr",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Multi-tenant, modular, white-label agency operations platform",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@11.10.0",
+  "scripts": {
+    "i18n:check": "node scripts/i18n-check.mjs",
+    "gen:client": "bash scripts/gen-client.sh",
+    "web": "pnpm --filter @vlotr/web",
+    "dev": "pnpm --filter @vlotr/web dev",
+    "build": "pnpm --filter @vlotr/web build"
+  }
+}
