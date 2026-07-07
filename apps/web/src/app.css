@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+/*
+ * Per-tenant theme is applied at runtime via CSS custom properties set on <html>
+ * from org_settings (see lib/core/theme.ts). Tailwind utilities read them so no
+ * brand colour is hardcoded (Golden Rule 4).
+ */
+:root {
+  --brand-primary: #4f46e5;
+  --brand-accent: #0ea5e9;
+}
+
+@theme inline {
+  --color-brand: var(--brand-primary);
+  --color-accent: var(--brand-accent);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  @apply bg-neutral-50 text-neutral-900 antialiased;
+}

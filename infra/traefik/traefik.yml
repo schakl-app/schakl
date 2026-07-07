@@ -1,0 +1,17 @@
+# Traefik static config. Uses the FILE provider (dynamic.yml) instead of the Docker socket, so
+# the same stack runs under Docker and podman without extra privileges.
+entryPoints:
+  web:
+    address: ":80"
+
+api:
+  insecure: true
+  dashboard: true
+
+providers:
+  file:
+    filename: /etc/traefik/dynamic.yml
+    watch: true
+
+log:
+  level: INFO

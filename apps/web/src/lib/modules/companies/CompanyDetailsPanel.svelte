@@ -1,0 +1,60 @@
+<script lang="ts">
+  import { t } from "$lib/core/i18n";
+
+  let { data }: { companyId: string; data: Record<string, unknown> } = $props();
+
+  const website = $derived(data.website as string | null);
+  const notes = $derived(data.notes as string | null);
+  const custom = $derived((data.custom ?? {}) as Record<string, unknown>);
+</script>
+
+<dl class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+  <div>
+    <dt class="text-xs font-medium uppercase tracking-wide text-neutral-500">
+      {t("companies.name")}
+    </dt>
+    <dd class="mt-1 text-sm text-neutral-900">{data.name}</dd>
+  </div>
+
+  <div>
+    <dt class="text-xs font-medium uppercase tracking-wide text-neutral-500">
+      {t("companies.website")}
+    </dt>
+    <dd class="mt-1 text-sm">
+      {#if website}
+        <a class="text-brand underline" href={website} target="_blank" rel="noreferrer">
+          {website}
+        </a>
+      {:else}
+        <span class="text-neutral-400">—</span>
+      {/if}
+    </dd>
+  </div>
+
+  <div class="sm:col-span-2">
+    <dt class="text-xs font-medium uppercase tracking-wide text-neutral-500">
+      {t("companies.notes")}
+    </dt>
+    <dd class="mt-1 whitespace-pre-wrap text-sm text-neutral-900">
+      {notes ?? "—"}
+    </dd>
+  </div>
+
+  {#if Object.keys(custom).length > 0}
+    <div class="sm:col-span-2">
+      <dt class="text-xs font-medium uppercase tracking-wide text-neutral-500">
+        {t("companies.panel.custom")}
+      </dt>
+      <dd class="mt-1">
+        <ul class="space-y-1 text-sm">
+          {#each Object.entries(custom) as [key, value] (key)}
+            <li>
+              <span class="font-mono text-xs text-neutral-500">{key}</span>:
+              <span class="text-neutral-900">{String(value)}</span>
+            </li>
+          {/each}
+        </ul>
+      </dd>
+    </div>
+  {/if}
+</dl>
