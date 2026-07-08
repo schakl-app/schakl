@@ -36,7 +36,14 @@ from app.db import async_session_maker, engine, set_current_org  # noqa: E402
 from app.main import app  # noqa: E402
 
 _password_hash = PasswordHash.recommended()
-_DOMAIN_TABLES = "companies, memberships, org_settings, users, orgs"
+_DOMAIN_TABLES = (
+    "task_checklist_items, task_checklists, task_checklist_templates, task_links, "
+    "task_label_links, task_labels, "
+    "task_comments, task_activities, task_template_items, task_templates, "
+    "time_entries, tasks, projects, contacts, custom_field_definitions, "
+    "dashboard_prefs, companies, memberships, org_settings, users, orgs"
+)
+_ENABLED_MODULES = ["companies", "contacts", "tasks", "projects", "time"]
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -93,7 +100,7 @@ async def make_tenant(
         session.add(Membership(org_id=org.id, user_id=user.id, role=role))
         session.add(
             OrgSettings(
-                org_id=org.id, brand_name=slug.title(), enabled_modules=["companies"]
+                org_id=org.id, brand_name=slug.title(), enabled_modules=list(_ENABLED_MODULES)
             )
         )
         await session.commit()

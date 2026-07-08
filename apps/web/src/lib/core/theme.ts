@@ -8,6 +8,7 @@
 
 export interface OrgTheme {
   brandName: string;
+  showBrandName: boolean;
   logoUrl: string | null;
   faviconUrl: string | null;
   primaryColor: string;
@@ -19,6 +20,7 @@ export interface OrgTheme {
 // Neutral fallback used only before/without tenant settings — not a product brand.
 export const DEFAULT_THEME: OrgTheme = {
   brandName: "",
+  showBrandName: true,
   logoUrl: null,
   faviconUrl: null,
   primaryColor: "#4f46e5",

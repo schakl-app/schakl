@@ -9,18 +9,23 @@
 import { sequence } from "@sveltejs/kit/hooks";
 import type { Handle } from "@sveltejs/kit";
 
-import "$lib/core/paraglide-strategy"; // register custom locale strategy (server)
+import "$lib/core/paraglide-strategy.server"; // register custom locale strategy (server)
 import "$lib/modules"; // self-register web modules
 
 import { fetchTenant, fetchUser } from "$lib/core/session";
 import { getLocale } from "$lib/paraglide/runtime";
 import { paraglideMiddleware } from "$lib/paraglide/server";
 
+// The <html lang> steers how Chromium formats native <input type="date"> pickers, so map
+// each UI locale to its *European* BCP-47 tag ("en" alone would give US month-day-year).
+const HTML_LANG: Record<string, string> = { nl: "nl", en: "en-GB" };
+
 const handleParaglide: Handle = ({ event, resolve }) =>
   paraglideMiddleware(event.request, ({ request, locale }) => {
     event.request = request;
     return resolve(event, {
-      transformPageChunk: ({ html }) => html.replace("%lang%", locale),
+      transformPageChunk: ({ html }) =>
+        html.replace("%lang%", HTML_LANG[locale] ?? locale),
     });
   });
 

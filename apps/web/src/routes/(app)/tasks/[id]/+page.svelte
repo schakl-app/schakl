@@ -1,0 +1,629 @@
+<script lang="ts">
+  import { EllipsisVertical, Link as LinkIcon, Pencil, Trash2 } from "@lucide/svelte";
+
+  import { enhance } from "$app/forms";
+  import { page } from "$app/state";
+  import { fmtDateTime, fmtDayMonth } from "$lib/core/format";
+  import { t } from "$lib/core/i18n";
+  import Combobox from "$lib/core/ui/Combobox.svelte";
+  import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import DateInput from "$lib/core/ui/DateInput.svelte";
+  import Modal from "$lib/core/ui/Modal.svelte";
+  import { LABEL_COLORS, labelChipClass, labelDotClass } from "$lib/modules/tasks/labels";
+  import { formatMinutes } from "$lib/modules/time/format";
+
+  let { data, form } = $props();
+
+  const task = $derived(data.task);
+  const userId = $derived(page.data.user?.id ?? "");
+  const canManage = $derived(Boolean(page.data.user?.canManage));
+
+  const statuses = ["open", "in_progress", "done"] as const;
+  const priorities = ["low", "normal", "high"] as const;
+  const freqs = ["daily", "weekly", "monthly", "quarterly", "yearly"] as const;
+
+  const companyItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
+  const projectItems = $derived(data.projects.map((p) => ({ value: p.id, label: p.name })));
+  const memberItems = $derived(
+    data.members.map((m) => ({ value: m.user_id, label: m.full_name || m.email })),
+  );
+  const memberName = (id?: string | null) => {
+    const m = data.members.find((mm) => mm.user_id === id);
+    return m ? m.full_name || m.email : null;
+  };
+  const companyName = (id?: string | null) => data.companies.find((c) => c.id === id)?.name;
+  const projectName = (id?: string | null) => data.projects.find((p) => p.id === id)?.name;
+
+  // Two modes: "use" (default — work the task: tick items, comment, attach) and "edit"
+  // (change its definition), toggled from the ⋯ menu.
+  let editMode = $state(false);
+  let menuOpen = $state(false);
+  let confirmDelete = $state(false);
+  let editingCommentId = $state<string | null>(null);
+  let showLabelPicker = $state(false);
+  let newLabelColor = $state("blue");
+
+  // Extending a deadline requires a reason (accountability): staged here, posted with the
+  // single save (the API rejects an extension without one).
+  let reasonModalOpen = $state(false);
+  let stagedDueDate = $state("");
+  let dueReason = $state("");
+  let reasonDraft = $state("");
+  function onDueChanged(value: string) {
+    if (task.due_date && value && value > task.due_date) {
+      stagedDueDate = value;
+      reasonDraft = dueReason;
+      reasonModalOpen = true;
+    }
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const overdue = $derived(task.status !== "done" && !!task.due_date && task.due_date < today);
+  const currentLabelIds = $derived((task.labels ?? []).map((l) => l.id));
+
+  // Time budget: logged vs allocated drives the colour (green → amber → red).
+  const budgetPct = $derived(
+    task.allocated_minutes ? (task.logged_minutes / task.allocated_minutes) * 100 : null,
+  );
+  const budgetColor = $derived(
+    budgetPct == null ? "" : budgetPct >= 100 ? "bg-red-500" : budgetPct >= 75 ? "bg-amber-500" : "bg-green-500",
+  );
+
+  const when = (iso: string) => fmtDateTime(iso);
+
+  function activityText(a: { action: string; payload: Record<string, unknown> }): string {
+    if (a.action === "status_changed") {
+      return t("tasks.activity.status_changed", {
+        from: t(`tasks.status.${a.payload.from}`),
+        to: t(`tasks.status.${a.payload.to}`),
+      });
+    }
+    if (a.action === "due_extended") {
+      return t("tasks.activity.due_extended", {
+        to: a.payload.to ? fmtDayMonth(String(a.payload.to)) : "—",
+        reason: String(a.payload.reason ?? ""),
+      });
+    }
+    if (a.action === "updated") {
+      const names: Record<string, string> = {
+        assignee_user_id: "assignee",
+        company_id: "company",
+        project_id: "project",
+        allocated_minutes: "allocated",
+      };
+      const changed = (a.payload.changed as string[] | undefined) ?? [];
+      const fields = changed.map((f) => t(`tasks.field.${names[f] ?? f}`)).join(", ");
+      return t("tasks.activity.updated", { fields });
+    }
+    return t(`tasks.activity.${a.action}`);
+  }
+
+  const inputClass =
+    "w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
+</script>
+
+<svelte:head>
+  <title>{task.title}</title>
+</svelte:head>
+
+<svelte:window
+  onclick={(e) => {
+    if (menuOpen && !(e.target as HTMLElement).closest?.("[data-task-menu]")) menuOpen = false;
+  }}
+/>
+
+<div class="mb-4">
+  <a href="/tasks" class="text-sm text-neutral-500 hover:text-neutral-900">← {t("tasks.title")}</a>
+</div>
+
+<div class="grid gap-4 lg:grid-cols-[1fr_320px]">
+  <!-- Main column -->
+  <div class="space-y-4">
+    <!-- Title + mode menu -->
+    <section class="rounded-xl border border-neutral-200 bg-white p-5">
+      <div class="flex items-start gap-3">
+        {#if editMode}
+          <input name="title" value={task.title} required form="task-edit"
+            class="w-full flex-1 rounded-lg border border-neutral-300 p-2 text-lg font-semibold text-neutral-900 outline-none focus:border-brand" />
+        {:else}
+          <h1 class="flex-1 text-lg font-semibold {task.status === 'done' ? 'text-neutral-400 line-through' : 'text-neutral-900'}">
+            {task.title}
+          </h1>
+        {/if}
+
+        <div class="relative shrink-0" data-task-menu>
+          <button type="button"
+            class="rounded-lg border border-neutral-300 p-2 text-neutral-500 hover:border-brand hover:text-brand"
+            onclick={() => (menuOpen = !menuOpen)}
+            aria-haspopup="menu" aria-expanded={menuOpen} aria-label={t("common.actions")}>
+            <EllipsisVertical size={16} />
+          </button>
+          {#if menuOpen}
+            <div role="menu" class="absolute right-0 z-20 mt-1 w-48 rounded-xl border border-neutral-200 bg-white py-1 shadow-lg">
+              <button type="button"
+                class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-50"
+                onclick={() => { editMode = !editMode; menuOpen = false; }}>
+                <Pencil size={15} class="text-neutral-400" />
+                {editMode ? t("tasks.detail.done_editing") : t("common.edit")}
+              </button>
+              <button type="button"
+                class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+                onclick={() => { confirmDelete = true; menuOpen = false; }}>
+                <Trash2 size={15} />
+                {t("tasks.detail.delete")}
+              </button>
+            </div>
+          {/if}
+        </div>
+      </div>
+
+      <div class="mt-2 flex flex-wrap items-center gap-2">
+        {#each task.labels ?? [] as label (label.id)}
+          <span class="rounded-full px-2 py-0.5 text-[11px] font-medium {labelChipClass(label.color)}">{label.name}</span>
+        {/each}
+        {#if overdue}
+          <span class="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-600">{t("tasks.due.overdue")}</span>
+        {/if}
+        {#if task.recurrence}
+          <span class="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-600">
+            ↻ {t(`tasks.recurrence.freq.${task.recurrence.freq}`)}
+          </span>
+        {/if}
+        {#if editMode}
+          <span class="rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand">{t("tasks.detail.edit_mode")}</span>
+        {/if}
+      </div>
+
+      <!-- Description -->
+      <div class="mt-4 border-t border-neutral-100 pt-4">
+        <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-400">{t("tasks.field.description")}</h3>
+        {#if editMode}
+          <textarea name="description" rows="4" form="task-edit" class={inputClass}>{task.description ?? ""}</textarea>
+        {:else if task.description}
+          <p class="whitespace-pre-wrap text-sm text-neutral-700">{task.description}</p>
+        {:else}
+          <p class="text-sm text-neutral-400">{t("tasks.detail.description_placeholder")}</p>
+        {/if}
+      </div>
+    </section>
+
+    <!-- Checklists (always interactive — ticking items is "using") -->
+    <section class="rounded-xl border border-neutral-200 bg-white p-5">
+      <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-400">{t("tasks.checklist.title")}</h3>
+
+      {#each task.checklists ?? [] as checklist (checklist.id)}
+        {@const items = checklist.items ?? []}
+        {@const total = items.length}
+        {@const doneCount = items.filter((i) => i.done).length}
+        <div class="mb-4">
+          <div class="mb-1 flex items-center justify-between">
+            <h4 class="text-sm font-semibold text-neutral-900">{checklist.title}</h4>
+            <div class="flex items-center gap-2">
+              <span class="text-xs tabular-nums text-neutral-400">{t("tasks.checklist.progress", { done: doneCount, total })}</span>
+              {#if items.length > 0}
+                <form method="POST" action="?/saveChecklistTemplate" use:enhance>
+                  <input type="hidden" name="title" value={checklist.title} />
+                  <input type="hidden" name="items" value={items.map((i) => i.title).join("\n")} />
+                  <button class="text-xs text-neutral-400 hover:text-brand" title={t("tasks.checklist.save_template_hint")}>
+                    {t("tasks.checklist.save_template")}
+                  </button>
+                </form>
+              {/if}
+              {#if editMode}
+                <form method="POST" action="?/deleteChecklist" use:enhance>
+                  <input type="hidden" name="checklist_id" value={checklist.id} />
+                  <button class="text-xs text-neutral-400 hover:text-red-600" aria-label={t("common.delete")}>✕</button>
+                </form>
+              {/if}
+            </div>
+          </div>
+          {#if total > 0}
+            <div class="mb-2 h-1.5 overflow-hidden rounded-full bg-neutral-100">
+              <div class="h-full rounded-full {doneCount === total ? 'bg-green-500' : 'bg-brand'}"
+                style="width: {total ? Math.round((doneCount / total) * 100) : 0}%"></div>
+            </div>
+          {/if}
+          <ul class="space-y-1">
+            {#each items as item (item.id)}
+              <li class="group flex items-center gap-2">
+                <form method="POST" action="?/toggleItem" use:enhance>
+                  <input type="hidden" name="checklist_id" value={checklist.id} />
+                  <input type="hidden" name="item_id" value={item.id} />
+                  <input type="hidden" name="done" value={String(!item.done)} />
+                  <button
+                    class="flex h-4 w-4 items-center justify-center rounded border text-[10px]
+                      {item.done ? 'border-brand bg-brand text-white' : 'border-neutral-300 text-transparent hover:border-brand'}"
+                    aria-label={t("tasks.toggle_done")}
+                  >✓</button>
+                </form>
+                <span class="flex-1 text-sm {item.done ? 'text-neutral-400 line-through' : 'text-neutral-800'}">{item.title}</span>
+                <form method="POST" action="?/deleteItem" use:enhance class="opacity-0 group-hover:opacity-100">
+                  <input type="hidden" name="checklist_id" value={checklist.id} />
+                  <input type="hidden" name="item_id" value={item.id} />
+                  <button class="text-xs text-neutral-300 hover:text-red-600" aria-label={t("common.delete")}>✕</button>
+                </form>
+              </li>
+            {/each}
+          </ul>
+          <form method="POST" action="?/addItem" use:enhance class="mt-2 flex gap-2">
+            <input type="hidden" name="checklist_id" value={checklist.id} />
+            <input name="title" placeholder={t("tasks.checklist.item_placeholder")} required
+              class="flex-1 rounded-lg border border-neutral-200 px-2 py-1 text-sm outline-none focus:border-brand" />
+            <button class="rounded-lg border border-neutral-300 px-2 py-1 text-xs text-neutral-600 hover:border-brand hover:text-brand">＋</button>
+          </form>
+        </div>
+      {/each}
+
+      <form method="POST" action="?/addChecklist" use:enhance class="flex gap-2">
+        <input name="title" placeholder={t("tasks.checklist.add")} required
+          class="flex-1 rounded-lg border border-dashed border-neutral-300 px-3 py-1.5 text-sm outline-none focus:border-brand" />
+        <button class="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs text-neutral-600 hover:border-brand hover:text-brand">
+          {t("common.create")}
+        </button>
+      </form>
+      {#if data.checklistTemplates.length > 0}
+        <form method="POST" action="?/addChecklist" use:enhance class="mt-2 flex gap-2">
+          <select name="template_id" required
+            class="flex-1 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600">
+            {#each data.checklistTemplates as checklistTemplate (checklistTemplate.id)}
+              <option value={checklistTemplate.id}>
+                {checklistTemplate.title} ({checklistTemplate.items?.length ?? 0})
+              </option>
+            {/each}
+          </select>
+          <button class="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs text-neutral-600 hover:border-brand hover:text-brand">
+            {t("tasks.checklist.from_template")}
+          </button>
+        </form>
+      {/if}
+    </section>
+
+    <!-- Links (URL attachments) -->
+    <section class="rounded-xl border border-neutral-200 bg-white p-5">
+      <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-400">{t("tasks.links.title")}</h3>
+      {#if (task.links ?? []).length === 0}
+        <p class="mb-3 text-sm text-neutral-400">{t("tasks.links.empty")}</p>
+      {:else}
+        <ul class="mb-3 space-y-1">
+          {#each task.links ?? [] as link (link.id)}
+            <li class="group flex items-center gap-2">
+              <LinkIcon size={14} class="shrink-0 text-neutral-400" />
+              <a href={link.url} target="_blank" rel="noopener noreferrer"
+                class="min-w-0 flex-1 truncate text-sm text-brand hover:underline">
+                {link.title || link.url}
+              </a>
+              <form method="POST" action="?/deleteLink" use:enhance class="opacity-0 group-hover:opacity-100">
+                <input type="hidden" name="link_id" value={link.id} />
+                <button class="text-xs text-neutral-300 hover:text-red-600" aria-label={t("common.delete")}>✕</button>
+              </form>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+      <form method="POST" action="?/addLink" use:enhance={() => ({ update }) => void update({ reset: true })}
+        class="flex flex-wrap gap-2">
+        <input name="url" required placeholder={t("tasks.links.url_placeholder")}
+          class="min-w-[12rem] flex-1 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none focus:border-brand" />
+        <input name="title" placeholder={t("tasks.links.title_placeholder")}
+          class="w-40 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none focus:border-brand" />
+        <button class="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs text-neutral-600 hover:border-brand hover:text-brand">
+          {t("common.create")}
+        </button>
+      </form>
+      <p class="mt-2 text-[11px] text-neutral-400">{t("tasks.links.files_hint")}</p>
+    </section>
+
+    <!-- Comments -->
+    <section class="rounded-xl border border-neutral-200 bg-white p-5">
+      <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-400">{t("tasks.comments.title")}</h3>
+
+      <form method="POST" action="?/addComment"
+        use:enhance={() => ({ update }) => void update({ reset: true })}
+        class="mb-4">
+        <textarea name="body" rows="2" required placeholder={t("tasks.comments.placeholder")} class={inputClass}></textarea>
+        <div class="mt-2 flex justify-end">
+          <button class="rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white hover:opacity-90">{t("tasks.comments.send")}</button>
+        </div>
+      </form>
+
+      {#if (task.comments ?? []).length === 0}
+        <p class="text-sm text-neutral-400">{t("tasks.comments.empty")}</p>
+      {:else}
+        <ul class="space-y-3">
+          {#each task.comments ?? [] as comment (comment.id)}
+            <li class="rounded-lg border border-neutral-100 bg-neutral-50/50 p-3">
+              <div class="mb-1 flex items-center justify-between gap-2">
+                <span class="text-xs font-semibold text-neutral-700">{comment.author_name ?? "—"}</span>
+                <span class="flex items-center gap-2 text-[11px] text-neutral-400">
+                  {when(comment.created_at)}
+                  {#if comment.edited_at}<span>({t("tasks.comments.edited")})</span>{/if}
+                  {#if comment.author_user_id === userId}
+                    <button type="button" class="hover:text-brand"
+                      onclick={() => (editingCommentId = editingCommentId === comment.id ? null : comment.id)}>
+                      {t("common.edit")}
+                    </button>
+                  {/if}
+                  {#if comment.author_user_id === userId || canManage}
+                    <form method="POST" action="?/deleteComment" use:enhance class="inline">
+                      <input type="hidden" name="comment_id" value={comment.id} />
+                      <button class="hover:text-red-600">{t("common.delete")}</button>
+                    </form>
+                  {/if}
+                </span>
+              </div>
+              {#if editingCommentId === comment.id}
+                <form method="POST" action="?/editComment"
+                  use:enhance={() => ({ update }) => { editingCommentId = null; void update(); }}>
+                  <input type="hidden" name="comment_id" value={comment.id} />
+                  <textarea name="body" rows="2" required class={inputClass}>{comment.body}</textarea>
+                  <div class="mt-1 flex gap-2">
+                    <button class="rounded-lg bg-brand px-2 py-1 text-xs font-medium text-white">{t("common.save")}</button>
+                    <button type="button" class="rounded-lg border border-neutral-300 px-2 py-1 text-xs" onclick={() => (editingCommentId = null)}>{t("common.cancel")}</button>
+                  </div>
+                </form>
+              {:else}
+                <p class="whitespace-pre-wrap text-sm text-neutral-800">{comment.body}</p>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </section>
+
+    <!-- Activity -->
+    <section class="rounded-xl border border-neutral-200 bg-white p-5">
+      <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-400">{t("tasks.activity.title")}</h3>
+      {#if (task.activities ?? []).length === 0}
+        <p class="text-sm text-neutral-400">—</p>
+      {:else}
+        <ul class="space-y-2">
+          {#each task.activities ?? [] as activity (activity.id)}
+            <li class="flex items-baseline gap-2 text-sm">
+              <span class="shrink-0 text-[11px] tabular-nums text-neutral-400">{when(activity.created_at)}</span>
+              <span class="text-neutral-700">
+                <span class="font-medium">{activity.actor_name ?? t("tasks.activity.system")}</span>
+                {activityText(activity)}
+              </span>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </section>
+  </div>
+
+  <!-- Sidebar -->
+  <aside class="space-y-4">
+    <section class="rounded-xl border border-neutral-200 bg-white p-4">
+      <div class="space-y-3">
+        <!-- Status is core workflow → always editable -->
+        <div>
+          <label for="status" class="mb-1 block text-xs font-medium text-neutral-500">{t("tasks.field.status")}</label>
+          <form method="POST" action="?/update" use:enhance>
+            <select id="status" name="status" class={inputClass}
+              onchange={(e) => e.currentTarget.form?.requestSubmit()}>
+              {#each statuses as s (s)}
+                <option value={s} selected={task.status === s}>{t(`tasks.status.${s}`)}</option>
+              {/each}
+            </select>
+          </form>
+        </div>
+
+        <!-- Time budget -->
+        {#if task.allocated_minutes || task.logged_minutes}
+          <div>
+            <div class="mb-1 flex items-center justify-between text-xs">
+              <span class="font-medium text-neutral-500">{t("tasks.field.allocated")}</span>
+              <span class="tabular-nums text-neutral-700">
+                {formatMinutes(task.logged_minutes)}{#if task.allocated_minutes}&nbsp;/ {formatMinutes(task.allocated_minutes)}{/if}
+              </span>
+            </div>
+            {#if budgetPct != null}
+              <div class="h-2 overflow-hidden rounded-full bg-neutral-100">
+                <div class="h-full rounded-full {budgetColor}" style="width: {Math.min(100, budgetPct)}%"></div>
+              </div>
+              {#if task.allocated_minutes}
+                <p class="mt-1 text-[11px] {budgetPct >= 100 ? 'text-red-600' : 'text-neutral-400'}">
+                  {budgetPct >= 100
+                    ? t("tasks.budget.over", { amount: formatMinutes(task.logged_minutes - task.allocated_minutes) })
+                    : t("tasks.budget.left", { amount: formatMinutes(task.allocated_minutes - task.logged_minutes) })}
+                </p>
+              {/if}
+            {/if}
+          </div>
+        {/if}
+
+        {#if editMode}
+          <div>
+            <label for="allocated" class="mb-1 block text-xs font-medium text-neutral-500">{t("tasks.field.allocated_input")}</label>
+            <input id="allocated" name="allocated_minutes" type="number" min="0" step="15" form="task-edit"
+              value={task.allocated_minutes ?? ""} class={inputClass} />
+          </div>
+          <div>
+            <label for="priority" class="mb-1 block text-xs font-medium text-neutral-500">{t("tasks.field.priority")}</label>
+            <select id="priority" name="priority" form="task-edit" class={inputClass}>
+              {#each priorities as p (p)}
+                <option value={p} selected={task.priority === p}>{t(`tasks.priority.${p}`)}</option>
+              {/each}
+            </select>
+          </div>
+          <div>
+            <label for="assignee" class="mb-1 block text-xs font-medium text-neutral-500">{t("tasks.field.assignee")}</label>
+            <Combobox items={memberItems} name="assignee_user_id" value={task.assignee_user_id ?? ""} id="assignee" formId="task-edit" />
+          </div>
+          <div>
+            <label for="project" class="mb-1 block text-xs font-medium text-neutral-500">{t("tasks.field.project")}</label>
+            <Combobox items={projectItems} name="project_id" value={task.project_id ?? ""} id="project" formId="task-edit" />
+          </div>
+          <div>
+            <label for="company" class="mb-1 block text-xs font-medium text-neutral-500">{t("tasks.field.company")}</label>
+            <Combobox items={companyItems} name="company_id" value={task.company_id ?? ""} id="company" formId="task-edit" />
+          </div>
+          <div>
+            <label for="due_date" class="mb-1 block text-xs font-medium text-neutral-500">{t("tasks.field.due_date")}</label>
+            <DateInput id="due_date" name="due_date" value={task.due_date ?? ""} formId="task-edit" onchange={onDueChanged} />
+            <p class="mt-1 text-[11px] text-neutral-400">{t("tasks.detail.due_reason_hint")}</p>
+          </div>
+        {:else}
+          <!-- Use mode: compact read-only summary -->
+          <dl class="space-y-2 text-sm">
+            <div class="flex items-center justify-between gap-2">
+              <dt class="text-xs font-medium text-neutral-500">{t("tasks.field.assignee")}</dt>
+              <dd class="text-neutral-800">{memberName(task.assignee_user_id) ?? "—"}</dd>
+            </div>
+            <div class="flex items-center justify-between gap-2">
+              <dt class="text-xs font-medium text-neutral-500">{t("tasks.field.project")}</dt>
+              <dd class="truncate text-neutral-800">
+                {#if task.project_id}
+                  <a href={`/projects/${task.project_id}`} class="hover:text-brand">{projectName(task.project_id) ?? "—"}</a>
+                {:else}—{/if}
+              </dd>
+            </div>
+            <div class="flex items-center justify-between gap-2">
+              <dt class="text-xs font-medium text-neutral-500">{t("tasks.field.company")}</dt>
+              <dd class="truncate text-neutral-800">
+                {#if task.company_id}
+                  <a href={`/companies/${task.company_id}`} class="hover:text-brand">{companyName(task.company_id) ?? "—"}</a>
+                {:else}—{/if}
+              </dd>
+            </div>
+            <div class="flex items-center justify-between gap-2">
+              <dt class="text-xs font-medium text-neutral-500">{t("tasks.field.due_date")}</dt>
+              <dd class="tabular-nums {overdue ? 'font-semibold text-red-600' : 'text-neutral-800'}">
+                {task.due_date ? fmtDayMonth(task.due_date) : "—"}
+              </dd>
+            </div>
+            <div class="flex items-center justify-between gap-2">
+              <dt class="text-xs font-medium text-neutral-500">{t("tasks.field.priority")}</dt>
+              <dd class="text-neutral-800">{t(`tasks.priority.${task.priority}`)}</dd>
+            </div>
+          </dl>
+        {/if}
+      </div>
+    </section>
+
+    <!-- Labels -->
+    <section class="rounded-xl border border-neutral-200 bg-white p-4">
+      <div class="mb-2 flex items-center justify-between">
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-neutral-400">{t("tasks.field.labels")}</h3>
+        <button type="button" class="text-xs text-neutral-500 hover:text-brand" onclick={() => (showLabelPicker = !showLabelPicker)}>
+          {showLabelPicker ? t("common.cancel") : t("common.edit")}
+        </button>
+      </div>
+
+      {#if showLabelPicker}
+        <form method="POST" action="?/setLabels"
+          use:enhance={() => ({ update }) => { showLabelPicker = false; void update(); }}
+          class="space-y-1">
+          {#each data.labels as label (label.id)}
+            <label class="flex items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-neutral-50">
+              <input type="checkbox" name="label_ids" value={label.id}
+                checked={currentLabelIds.includes(label.id)}
+                class="h-4 w-4 rounded border-neutral-300 text-brand focus:ring-brand" />
+              <span class="h-2.5 w-2.5 rounded-full {labelDotClass(label.color)}"></span>
+              <span class="text-neutral-800">{label.name}</span>
+            </label>
+          {/each}
+          <button class="mt-2 w-full rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white hover:opacity-90">{t("common.apply")}</button>
+        </form>
+
+        <form method="POST" action="?/createLabel"
+          use:enhance={() => ({ update }) => { showLabelPicker = false; void update(); }}
+          class="mt-3 border-t border-neutral-100 pt-3">
+          {#each currentLabelIds as id (id)}
+            <input type="hidden" name="current_label_ids" value={id} />
+          {/each}
+          <input name="name" placeholder={t("tasks.labels.new_placeholder")} required
+            class="w-full rounded-lg border border-neutral-300 px-2 py-1 text-sm" />
+          <input type="hidden" name="color" value={newLabelColor} />
+          <div class="mt-2 flex flex-wrap gap-1">
+            {#each LABEL_COLORS as color (color)}
+              <button type="button" aria-label={color}
+                class="h-5 w-5 rounded-full {labelDotClass(color)} {newLabelColor === color ? 'ring-2 ring-neutral-800 ring-offset-1' : ''}"
+                onclick={() => (newLabelColor = color)}></button>
+            {/each}
+          </div>
+          <button class="mt-2 w-full rounded-lg border border-neutral-300 px-3 py-1.5 text-xs text-neutral-600 hover:border-brand hover:text-brand">
+            {t("tasks.labels.create")}
+          </button>
+        </form>
+      {:else if (task.labels ?? []).length === 0}
+        <p class="text-sm text-neutral-400">{t("tasks.labels.empty")}</p>
+      {:else}
+        <div class="flex flex-wrap gap-1">
+          {#each task.labels ?? [] as label (label.id)}
+            <span class="rounded-full px-2 py-0.5 text-[11px] font-medium {labelChipClass(label.color)}">{label.name}</span>
+          {/each}
+        </div>
+      {/if}
+    </section>
+
+    <!-- Recurrence (definition → edit mode only) -->
+    {#if editMode}
+      <section class="rounded-xl border border-neutral-200 bg-white p-4">
+        <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-400">{t("tasks.recurrence.title")}</h3>
+        <div class="space-y-2">
+          <select name="freq" form="task-edit" class={inputClass}>
+            <option value="" selected={!task.recurrence}>{t("tasks.recurrence.none")}</option>
+            {#each freqs as f (f)}
+              <option value={f} selected={task.recurrence?.freq === f}>{t(`tasks.recurrence.freq.${f}`)}</option>
+            {/each}
+          </select>
+          <div class="grid grid-cols-2 gap-2">
+            <input name="interval" type="number" min="1" max="365" value={task.recurrence?.interval ?? 1}
+              form="task-edit" class={inputClass} aria-label={t("tasks.recurrence.interval")} />
+            <select name="mode" form="task-edit" class={inputClass} aria-label={t("tasks.recurrence.mode")}>
+              <option value="after_completion" selected={task.recurrence?.mode !== "schedule"}>
+                {t("tasks.recurrence.mode.after_completion")}
+              </option>
+              <option value="schedule" selected={task.recurrence?.mode === "schedule"}>
+                {t("tasks.recurrence.mode.schedule")}
+              </option>
+            </select>
+          </div>
+          <p class="text-[11px] leading-snug text-neutral-400">{t("tasks.recurrence.hint")}</p>
+        </div>
+      </section>
+
+      <!-- The one save for the whole edit mode: inputs across the page join via form="task-edit". -->
+      <form id="task-edit" method="POST" action="?/update"
+        use:enhance={() => ({ update }) => { editMode = false; dueReason = ""; void update(); }}>
+        <input type="hidden" name="due_change_reason" value={dueReason} />
+        <button class="w-full rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+          {t("common.save")}
+        </button>
+      </form>
+    {/if}
+  </aside>
+</div>
+
+{#if form?.error}
+  <p class="mt-3 text-sm text-red-600">{t(form.error)}</p>
+{/if}
+
+<!-- Deadline extension requires a reason (logged in the activity feed) -->
+<Modal bind:open={reasonModalOpen} title={t("tasks.detail.due_reason_title")}>
+  <div class="space-y-3">
+    <p class="text-sm text-neutral-600">
+      {t("tasks.detail.due_reason_body", {
+        from: task.due_date ? fmtDayMonth(task.due_date) : "—",
+        to: stagedDueDate ? fmtDayMonth(stagedDueDate) : "—",
+      })}
+    </p>
+    <textarea rows="3" bind:value={reasonDraft}
+      placeholder={t("tasks.detail.due_reason_placeholder")} class={inputClass}></textarea>
+    <div class="flex justify-end gap-2">
+      <button type="button" class="rounded-lg border border-neutral-300 px-4 py-2 text-sm" onclick={() => (reasonModalOpen = false)}>{t("common.cancel")}</button>
+      <button type="button" class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        onclick={() => { dueReason = reasonDraft.trim(); reasonModalOpen = false; }}>
+        {t("common.confirm")}
+      </button>
+    </div>
+  </div>
+</Modal>
+
+<ConfirmDialog
+  bind:open={confirmDelete}
+  title={t("tasks.detail.delete")}
+  message={t("tasks.detail.delete_confirm")}
+  action="?/delete"
+/>

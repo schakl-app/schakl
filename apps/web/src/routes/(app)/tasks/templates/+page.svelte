@@ -1,0 +1,360 @@
+<script lang="ts">
+  import { enhance } from "$app/forms";
+  import { page } from "$app/state";
+  import { t } from "$lib/core/i18n";
+  import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import TasksNav from "$lib/modules/tasks/TasksNav.svelte";
+
+  let { data, form } = $props();
+
+  const canManage = $derived(page.data.user?.canManage ?? false);
+
+  // --- checklist template repository state ------------------------------------
+  let editingChecklistId = $state<string | null>(null);
+  let deleteChecklistId = $state("");
+  let confirmDeleteChecklist = $state(false);
+
+  const COMPANY_STATUSES = ["lead", "onboarding", "active", "offboarding", "archived"] as const;
+  const priorities = ["low", "normal", "high"] as const;
+
+  interface ItemDraft {
+    title: string;
+    description: string;
+    priority: string;
+    relative_due_days: string;
+    allocated_minutes: string;
+    assignee_user_id: string;
+    checklist_title: string;
+    checklist_text: string;
+  }
+
+  interface TemplateLike {
+    id?: string;
+    name: string;
+    trigger: string;
+    trigger_status?: string | null;
+    active: boolean;
+    items?: {
+      title: string;
+      description?: string | null;
+      priority?: string;
+      relative_due_days?: number | null;
+      assignee_user_id?: string | null;
+      checklist_title?: string | null;
+      checklist_items?: string[];
+    }[];
+  }
+
+  let editing = $state<TemplateLike | null>(null);
+  let items = $state<ItemDraft[]>([]);
+  let trigger = $state("manual");
+  let deleteId = $state("");
+  let confirmDelete = $state(false);
+
+  function blankItem(): ItemDraft {
+    return {
+      title: "",
+      description: "",
+      priority: "normal",
+      relative_due_days: "",
+      allocated_minutes: "",
+      assignee_user_id: "",
+      checklist_title: "",
+      checklist_text: "",
+    };
+  }
+
+  function startNew() {
+    editing = { name: "", trigger: "manual", trigger_status: null, active: true, items: [] };
+    trigger = "manual";
+    items = [blankItem()];
+  }
+
+  function startEdit(template: (typeof data.templates)[number]) {
+    editing = template;
+    trigger = template.trigger;
+    items = (template.items ?? []).map((item) => ({
+      title: item.title,
+      description: item.description ?? "",
+      priority: item.priority ?? "normal",
+      relative_due_days: item.relative_due_days == null ? "" : String(item.relative_due_days),
+      allocated_minutes: item.allocated_minutes == null ? "" : String(item.allocated_minutes),
+      assignee_user_id: item.assignee_user_id ?? "",
+      checklist_title: item.checklist_title ?? "",
+      checklist_text: (item.checklist_items ?? []).join("\n"),
+    }));
+    if (items.length === 0) items = [blankItem()];
+  }
+
+  function move(index: number, delta: number) {
+    const next = index + delta;
+    if (next < 0 || next >= items.length) return;
+    const copy = [...items];
+    [copy[index], copy[next]] = [copy[next], copy[index]];
+    items = copy;
+  }
+
+  const itemsJson = $derived(
+    JSON.stringify(
+      items.map((item) => ({
+        title: item.title,
+        description: item.description,
+        priority: item.priority,
+        relative_due_days: item.relative_due_days === "" ? null : Number(item.relative_due_days),
+        allocated_minutes: item.allocated_minutes === "" ? null : Number(item.allocated_minutes),
+        assignee_user_id: item.assignee_user_id || null,
+        checklist_title: item.checklist_title,
+        checklist_items: item.checklist_text.split("\n").map((s) => s.trim()).filter(Boolean),
+      })),
+    ),
+  );
+
+  const inputClass =
+    "w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
+</script>
+
+<svelte:head>
+  <title>{t("settings.task_templates.title")}</title>
+</svelte:head>
+
+<TasksNav />
+
+<div class="mb-6 flex items-start justify-between">
+  <div>
+    <h1 class="text-xl font-semibold text-neutral-900">{t("settings.task_templates.title")}</h1>
+    <p class="mt-1 text-sm text-neutral-500">{t("settings.task_templates.subtitle")}</p>
+  </div>
+  {#if canManage}
+    <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90" onclick={startNew}>
+      {t("tasks.templates.new")}
+    </button>
+  {/if}
+</div>
+
+{#if editing}
+  <form
+    method="POST"
+    action={editing.id ? "?/update" : "?/create"}
+    use:enhance={() => ({ update }) => { editing = null; void update(); }}
+    class="mb-6 rounded-xl border border-neutral-200 bg-white p-5"
+  >
+    {#if editing.id}<input type="hidden" name="id" value={editing.id} />{/if}
+    <input type="hidden" name="items_json" value={itemsJson} />
+
+    <div class="grid gap-3 sm:grid-cols-2">
+      <div>
+        <label for="tpl-name" class="mb-1 block text-sm font-medium text-neutral-700">{t("tasks.templates.name")}</label>
+        <input id="tpl-name" name="name" value={editing.name} required class={inputClass} />
+      </div>
+      <div class="flex items-end gap-3">
+        <div class="flex-1">
+          <label for="tpl-trigger" class="mb-1 block text-sm font-medium text-neutral-700">{t("tasks.templates.trigger")}</label>
+          <select id="tpl-trigger" name="trigger" bind:value={trigger} class={inputClass}>
+            <option value="manual">{t("tasks.templates.trigger_manual")}</option>
+            <option value="company_status">{t("tasks.templates.trigger_company_status")}</option>
+          </select>
+        </div>
+        {#if trigger === "company_status"}
+          <div class="flex-1">
+            <label for="tpl-trigger-status" class="mb-1 block text-sm font-medium text-neutral-700">{t("tasks.templates.trigger_status")}</label>
+            <select id="tpl-trigger-status" name="trigger_status" class={inputClass}>
+              {#each COMPANY_STATUSES as status (status)}
+                <option value={status} selected={editing.trigger_status === status || (!editing.trigger_status && status === "onboarding")}>
+                  {t(`companies.status.${status}`)}
+                </option>
+              {/each}
+            </select>
+          </div>
+        {/if}
+        <label class="flex items-center gap-2 pb-2 text-sm text-neutral-700">
+          <input type="checkbox" name="active" checked={editing.active}
+            class="h-4 w-4 rounded border-neutral-300 text-brand focus:ring-brand" />
+          {t("tasks.templates.active")}
+        </label>
+      </div>
+    </div>
+
+    <h3 class="mt-5 mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-400">{t("tasks.templates.items")}</h3>
+    <div class="space-y-3">
+      {#each items as item, i (i)}
+        <div class="rounded-lg border border-neutral-200 p-3">
+          <div class="grid gap-2 sm:grid-cols-[1fr_auto_auto_auto_auto]">
+            <input placeholder={t("tasks.field.title")} bind:value={item.title} class={inputClass} />
+            <select bind:value={item.priority} class="rounded-lg border border-neutral-300 px-2 py-2 text-sm" aria-label={t("tasks.field.priority")}>
+              {#each priorities as p (p)}<option value={p}>{t(`tasks.priority.${p}`)}</option>{/each}
+            </select>
+            <div class="flex items-center gap-1 text-sm text-neutral-500">
+              <input type="number" min="0" max="365" bind:value={item.relative_due_days} placeholder="—"
+                class="w-16 rounded-lg border border-neutral-300 px-2 py-2 text-sm" aria-label={t("tasks.templates.relative_due_days")} />
+              <span class="text-xs">{t("tasks.templates.days")}</span>
+            </div>
+            <div class="flex items-center gap-1 text-sm text-neutral-500">
+              <input type="number" min="0" step="15" bind:value={item.allocated_minutes} placeholder="—"
+                class="w-20 rounded-lg border border-neutral-300 px-2 py-2 text-sm" aria-label={t("tasks.field.allocated_input")} />
+              <span class="text-xs">{t("tasks.templates.minutes")}</span>
+            </div>
+            <div class="flex items-center gap-1">
+              <button type="button" class="rounded border border-neutral-200 px-1.5 py-1 text-xs text-neutral-500 hover:border-brand" onclick={() => move(i, -1)} aria-label="↑">↑</button>
+              <button type="button" class="rounded border border-neutral-200 px-1.5 py-1 text-xs text-neutral-500 hover:border-brand" onclick={() => move(i, 1)} aria-label="↓">↓</button>
+              <button type="button" class="rounded border border-neutral-200 px-1.5 py-1 text-xs text-neutral-400 hover:border-red-300 hover:text-red-600"
+                onclick={() => (items = items.filter((_, j) => j !== i))} aria-label={t("common.delete")}>✕</button>
+            </div>
+          </div>
+          <div class="mt-2 grid gap-2 sm:grid-cols-2">
+            <textarea placeholder={t("tasks.field.description")} bind:value={item.description} rows="1" class={inputClass}></textarea>
+            <select bind:value={item.assignee_user_id} class={inputClass} aria-label={t("tasks.field.assignee")}>
+              <option value="">{t("tasks.templates.no_assignee")}</option>
+              {#each data.members as member (member.user_id)}
+                <option value={member.user_id}>{member.full_name || member.email}</option>
+              {/each}
+            </select>
+            <input placeholder={t("tasks.templates.checklist_title")} bind:value={item.checklist_title} class={inputClass} />
+            <textarea placeholder={t("tasks.templates.checklist_items_hint")} bind:value={item.checklist_text} rows="2" class={inputClass}></textarea>
+          </div>
+        </div>
+      {/each}
+    </div>
+    <button type="button" class="mt-3 rounded-lg border border-dashed border-neutral-300 px-3 py-1.5 text-sm text-neutral-500 hover:border-brand hover:text-brand"
+      onclick={() => (items = [...items, blankItem()])}>
+      ＋ {t("tasks.templates.add_item")}
+    </button>
+
+    {#if form?.error}<p class="mt-2 text-sm text-red-600">{t(form.error)}</p>{/if}
+    <div class="mt-4 flex gap-2">
+      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">{t("common.save")}</button>
+      <button type="button" class="rounded-lg border border-neutral-300 px-4 py-2 text-sm" onclick={() => (editing = null)}>{t("common.cancel")}</button>
+    </div>
+  </form>
+{/if}
+
+{#if data.templates.length === 0 && !editing}
+  <div class="rounded-xl border border-dashed border-neutral-300 bg-white p-10 text-center">
+    <p class="font-medium text-neutral-900">{t("tasks.templates.empty")}</p>
+    <p class="mt-1 text-sm text-neutral-500">{t("tasks.templates.empty_hint")}</p>
+  </div>
+{:else}
+  <ul class="space-y-3">
+    {#each data.templates as template (template.id)}
+      <li class="rounded-xl border border-neutral-200 bg-white p-4">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <div class="flex items-center gap-2">
+              <h3 class="text-sm font-semibold text-neutral-900">{template.name}</h3>
+              {#if !template.active}
+                <span class="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] text-neutral-500">{t("tasks.templates.inactive")}</span>
+              {/if}
+            </div>
+            <p class="mt-0.5 text-xs text-neutral-500">
+              {#if template.trigger === "company_status" && template.trigger_status}
+                {t("tasks.templates.auto_hint", { status: t(`companies.status.${template.trigger_status}`) })}
+              {:else}
+                {t("tasks.templates.trigger_manual")}
+              {/if}
+              · {t("tasks.templates.item_count", { count: (template.items ?? []).length })}
+            </p>
+          </div>
+          {#if canManage}
+            <div class="flex items-center gap-2">
+              <button type="button" class="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs text-neutral-600 hover:border-brand hover:text-brand"
+                onclick={() => startEdit(template)}>{t("common.edit")}</button>
+              <button type="button" class="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs text-neutral-400 hover:border-red-300 hover:text-red-600"
+                onclick={() => { deleteId = template.id; confirmDelete = true; }}>{t("common.delete")}</button>
+            </div>
+          {/if}
+        </div>
+        {#if (template.items ?? []).length > 0}
+          <ul class="mt-2 flex flex-wrap gap-1.5">
+            {#each template.items ?? [] as item (item.id)}
+              <li class="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] text-neutral-600">{item.title}</li>
+            {/each}
+          </ul>
+        {/if}
+      </li>
+    {/each}
+  </ul>
+{/if}
+
+<!-- Checklist template repository (shared per instance, staff-editable) -->
+<section class="mt-8">
+  <div class="mb-3">
+    <h2 class="text-base font-semibold text-neutral-900">{t("tasks.checklist_templates.title")}</h2>
+    <p class="mt-0.5 text-sm text-neutral-500">{t("tasks.checklist_templates.subtitle")}</p>
+  </div>
+
+  <div class="grid gap-4 lg:grid-cols-[1fr_320px]">
+    <div class="space-y-3">
+      {#if data.checklistTemplates.length === 0}
+        <div class="rounded-xl border border-dashed border-neutral-300 bg-white p-8 text-center">
+          <p class="text-sm text-neutral-500">{t("tasks.checklist_templates.empty")}</p>
+        </div>
+      {:else}
+        {#each data.checklistTemplates as checklistTemplate (checklistTemplate.id)}
+          <div class="rounded-xl border border-neutral-200 bg-white p-4">
+            {#if editingChecklistId === checklistTemplate.id}
+              <form method="POST" action="?/updateChecklist"
+                use:enhance={() => ({ update }) => { editingChecklistId = null; void update(); }}
+                class="space-y-2">
+                <input type="hidden" name="id" value={checklistTemplate.id} />
+                <input name="title" value={checklistTemplate.title} required class={inputClass} />
+                <textarea name="items" rows="4" class={inputClass}
+                  placeholder={t("tasks.templates.checklist_items_hint")}>{(checklistTemplate.items ?? []).join("\n")}</textarea>
+                <div class="flex gap-2">
+                  <button class="rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white">{t("common.save")}</button>
+                  <button type="button" class="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs"
+                    onclick={() => (editingChecklistId = null)}>{t("common.cancel")}</button>
+                </div>
+              </form>
+            {:else}
+              <div class="flex items-center justify-between gap-3">
+                <h3 class="text-sm font-semibold text-neutral-900">{checklistTemplate.title}</h3>
+                <div class="flex items-center gap-2">
+                  <button type="button" class="text-xs text-neutral-500 hover:text-brand"
+                    onclick={() => (editingChecklistId = checklistTemplate.id)}>{t("common.edit")}</button>
+                  <button type="button" class="text-xs text-neutral-400 hover:text-red-600"
+                    onclick={() => { deleteChecklistId = checklistTemplate.id; confirmDeleteChecklist = true; }}>
+                    {t("common.delete")}
+                  </button>
+                </div>
+              </div>
+              <ul class="mt-2 flex flex-wrap gap-1.5">
+                {#each checklistTemplate.items ?? [] as item, i (i)}
+                  <li class="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] text-neutral-600">{item}</li>
+                {/each}
+              </ul>
+            {/if}
+          </div>
+        {/each}
+      {/if}
+    </div>
+
+    <aside class="h-fit rounded-xl border border-neutral-200 bg-white p-5">
+      <h3 class="mb-3 text-sm font-semibold text-neutral-900">{t("tasks.checklist_templates.new")}</h3>
+      <form method="POST" action="?/createChecklist"
+        use:enhance={() => ({ update }) => void update({ reset: true })}
+        class="space-y-3">
+        <input name="title" required placeholder={t("tasks.templates.checklist_title")} class={inputClass} />
+        <textarea name="items" rows="4" required class={inputClass}
+          placeholder={t("tasks.templates.checklist_items_hint")}></textarea>
+        <button class="w-full rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+          {t("common.create")}
+        </button>
+      </form>
+    </aside>
+  </div>
+</section>
+
+<ConfirmDialog
+  bind:open={confirmDelete}
+  title={t("tasks.templates.delete")}
+  message={t("tasks.templates.delete_confirm")}
+  action="?/delete"
+  fields={{ id: deleteId }}
+/>
+
+<ConfirmDialog
+  bind:open={confirmDeleteChecklist}
+  title={t("tasks.checklist_templates.delete")}
+  message={t("tasks.checklist_templates.delete_confirm")}
+  action="?/deleteChecklist"
+  fields={{ id: deleteChecklistId }}
+/>

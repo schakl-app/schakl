@@ -3,3 +3,7 @@
  * Imported from both server and client hooks. Add a module here as it's built.
  */
 import "./companies";
+import "./contacts";
+import "./tasks";
+import "./projects";
+import "./time";

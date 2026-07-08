@@ -111,7 +111,15 @@ An **API module** is a package under `apps/api/app/modules/<name>/` exposing:
   custom-fields core — see §13).
 - `migrations/` — Alembic revisions owned by the module.
 - registers itself into the **module registry** (name, router, models, panels, mcp tools,
-  i18n namespace).
+  cron jobs, i18n namespace).
+- **cross-module reactions** go through the tiny in-process event bus
+  (`app/core/events.py`), never via imports of another module's internals: the owning
+  module's service `emit`s (today only `company.created` / `company.status_changed`) and
+  interested modules `subscribe` a handler in their package `__init__`. Handlers run in the
+  emitter's request transaction, so an event and its side effects commit atomically.
+- **background/cron work** is contributed as ARQ `cron_jobs` on the `ModuleDescriptor`; the
+  worker collects them from enabled modules. Jobs bind tenant context per org via
+  `app/core/jobs.run_per_org` (RLS GUC per org, one transaction per org).
 
 A **web module** mirrors it under `apps/web/src/lib/modules/<name>/`:
 - components, a `CompanyPanel` (renders that module's data on a company page),
@@ -188,6 +196,13 @@ or `<slug>.PLATFORM_BASE_DOMAIN` → org.
 ## 11. Working agreement (for Claude Code)
 
 - Start each phase in **plan mode**; propose the plan and wait for approval before coding.
+- **Read `docs/UX.md` before building or changing any screen** — it records the product's
+  design language (mobile-first, use-vs-edit modes, European dates, template patterns,
+  where admin config lives) and the UX mistakes already corrected once.
+- **Performance and lean code are first-class requirements.** Slow-feeling pages are bugs.
+  Keep SSR loads minimal (shared lookups in layout loads, `meta=false` on pickers, no
+  redundant API calls or queries), prefer fixing the data path over adding libraries, and
+  when a page feels slow, count its API calls/queries before writing code.
 - Keep this file updated when architecture decisions change.
 - Never leave a hardcoded user-facing string or an unscoped query — treat both as build breaks.
 - After each module: register it, add its panels, add its i18n keys, run `i18n:check` + tests.

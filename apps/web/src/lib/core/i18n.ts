@@ -22,3 +22,20 @@ export function t(key: string, params?: Record<string, unknown>): string {
 export function localeLabel(locale: string): string {
   return t(`locale.${locale}`);
 }
+
+/**
+ * Read a valid locale out of a raw `Cookie:` header (server) or `document.cookie` (client).
+ * Returns `null` when the cookie is absent or holds an unsupported locale — the caller then
+ * falls back to the org default. This is the single source of truth for the explicit choice,
+ * used by the Paraglide `custom-vlotrDefault` strategy so switching actually sticks.
+ */
+export function parseLocaleCookie(cookieHeader: string | null | undefined): string | null {
+  if (!cookieHeader) return null;
+  const prefix = LOCALE_COOKIE + "=";
+  const value = cookieHeader
+    .split(";")
+    .map((c) => c.trim())
+    .find((c) => c.startsWith(prefix))
+    ?.slice(prefix.length);
+  return value && (LOCALES as readonly string[]).includes(value) ? value : null;
+}

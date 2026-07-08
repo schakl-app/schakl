@@ -7,6 +7,8 @@
  */
 import type { Component } from "svelte";
 
+import type { ApiClient } from "./api/client";
+
 export interface NavItem {
   key: string;
   href: string;
@@ -14,6 +16,14 @@ export interface NavItem {
   label: () => string;
   module: string;
   position?: number;
+  /** Sidebar icon (a lucide component); rendered at 18px. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  icon?: Component<any>;
+  /**
+   * Sidebar group key (e.g. "relations"): items sharing a group render as a submenu under
+   * one header, labelled by the `nav.group.<key>` i18n key. Ungrouped items stay top-level.
+   */
+  group?: string;
 }
 
 export interface CompanyPanelSpec {
@@ -24,10 +34,23 @@ export interface CompanyPanelSpec {
   position?: number;
 }
 
+export interface DashboardWidgetSpec {
+  /** Unique widget key, e.g. "time.today". */
+  key: string;
+  module: string;
+  /** Server-side data loader (runs in the dashboard's +page.server.ts, API-only). */
+  load: (api: ApiClient) => Promise<unknown>;
+  component: Component<{ data: unknown }>;
+  position?: number;
+  /** Only offered to owners/admins (its loader calls manager-gated endpoints). */
+  requiresManage?: boolean;
+}
+
 export interface WebModule {
   name: string;
   nav?: NavItem[];
   companyPanels?: CompanyPanelSpec[];
+  dashboardWidgets?: DashboardWidgetSpec[];
 }
 
 const _modules = new Map<string, WebModule>();
@@ -55,4 +78,10 @@ export function companyPanelComponent(
   return enabledWebModules(enabled)
     .flatMap((m) => m.companyPanels ?? [])
     .find((p) => p.key === key);
+}
+
+export function dashboardWidgetsFor(enabled: string[]): DashboardWidgetSpec[] {
+  return enabledWebModules(enabled)
+    .flatMap((m) => m.dashboardWidgets ?? [])
+    .sort((a, b) => (a.position ?? 100) - (b.position ?? 100));
 }

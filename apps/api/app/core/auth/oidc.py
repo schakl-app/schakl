@@ -54,6 +54,10 @@ def build_oidc_router() -> APIRouter | None:
         async with async_session_maker() as session:
             from sqlalchemy import select
 
+            from app.core.models import Membership
+            from app.core.tenancy import request_hostname, resolve_org
+            from app.db import set_current_org
+
             user = await session.scalar(select(User).where(User.email == email))
             if user is None:
                 user = User(
@@ -66,7 +70,28 @@ def build_oidc_router() -> APIRouter | None:
                     is_verified=True,
                 )
                 session.add(user)
-                await session.commit()
+                await session.flush()
+
+            # Grant a membership in the resolved org, otherwise a JIT-provisioned SSO user would
+            # authenticate but be locked out (no membership → 403 in require_context).
+            if settings.oidc_auto_provision_membership:
+                org = await resolve_org(session, request_hostname(request))
+                if org is not None:
+                    await set_current_org(session, org.id)
+                    existing = await session.scalar(
+                        select(Membership).where(
+                            Membership.org_id == org.id, Membership.user_id == user.id
+                        )
+                    )
+                    if existing is None:
+                        session.add(
+                            Membership(
+                                org_id=org.id,
+                                user_id=user.id,
+                                role=settings.oidc_default_role,
+                            )
+                        )
+            await session.commit()
 
         jwt = await get_jwt_strategy().write_token(user)
         response = RedirectResponse(url="/")

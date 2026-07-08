@@ -9,9 +9,7 @@
 
 <svelte:head>
   <meta name="theme-color" content={data.theme.primaryColor} />
-  {#if data.theme.faviconUrl}
-    <link rel="icon" href={data.theme.faviconUrl} />
-  {/if}
+  <link rel="icon" href={data.theme.faviconUrl || "/favicon.svg"} />
 </svelte:head>
 
 <div style={style} class="min-h-screen">

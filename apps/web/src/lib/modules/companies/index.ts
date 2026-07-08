@@ -6,6 +6,7 @@
  */
 import { registerWebModule } from "$lib/core/registry";
 import { t } from "$lib/core/i18n";
+import { Building2 } from "@lucide/svelte";
 
 import CompanyDetailsPanel from "./CompanyDetailsPanel.svelte";
 
@@ -17,6 +18,8 @@ registerWebModule({
       href: "/companies",
       label: () => t("nav.companies"),
       module: "companies",
+      group: "relations",
+      icon: Building2,
       position: 10,
     },
   ],

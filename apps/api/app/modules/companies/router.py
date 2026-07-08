@@ -30,9 +30,10 @@ async def _enabled_modules(ctx: RequestContext) -> list[str]:
 async def list_companies(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    q: str | None = Query(None, max_length=200),
     ctx: RequestContext = Depends(require_context),
 ) -> Page[CompanyRead]:
-    items, total = await CompanyService(ctx).list(limit=limit, offset=offset)
+    items, total = await CompanyService(ctx).list(limit=limit, offset=offset, q=q)
     return Page(
         items=[CompanyRead.model_validate(c) for c in items],
         total=total,

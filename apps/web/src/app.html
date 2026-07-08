@@ -3,10 +3,9 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <!-- Per-tenant PWA manifest + favicon are resolved at runtime (Golden Rule 4). -->
+    <!-- Per-tenant PWA manifest is resolved at runtime (Golden Rule 4); the favicon link is
+         rendered by the root layout so the tenant's icon is the only one on the page. -->
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="icon" href="%sveltekit.assets%/favicon.svg" />
-    <meta name="theme-color" content="#4f46e5" />
     %sveltekit.head%
   </head>
   <body data-sveltekit-preload-data="hover">

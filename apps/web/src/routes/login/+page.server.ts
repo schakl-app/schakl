@@ -1,6 +1,8 @@
 import { fail, redirect } from "@sveltejs/kit";
 
 import { apiLogin, AUTH_COOKIE_NAME } from "$lib/core/auth.server";
+import { createApiClient } from "$lib/core/api/client";
+import { LOCALE_COOKIE, LOCALES } from "$lib/core/i18n";
 import { apiFor } from "$lib/core/session";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -36,6 +38,23 @@ export const actions: Actions = {
       secure: event.url.protocol === "https:",
       maxAge: 60 * 60 * 24 * 7,
     });
+
+    // Seed the display locale from the user's saved preference so their language follows them to
+    // this device. The just-set auth cookie isn't on the incoming request yet, so authenticate
+    // the lookup with the fresh token explicitly.
+    const authed = createApiClient({
+      fetch: event.fetch,
+      cookie: `${AUTH_COOKIE_NAME}=${token}`,
+      host: event.request.headers.get("host"),
+    });
+    const { data: me } = await authed.GET("/api/v1/meta/me");
+    if (me?.locale && (LOCALES as readonly string[]).includes(me.locale)) {
+      event.cookies.set(LOCALE_COOKIE, me.locale, {
+        path: "/",
+        maxAge: 60 * 60 * 24 * 365,
+        sameSite: "lax",
+      });
+    }
     throw redirect(303, "/");
   },
 };

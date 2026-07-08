@@ -23,6 +23,18 @@ async def test_local_login_then_crud_with_custom_fields(client_for) -> None:
         )
         assert login.status_code in (200, 204)
 
+        # Define a per-tenant custom field on companies (proves the framework end-to-end).
+        definition = await c.post(
+            "/api/v1/custom-fields/definitions",
+            json={
+                "entity_type": "company",
+                "key": "vat",
+                "label_i18n": {"nl": "BTW", "en": "VAT"},
+                "data_type": "text",
+            },
+        )
+        assert definition.status_code == 201
+
         # Create with a per-tenant custom value; it round-trips.
         created = await c.post(
             "/api/v1/companies",
@@ -108,3 +120,23 @@ async def test_meta_modules(client_for) -> None:
         assert "company" in data["customizable_entity_types"]
         assert data["default_locale"] == "nl"
         assert data["local_login_enabled"] is True
+
+
+async def test_company_status_default_and_roundtrip(client_for) -> None:
+    t = await make_tenant("status")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Status Co"}, headers=headers)
+        ).json()
+        assert company["status"] == "active"
+
+        patched = await c.patch(
+            f"/api/v1/companies/{company['id']}",
+            json={"status": "offboarding"},
+            headers=headers,
+        )
+        assert patched.json()["status"] == "offboarding"
+
+        fetched = await c.get(f"/api/v1/companies/{company['id']}", headers=headers)
+        assert fetched.json()["status"] == "offboarding"
