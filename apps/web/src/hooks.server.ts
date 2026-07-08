@@ -24,8 +24,7 @@ const handleParaglide: Handle = ({ event, resolve }) =>
   paraglideMiddleware(event.request, ({ request, locale }) => {
     event.request = request;
     return resolve(event, {
-      transformPageChunk: ({ html }) =>
-        html.replace("%lang%", HTML_LANG[locale] ?? locale),
+      transformPageChunk: ({ html }) => html.replace("%lang%", HTML_LANG[locale] ?? locale),
     });
   });
 

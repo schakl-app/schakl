@@ -7,6 +7,7 @@
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
   import Combobox from "$lib/core/ui/Combobox.svelte";
+  import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import {
     endFromDuration,
@@ -81,6 +82,7 @@
   let fProject = $state(entry?.project_id ?? defaultProjectId);
   let fTask = $state(entry?.task_id ?? "");
   let durationText = $state("");
+  let confirmDelete = $state(false);
 
   // Live worked minutes from the times (span minus break).
   const workedMinutes = $derived.by(() => {
@@ -111,10 +113,9 @@
   });
 
   const projectOptions = $derived(
-    (fCompany
-      ? projects.filter((p) => p.company_id === fCompany || !p.company_id)
-      : projects
-    ).map((p) => ({ value: p.id, label: p.name ?? "" })),
+    (fCompany ? projects.filter((p) => p.company_id === fCompany || !p.company_id) : projects).map(
+      (p) => ({ value: p.id, label: p.name ?? "" }),
+    ),
   );
   const taskOptions = $derived(
     (fProject
@@ -138,61 +139,115 @@
 <form
   method="POST"
   {action}
-  use:enhance={() => ({ update }) => {
-    ondone?.();
-    void update({ reset: !entry });
-  }}
+  use:enhance={() =>
+    ({ update }) => {
+      ondone?.();
+      void update({ reset: !entry });
+    }}
   class="space-y-3"
 >
   {#if entry}<input type="hidden" name="id" value={entry.id} />{/if}
 
   <div class="grid grid-cols-3 gap-2">
     <div>
-      <label for="start-{action}" class="mb-1 block text-xs font-medium text-neutral-500">{t("time.field.start")}</label>
-      <input id="start-{action}" name="start" type="time" required bind:value={fStart}
-        oninput={syncDurationFromTimes} class={inputClass} />
+      <label for="start-{action}" class="mb-1 block text-xs font-medium text-neutral-500"
+        >{t("time.field.start")}</label
+      >
+      <input
+        id="start-{action}"
+        name="start"
+        type="time"
+        required
+        bind:value={fStart}
+        oninput={syncDurationFromTimes}
+        class={inputClass}
+      />
     </div>
     <div>
-      <label for="end-{action}" class="mb-1 block text-xs font-medium text-neutral-500">{t("time.field.end")}</label>
-      <input id="end-{action}" name="end" type="time" required bind:value={fEnd}
-        oninput={syncDurationFromTimes} class={inputClass} />
+      <label for="end-{action}" class="mb-1 block text-xs font-medium text-neutral-500"
+        >{t("time.field.end")}</label
+      >
+      <input
+        id="end-{action}"
+        name="end"
+        type="time"
+        required
+        bind:value={fEnd}
+        oninput={syncDurationFromTimes}
+        class={inputClass}
+      />
     </div>
     <div>
-      <label for="break-{action}" class="mb-1 block text-xs font-medium text-neutral-500">{t("time.field.break")}</label>
-      <input id="break-{action}" name="break_minutes" type="number" min="0" step="5" bind:value={fBreak}
-        oninput={syncDurationFromTimes} class={inputClass} />
+      <label for="break-{action}" class="mb-1 block text-xs font-medium text-neutral-500"
+        >{t("time.field.break")}</label
+      >
+      <input
+        id="break-{action}"
+        name="break_minutes"
+        type="number"
+        min="0"
+        step="5"
+        bind:value={fBreak}
+        oninput={syncDurationFromTimes}
+        class={inputClass}
+      />
     </div>
   </div>
 
   <div class="flex items-center gap-3">
     <div class="flex-1">
-      <label for="duration-{action}" class="mb-1 block text-xs font-medium text-neutral-500">{t("time.field.duration")}</label>
-      <input id="duration-{action}" bind:value={durationText} onchange={syncEndFromDuration}
-        placeholder={t("time.duration_hint")} class={inputClass} />
+      <label for="duration-{action}" class="mb-1 block text-xs font-medium text-neutral-500"
+        >{t("time.field.duration")}</label
+      >
+      <input
+        id="duration-{action}"
+        bind:value={durationText}
+        onchange={syncEndFromDuration}
+        placeholder={t("time.duration_hint")}
+        class={inputClass}
+      />
     </div>
-    <div class="pt-5 text-sm font-semibold tabular-nums {workedMinutes ? 'text-brand' : 'text-neutral-300'}">
+    <div
+      class="pt-5 text-sm font-semibold tabular-nums {workedMinutes
+        ? 'text-brand'
+        : 'text-neutral-300'}"
+    >
       {workedMinutes != null ? t("time.worked", { duration: formatMinutes(workedMinutes) }) : "—"}
     </div>
   </div>
 
   <input type="hidden" name="billable" value={fBillable} />
   <div class="grid grid-cols-2 gap-2">
-    <button type="button" onclick={() => (fBillable = false)}
-      class="rounded-lg border px-3 py-2 text-sm font-medium {!fBillable ? 'border-brand bg-brand text-white' : 'border-neutral-300 text-neutral-600'}">
+    <button
+      type="button"
+      onclick={() => (fBillable = false)}
+      class="rounded-lg border px-3 py-2 text-sm font-medium {!fBillable
+        ? 'border-brand bg-brand text-white'
+        : 'border-neutral-300 text-neutral-600'}"
+    >
       {t("time.not_billable")}
     </button>
-    <button type="button" onclick={() => (fBillable = true)}
-      class="rounded-lg border px-3 py-2 text-sm font-medium {fBillable ? 'border-brand bg-brand text-white' : 'border-neutral-300 text-neutral-600'}">
+    <button
+      type="button"
+      onclick={() => (fBillable = true)}
+      class="rounded-lg border px-3 py-2 text-sm font-medium {fBillable
+        ? 'border-brand bg-brand text-white'
+        : 'border-neutral-300 text-neutral-600'}"
+    >
       {t("time.billable")}
     </button>
   </div>
 
   <div>
-    <label for="date-{action}" class="mb-1 block text-xs font-medium text-neutral-500">{t("time.field.date")}</label>
+    <label for="date-{action}" class="mb-1 block text-xs font-medium text-neutral-500"
+      >{t("time.field.date")}</label
+    >
     <DateInput id="date-{action}" name="date" bind:value={fDate} required />
   </div>
   <div>
-    <label for="company-{action}" class="mb-1 block text-xs font-medium text-neutral-500">{t("time.field.company")}</label>
+    <label for="company-{action}" class="mb-1 block text-xs font-medium text-neutral-500"
+      >{t("time.field.company")}</label
+    >
     <Combobox
       items={companies.map((c) => ({ value: c.id, label: c.name ?? "" }))}
       name="company_id"
@@ -203,39 +258,74 @@
     />
   </div>
   <div>
-    <label for="project-{action}" class="mb-1 block text-xs font-medium text-neutral-500">{t("time.field.project")}</label>
-    <Combobox items={projectOptions} name="project_id" bind:value={fProject}
-      id="project-{action}" placeholder={t("time.field.project")} onselect={onProjectPicked}
-      oncreate={oncreateproject} />
+    <label for="project-{action}" class="mb-1 block text-xs font-medium text-neutral-500"
+      >{t("time.field.project")}</label
+    >
+    <Combobox
+      items={projectOptions}
+      name="project_id"
+      bind:value={fProject}
+      id="project-{action}"
+      placeholder={t("time.field.project")}
+      onselect={onProjectPicked}
+      oncreate={oncreateproject}
+    />
   </div>
   <div>
-    <label for="task-{action}" class="mb-1 block text-xs font-medium text-neutral-500">{t("time.field.task")}</label>
-    <Combobox items={taskOptions} name="task_id" bind:value={fTask}
-      id="task-{action}" placeholder={t("time.field.task")} />
+    <label for="task-{action}" class="mb-1 block text-xs font-medium text-neutral-500"
+      >{t("time.field.task")}</label
+    >
+    <Combobox
+      items={taskOptions}
+      name="task_id"
+      bind:value={fTask}
+      id="task-{action}"
+      placeholder={t("time.field.task")}
+    />
   </div>
   <div>
-    <label for="description-{action}" class="mb-1 block text-xs font-medium text-neutral-500">{t("time.field.description")}</label>
-    <textarea id="description-{action}" name="description" rows="2" class={inputClass}>{entry?.description ?? ""}</textarea>
+    <label for="description-{action}" class="mb-1 block text-xs font-medium text-neutral-500"
+      >{t("time.field.description")}</label
+    >
+    <textarea id="description-{action}" name="description" rows="2" class={inputClass}
+      >{entry?.description ?? ""}</textarea
+    >
   </div>
 
   {#if error}<p class="text-sm text-red-600">{t(error)}</p>{/if}
   <div class="flex gap-2">
-    <button class="flex-1 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+    <button
+      class="flex-1 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+    >
       {t("common.save")}
     </button>
     {#if oncancel}
-      <button type="button" class="rounded-lg border border-neutral-300 px-4 py-2 text-sm" onclick={oncancel}>
+      <button
+        type="button"
+        class="rounded-lg border border-neutral-300 px-4 py-2 text-sm"
+        onclick={oncancel}
+      >
         {t("common.cancel")}
       </button>
     {/if}
   </div>
   {#if entry && deleteAction}
     <button
-      formaction={deleteAction}
-      formnovalidate
+      type="button"
+      onclick={() => (confirmDelete = true)}
       class="w-full rounded-lg border border-neutral-300 px-4 py-2 text-sm text-neutral-500 hover:border-red-300 hover:text-red-600"
     >
       {t("common.delete")}
     </button>
   {/if}
 </form>
+
+{#if entry && deleteAction}
+  <ConfirmDialog
+    bind:open={confirmDelete}
+    title={t("time.delete")}
+    message={t("time.delete_confirm")}
+    action={deleteAction}
+    fields={{ id: entry.id }}
+  />
+{/if}

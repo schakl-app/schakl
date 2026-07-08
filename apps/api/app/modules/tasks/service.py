@@ -179,6 +179,7 @@ class TaskService:
         due: str | None = None,
         q: str | None = None,
         with_meta: bool = True,
+        count: bool = True,
     ) -> tuple[list[TaskListItem], int]:
         stmt = self.repo.scoped_select()
         if q:
@@ -208,11 +209,15 @@ class TaskService:
         elif due == "week":
             stmt = stmt.where(Task.due_date >= today, Task.due_date <= today + timedelta(days=7))
 
-        count_stmt = select(func.count()).select_from(stmt.subquery())
-        total = int(await self.ctx.session.scalar(count_stmt) or 0)
+        total = 0
+        if count:
+            count_stmt = select(func.count()).select_from(stmt.subquery())
+            total = int(await self.ctx.session.scalar(count_stmt) or 0)
 
         stmt = stmt.order_by(Task.position.asc(), Task.created_at.asc()).limit(limit).offset(offset)
         tasks = (await self.ctx.session.execute(stmt)).scalars().all()
+        if not count:
+            total = len(tasks)
         if not with_meta:
             # Lookup lists (pickers) don't need the aggregate chips — skip three queries.
             return [TaskListItem.model_validate(t) for t in tasks], total
@@ -340,6 +345,7 @@ class TaskService:
         if link.task_id != task_id:
             raise AppError("not_found", "errors.not_found", status_code=404)
         await repo.delete(link)
+        await self._record(task_id, "link_deleted", {"title": link.title or link.url})
 
     # ------------------------------------------------------------------ #
     # CRUD
@@ -350,6 +356,12 @@ class TaskService:
     async def create(self, data: TaskCreate) -> Task:
         self.ctx.ensure_can_write()
         values = data.model_dump()
+        # Verantwoordelijke defaults down: project's responsible → else the company's,
+        # when the task has no explicit assignee (overridable per task).
+        if values.get("assignee_user_id") is None:
+            values["assignee_user_id"] = await self._default_assignee(
+                values.get("project_id"), values.get("company_id")
+            )
         values["status"] = data.status.value
         values["priority"] = data.priority.value
         values["recurrence"] = data.recurrence.model_dump(mode="json") if data.recurrence else None
@@ -360,6 +372,30 @@ class TaskService:
         task = await self.repo.create(**values)
         await self._record(task.id, "created")
         return task
+
+    async def _default_assignee(
+        self, project_id: uuid.UUID | None, company_id: uuid.UUID | None
+    ) -> uuid.UUID | None:
+        """Inherit the verantwoordelijke from the parent project, else the company, via their
+        published services (§3 — no model cross-imports). ``None`` when neither has one."""
+        if project_id is not None:
+            from app.modules.projects.service import ProjectService
+
+            try:
+                project = await ProjectService(self.ctx).get(project_id)
+            except AppError:
+                project = None
+            if project is not None and project.responsible_user_id is not None:
+                return project.responsible_user_id
+        if company_id is not None:
+            from app.modules.companies.service import CompanyService
+
+            try:
+                company = await CompanyService(self.ctx).get(company_id)
+            except AppError:
+                return None
+            return company.responsible_user_id
+        return None
 
     async def _next_position(self) -> float:
         result = await self.ctx.session.scalar(
@@ -597,6 +633,7 @@ class TaskService:
         self.ctx.ensure_can_write()
         checklist = await self._checklist_or_404(task_id, checklist_id)
         await self.ctx.repo(TaskChecklist).delete(checklist)
+        await self._record(task_id, "checklist_deleted", {"title": checklist.title})
 
     async def add_checklist_item(
         self, task_id: uuid.UUID, checklist_id: uuid.UUID, data: ChecklistItemCreate
@@ -635,6 +672,7 @@ class TaskService:
         self.ctx.ensure_can_write()
         item = await self._item_or_404(task_id, checklist_id, item_id)
         await self.ctx.repo(TaskChecklistItem).delete(item)
+        await self._record(task_id, "checklist_item_deleted", {"title": item.title})
 
     # ------------------------------------------------------------------ #
     # Comments
@@ -666,6 +704,7 @@ class TaskService:
         comment = await self.ctx.repo(TaskComment).update(
             comment, body=data.body, edited_at=datetime.now(UTC)
         )
+        await self._record(task_id, "comment_edited")
         return CommentRead.model_validate(comment).model_copy(
             update={"author_name": _display_name(self.ctx.user)}
         )
@@ -676,3 +715,4 @@ class TaskService:
         if comment.author_user_id != self.ctx.user.id and not self.ctx.role.can_manage:
             raise AppError("forbidden", "errors.forbidden", status_code=403)
         await self.ctx.repo(TaskComment).delete(comment)
+        await self._record(task_id, "comment_deleted")

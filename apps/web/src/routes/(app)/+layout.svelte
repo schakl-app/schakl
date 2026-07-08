@@ -27,7 +27,8 @@
   const canManage = $derived(user?.canManage ?? false);
 
   // Grouped nav: a group renders once, where its first item would sit, holding all members.
-  type NavEntry = { kind: "item"; item: NavItem } | { kind: "group"; key: string; items: NavItem[] };
+  type NavEntry =
+    { kind: "item"; item: NavItem } | { kind: "group"; key: string; items: NavItem[] };
   const navEntries = $derived.by<NavEntry[]>(() => {
     const entries: NavEntry[] = [];
     const seen = new Set<string>();
@@ -128,7 +129,11 @@
       {/if}
     </div>
     <nav class="space-y-1 p-2">
-      <a href="/" class={itemClass(path === "/")} title={collapsed ? t("nav.dashboard") : undefined}>
+      <a
+        href="/"
+        class={itemClass(path === "/")}
+        title={collapsed ? t("nav.dashboard") : undefined}
+      >
         <LayoutDashboard size={18} class="shrink-0 text-neutral-500" />
         {#if !collapsed}<span class="truncate">{t("nav.dashboard")}</span>{/if}
       </a>
@@ -178,7 +183,9 @@
                 <a
                   href={item.href}
                   class="flex items-center gap-2.5 rounded-lg py-1.5 pl-9 pr-3 text-sm text-neutral-600 hover:bg-neutral-100
-                    {path.startsWith(item.href) ? 'bg-neutral-100 font-medium text-neutral-900' : ''}"
+                    {path.startsWith(item.href)
+                    ? 'bg-neutral-100 font-medium text-neutral-900'
+                    : ''}"
                 >
                   {#if Icon}<Icon size={15} class="shrink-0 text-neutral-400" />{/if}
                   <span class="truncate">{item.label()}</span>

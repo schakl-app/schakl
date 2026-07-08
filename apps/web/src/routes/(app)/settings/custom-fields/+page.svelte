@@ -1,17 +1,65 @@
 <script lang="ts">
+  import { Pencil, PowerOff, Power, Trash2 } from "@lucide/svelte";
+
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
   import { fieldLabel } from "$lib/core/customfields/types";
+  import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import Modal from "$lib/core/ui/Modal.svelte";
 
   let { data, form } = $props();
 
+  let deleteId = $state("");
+  let confirmDelete = $state(false);
+
+  // Deactivate/activate is a non-destructive toggle; submitted from the ⋯ menu via one shared
+  // hidden form (the kebab item can't post a form itself).
+  let toggleForm: HTMLFormElement | undefined = $state();
+  let toggleId = $state("");
+  let toggleActiveValue = $state("true");
+  function requestToggle(id: string, active: boolean) {
+    toggleId = id;
+    toggleActiveValue = String(active);
+    setTimeout(() => toggleForm?.requestSubmit(), 0);
+  }
+
+  // Edit modal: pre-filled from the picked definition. Key + type are locked (shown read-only).
+  type Def = (typeof data.definitions)[number];
+  let showEdit = $state(false);
+  let editDef = $state<Def | null>(null);
+  const editIsSelect = $derived(
+    editDef?.data_type === "select" || editDef?.data_type === "multi_select",
+  );
+  function optionsText(def: Def): string {
+    return (def.options_json ?? [])
+      .map((o) => `${o.value}|${o.label_i18n?.nl ?? o.label_i18n?.en ?? o.value}`)
+      .join("\n");
+  }
+  function openEdit(def: Def) {
+    editDef = def;
+    showEdit = true;
+  }
+
   const TYPES = [
-    "text", "long_text", "number", "boolean", "date", "datetime",
-    "select", "multi_select", "email", "url", "phone",
+    "text",
+    "long_text",
+    "number",
+    "boolean",
+    "date",
+    "datetime",
+    "select",
+    "multi_select",
+    "email",
+    "url",
+    "phone",
   ] as const;
 
   let selectedType = $state("text");
   const showOptions = $derived(selectedType === "select" || selectedType === "multi_select");
+
+  const inputClass =
+    "w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
 
 <svelte:head>
@@ -19,7 +67,9 @@
 </svelte:head>
 
 <div class="mb-6">
-  <a href="/settings" class="text-sm text-neutral-500 hover:text-neutral-900">← {t("settings.title")}</a>
+  <a href="/settings" class="text-sm text-neutral-500 hover:text-neutral-900"
+    >← {t("settings.title")}</a
+  >
   <h1 class="mt-2 text-xl font-semibold text-neutral-900">{t("settings.custom_fields.title")}</h1>
   <p class="mt-1 text-sm text-neutral-500">{t("settings.custom_fields.subtitle")}</p>
 </div>
@@ -27,24 +77,28 @@
 <!-- Entity type switcher -->
 <div class="mb-4 flex flex-wrap gap-2">
   {#each data.entityTypes as et (et)}
-    <a href={`?entity_type=${et}`}
+    <a
+      href={`?entity_type=${et}`}
       class="rounded-lg border px-3 py-1.5 text-sm"
       class:border-brand={et === data.entityType}
       class:text-brand={et === data.entityType}
-      class:border-neutral-300={et !== data.entityType}>
+      class:border-neutral-300={et !== data.entityType}
+    >
       {t(`customfields.entity.${et}`)}
     </a>
   {/each}
 </div>
 
 <!-- Existing definitions -->
-<div class="mb-6 overflow-hidden rounded-xl border border-neutral-200 bg-white">
+<div class="mb-6 rounded-xl border border-neutral-200 bg-white">
   {#if data.definitions.length === 0}
     <p class="p-6 text-center text-sm text-neutral-500">{t("settings.custom_fields.empty")}</p>
   {:else}
     <table class="w-full text-sm">
       <thead>
-        <tr class="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-500">
+        <tr
+          class="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-500"
+        >
           <th class="px-4 py-2 font-medium">{t("settings.custom_fields.label")}</th>
           <th class="px-4 py-2 font-medium">{t("settings.custom_fields.key")}</th>
           <th class="px-4 py-2 font-medium">{t("settings.custom_fields.type")}</th>
@@ -60,18 +114,28 @@
             <td class="px-4 py-2 text-neutral-600">{t(`customfields.type.${def.data_type}`)}</td>
             <td class="px-4 py-2 text-neutral-600">{def.required ? t("common.required") : "—"}</td>
             <td class="px-4 py-2">
-              <div class="flex items-center justify-end gap-3">
-                <form method="POST" action="?/toggleActive" use:enhance>
-                  <input type="hidden" name="id" value={def.id} />
-                  <input type="hidden" name="active" value={String(def.active)} />
-                  <button class="text-xs text-neutral-500 hover:text-neutral-900">
-                    {def.active ? t("settings.custom_fields.deactivate") : t("settings.custom_fields.activate")}
-                  </button>
-                </form>
-                <form method="POST" action="?/delete" use:enhance>
-                  <input type="hidden" name="id" value={def.id} />
-                  <button class="text-xs text-neutral-400 hover:text-red-600">{t("common.delete")}</button>
-                </form>
+              <div class="flex items-center justify-end">
+                <ActionsMenu
+                  items={[
+                    { label: t("common.edit"), icon: Pencil, onclick: () => openEdit(def) },
+                    {
+                      label: def.active
+                        ? t("settings.custom_fields.deactivate")
+                        : t("settings.custom_fields.activate"),
+                      icon: def.active ? PowerOff : Power,
+                      onclick: () => requestToggle(def.id, def.active),
+                    },
+                    {
+                      label: t("common.delete"),
+                      icon: Trash2,
+                      danger: true,
+                      onclick: () => {
+                        deleteId = def.id;
+                        confirmDelete = true;
+                      },
+                    },
+                  ]}
+                />
               </div>
             </td>
           </tr>
@@ -82,36 +146,79 @@
 </div>
 
 <!-- Create definition -->
-<form method="POST" action="?/create" use:enhance class="rounded-xl border border-neutral-200 bg-white p-5">
+<form
+  method="POST"
+  action="?/create"
+  use:enhance
+  class="rounded-xl border border-neutral-200 bg-white p-5"
+>
   <h2 class="mb-4 text-sm font-semibold text-neutral-900">{t("settings.custom_fields.new")}</h2>
   <input type="hidden" name="entity_type" value={data.entityType} />
   <div class="grid gap-3 sm:grid-cols-2">
     <div>
-      <label for="key" class="mb-1 block text-sm font-medium text-neutral-700">{t("settings.custom_fields.key")}</label>
-      <input id="key" name="key" required pattern="[a-z][a-z0-9_]*" placeholder="vat_number"
-        class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm" />
+      <label for="key" class="mb-1 block text-sm font-medium text-neutral-700"
+        >{t("settings.custom_fields.key")}</label
+      >
+      <input
+        id="key"
+        name="key"
+        required
+        pattern="[a-z][a-z0-9_]*"
+        placeholder="vat_number"
+        class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+      />
       <p class="mt-1 text-xs text-neutral-400">{t("settings.custom_fields.key_hint")}</p>
     </div>
     <div>
-      <label for="data_type" class="mb-1 block text-sm font-medium text-neutral-700">{t("settings.custom_fields.type")}</label>
-      <select id="data_type" name="data_type" bind:value={selectedType}
-        class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm">
+      <label for="data_type" class="mb-1 block text-sm font-medium text-neutral-700"
+        >{t("settings.custom_fields.type")}</label
+      >
+      <select
+        id="data_type"
+        name="data_type"
+        bind:value={selectedType}
+        class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+      >
         {#each TYPES as ty (ty)}<option value={ty}>{t(`customfields.type.${ty}`)}</option>{/each}
       </select>
     </div>
     <div>
-      <label for="label_nl" class="mb-1 block text-sm font-medium text-neutral-700">{t("settings.custom_fields.label_nl")}</label>
-      <input id="label_nl" name="label_nl" class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm" />
+      <label for="label_nl" class="mb-1 block text-sm font-medium text-neutral-700"
+        >{t("settings.custom_fields.label_nl")}</label
+      >
+      <input
+        id="label_nl"
+        name="label_nl"
+        class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+      />
     </div>
     <div>
-      <label for="label_en" class="mb-1 block text-sm font-medium text-neutral-700">{t("settings.custom_fields.label_en")}</label>
-      <input id="label_en" name="label_en" class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm" />
+      <label for="label_en" class="mb-1 block text-sm font-medium text-neutral-700"
+        >{t("settings.custom_fields.label_en")}</label
+      >
+      <input
+        id="label_en"
+        name="label_en"
+        class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+      />
     </div>
+    <p class="text-xs text-neutral-400 sm:col-span-2 sm:-mt-1">
+      {t("settings.custom_fields.label_optional")}
+    </p>
     {#if showOptions}
       <div class="sm:col-span-2">
-        <label for="options" class="mb-1 block text-sm font-medium text-neutral-700">{t("settings.custom_fields.options")}</label>
-        <textarea id="options" name="options" rows="3" placeholder={"gold|Gold\nsilver|Silver"}
-          class="w-full rounded-lg border border-neutral-300 px-3 py-2 font-mono text-xs"></textarea>
+        <label for="options" class="mb-1 block text-sm font-medium text-neutral-700"
+          >{t("settings.custom_fields.options")}</label
+        >
+        <!-- eslint-disable svelte/no-useless-mustaches -- \n needs JS-string escaping; a bare attribute would render it literally -->
+        <textarea
+          id="options"
+          name="options"
+          rows="3"
+          placeholder={"gold|Gold\nsilver|Silver"}
+          class="w-full rounded-lg border border-neutral-300 px-3 py-2 font-mono text-xs"
+        ></textarea>
+        <!-- eslint-enable svelte/no-useless-mustaches -->
         <p class="mt-1 text-xs text-neutral-400">{t("settings.custom_fields.options_hint")}</p>
       </div>
     {/if}
@@ -121,13 +228,158 @@
         {t("common.required")}
       </label>
       <div class="flex items-center gap-2">
-        <label for="position" class="text-sm text-neutral-700">{t("settings.custom_fields.position")}</label>
-        <input id="position" name="position" type="number" value="0" class="w-20 rounded-lg border border-neutral-300 px-2 py-1 text-sm" />
+        <label for="position" class="text-sm text-neutral-700"
+          >{t("settings.custom_fields.position")}</label
+        >
+        <input
+          id="position"
+          name="position"
+          type="number"
+          value="0"
+          class="w-20 rounded-lg border border-neutral-300 px-2 py-1 text-sm"
+        />
       </div>
     </div>
   </div>
   {#if form?.error}<p class="mt-2 text-sm text-red-600">{t(form.error)}</p>{/if}
   <div class="mt-4">
-    <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">{t("common.create")}</button>
+    <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+      >{t("common.create")}</button
+    >
   </div>
 </form>
+
+<!-- Shared hidden form: the ⋯ Deactiveren/Activeren item submits this. -->
+<form method="POST" action="?/toggleActive" use:enhance bind:this={toggleForm} class="hidden">
+  <input type="hidden" name="id" value={toggleId} />
+  <input type="hidden" name="active" value={toggleActiveValue} />
+</form>
+
+<!-- Edit definition (key + type locked) -->
+<Modal bind:open={showEdit} title={t("settings.custom_fields.edit")}>
+  {#if editDef}
+    {#key editDef.id}
+      <form
+        method="POST"
+        action="?/update"
+        use:enhance={() =>
+          ({ update }) => {
+            showEdit = false;
+            void update();
+          }}
+        class="space-y-3"
+      >
+        <input type="hidden" name="id" value={editDef.id} />
+        <input type="hidden" name="key" value={editDef.key} />
+        <input type="hidden" name="data_type" value={editDef.data_type} />
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <div class="mb-1 block text-sm font-medium text-neutral-700">
+              {t("settings.custom_fields.key")}
+            </div>
+            <div
+              class="flex items-center gap-1 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 font-mono text-xs text-neutral-500"
+            >
+              🔒 {editDef.key}
+            </div>
+            <p class="mt-1 text-xs text-neutral-400">{t("settings.custom_fields.key_locked")}</p>
+          </div>
+          <div>
+            <div class="mb-1 block text-sm font-medium text-neutral-700">
+              {t("settings.custom_fields.type")}
+            </div>
+            <div
+              class="flex items-center gap-1 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-500"
+            >
+              🔒 {t(`customfields.type.${editDef.data_type}`)}
+            </div>
+            <p class="mt-1 text-xs text-neutral-400">{t("settings.custom_fields.type_locked")}</p>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label for="edit-label-nl" class="mb-1 block text-sm font-medium text-neutral-700"
+              >{t("settings.custom_fields.label_nl")}</label
+            >
+            <input
+              id="edit-label-nl"
+              name="label_nl"
+              value={editDef.label_i18n?.nl ?? ""}
+              class={inputClass}
+            />
+          </div>
+          <div>
+            <label for="edit-label-en" class="mb-1 block text-sm font-medium text-neutral-700"
+              >{t("settings.custom_fields.label_en")}</label
+            >
+            <input
+              id="edit-label-en"
+              name="label_en"
+              value={editDef.label_i18n?.en ?? ""}
+              class={inputClass}
+            />
+          </div>
+        </div>
+        {#if editIsSelect}
+          <div>
+            <label for="edit-options" class="mb-1 block text-sm font-medium text-neutral-700"
+              >{t("settings.custom_fields.options")}</label
+            >
+            <textarea
+              id="edit-options"
+              name="options"
+              rows="3"
+              class="{inputClass} font-mono text-xs">{optionsText(editDef)}</textarea
+            >
+            <p class="mt-1 text-xs text-neutral-400">{t("settings.custom_fields.options_hint")}</p>
+          </div>
+        {/if}
+        <div class="flex items-center gap-4">
+          <label class="flex items-center gap-2 text-sm text-neutral-700">
+            <input
+              type="checkbox"
+              name="required"
+              checked={editDef.required}
+              class="h-4 w-4 rounded border-neutral-300"
+            />
+            {t("common.required")}
+          </label>
+          <div class="flex items-center gap-2">
+            <label for="edit-position" class="text-sm text-neutral-700"
+              >{t("settings.custom_fields.position")}</label
+            >
+            <input
+              id="edit-position"
+              name="position"
+              type="number"
+              value={editDef.position}
+              class="w-20 rounded-lg border border-neutral-300 px-2 py-1 text-sm"
+            />
+          </div>
+        </div>
+        {#if form?.error}<p class="text-sm text-red-600">{t(form.error)}</p>{/if}
+        <div class="flex justify-end gap-2 pt-1">
+          <button
+            type="button"
+            class="rounded-lg border border-neutral-300 px-4 py-2 text-sm"
+            onclick={() => (showEdit = false)}
+          >
+            {t("common.cancel")}
+          </button>
+          <button
+            class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+            >{t("common.save")}</button
+          >
+        </div>
+      </form>
+    {/key}
+  {/if}
+</Modal>
+
+<ConfirmDialog
+  bind:open={confirmDelete}
+  title={t("common.delete")}
+  message={t("settings.custom_fields.delete_confirm")}
+  action="?/delete"
+  fields={{ id: deleteId }}
+/>

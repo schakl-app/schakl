@@ -138,6 +138,41 @@ async def test_definitions_isolated_per_tenant(client_for) -> None:
         assert listing.json() == []
 
 
+async def test_definition_update_label_required_options(client_for) -> None:
+    """Editing a definition changes label/required/options; key + type stay put."""
+    t = await make_tenant("cf-update")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        d = await _define(
+            c, headers,
+            entity_type="company", key="tier", data_type="select",
+            required=False,
+            label_i18n={"nl": "Niveau", "en": "Tier"},
+            options_json=[{"value": "gold", "label_i18n": {"en": "Gold"}}],
+        )
+        did = d["id"]
+        r = await c.patch(
+            f"/api/v1/custom-fields/definitions/{did}",
+            json={
+                "label_i18n": {"nl": "Klantniveau", "en": "Client tier"},
+                "required": True,
+                "options_json": [
+                    {"value": "gold", "label_i18n": {"en": "Gold"}},
+                    {"value": "silver", "label_i18n": {"en": "Silver"}},
+                ],
+            },
+            headers=headers,
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["label_i18n"]["en"] == "Client tier"
+        assert body["required"] is True
+        assert len(body["options_json"]) == 2
+        # Immutable identity: key + type are never changed by an edit.
+        assert body["key"] == "tier"
+        assert body["data_type"] == "select"
+
+
 async def test_entity_types_registry_exposed(client_for) -> None:
     t = await make_tenant("cf-types")
     headers = await auth_cookie(t.user)

@@ -57,9 +57,7 @@ export const actions: Actions = {
         ? {
             freq: freq as "daily" | "weekly" | "monthly" | "quarterly" | "yearly",
             interval: Math.max(1, Number(form.get("interval") ?? 1) || 1),
-            mode: String(form.get("mode") ?? "after_completion") as
-              | "after_completion"
-              | "schedule",
+            mode: String(form.get("mode") ?? "after_completion") as "after_completion" | "schedule",
           }
         : null;
     }
@@ -79,9 +77,7 @@ export const actions: Actions = {
         ? {
             freq: freq as "daily" | "weekly" | "monthly" | "quarterly" | "yearly",
             interval: Math.max(1, Number(form.get("interval") ?? 1) || 1),
-            mode: String(form.get("mode") ?? "after_completion") as
-              | "after_completion"
-              | "schedule",
+            mode: String(form.get("mode") ?? "after_completion") as "after_completion" | "schedule",
           }
         : null,
     };

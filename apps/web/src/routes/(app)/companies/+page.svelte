@@ -2,12 +2,20 @@
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
+  import { Trash2 } from "@lucide/svelte";
+
   import { t } from "$lib/core/i18n";
+  import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import { COMPANY_STATUSES, statusPillClass } from "$lib/modules/companies/status";
 
   let { data, form } = $props();
+
+  const memberItems = $derived(
+    data.members.map((m) => ({ value: m.user_id, label: m.full_name || m.email })),
+  );
 
   let showCreate = $state(false);
   let deleteId = $state("");
@@ -57,11 +65,14 @@
         {data.statusFilter === status
         ? 'ring-2 ring-brand ' + statusPillClass(status)
         : statusPillClass(status) + ' opacity-70 hover:opacity-100'}"
-      onclick={() => setStatusFilter(status)}
-    >{t(`companies.status.${status}`)}</button>
+      onclick={() => setStatusFilter(status)}>{t(`companies.status.${status}`)}</button
+    >
   {/each}
   {#if data.statusFilter}
-    <button class="text-xs text-neutral-500 underline hover:text-neutral-900" onclick={() => setStatusFilter("")}>
+    <button
+      class="text-xs text-neutral-500 underline hover:text-neutral-900"
+      onclick={() => setStatusFilter("")}
+    >
       {t("tasks.filter.clear")}
     </button>
   {/if}
@@ -96,9 +107,22 @@
         </label>
         <select id="status" name="status" class={inputClass}>
           {#each COMPANY_STATUSES as status (status)}
-            <option value={status} selected={status === "active"}>{t(`companies.status.${status}`)}</option>
+            <option value={status} selected={status === "active"}
+              >{t(`companies.status.${status}`)}</option
+            >
           {/each}
         </select>
+      </div>
+      <div>
+        <label for="responsible" class="mb-1 block text-sm font-medium text-neutral-700">
+          {t("companies.field.responsible")}
+        </label>
+        <Combobox
+          items={memberItems}
+          name="responsible_user_id"
+          id="responsible"
+          placeholder={t("common.unassigned")}
+        />
       </div>
     </div>
     <p class="mt-2 text-xs text-neutral-400">{t("companies.status_hint")}</p>
@@ -126,29 +150,38 @@
     <p class="mt-1 text-sm text-neutral-500">{t("companies.empty_hint")}</p>
   </div>
 {:else}
-  <ul class="divide-y divide-neutral-200 overflow-hidden rounded-xl border border-neutral-200 bg-white">
+  <ul class="divide-y divide-neutral-200 rounded-xl border border-neutral-200 bg-white">
     {#each filtered as company (company.id)}
-      <li class="flex items-center gap-3 px-4 py-3 hover:bg-neutral-50">
+      <li
+        class="flex items-center gap-3 px-4 py-3 first:rounded-t-xl last:rounded-b-xl hover:bg-neutral-50"
+      >
         <a href="/companies/{company.id}" class="min-w-0 flex-1">
           <span class="font-medium text-neutral-900">{company.name}</span>
           {#if company.website}
             <span class="ml-2 truncate text-sm text-neutral-500">{company.website}</span>
           {/if}
         </a>
-        <span class="shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium {statusPillClass(company.status)}">
+        <span
+          class="shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium {statusPillClass(
+            company.status,
+          )}"
+        >
           {t(`companies.status.${company.status}`)}
         </span>
-        <button
-          class="text-sm text-neutral-400 hover:text-red-600"
-          aria-label={t("common.delete")}
-          onclick={() => {
-            deleteId = company.id;
-            deleteName = company.name;
-            confirmDelete = true;
-          }}
-        >
-          {t("common.delete")}
-        </button>
+        <ActionsMenu
+          items={[
+            {
+              label: t("common.delete"),
+              icon: Trash2,
+              danger: true,
+              onclick: () => {
+                deleteId = company.id;
+                deleteName = company.name;
+                confirmDelete = true;
+              },
+            },
+          ]}
+        />
       </li>
     {/each}
   </ul>

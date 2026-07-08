@@ -1,16 +1,18 @@
-"""``Contact`` — a client person, attachable to a company (CLAUDE.md §6, §14).
+"""``Contact`` — a client person, attachable to companies (CLAUDE.md §6, §14).
 
 Contacts are the client's *people* (distinct from ``users``/memberships, who are the org's own
-employees). Org-scoped and customizable (per-tenant custom fields). Carries a nullable
-``company_id`` so a contact can exist unattached or belong to a company — the company detail page
-composes a contacts panel via the registry, no edits to the company page required.
+employees). Org-scoped and customizable (per-tenant custom fields). A contact can be linked to
+**many** companies through the ``company_contacts`` join table (``CompanyContact``), each link
+carrying an ``is_primary`` flag — so a person can be the primary contact for one client and a
+regular contact for another. The company detail page composes a contacts panel via the registry,
+no edits to the company page required.
 """
 
 from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import ForeignKey, Index, String, Text
+from sqlalchemy import Boolean, ForeignKey, Index, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -33,15 +35,52 @@ class Contact(
         Index("ix_contacts_custom", "custom", postgresql_using="gin"),
     )
 
-    company_id: Mapped[uuid.UUID | None] = mapped_column(
-        PGUUID(as_uuid=True),
-        ForeignKey("companies.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
     first_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     last_name: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
     job_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class CompanyContact(
+    UUIDPrimaryKeyMixin,
+    OrgScopedMixin,
+    TimestampMixin,
+    Base,
+):
+    """A many-to-many link between a company and a contact (CLAUDE.md §6).
+
+    ``is_primary`` marks the primary contact **for that company**; a partial unique index
+    enforces at most one primary per ``(org_id, company_id)``.
+    """
+
+    __tablename__ = "company_contacts"
+
+    __table_args__ = (
+        UniqueConstraint(
+            "org_id", "company_id", "contact_id", name="uq_company_contacts_link"
+        ),
+        # At most one primary contact per company (partial unique index).
+        Index(
+            "uq_company_contacts_primary",
+            "org_id",
+            "company_id",
+            unique=True,
+            postgresql_where=text("is_primary"),
+        ),
+    )
+
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    contact_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("contacts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

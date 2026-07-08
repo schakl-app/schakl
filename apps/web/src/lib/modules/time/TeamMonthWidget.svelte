@@ -29,7 +29,9 @@
     <div class="grid grid-cols-2 gap-3">
       <div>
         <p class="text-xs text-neutral-500">{t("time.overview.total.minutes")}</p>
-        <p class="text-lg font-semibold tabular-nums text-neutral-900">{formatMinutes(stats.minutes)}</p>
+        <p class="text-lg font-semibold tabular-nums text-neutral-900">
+          {formatMinutes(stats.minutes)}
+        </p>
       </div>
       <div>
         <p class="text-xs text-neutral-500">{t("time.overview.total.billable")}</p>
@@ -37,11 +39,17 @@
       </div>
       <div>
         <p class="text-xs text-neutral-500">{t("dashboard.team_month.revenue")}</p>
-        <p class="text-lg font-semibold tabular-nums text-neutral-900">{fmtMoney(stats.revenue_month)}</p>
+        <p class="text-lg font-semibold tabular-nums text-neutral-900">
+          {fmtMoney(stats.revenue_month)}
+        </p>
       </div>
       <div>
         <p class="text-xs text-neutral-500">{t("time.overview.total.open")}</p>
-        <p class="text-lg font-semibold tabular-nums {stats.open_minutes ? 'text-amber-600' : 'text-neutral-900'}">
+        <p
+          class="text-lg font-semibold tabular-nums {stats.open_minutes
+            ? 'text-amber-600'
+            : 'text-neutral-900'}"
+        >
           {formatMinutes(stats.open_minutes)}
         </p>
       </div>

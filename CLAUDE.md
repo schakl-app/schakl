@@ -200,9 +200,10 @@ or `<slug>.PLATFORM_BASE_DOMAIN` → org.
   design language (mobile-first, use-vs-edit modes, European dates, template patterns,
   where admin config lives) and the UX mistakes already corrected once.
 - **Performance and lean code are first-class requirements.** Slow-feeling pages are bugs.
-  Keep SSR loads minimal (shared lookups in layout loads, `meta=false` on pickers, no
-  redundant API calls or queries), prefer fixing the data path over adding libraries, and
-  when a page feels slow, count its API calls/queries before writing code.
+  Keep SSR loads minimal (shared lookups in layout loads, `meta=false`/`count=false` on
+  pickers, no redundant API calls or queries), prefer fixing the data path over adding
+  libraries, and when a page feels slow, count its API calls/queries before writing code.
+  **Read `docs/PERFORMANCE.md`** — the data-path rules and the per-screen checklist.
 - Keep this file updated when architecture decisions change.
 - Never leave a hardcoded user-facing string or an unscoped query — treat both as build breaks.
 - After each module: register it, add its panels, add its i18n keys, run `i18n:check` + tests.

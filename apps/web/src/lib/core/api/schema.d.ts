@@ -217,6 +217,41 @@ export interface paths {
         patch: operations["update_contact_api_v1_contacts__contact_id__patch"];
         trace?: never;
     };
+    "/api/v1/contacts/{contact_id}/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Link Contact To Company */
+        post: operations["link_contact_to_company_api_v1_contacts__contact_id__links_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/contacts/{contact_id}/links/{company_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Unlink Contact From Company */
+        delete: operations["unlink_contact_from_company_api_v1_contacts__contact_id__links__company_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Contact Company Link */
+        patch: operations["update_contact_company_link_api_v1_contacts__contact_id__links__company_id__patch"];
+        trace?: never;
+    };
     "/api/v1/custom-fields/definitions": {
         parameters: {
             query?: never;
@@ -446,6 +481,24 @@ export interface paths {
          * @description Update the org's white-label settings (managers only). Applied on next render.
          */
         patch: operations["update_tenant_branding_api_v1_meta_tenant_patch"];
+        trace?: never;
+    };
+    "/api/v1/prefs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Prefs */
+        get: operations["get_prefs_api_v1_prefs_get"];
+        /** Set Prefs */
+        put: operations["set_prefs_api_v1_prefs_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/projects": {
@@ -1351,6 +1404,8 @@ export interface components {
             name: string;
             /** Notes */
             notes?: string | null;
+            /** Responsible User Id */
+            responsible_user_id?: string | null;
             /** @default active */
             status: components["schemas"]["CompanyStatus"];
             /** Website */
@@ -1381,6 +1436,8 @@ export interface components {
              * Format: uuid
              */
             org_id: string;
+            /** Responsible User Id */
+            responsible_user_id?: string | null;
             /** @default active */
             status: components["schemas"]["CompanyStatus"];
             /**
@@ -1407,14 +1464,31 @@ export interface components {
             name?: string | null;
             /** Notes */
             notes?: string | null;
+            /** Responsible User Id */
+            responsible_user_id?: string | null;
             status?: components["schemas"]["CompanyStatus"] | null;
             /** Website */
             website?: string | null;
         };
+        /**
+         * ContactCompanyLink
+         * @description A company a contact is attached to, with the per-company primary flag.
+         */
+        ContactCompanyLink: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Is Primary */
+            is_primary: boolean;
+            /** Name */
+            name: string;
+        };
         /** ContactCreate */
         ContactCreate: {
-            /** Company Id */
-            company_id?: string | null;
+            /** Company Ids */
+            company_ids?: string[];
             /** Custom */
             custom?: {
                 [key: string]: unknown;
@@ -1432,10 +1506,34 @@ export interface components {
             /** Phone */
             phone?: string | null;
         };
+        /**
+         * ContactLinkCreate
+         * @description Attach a contact to a company; optionally make it that company's primary.
+         */
+        ContactLinkCreate: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /**
+             * Is Primary
+             * @default false
+             */
+            is_primary: boolean;
+        };
+        /**
+         * ContactLinkUpdate
+         * @description Update a company↔contact link (only the primary flag is mutable).
+         */
+        ContactLinkUpdate: {
+            /** Is Primary */
+            is_primary: boolean;
+        };
         /** ContactRead */
         ContactRead: {
-            /** Company Id */
-            company_id?: string | null;
+            /** Companies */
+            companies?: components["schemas"]["ContactCompanyLink"][];
             /**
              * Created At
              * Format: date-time
@@ -1475,8 +1573,6 @@ export interface components {
         };
         /** ContactUpdate */
         ContactUpdate: {
-            /** Company Id */
-            company_id?: string | null;
             /** Custom */
             custom?: {
                 [key: string]: unknown;
@@ -1977,6 +2073,8 @@ export interface components {
             hourly_rate?: number | null;
             /** Name */
             name: string;
+            /** Responsible User Id */
+            responsible_user_id?: string | null;
             /** Start Date */
             start_date?: string | null;
             /** @default active */
@@ -2034,6 +2132,8 @@ export interface components {
              * Format: uuid
              */
             org_id: string;
+            /** Responsible User Id */
+            responsible_user_id?: string | null;
             /** Start Date */
             start_date?: string | null;
             /** @default active */
@@ -2077,6 +2177,8 @@ export interface components {
             hourly_rate?: number | null;
             /** Name */
             name?: string | null;
+            /** Responsible User Id */
+            responsible_user_id?: string | null;
             /** Start Date */
             start_date?: string | null;
             status?: components["schemas"]["ProjectStatus"] | null;
@@ -2772,6 +2874,20 @@ export interface components {
             /** Password */
             password: string;
         };
+        /** UserPrefs */
+        UserPrefs: {
+            /** Prefs */
+            prefs?: {
+                [key: string]: unknown;
+            };
+        };
+        /** UserPrefsUpdate */
+        UserPrefsUpdate: {
+            /** Prefs */
+            prefs?: {
+                [key: string]: unknown;
+            };
+        };
         /** UserRead */
         UserRead: {
             /**
@@ -3120,6 +3236,8 @@ export interface operations {
                 limit?: number;
                 offset?: number;
                 q?: string | null;
+                /** @description Compute total; set false for name-only lookups */
+                count?: boolean;
             };
             header?: never;
             path?: never;
@@ -3445,6 +3563,107 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ContactUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    link_contact_to_company_api_v1_contacts__contact_id__links_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContactLinkCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unlink_contact_from_company_api_v1_contacts__contact_id__links__company_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contact_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_contact_company_link_api_v1_contacts__contact_id__links__company_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contact_id: string;
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContactLinkUpdate"];
             };
         };
         responses: {
@@ -3984,6 +4203,59 @@ export interface operations {
             };
         };
     };
+    get_prefs_api_v1_prefs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserPrefs"];
+                };
+            };
+        };
+    };
+    set_prefs_api_v1_prefs_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserPrefsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserPrefs"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_projects_api_v1_projects_get: {
         parameters: {
             query?: {
@@ -3992,6 +4264,8 @@ export interface operations {
                 company_id?: string | null;
                 status?: components["schemas"]["ProjectStatus"] | null;
                 q?: string | null;
+                /** @description Compute total; set false for name-only lookups */
+                count?: boolean;
             };
             header?: never;
             path?: never;
@@ -4161,6 +4435,8 @@ export interface operations {
                 q?: string | null;
                 /** @description Include label/checklist/comment aggregates */
                 meta?: boolean;
+                /** @description Compute total; set false for name-only lookups */
+                count?: boolean;
             };
             header?: never;
             path?: never;

@@ -59,26 +59,59 @@
   <svg viewBox="0 0 {W} {H}" class="w-full" role="img">
     <!-- recessive gridlines + € tick labels -->
     {#each ticks as tick (tick)}
-      <line x1={PAD.left} x2={W - PAD.right} y1={y(tick)} y2={y(tick)}
-        stroke="#f5f5f5" stroke-width="1" />
-      <text x={PAD.left - 8} y={y(tick) + 3} text-anchor="end"
-        class="fill-neutral-400 text-[10px] tabular-nums">{fmtMoney(tick)}</text>
+      <line
+        x1={PAD.left}
+        x2={W - PAD.right}
+        y1={y(tick)}
+        y2={y(tick)}
+        stroke="#f5f5f5"
+        stroke-width="1"
+      />
+      <text
+        x={PAD.left - 8}
+        y={y(tick) + 3}
+        text-anchor="end"
+        class="fill-neutral-400 text-[10px] tabular-nums">{fmtMoney(tick)}</text
+      >
     {/each}
 
     {#each months as month, i (month)}
       {@const gx = PAD.left + i * groupW + (groupW - barW * 2 - 2) / 2}
       <!-- oversized hover target per month group -->
-      <rect x={PAD.left + i * groupW} y={PAD.top} width={groupW} height={plotH}
+      <rect
+        x={PAD.left + i * groupW}
+        y={PAD.top}
+        width={groupW}
+        height={plotH}
         fill="transparent"
         onmousemove={(e) => showTooltip(e, i)}
         onmouseleave={() => (tooltip = null)}
-        role="presentation" />
-      <rect x={gx} y={y(previous[i])} width={barW} height={barH(previous[i])}
-        rx="2" fill={PREVIOUS_COLOR} pointer-events="none" />
-      <rect x={gx + barW + 2} y={y(current[i])} width={barW} height={barH(current[i])}
-        rx="2" fill={CURRENT_COLOR} pointer-events="none" />
-      <text x={PAD.left + i * groupW + groupW / 2} y={H - 8} text-anchor="middle"
-        class="fill-neutral-400 text-[10px]">{month}</text>
+        role="presentation"
+      />
+      <rect
+        x={gx}
+        y={y(previous[i])}
+        width={barW}
+        height={barH(previous[i])}
+        rx="2"
+        fill={PREVIOUS_COLOR}
+        pointer-events="none"
+      />
+      <rect
+        x={gx + barW + 2}
+        y={y(current[i])}
+        width={barW}
+        height={barH(current[i])}
+        rx="2"
+        fill={CURRENT_COLOR}
+        pointer-events="none"
+      />
+      <text
+        x={PAD.left + i * groupW + groupW / 2}
+        y={H - 8}
+        text-anchor="middle"
+        class="fill-neutral-400 text-[10px]">{month}</text
+      >
     {/each}
   </svg>
 

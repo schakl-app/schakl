@@ -1,13 +1,17 @@
 <script lang="ts">
-  import { CircleCheck, Receipt } from "@lucide/svelte";
+  import { CircleCheck, Pencil, Receipt, Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
+  import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
+  import Modal from "$lib/core/ui/Modal.svelte";
+  import EntryForm from "$lib/modules/time/EntryForm.svelte";
   import { formatMinutes, formatTime } from "$lib/modules/time/format";
 
   let { data, form } = $props();
@@ -15,6 +19,17 @@
   const report = $derived(data.report);
   const entries = $derived(report?.items ?? []);
   const totals = $derived(report?.totals ?? null);
+
+  // Edit / delete a single entry straight from the report (UX: record actions live in ⋯).
+  type Entry = (typeof entries)[number];
+  let editingEntry = $state<Entry | null>(null);
+  let showEdit = $state(false);
+  let deleteId = $state("");
+  let confirmDelete = $state(false);
+  function openEdit(e: Entry) {
+    editingEntry = e;
+    showEdit = true;
+  }
 
   const memberName = (id?: string | null) => {
     const m = data.members.find((mm) => mm.user_id === id);
@@ -28,7 +43,11 @@
     project_id?: string | null;
     task_id?: string | null;
   }) {
-    const parts = [companyName(e.company_id), projectName(e.project_id), taskTitle(e.task_id)].filter(Boolean);
+    const parts = [
+      companyName(e.company_id),
+      projectName(e.project_id),
+      taskTitle(e.task_id),
+    ].filter(Boolean);
     return parts.length ? parts.join(" · ") : t("time.general");
   }
 
@@ -56,8 +75,6 @@
     selected = {};
   });
 
-  const inputClass =
-    "rounded-lg border border-neutral-300 px-2 py-1.5 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
   const bulkClass =
     "rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:border-brand hover:text-brand disabled:cursor-not-allowed disabled:opacity-40";
 </script>
@@ -74,13 +91,7 @@
 <!-- Totals -->
 {#if totals}
   <div class="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
-    {#each [
-      { key: "minutes", value: totals.minutes, accent: "" },
-      { key: "billable", value: totals.billable_minutes, accent: "" },
-      { key: "open", value: totals.open_minutes, accent: totals.open_minutes ? "text-amber-600" : "" },
-      { key: "to_invoice", value: totals.to_invoice_minutes, accent: totals.to_invoice_minutes ? "text-brand" : "" },
-      { key: "invoiced", value: totals.invoiced_minutes, accent: "text-green-600" }
-    ] as card (card.key)}
+    {#each [{ key: "minutes", value: totals.minutes, accent: "" }, { key: "billable", value: totals.billable_minutes, accent: "" }, { key: "open", value: totals.open_minutes, accent: totals.open_minutes ? "text-amber-600" : "" }, { key: "to_invoice", value: totals.to_invoice_minutes, accent: totals.to_invoice_minutes ? "text-brand" : "" }, { key: "invoiced", value: totals.invoiced_minutes, accent: "text-green-600" }] as card (card.key)}
       <div class="rounded-xl border border-neutral-200 bg-white p-4">
         <p class="text-xs text-neutral-500">{t(`time.overview.total.${card.key}`)}</p>
         <p class="mt-1 text-lg font-semibold tabular-nums {card.accent || 'text-neutral-900'}">
@@ -96,7 +107,9 @@
   <div class="w-44">
     <Combobox
       items={data.members.map((m) => ({ value: m.user_id, label: m.full_name || m.email }))}
-      name="_f_user" id="f-user" value={data.filters.user_id}
+      name="_f_user"
+      id="f-user"
+      value={data.filters.user_id}
       placeholder={t("time.overview.employee")}
       onselect={(v) => setFilter("user_id", v)}
     />
@@ -104,7 +117,9 @@
   <div class="w-44">
     <Combobox
       items={data.companies.map((c) => ({ value: c.id, label: c.name }))}
-      name="_f_company" id="f-company" value={data.filters.company_id}
+      name="_f_company"
+      id="f-company"
+      value={data.filters.company_id}
       placeholder={t("time.field.company")}
       onselect={(v) => setFilter("company_id", v)}
     />
@@ -112,19 +127,29 @@
   <div class="w-44">
     <Combobox
       items={data.projects.map((p) => ({ value: p.id, label: p.name }))}
-      name="_f_project" id="f-project" value={data.filters.project_id}
+      name="_f_project"
+      id="f-project"
+      value={data.filters.project_id}
       placeholder={t("time.field.project")}
       onselect={(v) => setFilter("project_id", v)}
     />
   </div>
   <div class="w-36">
-    <DateInput name="_f_from" id="f-from" value={data.filters.date_from}
-      onchange={(v) => setFilter("date_from", v)} />
+    <DateInput
+      name="_f_from"
+      id="f-from"
+      value={data.filters.date_from}
+      onchange={(v) => setFilter("date_from", v)}
+    />
   </div>
   <span class="text-xs text-neutral-400">–</span>
   <div class="w-36">
-    <DateInput name="_f_to" id="f-to" value={data.filters.date_to}
-      onchange={(v) => setFilter("date_to", v)} />
+    <DateInput
+      name="_f_to"
+      id="f-to"
+      value={data.filters.date_to}
+      onchange={(v) => setFilter("date_to", v)}
+    />
   </div>
   {#each statuses as status (status)}
     <button
@@ -133,7 +158,8 @@
         ? 'bg-brand text-white'
         : 'border border-neutral-300 text-neutral-600 hover:border-brand hover:text-brand'}"
       onclick={() => setFilter("status", data.filters.status === status ? "" : status)}
-    >{t(`time.overview.status.${status}`)}</button>
+      >{t(`time.overview.status.${status}`)}</button
+    >
   {/each}
 </div>
 
@@ -142,12 +168,7 @@
   <span class="text-xs text-neutral-500">
     {t("time.overview.selected", { count: selectedIds.length })}
   </span>
-  {#each [
-    { action: "approve", label: t("time.overview.approve") },
-    { action: "unapprove", label: t("time.overview.unapprove") },
-    { action: "invoice", label: t("time.overview.mark_invoiced") },
-    { action: "uninvoice", label: t("time.overview.unmark_invoiced") }
-  ] as bulkAction (bulkAction.action)}
+  {#each [{ action: "approve", label: t("time.overview.approve") }, { action: "unapprove", label: t("time.overview.unapprove") }, { action: "invoice", label: t("time.overview.mark_invoiced") }, { action: "uninvoice", label: t("time.overview.unmark_invoiced") }] as bulkAction (bulkAction.action)}
     <form method="POST" action={`?/${bulkAction.action}`} use:enhance>
       <input type="hidden" name="entry_ids" value={selectedIds.join(",")} />
       <button class={bulkClass} disabled={selectedIds.length === 0}>{bulkAction.label}</button>
@@ -166,9 +187,13 @@
         <thead>
           <tr class="border-b border-neutral-100 text-left text-xs text-neutral-400">
             <th class="w-8 px-3 py-2">
-              <input type="checkbox" checked={allSelected} onchange={toggleAll}
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onchange={toggleAll}
                 class="h-4 w-4 rounded border-neutral-300 text-brand focus:ring-brand"
-                aria-label={t("time.overview.select_all")} />
+                aria-label={t("time.overview.select_all")}
+              />
             </th>
             <th class="px-2 py-2 font-medium">{t("time.field.date")}</th>
             <th class="px-2 py-2 font-medium">{t("time.overview.employee")}</th>
@@ -182,34 +207,62 @@
           {#each entries as e (e.id)}
             <tr class="hover:bg-neutral-50/60 {selected[e.id] ? 'bg-brand/5' : ''}">
               <td class="px-3 py-2">
-                <input type="checkbox" bind:checked={selected[e.id]}
+                <input
+                  type="checkbox"
+                  bind:checked={selected[e.id]}
                   class="h-4 w-4 rounded border-neutral-300 text-brand focus:ring-brand"
-                  aria-label={t("time.overview.select_row")} />
+                  aria-label={t("time.overview.select_row")}
+                />
               </td>
               <td class="whitespace-nowrap px-2 py-2 tabular-nums text-neutral-600">
                 {fmtNumericDate(e.started_at.slice(0, 10))}
                 <span class="text-xs text-neutral-400">{formatTime(e.started_at)}</span>
               </td>
-              <td class="whitespace-nowrap px-2 py-2 font-medium text-neutral-800">{memberName(e.user_id)}</td>
+              <td class="whitespace-nowrap px-2 py-2 font-medium text-neutral-800"
+                >{memberName(e.user_id)}</td
+              >
               <td class="max-w-[16rem] truncate px-2 py-2 text-neutral-700">{entryLabel(e)}</td>
-              <td class="max-w-[14rem] truncate px-2 py-2 text-neutral-500">{e.description ?? ""}</td>
+              <td class="max-w-[14rem] truncate px-2 py-2 text-neutral-500"
+                >{e.description ?? ""}</td
+              >
               <td class="px-2 py-2 text-right font-semibold tabular-nums text-neutral-900">
                 {formatMinutes(e.minutes)}
                 {#if !e.billable}
-                  <span class="ml-1 rounded-full bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-500">
+                  <span
+                    class="ml-1 rounded-full bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-500"
+                  >
                     {t("time.not_billable")}
                   </span>
                 {/if}
               </td>
               <td class="whitespace-nowrap px-2 py-2">
-                <span class="flex items-center gap-1.5">
+                <div class="flex items-center justify-end gap-1.5">
                   {#if e.approved_at}
-                    <span title={t("time.approved")} class="text-green-600"><CircleCheck size={16} /></span>
+                    <span title={t("time.approved")} class="text-green-600"
+                      ><CircleCheck size={16} /></span
+                    >
                   {/if}
                   {#if e.invoiced_at}
-                    <span title={t("time.overview.invoiced")} class="text-brand"><Receipt size={16} /></span>
+                    <span title={t("time.overview.invoiced")} class="text-brand"
+                      ><Receipt size={16} /></span
+                    >
                   {/if}
-                </span>
+                  <ActionsMenu
+                    compact
+                    items={[
+                      { label: t("common.edit"), icon: Pencil, onclick: () => openEdit(e) },
+                      {
+                        label: t("common.delete"),
+                        icon: Trash2,
+                        danger: true,
+                        onclick: () => {
+                          deleteId = e.id;
+                          confirmDelete = true;
+                        },
+                      },
+                    ]}
+                  />
+                </div>
               </td>
             </tr>
           {/each}
@@ -218,3 +271,31 @@
     </div>
   {/if}
 </section>
+
+<!-- Edit a single entry (UX §3: definition edits behind the ⋯ menu, in a modal). -->
+<Modal bind:open={showEdit} title={t("time.edit_entry")}>
+  {#if editingEntry}
+    {#key editingEntry.id}
+      <EntryForm
+        action="?/updateEntry"
+        deleteAction="?/deleteEntry"
+        entry={editingEntry}
+        date={editingEntry.started_at.slice(0, 10)}
+        companies={data.companies}
+        projects={data.projects}
+        tasks={data.tasks}
+        error={form?.error ?? null}
+        oncancel={() => (showEdit = false)}
+        ondone={() => (showEdit = false)}
+      />
+    {/key}
+  {/if}
+</Modal>
+
+<ConfirmDialog
+  bind:open={confirmDelete}
+  title={t("time.delete")}
+  message={t("time.delete_confirm")}
+  action="?/deleteEntry"
+  fields={{ id: deleteId }}
+/>

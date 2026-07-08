@@ -8,18 +8,16 @@ import type { Actions, PageServerLoad } from "./$types";
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const q = event.url.searchParams.get("q") || undefined;
-  const [contacts, definitions, companies] = await Promise.all([
+  const [contacts, definitions] = await Promise.all([
     api.GET("/api/v1/contacts", { params: { query: { limit: 100, offset: 0, q } } }),
     api.GET("/api/v1/custom-fields/definitions", {
       params: { query: { entity_type: "contact" } },
     }),
-    api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0 } } }),
   ]);
   return {
     contacts: contacts.data?.items ?? [],
     total: contacts.data?.total ?? 0,
     definitions: definitions.data ?? [],
-    companies: companies.data?.items ?? [],
     locale: event.locals.locale,
   };
 };
@@ -38,7 +36,6 @@ export const actions: Actions = {
     const first_name = String(form.get("first_name") ?? "").trim();
     if (!first_name) return fail(400, { error: "errors.required" });
 
-    const company_id = String(form.get("company_id") ?? "").trim();
     const { error } = await apiFor(event).POST("/api/v1/contacts", {
       body: {
         first_name,
@@ -46,7 +43,6 @@ export const actions: Actions = {
         email: String(form.get("email") ?? "").trim() || null,
         phone: String(form.get("phone") ?? "").trim() || null,
         job_title: String(form.get("job_title") ?? "").trim() || null,
-        company_id: company_id || null,
         custom: parseCustom(form.get("custom")),
       },
     });

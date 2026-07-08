@@ -12,9 +12,7 @@ export const GET: RequestHandler = async ({ locals }) => {
     display: "standalone",
     background_color: "#ffffff",
     theme_color: theme.primaryColor,
-    icons: theme.faviconUrl
-      ? [{ src: theme.faviconUrl, sizes: "any", type: "image/png" }]
-      : [],
+    icons: theme.faviconUrl ? [{ src: theme.faviconUrl, sizes: "any", type: "image/png" }] : [],
   };
   return new Response(JSON.stringify(manifest), {
     headers: {

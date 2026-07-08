@@ -22,12 +22,13 @@ export const load: PageServerLoad = async (event) => {
   });
   if (!company) throw error(404, { code: "not_found", message: "errors.not_found" });
 
-  const [panels, definitions, templates] = await Promise.all([
+  const [panels, definitions, templates, members] = await Promise.all([
     api.GET("/api/v1/companies/{company_id}/panels", { params: { path: { company_id } } }),
     api.GET("/api/v1/custom-fields/definitions", {
       params: { query: { entity_type: "company" } },
     }),
     api.GET("/api/v1/tasks/templates"),
+    api.GET("/api/v1/members/lookup"),
   ]);
 
   return {
@@ -35,6 +36,7 @@ export const load: PageServerLoad = async (event) => {
     panels: panels.data ?? [],
     definitions: definitions.data ?? [],
     templates: templates.data ?? [],
+    members: members.data ?? [],
     locale: event.locals.locale,
   };
 };
@@ -52,6 +54,7 @@ export const actions: Actions = {
         website: String(form.get("website") ?? "").trim() || null,
         notes: String(form.get("notes") ?? "").trim() || null,
         status: String(form.get("status") ?? "active") as "active",
+        responsible_user_id: String(form.get("responsible_user_id") ?? "") || null,
         custom: parseCustom(form.get("custom")),
       },
     });
@@ -59,7 +62,8 @@ export const actions: Actions = {
     return { updated: true };
   },
 
-  addContact: async (event) => {
+  // Create a new contact person and attach it to this client in one step (quick-add).
+  createContact: async (event) => {
     const form = await event.request.formData();
     const first_name = String(form.get("first_name") ?? "").trim();
     if (!first_name) return fail(400, { error: "errors.required" });
@@ -68,13 +72,53 @@ export const actions: Actions = {
         first_name,
         last_name: String(form.get("last_name") ?? "").trim() || null,
         email: String(form.get("email") ?? "").trim() || null,
+        phone: String(form.get("phone") ?? "").trim() || null,
         job_title: String(form.get("job_title") ?? "").trim() || null,
-        company_id: event.params.id,
-        custom: {},
+        company_ids: [event.params.id],
+        custom: parseCustom(form.get("custom")),
       },
     });
     if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
     return { contactAdded: true };
+  },
+
+  // Attach an existing contact person to this client.
+  linkContact: async (event) => {
+    const form = await event.request.formData();
+    const contact_id = String(form.get("contact_id") ?? "").trim();
+    if (!contact_id) return fail(400, { error: "errors.required" });
+    const { error: apiError } = await apiFor(event).POST("/api/v1/contacts/{contact_id}/links", {
+      params: { path: { contact_id } },
+      body: { company_id: event.params.id, is_primary: false },
+    });
+    if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
+    return { contactLinked: true };
+  },
+
+  // Detach (never deletes the contact).
+  unlinkContact: async (event) => {
+    const form = await event.request.formData();
+    const contact_id = String(form.get("contact_id") ?? "").trim();
+    if (!contact_id) return fail(400, { error: "errors.required" });
+    await apiFor(event).DELETE("/api/v1/contacts/{contact_id}/links/{company_id}", {
+      params: { path: { contact_id, company_id: event.params.id } },
+    });
+    return { contactUnlinked: true };
+  },
+
+  setPrimaryContact: async (event) => {
+    const form = await event.request.formData();
+    const contact_id = String(form.get("contact_id") ?? "").trim();
+    if (!contact_id) return fail(400, { error: "errors.required" });
+    const { error: apiError } = await apiFor(event).PATCH(
+      "/api/v1/contacts/{contact_id}/links/{company_id}",
+      {
+        params: { path: { contact_id, company_id: event.params.id } },
+        body: { is_primary: true },
+      },
+    );
+    if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
+    return { primarySet: true };
   },
 
   applyTemplate: async (event) => {

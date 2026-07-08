@@ -16,7 +16,8 @@
 </script>
 
 <p class="text-sm text-neutral-700">
-  {t("time.total_logged")}: <span class="font-semibold text-neutral-900">{formatMinutes(totalMinutes)}</span>
+  {t("time.total_logged")}:
+  <span class="font-semibold text-neutral-900">{formatMinutes(totalMinutes)}</span>
 </p>
 
 {#if recent.length > 0}

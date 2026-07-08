@@ -20,8 +20,7 @@
   $effect(() => {
     tiles = data.widgetKeys.map((key: string) => ({ id: key }));
   });
-  const widgetFor = (key: string) =>
-    dashboardWidgetsFor(enabled).find((w) => w.key === key);
+  const widgetFor = (key: string) => dashboardWidgetsFor(enabled).find((w) => w.key === key);
 
   let layoutForm: HTMLFormElement | undefined = $state();
   let layoutValue = $state("");
@@ -79,15 +78,24 @@
     <ul class="space-y-1">
       {#each draft as key (key)}
         <li class="flex items-center gap-2 rounded-lg border border-neutral-200 px-3 py-2">
-          <input type="checkbox" checked onchange={() => toggle(key)}
-            class="h-4 w-4 rounded border-neutral-300 text-brand focus:ring-brand" />
+          <input
+            type="checkbox"
+            checked
+            onchange={() => toggle(key)}
+            class="h-4 w-4 rounded border-neutral-300 text-brand focus:ring-brand"
+          />
           <span class="flex-1 text-sm text-neutral-800">{t(`dashboard.widget.${key}`)}</span>
         </li>
       {/each}
       {#each offKeys as key (key)}
-        <li class="flex items-center gap-2 rounded-lg border border-dashed border-neutral-200 px-3 py-2 opacity-60">
-          <input type="checkbox" onchange={() => toggle(key)}
-            class="h-4 w-4 rounded border-neutral-300 text-brand focus:ring-brand" />
+        <li
+          class="flex items-center gap-2 rounded-lg border border-dashed border-neutral-200 px-3 py-2 opacity-60"
+        >
+          <input
+            type="checkbox"
+            onchange={() => toggle(key)}
+            class="h-4 w-4 rounded border-neutral-300 text-brand focus:ring-brand"
+          />
           <span class="flex-1 text-sm text-neutral-600">{t(`dashboard.widget.${key}`)}</span>
         </li>
       {/each}
@@ -95,22 +103,44 @@
 
     {#if form?.error}<p class="mt-2 text-sm text-red-600">{t(form.error)}</p>{/if}
     <div class="mt-4 flex flex-wrap items-center gap-2">
-      <form method="POST" action="?/saveLayout"
-        use:enhance={() => ({ update }) => { customizing = false; void update(); }}>
+      <form
+        method="POST"
+        action="?/saveLayout"
+        use:enhance={() =>
+          ({ update }) => {
+            customizing = false;
+            void update();
+          }}
+      >
         <input type="hidden" name="widgets" value={draft.join(",")} />
-        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+        <button
+          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        >
           {t("dashboard.customize.save")}
         </button>
       </form>
       {#if data.prefsSource === "user"}
-        <form method="POST" action="?/resetLayout"
-          use:enhance={() => ({ update }) => { customizing = false; void update(); }}>
-          <button class="rounded-lg border border-neutral-300 px-4 py-2 text-sm text-neutral-500 hover:text-neutral-800">
+        <form
+          method="POST"
+          action="?/resetLayout"
+          use:enhance={() =>
+            ({ update }) => {
+              customizing = false;
+              void update();
+            }}
+        >
+          <button
+            class="rounded-lg border border-neutral-300 px-4 py-2 text-sm text-neutral-500 hover:text-neutral-800"
+          >
             {t("dashboard.customize.reset")}
           </button>
         </form>
       {/if}
-      <button type="button" class="px-2 py-2 text-sm text-neutral-500 hover:text-neutral-800" onclick={() => (customizing = false)}>
+      <button
+        type="button"
+        class="px-2 py-2 text-sm text-neutral-500 hover:text-neutral-800"
+        onclick={() => (customizing = false)}
+      >
         {t("common.cancel")}
       </button>
     </div>

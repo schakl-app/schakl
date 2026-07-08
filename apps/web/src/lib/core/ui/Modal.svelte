@@ -39,8 +39,8 @@
           type="button"
           class="text-neutral-400 hover:text-neutral-700"
           aria-label="Close"
-          onclick={() => (open = false)}
-        >✕</button>
+          onclick={() => (open = false)}>✕</button
+        >
       </div>
       {@render children()}
     </div>

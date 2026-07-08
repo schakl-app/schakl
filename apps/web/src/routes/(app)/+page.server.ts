@@ -13,12 +13,17 @@ import type { Actions, PageServerLoad } from "./$types";
 export const load: PageServerLoad = async (event) => {
   const enabled = event.locals.theme?.enabledModules ?? [];
   const canManage = event.locals.user?.canManage ?? false;
-  const available = dashboardWidgetsFor(enabled).filter(
-    (w) => !w.requiresManage || canManage,
-  );
+  const available = dashboardWidgetsFor(enabled).filter((w) => !w.requiresManage || canManage);
   const api = apiFor(event);
 
-  const { data: prefs } = await api.GET("/api/v1/dashboard/prefs");
+  // Prefs only order/filter the (already-known) available widgets, so fetch them alongside the
+  // widget data instead of gating on them first — one fewer sequential round-trip (see
+  // docs/PERFORMANCE.md). We load all available widgets; the layout then picks/orders.
+  const [prefsRes, ...results] = await Promise.all([
+    api.GET("/api/v1/dashboard/prefs"),
+    ...available.map(async (w) => ({ key: w.key, data: await w.load(api) })),
+  ]);
+  const prefs = prefsRes.data;
   const layout = prefs?.widgets ?? null;
   const widgets = layout
     ? layout
@@ -26,9 +31,6 @@ export const load: PageServerLoad = async (event) => {
         .filter((w): w is (typeof available)[number] => Boolean(w))
     : available;
 
-  const results = await Promise.all(
-    widgets.map(async (w) => ({ key: w.key, data: await w.load(api) })),
-  );
   const widgetData: Record<string, unknown> = {};
   for (const r of results) widgetData[r.key] = r.data;
 

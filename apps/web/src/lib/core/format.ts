@@ -80,7 +80,5 @@ export function fmtMoney(amount: number): string {
 /** Short month labels for chart axes ("jan" … "dec") in the active locale. */
 export function monthLabels(): string[] {
   const formatter = fmt({ month: "short", timeZone: "UTC" });
-  return Array.from({ length: 12 }, (_, i) =>
-    formatter.format(new Date(Date.UTC(2024, i, 1))),
-  );
+  return Array.from({ length: 12 }, (_, i) => formatter.format(new Date(Date.UTC(2024, i, 1))));
 }

@@ -9,10 +9,12 @@
 1. **Mobile-first, always.** Every screen must be fully usable on a phone — this is part of
    the definition of done, not a nice-to-have. Grids stack, tables get `overflow-x-auto`,
    the sidebar becomes the hamburger drawer, primary actions get a reachable button (FAB).
-2. **Snappy over clever.** Users notice slow navigation immediately. Keep SSR loads lean:
-   shared lookups live in a **layout load** (they don't rerun on filter/tab navigation);
-   page loads fetch only what changes; heavy aggregates are opt-in (`meta=false` on lookup
-   fetches). Links preload on hover (`data-sveltekit-preload-data`).
+2. **Snappy over clever. Performance is incredibly important — a slow page is a bug.** Users
+   notice slow navigation immediately. Keep SSR loads lean: shared lookups live in a **layout
+   load** (they don't rerun on filter/tab navigation); page loads fetch only what changes;
+   heavy aggregates are opt-in (`meta=false`, `count=false` on lookup fetches). Links preload
+   on hover (`data-sveltekit-preload-data`). **Before writing a page, count its API calls —
+   see [docs/PERFORMANCE.md](PERFORMANCE.md).**
 3. **Use mode vs edit mode.** Working *with* a record (ticking checklist items, commenting,
    changing status, logging time) is the default surface. Changing a record's *definition*
    (title, relations, budgets, recurrence) lives behind an explicit edit mode, reached via
@@ -49,8 +51,35 @@
 - **Drag-and-drop with graceful fallback**: reorder tasks and dashboard tiles by dragging
   (fractional `position` midpoints — never renumber); keep an arrow/menu alternative where
   dragging is impractical.
-- **Confirmation dialogs** (`ConfirmDialog`) for every delete; approved/locked states
-  explain themselves via tooltip + a clear error message key.
+- **Record actions live behind the ⋯ menu, never as bare buttons.** Every record-level
+  **Edit** and **Delete** (on a list row, a card, or a detail header) is reached through the
+  shared overflow menu (`core/ui/ActionsMenu`, the ⋯ / three-dots kebab) — never a standalone
+  button sitting in the row or header. This is deliberate: an exposed Delete gets clicked by
+  accident. The trigger is an icon button; items are labelled with a lucide icon; the Delete
+  item is red (`danger`). Non-destructive, reversible toggles that aren't "edit the
+  definition" (e.g. change status, mark billable, activate/deactivate) may stay inline.
+  **This applies to inline sub-items too** — a comment, checklist item, checklist or link
+  carries its own ⋯ menu (`ActionsMenu compact` — borderless, smaller) for Edit/Delete, not a
+  hover-revealed ✕. You must always be able to **edit a comment (etc.) or delete it**, and
+  every such edit/delete is **written to the record's activity feed** with actor + timestamp
+  (the API `_record`s `comment_edited` / `comment_deleted` / `link_deleted` /
+  `checklist_deleted` / `checklist_item_deleted`, …).
+- **Confirmation dialogs** (`ConfirmDialog`) for **every** delete — no exceptions, including
+  deletes reached from the ⋯ menu and from inside an edit surface (e.g. deleting a time
+  registration). The ⋯ Delete item opens the dialog; the dialog owns the posting form.
+  Approved/locked states explain themselves via tooltip + a clear error message key.
+- **Rows that represent an editable record carry a ⋯ menu — including in reporting tables.**
+  The Overzicht → Uren report gives each time entry a compact ⋯ (Bewerken opens the shared
+  `EntryForm` in a `Modal`; Verwijderen confirms). A list of records is never read-only just
+  because it's a "report": if you can see a registration there, you can edit/delete it (subject
+  to the same role/lock rules the API enforces — managers may edit approved/others' entries).
+- **Activate/deactivate lives in the ⋯ menu too**, not as a bare inline button (custom-field
+  definitions: ⋯ → Bewerken / Deactiveren / Verwijderen). It's a non-destructive toggle so it
+  doesn't confirm, but it belongs with the record's other actions, not loose in the row.
+- **Personal view options are inline "customize" affordances** that only touch the current
+  user's own view (UX Principle 6) — e.g. the timesheet's 7-day vs Mon–Fri **Weergave** switch
+  and its jump-to-date picker sit quietly in the toolbar and persist per user (via
+  `/api/v1/prefs`), never in org Settings.
 - **Forms are SSR form actions** with `use:enhance`. Mind the default reset: forms whose
   inputs must keep their values after save use `update({ reset: false })`.
 - **One save button per editing surface — never per field.** An edit mode collects all its
@@ -90,3 +119,5 @@
 - Edit-everything screens with no read/use mode — cards got an explicit mode split.
 - Refetching all lookups on every filter/tab navigation — that's what layout loads are for.
 - A desktop-only sidebar with no mobile navigation at all.
+- Bare **Delete** / **Edit** buttons exposed on a row or header (accidental-click magnets) —
+  they belong in the ⋯ `ActionsMenu`, and every delete confirms via `ConfirmDialog`.

@@ -92,7 +92,12 @@
         role="presentation"
       />
     {/each}
-    <text x={CX} y={CY - 4} text-anchor="middle" class="fill-neutral-900 text-[15px] font-semibold tabular-nums">
+    <text
+      x={CX}
+      y={CY - 4}
+      text-anchor="middle"
+      class="fill-neutral-900 text-[15px] font-semibold tabular-nums"
+    >
       {fmtMoney(hovered !== null ? arcs[hovered].value : total)}
     </text>
     <text x={CX} y={CY + 13} text-anchor="middle" class="fill-neutral-400 text-[9px]">
@@ -104,7 +109,9 @@
   <ul class="min-w-0 flex-1 space-y-1">
     {#each arcs as arc, i (arc.label)}
       <li
-        class="flex items-center gap-2 rounded px-1.5 py-0.5 text-sm {hovered === i ? 'bg-neutral-50' : ''}"
+        class="flex items-center gap-2 rounded px-1.5 py-0.5 text-sm {hovered === i
+          ? 'bg-neutral-50'
+          : ''}"
         onmouseenter={() => (hovered = i)}
         onmouseleave={() => (hovered = null)}
       >

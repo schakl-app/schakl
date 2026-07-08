@@ -16,19 +16,24 @@
 
   const overdue = $derived(tasks.filter((task) => task.due_date != null && task.due_date < today));
   const dueToday = $derived(tasks.filter((task) => task.due_date === today));
-  const upcoming = $derived(
-    tasks.filter((task) => task.due_date == null || task.due_date > today),
-  );
+  const upcoming = $derived(tasks.filter((task) => task.due_date == null || task.due_date > today));
 </script>
 
 {#snippet taskList(rows: MyTask[], red: boolean)}
   <ul class="divide-y divide-neutral-100">
     {#each rows as task (task.id)}
       <li class="flex items-center justify-between gap-2 py-1.5">
-        <a href={`/tasks/${task.id}`} class="min-w-0 flex-1 truncate text-sm text-neutral-900 hover:text-brand">
+        <a
+          href={`/tasks/${task.id}`}
+          class="min-w-0 flex-1 truncate text-sm text-neutral-900 hover:text-brand"
+        >
           {task.title}
         </a>
-        <span class="shrink-0 text-xs tabular-nums {red ? 'font-semibold text-red-600' : 'text-neutral-500'}">
+        <span
+          class="shrink-0 text-xs tabular-nums {red
+            ? 'font-semibold text-red-600'
+            : 'text-neutral-500'}"
+        >
           {#if task.due_date}
             {fmtDayMonth(task.due_date)}
           {:else}
@@ -50,9 +55,12 @@
     <p class="text-sm text-neutral-500">{t("dashboard.my_day.no_tasks")}</p>
   {:else}
     {#if overdue.length > 0}
-      <h3 class="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-red-600">
+      <h3
+        class="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-red-600"
+      >
         {t("dashboard.my_day.overdue")}
-        <span class="rounded-full bg-red-100 px-1.5 text-[10px] tabular-nums">{overdue.length}</span>
+        <span class="rounded-full bg-red-100 px-1.5 text-[10px] tabular-nums">{overdue.length}</span
+        >
       </h3>
       {@render taskList(overdue, true)}
     {/if}

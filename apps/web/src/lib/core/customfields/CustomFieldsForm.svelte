@@ -64,8 +64,7 @@
             rows="3"
             class={inputClass}
             value={String(state[def.key] ?? "")}
-            oninput={(e) => setValue(def.key, e.currentTarget.value)}
-          ></textarea>
+            oninput={(e) => setValue(def.key, e.currentTarget.value)}></textarea>
         {:else if def.data_type === "boolean"}
           <input
             id={`cf-${def.key}`}
