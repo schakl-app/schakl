@@ -1,4 +1,8 @@
-"""REST endpoints for contacts under ``/api/v1/contacts`` (CLAUDE.md §6, §9)."""
+"""REST endpoints for contacts under ``/api/v1/contacts`` (CLAUDE.md §6, §9).
+
+Besides CRUD, this module owns the company↔contact link endpoints (nested under a contact,
+since a module contributes a single router at the ``/contacts`` prefix).
+"""
 
 from __future__ import annotations
 
@@ -7,7 +11,13 @@ import uuid
 from fastapi import APIRouter, Depends, Query
 
 from app.core.tenancy import RequestContext, require_context
-from app.modules.contacts.schemas import ContactCreate, ContactRead, ContactUpdate
+from app.modules.contacts.schemas import (
+    ContactCreate,
+    ContactLinkCreate,
+    ContactLinkUpdate,
+    ContactRead,
+    ContactUpdate,
+)
 from app.modules.contacts.service import ContactService
 from app.schemas import Page
 
@@ -67,3 +77,41 @@ async def delete_contact(
     ctx: RequestContext = Depends(require_context),
 ) -> None:
     await ContactService(ctx).delete(contact_id)
+
+
+# --- company links ---------------------------------------------------------- #
+@router.post("/{contact_id}/links", response_model=ContactRead, status_code=201)
+async def link_contact_to_company(
+    contact_id: uuid.UUID,
+    payload: ContactLinkCreate,
+    ctx: RequestContext = Depends(require_context),
+) -> ContactRead:
+    service = ContactService(ctx)
+    await service.link(
+        contact_id, payload.company_id, is_primary=payload.is_primary or None
+    )
+    return ContactRead.model_validate(await service.get(contact_id))
+
+
+@router.patch("/{contact_id}/links/{company_id}", response_model=ContactRead)
+async def update_contact_company_link(
+    contact_id: uuid.UUID,
+    company_id: uuid.UUID,
+    payload: ContactLinkUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> ContactRead:
+    service = ContactService(ctx)
+    if payload.is_primary:
+        await service.set_primary(contact_id, company_id)
+    else:
+        await service.link(contact_id, company_id, is_primary=False)
+    return ContactRead.model_validate(await service.get(contact_id))
+
+
+@router.delete("/{contact_id}/links/{company_id}", status_code=204)
+async def unlink_contact_from_company(
+    contact_id: uuid.UUID,
+    company_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> None:
+    await ContactService(ctx).unlink(contact_id, company_id)

@@ -15,6 +15,8 @@ from app.modules.projects.models import ProjectStatus
 
 class ProjectBase(BaseModel):
     company_id: uuid.UUID | None = None
+    # Verantwoordelijke; defaults from the company on create when omitted (see service).
+    responsible_user_id: uuid.UUID | None = None
     name: str = Field(min_length=1, max_length=255)
     description: str | None = None
     status: ProjectStatus = ProjectStatus.ACTIVE
@@ -36,6 +38,7 @@ class ProjectCreate(ProjectBase):
 
 class ProjectUpdate(BaseModel):
     company_id: uuid.UUID | None = None
+    responsible_user_id: uuid.UUID | None = None
     name: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = None
     status: ProjectStatus | None = None

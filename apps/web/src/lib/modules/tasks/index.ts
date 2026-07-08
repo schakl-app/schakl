@@ -43,10 +43,18 @@ registerWebModule({
       module: "tasks",
       position: 30,
       load: async (api) => {
+        // Grouping needs only ids/names — skip the per-task aggregates (`meta`) and the
+        // discarded COUNT (`count`) on every list (see docs/PERFORMANCE.md).
         const [tasks, projects, companies] = await Promise.all([
-          api.GET("/api/v1/tasks", { params: { query: { limit: 200, offset: 0 } } }),
-          api.GET("/api/v1/projects", { params: { query: { limit: 200, offset: 0 } } }),
-          api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0 } } }),
+          api.GET("/api/v1/tasks", {
+            params: { query: { limit: 200, offset: 0, meta: false, count: false } },
+          }),
+          api.GET("/api/v1/projects", {
+            params: { query: { limit: 200, offset: 0, count: false } },
+          }),
+          api.GET("/api/v1/companies", {
+            params: { query: { limit: 200, offset: 0, count: false } },
+          }),
         ]);
         return {
           tasks: tasks.data?.items ?? [],

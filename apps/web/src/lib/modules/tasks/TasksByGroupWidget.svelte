@@ -71,14 +71,23 @@
     <ul class="divide-y divide-neutral-100">
       {#each groups as group (group.key)}
         <li>
-          <a href={group.href} class="flex items-center justify-between gap-2 py-2 hover:text-brand">
-            <span class="min-w-0 flex-1 truncate text-sm font-medium text-neutral-900">{group.label}</span>
+          <a
+            href={group.href}
+            class="flex items-center justify-between gap-2 py-2 hover:text-brand"
+          >
+            <span class="min-w-0 flex-1 truncate text-sm font-medium text-neutral-900"
+              >{group.label}</span
+            >
             {#if group.overdue > 0}
-              <span class="shrink-0 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-red-700">
+              <span
+                class="shrink-0 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-red-700"
+              >
                 {t("tasks.overdue_count", { count: group.overdue })}
               </span>
             {/if}
-            <span class="shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-semibold tabular-nums text-neutral-600">
+            <span
+              class="shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-semibold tabular-nums text-neutral-600"
+            >
               {group.count}
             </span>
           </a>

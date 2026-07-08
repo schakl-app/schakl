@@ -16,6 +16,8 @@ class CompanyBase(BaseModel):
     website: str | None = Field(default=None, max_length=512)
     notes: str | None = None
     status: CompanyStatus = CompanyStatus.ACTIVE
+    # Org member accountable for this client; defaults down onto new projects/tasks.
+    responsible_user_id: uuid.UUID | None = None
     # Per-tenant custom values (validated against tenant definitions in P1).
     custom: dict[str, Any] = Field(default_factory=dict)
 
@@ -29,6 +31,7 @@ class CompanyUpdate(BaseModel):
     website: str | None = Field(default=None, max_length=512)
     notes: str | None = None
     status: CompanyStatus | None = None
+    responsible_user_id: uuid.UUID | None = None
     custom: dict[str, Any] | None = None
 
 

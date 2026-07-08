@@ -47,7 +47,8 @@ function parseItems(raw: string): {
           ? String(draft.priority)
           : "normal") as "low" | "normal" | "high",
         relative_due_days: Number.isFinite(days) && days >= 0 ? Math.floor(days) : null,
-        allocated_minutes: Number.isFinite(allocated) && allocated > 0 ? Math.round(allocated) : null,
+        allocated_minutes:
+          Number.isFinite(allocated) && allocated > 0 ? Math.round(allocated) : null,
         assignee_user_id: String(draft.assignee_user_id ?? "").trim() || null,
         position: index,
         checklist_title: String(draft.checklist_title ?? "").trim() || null,
@@ -65,9 +66,7 @@ function templateBody(form: FormData) {
     name: String(form.get("name") ?? "").trim(),
     trigger,
     trigger_status:
-      trigger === "company_status"
-        ? String(form.get("trigger_status") ?? "").trim() || null
-        : null,
+      trigger === "company_status" ? String(form.get("trigger_status") ?? "").trim() || null : null,
     active: form.get("active") === "on",
     items: parseItems(String(form.get("items_json") ?? "[]")),
   };
@@ -145,13 +144,10 @@ export const actions: Actions = {
     const template_id = String(form.get("id") ?? "");
     const title = String(form.get("title") ?? "").trim();
     if (!template_id || !title) return fail(400, { error: "errors.required" });
-    const { error } = await apiFor(event).PATCH(
-      "/api/v1/tasks/checklist-templates/{template_id}",
-      {
-        params: { path: { template_id } },
-        body: { title, items: parseLines(form.get("items")) },
-      },
-    );
+    const { error } = await apiFor(event).PATCH("/api/v1/tasks/checklist-templates/{template_id}", {
+      params: { path: { template_id } },
+      body: { title, items: parseLines(form.get("items")) },
+    });
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { saved: true };
   },

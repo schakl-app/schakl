@@ -143,10 +143,13 @@
           e.preventDefault();
           choose(null);
           inputEl?.focus();
-        }}
-      >×</button>
+        }}>×</button
+      >
     {:else}
-      <span class="pointer-events-none absolute inset-y-0 right-2 flex items-center text-neutral-400">▾</span>
+      <span
+        class="pointer-events-none absolute inset-y-0 right-2 flex items-center text-neutral-400"
+        >▾</span
+      >
     {/if}
   </div>
 
@@ -164,8 +167,8 @@
             onmousedown={(e) => {
               e.preventDefault();
               choose(null);
-            }}
-          >{t("common.none")}</button>
+            }}>{t("common.none")}</button
+          >
         </li>
       {/if}
       {#each filtered as item, i (item.value)}

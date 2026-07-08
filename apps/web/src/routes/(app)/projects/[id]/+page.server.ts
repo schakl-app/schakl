@@ -12,6 +12,14 @@ function numberOrNull(raw: FormDataEntryValue | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function parseCustom(raw: FormDataEntryValue | null): Record<string, unknown> {
+  try {
+    return JSON.parse(String(raw ?? "{}")) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const project_id = event.params.id;
@@ -35,9 +43,9 @@ export const load: PageServerLoad = async (event) => {
         : project.budget_period === "daily"
           ? today
           : null;
-  const [tasks, companies, logged, members] = await Promise.all([
+  const [tasks, companies, logged, members, definitions] = await Promise.all([
     api.GET("/api/v1/tasks", { params: { query: { project_id, limit: 200, offset: 0 } } }),
-    api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0 } } }),
+    api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
     api.GET("/api/v1/time/logged", {
       params: {
         query: periodStart
@@ -46,6 +54,9 @@ export const load: PageServerLoad = async (event) => {
       },
     }),
     api.GET("/api/v1/members/lookup"),
+    api.GET("/api/v1/custom-fields/definitions", {
+      params: { query: { entity_type: "project" } },
+    }),
   ]);
 
   return {
@@ -54,6 +65,8 @@ export const load: PageServerLoad = async (event) => {
     companies: companies.data?.items ?? [],
     logged: logged.data ?? { minutes: 0, billable_minutes: 0 },
     members: members.data ?? [],
+    definitions: definitions.data ?? [],
+    locale: event.locals.locale,
   };
 };
 
@@ -64,12 +77,17 @@ export const actions: Actions = {
       params: { path: { project_id: event.params.id } },
       body: {
         name: String(form.get("name") ?? "").trim() || undefined,
+        description: String(form.get("description") ?? "").trim() || null,
+        responsible_user_id: String(form.get("responsible_user_id") ?? "") || null,
         status: String(form.get("status") ?? "active") as "active",
         billable_default: form.get("billable_default") === "on",
         budget_period: String(form.get("budget_period") ?? "total") as "total",
         budget_hours: numberOrNull(form.get("budget_hours")),
         budget_amount: numberOrNull(form.get("budget_amount")),
         hourly_rate: numberOrNull(form.get("hourly_rate")),
+        start_date: String(form.get("start_date") ?? "").trim() || null,
+        end_date: String(form.get("end_date") ?? "").trim() || null,
+        custom: parseCustom(form.get("custom")),
       },
     });
     if (apiError) return fail(400, { error: apiErrorKey(apiError).key });

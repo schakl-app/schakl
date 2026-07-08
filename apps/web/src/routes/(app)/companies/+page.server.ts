@@ -7,12 +7,15 @@ import type { Actions, PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async (event) => {
   const q = event.url.searchParams.get("q") || undefined;
-  const { data } = await apiFor(event).GET("/api/v1/companies", {
-    params: { query: { limit: 200, offset: 0, q } },
-  });
+  const api = apiFor(event);
+  const [companiesRes, membersRes] = await Promise.all([
+    api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, q } } }),
+    api.GET("/api/v1/members/lookup"),
+  ]);
   return {
-    companies: data?.items ?? [],
-    total: data?.total ?? 0,
+    companies: companiesRes.data?.items ?? [],
+    total: companiesRes.data?.total ?? 0,
+    members: membersRes.data ?? [],
     statusFilter: event.url.searchParams.get("status") ?? "",
   };
 };
@@ -29,6 +32,7 @@ export const actions: Actions = {
         name,
         website: website || null,
         status: String(form.get("status") ?? "active") as "active",
+        responsible_user_id: String(form.get("responsible_user_id") ?? "") || null,
         custom: {},
       },
     });

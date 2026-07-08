@@ -98,3 +98,24 @@ class DashboardPref(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     widgets: Mapped[list[str]] = mapped_column(
         JSONB, nullable=False, default=list, server_default="[]"
     )
+
+
+class UserPref(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """Per-user personal preferences — a free JSONB blob keyed by feature namespace
+    (e.g. ``{"time": {"week_view": "work"}}``). One row per (org, user). Personal, in-view
+    settings that only touch the user's own experience (CLAUDE.md UX §6), distinct from the
+    org-wide ``org_settings`` and the dashboard template.
+    """
+
+    __tablename__ = "user_prefs"
+    __table_args__ = (UniqueConstraint("org_id", "user_id"),)
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    prefs: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )

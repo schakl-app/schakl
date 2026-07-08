@@ -174,4 +174,14 @@ export const actions: Actions = {
     }
     return { deleted: true };
   },
+
+  // Personal viewing preference: full 7-day week vs Mon–Fri workweek (saved per user).
+  saveView: async (event) => {
+    const form = await event.request.formData();
+    const week_view = String(form.get("week_view") ?? "full") === "work" ? "work" : "full";
+    await apiFor(event).PUT("/api/v1/prefs", {
+      body: { prefs: { time: { week_view } } },
+    });
+    return { viewSaved: true };
+  },
 };

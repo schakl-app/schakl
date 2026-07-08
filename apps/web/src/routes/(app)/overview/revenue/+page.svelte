@@ -33,11 +33,17 @@
     <p class="mt-1 text-sm text-neutral-500">{t("overview.revenue.subtitle")}</p>
   </div>
   <div class="flex items-center gap-2 text-sm" data-sveltekit-preload-data="hover">
-    <a href={`?year=${data.year - 1}`}
-      class="rounded-lg border border-neutral-300 px-2 py-1 hover:bg-neutral-50" aria-label="←">←</a>
+    <a
+      href={`?year=${data.year - 1}`}
+      class="rounded-lg border border-neutral-300 px-2 py-1 hover:bg-neutral-50"
+      aria-label="←">←</a
+    >
     <span class="font-semibold tabular-nums text-neutral-800">{data.year}</span>
-    <a href={`?year=${data.year + 1}`}
-      class="rounded-lg border border-neutral-300 px-2 py-1 hover:bg-neutral-50" aria-label="→">→</a>
+    <a
+      href={`?year=${data.year + 1}`}
+      class="rounded-lg border border-neutral-300 px-2 py-1 hover:bg-neutral-50"
+      aria-label="→">→</a
+    >
   </div>
 </div>
 
@@ -45,16 +51,30 @@
   <!-- Totals -->
   <div class="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-3">
     <div class="rounded-xl border border-neutral-200 bg-white p-4">
-      <p class="text-xs text-neutral-500">{t("overview.revenue.total_year", { year: data.year })}</p>
-      <p class="mt-1 text-lg font-semibold tabular-nums text-neutral-900">{fmtMoney(stats.total_current)}</p>
+      <p class="text-xs text-neutral-500">
+        {t("overview.revenue.total_year", { year: data.year })}
+      </p>
+      <p class="mt-1 text-lg font-semibold tabular-nums text-neutral-900">
+        {fmtMoney(stats.total_current)}
+      </p>
     </div>
     <div class="rounded-xl border border-neutral-200 bg-white p-4">
-      <p class="text-xs text-neutral-500">{t("overview.revenue.total_year", { year: data.year - 1 })}</p>
-      <p class="mt-1 text-lg font-semibold tabular-nums text-neutral-900">{fmtMoney(stats.total_previous)}</p>
+      <p class="text-xs text-neutral-500">
+        {t("overview.revenue.total_year", { year: data.year - 1 })}
+      </p>
+      <p class="mt-1 text-lg font-semibold tabular-nums text-neutral-900">
+        {fmtMoney(stats.total_previous)}
+      </p>
     </div>
     <div class="rounded-xl border border-neutral-200 bg-white p-4">
       <p class="text-xs text-neutral-500">{t("overview.revenue.delta")}</p>
-      <p class="mt-1 text-lg font-semibold tabular-nums {delta == null ? 'text-neutral-400' : delta >= 0 ? 'text-green-600' : 'text-red-600'}">
+      <p
+        class="mt-1 text-lg font-semibold tabular-nums {delta == null
+          ? 'text-neutral-400'
+          : delta >= 0
+            ? 'text-green-600'
+            : 'text-red-600'}"
+      >
         {delta == null ? "—" : `${delta >= 0 ? "+" : ""}${delta}%`}
       </p>
     </div>

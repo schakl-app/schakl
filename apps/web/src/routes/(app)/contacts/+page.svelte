@@ -1,12 +1,19 @@
 <script lang="ts">
+  import { Trash2 } from "@lucide/svelte";
+
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
+  import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
 
   let { data, form } = $props();
 
   let showCreate = $state(false);
+  let deleteId = $state("");
+  let deleteName = $state("");
+  let confirmDelete = $state(false);
 
   function fullName(c: { first_name: string; last_name?: string | null }) {
     return [c.first_name, c.last_name].filter(Boolean).join(" ");
@@ -46,50 +53,56 @@
         <label for="first_name" class="mb-1 block text-sm font-medium text-neutral-700">
           {t("contacts.first_name")}
         </label>
-        <input id="first_name" name="first_name" required
-          class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand" />
+        <input
+          id="first_name"
+          name="first_name"
+          required
+          class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+        />
       </div>
       <div>
         <label for="last_name" class="mb-1 block text-sm font-medium text-neutral-700">
           {t("contacts.last_name")}
         </label>
-        <input id="last_name" name="last_name"
-          class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand" />
+        <input
+          id="last_name"
+          name="last_name"
+          class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+        />
       </div>
       <div>
         <label for="email" class="mb-1 block text-sm font-medium text-neutral-700">
           {t("contacts.email")}
         </label>
-        <input id="email" name="email" type="email"
-          class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand" />
+        <input
+          id="email"
+          name="email"
+          type="email"
+          class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+        />
       </div>
       <div>
         <label for="phone" class="mb-1 block text-sm font-medium text-neutral-700">
           {t("contacts.phone")}
         </label>
-        <input id="phone" name="phone"
-          class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand" />
+        <input
+          id="phone"
+          name="phone"
+          class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+        />
       </div>
-      <div>
+      <div class="sm:col-span-2">
         <label for="job_title" class="mb-1 block text-sm font-medium text-neutral-700">
           {t("contacts.job_title")}
         </label>
-        <input id="job_title" name="job_title"
-          class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand" />
-      </div>
-      <div>
-        <label for="company_id" class="mb-1 block text-sm font-medium text-neutral-700">
-          {t("contacts.company")}
-        </label>
-        <select id="company_id" name="company_id"
-          class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand">
-          <option value="">{t("common.none")}</option>
-          {#each data.companies as company (company.id)}
-            <option value={company.id}>{company.name}</option>
-          {/each}
-        </select>
+        <input
+          id="job_title"
+          name="job_title"
+          class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+        />
       </div>
     </div>
+    <p class="mt-2 text-xs text-neutral-400">{t("contacts.link_client_hint")}</p>
 
     {#if data.definitions.length > 0}
       <div class="mt-4 border-t border-neutral-100 pt-4">
@@ -104,8 +117,11 @@
       <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
         {t("common.save")}
       </button>
-      <button type="button" class="rounded-lg border border-neutral-300 px-4 py-2 text-sm"
-        onclick={() => (showCreate = false)}>
+      <button
+        type="button"
+        class="rounded-lg border border-neutral-300 px-4 py-2 text-sm"
+        onclick={() => (showCreate = false)}
+      >
         {t("common.cancel")}
       </button>
     </div>
@@ -118,22 +134,40 @@
     <p class="mt-1 text-sm text-neutral-500">{t("contacts.empty_hint")}</p>
   </div>
 {:else}
-  <ul class="divide-y divide-neutral-200 overflow-hidden rounded-xl border border-neutral-200 bg-white">
+  <ul class="divide-y divide-neutral-200 rounded-xl border border-neutral-200 bg-white">
     {#each data.contacts as contact (contact.id)}
-      <li class="flex items-center justify-between px-4 py-3 hover:bg-neutral-50">
+      <li
+        class="flex items-center justify-between gap-3 px-4 py-3 first:rounded-t-xl last:rounded-b-xl hover:bg-neutral-50"
+      >
         <a href="/contacts/{contact.id}" class="min-w-0 flex-1">
           <span class="font-medium text-neutral-900">{fullName(contact)}</span>
           {#if contact.email}
             <span class="ml-2 truncate text-sm text-neutral-500">{contact.email}</span>
           {/if}
         </a>
-        <form method="POST" action="?/delete" use:enhance>
-          <input type="hidden" name="id" value={contact.id} />
-          <button class="text-sm text-neutral-400 hover:text-red-600" aria-label={t("common.delete")}>
-            {t("common.delete")}
-          </button>
-        </form>
+        <ActionsMenu
+          items={[
+            {
+              label: t("common.delete"),
+              icon: Trash2,
+              danger: true,
+              onclick: () => {
+                deleteId = contact.id;
+                deleteName = fullName(contact);
+                confirmDelete = true;
+              },
+            },
+          ]}
+        />
       </li>
     {/each}
   </ul>
 {/if}
+
+<ConfirmDialog
+  bind:open={confirmDelete}
+  title={t("common.delete")}
+  message={t("contacts.delete_confirm", { name: deleteName })}
+  action="?/delete"
+  fields={{ id: deleteId }}
+/>

@@ -87,4 +87,42 @@ export const actions: Actions = {
   unapprove: (event) => bulk(event, "/api/v1/time/entries/approve", "approved", false),
   invoice: (event) => bulk(event, "/api/v1/time/entries/invoice", "invoiced", true),
   uninvoice: (event) => bulk(event, "/api/v1/time/entries/invoice", "invoiced", false),
+
+  // Edit/delete a single entry straight from the report (managers may edit others' and
+  // approved entries — the API enforces the role rules). Mirrors the /time page actions.
+  updateEntry: async (event) => {
+    const form = await event.request.formData();
+    const id = String(form.get("id") ?? "");
+    const date = String(form.get("date") ?? "").trim();
+    const start = String(form.get("start") ?? "").trim();
+    const end = String(form.get("end") ?? "").trim();
+    if (!id || !date || !start || !end) return fail(400, { error: "errors.required" });
+
+    const { error } = await apiFor(event).PATCH("/api/v1/time/entries/{entry_id}", {
+      params: { path: { entry_id: id } },
+      body: {
+        started_at: `${date}T${start}:00Z`,
+        ended_at: `${date}T${end}:00Z`,
+        break_minutes: Number(form.get("break_minutes") ?? 0) || 0,
+        description: String(form.get("description") ?? "").trim() || null,
+        company_id: String(form.get("company_id") ?? "").trim() || null,
+        project_id: String(form.get("project_id") ?? "").trim() || null,
+        task_id: String(form.get("task_id") ?? "").trim() || null,
+        billable: form.get("billable") !== "false",
+      },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { updated: 1 };
+  },
+
+  deleteEntry: async (event) => {
+    const form = await event.request.formData();
+    const id = String(form.get("id") ?? "");
+    if (id) {
+      await apiFor(event).DELETE("/api/v1/time/entries/{entry_id}", {
+        params: { path: { entry_id: id } },
+      });
+    }
+    return { deleted: true };
+  },
 };

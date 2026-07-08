@@ -2,10 +2,12 @@
   import { CircleCheck, Plus } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
+  import { goto } from "$app/navigation";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import { fmtDayMonth, fmtLongDay, fmtWeekdayShort } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import Combobox from "$lib/core/ui/Combobox.svelte";
+  import DateInput from "$lib/core/ui/DateInput.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import { COMPANY_STATUSES } from "$lib/modules/companies/status";
   import EntryForm from "$lib/modules/time/EntryForm.svelte";
@@ -17,6 +19,10 @@
 
   const canManage = $derived(page.data.user?.canManage ?? false);
 
+  // Personal timesheet view (7-day vs Mon–Fri); day tabs mirror the grid.
+  const weekView = $derived<"full" | "work">(data.weekView === "work" ? "work" : "full");
+  let viewForm: HTMLFormElement | undefined = $state();
+
   // --- lookups (from the /time layout load) ----------------------------------
   const companyName = (id?: string | null) => data.companies.find((c) => c.id === id)?.name ?? "";
   const projectName = (id?: string | null) => data.projects.find((p) => p.id === id)?.name ?? "";
@@ -27,7 +33,11 @@
     project_id?: string | null;
     task_id?: string | null;
   }) {
-    const parts = [companyName(e.company_id), projectName(e.project_id), taskTitle(e.task_id)].filter(Boolean);
+    const parts = [
+      companyName(e.company_id),
+      projectName(e.project_id),
+      taskTitle(e.task_id),
+    ].filter(Boolean);
     return parts.length ? parts.join(" · ") : t("time.general");
   }
 
@@ -37,9 +47,24 @@
     d.setUTCDate(d.getUTCDate() + deltaDays);
     return d.toISOString().slice(0, 10);
   }
+  /** ISO date of the Monday on or before `iso` (mirrors the server helper). */
+  function weekStartOf(iso: string): string {
+    const d = new Date(iso + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+    return d.toISOString().slice(0, 10);
+  }
+  // Jump straight to any date/week via the (low-key) date picker.
+  function jumpToDate(iso: string) {
+    if (iso) void goto(`?date=${iso}&week=${weekStartOf(iso)}`, { keepFocus: true });
+  }
   const dayNum = (iso: string) => Number(iso.slice(8, 10));
 
   const week = $derived(data.week);
+  // Mon–Fri only in workweek view; the day tabs mirror the grid.
+  const visibleDays = $derived(
+    week ? (weekView === "work" ? week.days.slice(0, 5) : week.days) : [],
+  );
+  const lastVisibleDay = $derived(week ? week.days[weekView === "work" ? 4 : 6] : "");
   const entries = $derived(
     [...(data.day?.entries ?? [])].sort((a, b) => a.started_at.localeCompare(b.started_at)),
   );
@@ -105,38 +130,77 @@
 </svelte:head>
 
 <!-- Top bar: week navigation + running timer -->
-<div class="mb-4 flex flex-wrap items-center justify-between gap-3" data-sveltekit-preload-data="hover">
+<div
+  class="mb-4 flex flex-wrap items-center justify-between gap-3"
+  data-sveltekit-preload-data="hover"
+>
   <div class="flex items-center gap-2 text-sm">
-    <a href={`?week=${shiftWeek(data.week_start, -7)}&date=${shiftWeek(data.selectedDate, -7)}`}
-      class="rounded-lg border border-neutral-300 px-2 py-1 hover:bg-neutral-50" aria-label="←">←</a>
+    <a
+      href={`?week=${shiftWeek(data.week_start, -7)}&date=${shiftWeek(data.selectedDate, -7)}`}
+      class="rounded-lg border border-neutral-300 px-2 py-1 hover:bg-neutral-50"
+      aria-label="←">←</a
+    >
     <span class="font-medium text-neutral-800">
-      {week ? `${fmtDayMonth(week.days[0])} – ${fmtDayMonth(week.days[6])}` : ""}
+      {week ? `${fmtDayMonth(week.days[0])} – ${fmtDayMonth(lastVisibleDay)}` : ""}
     </span>
-    <a href={`?week=${shiftWeek(data.week_start, 7)}&date=${shiftWeek(data.selectedDate, 7)}`}
-      class="rounded-lg border border-neutral-300 px-2 py-1 hover:bg-neutral-50" aria-label="→">→</a>
-    <a href={dayHref(data.today)} class="ml-1 rounded-lg px-2 py-1 text-neutral-500 hover:text-neutral-900">
+    <a
+      href={`?week=${shiftWeek(data.week_start, 7)}&date=${shiftWeek(data.selectedDate, 7)}`}
+      class="rounded-lg border border-neutral-300 px-2 py-1 hover:bg-neutral-50"
+      aria-label="→">→</a
+    >
+    <a
+      href={dayHref(data.today)}
+      class="ml-1 rounded-lg px-2 py-1 text-neutral-500 hover:text-neutral-900"
+    >
       {t("time.today_badge")}
     </a>
+    <!-- Low-key: jump to a specific date/week, and choose the week view. -->
+    <div class="w-32">
+      <DateInput name="_jump" id="jump-date" value={data.selectedDate} onchange={jumpToDate} />
+    </div>
+    <form method="POST" action="?/saveView" use:enhance bind:this={viewForm}>
+      <select
+        name="week_view"
+        aria-label={t("time.view.label")}
+        onchange={() => viewForm?.requestSubmit()}
+        class="rounded-lg border border-neutral-300 px-2 py-1 text-xs text-neutral-500 hover:text-neutral-900"
+      >
+        <option value="full" selected={weekView === "full"}>{t("time.view.full_week")}</option>
+        <option value="work" selected={weekView === "work"}>{t("time.view.work_week")}</option>
+      </select>
+    </form>
   </div>
 
   <div class="flex items-center gap-3">
     {#if data.running}
       <div class="flex items-center gap-2">
         <span class="h-2.5 w-2.5 animate-pulse rounded-full bg-green-500"></span>
-        <span class="font-mono text-sm tabular-nums text-neutral-800">{elapsed(data.running.started_at)}</span>
+        <span class="font-mono text-sm tabular-nums text-neutral-800"
+          >{elapsed(data.running.started_at)}</span
+        >
         <span class="max-w-[16rem] truncate text-sm text-neutral-500">
           {data.running.description || entryLabel(data.running)}
         </span>
       </div>
       <form method="POST" action="?/stopTimer" use:enhance>
-        <button class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:opacity-90">
+        <button
+          class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
+        >
           {t("time.timer.stop")}
         </button>
       </form>
     {:else}
-      <form method="POST" action="?/startTimer" use:enhance class="flex flex-wrap items-center gap-2">
-        <input name="description" placeholder={t("time.field.description")}
-          class="w-40 rounded-lg border border-neutral-300 px-2 py-1.5 text-sm" />
+      <form
+        method="POST"
+        action="?/startTimer"
+        use:enhance
+        class="flex flex-wrap items-center gap-2"
+      >
+        <input
+          name="description"
+          placeholder={t("time.field.description")}
+          class="w-40 rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+        />
         <div class="w-40">
           <Combobox
             items={data.companies.map((c) => ({ value: c.id, label: c.name }))}
@@ -147,10 +211,17 @@
           />
         </div>
         <div class="w-40">
-          <Combobox items={timerProjects} name="project_id" bind:value={timerProject}
-            id="timer-project" placeholder={t("time.field.project")} />
+          <Combobox
+            items={timerProjects}
+            name="project_id"
+            bind:value={timerProject}
+            id="timer-project"
+            placeholder={t("time.field.project")}
+          />
         </div>
-        <button class="flex items-center gap-1 rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:opacity-90">
+        <button
+          class="flex items-center gap-1 rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
+        >
           ▶ {t("time.timer.start")}
         </button>
       </form>
@@ -160,16 +231,29 @@
 
 <!-- Day tabs -->
 {#if week}
-  <div class="mb-4 grid grid-cols-7 overflow-hidden rounded-xl border border-neutral-200 bg-white"
-    data-sveltekit-preload-data="hover">
-    {#each week.days as day, i (day)}
+  <div
+    class="mb-4 grid overflow-hidden rounded-xl border border-neutral-200 bg-white {weekView ===
+    'work'
+      ? 'grid-cols-5'
+      : 'grid-cols-7'}"
+    data-sveltekit-preload-data="hover"
+  >
+    {#each visibleDays as day, i (day)}
       {@const sel = day === data.selectedDate}
-      <a href={dayHref(day)}
+      <a
+        href={dayHref(day)}
         class="flex flex-col items-center gap-0.5 border-r border-neutral-100 px-1 py-2 text-center last:border-r-0 hover:bg-neutral-50
-          {sel ? 'bg-brand/5' : ''}">
-        <span class="text-[11px] uppercase {sel ? 'text-brand' : 'text-neutral-400'}">{fmtWeekdayShort(day)}</span>
-        <span class="text-sm font-semibold {sel ? 'text-brand' : 'text-neutral-800'}">{dayNum(day)}</span>
-        <span class="text-[11px] text-neutral-400">{week.day_totals[i] ? formatMinutes(week.day_totals[i]) : "·"}</span>
+          {sel ? 'bg-brand/5' : ''}"
+      >
+        <span class="text-[11px] uppercase {sel ? 'text-brand' : 'text-neutral-400'}"
+          >{fmtWeekdayShort(day)}</span
+        >
+        <span class="text-sm font-semibold {sel ? 'text-brand' : 'text-neutral-800'}"
+          >{dayNum(day)}</span
+        >
+        <span class="text-[11px] text-neutral-400"
+          >{week.day_totals[i] ? formatMinutes(week.day_totals[i]) : "·"}</span
+        >
       </a>
     {/each}
   </div>
@@ -180,14 +264,21 @@
   <main class="rounded-xl border border-neutral-200 bg-white p-5">
     <div class="mb-4 flex items-center justify-between">
       <div>
-        <h2 class="text-base font-semibold capitalize text-neutral-900">{fmtLongDay(data.selectedDate)}</h2>
+        <h2 class="text-base font-semibold capitalize text-neutral-900">
+          {fmtLongDay(data.selectedDate)}
+        </h2>
         {#if data.selectedDate === data.today}
-          <span class="mt-1 inline-block rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand">{t("time.today_badge")}</span>
+          <span
+            class="mt-1 inline-block rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand"
+            >{t("time.today_badge")}</span
+          >
         {/if}
       </div>
       <div class="flex items-center gap-2">
         {#if data.day && data.day.total_minutes > 0}
-          <span class="text-sm font-medium text-neutral-700">{formatMinutes(data.day.total_minutes)}</span>
+          <span class="text-sm font-medium text-neutral-700"
+            >{formatMinutes(data.day.total_minutes)}</span
+          >
         {/if}
         <button
           type="button"
@@ -215,7 +306,9 @@
               type="button"
               class="flex w-full items-center gap-3 rounded-lg border p-3 text-left
                 {editingId === e.id ? 'border-brand ring-1 ring-brand' : 'border-neutral-200'}
-                {locked || e.is_running ? 'cursor-default' : 'hover:border-brand/60 hover:bg-neutral-50'}"
+                {locked || e.is_running
+                ? 'cursor-default'
+                : 'hover:border-brand/60 hover:bg-neutral-50'}"
               onclick={() => rowClick(e)}
               title={locked ? t("time.approved_locked_hint") : undefined}
               aria-expanded={editingId === e.id}
@@ -229,7 +322,9 @@
               </div>
               <div class="min-w-0 flex-1">
                 <p class="truncate text-sm font-medium text-neutral-900">{entryLabel(e)}</p>
-                {#if e.description}<p class="truncate text-xs text-neutral-500">{e.description}</p>{/if}
+                {#if e.description}<p class="truncate text-xs text-neutral-500">
+                    {e.description}
+                  </p>{/if}
               </div>
               {#if e.approved_at}
                 <span title={t("time.approved")} class="shrink-0 text-green-600">
@@ -237,13 +332,20 @@
                 </span>
               {/if}
               {#if e.break_minutes > 0}
-                <span class="shrink-0 text-xs text-neutral-400">{t("time.break_short", { minutes: e.break_minutes })}</span>
+                <span class="shrink-0 text-xs text-neutral-400"
+                  >{t("time.break_short", { minutes: e.break_minutes })}</span
+                >
               {/if}
-              <span class="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium
-                {e.billable ? 'bg-green-50 text-green-700' : 'bg-neutral-100 text-neutral-500'}">
+              <span
+                class="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium
+                {e.billable ? 'bg-green-50 text-green-700' : 'bg-neutral-100 text-neutral-500'}"
+              >
                 {e.billable ? t("time.billable") : t("time.not_billable")}
               </span>
-              <span class="w-16 shrink-0 text-right text-sm font-semibold tabular-nums text-neutral-900">{formatMinutes(e.minutes)}</span>
+              <span
+                class="w-16 shrink-0 text-right text-sm font-semibold tabular-nums text-neutral-900"
+                >{formatMinutes(e.minutes)}</span
+              >
             </button>
           </li>
         {/each}
@@ -252,13 +354,17 @@
   </main>
 
   <!-- New registration / edit panel -->
-  <aside bind:this={panelEl} class="h-fit scroll-mt-4 rounded-xl border border-neutral-200 bg-white p-5">
+  <aside
+    bind:this={panelEl}
+    class="h-fit scroll-mt-4 rounded-xl border border-neutral-200 bg-white p-5"
+  >
     {#if editingEntry}
       <div class="mb-4 flex items-center justify-between">
         <h2 class="text-sm font-semibold text-neutral-900">{t("time.edit_entry")}</h2>
         {#if editingEntry.approved_at}
           <span class="flex items-center gap-1 text-xs font-medium text-green-600">
-            <CircleCheck size={14} /> {t("time.approved")}
+            <CircleCheck size={14} />
+            {t("time.approved")}
           </span>
         {/if}
       </div>
@@ -274,8 +380,14 @@
           error={form?.error ?? null}
           oncancel={() => (editingId = null)}
           ondone={() => (editingId = null)}
-          oncreatecompany={(name) => { draftCompanyName = name; showNewCompany = true; }}
-          oncreateproject={(name) => { draftProjectName = name; showNewProject = true; }}
+          oncreatecompany={(name) => {
+            draftCompanyName = name;
+            showNewCompany = true;
+          }}
+          oncreateproject={(name) => {
+            draftProjectName = name;
+            showNewProject = true;
+          }}
         />
       {/key}
     {:else}
@@ -290,8 +402,14 @@
           defaultCompanyId={data.lastCompanyId ?? ""}
           defaultProjectId={data.lastProjectId ?? ""}
           error={form?.error ?? null}
-          oncreatecompany={(name) => { draftCompanyName = name; showNewCompany = true; }}
-          oncreateproject={(name) => { draftProjectName = name; showNewProject = true; }}
+          oncreatecompany={(name) => {
+            draftCompanyName = name;
+            showNewCompany = true;
+          }}
+          oncreateproject={(name) => {
+            draftProjectName = name;
+            showNewProject = true;
+          }}
         />
       {/key}
     {/if}
@@ -302,28 +420,55 @@
      (incl. required ones) come from the tenant's definitions via the API. -->
 <Modal bind:open={showNewCompany} title={t("time.quick_create.company")}>
   {#key draftCompanyName + String(showNewCompany)}
-    <form method="POST" action="?/createCompany"
-      use:enhance={() => ({ update }) => { showNewCompany = false; void update(); }}
-      class="space-y-3">
+    <form
+      method="POST"
+      action="?/createCompany"
+      use:enhance={() =>
+        ({ update }) => {
+          showNewCompany = false;
+          void update();
+        }}
+      class="space-y-3"
+    >
       <div class="grid gap-3 sm:grid-cols-2">
         <div>
-          <label for="qc-company-name" class="mb-1 block text-sm font-medium text-neutral-700">{t("companies.name")}</label>
-          <input id="qc-company-name" name="name" value={draftCompanyName} required
-            class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand" />
+          <label for="qc-company-name" class="mb-1 block text-sm font-medium text-neutral-700"
+            >{t("companies.name")}</label
+          >
+          <input
+            id="qc-company-name"
+            name="name"
+            value={draftCompanyName}
+            required
+            class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+          />
         </div>
         <div>
-          <label for="qc-company-status" class="mb-1 block text-sm font-medium text-neutral-700">{t("companies.field.status")}</label>
-          <select id="qc-company-status" name="status"
-            class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm">
+          <label for="qc-company-status" class="mb-1 block text-sm font-medium text-neutral-700"
+            >{t("companies.field.status")}</label
+          >
+          <select
+            id="qc-company-status"
+            name="status"
+            class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+          >
             {#each COMPANY_STATUSES as status (status)}
-              <option value={status} selected={status === "active"}>{t(`companies.status.${status}`)}</option>
+              <option value={status} selected={status === "active"}
+                >{t(`companies.status.${status}`)}</option
+              >
             {/each}
           </select>
         </div>
         <div class="sm:col-span-2">
-          <label for="qc-company-website" class="mb-1 block text-sm font-medium text-neutral-700">{t("companies.website")}</label>
-          <input id="qc-company-website" name="website" placeholder="https://…"
-            class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand" />
+          <label for="qc-company-website" class="mb-1 block text-sm font-medium text-neutral-700"
+            >{t("companies.website")}</label
+          >
+          <input
+            id="qc-company-website"
+            name="website"
+            placeholder="https://…"
+            class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+          />
         </div>
       </div>
       {#if data.companyDefinitions.length > 0}
@@ -333,8 +478,15 @@
       {/if}
       {#if form?.error}<p class="text-sm text-red-600">{t(form.error)}</p>{/if}
       <div class="flex justify-end gap-2">
-        <button type="button" class="rounded-lg border border-neutral-300 px-4 py-2 text-sm" onclick={() => (showNewCompany = false)}>{t("common.cancel")}</button>
-        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">{t("common.create")}</button>
+        <button
+          type="button"
+          class="rounded-lg border border-neutral-300 px-4 py-2 text-sm"
+          onclick={() => (showNewCompany = false)}>{t("common.cancel")}</button
+        >
+        <button
+          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+          >{t("common.create")}</button
+        >
       </div>
     </form>
   {/key}
@@ -342,17 +494,33 @@
 
 <Modal bind:open={showNewProject} title={t("time.quick_create.project")}>
   {#key draftProjectName + String(showNewProject)}
-    <form method="POST" action="?/createProject"
-      use:enhance={() => ({ update }) => { showNewProject = false; void update(); }}
-      class="space-y-3">
+    <form
+      method="POST"
+      action="?/createProject"
+      use:enhance={() =>
+        ({ update }) => {
+          showNewProject = false;
+          void update();
+        }}
+      class="space-y-3"
+    >
       <div class="grid gap-3 sm:grid-cols-2">
         <div>
-          <label for="qc-project-name" class="mb-1 block text-sm font-medium text-neutral-700">{t("projects.field.name")}</label>
-          <input id="qc-project-name" name="name" value={draftProjectName} required
-            class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand" />
+          <label for="qc-project-name" class="mb-1 block text-sm font-medium text-neutral-700"
+            >{t("projects.field.name")}</label
+          >
+          <input
+            id="qc-project-name"
+            name="name"
+            value={draftProjectName}
+            required
+            class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+          />
         </div>
         <div>
-          <label for="qc-project-company" class="mb-1 block text-sm font-medium text-neutral-700">{t("projects.field.company")}</label>
+          <label for="qc-project-company" class="mb-1 block text-sm font-medium text-neutral-700"
+            >{t("projects.field.company")}</label
+          >
           <Combobox
             items={data.companies.map((c) => ({ value: c.id, label: c.name }))}
             name="company_id"
@@ -361,14 +529,29 @@
           />
         </div>
         <div>
-          <label for="qc-project-rate" class="mb-1 block text-sm font-medium text-neutral-700">{t("projects.field.hourly_rate")}</label>
-          <input id="qc-project-rate" name="hourly_rate" type="number" min="0" step="0.01"
-            class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand" />
+          <label for="qc-project-rate" class="mb-1 block text-sm font-medium text-neutral-700"
+            >{t("projects.field.hourly_rate")}</label
+          >
+          <input
+            id="qc-project-rate"
+            name="hourly_rate"
+            type="number"
+            min="0"
+            step="0.01"
+            class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+          />
         </div>
         <div class="flex items-center gap-2 pt-6">
-          <input id="qc-project-billable" name="billable_default" type="checkbox" checked
-            class="h-4 w-4 rounded border-neutral-300 text-brand focus:ring-brand" />
-          <label for="qc-project-billable" class="text-sm font-medium text-neutral-700">{t("projects.field.billable_default")}</label>
+          <input
+            id="qc-project-billable"
+            name="billable_default"
+            type="checkbox"
+            checked
+            class="h-4 w-4 rounded border-neutral-300 text-brand focus:ring-brand"
+          />
+          <label for="qc-project-billable" class="text-sm font-medium text-neutral-700"
+            >{t("projects.field.billable_default")}</label
+          >
         </div>
       </div>
       {#if data.projectDefinitions.length > 0}
@@ -378,8 +561,15 @@
       {/if}
       {#if form?.error}<p class="text-sm text-red-600">{t(form.error)}</p>{/if}
       <div class="flex justify-end gap-2">
-        <button type="button" class="rounded-lg border border-neutral-300 px-4 py-2 text-sm" onclick={() => (showNewProject = false)}>{t("common.cancel")}</button>
-        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">{t("common.create")}</button>
+        <button
+          type="button"
+          class="rounded-lg border border-neutral-300 px-4 py-2 text-sm"
+          onclick={() => (showNewProject = false)}>{t("common.cancel")}</button
+        >
+        <button
+          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+          >{t("common.create")}</button
+        >
       </div>
     </form>
   {/key}
@@ -399,6 +589,12 @@
 <!-- Weekly grid -->
 {#if week}
   <div class="mt-4">
-    <TimesheetGrid {week} companies={data.companies} projects={data.projects} tasks={data.tasks} />
+    <TimesheetGrid
+      {week}
+      {weekView}
+      companies={data.companies}
+      projects={data.projects}
+      tasks={data.tasks}
+    />
   </div>
 {/if}

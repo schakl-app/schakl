@@ -24,11 +24,13 @@ class CompanyService:
         self.custom_fields = CustomFieldsService(ctx)
 
     async def list(
-        self, *, limit: int, offset: int, q: str | None = None
+        self, *, limit: int, offset: int, q: str | None = None, count: bool = True
     ) -> tuple[Sequence[Company], int]:
+        # ``count=False`` skips the discarded COUNT(*) for name-only lookups (pickers,
+        # dashboard grouping) — see docs/PERFORMANCE.md.
         if not q:
             items = await self.repo.list(limit=limit, offset=offset)
-            total = await self.repo.count()
+            total = await self.repo.count() if count else len(items)
             return items, total
 
         from sqlalchemy import func, or_, select
@@ -43,13 +45,17 @@ class CompanyService:
             .offset(offset)
         )
         items = (await self.ctx.session.execute(stmt)).scalars().all()
-        total = int(
-            await self.ctx.session.scalar(
-                select(func.count())
-                .select_from(Company)
-                .where(Company.org_id == self.ctx.org.id, condition)
+        total = (
+            int(
+                await self.ctx.session.scalar(
+                    select(func.count())
+                    .select_from(Company)
+                    .where(Company.org_id == self.ctx.org.id, condition)
+                )
+                or 0
             )
-            or 0
+            if count
+            else len(items)
         )
         return items, total
 

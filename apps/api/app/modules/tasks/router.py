@@ -61,6 +61,7 @@ async def list_tasks(
     due: Literal["overdue", "today", "week"] | None = Query(None),
     q: str | None = Query(None, max_length=200),
     meta: bool = Query(True, description="Include label/checklist/comment aggregates"),
+    count: bool = Query(True, description="Compute total; set false for name-only lookups"),
     ctx: RequestContext = Depends(require_context),
 ) -> Page[TaskListItem]:
     items, total = await TaskService(ctx).list(
@@ -74,6 +75,7 @@ async def list_tasks(
         due=due,
         q=q,
         with_meta=meta,
+        count=count,
     )
     return Page(items=items, total=total, limit=limit, offset=offset)
 

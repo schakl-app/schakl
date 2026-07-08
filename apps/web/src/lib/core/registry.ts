@@ -60,9 +60,7 @@ export function registerWebModule(mod: WebModule): void {
 }
 
 export function enabledWebModules(enabled: string[]): WebModule[] {
-  return enabled
-    .map((name) => _modules.get(name))
-    .filter((m): m is WebModule => Boolean(m));
+  return enabled.map((name) => _modules.get(name)).filter((m): m is WebModule => Boolean(m));
 }
 
 export function navItemsFor(enabled: string[]): NavItem[] {

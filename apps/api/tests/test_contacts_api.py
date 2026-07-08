@@ -15,14 +15,22 @@ async def test_contact_crud_and_company_filter(client_for) -> None:
 
         created = await c.post(
             "/api/v1/contacts",
-            json={"first_name": "Ada", "last_name": "Lovelace", "company_id": company["id"]},
+            json={
+                "first_name": "Ada",
+                "last_name": "Lovelace",
+                "company_ids": [company["id"]],
+            },
             headers=headers,
         )
         assert created.status_code == 201
         contact = created.json()
         assert contact["first_name"] == "Ada"
+        # The first contact of a company is auto-promoted to its primary.
+        assert contact["companies"] == [
+            {"company_id": company["id"], "name": "Acme", "is_primary": True}
+        ]
 
-        # Filter by company.
+        # Filter by company (now resolved through the join table).
         listing = await c.get(
             "/api/v1/contacts", params={"company_id": company["id"]}, headers=headers
         )
@@ -41,7 +49,7 @@ async def test_contacts_panel_on_company(client_for) -> None:
         ).json()
         await c.post(
             "/api/v1/contacts",
-            json={"first_name": "Grace", "company_id": company["id"]},
+            json={"first_name": "Grace", "company_ids": [company["id"]]},
             headers=headers,
         )
         panels = {
@@ -51,7 +59,13 @@ async def test_contacts_panel_on_company(client_for) -> None:
             ).json()
         }
         assert "contacts.company" in panels
-        assert panels["contacts.company"]["data"]["contacts"][0]["first_name"] == "Grace"
+        data = panels["contacts.company"]["data"]
+        assert data["contacts"][0]["first_name"] == "Grace"
+        assert data["contacts"][0]["is_primary"] is True
+        # The panel is self-contained: it also carries the type-ahead candidates and the
+        # tenant's contact custom-field definitions for the create modal.
+        assert "candidates" in data
+        assert "definitions" in data
 
 
 async def test_contacts_tenant_isolation(client_for) -> None:

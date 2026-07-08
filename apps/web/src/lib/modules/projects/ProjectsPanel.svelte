@@ -29,7 +29,8 @@
         <span class="text-xs text-neutral-500">
           {#if project.budget_hours != null}{t("projects.budget_hours_short", {
               hours: project.budget_hours,
-            })} · {/if}
+            })} ·
+          {/if}
           {t(`projects.status.${project.status}`)}
         </span>
       </li>

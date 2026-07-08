@@ -8,18 +8,22 @@ import type { Actions, PageServerLoad } from "./$types";
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const contact_id = event.params.id;
-  const [contact, definitions, companies] = await Promise.all([
+  const [contact, definitions, companies, companyDefinitions] = await Promise.all([
     api.GET("/api/v1/contacts/{contact_id}", { params: { path: { contact_id } } }),
     api.GET("/api/v1/custom-fields/definitions", {
       params: { query: { entity_type: "contact" } },
     }),
     api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0 } } }),
+    api.GET("/api/v1/custom-fields/definitions", {
+      params: { query: { entity_type: "company" } },
+    }),
   ]);
   if (!contact.data) throw error(404, { code: "not_found", message: "errors.not_found" });
   return {
     contact: contact.data,
     definitions: definitions.data ?? [],
     companies: companies.data?.items ?? [],
+    companyDefinitions: companyDefinitions.data ?? [],
     locale: event.locals.locale,
   };
 };
@@ -38,7 +42,6 @@ export const actions: Actions = {
     const first_name = String(form.get("first_name") ?? "").trim();
     if (!first_name) return fail(400, { error: "errors.required" });
 
-    const company_id = String(form.get("company_id") ?? "").trim();
     const { error: err } = await apiFor(event).PATCH("/api/v1/contacts/{contact_id}", {
       params: { path: { contact_id: event.params.id } },
       body: {
@@ -47,7 +50,6 @@ export const actions: Actions = {
         email: String(form.get("email") ?? "").trim() || null,
         phone: String(form.get("phone") ?? "").trim() || null,
         job_title: String(form.get("job_title") ?? "").trim() || null,
-        company_id: company_id || null,
         custom: parseCustom(form.get("custom")),
       },
     });
@@ -56,6 +58,66 @@ export const actions: Actions = {
       return fail(400, { error: e.key, fields: e.fields });
     }
     return { updated: true };
+  },
+
+  // Attach this contact to an existing client.
+  linkCompany: async (event) => {
+    const form = await event.request.formData();
+    const company_id = String(form.get("company_id") ?? "").trim();
+    if (!company_id) return fail(400, { error: "errors.required" });
+    const { error: err } = await apiFor(event).POST("/api/v1/contacts/{contact_id}/links", {
+      params: { path: { contact_id: event.params.id } },
+      body: { company_id, is_primary: false },
+    });
+    if (err) return fail(400, { error: apiErrorKey(err).key });
+    return { linked: true };
+  },
+
+  unlinkCompany: async (event) => {
+    const form = await event.request.formData();
+    const company_id = String(form.get("company_id") ?? "").trim();
+    if (!company_id) return fail(400, { error: "errors.required" });
+    await apiFor(event).DELETE("/api/v1/contacts/{contact_id}/links/{company_id}", {
+      params: { path: { contact_id: event.params.id, company_id } },
+    });
+    return { unlinked: true };
+  },
+
+  setPrimaryCompany: async (event) => {
+    const form = await event.request.formData();
+    const company_id = String(form.get("company_id") ?? "").trim();
+    if (!company_id) return fail(400, { error: "errors.required" });
+    const { error: err } = await apiFor(event).PATCH(
+      "/api/v1/contacts/{contact_id}/links/{company_id}",
+      {
+        params: { path: { contact_id: event.params.id, company_id } },
+        body: { is_primary: true },
+      },
+    );
+    if (err) return fail(400, { error: apiErrorKey(err).key });
+    return { primarySet: true };
+  },
+
+  // Create a new client and attach it to this contact in one step.
+  createCompany: async (event) => {
+    const form = await event.request.formData();
+    const name = String(form.get("name") ?? "").trim();
+    if (!name) return fail(400, { error: "errors.required" });
+    const { data: company, error: err } = await apiFor(event).POST("/api/v1/companies", {
+      body: {
+        name,
+        website: String(form.get("website") ?? "").trim() || null,
+        status: String(form.get("status") ?? "active") as "active",
+        custom: parseCustom(form.get("custom")),
+      },
+    });
+    if (err || !company) return fail(400, { error: err ? apiErrorKey(err).key : "errors.unknown" });
+    const { error: linkErr } = await apiFor(event).POST("/api/v1/contacts/{contact_id}/links", {
+      params: { path: { contact_id: event.params.id } },
+      body: { company_id: company.id, is_primary: false },
+    });
+    if (linkErr) return fail(400, { error: apiErrorKey(linkErr).key });
+    return { companyCreated: true };
   },
 
   delete: async (event) => {

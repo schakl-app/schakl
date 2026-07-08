@@ -15,18 +15,20 @@ function numberOrNull(raw: FormDataEntryValue | null): number | null {
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const q = event.url.searchParams.get("q") || undefined;
-  const [projects, companies, definitions] = await Promise.all([
+  const [projects, companies, definitions, members] = await Promise.all([
     api.GET("/api/v1/projects", { params: { query: { limit: 200, offset: 0, q } } }),
-    api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0 } } }),
+    api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
     api.GET("/api/v1/custom-fields/definitions", {
       params: { query: { entity_type: "project" } },
     }),
+    api.GET("/api/v1/members/lookup"),
   ]);
   return {
     projects: projects.data?.items ?? [],
     total: projects.data?.total ?? 0,
     companies: companies.data?.items ?? [],
     definitions: definitions.data ?? [],
+    members: members.data ?? [],
     locale: event.locals.locale,
   };
 };
@@ -51,6 +53,7 @@ export const actions: Actions = {
         name,
         description: String(form.get("description") ?? "").trim() || null,
         company_id: company_id || null,
+        responsible_user_id: String(form.get("responsible_user_id") ?? "") || null,
         status: String(form.get("status") ?? "active") as "active",
         budget_period: "total",
         currency: "EUR",

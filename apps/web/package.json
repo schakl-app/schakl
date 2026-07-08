@@ -13,17 +13,25 @@
     "gen:client": "openapi-typescript ./openapi.json -o ./src/lib/core/api/schema.d.ts"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@sveltejs/adapter-node": "^5.2.9",
     "@sveltejs/kit": "^2.8.0",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "@tailwindcss/vite": "^4.0.0",
     "@types/node": "^22.20.0",
     "@vite-pwa/sveltekit": "^0.6.7",
+    "eslint": "^10.6.0",
+    "eslint-plugin-svelte": "^3.20.0",
     "openapi-typescript": "^7.4.0",
+    "prettier": "^3.9.4",
+    "prettier-plugin-svelte": "^4.1.1",
+    "prettier-plugin-tailwindcss": "^0.8.0",
     "svelte": "^5.2.0",
     "svelte-check": "^4.1.0",
+    "svelte-eslint-parser": "^1.8.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.6.0",
+    "typescript-eslint": "^8.63.0",
     "vite": "^6.0.0"
   },
   "dependencies": {

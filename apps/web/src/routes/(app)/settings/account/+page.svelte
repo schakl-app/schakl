@@ -14,7 +14,9 @@
 </svelte:head>
 
 <div class="mb-6">
-  <a href="/settings" class="text-sm text-neutral-500 hover:text-neutral-900">← {t("settings.title")}</a>
+  <a href="/settings" class="text-sm text-neutral-500 hover:text-neutral-900"
+    >← {t("settings.title")}</a
+  >
   <h1 class="mt-1 text-xl font-semibold text-neutral-900">{t("settings.account.title")}</h1>
   <p class="mt-1 text-sm text-neutral-500">{t("settings.account.subtitle")}</p>
 </div>
@@ -32,8 +34,8 @@
           <button
             class="rounded-lg border px-4 py-2 text-sm font-medium transition
               {data.currentLocale === loc
-                ? 'border-brand bg-brand text-white'
-                : 'border-neutral-300 text-neutral-700 hover:border-brand'}"
+              ? 'border-brand bg-brand text-white'
+              : 'border-neutral-300 text-neutral-700 hover:border-brand'}"
             aria-pressed={data.currentLocale === loc}
           >
             {localeLabel(loc)}
@@ -71,8 +73,12 @@
         <p class="mt-1 text-xs text-neutral-400">{t("settings.account.email_help")}</p>
       </div>
       <div>
-        <span class="mb-1 block text-sm font-medium text-neutral-700">{t("settings.account.role")}</span>
-        <span class="inline-block rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-600">
+        <span class="mb-1 block text-sm font-medium text-neutral-700"
+          >{t("settings.account.role")}</span
+        >
+        <span
+          class="inline-block rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-600"
+        >
           {t(`roles.${account?.role}`)}
         </span>
       </div>

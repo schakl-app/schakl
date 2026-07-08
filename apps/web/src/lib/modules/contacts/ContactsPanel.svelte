@@ -1,7 +1,18 @@
 <script lang="ts">
-  /** Company-detail panel: the contacts attached to this company, with quick-add (CLAUDE.md §6). */
+  /**
+   * Company-detail panel: the contact persons attached to this client (CLAUDE.md §6, docs/UX.md).
+   * A chip field ({@link LinkField}) attaches existing contacts by type-ahead — the primary one is
+   * brand-coloured — and typing an unknown name opens the *full* new-contact dialog (real fields +
+   * the tenant's custom fields), which creates the contact and attaches it in one step.
+   */
   import { enhance } from "$app/forms";
+  import { page } from "$app/state";
+
+  import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
+  import type { CustomFieldDefinition } from "$lib/core/customfields/types";
   import { t } from "$lib/core/i18n";
+  import LinkField from "$lib/core/ui/LinkField.svelte";
+  import Modal from "$lib/core/ui/Modal.svelte";
 
   let { data }: { companyId: string; data: Record<string, unknown> } = $props();
 
@@ -10,56 +21,114 @@
     first_name: string;
     last_name: string | null;
     email: string | null;
+    phone?: string | null;
     job_title: string | null;
+    is_primary?: boolean;
   }
-  const contacts = $derived((data.contacts ?? []) as PanelContact[]);
 
-  let showAdd = $state(false);
+  const contacts = $derived((data.contacts ?? []) as PanelContact[]);
+  const candidates = $derived((data.candidates ?? []) as PanelContact[]);
+  const definitions = $derived((data.definitions ?? []) as CustomFieldDefinition[]);
+  const locale = $derived((page.data.locale as string) ?? "nl");
+
+  const fullName = (c: PanelContact) => [c.first_name, c.last_name].filter(Boolean).join(" ");
+
+  const links = $derived(
+    contacts.map((c) => ({
+      id: c.id,
+      label: fullName(c),
+      hint: c.job_title ?? c.email ?? undefined,
+      is_primary: Boolean(c.is_primary),
+    })),
+  );
+  const pickItems = $derived(
+    candidates.map((c) => ({ value: c.id, label: fullName(c), hint: c.email ?? undefined })),
+  );
+
+  // --- quick-create dialog (opened by typing an unknown name) ------------------
+  let showCreate = $state(false);
+  let draftFirst = $state("");
+  let draftLast = $state("");
+
+  function openCreate(query: string) {
+    const parts = query.trim().split(/\s+/);
+    draftFirst = parts.shift() ?? "";
+    draftLast = parts.join(" ");
+    showCreate = true;
+  }
 
   const inputClass =
     "w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
 
-{#if contacts.length === 0}
-  <p class="text-sm text-neutral-500">{t("contacts.empty")}</p>
-{:else}
-  <ul class="divide-y divide-neutral-100">
-    {#each contacts as contact (contact.id)}
-      <li class="flex items-center justify-between py-2">
-        <a href="/contacts/{contact.id}" class="text-sm font-medium text-neutral-900 hover:text-brand">
-          {contact.first_name}
-          {contact.last_name ?? ""}
-        </a>
-        <span class="text-xs text-neutral-500">
-          {contact.job_title ?? contact.email ?? ""}
-        </span>
-      </li>
-    {/each}
-  </ul>
+{#if links.length === 0}
+  <p class="mb-3 text-sm text-neutral-500">{t("contacts.empty")}</p>
 {/if}
 
-{#if showAdd}
-  <form method="POST" action="?/addContact"
-    use:enhance={() => ({ update }) => { showAdd = false; void update(); }}
-    class="mt-3 space-y-2 rounded-lg border border-neutral-200 bg-neutral-50/50 p-3">
-    <div class="grid grid-cols-2 gap-2">
-      <input name="first_name" required placeholder={t("contacts.first_name")} class={inputClass} />
-      <input name="last_name" placeholder={t("contacts.last_name")} class={inputClass} />
-      <input name="email" type="email" placeholder={t("contacts.email")} class={inputClass} />
-      <input name="job_title" placeholder={t("contacts.job_title")} class={inputClass} />
-    </div>
-    <div class="flex gap-2">
-      <button class="rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white hover:opacity-90">
-        {t("common.save")}
-      </button>
-      <button type="button" class="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs"
-        onclick={() => (showAdd = false)}>{t("common.cancel")}</button>
-    </div>
-  </form>
-{:else}
-  <button type="button"
-    class="mt-3 rounded-lg border border-dashed border-neutral-300 px-3 py-1.5 text-xs text-neutral-500 hover:border-brand hover:text-brand"
-    onclick={() => (showAdd = true)}>
-    ＋ {t("contacts.new")}
-  </button>
-{/if}
+<LinkField
+  {links}
+  candidates={pickItems}
+  idField="contact_id"
+  linkAction="?/linkContact"
+  unlinkAction="?/unlinkContact"
+  primaryAction="?/setPrimaryContact"
+  id="company-contact-picker"
+  placeholder={t("contacts.add_person")}
+  chipHref={(cid) => `/contacts/${cid}`}
+  labels={{
+    primary: t("contacts.primary"),
+    makePrimary: t("contacts.make_primary"),
+    remove: t("contacts.unlink"),
+  }}
+  oncreate={openCreate}
+/>
+
+<Modal bind:open={showCreate} title={t("contacts.new")}>
+  {#key draftFirst + draftLast + String(showCreate)}
+    <form
+      method="POST"
+      action="?/createContact"
+      use:enhance={() => ({ update }) => {
+        showCreate = false;
+        void update();
+      }}
+      class="space-y-3"
+    >
+      <div class="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label for="qc-contact-first" class="mb-1 block text-sm font-medium text-neutral-700">{t("contacts.first_name")}</label>
+          <input id="qc-contact-first" name="first_name" value={draftFirst} required class={inputClass} />
+        </div>
+        <div>
+          <label for="qc-contact-last" class="mb-1 block text-sm font-medium text-neutral-700">{t("contacts.last_name")}</label>
+          <input id="qc-contact-last" name="last_name" value={draftLast} class={inputClass} />
+        </div>
+        <div>
+          <label for="qc-contact-email" class="mb-1 block text-sm font-medium text-neutral-700">{t("contacts.email")}</label>
+          <input id="qc-contact-email" name="email" type="email" class={inputClass} />
+        </div>
+        <div>
+          <label for="qc-contact-phone" class="mb-1 block text-sm font-medium text-neutral-700">{t("contacts.phone")}</label>
+          <input id="qc-contact-phone" name="phone" class={inputClass} />
+        </div>
+        <div class="sm:col-span-2">
+          <label for="qc-contact-job" class="mb-1 block text-sm font-medium text-neutral-700">{t("contacts.job_title")}</label>
+          <input id="qc-contact-job" name="job_title" class={inputClass} />
+        </div>
+      </div>
+      {#if definitions.length > 0}
+        <CustomFieldsForm {definitions} {locale} />
+      {:else}
+        <input type="hidden" name="custom" value={"{}"} />
+      {/if}
+      <div class="flex justify-end gap-2 pt-1">
+        <button type="button" class="rounded-lg border border-neutral-300 px-4 py-2 text-sm" onclick={() => (showCreate = false)}>
+          {t("common.cancel")}
+        </button>
+        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+          {t("common.create")}
+        </button>
+      </div>
+    </form>
+  {/key}
+</Modal>

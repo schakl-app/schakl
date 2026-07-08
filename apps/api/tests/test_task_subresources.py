@@ -187,6 +187,57 @@ async def test_comments_permissions_and_activity(client_for) -> None:
         assert "status_changed" in actions
 
 
+async def test_inline_edits_and_deletes_land_in_activity(client_for) -> None:
+    """Editing/deleting a comment and deleting a link/checklist/item is audited (UX.md)."""
+    t = await make_tenant("inline-activity")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        task = (await c.post("/api/v1/tasks", json={"title": "T"}, headers=headers)).json()
+        tid = task["id"]
+
+        comment = (
+            await c.post(f"/api/v1/tasks/{tid}/comments", json={"body": "Hi"}, headers=headers)
+        ).json()
+        await c.patch(
+            f"/api/v1/tasks/{tid}/comments/{comment['id']}", json={"body": "Hi!"}, headers=headers
+        )
+        await c.delete(f"/api/v1/tasks/{tid}/comments/{comment['id']}", headers=headers)
+
+        link = (
+            await c.post(
+                f"/api/v1/tasks/{tid}/links",
+                json={"url": "example.com", "title": "Brief"},
+                headers=headers,
+            )
+        ).json()
+        await c.delete(f"/api/v1/tasks/{tid}/links/{link['id']}", headers=headers)
+
+        checklist = (
+            await c.post(
+                f"/api/v1/tasks/{tid}/checklists", json={"title": "Launch"}, headers=headers
+            )
+        ).json()
+        base = f"/api/v1/tasks/{tid}/checklists/{checklist['id']}"
+        item = (await c.post(f"{base}/items", json={"title": "One"}, headers=headers)).json()
+        await c.delete(f"{base}/items/{item['id']}", headers=headers)
+        await c.delete(base, headers=headers)
+
+        detail = (await c.get(f"/api/v1/tasks/{tid}", headers=headers)).json()
+        actions = [a["action"] for a in detail["activities"]]
+        for expected in (
+            "comment_edited",
+            "comment_deleted",
+            "link_deleted",
+            "checklist_item_deleted",
+            "checklist_deleted",
+        ):
+            assert expected in actions, f"{expected} missing from activity feed"
+
+        # The delete entries carry the human-readable title/url for the feed text.
+        link_entry = next(a for a in detail["activities"] if a["action"] == "link_deleted")
+        assert link_entry["payload"]["title"] == "Brief"
+
+
 async def test_subresources_tenant_isolation(client_for) -> None:
     a = await make_tenant("sub-iso-a")
     b = await make_tenant("sub-iso-b")

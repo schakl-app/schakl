@@ -51,6 +51,14 @@ class Project(
         nullable=True,
         index=True,
     )
+    # Verantwoordelijke: defaults from the company on create, overridable; seeds new tasks'
+    # assignee. SET NULL so removing a member never orphans the project.
+    responsible_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(

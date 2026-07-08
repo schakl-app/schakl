@@ -65,52 +65,70 @@
     <input type="hidden" name="status" value={done ? "open" : "done"} />
     <button
       class="flex h-5 w-5 items-center justify-center rounded border text-xs
-        {done ? 'border-brand bg-brand text-white' : 'border-neutral-300 text-transparent hover:border-brand'}"
-      aria-label={t("tasks.toggle_done")}
-    >✓</button>
+        {done
+        ? 'border-brand bg-brand text-white'
+        : 'border-neutral-300 text-transparent hover:border-brand'}"
+      aria-label={t("tasks.toggle_done")}>✓</button
+    >
   </form>
 
   <div class="min-w-0 flex-1">
     <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5">
       <a
         href={`/tasks/${task.id}`}
-        class="truncate text-sm font-medium {done ? 'text-neutral-400 line-through' : 'text-neutral-900 hover:text-brand'}"
-      >{task.title}</a>
+        class="truncate text-sm font-medium {done
+          ? 'text-neutral-400 line-through'
+          : 'text-neutral-900 hover:text-brand'}">{task.title}</a
+      >
       {#each task.labels ?? [] as label (label.id)}
-        <span class="rounded-full px-2 py-0.5 text-[11px] font-medium {labelChipClass(label.color)}">{label.name}</span>
+        <span class="rounded-full px-2 py-0.5 text-[11px] font-medium {labelChipClass(label.color)}"
+          >{label.name}</span
+        >
       {/each}
       {#if task.status === "in_progress"}
-        <span class="rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand">{t("tasks.status.in_progress")}</span>
+        <span class="rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand"
+          >{t("tasks.status.in_progress")}</span
+        >
       {/if}
     </div>
   </div>
 
   {#if task.priority === "high" && !done}
-    <span class="shrink-0 text-[11px] font-semibold uppercase text-red-500">{t("tasks.priority.high")}</span>
+    <span class="shrink-0 text-[11px] font-semibold uppercase text-red-500"
+      >{t("tasks.priority.high")}</span
+    >
   {/if}
   {#if (task.checklist_total ?? 0) > 0}
     <span
       class="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium tabular-nums
-        {task.checklist_done === task.checklist_total ? 'bg-green-50 text-green-700' : 'bg-neutral-100 text-neutral-500'}"
-    >☑ {task.checklist_done}/{task.checklist_total}</span>
+        {task.checklist_done === task.checklist_total
+        ? 'bg-green-50 text-green-700'
+        : 'bg-neutral-100 text-neutral-500'}">☑ {task.checklist_done}/{task.checklist_total}</span
+    >
   {/if}
   {#if (task.comment_count ?? 0) > 0}
     <span class="shrink-0 text-[11px] tabular-nums text-neutral-400">💬 {task.comment_count}</span>
   {/if}
   {#if task.allocated_minutes}
-    <span class="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-neutral-500">
+    <span
+      class="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-neutral-500"
+    >
       ⏱ {formatMinutes(task.allocated_minutes)}
     </span>
   {/if}
   {#if task.due_date}
-    <span class="shrink-0 text-xs tabular-nums {overdue ? 'font-semibold text-red-600' : 'text-neutral-500'}">
+    <span
+      class="shrink-0 text-xs tabular-nums {overdue
+        ? 'font-semibold text-red-600'
+        : 'text-neutral-500'}"
+    >
       {fmtDayMonth(task.due_date)}
     </span>
   {/if}
   {#if assignee}
     <span
       class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand/10 text-[10px] font-semibold text-brand"
-      title={assignee.full_name || assignee.email}
-    >{initials(assignee)}</span>
+      title={assignee.full_name || assignee.email}>{initials(assignee)}</span
+    >
   {/if}
 </div>

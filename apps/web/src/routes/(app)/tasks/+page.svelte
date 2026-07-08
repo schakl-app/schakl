@@ -24,7 +24,8 @@
   const inProgress = $derived(data.tasks.filter((task) => task.status === "in_progress"));
   const done = $derived(data.tasks.filter((task) => task.status === "done"));
   const overdueCount = $derived(
-    data.tasks.filter((task) => task.status !== "done" && task.due_date && task.due_date < today).length,
+    data.tasks.filter((task) => task.status !== "done" && task.due_date && task.due_date < today)
+      .length,
   );
 
   const companyItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
@@ -70,12 +71,16 @@
     <p class="mt-1 text-sm text-neutral-500">
       {t("tasks.count", { count: data.total })}
       {#if overdueCount > 0}
-        · <span class="font-medium text-red-600">{t("tasks.overdue_count", { count: overdueCount })}</span>
+        · <span class="font-medium text-red-600"
+          >{t("tasks.overdue_count", { count: overdueCount })}</span
+        >
       {/if}
     </p>
   </div>
-  <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-    onclick={() => (showCreate = !showCreate)}>
+  <button
+    class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+    onclick={() => (showCreate = !showCreate)}
+  >
     {t("tasks.new")}
   </button>
 </div>
@@ -120,35 +125,53 @@
         ? 'bg-brand text-white'
         : 'border border-neutral-300 text-neutral-600 hover:border-brand hover:text-brand'}"
       onclick={() => setFilter("due", data.filters.due === option ? "" : option)}
-    >{t(`tasks.due.${option}`)}</button>
+      >{t(`tasks.due.${option}`)}</button
+    >
   {/each}
   {#each data.labels as label (label.id)}
     <button
       class="rounded-full px-3 py-1 text-xs font-medium
-        {data.filters.label_id === label.id ? 'ring-2 ring-brand ' : ''}{labelChipClass(label.color)}"
+        {data.filters.label_id === label.id ? 'ring-2 ring-brand ' : ''}{labelChipClass(
+        label.color,
+      )}"
       onclick={() => setFilter("label_id", data.filters.label_id === label.id ? "" : label.id)}
-    >{label.name}</button>
+      >{label.name}</button
+    >
   {/each}
   {#if hasFilters}
-    <a href="/tasks" class="text-xs text-neutral-500 underline hover:text-neutral-900">{t("tasks.filter.clear")}</a>
+    <a href="/tasks" class="text-xs text-neutral-500 underline hover:text-neutral-900"
+      >{t("tasks.filter.clear")}</a
+    >
   {/if}
 </div>
 
 {#if showCreate}
-  <form method="POST" action="?/create"
-    use:enhance={() => ({ update }) => { void update().then(() => (showCreate = false)); }}
-    class="mb-6 rounded-xl border border-neutral-200 bg-white p-4">
+  <form
+    method="POST"
+    action="?/create"
+    use:enhance={() =>
+      ({ update }) => {
+        void update().then(() => (showCreate = false));
+      }}
+    class="mb-6 rounded-xl border border-neutral-200 bg-white p-4"
+  >
     <div class="grid gap-3 sm:grid-cols-2">
       <div class="sm:col-span-2">
-        <label for="title" class="mb-1 block text-sm font-medium text-neutral-700">{t("tasks.field.title")}</label>
+        <label for="title" class="mb-1 block text-sm font-medium text-neutral-700"
+          >{t("tasks.field.title")}</label
+        >
         <input id="title" name="title" required class={inputClass} />
       </div>
       <div class="sm:col-span-2">
-        <label for="description" class="mb-1 block text-sm font-medium text-neutral-700">{t("tasks.field.description")}</label>
+        <label for="description" class="mb-1 block text-sm font-medium text-neutral-700"
+          >{t("tasks.field.description")}</label
+        >
         <textarea id="description" name="description" rows="2" class={inputClass}></textarea>
       </div>
       <div>
-        <label for="create-project" class="mb-1 block text-sm font-medium text-neutral-700">{t("tasks.field.project")}</label>
+        <label for="create-project" class="mb-1 block text-sm font-medium text-neutral-700"
+          >{t("tasks.field.project")}</label
+        >
         <Combobox
           items={createProjects.map((p) => ({ value: p.id, label: p.name }))}
           name="project_id"
@@ -158,16 +181,27 @@
         />
       </div>
       <div>
-        <label for="create-company" class="mb-1 block text-sm font-medium text-neutral-700">{t("tasks.field.company")}</label>
-        <Combobox items={companyItems} name="company_id" bind:value={fCompany} id="create-company" />
+        <label for="create-company" class="mb-1 block text-sm font-medium text-neutral-700"
+          >{t("tasks.field.company")}</label
+        >
+        <Combobox
+          items={companyItems}
+          name="company_id"
+          bind:value={fCompany}
+          id="create-company"
+        />
       </div>
       <div>
-        <label for="create-assignee" class="mb-1 block text-sm font-medium text-neutral-700">{t("tasks.field.assignee")}</label>
+        <label for="create-assignee" class="mb-1 block text-sm font-medium text-neutral-700"
+          >{t("tasks.field.assignee")}</label
+        >
         <Combobox items={memberItems} name="assignee_user_id" value={userId} id="create-assignee" />
       </div>
       <div class="grid grid-cols-2 gap-3">
         <div>
-          <label for="priority" class="mb-1 block text-sm font-medium text-neutral-700">{t("tasks.field.priority")}</label>
+          <label for="priority" class="mb-1 block text-sm font-medium text-neutral-700"
+            >{t("tasks.field.priority")}</label
+          >
           <select id="priority" name="priority" class={inputClass}>
             {#each priorities as p (p)}
               <option value={p} selected={p === "normal"}>{t(`tasks.priority.${p}`)}</option>
@@ -175,15 +209,23 @@
           </select>
         </div>
         <div>
-          <label for="due_date" class="mb-1 block text-sm font-medium text-neutral-700">{t("tasks.field.due_date")}</label>
+          <label for="due_date" class="mb-1 block text-sm font-medium text-neutral-700"
+            >{t("tasks.field.due_date")}</label
+          >
           <DateInput id="due_date" name="due_date" />
         </div>
       </div>
     </div>
     {#if form?.error}<p class="mt-2 text-sm text-red-600">{t(form.error)}</p>{/if}
     <div class="mt-4 flex gap-2">
-      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">{t("common.save")}</button>
-      <button type="button" class="rounded-lg border border-neutral-300 px-4 py-2 text-sm" onclick={() => (showCreate = false)}>{t("common.cancel")}</button>
+      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        >{t("common.save")}</button
+      >
+      <button
+        type="button"
+        class="rounded-lg border border-neutral-300 px-4 py-2 text-sm"
+        onclick={() => (showCreate = false)}>{t("common.cancel")}</button
+      >
     </div>
   </form>
 {/if}
@@ -198,7 +240,9 @@
     {#each [{ key: "open", rows: open }, { key: "in_progress", rows: inProgress }] as group (group.key)}
       {#if group.rows.length > 0}
         <section class="overflow-hidden rounded-xl border border-neutral-200 bg-white">
-          <h2 class="border-b border-neutral-100 bg-neutral-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+          <h2
+            class="border-b border-neutral-100 bg-neutral-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-neutral-500"
+          >
             {t(`tasks.group.${group.key}`)} · {group.rows.length}
           </h2>
           <div class="divide-y divide-neutral-100">

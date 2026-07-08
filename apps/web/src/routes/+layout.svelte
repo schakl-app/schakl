@@ -12,6 +12,6 @@
   <link rel="icon" href={data.theme.faviconUrl || "/favicon.svg"} />
 </svelte:head>
 
-<div style={style} class="min-h-screen">
+<div {style} class="min-h-screen">
   {@render children()}
 </div>

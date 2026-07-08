@@ -69,6 +69,36 @@ export const actions: Actions = {
     return { created: true };
   },
 
+  // Edit an existing definition. `key` and `data_type` are immutable (locked in the UI) — we
+  // only PATCH label/required/options/position, so stored values can never mismatch the type.
+  update: async (event) => {
+    const form = await event.request.formData();
+    const id = String(form.get("id") ?? "");
+    if (!id) return fail(400, { error: "errors.required" });
+    const data_type = String(form.get("data_type") ?? "text").trim();
+    const key = String(form.get("key") ?? "").trim();
+    const label_nl = String(form.get("label_nl") ?? "").trim();
+    const label_en = String(form.get("label_en") ?? "").trim();
+
+    const { error } = await apiFor(event).PATCH(
+      "/api/v1/custom-fields/definitions/{definition_id}",
+      {
+        params: { path: { definition_id: id } },
+        body: {
+          label_i18n: { nl: label_nl || key, en: label_en || label_nl || key },
+          required: form.get("required") === "on",
+          options_json: SELECT_TYPES.has(data_type) ? parseOptions(form.get("options")) : undefined,
+          position: Number(form.get("position") ?? 0) || 0,
+        },
+      },
+    );
+    if (error) {
+      const e = apiErrorKey(error);
+      return fail(400, { error: e.key, fields: e.fields });
+    }
+    return { updated: true };
+  },
+
   toggleActive: async (event) => {
     const form = await event.request.formData();
     const id = String(form.get("id") ?? "");
