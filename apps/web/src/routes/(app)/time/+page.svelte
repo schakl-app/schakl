@@ -595,6 +595,7 @@
       companies={data.companies}
       projects={data.projects}
       tasks={data.tasks}
+      leaveHours={data.leaveHours}
     />
   </div>
 {/if}

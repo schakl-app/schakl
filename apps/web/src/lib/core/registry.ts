@@ -46,11 +46,38 @@ export interface DashboardWidgetSpec {
   requiresManage?: boolean;
 }
 
+/** One entry on the shared calendar (`/calendar`), normalized across modules. */
+export interface CalendarEvent {
+  id: string;
+  /** Inclusive date-only ISO range (multi-day events span cells). */
+  start: string;
+  end: string;
+  title: string;
+  /** Token from the shared label palette (tasks/labels.ts). */
+  color: string;
+  href?: string;
+  /** Tentative events (e.g. pending leave) render muted with a "?" marker. */
+  tentative?: boolean;
+}
+
+export interface CalendarSourceSpec {
+  /** Unique source key, e.g. "leave.team". */
+  key: string;
+  module: string;
+  /** Server-side loader (runs in the calendar's +page.server.ts, API-only). */
+  load: (
+    api: ApiClient,
+    range: { from: string; to: string; locale: string },
+  ) => Promise<CalendarEvent[]>;
+}
+
 export interface WebModule {
   name: string;
   nav?: NavItem[];
   companyPanels?: CompanyPanelSpec[];
   dashboardWidgets?: DashboardWidgetSpec[];
+  /** Event feeds composed by the shared calendar — Google Calendar plugs in here later (P3). */
+  calendarSources?: CalendarSourceSpec[];
 }
 
 const _modules = new Map<string, WebModule>();
@@ -82,4 +109,8 @@ export function dashboardWidgetsFor(enabled: string[]): DashboardWidgetSpec[] {
   return enabledWebModules(enabled)
     .flatMap((m) => m.dashboardWidgets ?? [])
     .sort((a, b) => (a.position ?? 100) - (b.position ?? 100));
+}
+
+export function calendarSourcesFor(enabled: string[]): CalendarSourceSpec[] {
+  return enabledWebModules(enabled).flatMap((m) => m.calendarSources ?? []);
 }

@@ -26,22 +26,66 @@ function parseCustom(raw: FormDataEntryValue | null): Record<string, unknown> {
   }
 }
 
+function isoAddDays(iso: string, days: number): string {
+  const d = new Date(iso + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Own approved leave, spread evenly over each request's workdays → hours per weekday
+ * column. Rendered as a separate timesheet row so it's visible without ever counting as a
+ * time entry (CLAUDE.md §14).
+ */
+function leaveHoursForWeek(
+  items: { start_date: string; end_date: string; hours: number | string; status: string }[],
+  weekDays: string[],
+): number[] {
+  const hoursByDay = new Map<string, number>();
+  for (const item of items) {
+    if (item.status !== "approved") continue;
+    const workdays: string[] = [];
+    for (let d = item.start_date; d <= item.end_date; d = isoAddDays(d, 1)) {
+      const weekday = new Date(d + "T00:00:00Z").getUTCDay();
+      if (weekday !== 0 && weekday !== 6) workdays.push(d);
+    }
+    if (workdays.length === 0) continue;
+    const perDay = Number(item.hours) / workdays.length;
+    for (const d of workdays) hoursByDay.set(d, (hoursByDay.get(d) ?? 0) + perDay);
+  }
+  return weekDays.map((d) => hoursByDay.get(d) ?? 0);
+}
+
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const selectedDate = event.url.searchParams.get("date") || todayIso();
   const week_start = event.url.searchParams.get("week") || weekStartOf(selectedDate);
+  const leaveEnabled = event.locals.theme?.enabledModules?.includes("leave") ?? false;
 
   // Lookups (companies/projects/tasks/members) come from the /time layout load, which does
   // not rerun on day/week navigation — keep this load down to what actually changes.
-  const [timer, week, day, recent] = await Promise.all([
+  const [timer, week, day, recent, leave] = await Promise.all([
     api.GET("/api/v1/time/timer"),
     api.GET("/api/v1/time/timesheet", { params: { query: { week_start } } }),
     api.GET("/api/v1/time/day", { params: { query: { date: selectedDate } } }),
     // Most recent entry drives the smart defaults (last-used client/project).
     api.GET("/api/v1/time/entries", { params: { query: { limit: 1, offset: 0 } } }),
+    // Approved leave overlaps into the timesheet as its own row (§14, no double count).
+    leaveEnabled && event.locals.user
+      ? api.GET("/api/v1/leave/team", {
+          params: {
+            query: {
+              date_from: week_start,
+              date_to: isoAddDays(week_start, 6),
+              user_id: event.locals.user.id,
+            },
+          },
+        })
+      : Promise.resolve({ data: null }),
   ]);
 
   const lastEntry = recent.data?.items?.[0] ?? null;
+  const weekDays = week.data?.days ?? [];
   return {
     running: timer.data ?? null,
     week: week.data ?? null,
@@ -51,6 +95,7 @@ export const load: PageServerLoad = async (event) => {
     today: todayIso(),
     lastCompanyId: lastEntry?.company_id ?? "",
     lastProjectId: lastEntry?.project_id ?? "",
+    leaveHours: leave.data ? leaveHoursForWeek(leave.data, weekDays) : null,
   };
 };
 

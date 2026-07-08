@@ -40,10 +40,11 @@ _DOMAIN_TABLES = (
     "task_checklist_items, task_checklists, task_checklist_templates, task_links, "
     "task_label_links, task_labels, "
     "task_comments, task_activities, task_template_items, task_templates, "
+    "leave_requests, leave_entitlements, leave_profiles, leave_types, "
     "time_entries, tasks, projects, contacts, custom_field_definitions, "
     "dashboard_prefs, user_prefs, companies, memberships, org_settings, users, orgs"
 )
-_ENABLED_MODULES = ["companies", "contacts", "tasks", "projects", "time"]
+_ENABLED_MODULES = ["companies", "contacts", "tasks", "projects", "time", "leave"]
 
 
 @pytest.fixture(scope="session", autouse=True)

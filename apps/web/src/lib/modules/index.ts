@@ -7,3 +7,4 @@ import "./contacts";
 import "./tasks";
 import "./projects";
 import "./time";
+import "./leave";
