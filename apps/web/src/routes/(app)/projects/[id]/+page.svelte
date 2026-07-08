@@ -1,6 +1,9 @@
 <script lang="ts">
+  import { dndzone } from "svelte-dnd-action";
+
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
+  import TaskRow from "$lib/modules/tasks/TaskRow.svelte";
   import { hoursFromMinutes } from "$lib/modules/time/format";
 
   let { data, form } = $props();
@@ -12,6 +15,38 @@
   const project = $derived(data.project);
   const tasks = $derived(data.tasks);
   const doneCount = $derived(tasks.filter((t) => t.status === "done").length);
+
+  // Drag-to-reorder: local mirror of the task list for the dnd zone; a drop PATCHes the
+  // moved task's position to the fractional midpoint of its new neighbours.
+  type TaskItem = (typeof data.tasks)[number];
+  let dndItems = $state<TaskItem[]>([]);
+  $effect(() => {
+    dndItems = [...data.tasks];
+  });
+  let reorderForm: HTMLFormElement | undefined = $state();
+  let reorderId = $state("");
+  let reorderPosition = $state(0);
+
+  function handleDndConsider(e: CustomEvent<{ items: TaskItem[] }>) {
+    dndItems = e.detail.items;
+  }
+  function handleDndFinalize(e: CustomEvent<{ items: TaskItem[]; info: { id: string } }>) {
+    dndItems = e.detail.items;
+    const movedId = e.detail.info.id;
+    const index = dndItems.findIndex((item) => item.id === movedId);
+    if (index === -1) return;
+    const prev = dndItems[index - 1]?.position;
+    const next = dndItems[index + 1]?.position;
+    let position: number;
+    if (prev != null && next != null) position = (prev + next) / 2;
+    else if (prev != null) position = prev + 1024;
+    else if (next != null) position = next - 1024;
+    else return;
+    reorderId = movedId;
+    reorderPosition = position;
+    // Submit on the next tick so the hidden inputs carry the fresh values.
+    setTimeout(() => reorderForm?.requestSubmit(), 0);
+  }
   const companyName = $derived(
     project.company_id
       ? (data.companies.find((c) => c.id === project.company_id)?.name ?? "")
@@ -88,7 +123,7 @@
     </dl>
     <div class="mt-4 border-t border-neutral-100 pt-4">
       <div class="flex items-end justify-between text-sm">
-        <span class="text-neutral-500">{t("projects.logged")}</span>
+        <span class="text-neutral-500">{t(`projects.logged_period.${project.budget_period ?? "total"}`)}</span>
         <span class="font-medium text-neutral-900">
           {loggedHours} {t("projects.hours_unit")}{#if project.budget_hours != null}
             <span class="text-neutral-400"> / {project.budget_hours} {t("projects.hours_unit")}</span>
@@ -133,6 +168,16 @@
           <input id="budget_hours" name="budget_hours" type="number" min="0" step="0.5" value={project.budget_hours ?? ""} class={inputClass} />
         </div>
         <div>
+          <label for="budget_period" class="mb-1 block text-sm font-medium text-neutral-700">{t("projects.field.budget_period")}</label>
+          <select id="budget_period" name="budget_period" class={inputClass}>
+            {#each ["total", "monthly", "weekly", "daily"] as period (period)}
+              <option value={period} selected={(project.budget_period ?? "total") === period}>
+                {t(`projects.budget_period.${period}`)}
+              </option>
+            {/each}
+          </select>
+        </div>
+        <div>
           <label for="hourly_rate" class="mb-1 block text-sm font-medium text-neutral-700">{t("projects.field.hourly_rate")}</label>
           <input id="hourly_rate" name="hourly_rate" type="number" min="0" step="0.01" value={project.hourly_rate ?? ""} class={inputClass} />
         </div>
@@ -163,27 +208,24 @@
   {#if tasks.length === 0}
     <p class="text-sm text-neutral-500">{t("tasks.empty")}</p>
   {:else}
-    <ul class="divide-y divide-neutral-100">
-      {#each tasks as task (task.id)}
-        <li class="flex items-center gap-3 py-2">
-          <form method="POST" action="?/toggleTask" use:enhance>
-            <input type="hidden" name="id" value={task.id} />
-            <input type="hidden" name="status" value={task.status === "done" ? "open" : "done"} />
-            <button
-              class="flex h-5 w-5 items-center justify-center rounded border text-xs
-                {task.status === 'done' ? 'border-brand bg-brand text-white' : 'border-neutral-300 text-transparent'}"
-              aria-label={t("tasks.toggle_done")}
-            >✓</button>
-          </form>
-          <span class="flex-1 text-sm {task.status === 'done' ? 'text-neutral-400 line-through' : 'text-neutral-900'}">
-            {task.title}
-          </span>
-          <form method="POST" action="?/deleteTask" use:enhance>
-            <input type="hidden" name="id" value={task.id} />
-            <button class="text-xs text-neutral-400 hover:text-red-600">{t("common.delete")}</button>
-          </form>
-        </li>
+    <form method="POST" action="?/reorderTask" use:enhance bind:this={reorderForm} class="hidden">
+      <input type="hidden" name="id" value={reorderId} />
+      <input type="hidden" name="position" value={reorderPosition} />
+    </form>
+    <div
+      class="divide-y divide-neutral-100"
+      use:dndzone={{ items: dndItems, flipDurationMs: 150, dropTargetStyle: {} }}
+      onconsider={handleDndConsider}
+      onfinalize={handleDndFinalize}
+    >
+      {#each dndItems as task (task.id)}
+        <div class="flex items-center bg-white">
+          <span class="cursor-grab pl-1 text-neutral-300 hover:text-neutral-500" aria-hidden="true">⋮⋮</span>
+          <div class="flex-1">
+            <TaskRow {task} toggleAction="?/toggleTask" members={data.members} />
+          </div>
+        </div>
       {/each}
-    </ul>
+    </div>
   {/if}
 </section>

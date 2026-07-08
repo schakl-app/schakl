@@ -13,11 +13,18 @@ from fastapi import APIRouter, Depends, Query
 
 from app.core.tenancy import RequestContext, require_context
 from app.modules.time.schemas import (
+    BulkResult,
     DayView,
+    EntryApproval,
+    EntryInvoiced,
     LoggedSummary,
+    ProductivityRow,
+    ProductivityStats,
+    RevenueStats,
     TimeEntryCreate,
     TimeEntryRead,
     TimeEntryUpdate,
+    TimeReport,
     TimerStart,
     Timesheet,
     TimeSummary,
@@ -26,6 +33,85 @@ from app.modules.time.service import TimeService
 from app.schemas import Page
 
 router = APIRouter(prefix="/time", tags=["time"])
+
+
+# --- approval / invoicing overview (managers) -------------------------------- #
+@router.get("/report", response_model=TimeReport)
+async def time_report(
+    limit: int = Query(200, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    user_id: uuid.UUID | None = Query(None),
+    company_id: uuid.UUID | None = Query(None),
+    project_id: uuid.UUID | None = Query(None),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
+    billable: bool | None = Query(None),
+    approved: bool | None = Query(None),
+    invoiced: bool | None = Query(None),
+    ctx: RequestContext = Depends(require_context),
+) -> TimeReport:
+    """Org-wide entries with filter + sign-off totals, for the hours overview."""
+    items, total, totals = await TimeService(ctx).report(
+        limit=limit,
+        offset=offset,
+        user_id=user_id,
+        company_id=company_id,
+        project_id=project_id,
+        date_from=date_from,
+        date_to=date_to,
+        billable=billable,
+        approved=approved,
+        invoiced=invoiced,
+    )
+    return TimeReport(
+        items=[TimeEntryRead.model_validate(e) for e in items],
+        total=total,
+        limit=limit,
+        offset=offset,
+        totals=totals,  # type: ignore[arg-type]
+    )
+
+
+@router.get("/stats/productivity", response_model=ProductivityStats)
+async def productivity_stats(
+    date_from: date = Query(...),
+    date_to: date = Query(...),
+    ctx: RequestContext = Depends(require_context),
+) -> ProductivityStats:
+    """Per-employee hours/billable/approved aggregates (managers)."""
+    rows = await TimeService(ctx).productivity(date_from=date_from, date_to=date_to)
+    return ProductivityStats(
+        date_from=date_from,
+        date_to=date_to,
+        rows=[ProductivityRow.model_validate(r) for r in rows],
+    )
+
+
+@router.get("/stats/revenue", response_model=RevenueStats)
+async def revenue_stats(
+    year: int = Query(..., ge=2000, le=2100),
+    ctx: RequestContext = Depends(require_context),
+) -> RevenueStats:
+    """Monthly omzet for the selected + previous year and the top clients (managers)."""
+    return RevenueStats.model_validate(await TimeService(ctx).revenue(year=year))
+
+
+@router.post("/entries/approve", response_model=BulkResult)
+async def approve_entries(
+    payload: EntryApproval,
+    ctx: RequestContext = Depends(require_context),
+) -> BulkResult:
+    updated = await TimeService(ctx).set_approval(payload.entry_ids, payload.approved)
+    return BulkResult(updated=updated)
+
+
+@router.post("/entries/invoice", response_model=BulkResult)
+async def invoice_entries(
+    payload: EntryInvoiced,
+    ctx: RequestContext = Depends(require_context),
+) -> BulkResult:
+    updated = await TimeService(ctx).set_invoiced(payload.entry_ids, payload.invoiced)
+    return BulkResult(updated=updated)
 
 
 # --- timer ----------------------------------------------------------------- #
@@ -93,11 +179,18 @@ async def day_view(
 async def logged(
     company_id: uuid.UUID | None = Query(None),
     project_id: uuid.UUID | None = Query(None),
+    task_id: uuid.UUID | None = Query(None),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
     ctx: RequestContext = Depends(require_context),
 ) -> LoggedSummary:
-    """Team-wide logged minutes for a company/project (budget burn-down)."""
+    """Team-wide logged minutes for a company/project/task (budget burn-down)."""
     minutes, billable = await TimeService(ctx).logged(
-        company_id=company_id, project_id=project_id
+        company_id=company_id,
+        project_id=project_id,
+        task_id=task_id,
+        date_from=date_from,
+        date_to=date_to,
     )
     return LoggedSummary(minutes=minutes, billable_minutes=billable)
 

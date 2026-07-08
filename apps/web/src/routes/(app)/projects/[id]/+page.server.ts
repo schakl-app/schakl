@@ -21,10 +21,31 @@ export const load: PageServerLoad = async (event) => {
   });
   if (!project) throw error(404, { code: "not_found", message: "errors.not_found" });
 
-  const [tasks, companies, logged] = await Promise.all([
+  // Periodic budgets burn down against the current period only; "total" against all time.
+  const today = new Date().toISOString().slice(0, 10);
+  const monthStart = today.slice(0, 8) + "01";
+  const now = new Date(today + "T00:00:00Z");
+  now.setUTCDate(now.getUTCDate() - ((now.getUTCDay() + 6) % 7)); // Monday of this week
+  const weekStart = now.toISOString().slice(0, 10);
+  const periodStart =
+    project.budget_period === "monthly"
+      ? monthStart
+      : project.budget_period === "weekly"
+        ? weekStart
+        : project.budget_period === "daily"
+          ? today
+          : null;
+  const [tasks, companies, logged, members] = await Promise.all([
     api.GET("/api/v1/tasks", { params: { query: { project_id, limit: 200, offset: 0 } } }),
     api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0 } } }),
-    api.GET("/api/v1/time/logged", { params: { query: { project_id } } }),
+    api.GET("/api/v1/time/logged", {
+      params: {
+        query: periodStart
+          ? { project_id, date_from: periodStart, date_to: today }
+          : { project_id },
+      },
+    }),
+    api.GET("/api/v1/members/lookup"),
   ]);
 
   return {
@@ -32,6 +53,7 @@ export const load: PageServerLoad = async (event) => {
     tasks: tasks.data?.items ?? [],
     companies: companies.data?.items ?? [],
     logged: logged.data ?? { minutes: 0, billable_minutes: 0 },
+    members: members.data ?? [],
   };
 };
 
@@ -44,6 +66,7 @@ export const actions: Actions = {
         name: String(form.get("name") ?? "").trim() || undefined,
         status: String(form.get("status") ?? "active") as "active",
         billable_default: form.get("billable_default") === "on",
+        budget_period: String(form.get("budget_period") ?? "total") as "total",
         budget_hours: numberOrNull(form.get("budget_hours")),
         budget_amount: numberOrNull(form.get("budget_amount")),
         hourly_rate: numberOrNull(form.get("hourly_rate")),
@@ -69,6 +92,19 @@ export const actions: Actions = {
     });
     if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
     return { taskAdded: true };
+  },
+
+  reorderTask: async (event) => {
+    const form = await event.request.formData();
+    const id = String(form.get("id") ?? "");
+    const position = Number(form.get("position"));
+    if (id && Number.isFinite(position)) {
+      await apiFor(event).PATCH("/api/v1/tasks/{task_id}", {
+        params: { path: { task_id: id } },
+        body: { position },
+      });
+    }
+    return { taskReordered: true };
   },
 
   toggleTask: async (event) => {

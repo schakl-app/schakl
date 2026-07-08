@@ -21,10 +21,11 @@ async def list_projects(
     offset: int = Query(0, ge=0),
     company_id: uuid.UUID | None = Query(None),
     status: ProjectStatus | None = Query(None),
+    q: str | None = Query(None, max_length=200),
     ctx: RequestContext = Depends(require_context),
 ) -> Page[ProjectRead]:
     items, total = await ProjectService(ctx).list(
-        limit=limit, offset=offset, company_id=company_id, status=status
+        limit=limit, offset=offset, company_id=company_id, status=status, q=q
     )
     return Page(
         items=[ProjectRead.model_validate(p) for p in items],

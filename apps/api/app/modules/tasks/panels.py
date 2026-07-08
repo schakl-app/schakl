@@ -1,6 +1,7 @@
 """Tasks panel on the company detail view (CLAUDE.md §6, the modular hub).
 
-Lists the open/in-progress tasks attached to a company.
+The per-client task overview: open/in-progress tasks with label chips, checklist progress
+and comment counts, plus the open count for the header.
 """
 
 from __future__ import annotations
@@ -9,32 +10,26 @@ import uuid
 
 from app.core.tenancy import RequestContext
 from app.modules.tasks.models import Task, TaskStatus
+from app.modules.tasks.service import TaskService
 from app.registry import PanelSpec
 
 _OPEN_STATUSES = (TaskStatus.OPEN.value, TaskStatus.IN_PROGRESS.value)
 
 
 async def _tasks_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
-    repo = ctx.repo(Task)
+    service = TaskService(ctx)
     stmt = (
-        repo.scoped_select()
+        service.repo.scoped_select()
         .where(Task.company_id == company_id)
         .where(Task.status.in_(_OPEN_STATUSES))
-        .order_by(Task.due_date.asc().nulls_last(), Task.created_at.desc())
+        .order_by(Task.due_date.asc().nulls_last(), Task.position.asc())
         .limit(50)
     )
     tasks = (await ctx.session.execute(stmt)).scalars().all()
+    items = await service._list_items(tasks)
     return {
-        "tasks": [
-            {
-                "id": str(t.id),
-                "title": t.title,
-                "status": t.status,
-                "priority": t.priority,
-                "due_date": t.due_date.isoformat() if t.due_date else None,
-            }
-            for t in tasks
-        ]
+        "open_count": len(items),
+        "tasks": [item.model_dump(mode="json") for item in items],
     }
 
 

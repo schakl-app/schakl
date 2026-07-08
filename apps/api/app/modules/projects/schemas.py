@@ -19,6 +19,7 @@ class ProjectBase(BaseModel):
     description: str | None = None
     status: ProjectStatus = ProjectStatus.ACTIVE
     billable_default: bool = True
+    budget_period: str = Field(default="total", pattern="^(total|monthly|weekly|daily)$")
     budget_hours: float | None = Field(default=None, ge=0)
     budget_amount: float | None = Field(default=None, ge=0)
     hourly_rate: float | None = Field(default=None, ge=0)
@@ -39,6 +40,7 @@ class ProjectUpdate(BaseModel):
     description: str | None = None
     status: ProjectStatus | None = None
     billable_default: bool | None = None
+    budget_period: str | None = Field(default=None, pattern="^(total|monthly|weekly|daily)$")
     budget_hours: float | None = Field(default=None, ge=0)
     budget_amount: float | None = Field(default=None, ge=0)
     hourly_rate: float | None = Field(default=None, ge=0)

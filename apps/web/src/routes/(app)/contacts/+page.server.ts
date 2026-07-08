@@ -7,8 +7,9 @@ import type { Actions, PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
+  const q = event.url.searchParams.get("q") || undefined;
   const [contacts, definitions, companies] = await Promise.all([
-    api.GET("/api/v1/contacts", { params: { query: { limit: 100, offset: 0 } } }),
+    api.GET("/api/v1/contacts", { params: { query: { limit: 100, offset: 0, q } } }),
     api.GET("/api/v1/custom-fields/definitions", {
       params: { query: { entity_type: "contact" } },
     }),

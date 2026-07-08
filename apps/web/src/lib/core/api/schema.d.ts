@@ -270,6 +270,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/dashboard/prefs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Prefs
+         * @description The effective layout for the current user: own row → org template → none.
+         */
+        get: operations["get_prefs_api_v1_dashboard_prefs_get"];
+        /** Set Prefs */
+        put: operations["set_prefs_api_v1_dashboard_prefs_put"];
+        post?: never;
+        /**
+         * Reset Prefs
+         * @description Drop the personal layout; the user falls back to the org template.
+         */
+        delete: operations["reset_prefs_api_v1_dashboard_prefs_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dashboard/prefs/default": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Default Prefs
+         * @description The org-wide template (managers only).
+         */
+        put: operations["set_default_prefs_api_v1_dashboard_prefs_default_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/members": {
         parameters: {
             query?: never;
@@ -298,6 +343,26 @@ export interface paths {
         put?: never;
         /** Invite Member */
         post: operations["invite_member_api_v1_members_invite_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/members/lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lookup Members
+         * @description Name/email of every org member, for assignee pickers. Open to all staff roles.
+         */
+        get: operations["lookup_members_api_v1_members_lookup_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -376,7 +441,11 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Update Tenant Branding
+         * @description Update the org's white-label settings (managers only). Applied on next render.
+         */
+        patch: operations["update_tenant_branding_api_v1_meta_tenant_patch"];
         trace?: never;
     };
     "/api/v1/projects": {
@@ -434,6 +503,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tasks/checklist-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Checklist Templates */
+        get: operations["list_checklist_templates_api_v1_tasks_checklist_templates_get"];
+        put?: never;
+        /** Create Checklist Template */
+        post: operations["create_checklist_template_api_v1_tasks_checklist_templates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/checklist-templates/{template_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Checklist Template */
+        delete: operations["delete_checklist_template_api_v1_tasks_checklist_templates__template_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Checklist Template */
+        patch: operations["update_checklist_template_api_v1_tasks_checklist_templates__template_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/tasks/labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Labels */
+        get: operations["list_labels_api_v1_tasks_labels_get"];
+        put?: never;
+        /** Create Label */
+        post: operations["create_label_api_v1_tasks_labels_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/labels/{label_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Label */
+        delete: operations["delete_label_api_v1_tasks_labels__label_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Label */
+        patch: operations["update_label_api_v1_tasks_labels__label_id__patch"];
+        trace?: never;
+    };
     "/api/v1/tasks/mine": {
         parameters: {
             query?: never;
@@ -454,6 +595,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tasks/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Templates */
+        get: operations["list_templates_api_v1_tasks_templates_get"];
+        put?: never;
+        /** Create Template */
+        post: operations["create_template_api_v1_tasks_templates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/templates/{template_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Template */
+        get: operations["get_template_api_v1_tasks_templates__template_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Template */
+        delete: operations["delete_template_api_v1_tasks_templates__template_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Template */
+        patch: operations["update_template_api_v1_tasks_templates__template_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/tasks/templates/{template_id}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Template */
+        post: operations["apply_template_api_v1_tasks_templates__template_id__apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tasks/{task_id}": {
         parameters: {
             query?: never;
@@ -461,7 +656,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Task */
+        /**
+         * Get Task
+         * @description The full card: labels, checklists, comments and recent activity included.
+         */
         get: operations["get_task_api_v1_tasks__task_id__get"];
         put?: never;
         post?: never;
@@ -471,6 +669,162 @@ export interface paths {
         head?: never;
         /** Update Task */
         patch: operations["update_task_api_v1_tasks__task_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}/checklists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Checklist */
+        post: operations["add_checklist_api_v1_tasks__task_id__checklists_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}/checklists/{checklist_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Checklist */
+        delete: operations["delete_checklist_api_v1_tasks__task_id__checklists__checklist_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Checklist */
+        patch: operations["update_checklist_api_v1_tasks__task_id__checklists__checklist_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}/checklists/{checklist_id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Checklist Item */
+        post: operations["add_checklist_item_api_v1_tasks__task_id__checklists__checklist_id__items_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}/checklists/{checklist_id}/items/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Checklist Item */
+        delete: operations["delete_checklist_item_api_v1_tasks__task_id__checklists__checklist_id__items__item_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Checklist Item */
+        patch: operations["update_checklist_item_api_v1_tasks__task_id__checklists__checklist_id__items__item_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Comment */
+        post: operations["add_comment_api_v1_tasks__task_id__comments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}/comments/{comment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Comment */
+        delete: operations["delete_comment_api_v1_tasks__task_id__comments__comment_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Comment */
+        patch: operations["update_comment_api_v1_tasks__task_id__comments__comment_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}/labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Task Labels */
+        put: operations["set_task_labels_api_v1_tasks__task_id__labels_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Link */
+        post: operations["add_link_api_v1_tasks__task_id__links_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}/links/{link_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Link */
+        delete: operations["delete_link_api_v1_tasks__task_id__links__link_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/time/day": {
@@ -511,6 +865,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/time/entries/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Entries */
+        post: operations["approve_entries_api_v1_time_entries_approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/time/entries/invoice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Invoice Entries */
+        post: operations["invoice_entries_api_v1_time_entries_invoice_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/time/entries/{entry_id}": {
         parameters: {
             query?: never;
@@ -539,9 +927,69 @@ export interface paths {
         };
         /**
          * Logged
-         * @description Team-wide logged minutes for a company/project (budget burn-down).
+         * @description Team-wide logged minutes for a company/project/task (budget burn-down).
          */
         get: operations["logged_api_v1_time_logged_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/time/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Time Report
+         * @description Org-wide entries with filter + sign-off totals, for the hours overview.
+         */
+        get: operations["time_report_api_v1_time_report_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/time/stats/productivity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Productivity Stats
+         * @description Per-employee hours/billable/approved aggregates (managers).
+         */
+        get: operations["productivity_stats_api_v1_time_stats_productivity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/time/stats/revenue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Revenue Stats
+         * @description Monthly omzet for the selected + previous year and the top clients (managers).
+         */
+        get: operations["revenue_stats_api_v1_time_stats_revenue_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -693,6 +1141,29 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ActivityRead */
+        ActivityRead: {
+            /** Action */
+            action: string;
+            /** Actor Name */
+            actor_name?: string | null;
+            /** Actor User Id */
+            actor_user_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+        };
         /** Body_auth_cookie_login_api_v1_auth_login_post */
         Body_auth_cookie_login_api_v1_auth_login_post: {
             /** Client Id */
@@ -745,6 +1216,131 @@ export interface components {
             /** Token */
             token: string;
         };
+        /** BulkResult */
+        BulkResult: {
+            /** Updated */
+            updated: number;
+        };
+        /** ChecklistCreate */
+        ChecklistCreate: {
+            /** Template Id */
+            template_id?: string | null;
+            /** Title */
+            title?: string | null;
+        };
+        /** ChecklistItemCreate */
+        ChecklistItemCreate: {
+            /** Title */
+            title: string;
+        };
+        /** ChecklistItemRead */
+        ChecklistItemRead: {
+            /** Done */
+            done: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Position */
+            position: number;
+            /** Title */
+            title: string;
+        };
+        /** ChecklistItemUpdate */
+        ChecklistItemUpdate: {
+            /** Done */
+            done?: boolean | null;
+            /** Position */
+            position?: number | null;
+            /** Title */
+            title?: string | null;
+        };
+        /** ChecklistRead */
+        ChecklistRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Items */
+            items?: components["schemas"]["ChecklistItemRead"][];
+            /** Position */
+            position: number;
+            /** Title */
+            title: string;
+        };
+        /** ChecklistTemplateCreate */
+        ChecklistTemplateCreate: {
+            /** Items */
+            items?: string[];
+            /** Title */
+            title: string;
+        };
+        /** ChecklistTemplateRead */
+        ChecklistTemplateRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Items */
+            items?: string[];
+            /** Title */
+            title: string;
+        };
+        /** ChecklistTemplateUpdate */
+        ChecklistTemplateUpdate: {
+            /** Items */
+            items?: string[] | null;
+            /** Title */
+            title?: string | null;
+        };
+        /** ChecklistUpdate */
+        ChecklistUpdate: {
+            /** Position */
+            position?: number | null;
+            /** Title */
+            title?: string | null;
+        };
+        /** ClientRevenue */
+        ClientRevenue: {
+            /** Company Id */
+            company_id: string | null;
+            /** Revenue */
+            revenue: number;
+        };
+        /** CommentCreate */
+        CommentCreate: {
+            /** Body */
+            body: string;
+        };
+        /** CommentRead */
+        CommentRead: {
+            /** Author Name */
+            author_name?: string | null;
+            /** Author User Id */
+            author_user_id: string | null;
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Edited At */
+            edited_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
+        /** CommentUpdate */
+        CommentUpdate: {
+            /** Body */
+            body: string;
+        };
         /** CompanyCreate */
         CompanyCreate: {
             /** Custom */
@@ -755,6 +1351,8 @@ export interface components {
             name: string;
             /** Notes */
             notes?: string | null;
+            /** @default active */
+            status: components["schemas"]["CompanyStatus"];
             /** Website */
             website?: string | null;
         };
@@ -783,6 +1381,8 @@ export interface components {
              * Format: uuid
              */
             org_id: string;
+            /** @default active */
+            status: components["schemas"]["CompanyStatus"];
             /**
              * Updated At
              * Format: date-time
@@ -791,6 +1391,12 @@ export interface components {
             /** Website */
             website?: string | null;
         };
+        /**
+         * CompanyStatus
+         * @description Client lifecycle; status transitions drive task-template automation (§6 events).
+         * @enum {string}
+         */
+        CompanyStatus: "lead" | "onboarding" | "active" | "offboarding" | "archived";
         /** CompanyUpdate */
         CompanyUpdate: {
             /** Custom */
@@ -801,6 +1407,7 @@ export interface components {
             name?: string | null;
             /** Notes */
             notes?: string | null;
+            status?: components["schemas"]["CompanyStatus"] | null;
             /** Website */
             website?: string | null;
         };
@@ -1010,6 +1617,18 @@ export interface components {
          * @enum {string}
          */
         CustomFieldType: "text" | "long_text" | "number" | "boolean" | "date" | "datetime" | "select" | "multi_select" | "email" | "url" | "phone";
+        /** DashboardPrefs */
+        DashboardPrefs: {
+            /** Source */
+            source: string;
+            /** Widgets */
+            widgets: string[] | null;
+        };
+        /** DashboardPrefsUpdate */
+        DashboardPrefsUpdate: {
+            /** Widgets */
+            widgets: string[];
+        };
         /**
          * DayView
          * @description A single day's entries (the calendar day view) with totals.
@@ -1027,6 +1646,26 @@ export interface components {
             /** Total Minutes */
             total_minutes: number;
         };
+        /** EntryApproval */
+        EntryApproval: {
+            /**
+             * Approved
+             * @default true
+             */
+            approved: boolean;
+            /** Entry Ids */
+            entry_ids: string[];
+        };
+        /** EntryInvoiced */
+        EntryInvoiced: {
+            /** Entry Ids */
+            entry_ids: string[];
+            /**
+             * Invoiced
+             * @default true
+             */
+            invoiced: boolean;
+        };
         /** ErrorModel */
         ErrorModel: {
             /** Detail */
@@ -1038,6 +1677,63 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** LabelCreate */
+        LabelCreate: {
+            /** Color */
+            color: string;
+            /** Name */
+            name: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+        };
+        /** LabelRead */
+        LabelRead: {
+            /** Color */
+            color: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+        };
+        /** LabelUpdate */
+        LabelUpdate: {
+            /** Color */
+            color?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Position */
+            position?: number | null;
+        };
+        /** LinkCreate */
+        LinkCreate: {
+            /** Title */
+            title?: string | null;
+            /** Url */
+            url: string;
+        };
+        /** LinkRead */
+        LinkRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string | null;
+            /** Url */
+            url: string;
         };
         /**
          * LoggedSummary
@@ -1088,6 +1784,18 @@ export interface components {
             full_name?: string | null;
             /** @default member */
             role: components["schemas"]["Role"];
+        };
+        /**
+         * MemberLookup
+         * @description Minimal member identity for pickers (assignee, approver) — safe for any staff role.
+         */
+        MemberLookup: {
+            /** Email */
+            email: string;
+            /** Full Name */
+            full_name: string | null;
+            /** User Id */
+            user_id: string;
         };
         /** MemberRead */
         MemberRead: {
@@ -1158,10 +1866,10 @@ export interface components {
             /** Total */
             total: number;
         };
-        /** Page[TaskRead] */
-        Page_TaskRead_: {
+        /** Page[TaskListItem] */
+        Page_TaskListItem_: {
             /** Items */
-            items: components["schemas"]["TaskRead"][];
+            items: components["schemas"]["TaskListItem"][];
             /** Limit */
             limit: number;
             /** Offset */
@@ -1196,6 +1904,42 @@ export interface components {
             /** Title Key */
             title_key: string;
         };
+        /**
+         * ProductivityRow
+         * @description Per-employee aggregates for the productivity report.
+         */
+        ProductivityRow: {
+            /** Active Days */
+            active_days: number;
+            /** Approved Minutes */
+            approved_minutes: number;
+            /** Billable Minutes */
+            billable_minutes: number;
+            /** Entry Count */
+            entry_count: number;
+            /** Minutes */
+            minutes: number;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** ProductivityStats */
+        ProductivityStats: {
+            /**
+             * Date From
+             * Format: date
+             */
+            date_from: string;
+            /**
+             * Date To
+             * Format: date
+             */
+            date_to: string;
+            /** Rows */
+            rows: components["schemas"]["ProductivityRow"][];
+        };
         /** ProjectCreate */
         ProjectCreate: {
             /**
@@ -1207,6 +1951,11 @@ export interface components {
             budget_amount?: number | null;
             /** Budget Hours */
             budget_hours?: number | null;
+            /**
+             * Budget Period
+             * @default total
+             */
+            budget_period: string;
             /** Color */
             color?: string | null;
             /** Company Id */
@@ -1244,6 +1993,11 @@ export interface components {
             budget_amount?: number | null;
             /** Budget Hours */
             budget_hours?: number | null;
+            /**
+             * Budget Period
+             * @default total
+             */
+            budget_period: string;
             /** Color */
             color?: string | null;
             /** Company Id */
@@ -1303,6 +2057,8 @@ export interface components {
             budget_amount?: number | null;
             /** Budget Hours */
             budget_hours?: number | null;
+            /** Budget Period */
+            budget_period?: string | null;
             /** Color */
             color?: string | null;
             /** Company Id */
@@ -1325,6 +2081,68 @@ export interface components {
             start_date?: string | null;
             status?: components["schemas"]["ProjectStatus"] | null;
         };
+        /** Recurrence */
+        Recurrence: {
+            freq: components["schemas"]["RecurrenceFreq"];
+            /**
+             * Interval
+             * @default 1
+             */
+            interval: number;
+            /** @default after_completion */
+            mode: components["schemas"]["RecurrenceMode"];
+        };
+        /**
+         * RecurrenceFreq
+         * @enum {string}
+         */
+        RecurrenceFreq: "daily" | "weekly" | "monthly" | "quarterly" | "yearly";
+        /**
+         * RecurrenceMode
+         * @enum {string}
+         */
+        RecurrenceMode: "after_completion" | "schedule";
+        /**
+         * ReportTotals
+         * @description Aggregates over the full filtered report set (not just the returned page).
+         */
+        ReportTotals: {
+            /** Approved Minutes */
+            approved_minutes: number;
+            /** Billable Minutes */
+            billable_minutes: number;
+            /** Count */
+            count: number;
+            /** Invoiced Minutes */
+            invoiced_minutes: number;
+            /** Minutes */
+            minutes: number;
+            /** Open Minutes */
+            open_minutes: number;
+            /** To Invoice Minutes */
+            to_invoice_minutes: number;
+        };
+        /**
+         * RevenueStats
+         * @description Omzet = billable minutes × the project's hourly rate (entries without a rated
+         *     project contribute nothing — noted in the UI).
+         */
+        RevenueStats: {
+            /** Months Current */
+            months_current: number[];
+            /** Months Previous */
+            months_previous: number[];
+            /** Other Revenue */
+            other_revenue: number;
+            /** Top Clients */
+            top_clients: components["schemas"]["ClientRevenue"][];
+            /** Total Current */
+            total_current: number;
+            /** Total Previous */
+            total_previous: number;
+            /** Year */
+            year: number;
+        };
         /**
          * Role
          * @enum {string}
@@ -1332,6 +2150,8 @@ export interface components {
         Role: "owner" | "admin" | "member" | "client";
         /** TaskCreate */
         TaskCreate: {
+            /** Allocated Minutes */
+            allocated_minutes?: number | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
             /** Company Id */
@@ -1344,10 +2164,149 @@ export interface components {
             priority: components["schemas"]["TaskPriority"];
             /** Project Id */
             project_id?: string | null;
+            recurrence?: components["schemas"]["Recurrence"] | null;
             /** @default open */
             status: components["schemas"]["TaskStatus"];
             /** Title */
             title: string;
+        };
+        /**
+         * TaskDetail
+         * @description The full "card": everything the task detail page renders.
+         */
+        TaskDetail: {
+            /** Activities */
+            activities?: components["schemas"]["ActivityRead"][];
+            /** Allocated Minutes */
+            allocated_minutes?: number | null;
+            /** Assignee User Id */
+            assignee_user_id?: string | null;
+            /** Checklists */
+            checklists?: components["schemas"]["ChecklistRead"][];
+            /** Comments */
+            comments?: components["schemas"]["CommentRead"][];
+            /** Company Id */
+            company_id?: string | null;
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description?: string | null;
+            /** Due Date */
+            due_date?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Labels */
+            labels?: components["schemas"]["LabelRead"][];
+            /** Links */
+            links?: components["schemas"]["LinkRead"][];
+            /**
+             * Logged Minutes
+             * @default 0
+             */
+            logged_minutes: number;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /** Position */
+            position: number;
+            /** @default normal */
+            priority: components["schemas"]["TaskPriority"];
+            /** Project Id */
+            project_id?: string | null;
+            recurrence: components["schemas"]["Recurrence"] | null;
+            /** @default open */
+            status: components["schemas"]["TaskStatus"];
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * TaskLabelsSet
+         * @description PUT semantics: the task's label set becomes exactly these ids.
+         */
+        TaskLabelsSet: {
+            /** Label Ids */
+            label_ids: string[];
+        };
+        /**
+         * TaskListItem
+         * @description List-row shape: enough to render a card without loading the detail.
+         */
+        TaskListItem: {
+            /** Allocated Minutes */
+            allocated_minutes?: number | null;
+            /** Assignee User Id */
+            assignee_user_id?: string | null;
+            /**
+             * Checklist Done
+             * @default 0
+             */
+            checklist_done: number;
+            /**
+             * Checklist Total
+             * @default 0
+             */
+            checklist_total: number;
+            /**
+             * Comment Count
+             * @default 0
+             */
+            comment_count: number;
+            /** Company Id */
+            company_id?: string | null;
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description?: string | null;
+            /** Due Date */
+            due_date?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Labels */
+            labels?: components["schemas"]["LabelRead"][];
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /** Position */
+            position: number;
+            /** @default normal */
+            priority: components["schemas"]["TaskPriority"];
+            /** Project Id */
+            project_id?: string | null;
+            recurrence: components["schemas"]["Recurrence"] | null;
+            /** @default open */
+            status: components["schemas"]["TaskStatus"];
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /**
          * TaskPriority
@@ -1356,10 +2315,14 @@ export interface components {
         TaskPriority: "low" | "normal" | "high";
         /** TaskRead */
         TaskRead: {
+            /** Allocated Minutes */
+            allocated_minutes?: number | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
             /** Company Id */
             company_id?: string | null;
+            /** Completed At */
+            completed_at: string | null;
             /**
              * Created At
              * Format: date-time
@@ -1379,10 +2342,13 @@ export interface components {
              * Format: uuid
              */
             org_id: string;
+            /** Position */
+            position: number;
             /** @default normal */
             priority: components["schemas"]["TaskPriority"];
             /** Project Id */
             project_id?: string | null;
+            recurrence: components["schemas"]["Recurrence"] | null;
             /** @default open */
             status: components["schemas"]["TaskStatus"];
             /** Title */
@@ -1400,20 +2366,142 @@ export interface components {
         TaskStatus: "open" | "in_progress" | "done";
         /** TaskUpdate */
         TaskUpdate: {
+            /** Allocated Minutes */
+            allocated_minutes?: number | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
             /** Company Id */
             company_id?: string | null;
             /** Description */
             description?: string | null;
+            /** Due Change Reason */
+            due_change_reason?: string | null;
             /** Due Date */
             due_date?: string | null;
+            /** Position */
+            position?: number | null;
             priority?: components["schemas"]["TaskPriority"] | null;
             /** Project Id */
             project_id?: string | null;
+            recurrence?: components["schemas"]["Recurrence"] | null;
             status?: components["schemas"]["TaskStatus"] | null;
             /** Title */
             title?: string | null;
+        };
+        /** TemplateApply */
+        TemplateApply: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+        };
+        /** TemplateCreate */
+        TemplateCreate: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Items */
+            items?: components["schemas"]["TemplateItemBase"][];
+            /** Name */
+            name: string;
+            /** @default manual */
+            trigger: components["schemas"]["TemplateTrigger"];
+            /** Trigger Status */
+            trigger_status?: string | null;
+        };
+        /** TemplateItemBase */
+        TemplateItemBase: {
+            /** Allocated Minutes */
+            allocated_minutes?: number | null;
+            /** Assignee User Id */
+            assignee_user_id?: string | null;
+            /** Checklist Items */
+            checklist_items?: string[];
+            /** Checklist Title */
+            checklist_title?: string | null;
+            /** Description */
+            description?: string | null;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /** @default normal */
+            priority: components["schemas"]["TaskPriority"];
+            /** Relative Due Days */
+            relative_due_days?: number | null;
+            /** Title */
+            title: string;
+        };
+        /** TemplateItemRead */
+        TemplateItemRead: {
+            /** Allocated Minutes */
+            allocated_minutes?: number | null;
+            /** Assignee User Id */
+            assignee_user_id?: string | null;
+            /** Checklist Items */
+            checklist_items?: string[];
+            /** Checklist Title */
+            checklist_title?: string | null;
+            /** Description */
+            description?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /** @default normal */
+            priority: components["schemas"]["TaskPriority"];
+            /** Relative Due Days */
+            relative_due_days?: number | null;
+            /** Title */
+            title: string;
+        };
+        /** TemplateRead */
+        TemplateRead: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Items */
+            items?: components["schemas"]["TemplateItemRead"][];
+            /** Name */
+            name: string;
+            /** @default manual */
+            trigger: components["schemas"]["TemplateTrigger"];
+            /** Trigger Status */
+            trigger_status?: string | null;
+        };
+        /**
+         * TemplateTrigger
+         * @enum {string}
+         */
+        TemplateTrigger: "manual" | "company_status";
+        /** TemplateUpdate */
+        TemplateUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Items */
+            items?: components["schemas"]["TemplateItemBase"][] | null;
+            /** Name */
+            name?: string | null;
+            trigger?: components["schemas"]["TemplateTrigger"] | null;
+            /** Trigger Status */
+            trigger_status?: string | null;
         };
         /** TenantBranding */
         TenantBranding: {
@@ -1431,8 +2519,32 @@ export interface components {
             logo_url: string | null;
             /** Primary Color */
             primary_color: string;
+            /** Show Brand Name */
+            show_brand_name: boolean;
             /** Slug */
             slug: string;
+        };
+        /**
+         * TenantBrandingUpdate
+         * @description White-label settings a manager may change at runtime (CLAUDE.md §7).
+         */
+        TenantBrandingUpdate: {
+            /** Accent Color */
+            accent_color?: string | null;
+            /** Brand Name */
+            brand_name?: string | null;
+            /** Default Locale */
+            default_locale?: string | null;
+            /** Enabled Modules */
+            enabled_modules?: string[] | null;
+            /** Favicon Url */
+            favicon_url?: string | null;
+            /** Logo Url */
+            logo_url?: string | null;
+            /** Primary Color */
+            primary_color?: string | null;
+            /** Show Brand Name */
+            show_brand_name?: boolean | null;
         };
         /**
          * TimeEntryCreate
@@ -1472,6 +2584,10 @@ export interface components {
         };
         /** TimeEntryRead */
         TimeEntryRead: {
+            /** Approved At */
+            approved_at: string | null;
+            /** Approved By User Id */
+            approved_by_user_id: string | null;
             /**
              * Billable
              * @default true
@@ -1498,6 +2614,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Invoiced At */
+            invoiced_at: string | null;
             /** Is Running */
             is_running: boolean;
             /** Minutes */
@@ -1547,6 +2665,18 @@ export interface components {
             started_at?: string | null;
             /** Task Id */
             task_id?: string | null;
+        };
+        /** TimeReport */
+        TimeReport: {
+            /** Items */
+            items: components["schemas"]["TimeEntryRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+            totals: components["schemas"]["ReportTotals"];
         };
         /**
          * TimeSummary
@@ -1608,6 +2738,8 @@ export interface components {
             company_id: string | null;
             /** Minutes */
             minutes: number[];
+            /** Project Id */
+            project_id: string | null;
             /** Task Id */
             task_id: string | null;
             /** Total */
@@ -1987,6 +3119,7 @@ export interface operations {
             query?: {
                 limit?: number;
                 offset?: number;
+                q?: string | null;
             };
             header?: never;
             path?: never;
@@ -2179,6 +3312,7 @@ export interface operations {
                 limit?: number;
                 offset?: number;
                 company_id?: string | null;
+                q?: string | null;
             };
             header?: never;
             path?: never;
@@ -2483,6 +3617,110 @@ export interface operations {
             };
         };
     };
+    get_prefs_api_v1_dashboard_prefs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardPrefs"];
+                };
+            };
+        };
+    };
+    set_prefs_api_v1_dashboard_prefs_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DashboardPrefsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardPrefs"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_prefs_api_v1_dashboard_prefs_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    set_default_prefs_api_v1_dashboard_prefs_default_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DashboardPrefsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardPrefs"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_members_api_v1_members_get: {
         parameters: {
             query?: never;
@@ -2532,6 +3770,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    lookup_members_api_v1_members_lookup_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberLookup"][];
                 };
             };
         };
@@ -2693,6 +3951,39 @@ export interface operations {
             };
         };
     };
+    update_tenant_branding_api_v1_meta_tenant_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TenantBrandingUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantBranding"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_projects_api_v1_projects_get: {
         parameters: {
             query?: {
@@ -2700,6 +3991,7 @@ export interface operations {
                 offset?: number;
                 company_id?: string | null;
                 status?: components["schemas"]["ProjectStatus"] | null;
+                q?: string | null;
             };
             header?: never;
             path?: never;
@@ -2864,6 +4156,11 @@ export interface operations {
                 project_id?: string | null;
                 assignee_user_id?: string | null;
                 status?: components["schemas"]["TaskStatus"] | null;
+                label_id?: string | null;
+                due?: ("overdue" | "today" | "week") | null;
+                q?: string | null;
+                /** @description Include label/checklist/comment aggregates */
+                meta?: boolean;
             };
             header?: never;
             path?: never;
@@ -2877,7 +4174,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Page_TaskRead_"];
+                    "application/json": components["schemas"]["Page_TaskListItem_"];
                 };
             };
             /** @description Validation Error */
@@ -2924,6 +4221,240 @@ export interface operations {
             };
         };
     };
+    list_checklist_templates_api_v1_tasks_checklist_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChecklistTemplateRead"][];
+                };
+            };
+        };
+    };
+    create_checklist_template_api_v1_tasks_checklist_templates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChecklistTemplateCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChecklistTemplateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_checklist_template_api_v1_tasks_checklist_templates__template_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_checklist_template_api_v1_tasks_checklist_templates__template_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChecklistTemplateUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChecklistTemplateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_labels_api_v1_tasks_labels_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelRead"][];
+                };
+            };
+        };
+    };
+    create_label_api_v1_tasks_labels_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LabelCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_label_api_v1_tasks_labels__label_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                label_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_label_api_v1_tasks_labels__label_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                label_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LabelUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     my_open_tasks_api_v1_tasks_mine_get: {
         parameters: {
             query?: {
@@ -2937,6 +4468,189 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskListItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_templates_api_v1_tasks_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateRead"][];
+                };
+            };
+        };
+    };
+    create_template_api_v1_tasks_templates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemplateCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_template_api_v1_tasks_templates__template_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_template_api_v1_tasks_templates__template_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_template_api_v1_tasks_templates__template_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemplateUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_template_api_v1_tasks_templates__template_id__apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemplateApply"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2972,7 +4686,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TaskRead"];
+                    "application/json": components["schemas"]["TaskDetail"];
                 };
             };
             /** @description Validation Error */
@@ -3038,6 +4752,412 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["TaskRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_checklist_api_v1_tasks__task_id__checklists_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChecklistCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChecklistRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_checklist_api_v1_tasks__task_id__checklists__checklist_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                checklist_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_checklist_api_v1_tasks__task_id__checklists__checklist_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                checklist_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChecklistUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChecklistRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_checklist_item_api_v1_tasks__task_id__checklists__checklist_id__items_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                checklist_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChecklistItemCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChecklistItemRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_checklist_item_api_v1_tasks__task_id__checklists__checklist_id__items__item_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                checklist_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_checklist_item_api_v1_tasks__task_id__checklists__checklist_id__items__item_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                checklist_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChecklistItemUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChecklistItemRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_comment_api_v1_tasks__task_id__comments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_comment_api_v1_tasks__task_id__comments__comment_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                comment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_comment_api_v1_tasks__task_id__comments__comment_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                comment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommentUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_task_labels_api_v1_tasks__task_id__labels_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskLabelsSet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_link_api_v1_tasks__task_id__links_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_link_api_v1_tasks__task_id__links__link_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -3136,6 +5256,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TimeEntryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_entries_api_v1_time_entries_approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EntryApproval"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    invoice_entries_api_v1_time_entries_invoice_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EntryInvoiced"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkResult"];
                 };
             };
             /** @description Validation Error */
@@ -3249,6 +5435,9 @@ export interface operations {
             query?: {
                 company_id?: string | null;
                 project_id?: string | null;
+                task_id?: string | null;
+                date_from?: string | null;
+                date_to?: string | null;
             };
             header?: never;
             path?: never;
@@ -3263,6 +5452,109 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LoggedSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    time_report_api_v1_time_report_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                user_id?: string | null;
+                company_id?: string | null;
+                project_id?: string | null;
+                date_from?: string | null;
+                date_to?: string | null;
+                billable?: boolean | null;
+                approved?: boolean | null;
+                invoiced?: boolean | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    productivity_stats_api_v1_time_stats_productivity_get: {
+        parameters: {
+            query: {
+                date_from: string;
+                date_to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductivityStats"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revenue_stats_api_v1_time_stats_revenue_get: {
+        parameters: {
+            query: {
+                year: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevenueStats"];
                 };
             };
             /** @description Validation Error */

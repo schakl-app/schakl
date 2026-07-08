@@ -18,20 +18,30 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+function parseCustom(raw: FormDataEntryValue | null): Record<string, unknown> {
+  try {
+    return JSON.parse(String(raw ?? "{}")) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const selectedDate = event.url.searchParams.get("date") || todayIso();
   const week_start = event.url.searchParams.get("week") || weekStartOf(selectedDate);
 
-  const [timer, week, day, companies, projects, tasks] = await Promise.all([
+  // Lookups (companies/projects/tasks/members) come from the /time layout load, which does
+  // not rerun on day/week navigation — keep this load down to what actually changes.
+  const [timer, week, day, recent] = await Promise.all([
     api.GET("/api/v1/time/timer"),
     api.GET("/api/v1/time/timesheet", { params: { query: { week_start } } }),
     api.GET("/api/v1/time/day", { params: { query: { date: selectedDate } } }),
-    api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0 } } }),
-    api.GET("/api/v1/projects", { params: { query: { limit: 200, offset: 0 } } }),
-    api.GET("/api/v1/tasks", { params: { query: { limit: 200, offset: 0 } } }),
+    // Most recent entry drives the smart defaults (last-used client/project).
+    api.GET("/api/v1/time/entries", { params: { query: { limit: 1, offset: 0 } } }),
   ]);
 
+  const lastEntry = recent.data?.items?.[0] ?? null;
   return {
     running: timer.data ?? null,
     week: week.data ?? null,
@@ -39,9 +49,8 @@ export const load: PageServerLoad = async (event) => {
     selectedDate,
     week_start,
     today: todayIso(),
-    companies: companies.data?.items ?? [],
-    projects: projects.data?.items ?? [],
-    tasks: tasks.data?.items ?? [],
+    lastCompanyId: lastEntry?.company_id ?? "",
+    lastProjectId: lastEntry?.project_id ?? "",
   };
 };
 
@@ -88,6 +97,71 @@ export const actions: Actions = {
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { created: true };
+  },
+
+  updateEntry: async (event) => {
+    const form = await event.request.formData();
+    const id = String(form.get("id") ?? "");
+    const date = String(form.get("date") ?? "").trim();
+    const start = String(form.get("start") ?? "").trim();
+    const end = String(form.get("end") ?? "").trim();
+    if (!id || !date || !start || !end) return fail(400, { error: "errors.required" });
+
+    const { error } = await apiFor(event).PATCH("/api/v1/time/entries/{entry_id}", {
+      params: { path: { entry_id: id } },
+      body: {
+        started_at: `${date}T${start}:00Z`,
+        ended_at: `${date}T${end}:00Z`,
+        break_minutes: Number(form.get("break_minutes") ?? 0) || 0,
+        description: String(form.get("description") ?? "").trim() || null,
+        company_id: String(form.get("company_id") ?? "").trim() || null,
+        project_id: String(form.get("project_id") ?? "").trim() || null,
+        task_id: String(form.get("task_id") ?? "").trim() || null,
+        billable: form.get("billable") !== "false",
+      },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { updated: true };
+  },
+
+  // Quick-create from the entry form: log hours for a brand-new client/project without
+  // leaving the page. Custom fields are validated by the API against the tenant's
+  // definitions; write rights are enforced there too (clients get 403).
+  createCompany: async (event) => {
+    const form = await event.request.formData();
+    const name = String(form.get("name") ?? "").trim();
+    if (!name) return fail(400, { error: "errors.required" });
+    const { error } = await apiFor(event).POST("/api/v1/companies", {
+      body: {
+        name,
+        website: String(form.get("website") ?? "").trim() || null,
+        status: String(form.get("status") ?? "active") as "active",
+        custom: parseCustom(form.get("custom")),
+      },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { companyCreated: true };
+  },
+
+  createProject: async (event) => {
+    const form = await event.request.formData();
+    const name = String(form.get("name") ?? "").trim();
+    if (!name) return fail(400, { error: "errors.required" });
+    const rate = Number(String(form.get("hourly_rate") ?? "").trim());
+    const { error } = await apiFor(event).POST("/api/v1/projects", {
+      body: {
+        name,
+        company_id: String(form.get("company_id") ?? "").trim() || null,
+        status: "active",
+        budget_period: "total",
+        currency: "EUR",
+        billable_default: form.get("billable_default") === "on",
+        hourly_rate: Number.isFinite(rate) && rate > 0 ? rate : null,
+        custom: parseCustom(form.get("custom")),
+      },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { projectCreated: true };
   },
 
   deleteEntry: async (event) => {

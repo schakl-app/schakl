@@ -14,6 +14,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.config import settings
 from app.core.auth.router import build_auth_router
 from app.core.customfields.router import router as customfields_router
+from app.core.dashboard import router as dashboard_router
 from app.core.members import router as members_router
 from app.core.meta import router as meta_router
 from app.errors import register_error_handlers
@@ -47,6 +48,7 @@ def create_app() -> FastAPI:
     api.include_router(meta_router)
     api.include_router(members_router)
     api.include_router(customfields_router)
+    api.include_router(dashboard_router)
     for module in registry.enabled(settings.enabled_modules):
         if module.router is not None:
             api.include_router(module.router)

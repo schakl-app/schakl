@@ -29,15 +29,33 @@ class ProjectService:
         offset: int,
         company_id: uuid.UUID | None = None,
         status: ProjectStatus | None = None,
+        q: str | None = None,
     ) -> tuple[Sequence[Project], int]:
-        filters: dict = {}
+        from sqlalchemy import func, select
+
+        conditions = []
         if company_id is not None:
-            filters["company_id"] = company_id
+            conditions.append(Project.company_id == company_id)
         if status is not None:
-            filters["status"] = status.value
-        order = Project.name.asc()
-        items = await self.repo.list(limit=limit, offset=offset, order_by=order, **filters)
-        total = await self.repo.count(**filters)
+            conditions.append(Project.status == status.value)
+        if q:
+            conditions.append(Project.name.ilike(f"%{q.strip()}%"))
+        stmt = (
+            self.repo.scoped_select()
+            .where(*conditions)
+            .order_by(Project.name.asc())
+            .limit(limit)
+            .offset(offset)
+        )
+        items = (await self.ctx.session.execute(stmt)).scalars().all()
+        total = int(
+            await self.ctx.session.scalar(
+                select(func.count())
+                .select_from(Project)
+                .where(Project.org_id == self.ctx.org.id, *conditions)
+            )
+            or 0
+        )
         return items, total
 
     async def get(self, project_id: uuid.UUID) -> Project:

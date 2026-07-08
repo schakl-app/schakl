@@ -39,6 +39,14 @@ class MemberRead(BaseModel):
     is_self: bool
 
 
+class MemberLookup(BaseModel):
+    """Minimal member identity for pickers (assignee, approver) — safe for any staff role."""
+
+    user_id: str
+    full_name: str | None
+    email: str
+
+
 class MemberInvite(BaseModel):
     email: EmailStr
     full_name: str | None = None
@@ -84,6 +92,22 @@ async def list_members(ctx: RequestContext = Depends(require_context)) -> list[M
         )
     ).all()
     return [_member_read(ctx, m, u) for m, u in rows]
+
+
+@router.get("/lookup", response_model=list[MemberLookup])
+async def lookup_members(ctx: RequestContext = Depends(require_context)) -> list[MemberLookup]:
+    """Name/email of every org member, for assignee pickers. Open to all staff roles."""
+    rows = (
+        await ctx.session.execute(
+            select(User)
+            .join(Membership, Membership.user_id == User.id)
+            .where(Membership.org_id == ctx.org.id)
+            .order_by(User.full_name.asc().nulls_last(), User.email.asc())
+        )
+    ).scalars().all()
+    return [
+        MemberLookup(user_id=str(u.id), full_name=u.full_name, email=u.email) for u in rows
+    ]
 
 
 @router.post("/invite", response_model=MemberRead, status_code=201)

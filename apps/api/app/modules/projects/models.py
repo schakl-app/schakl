@@ -56,6 +56,10 @@ class Project(
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default=ProjectStatus.ACTIVE.value, index=True
     )
+    # "total": budget_hours covers the whole project; "monthly": it resets each month.
+    budget_period: Mapped[str] = mapped_column(
+        String(10), nullable=False, default="total", server_default="total"
+    )
     billable_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     budget_hours: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     budget_amount: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)

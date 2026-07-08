@@ -8,11 +8,14 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.modules.companies.models import CompanyStatus
+
 
 class CompanyBase(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     website: str | None = Field(default=None, max_length=512)
     notes: str | None = None
+    status: CompanyStatus = CompanyStatus.ACTIVE
     # Per-tenant custom values (validated against tenant definitions in P1).
     custom: dict[str, Any] = Field(default_factory=dict)
 
@@ -25,6 +28,7 @@ class CompanyUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     website: str | None = Field(default=None, max_length=512)
     notes: str | None = None
+    status: CompanyStatus | None = None
     custom: dict[str, Any] | None = None
 
 

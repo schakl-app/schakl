@@ -14,8 +14,9 @@ function numberOrNull(raw: FormDataEntryValue | null): number | null {
 
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
+  const q = event.url.searchParams.get("q") || undefined;
   const [projects, companies, definitions] = await Promise.all([
-    api.GET("/api/v1/projects", { params: { query: { limit: 200, offset: 0 } } }),
+    api.GET("/api/v1/projects", { params: { query: { limit: 200, offset: 0, q } } }),
     api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0 } } }),
     api.GET("/api/v1/custom-fields/definitions", {
       params: { query: { entity_type: "project" } },
@@ -51,6 +52,7 @@ export const actions: Actions = {
         description: String(form.get("description") ?? "").trim() || null,
         company_id: company_id || null,
         status: String(form.get("status") ?? "active") as "active",
+        budget_period: "total",
         currency: "EUR",
         billable_default: form.get("billable_default") === "on",
         budget_hours: numberOrNull(form.get("budget_hours")),

@@ -12,6 +12,9 @@ import uuid
 from collections.abc import Sequence
 from datetime import UTC, date, datetime, time, timedelta
 
+from sqlalchemy import func, select
+from sqlalchemy import text as sql_text
+
 from app.core.tenancy import RequestContext
 from app.errors import AppError
 from app.modules.time.models import TimeEntry
@@ -53,6 +56,11 @@ class TimeService:
             # Don't reveal another user's entry exists.
             raise AppError("not_found", "errors.not_found", status_code=404)
         return entry
+
+    def _ensure_not_locked(self, entry: TimeEntry) -> None:
+        """Approved hours are signed off; only managers may still change them."""
+        if entry.approved_at is not None and not self.ctx.role.can_manage:
+            raise AppError("approved_locked", "errors.approved_locked", status_code=403)
 
     # --- timer --------------------------------------------------------------- #
     async def running(self, user_id: uuid.UUID | None = None) -> TimeEntry | None:
@@ -122,6 +130,7 @@ class TimeService:
     async def update(self, entry_id: uuid.UUID, data: TimeEntryUpdate) -> TimeEntry:
         self.ctx.ensure_can_write()
         entry = await self._owned_or_404(entry_id)
+        self._ensure_not_locked(entry)
         values = data.model_dump(exclude_unset=True)
         entry = await self.repo.update(entry, **values)
         # Keep worked minutes / end consistent for stopped entries when time fields change.
@@ -157,13 +166,27 @@ class TimeService:
         *,
         company_id: uuid.UUID | None = None,
         project_id: uuid.UUID | None = None,
+        task_id: uuid.UUID | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
     ) -> tuple[int, int]:
-        """Team-wide logged minutes for a company/project (for budget burn-down)."""
+        """Team-wide logged minutes for a company/project/task (budget burn-down)."""
         stmt = self.repo.scoped_select().where(TimeEntry.ended_at.is_not(None))
         if company_id is not None:
             stmt = stmt.where(TimeEntry.company_id == company_id)
         if project_id is not None:
             stmt = stmt.where(TimeEntry.project_id == project_id)
+        if task_id is not None:
+            stmt = stmt.where(TimeEntry.task_id == task_id)
+        if date_from is not None:
+            stmt = stmt.where(
+                TimeEntry.started_at >= datetime.combine(date_from, time.min, tzinfo=UTC)
+            )
+        if date_to is not None:
+            stmt = stmt.where(
+                TimeEntry.started_at
+                < datetime.combine(date_to, time.min, tzinfo=UTC) + timedelta(days=1)
+            )
         entries = (await self.ctx.session.execute(stmt)).scalars().all()
         minutes = sum(e.minutes for e in entries)
         billable = sum(e.minutes for e in entries if e.billable)
@@ -172,6 +195,7 @@ class TimeService:
     async def delete(self, entry_id: uuid.UUID) -> None:
         self.ctx.ensure_can_write()
         entry = await self._owned_or_404(entry_id)
+        self._ensure_not_locked(entry)
         await self.repo.delete(entry)
 
     async def get(self, entry_id: uuid.UUID) -> TimeEntry:
@@ -195,6 +219,271 @@ class TimeService:
         )
         total = await self.repo.count(**filters)
         return items, total
+
+    # --- approval / invoicing (manager surface) -------------------------------- #
+    def _report_conditions(
+        self,
+        *,
+        user_id: uuid.UUID | None,
+        company_id: uuid.UUID | None,
+        project_id: uuid.UUID | None,
+        date_from: date | None,
+        date_to: date | None,
+        billable: bool | None,
+        approved: bool | None,
+        invoiced: bool | None,
+    ) -> list:
+        conditions = [TimeEntry.ended_at.is_not(None)]  # running timers aren't reviewable
+        if user_id is not None:
+            conditions.append(TimeEntry.user_id == user_id)
+        if company_id is not None:
+            conditions.append(TimeEntry.company_id == company_id)
+        if project_id is not None:
+            conditions.append(TimeEntry.project_id == project_id)
+        if date_from is not None:
+            conditions.append(
+                TimeEntry.started_at >= datetime.combine(date_from, time.min, tzinfo=UTC)
+            )
+        if date_to is not None:
+            conditions.append(
+                TimeEntry.started_at
+                < datetime.combine(date_to, time.min, tzinfo=UTC) + timedelta(days=1)
+            )
+        if billable is not None:
+            conditions.append(TimeEntry.billable.is_(billable))
+        if approved is not None:
+            conditions.append(
+                TimeEntry.approved_at.is_not(None) if approved else TimeEntry.approved_at.is_(None)
+            )
+        if invoiced is not None:
+            conditions.append(
+                TimeEntry.invoiced_at.is_not(None) if invoiced else TimeEntry.invoiced_at.is_(None)
+            )
+        return conditions
+
+    async def report(
+        self,
+        *,
+        limit: int,
+        offset: int,
+        user_id: uuid.UUID | None = None,
+        company_id: uuid.UUID | None = None,
+        project_id: uuid.UUID | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        billable: bool | None = None,
+        approved: bool | None = None,
+        invoiced: bool | None = None,
+    ) -> tuple[Sequence[TimeEntry], int, dict[str, int]]:
+        """Org-wide entries for the approval/invoicing overview. Managers only."""
+        self.ctx.ensure_can_manage()
+        conditions = self._report_conditions(
+            user_id=user_id,
+            company_id=company_id,
+            project_id=project_id,
+            date_from=date_from,
+            date_to=date_to,
+            billable=billable,
+            approved=approved,
+            invoiced=invoiced,
+        )
+        stmt = (
+            self.repo.scoped_select()
+            .where(*conditions)
+            .order_by(TimeEntry.started_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        items = (await self.ctx.session.execute(stmt)).scalars().all()
+
+        base = (
+            select(
+                func.count(),
+                func.coalesce(func.sum(TimeEntry.minutes), 0),
+                func.coalesce(
+                    func.sum(TimeEntry.minutes).filter(TimeEntry.billable.is_(True)), 0
+                ),
+                func.coalesce(
+                    func.sum(TimeEntry.minutes).filter(TimeEntry.approved_at.is_not(None)), 0
+                ),
+                func.coalesce(
+                    func.sum(TimeEntry.minutes).filter(TimeEntry.approved_at.is_(None)), 0
+                ),
+                func.coalesce(
+                    func.sum(TimeEntry.minutes).filter(
+                        TimeEntry.approved_at.is_not(None),
+                        TimeEntry.billable.is_(True),
+                        TimeEntry.invoiced_at.is_(None),
+                    ),
+                    0,
+                ),
+                func.coalesce(
+                    func.sum(TimeEntry.minutes).filter(TimeEntry.invoiced_at.is_not(None)), 0
+                ),
+            )
+            .select_from(TimeEntry)
+            .where(TimeEntry.org_id == self.ctx.org.id, *conditions)
+        )
+        row = (await self.ctx.session.execute(base)).one()
+        totals = {
+            "count": int(row[0]),
+            "minutes": int(row[1]),
+            "billable_minutes": int(row[2]),
+            "approved_minutes": int(row[3]),
+            "open_minutes": int(row[4]),
+            "to_invoice_minutes": int(row[5]),
+            "invoiced_minutes": int(row[6]),
+        }
+        return items, totals["count"], totals
+
+    # --- stats (manager surface) ------------------------------------------------ #
+    async def productivity(
+        self, *, date_from: date, date_to: date
+    ) -> list[dict[str, object]]:
+        """Per-employee totals for the productivity report. Managers only."""
+        self.ctx.ensure_can_manage()
+        start = datetime.combine(date_from, time.min, tzinfo=UTC)
+        end = datetime.combine(date_to, time.min, tzinfo=UTC) + timedelta(days=1)
+        stmt = (
+            select(
+                TimeEntry.user_id,
+                func.coalesce(func.sum(TimeEntry.minutes), 0),
+                func.coalesce(
+                    func.sum(TimeEntry.minutes).filter(TimeEntry.billable.is_(True)), 0
+                ),
+                func.coalesce(
+                    func.sum(TimeEntry.minutes).filter(TimeEntry.approved_at.is_not(None)), 0
+                ),
+                func.count(),
+                func.count(func.distinct(func.date(TimeEntry.started_at))),
+            )
+            .where(
+                TimeEntry.org_id == self.ctx.org.id,
+                TimeEntry.ended_at.is_not(None),
+                TimeEntry.started_at >= start,
+                TimeEntry.started_at < end,
+            )
+            .group_by(TimeEntry.user_id)
+        )
+        rows = (await self.ctx.session.execute(stmt)).all()
+        result = [
+            {
+                "user_id": r[0],
+                "minutes": int(r[1]),
+                "billable_minutes": int(r[2]),
+                "approved_minutes": int(r[3]),
+                "entry_count": int(r[4]),
+                "active_days": int(r[5]),
+            }
+            for r in rows
+        ]
+        result.sort(key=lambda r: r["minutes"], reverse=True)  # type: ignore[arg-type, return-value]
+        return result
+
+    async def revenue(self, *, year: int) -> dict[str, object]:
+        """Omzet per month (selected + previous year) and per client (selected year).
+
+        Joins ``projects`` by table name only (mirroring the FK convention — no import of
+        the projects module); both sides carry the explicit org filter and RLS backs it up.
+        """
+        self.ctx.ensure_can_manage()
+        params = {
+            "org_id": str(self.ctx.org.id),
+            "start": datetime(year - 1, 1, 1, tzinfo=UTC),
+            "end": datetime(year + 1, 1, 1, tzinfo=UTC),
+        }
+        month_rows = (
+            await self.ctx.session.execute(
+                sql_text(
+                    """
+                    SELECT CAST(date_part('year', te.started_at) AS int) AS y,
+                           CAST(date_part('month', te.started_at) AS int) AS m,
+                           COALESCE(SUM(te.minutes / 60.0 * p.hourly_rate), 0) AS revenue
+                    FROM time_entries te
+                    JOIN projects p ON p.id = te.project_id AND p.org_id = te.org_id
+                    WHERE te.org_id = :org_id
+                      AND te.billable AND te.ended_at IS NOT NULL
+                      AND p.hourly_rate IS NOT NULL
+                      AND te.started_at >= :start AND te.started_at < :end
+                    GROUP BY 1, 2
+                    """
+                ),
+                params,
+            )
+        ).all()
+        months_current = [0.0] * 12
+        months_previous = [0.0] * 12
+        for row_year, row_month, row_revenue in month_rows:
+            bucket = months_current if row_year == year else months_previous
+            bucket[row_month - 1] = round(float(row_revenue), 2)
+
+        client_rows = (
+            await self.ctx.session.execute(
+                sql_text(
+                    """
+                    SELECT te.company_id,
+                           COALESCE(SUM(te.minutes / 60.0 * p.hourly_rate), 0) AS revenue
+                    FROM time_entries te
+                    JOIN projects p ON p.id = te.project_id AND p.org_id = te.org_id
+                    WHERE te.org_id = :org_id
+                      AND te.billable AND te.ended_at IS NOT NULL
+                      AND p.hourly_rate IS NOT NULL
+                      AND te.started_at >= :year_start AND te.started_at < :year_end
+                    GROUP BY te.company_id
+                    ORDER BY revenue DESC
+                    """
+                ),
+                {
+                    "org_id": str(self.ctx.org.id),
+                    "year_start": datetime(year, 1, 1, tzinfo=UTC),
+                    "year_end": datetime(year + 1, 1, 1, tzinfo=UTC),
+                },
+            )
+        ).all()
+        top = [
+            {"company_id": r[0], "revenue": round(float(r[1]), 2)} for r in client_rows[:10]
+        ]
+        other = round(sum(float(r[1]) for r in client_rows[10:]), 2)
+
+        return {
+            "year": year,
+            "months_current": months_current,
+            "months_previous": months_previous,
+            "total_current": round(sum(months_current), 2),
+            "total_previous": round(sum(months_previous), 2),
+            "top_clients": top,
+            "other_revenue": other,
+        }
+
+    async def _entries_by_ids(self, entry_ids: list[uuid.UUID]) -> Sequence[TimeEntry]:
+        stmt = self.repo.scoped_select().where(
+            TimeEntry.id.in_(entry_ids), TimeEntry.ended_at.is_not(None)
+        )
+        return (await self.ctx.session.execute(stmt)).scalars().all()
+
+    async def set_approval(self, entry_ids: list[uuid.UUID], approved: bool) -> int:
+        """(Un)approve entries — the sign-off a manager gives before invoicing."""
+        self.ctx.ensure_can_manage()
+        entries = await self._entries_by_ids(entry_ids)
+        for entry in entries:
+            entry.approved_at = _now() if approved else None
+            entry.approved_by_user_id = self.ctx.user.id if approved else None
+            if not approved:
+                entry.invoiced_at = None  # unapproving also clears the invoiced mark
+        await self.ctx.session.flush()
+        return len(entries)
+
+    async def set_invoiced(self, entry_ids: list[uuid.UUID], invoiced: bool) -> int:
+        self.ctx.ensure_can_manage()
+        entries = await self._entries_by_ids(entry_ids)
+        for entry in entries:
+            entry.invoiced_at = _now() if invoiced else None
+            if invoiced and entry.approved_at is None:
+                # Invoicing implies sign-off: never invoiced-but-not-approved.
+                entry.approved_at = _now()
+                entry.approved_by_user_id = self.ctx.user.id
+        await self.ctx.session.flush()
+        return len(entries)
 
     async def _entries_between(
         self, uid: uuid.UUID, start: datetime, end: datetime
@@ -227,16 +516,20 @@ class TimeService:
         entries = await self._entries_between(uid, start, start + timedelta(days=7))
 
         days = [week_start + timedelta(days=i) for i in range(7)]
-        # rows keyed by (company_id, task_id)
-        rows: dict[tuple[uuid.UUID | None, uuid.UUID | None], list[int]] = {}
+        # rows keyed by (company_id, project_id, task_id)
+        rows: dict[
+            tuple[uuid.UUID | None, uuid.UUID | None, uuid.UUID | None], list[int]
+        ] = {}
         for e in entries:
             idx = (e.started_at.astimezone(UTC).date() - week_start).days
             if 0 <= idx < 7:
-                key = (e.company_id, e.task_id)
+                key = (e.company_id, e.project_id, e.task_id)
                 rows.setdefault(key, [0] * 7)[idx] += e.minutes
 
         row_models = [
-            TimesheetRow(company_id=k[0], task_id=k[1], minutes=v, total=sum(v))
+            TimesheetRow(
+                company_id=k[0], project_id=k[1], task_id=k[2], minutes=v, total=sum(v)
+            )
             for k, v in rows.items()
         ]
         day_totals = [sum(v[i] for v in rows.values()) for i in range(7)]

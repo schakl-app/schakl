@@ -120,3 +120,23 @@ async def test_meta_modules(client_for) -> None:
         assert "company" in data["customizable_entity_types"]
         assert data["default_locale"] == "nl"
         assert data["local_login_enabled"] is True
+
+
+async def test_company_status_default_and_roundtrip(client_for) -> None:
+    t = await make_tenant("status")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Status Co"}, headers=headers)
+        ).json()
+        assert company["status"] == "active"
+
+        patched = await c.patch(
+            f"/api/v1/companies/{company['id']}",
+            json={"status": "offboarding"},
+            headers=headers,
+        )
+        assert patched.json()["status"] == "offboarding"
+
+        fetched = await c.get(f"/api/v1/companies/{company['id']}", headers=headers)
+        assert fetched.json()["status"] == "offboarding"

@@ -114,3 +114,17 @@ async def test_members_are_tenant_isolated(client_for) -> None:
         b_list = await cb.get("/api/v1/members", headers=await auth_cookie(b.user))
         b_emails = {m["email"] for m in b_list.json()}
         assert "only-a@example.com" not in b_emails
+
+
+async def test_lookup_open_to_plain_members(client_for) -> None:
+    t = await make_tenant("mem-lookup", role="member")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        # Plain members may not list full memberships…
+        assert (await c.get("/api/v1/members", headers=headers)).status_code == 403
+        # …but can resolve names for assignee pickers.
+        r = await c.get("/api/v1/members/lookup", headers=headers)
+        assert r.status_code == 200
+        rows = r.json()
+        assert len(rows) == 1
+        assert set(rows[0].keys()) == {"user_id", "full_name", "email"}

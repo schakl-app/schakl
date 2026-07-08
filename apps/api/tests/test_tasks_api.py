@@ -74,6 +74,107 @@ async def test_tasks_panel_on_company(client_for) -> None:
         assert panels["tasks.company"]["data"]["tasks"][0]["title"] == "For company"
 
 
+async def test_position_assigned_and_reorder(client_for) -> None:
+    t = await make_tenant("task-order")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        first = (await c.post("/api/v1/tasks", json={"title": "First"}, headers=headers)).json()
+        second = (
+            await c.post("/api/v1/tasks", json={"title": "Second"}, headers=headers)
+        ).json()
+        assert second["position"] > first["position"]
+
+        # Fractional-midpoint reorder: move Second before First.
+        await c.patch(
+            f"/api/v1/tasks/{second['id']}",
+            json={"position": first["position"] - 1},
+            headers=headers,
+        )
+        listed = (await c.get("/api/v1/tasks", headers=headers)).json()["items"]
+        assert [row["title"] for row in listed] == ["Second", "First"]
+
+
+async def test_completed_at_set_and_cleared(client_for) -> None:
+    t = await make_tenant("task-completed")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        task = (await c.post("/api/v1/tasks", json={"title": "T"}, headers=headers)).json()
+        assert task["completed_at"] is None
+
+        done = (
+            await c.patch(
+                f"/api/v1/tasks/{task['id']}", json={"status": "done"}, headers=headers
+            )
+        ).json()
+        assert done["completed_at"] is not None
+
+        reopened = (
+            await c.patch(
+                f"/api/v1/tasks/{task['id']}", json={"status": "open"}, headers=headers
+            )
+        ).json()
+        assert reopened["completed_at"] is None
+
+
+async def test_due_filters(client_for) -> None:
+    from datetime import timedelta
+
+    from app.modules.tasks.recurrence import today_local
+
+    t = await make_tenant("task-due")
+    headers = await auth_cookie(t.user)
+    today = today_local()
+    async with client_for(t.host) as c:
+        await c.post(
+            "/api/v1/tasks",
+            json={"title": "Late", "due_date": (today - timedelta(days=2)).isoformat()},
+            headers=headers,
+        )
+        await c.post(
+            "/api/v1/tasks",
+            json={"title": "Today", "due_date": today.isoformat()},
+            headers=headers,
+        )
+        await c.post("/api/v1/tasks", json={"title": "Sometime"}, headers=headers)
+
+        overdue = (
+            await c.get("/api/v1/tasks", params={"due": "overdue"}, headers=headers)
+        ).json()
+        assert [row["title"] for row in overdue["items"]] == ["Late"]
+
+        due_today = (
+            await c.get("/api/v1/tasks", params={"due": "today"}, headers=headers)
+        ).json()
+        assert [row["title"] for row in due_today["items"]] == ["Today"]
+
+
+async def test_task_detail_shape(client_for) -> None:
+    t = await make_tenant("task-detail")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        task = (
+            await c.post(
+                "/api/v1/tasks",
+                json={"title": "Card", "description": "Body"},
+                headers=headers,
+            )
+        ).json()
+        await c.post(
+            f"/api/v1/tasks/{task['id']}/comments", json={"body": "Hello"}, headers=headers
+        )
+
+        detail = (await c.get(f"/api/v1/tasks/{task['id']}", headers=headers)).json()
+        assert detail["description"] == "Body"
+        assert detail["labels"] == []
+        assert detail["checklists"] == []
+        assert [comment["body"] for comment in detail["comments"]] == ["Hello"]
+        assert {a["action"] for a in detail["activities"]} >= {"created", "commented"}
+
+        # List rows carry the comment count aggregate.
+        listed = (await c.get("/api/v1/tasks", headers=headers)).json()["items"]
+        assert listed[0]["comment_count"] == 1
+
+
 async def test_tasks_tenant_isolation(client_for) -> None:
     a = await make_tenant("task-iso-a")
     b = await make_tenant("task-iso-b")

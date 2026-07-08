@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import ForeignKey, String, UniqueConstraint
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy import Boolean, ForeignKey, Index, String, UniqueConstraint, text
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -51,6 +51,10 @@ class OrgSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     __table_args__ = (UniqueConstraint("org_id"),)
 
     brand_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Hide the brand name text next to the logo (for logos that already contain the name).
+    show_brand_name: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
     logo_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     favicon_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     primary_color: Mapped[str] = mapped_column(String(32), nullable=False, default="#4f46e5")
@@ -63,4 +67,34 @@ class OrgSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     )
     enabled_modules: Mapped[list[str]] = mapped_column(
         ARRAY(String), nullable=False, default=list
+    )
+
+
+class DashboardPref(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """My Day layout: which widgets, in which order (CLAUDE.md §10 dashboard).
+
+    One row per user, plus at most one row with ``user_id IS NULL`` — the org's default
+    template that managers curate. A user without their own row inherits the template.
+    """
+
+    __tablename__ = "dashboard_prefs"
+    __table_args__ = (
+        UniqueConstraint("org_id", "user_id"),
+        # Postgres treats NULLs as distinct, so the template row needs its own partial guard.
+        Index(
+            "uq_dashboard_prefs_org_default",
+            "org_id",
+            unique=True,
+            postgresql_where=text("user_id IS NULL"),
+        ),
+    )
+
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    # Ordered widget keys (e.g. ["time.today", "tasks.my_open"]); unknown keys are ignored.
+    widgets: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
     )

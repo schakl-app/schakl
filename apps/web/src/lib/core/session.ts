@@ -38,6 +38,7 @@ export async function fetchTenant(event: ApiEvent): Promise<OrgTheme> {
   if (!data) return DEFAULT_THEME;
   return {
     brandName: data.brand_name,
+    showBrandName: data.show_brand_name,
     logoUrl: data.logo_url,
     faviconUrl: data.favicon_url,
     primaryColor: data.primary_color,

@@ -36,5 +36,30 @@
       <h3 class="text-sm font-semibold text-neutral-900">{t("settings.custom_fields.title")}</h3>
       <p class="mt-1 text-sm text-neutral-500">{t("settings.custom_fields.subtitle")}</p>
     </a>
+    <a href="/settings/branding"
+      class="rounded-xl border border-neutral-200 bg-white p-5 hover:border-brand">
+      <h3 class="text-sm font-semibold text-neutral-900">{t("settings.branding.title")}</h3>
+      <p class="mt-1 text-sm text-neutral-500">{t("settings.branding.subtitle")}</p>
+    </a>
+    <a href="/settings/modules"
+      class="rounded-xl border border-neutral-200 bg-white p-5 hover:border-brand">
+      <h3 class="text-sm font-semibold text-neutral-900">{t("settings.modules.title")}</h3>
+      <p class="mt-1 text-sm text-neutral-500">{t("settings.modules.subtitle")}</p>
+    </a>
+    <a href="/settings/dashboard"
+      class="rounded-xl border border-neutral-200 bg-white p-5 hover:border-brand">
+      <h3 class="text-sm font-semibold text-neutral-900">{t("settings.dashboard.title")}</h3>
+      <p class="mt-1 text-sm text-neutral-500">{t("settings.dashboard.subtitle")}</p>
+    </a>
+    <a href="/tasks/templates"
+      class="rounded-xl border border-neutral-200 bg-white p-5 hover:border-brand">
+      <h3 class="text-sm font-semibold text-neutral-900">{t("settings.task_templates.title")}</h3>
+      <p class="mt-1 text-sm text-neutral-500">{t("settings.task_templates.subtitle")}</p>
+    </a>
+    <a href="/settings/task-labels"
+      class="rounded-xl border border-neutral-200 bg-white p-5 hover:border-brand">
+      <h3 class="text-sm font-semibold text-neutral-900">{t("settings.task_labels.title")}</h3>
+      <p class="mt-1 text-sm text-neutral-500">{t("settings.task_labels.subtitle")}</p>
+    </a>
   </div>
 </section>

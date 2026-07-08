@@ -201,3 +201,49 @@ async def test_time_tenant_isolation(client_for) -> None:
         assert (
             await cb.get(f"/api/v1/time/entries/{a_entry_id}", headers=b_headers)
         ).status_code == 404
+
+
+async def test_timesheet_rows_keyed_by_company_project_task(client_for) -> None:
+    t = await make_tenant("time-projrows")
+    headers = await auth_cookie(t.user)
+    now = datetime.now(UTC)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Rows Co"}, headers=headers)
+        ).json()
+        p1 = (
+            await c.post(
+                "/api/v1/projects",
+                json={"name": "Site", "company_id": company["id"]},
+                headers=headers,
+            )
+        ).json()
+        p2 = (
+            await c.post(
+                "/api/v1/projects",
+                json={"name": "Ads", "company_id": company["id"]},
+                headers=headers,
+            )
+        ).json()
+        for project_id, minutes in ((p1["id"], 30), (p2["id"], 60)):
+            await c.post(
+                "/api/v1/time/entries",
+                json={
+                    "started_at": now.isoformat(),
+                    "minutes": minutes,
+                    "company_id": company["id"],
+                    "project_id": project_id,
+                },
+                headers=headers,
+            )
+        sheet = (
+            await c.get(
+                "/api/v1/time/timesheet",
+                params={"week_start": now.date().isoformat()},
+                headers=headers,
+            )
+        ).json()
+        # Same company, two projects → two rows carrying project_id.
+        assert len(sheet["rows"]) == 2
+        assert {row["project_id"] for row in sheet["rows"]} == {p1["id"], p2["id"]}
+        assert sheet["total"] == 90

@@ -1,29 +1,137 @@
 <script lang="ts">
   import { enhance } from "$app/forms";
+  import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import Combobox from "$lib/core/ui/Combobox.svelte";
+  import DateInput from "$lib/core/ui/DateInput.svelte";
+  import SearchInput from "$lib/core/ui/SearchInput.svelte";
+  import { labelChipClass } from "$lib/modules/tasks/labels";
+  import TaskRow from "$lib/modules/tasks/TaskRow.svelte";
+  import TasksNav from "$lib/modules/tasks/TasksNav.svelte";
 
   let { data, form } = $props();
 
   let showCreate = $state(false);
+  let showDone = $state(false);
   const userId = $derived(page.data.user?.id ?? "");
 
   const priorities = ["low", "normal", "high"] as const;
+  const dueOptions = ["overdue", "today", "week"] as const;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const open = $derived(data.tasks.filter((task) => task.status === "open"));
+  const inProgress = $derived(data.tasks.filter((task) => task.status === "in_progress"));
+  const done = $derived(data.tasks.filter((task) => task.status === "done"));
+  const overdueCount = $derived(
+    data.tasks.filter((task) => task.status !== "done" && task.due_date && task.due_date < today).length,
+  );
+
+  const companyItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
+  const projectItems = $derived(data.projects.map((p) => ({ value: p.id, label: p.name })));
+  const memberItems = $derived(
+    data.members.map((m) => ({ value: m.user_id, label: m.full_name || m.email })),
+  );
+
+  // Create-form state: the project pick narrows to that project's client automatically.
+  let fCompany = $state("");
+  let fProject = $state("");
+  const createProjects = $derived(
+    fCompany
+      ? data.projects.filter((p) => p.company_id === fCompany || !p.company_id)
+      : data.projects,
+  );
+  function onProjectPicked(projectId: string) {
+    const project = data.projects.find((p) => p.id === projectId);
+    if (project?.company_id) fCompany = project.company_id;
+  }
+
+  function setFilter(key: string, value: string) {
+    const url = new URL(page.url);
+    if (value) url.searchParams.set(key, value);
+    else url.searchParams.delete(key);
+    void goto(url, { keepFocus: true, noScroll: true });
+  }
+  const hasFilters = $derived(Object.values(data.filters).some(Boolean));
+
+  const inputClass =
+    "w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
 
 <svelte:head>
   <title>{t("tasks.title")}</title>
 </svelte:head>
 
+<TasksNav />
+
 <div class="mb-6 flex items-center justify-between">
   <div>
     <h1 class="text-xl font-semibold text-neutral-900">{t("tasks.title")}</h1>
-    <p class="mt-1 text-sm text-neutral-500">{t("tasks.count", { count: data.total })}</p>
+    <p class="mt-1 text-sm text-neutral-500">
+      {t("tasks.count", { count: data.total })}
+      {#if overdueCount > 0}
+        · <span class="font-medium text-red-600">{t("tasks.overdue_count", { count: overdueCount })}</span>
+      {/if}
+    </p>
   </div>
   <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
     onclick={() => (showCreate = !showCreate)}>
     {t("tasks.new")}
   </button>
+</div>
+
+<!-- Filter bar -->
+<div class="mb-4 flex flex-wrap items-center gap-2">
+  <SearchInput placeholder={t("tasks.search_placeholder")} />
+  <div class="w-44">
+    <Combobox
+      items={companyItems}
+      name="_filter_company"
+      value={data.filters.company_id ?? ""}
+      placeholder={t("tasks.field.company")}
+      onselect={(v) => setFilter("company_id", v)}
+      id="filter-company"
+    />
+  </div>
+  <div class="w-44">
+    <Combobox
+      items={projectItems}
+      name="_filter_project"
+      value={data.filters.project_id ?? ""}
+      placeholder={t("tasks.field.project")}
+      onselect={(v) => setFilter("project_id", v)}
+      id="filter-project"
+    />
+  </div>
+  <div class="w-44">
+    <Combobox
+      items={memberItems}
+      name="_filter_assignee"
+      value={data.filters.assignee_user_id ?? ""}
+      placeholder={t("tasks.field.assignee")}
+      onselect={(v) => setFilter("assignee_user_id", v)}
+      id="filter-assignee"
+    />
+  </div>
+  {#each dueOptions as option (option)}
+    <button
+      class="rounded-full px-3 py-1 text-xs font-medium
+        {data.filters.due === option
+        ? 'bg-brand text-white'
+        : 'border border-neutral-300 text-neutral-600 hover:border-brand hover:text-brand'}"
+      onclick={() => setFilter("due", data.filters.due === option ? "" : option)}
+    >{t(`tasks.due.${option}`)}</button>
+  {/each}
+  {#each data.labels as label (label.id)}
+    <button
+      class="rounded-full px-3 py-1 text-xs font-medium
+        {data.filters.label_id === label.id ? 'ring-2 ring-brand ' : ''}{labelChipClass(label.color)}"
+      onclick={() => setFilter("label_id", data.filters.label_id === label.id ? "" : label.id)}
+    >{label.name}</button>
+  {/each}
+  {#if hasFilters}
+    <a href="/tasks" class="text-xs text-neutral-500 underline hover:text-neutral-900">{t("tasks.filter.clear")}</a>
+  {/if}
 </div>
 
 {#if showCreate}
@@ -33,36 +141,43 @@
     <div class="grid gap-3 sm:grid-cols-2">
       <div class="sm:col-span-2">
         <label for="title" class="mb-1 block text-sm font-medium text-neutral-700">{t("tasks.field.title")}</label>
-        <input id="title" name="title" required
-          class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand" />
+        <input id="title" name="title" required class={inputClass} />
+      </div>
+      <div class="sm:col-span-2">
+        <label for="description" class="mb-1 block text-sm font-medium text-neutral-700">{t("tasks.field.description")}</label>
+        <textarea id="description" name="description" rows="2" class={inputClass}></textarea>
       </div>
       <div>
-        <label for="priority" class="mb-1 block text-sm font-medium text-neutral-700">{t("tasks.field.priority")}</label>
-        <select id="priority" name="priority" class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm">
-          {#each priorities as p (p)}
-            <option value={p} selected={p === "normal"}>{t(`tasks.priority.${p}`)}</option>
-          {/each}
-        </select>
+        <label for="create-project" class="mb-1 block text-sm font-medium text-neutral-700">{t("tasks.field.project")}</label>
+        <Combobox
+          items={createProjects.map((p) => ({ value: p.id, label: p.name }))}
+          name="project_id"
+          bind:value={fProject}
+          id="create-project"
+          onselect={onProjectPicked}
+        />
       </div>
       <div>
-        <label for="due_date" class="mb-1 block text-sm font-medium text-neutral-700">{t("tasks.field.due_date")}</label>
-        <input id="due_date" name="due_date" type="date"
-          class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm" />
+        <label for="create-company" class="mb-1 block text-sm font-medium text-neutral-700">{t("tasks.field.company")}</label>
+        <Combobox items={companyItems} name="company_id" bind:value={fCompany} id="create-company" />
       </div>
       <div>
-        <label for="company_id" class="mb-1 block text-sm font-medium text-neutral-700">{t("tasks.field.company")}</label>
-        <select id="company_id" name="company_id" class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm">
-          <option value="">{t("common.none")}</option>
-          {#each data.companies as company (company.id)}
-            <option value={company.id}>{company.name}</option>
-          {/each}
-        </select>
+        <label for="create-assignee" class="mb-1 block text-sm font-medium text-neutral-700">{t("tasks.field.assignee")}</label>
+        <Combobox items={memberItems} name="assignee_user_id" value={userId} id="create-assignee" />
       </div>
-      <div class="flex items-end">
-        <label class="flex items-center gap-2 text-sm text-neutral-700">
-          <input type="checkbox" name="assignee_user_id" value={userId} class="h-4 w-4 rounded border-neutral-300" />
-          {t("tasks.assign_to_me")}
-        </label>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label for="priority" class="mb-1 block text-sm font-medium text-neutral-700">{t("tasks.field.priority")}</label>
+          <select id="priority" name="priority" class={inputClass}>
+            {#each priorities as p (p)}
+              <option value={p} selected={p === "normal"}>{t(`tasks.priority.${p}`)}</option>
+            {/each}
+          </select>
+        </div>
+        <div>
+          <label for="due_date" class="mb-1 block text-sm font-medium text-neutral-700">{t("tasks.field.due_date")}</label>
+          <DateInput id="due_date" name="due_date" />
+        </div>
       </div>
     </div>
     {#if form?.error}<p class="mt-2 text-sm text-red-600">{t(form.error)}</p>{/if}
@@ -79,31 +194,39 @@
     <p class="mt-1 text-sm text-neutral-500">{t("tasks.empty_hint")}</p>
   </div>
 {:else}
-  <ul class="divide-y divide-neutral-200 overflow-hidden rounded-xl border border-neutral-200 bg-white">
-    {#each data.tasks as task (task.id)}
-      <li class="flex items-center gap-3 px-4 py-3 hover:bg-neutral-50">
-        <form method="POST" action="?/toggle" use:enhance>
-          <input type="hidden" name="id" value={task.id} />
-          <input type="hidden" name="status" value={task.status === "done" ? "open" : "done"} />
-          <button
-            class="flex h-5 w-5 items-center justify-center rounded border border-neutral-300 text-xs text-white"
-            class:bg-brand={task.status === "done"}
-            aria-label={t("tasks.toggle_done")}
-          >
-            {task.status === "done" ? "✓" : ""}
-          </button>
-        </form>
-        <div class="min-w-0 flex-1">
-          <span class="font-medium text-neutral-900" class:line-through={task.status === "done"}
-            class:text-neutral-400={task.status === "done"}>{task.title}</span>
-          <span class="ml-2 text-xs text-neutral-500">{t(`tasks.priority.${task.priority}`)}</span>
-        </div>
-        {#if task.due_date}<span class="text-xs text-neutral-500">{task.due_date}</span>{/if}
-        <form method="POST" action="?/delete" use:enhance>
-          <input type="hidden" name="id" value={task.id} />
-          <button class="text-sm text-neutral-400 hover:text-red-600" aria-label={t("common.delete")}>{t("common.delete")}</button>
-        </form>
-      </li>
+  <div class="space-y-4">
+    {#each [{ key: "open", rows: open }, { key: "in_progress", rows: inProgress }] as group (group.key)}
+      {#if group.rows.length > 0}
+        <section class="overflow-hidden rounded-xl border border-neutral-200 bg-white">
+          <h2 class="border-b border-neutral-100 bg-neutral-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            {t(`tasks.group.${group.key}`)} · {group.rows.length}
+          </h2>
+          <div class="divide-y divide-neutral-100">
+            {#each group.rows as task (task.id)}
+              <TaskRow {task} members={data.members} {today} />
+            {/each}
+          </div>
+        </section>
+      {/if}
     {/each}
-  </ul>
+
+    {#if done.length > 0}
+      <section class="overflow-hidden rounded-xl border border-neutral-200 bg-white">
+        <button
+          class="flex w-full items-center justify-between border-b border-neutral-100 bg-neutral-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-neutral-500 hover:text-neutral-800"
+          onclick={() => (showDone = !showDone)}
+        >
+          <span>{t("tasks.group.done")} · {done.length}</span>
+          <span>{showDone ? "▾" : "▸"}</span>
+        </button>
+        {#if showDone}
+          <div class="divide-y divide-neutral-100">
+            {#each done as task (task.id)}
+              <TaskRow {task} members={data.members} {today} />
+            {/each}
+          </div>
+        {/if}
+      </section>
+    {/if}
+  </div>
 {/if}

@@ -4,6 +4,7 @@
  */
 import { registerWebModule } from "$lib/core/registry";
 import { t } from "$lib/core/i18n";
+import { Users } from "@lucide/svelte";
 
 import ContactsPanel from "./ContactsPanel.svelte";
 
@@ -15,6 +16,8 @@ registerWebModule({
       href: "/contacts",
       label: () => t("nav.contacts"),
       module: "contacts",
+      group: "relations",
+      icon: Users,
       position: 20,
     },
   ],

@@ -42,6 +42,8 @@ class ModuleDescriptor:
     panels: list[PanelSpec] = field(default_factory=list)
     # Phase-4 MCP seam: opaque tool specs, not served in P0.
     mcp_tools: list[Any] = field(default_factory=list)
+    # ARQ cron job specs; the worker collects these from enabled modules.
+    cron_jobs: list[Any] = field(default_factory=list)
 
 
 class ModuleRegistry:

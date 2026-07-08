@@ -58,6 +58,16 @@ class TimeEntry(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
         Integer, nullable=False, default=0, server_default="0"
     )
     billable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Approval flow: a manager signs hours off (green check); approved entries are locked
+    # for non-managers. ``invoiced_at`` marks billable hours as billed, so "to invoice" =
+    # approved AND billable AND not invoiced.
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    approved_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    invoiced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     @property
     def is_running(self) -> bool:

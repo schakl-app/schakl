@@ -28,7 +28,9 @@
   },
   "dependencies": {
     "@inlang/paraglide-js": "^2.0.0",
+    "@lucide/svelte": "^1.23.0",
     "bits-ui": "^1.0.0",
-    "openapi-fetch": "^0.13.0"
+    "openapi-fetch": "^0.13.0",
+    "svelte-dnd-action": "^0.9.70"
   }
 }

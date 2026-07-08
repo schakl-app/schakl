@@ -24,13 +24,43 @@ class ContactService:
         self.custom_fields = CustomFieldsService(ctx)
 
     async def list(
-        self, *, limit: int, offset: int, company_id: uuid.UUID | None = None
+        self,
+        *,
+        limit: int,
+        offset: int,
+        company_id: uuid.UUID | None = None,
+        q: str | None = None,
     ) -> tuple[Sequence[Contact], int]:
-        filters: dict = {}
+        from sqlalchemy import func, or_, select
+
+        conditions = []
         if company_id is not None:
-            filters["company_id"] = company_id
-        items = await self.repo.list(limit=limit, offset=offset, **filters)
-        total = await self.repo.count(**filters)
+            conditions.append(Contact.company_id == company_id)
+        if q:
+            pattern = f"%{q.strip()}%"
+            conditions.append(
+                or_(
+                    Contact.first_name.ilike(pattern),
+                    Contact.last_name.ilike(pattern),
+                    Contact.email.ilike(pattern),
+                )
+            )
+        stmt = (
+            self.repo.scoped_select()
+            .where(*conditions)
+            .order_by(Contact.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        items = (await self.ctx.session.execute(stmt)).scalars().all()
+        total = int(
+            await self.ctx.session.scalar(
+                select(func.count())
+                .select_from(Contact)
+                .where(Contact.org_id == self.ctx.org.id, *conditions)
+            )
+            or 0
+        )
         return items, total
 
     async def get(self, contact_id: uuid.UUID) -> Contact:

@@ -5,16 +5,29 @@ import { apiFor } from "$lib/core/session";
 
 import type { Actions, PageServerLoad } from "./$types";
 
+type TaskStatus = "open" | "in_progress" | "done";
+
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
-  const [tasks, companies] = await Promise.all([
-    api.GET("/api/v1/tasks", { params: { query: { limit: 100, offset: 0 } } }),
-    api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0 } } }),
-  ]);
+  const q = event.url.searchParams;
+  const filters = {
+    company_id: q.get("company_id") || undefined,
+    project_id: q.get("project_id") || undefined,
+    assignee_user_id: q.get("assignee_user_id") || undefined,
+    label_id: q.get("label_id") || undefined,
+    due: (q.get("due") as "overdue" | "today" | "week" | null) || undefined,
+    q: q.get("q") || undefined,
+  };
+
+  // Lookups (companies/projects/labels/members) come from the /tasks layout load.
+  const { data: tasks } = await api.GET("/api/v1/tasks", {
+    params: { query: { limit: 200, offset: 0, ...filters } },
+  });
+
   return {
-    tasks: tasks.data?.items ?? [],
-    total: tasks.data?.total ?? 0,
-    companies: companies.data?.items ?? [],
+    tasks: tasks?.items ?? [],
+    total: tasks?.total ?? 0,
+    filters,
   };
 };
 
@@ -24,18 +37,16 @@ export const actions: Actions = {
     const title = String(form.get("title") ?? "").trim();
     if (!title) return fail(400, { error: "errors.required" });
 
-    const company_id = String(form.get("company_id") ?? "").trim();
-    const assignee = String(form.get("assignee_user_id") ?? "").trim();
-    const due_date = String(form.get("due_date") ?? "").trim();
     const { error } = await apiFor(event).POST("/api/v1/tasks", {
       body: {
         title,
         description: String(form.get("description") ?? "").trim() || null,
         status: "open",
-        priority: (String(form.get("priority") ?? "normal") as "low" | "normal" | "high"),
-        company_id: company_id || null,
-        assignee_user_id: assignee || null,
-        due_date: due_date || null,
+        priority: String(form.get("priority") ?? "normal") as "low" | "normal" | "high",
+        company_id: String(form.get("company_id") ?? "").trim() || null,
+        project_id: String(form.get("project_id") ?? "").trim() || null,
+        assignee_user_id: String(form.get("assignee_user_id") ?? "").trim() || null,
+        due_date: String(form.get("due_date") ?? "").trim() || null,
       },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
@@ -45,7 +56,7 @@ export const actions: Actions = {
   toggle: async (event) => {
     const form = await event.request.formData();
     const id = String(form.get("id") ?? "");
-    const status = String(form.get("status") ?? "done") as "open" | "in_progress" | "done";
+    const status = String(form.get("status") ?? "done") as TaskStatus;
     if (id) {
       await apiFor(event).PATCH("/api/v1/tasks/{task_id}", {
         params: { path: { task_id: id } },

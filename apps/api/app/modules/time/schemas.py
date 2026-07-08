@@ -55,8 +55,80 @@ class TimeEntryRead(TimeEntryBase):
     ended_at: datetime | None
     minutes: int
     is_running: bool
+    approved_at: datetime | None
+    approved_by_user_id: uuid.UUID | None
+    invoiced_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+
+class ReportTotals(BaseModel):
+    """Aggregates over the full filtered report set (not just the returned page)."""
+
+    count: int
+    minutes: int
+    billable_minutes: int
+    approved_minutes: int
+    open_minutes: int
+    to_invoice_minutes: int
+    invoiced_minutes: int
+
+
+class TimeReport(BaseModel):
+    items: list[TimeEntryRead]
+    total: int
+    limit: int
+    offset: int
+    totals: ReportTotals
+
+
+class ProductivityRow(BaseModel):
+    """Per-employee aggregates for the productivity report."""
+
+    user_id: uuid.UUID
+    minutes: int
+    billable_minutes: int
+    approved_minutes: int
+    entry_count: int
+    active_days: int
+
+
+class ProductivityStats(BaseModel):
+    date_from: date
+    date_to: date
+    rows: list[ProductivityRow]
+
+
+class ClientRevenue(BaseModel):
+    company_id: uuid.UUID | None
+    revenue: float
+
+
+class RevenueStats(BaseModel):
+    """Omzet = billable minutes × the project's hourly rate (entries without a rated
+    project contribute nothing — noted in the UI)."""
+
+    year: int
+    months_current: list[float]  # index 0 = January
+    months_previous: list[float]
+    total_current: float
+    total_previous: float
+    top_clients: list[ClientRevenue]  # ordered by revenue desc (selected year)
+    other_revenue: float  # everything outside the top 10
+
+
+class EntryApproval(BaseModel):
+    entry_ids: list[uuid.UUID] = Field(min_length=1, max_length=1000)
+    approved: bool = True
+
+
+class EntryInvoiced(BaseModel):
+    entry_ids: list[uuid.UUID] = Field(min_length=1, max_length=1000)
+    invoiced: bool = True
+
+
+class BulkResult(BaseModel):
+    updated: int
 
 
 class TimeSummary(BaseModel):
@@ -86,6 +158,7 @@ class LoggedSummary(BaseModel):
 # --- Weekly timesheet grid ------------------------------------------------- #
 class TimesheetRow(BaseModel):
     company_id: uuid.UUID | None
+    project_id: uuid.UUID | None
     task_id: uuid.UUID | None
     # minutes[0] = week_start .. minutes[6] = week_start + 6 days
     minutes: list[int]

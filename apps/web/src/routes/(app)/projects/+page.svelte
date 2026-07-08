@@ -1,6 +1,7 @@
 <script lang="ts">
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
+  import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
 
   let { data, form } = $props();
@@ -26,6 +27,7 @@
     <h1 class="text-xl font-semibold text-neutral-900">{t("projects.title")}</h1>
     <p class="mt-1 text-sm text-neutral-500">{t("projects.count", { count: data.total })}</p>
   </div>
+  <div class="ml-auto mr-3"><SearchInput /></div>
   <button
     class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
     onclick={() => (showCreate = !showCreate)}
