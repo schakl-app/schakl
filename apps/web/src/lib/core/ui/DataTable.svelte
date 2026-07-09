@@ -1,17 +1,21 @@
 <script lang="ts" generics="T extends { id: string; custom?: Record<string, unknown> | null }">
   /**
-   * One table for every list (#24). The list declares its columns; this owns visibility, order,
-   * width, sort and persistence, so adding a column somewhere is a descriptor, not a new table.
+   * One table for every list (docs/UX.md, #24). The list declares its columns; this owns
+   * visibility, order, width, sort, selection and totals, so a list that needs more grows the
+   * table rather than forking a bespoke grid.
    *
    * **Sorting and paging are the server's job** (docs/PERFORMANCE.md): the page shows 200 of
    * possibly thousands of rows, and sorting the slice you happen to hold sorts the wrong set. A
    * header is clickable only when the API can order by it — hence `sortKey`, not `sortable`.
    *
+   * **Totals come from the API, never from `rows`.** Summing the page would silently produce the
+   * total *of the page*, which looks exactly like the right answer (#37).
+   *
    * **A grid is not a mobile UI** (docs/UX.md): below `sm` this renders the concept's own row
    * snippet instead of asking a phone to scroll twelve columns sideways.
    *
    * A `<tr>` cannot be wrapped in an `<a>`, so `rowHref` links the primary cell and the row
-   * merely highlights — the same compromise the time-overview table already makes.
+   * merely highlights — the same compromise the time-overview table already made.
    */
   import { ArrowDown, ArrowUp } from "@lucide/svelte";
   import type { Snippet } from "svelte";
@@ -32,6 +36,9 @@
     actions,
     mobileRow,
     empty,
+    selectable = false,
+    selected = $bindable([]),
+    selection,
     onsort,
     onresize,
   }: {
@@ -48,9 +55,40 @@
     /** Rendered instead of the grid below `sm`. */
     mobileRow?: Snippet<[T]>;
     empty?: Snippet;
+    /** Adds a leading checkbox column and select-all. Costs nothing when false. */
+    selectable?: boolean;
+    /** Ids of the selected rows. Bindable, so the caller can post them. */
+    selected?: string[];
+    /** The bulk bar, shown above the table while anything is selected. */
+    selection?: Snippet<[string[]]>;
     onsort?: (sort: string | null) => void;
     onresize?: (widths: Record<string, number>) => void;
   } = $props();
+
+  // --- selection -------------------------------------------------------------
+  // Selection is **per page**: "select all" can only mean the rows that were fetched. Anything
+  // else would let a bulk approve reach records the user never saw.
+  const selectedSet = $derived(new Set(selected));
+  const allSelected = $derived(rows.length > 0 && selected.length === rows.length);
+  const someSelected = $derived(selected.length > 0 && !allSelected);
+
+  // A new page, filter or sort is a different set of rows; a selection made against the old one
+  // is meaningless and must not survive into a bulk action.
+  $effect(() => {
+    void rows;
+    selected = [];
+  });
+
+  function toggleAll() {
+    selected = allSelected ? [] : rows.map((row) => row.id);
+  }
+
+  function toggleRow(id: string) {
+    selected = selectedSet.has(id) ? selected.filter((s) => s !== id) : [...selected, id];
+  }
+
+  // --- totals ----------------------------------------------------------------
+  const hasTotals = $derived(columns.some((column) => column.total));
 
   // --- column resize ---------------------------------------------------------
   // Pointer events, not mouse: a drag that leaves the header (or the window) must still end, and
@@ -79,6 +117,8 @@
   function headerWidth(column: ColumnSpec<T>): number | undefined {
     return widths[column.key] ?? column.width;
   }
+
+  const checkboxClass = "h-4 w-4 cursor-pointer rounded border-border text-brand focus:ring-brand";
 </script>
 
 <svelte:window onpointermove={onPointerMove} onpointerup={endResize} />
@@ -86,12 +126,29 @@
 {#if rows.length === 0}
   {@render empty?.()}
 {:else}
+  {#if selectable && selection && selected.length > 0}
+    {@render selection(selected)}
+  {/if}
+
   <!-- Phone: the concept's shared row, never a sideways-scrolling grid. -->
   {#if mobileRow}
     <ul class="divide-y divide-border rounded-xl border border-border bg-surface-raised sm:hidden">
       {#each rows as row (row.id)}
-        <li class="px-4 py-3 first:rounded-t-xl last:rounded-b-xl hover:bg-surface">
-          {@render mobileRow(row)}
+        <li
+          class="flex items-center gap-3 px-4 py-3 first:rounded-t-xl last:rounded-b-xl hover:bg-surface
+            {selectedSet.has(row.id) ? 'bg-brand/5' : ''}"
+        >
+          {#if selectable}
+            <!-- A phone gets the same bulk actions; it has rows, it just has no header row. -->
+            <input
+              type="checkbox"
+              class={checkboxClass}
+              checked={selectedSet.has(row.id)}
+              aria-label={t("table.select_row")}
+              onchange={() => toggleRow(row.id)}
+            />
+          {/if}
+          <div class="min-w-0 flex-1">{@render mobileRow(row)}</div>
         </li>
       {/each}
     </ul>
@@ -104,6 +161,18 @@
     <table class="w-full text-sm">
       <thead>
         <tr class="border-b border-border text-left text-xs text-text-muted">
+          {#if selectable}
+            <th scope="col" class="w-8 px-3 py-2">
+              <input
+                type="checkbox"
+                class={checkboxClass}
+                checked={allSelected}
+                indeterminate={someSelected}
+                aria-label={t("table.select_all")}
+                onchange={toggleAll}
+              />
+            </th>
+          {/if}
           {#each columns as column (column.key)}
             {@const direction = column.sortKey ? sortDirection(sort, column.sortKey) : null}
             <th
@@ -151,7 +220,18 @@
       </thead>
       <tbody class="divide-y divide-border">
         {#each rows as row (row.id)}
-          <tr class="hover:bg-surface">
+          <tr class="hover:bg-surface {selectedSet.has(row.id) ? 'bg-brand/5' : ''}">
+            {#if selectable}
+              <td class="px-3 py-2.5">
+                <input
+                  type="checkbox"
+                  class={checkboxClass}
+                  checked={selectedSet.has(row.id)}
+                  aria-label={t("table.select_row")}
+                  onchange={() => toggleRow(row.id)}
+                />
+              </td>
+            {/if}
             {#each columns as column, index (column.key)}
               <td
                 class="px-4 py-2.5 {column.align === 'right'
@@ -179,6 +259,30 @@
           </tr>
         {/each}
       </tbody>
+
+      {#if hasTotals}
+        <!-- Aligned under their own columns — that is the point of a grid. The figures are the
+             API's; this never sums `rows`, which are only the page. -->
+        <tfoot class="border-t-2 border-border text-sm font-medium">
+          <tr>
+            {#if selectable}<td class="px-3 py-2.5"></td>{/if}
+            {#each columns as column, index (column.key)}
+              <td
+                class="px-4 py-2.5 {column.align === 'right'
+                  ? 'text-right tabular-nums'
+                  : 'text-left'}"
+              >
+                {#if column.total}
+                  {@render column.total()}
+                {:else if index === 0}
+                  <span class="text-text-muted">{t("table.total")}</span>
+                {/if}
+              </td>
+            {/each}
+            {#if actions}<td class="px-2 py-2.5"></td>{/if}
+          </tr>
+        </tfoot>
+      {/if}
     </table>
   </div>
 {/if}

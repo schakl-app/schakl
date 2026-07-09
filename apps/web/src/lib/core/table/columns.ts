@@ -47,6 +47,12 @@ export interface ColumnSpec<T = Record<string, unknown>> extends ColumnMeta {
   label: string;
   /** Renders the cell. Omitted for custom-field columns, which the table formats generically. */
   cell?: Snippet<[T]>;
+  /**
+   * Renders this column's figure in the table footer. Supply it from the **API's** totals — the
+   * page holds one page of rows, so a total summed from them would be the total of the page
+   * (#37). A column with no `total` leaves its footer cell blank.
+   */
+  total?: Snippet<[]>;
 }
 
 /** What we persist per list under `prefs.tables.<listId>`. Every field optional — old blobs. */
