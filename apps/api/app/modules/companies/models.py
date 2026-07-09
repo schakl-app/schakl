@@ -10,10 +10,11 @@ from __future__ import annotations
 import uuid
 from enum import StrEnum
 
-from sqlalchemy import ForeignKey, Index, String, Text
+from sqlalchemy import ForeignKey, Index, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.assignees import AssigneeLinkMixin
 from app.core.customfields import CustomizableMixin
 from app.core.mixins import OrgScopedMixin, TimestampMixin, UUIDPrimaryKeyMixin
 from app.db import Base
@@ -53,12 +54,47 @@ class Company(
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default=CompanyStatus.ACTIVE.value, index=True
     )
-    # The org member accountable for this client (verantwoordelijke). Defaults down onto new
-    # projects and tasks under this company (overridable). SET NULL so removing a member never
-    # orphans a company row (CLAUDE.md §14 — employees are the org's users/memberships).
+    # Mirror of the primary assignee (see ``CompanyAssignee``), kept in step on every write.
+    # It is the expand half of an expand/contract migration (docs/WORKFLOW.md) and will be
+    # dropped once no release reads it; write through the assignee links, not this column.
     responsible_user_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
+    )
+
+
+class CompanyAssignee(
+    UUIDPrimaryKeyMixin,
+    OrgScopedMixin,
+    TimestampMixin,
+    AssigneeLinkMixin,
+    Base,
+):
+    """The org members working this client — one primary (verantwoordelijke), the rest assigned.
+
+    The primary defaults down onto new projects and tasks under this company (overridable).
+    A partial unique index enforces at most one primary per ``(org_id, company_id)``, exactly as
+    ``company_contacts`` does for the primary contact person.
+    """
+
+    __tablename__ = "company_assignees"
+
+    __table_args__ = (
+        UniqueConstraint("org_id", "company_id", "user_id", name="uq_company_assignees_link"),
+        Index(
+            "uq_company_assignees_primary",
+            "org_id",
+            "company_id",
+            unique=True,
+            postgresql_where=text("is_primary"),
+        ),
+    )
+
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
         index=True,
     )

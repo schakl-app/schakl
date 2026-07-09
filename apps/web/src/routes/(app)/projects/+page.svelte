@@ -2,18 +2,17 @@
   import { Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
+  import { goto } from "$app/navigation";
+  import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
-  import Combobox from "$lib/core/ui/Combobox.svelte";
+  import AssigneePicker from "$lib/core/ui/AssigneePicker.svelte";
+  import AvatarStack from "$lib/core/ui/AvatarStack.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
 
   let { data, form } = $props();
-
-  const memberItems = $derived(
-    data.members.map((m) => ({ value: m.user_id, label: m.full_name || m.email })),
-  );
 
   let showCreate = $state(false);
   let deleteId = $state("");
@@ -28,6 +27,14 @@
 
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
+
+  // Filtered by the API — matching any assignee, not just the primary.
+  function toggleMine() {
+    const url = new URL(page.url);
+    if (data.mine) url.searchParams.delete("mine");
+    else url.searchParams.set("mine", "1");
+    void goto(url, { keepFocus: true, noScroll: true });
+  }
 </script>
 
 <svelte:head>
@@ -39,7 +46,17 @@
     <h1 class="text-xl font-semibold text-text">{t("projects.title")}</h1>
     <p class="mt-1 text-sm text-text-muted">{t("projects.count", { count: data.total })}</p>
   </div>
-  <div class="ml-auto mr-3"><SearchInput /></div>
+  <div class="ml-auto mr-3 flex items-center gap-2">
+    <button
+      class="rounded-full px-3 py-1 text-xs font-medium
+        {data.mine
+        ? 'bg-brand/10 text-brand ring-2 ring-brand'
+        : 'bg-surface text-text-muted hover:text-text'}"
+      aria-pressed={data.mine}
+      onclick={toggleMine}>{t("projects.filter.mine")}</button
+    >
+    <SearchInput />
+  </div>
   <button
     class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
     onclick={() => (showCreate = !showCreate)}
@@ -87,13 +104,12 @@
         </select>
       </div>
       <div>
-        <label for="responsible" class="mb-1 block text-sm font-medium text-text">
-          {t("projects.field.responsible")}
-        </label>
-        <Combobox
-          items={memberItems}
-          name="responsible_user_id"
-          id="responsible"
+        <span class="mb-1 block text-sm font-medium text-text">
+          {t("projects.field.assignees")}
+        </span>
+        <AssigneePicker
+          members={data.members}
+          id="new-project-assignees"
           placeholder={t("projects.responsible_inherits")}
         />
       </div>
@@ -203,6 +219,7 @@
             <span class="ml-2 text-sm text-text-muted">· {companyName(project.company_id)}</span>
           {/if}
         </a>
+        <AvatarStack assignees={project.assignees ?? []} members={data.members} />
         <span class="rounded-full bg-surface px-2.5 py-0.5 text-xs font-medium text-text-muted">
           {t(`projects.status.${project.status}`)}
         </span>

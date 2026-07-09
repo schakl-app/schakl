@@ -1518,6 +1518,34 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** AssigneeRead */
+        AssigneeRead: {
+            /** Is Primary */
+            is_primary: boolean;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /**
+         * AssigneeWrite
+         * @description An employee assigned to a company or project; ``is_primary`` stars the responsible one.
+         *
+         *     A list with no star promotes its first entry — the picker's own default.
+         */
+        AssigneeWrite: {
+            /**
+             * Is Primary
+             * @default false
+             */
+            is_primary: boolean;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
         /** Body_auth_cookie_login_api_v1_auth_login_post */
         Body_auth_cookie_login_api_v1_auth_login_post: {
             /** Client Id */
@@ -1710,6 +1738,8 @@ export interface components {
         };
         /** CompanyCreate */
         CompanyCreate: {
+            /** Assignees */
+            assignees?: components["schemas"]["AssigneeWrite"][] | null;
             /** Custom */
             custom?: {
                 [key: string]: unknown;
@@ -1729,6 +1759,8 @@ export interface components {
         };
         /** CompanyRead */
         CompanyRead: {
+            /** Assignees */
+            assignees?: components["schemas"]["AssigneeRead"][];
             /**
              * Created At
              * Format: date-time
@@ -1774,6 +1806,8 @@ export interface components {
         CompanyStatus: "lead" | "onboarding" | "active" | "offboarding" | "archived";
         /** CompanyUpdate */
         CompanyUpdate: {
+            /** Assignees */
+            assignees?: components["schemas"]["AssigneeWrite"][] | null;
             /** Custom */
             custom?: {
                 [key: string]: unknown;
@@ -2727,6 +2761,8 @@ export interface components {
         };
         /** ProjectCreate */
         ProjectCreate: {
+            /** Assignees */
+            assignees?: components["schemas"]["AssigneeWrite"][] | null;
             /**
              * Billable Default
              * @default true
@@ -2771,6 +2807,8 @@ export interface components {
         };
         /** ProjectRead */
         ProjectRead: {
+            /** Assignees */
+            assignees?: components["schemas"]["AssigneeRead"][];
             /**
              * Billable Default
              * @default true
@@ -2840,6 +2878,8 @@ export interface components {
         ProjectStatus: "active" | "on_hold" | "completed" | "archived";
         /** ProjectUpdate */
         ProjectUpdate: {
+            /** Assignees */
+            assignees?: components["schemas"]["AssigneeWrite"][] | null;
             /** Billable Default */
             billable_default?: boolean | null;
             /** Budget Amount */
@@ -3998,6 +4038,8 @@ export interface operations {
                 limit?: number;
                 offset?: number;
                 q?: string | null;
+                /** @description Only clients I'm assigned to (primary or not) */
+                mine?: boolean;
                 /** @description Compute total; set false for name-only lookups */
                 count?: boolean;
             };
@@ -5613,6 +5655,8 @@ export interface operations {
                 company_id?: string | null;
                 status?: components["schemas"]["ProjectStatus"] | null;
                 q?: string | null;
+                /** @description Only projects I'm assigned to (primary or not) */
+                mine?: boolean;
                 /** @description Compute total; set false for name-only lookups */
                 count?: boolean;
             };

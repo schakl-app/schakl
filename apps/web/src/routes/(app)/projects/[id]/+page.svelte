@@ -8,7 +8,8 @@
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
-  import Combobox from "$lib/core/ui/Combobox.svelte";
+  import AssigneePicker from "$lib/core/ui/AssigneePicker.svelte";
+  import AvatarStack from "$lib/core/ui/AvatarStack.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import TaskRow from "$lib/modules/tasks/TaskRow.svelte";
@@ -28,16 +29,7 @@
   const tasks = $derived(data.tasks);
   const doneCount = $derived(tasks.filter((t) => t.status === "done").length);
 
-  const memberItems = $derived(
-    data.members.map((m) => ({ value: m.user_id, label: m.full_name || m.email })),
-  );
-  const responsibleName = $derived(
-    project.responsible_user_id
-      ? (data.members.find((m) => m.user_id === project.responsible_user_id)?.full_name ??
-          data.members.find((m) => m.user_id === project.responsible_user_id)?.email ??
-          null)
-      : null,
-  );
+  const assignees = $derived(project.assignees ?? []);
 
   // Drag-to-reorder: local mirror of the task list for the dnd zone; a drop PATCHes the
   // moved task's position to the fractional midpoint of its new neighbours.
@@ -109,8 +101,9 @@
     <p class="mt-1 text-sm text-text-muted">
       {#if companyName}{companyName} ·
       {/if}{t(`projects.status.${project.status}`)}
-      {#if responsibleName}
-        · {t("projects.field.responsible")}: {responsibleName}
+      {#if assignees.length > 0}
+        · {t("projects.field.responsible")}:
+        <AvatarStack {assignees} members={data.members} />
       {/if}
     </p>
   </div>
@@ -217,15 +210,14 @@
           <input id="edit-name" name="name" value={project.name} required class={inputClass} />
         </div>
         <div>
-          <label for="edit-responsible" class="mb-1 block text-sm font-medium text-text"
-            >{t("projects.field.responsible")}</label
+          <span class="mb-1 block text-sm font-medium text-text"
+            >{t("projects.field.assignees")}</span
           >
-          <Combobox
-            items={memberItems}
-            name="responsible_user_id"
-            id="edit-responsible"
-            value={project.responsible_user_id ?? ""}
-            placeholder={t("common.unassigned")}
+          <AssigneePicker
+            members={data.members}
+            value={assignees}
+            id="edit-project-assignees"
+            placeholder={t("assignees.add")}
           />
         </div>
         <div class="grid grid-cols-2 gap-3">
@@ -361,7 +353,13 @@
         </div>
         <div>
           <dt class="text-text-muted">{t("projects.field.responsible")}</dt>
-          <dd class="mt-0.5 font-medium text-text">{responsibleName ?? "—"}</dd>
+          <dd class="mt-0.5 font-medium text-text">
+            {#if assignees.length > 0}
+              <AvatarStack {assignees} members={data.members} />
+            {:else}
+              —
+            {/if}
+          </dd>
         </div>
         <div>
           <dt class="text-text-muted">{t("projects.field.start_date")}</dt>

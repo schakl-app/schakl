@@ -1,5 +1,6 @@
 import { error, fail, redirect } from "@sveltejs/kit";
 
+import { parseAssignees } from "$lib/core/assignees";
 import { apiErrorKey } from "$lib/core/errors";
 import { apiFor } from "$lib/core/session";
 
@@ -55,7 +56,7 @@ export const actions: Actions = {
         invoice_email: String(form.get("invoice_email") ?? "").trim() || null,
         notes: String(form.get("notes") ?? "").trim() || null,
         status: String(form.get("status") ?? "active") as "active",
-        responsible_user_id: String(form.get("responsible_user_id") ?? "") || null,
+        assignees: parseAssignees(form.get("assignees")),
         custom: parseCustom(form.get("custom")),
       },
     });

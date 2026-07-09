@@ -376,25 +376,19 @@ class TaskService:
     async def _default_assignee(
         self, project_id: uuid.UUID | None, company_id: uuid.UUID | None
     ) -> uuid.UUID | None:
-        """Inherit the verantwoordelijke from the parent project, else the company, via their
-        published services (§3 — no model cross-imports). ``None`` when neither has one."""
+        """Inherit the verantwoordelijke — the parent project's primary assignee, else the
+        company's — via their published services (§3 — no model cross-imports). Neither having
+        one, or neither existing, means the task starts unassigned."""
         if project_id is not None:
             from app.modules.projects.service import ProjectService
 
-            try:
-                project = await ProjectService(self.ctx).get(project_id)
-            except AppError:
-                project = None
-            if project is not None and project.responsible_user_id is not None:
-                return project.responsible_user_id
+            primary = await ProjectService(self.ctx).primary_assignee(project_id)
+            if primary is not None:
+                return primary
         if company_id is not None:
             from app.modules.companies.service import CompanyService
 
-            try:
-                company = await CompanyService(self.ctx).get(company_id)
-            except AppError:
-                return None
-            return company.responsible_user_id
+            return await CompanyService(self.ctx).primary_assignee(company_id)
         return None
 
     async def _next_position(self) -> float:

@@ -45,6 +45,14 @@
 - **Quick-add where the user is**: contacts on the client page, projects/clients from the
   time entry form, checklist items on the card. The full forms still exist on their own
   pages; quick-add is an accelerator, not a replacement.
+- **People attached to a record are "one primary, N others"** — the same chips-plus-type-ahead
+  shape everywhere: the primary is brand-coloured and starred (★), the others carry a hollow star
+  to promote them and an ✕ to drop them. Contact persons on a client use it (`LinkField`, which
+  posts per chip because the links are their own records); the employees assigned to a client or
+  project use `AssigneePicker`, which posts the whole roster in one hidden field because an edit
+  surface has exactly one save button. Detail headers name the primary and render the rest as an
+  `AvatarStack` of initials. **"Mine" filters match any assignee, never only the primary** —
+  otherwise the feature is invisible to everyone but the owner.
 - **One shared row/tile per concept** (`TaskRow`, panel rows): title link, chips (labels,
   checklist n/m, ⏱ allocated), red overdue date, assignee initials — identical wherever the
   concept appears.

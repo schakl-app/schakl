@@ -17,6 +17,10 @@
   "common.optional": "Optioneel",
   "common.none": "Geen",
   "common.unassigned": "Niet toegewezen",
+  "assignees.primary": "Verantwoordelijke",
+  "assignees.make_primary": "Als verantwoordelijke instellen",
+  "assignees.add": "Medewerker toevoegen",
+  "assignees.remove": "Verwijderen",
   "common.yes": "Ja",
   "common.no": "Nee",
   "common.language": "Taal",
@@ -187,6 +191,8 @@
   "companies.edit": "Klant bewerken",
   "companies.field.status": "Status",
   "companies.field.responsible": "Verantwoordelijke",
+  "companies.field.assignees": "Toegewezen medewerkers",
+  "companies.filter.mine": "Mijn klanten",
   "companies.status.lead": "Lead",
   "companies.status.onboarding": "Onboarding",
   "companies.status.active": "Actief",
@@ -364,6 +370,8 @@
   "projects.field.name": "Naam",
   "projects.field.company": "Klant",
   "projects.field.responsible": "Verantwoordelijke",
+  "projects.field.assignees": "Toegewezen medewerkers",
+  "projects.filter.mine": "Mijn projecten",
   "projects.field.description": "Omschrijving",
   "projects.field.status": "Status",
   "projects.field.budget_hours": "Budget (uren)",
@@ -647,5 +655,7 @@
   "errors.leave_insufficient_balance": "Onvoldoende verlofsaldo voor deze aanvraag.",
   "errors.leave_decided": "Deze aanvraag is al beoordeeld.",
   "errors.leave_type_in_use": "Dit verloftype is in gebruik en kan alleen gedeactiveerd worden.",
-  "errors.leave_end_before_start": "De einddatum ligt vóór de begindatum."
+  "errors.leave_end_before_start": "De einddatum ligt vóór de begindatum.",
+  "errors.invalid_assignee": "Deze medewerker hoort niet bij deze werkomgeving.",
+  "errors.multiple_primary_assignees": "Maar één toegewezen medewerker kan de verantwoordelijke zijn."
 }

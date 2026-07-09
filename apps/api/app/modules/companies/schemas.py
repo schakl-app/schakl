@@ -9,6 +9,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.modules.companies.models import CompanyStatus
+from app.schemas import AssigneeRead, AssigneeWrite
 
 
 def _blank_to_none(value: Any) -> Any:
@@ -23,7 +24,8 @@ class CompanyBase(BaseModel):
     website: str | None = Field(default=None, max_length=512)
     notes: str | None = None
     status: CompanyStatus = CompanyStatus.ACTIVE
-    # Org member accountable for this client; defaults down onto new projects/tasks.
+    # The primary assignee, mirrored from ``assignees``. Read it; on write prefer ``assignees``
+    # — sending this alone still works and moves the star (see ``CompanyService.update``).
     responsible_user_id: uuid.UUID | None = None
     # Where invoices go — often a different mailbox than the primary contact (#30, #31).
     invoice_email: EmailStr | None = Field(default=None, max_length=320)
@@ -34,7 +36,9 @@ class CompanyBase(BaseModel):
 
 
 class CompanyCreate(CompanyBase):
-    pass
+    # Every employee working this client, one of them starred. ``None`` (not ``[]``) means the
+    # caller didn't say, and ``responsible_user_id`` alone decides — the pre-assignees shape.
+    assignees: list[AssigneeWrite] | None = None
 
 
 class CompanyUpdate(BaseModel):
@@ -43,6 +47,7 @@ class CompanyUpdate(BaseModel):
     notes: str | None = None
     status: CompanyStatus | None = None
     responsible_user_id: uuid.UUID | None = None
+    assignees: list[AssigneeWrite] | None = None
     invoice_email: EmailStr | None = Field(default=None, max_length=320)
     custom: dict[str, Any] | None = None
 
@@ -56,3 +61,5 @@ class CompanyRead(CompanyBase):
     org_id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+    # Primary first, then oldest assignment first.
+    assignees: list[AssigneeRead] = Field(default_factory=list)

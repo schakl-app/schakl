@@ -40,6 +40,15 @@
     else url.searchParams.delete("status");
     void goto(url, { keepFocus: true, noScroll: true });
   }
+
+  // Unlike the status pills, "my clients" is filtered server-side — the list is paginated, so a
+  // client-side filter would only ever narrow the page you happen to be on.
+  function toggleMine() {
+    const url = new URL(page.url);
+    if (data.mine) url.searchParams.delete("mine");
+    else url.searchParams.set("mine", "1");
+    void goto(url, { keepFocus: true, noScroll: true });
+  }
 </script>
 
 <svelte:head>
@@ -62,6 +71,14 @@
 <!-- Search + status filter pills -->
 <div class="mb-4 flex flex-wrap items-center gap-2">
   <SearchInput placeholder={t("companies.search_placeholder")} />
+  <button
+    class="rounded-full px-3 py-1 text-xs font-medium
+      {data.mine
+      ? 'bg-brand/10 text-brand ring-2 ring-brand'
+      : 'bg-surface text-text-muted hover:text-text'}"
+    aria-pressed={data.mine}
+    onclick={toggleMine}>{t("companies.filter.mine")}</button
+  >
   {#each COMPANY_STATUSES as status (status)}
     <button
       class="rounded-full px-3 py-1 text-xs font-medium

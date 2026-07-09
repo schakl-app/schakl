@@ -15,10 +15,21 @@ import uuid
 from datetime import date
 from enum import StrEnum
 
-from sqlalchemy import Boolean, Date, ForeignKey, Index, Numeric, String, Text
+from sqlalchemy import (
+    Boolean,
+    Date,
+    ForeignKey,
+    Index,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.assignees import AssigneeLinkMixin
 from app.core.customfields import CustomizableMixin
 from app.core.mixins import OrgScopedMixin, TimestampMixin, UUIDPrimaryKeyMixin
 from app.db import Base
@@ -51,8 +62,9 @@ class Project(
         nullable=True,
         index=True,
     )
-    # Verantwoordelijke: defaults from the company on create, overridable; seeds new tasks'
-    # assignee. SET NULL so removing a member never orphans the project.
+    # Mirror of the primary assignee (see ``ProjectAssignee``), kept in step on every write.
+    # Expand half of an expand/contract migration (docs/WORKFLOW.md): dropped once no release
+    # reads it. Write through the assignee links, not this column.
     responsible_user_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
@@ -76,3 +88,38 @@ class Project(
     color: Mapped[str | None] = mapped_column(String(20), nullable=True)
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+
+class ProjectAssignee(
+    UUIDPrimaryKeyMixin,
+    OrgScopedMixin,
+    TimestampMixin,
+    AssigneeLinkMixin,
+    Base,
+):
+    """The org members working this project — one primary, the rest assigned.
+
+    On create the project inherits the company's **primary** as its own primary, not the whole
+    client roster: the people on an account are a superset of the people on any one project, and
+    copying them all would silently assign work to everyone. The primary seeds new tasks' assignee.
+    """
+
+    __tablename__ = "project_assignees"
+
+    __table_args__ = (
+        UniqueConstraint("org_id", "project_id", "user_id", name="uq_project_assignees_link"),
+        Index(
+            "uq_project_assignees_primary",
+            "org_id",
+            "project_id",
+            unique=True,
+            postgresql_where=text("is_primary"),
+        ),
+    )
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )

@@ -1,5 +1,6 @@
 import { fail } from "@sveltejs/kit";
 
+import { parseAssignees } from "$lib/core/assignees";
 import { apiErrorKey } from "$lib/core/errors";
 import { apiFor } from "$lib/core/session";
 
@@ -34,6 +35,8 @@ function parseContacts(raw: FormDataEntryValue | null): ContactSelection[] {
 
 export const load: PageServerLoad = async (event) => {
   const q = event.url.searchParams.get("q") || undefined;
+  // "My clients" is filtered by the API (any assignee, not just the primary), never in the page.
+  const mine = event.url.searchParams.get("mine") === "1";
   const api = apiFor(event);
 
   // The create form's lookups are streamed, not awaited: the list paints on the companies call
@@ -53,7 +56,7 @@ export const load: PageServerLoad = async (event) => {
     .catch(() => ({ members: [], contacts: [], definitions: [], contactDefinitions: [] }));
 
   const companiesRes = await api.GET("/api/v1/companies", {
-    params: { query: { limit: 200, offset: 0, q } },
+    params: { query: { limit: 200, offset: 0, q, mine } },
   });
 
   return {
@@ -61,6 +64,7 @@ export const load: PageServerLoad = async (event) => {
     total: companiesRes.data?.total ?? 0,
     createForm,
     statusFilter: event.url.searchParams.get("status") ?? "",
+    mine,
     locale: event.locals.locale,
   };
 };
@@ -81,7 +85,7 @@ export const actions: Actions = {
         invoice_email: String(form.get("invoice_email") ?? "").trim() || null,
         notes: notes || null,
         status: String(form.get("status") ?? "active") as "active",
-        responsible_user_id: String(form.get("responsible_user_id") ?? "") || null,
+        assignees: parseAssignees(form.get("assignees")),
         custom: parseJson<Record<string, unknown>>(form.get("custom"), {}),
       },
     });

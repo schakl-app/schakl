@@ -6,6 +6,7 @@
   import { t } from "$lib/core/i18n";
   import { companyPanelComponent } from "$lib/core/registry";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import AvatarStack from "$lib/core/ui/AvatarStack.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import CompanyForm from "$lib/modules/companies/CompanyForm.svelte";
@@ -16,14 +17,7 @@
   // Panels are contributed by enabled modules and composed here — the "attach to company" hub.
   const enabled = $derived(page.data.theme?.enabledModules ?? []);
   const company = $derived(data.company);
-
-  const responsibleName = $derived(
-    company.responsible_user_id
-      ? (data.members.find((m) => m.user_id === company.responsible_user_id)?.full_name ??
-          data.members.find((m) => m.user_id === company.responsible_user_id)?.email ??
-          null)
-      : null,
-  );
+  const assignees = $derived(company.assignees ?? []);
 
   let showEdit = $state(false);
   let confirmDelete = $state(false);
@@ -55,10 +49,10 @@
           class="mt-1 inline-block text-sm text-text-muted hover:text-brand">{company.website} ↗</a
         >
       {/if}
-      {#if responsibleName}
-        <p class="mt-1 text-sm text-text-muted">
-          {t("companies.field.responsible")}:
-          <span class="text-text">{responsibleName}</span>
+      {#if assignees.length > 0}
+        <p class="mt-1 flex flex-wrap items-center gap-2 text-sm text-text-muted">
+          <span>{t("companies.field.responsible")}:</span>
+          <AvatarStack {assignees} members={data.members} />
         </p>
       {/if}
     </div>

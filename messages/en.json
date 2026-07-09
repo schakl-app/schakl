@@ -17,6 +17,10 @@
   "common.optional": "Optional",
   "common.none": "None",
   "common.unassigned": "Unassigned",
+  "assignees.primary": "Responsible",
+  "assignees.make_primary": "Make responsible",
+  "assignees.add": "Add employee",
+  "assignees.remove": "Remove",
   "common.yes": "Yes",
   "common.no": "No",
   "common.language": "Language",
@@ -187,6 +191,8 @@
   "companies.edit": "Edit client",
   "companies.field.status": "Status",
   "companies.field.responsible": "Responsible",
+  "companies.field.assignees": "Assigned employees",
+  "companies.filter.mine": "My clients",
   "companies.status.lead": "Lead",
   "companies.status.onboarding": "Onboarding",
   "companies.status.active": "Active",
@@ -364,6 +370,8 @@
   "projects.field.name": "Name",
   "projects.field.company": "Client",
   "projects.field.responsible": "Responsible",
+  "projects.field.assignees": "Assigned employees",
+  "projects.filter.mine": "My projects",
   "projects.field.description": "Description",
   "projects.field.status": "Status",
   "projects.field.budget_hours": "Budget (hours)",
@@ -647,5 +655,7 @@
   "errors.leave_insufficient_balance": "Not enough leave balance for this request.",
   "errors.leave_decided": "This request has already been decided.",
   "errors.leave_type_in_use": "This leave type is in use and can only be deactivated.",
-  "errors.leave_end_before_start": "The end date is before the start date."
+  "errors.leave_end_before_start": "The end date is before the start date.",
+  "errors.invalid_assignee": "That employee is not a member of this workspace.",
+  "errors.multiple_primary_assignees": "Only one assignee can be the responsible one."
 }

@@ -11,11 +11,13 @@ from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.modules.projects.models import ProjectStatus
+from app.schemas import AssigneeRead, AssigneeWrite
 
 
 class ProjectBase(BaseModel):
     company_id: uuid.UUID | None = None
-    # Verantwoordelijke; defaults from the company on create when omitted (see service).
+    # The primary assignee, mirrored from ``assignees``. Inherited from the company's primary on
+    # create when neither is given (see service).
     responsible_user_id: uuid.UUID | None = None
     name: str = Field(min_length=1, max_length=255)
     description: str | None = None
@@ -33,12 +35,15 @@ class ProjectBase(BaseModel):
 
 
 class ProjectCreate(ProjectBase):
-    pass
+    # ``None`` (not ``[]``) means the caller didn't say: fall back to ``responsible_user_id``,
+    # else inherit the company's primary.
+    assignees: list[AssigneeWrite] | None = None
 
 
 class ProjectUpdate(BaseModel):
     company_id: uuid.UUID | None = None
     responsible_user_id: uuid.UUID | None = None
+    assignees: list[AssigneeWrite] | None = None
     name: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = None
     status: ProjectStatus | None = None
@@ -61,3 +66,5 @@ class ProjectRead(ProjectBase):
     org_id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+    # Primary first, then oldest assignment first.
+    assignees: list[AssigneeRead] = Field(default_factory=list)

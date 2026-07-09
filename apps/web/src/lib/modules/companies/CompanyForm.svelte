@@ -13,7 +13,7 @@
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
   import { t } from "$lib/core/i18n";
-  import Combobox from "$lib/core/ui/Combobox.svelte";
+  import AssigneePicker from "$lib/core/ui/AssigneePicker.svelte";
   import { COMPANY_STATUSES } from "$lib/modules/companies/status";
 
   interface Member {
@@ -27,7 +27,8 @@
     invoice_email?: string | null;
     notes?: string | null;
     status?: string | null;
-    responsible_user_id?: string | null;
+    /** Every employee working this client, the verantwoordelijke starred. Primary first. */
+    assignees?: { user_id: string; is_primary: boolean }[];
     custom?: Record<string, unknown> | null;
   }
 
@@ -48,9 +49,6 @@
     children?: Snippet;
   } = $props();
 
-  const memberItems = $derived(
-    members.map((m) => ({ value: m.user_id, label: m.full_name || m.email })),
-  );
   const status = $derived(company.status ?? "active");
 
   const inputClass =
@@ -109,15 +107,14 @@
       </select>
     </div>
     <div class="sm:col-span-2">
-      <label for="{idPrefix}-responsible" class="mb-1 block text-sm font-medium text-neutral-700">
-        {t("companies.field.responsible")}
-      </label>
-      <Combobox
-        items={memberItems}
-        name="responsible_user_id"
-        id="{idPrefix}-responsible"
-        value={company.responsible_user_id ?? ""}
-        placeholder={t("common.unassigned")}
+      <span class="mb-1 block text-sm font-medium text-neutral-700">
+        {t("companies.field.assignees")}
+      </span>
+      <AssigneePicker
+        {members}
+        value={company.assignees ?? []}
+        id="{idPrefix}-assignees"
+        placeholder={t("assignees.add")}
       />
     </div>
     <div class="sm:col-span-2">

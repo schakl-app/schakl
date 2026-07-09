@@ -31,10 +31,13 @@ async def list_companies(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     q: str | None = Query(None, max_length=200),
+    mine: bool = Query(False, description="Only clients I'm assigned to (primary or not)"),
     count: bool = Query(True, description="Compute total; set false for name-only lookups"),
     ctx: RequestContext = Depends(require_context),
 ) -> Page[CompanyRead]:
-    items, total = await CompanyService(ctx).list(limit=limit, offset=offset, q=q, count=count)
+    items, total = await CompanyService(ctx).list(
+        limit=limit, offset=offset, q=q, mine=mine, count=count
+    )
     return Page(
         items=[CompanyRead.model_validate(c) for c in items],
         total=total,

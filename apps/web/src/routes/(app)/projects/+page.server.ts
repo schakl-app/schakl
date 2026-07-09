@@ -1,5 +1,6 @@
 import { fail } from "@sveltejs/kit";
 
+import { parseAssignees } from "$lib/core/assignees";
 import { apiErrorKey } from "$lib/core/errors";
 import { apiFor } from "$lib/core/session";
 
@@ -15,8 +16,10 @@ function numberOrNull(raw: FormDataEntryValue | null): number | null {
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const q = event.url.searchParams.get("q") || undefined;
+  // "My projects" is filtered by the API (any assignee, not just the primary).
+  const mine = event.url.searchParams.get("mine") === "1";
   const [projects, companies, definitions, members] = await Promise.all([
-    api.GET("/api/v1/projects", { params: { query: { limit: 200, offset: 0, q } } }),
+    api.GET("/api/v1/projects", { params: { query: { limit: 200, offset: 0, q, mine } } }),
     api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
     api.GET("/api/v1/custom-fields/definitions", {
       params: { query: { entity_type: "project" } },
@@ -29,6 +32,7 @@ export const load: PageServerLoad = async (event) => {
     companies: companies.data?.items ?? [],
     definitions: definitions.data ?? [],
     members: members.data ?? [],
+    mine,
     locale: event.locals.locale,
   };
 };
@@ -48,12 +52,15 @@ export const actions: Actions = {
     if (!name) return fail(400, { error: "errors.required" });
 
     const company_id = String(form.get("company_id") ?? "").trim();
+    // An empty picker means "didn't say", not "nobody": send no roster at all so the API can
+    // inherit the client's verantwoordelijke, which is what the field's placeholder promises.
+    const assignees = parseAssignees(form.get("assignees"));
     const { error } = await apiFor(event).POST("/api/v1/projects", {
       body: {
         name,
         description: String(form.get("description") ?? "").trim() || null,
         company_id: company_id || null,
-        responsible_user_id: String(form.get("responsible_user_id") ?? "") || null,
+        assignees: assignees?.length ? assignees : undefined,
         status: String(form.get("status") ?? "active") as "active",
         budget_period: "total",
         currency: "EUR",
