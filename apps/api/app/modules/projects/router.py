@@ -23,6 +23,12 @@ async def list_projects(
     status: ProjectStatus | None = Query(None),
     q: str | None = Query(None, max_length=200),
     mine: bool = Query(False, description="Only projects I'm assigned to (primary or not)"),
+    sort: str | None = Query(
+        None, description="name | status | start_date | end_date | budget_hours | …, '-' desc"
+    ),
+    hours: bool = Query(
+        False, description="Include the budget burn-down; costs one grouped query"
+    ),
     count: bool = Query(True, description="Compute total; set false for name-only lookups"),
     ctx: RequestContext = Depends(require_context),
 ) -> Page[ProjectRead]:
@@ -33,6 +39,8 @@ async def list_projects(
         status=status,
         q=q,
         mine=mine,
+        sort=sort,
+        hours=hours,
         count=count,
     )
     return Page(

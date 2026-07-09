@@ -11,7 +11,7 @@ from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.modules.projects.models import ProjectStatus
-from app.schemas import AssigneeRead, AssigneeWrite
+from app.schemas import AssigneeRead, AssigneeWrite, BudgetHours
 
 
 class ProjectBase(BaseModel):
@@ -68,3 +68,5 @@ class ProjectRead(ProjectBase):
     updated_at: datetime
     # Primary first, then oldest assignment first.
     assignees: list[AssigneeRead] = Field(default_factory=list)
+    # Budget burn for the current period. Only present when asked for (``?hours=true``).
+    hours: BudgetHours | None = None

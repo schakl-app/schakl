@@ -1598,6 +1598,39 @@ export interface components {
             /** Token */
             token: string;
         };
+        /**
+         * BudgetHours
+         * @description A project's budget burn for the current period (#25). Opt-in — see ``hours=`` on the list.
+         *
+         *     ``spent_hours`` counts **all** logged hours, billable or not: internal work on a client's
+         *     project still consumes its budget. ``billable_hours`` and ``unapproved_hours`` are subsets of
+         *     it, so the UI can qualify a number rather than show a different one.
+         */
+        BudgetHours: {
+            /**
+             * Billable Hours
+             * @default 0
+             */
+            billable_hours: number;
+            /** Budget Hours */
+            budget_hours?: number | null;
+            /** Period */
+            period: string;
+            /** Period Start */
+            period_start?: string | null;
+            /** Remaining Hours */
+            remaining_hours?: number | null;
+            /**
+             * Spent Hours
+             * @default 0
+             */
+            spent_hours: number;
+            /**
+             * Unapproved Hours
+             * @default 0
+             */
+            unapproved_hours: number;
+        };
         /** BuildInfo */
         BuildInfo: {
             /** Built At */
@@ -1736,6 +1769,49 @@ export interface components {
             /** Body */
             body: string;
         };
+        /**
+         * CompanyBudgetHours
+         * @description A client's budget burn, rolled up from its **active projects that have a budget**.
+         *
+         *     Hours on the client's other projects, or logged straight to the client, have no allowance to
+         *     burn against. Counting them would make ``budget − spent`` stop matching the number on screen,
+         *     so they are reported separately as ``unbudgeted_hours`` — never silently dropped, never folded
+         *     into the bar. A client with no budgeted project has ``budget_hours: None``: an em-dash, not a
+         *     fabricated total.
+         */
+        CompanyBudgetHours: {
+            /**
+             * Billable Hours
+             * @default 0
+             */
+            billable_hours: number;
+            /** Budget Hours */
+            budget_hours?: number | null;
+            /** Period */
+            period?: string | null;
+            /**
+             * Project Count
+             * @default 0
+             */
+            project_count: number;
+            /** Remaining Hours */
+            remaining_hours?: number | null;
+            /**
+             * Spent Hours
+             * @default 0
+             */
+            spent_hours: number;
+            /**
+             * Unapproved Hours
+             * @default 0
+             */
+            unapproved_hours: number;
+            /**
+             * Unbudgeted Hours
+             * @default 0
+             */
+            unbudgeted_hours: number;
+        };
         /** CompanyCreate */
         CompanyCreate: {
             /** Assignees */
@@ -1770,6 +1846,7 @@ export interface components {
             custom?: {
                 [key: string]: unknown;
             };
+            hours?: components["schemas"]["CompanyBudgetHours"] | null;
             /**
              * Id
              * Format: uuid
@@ -2847,6 +2924,7 @@ export interface components {
             end_date?: string | null;
             /** Hourly Rate */
             hourly_rate?: number | null;
+            hours?: components["schemas"]["BudgetHours"] | null;
             /**
              * Id
              * Format: uuid
@@ -4040,6 +4118,10 @@ export interface operations {
                 q?: string | null;
                 /** @description Only clients I'm assigned to (primary or not) */
                 mine?: boolean;
+                /** @description name | status | created_at | updated_at, '-' desc */
+                sort?: string | null;
+                /** @description Include the budget roll-up; costs three grouped queries */
+                hours?: boolean;
                 /** @description Compute total; set false for name-only lookups */
                 count?: boolean;
             };
@@ -5657,6 +5739,10 @@ export interface operations {
                 q?: string | null;
                 /** @description Only projects I'm assigned to (primary or not) */
                 mine?: boolean;
+                /** @description name | status | start_date | end_date | budget_hours | …, '-' desc */
+                sort?: string | null;
+                /** @description Include the budget burn-down; costs one grouped query */
+                hours?: boolean;
                 /** @description Compute total; set false for name-only lookups */
                 count?: boolean;
             };

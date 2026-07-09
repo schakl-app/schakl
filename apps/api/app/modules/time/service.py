@@ -10,10 +10,13 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
+from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import DateTime, column, func, select, values
 from sqlalchemy import text as sql_text
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 
 from app.core.tenancy import RequestContext
 from app.errors import AppError
@@ -26,6 +29,26 @@ from app.modules.time.schemas import (
     TimesheetRow,
     TimeSummary,
 )
+
+
+@dataclass(frozen=True)
+class LoggedMinutes:
+    """A budget burn-down bucket. ``total`` includes non-billable work — it eats the budget too.
+
+    ``total``/``billable``/``unapproved`` are all scoped to the budget's current period;
+    ``unapproved`` is a *subset* of ``total``, not another axis, so the UI can say when an
+    over-budget number is driven by hours nobody has signed off yet.
+
+    ``all_time`` ignores the period. It exists for one reason: a client's "unbudgeted hours" is
+    *its* total minus what its budgeted projects absorbed, and for a monthly project the period
+    figure would wrongly re-classify every earlier month as unbudgeted. Equals ``total`` when the
+    period is ``total``.
+    """
+
+    total: int = 0
+    billable: int = 0
+    unapproved: int = 0
+    all_time: int = 0
 
 
 def _now() -> datetime:
@@ -191,6 +214,96 @@ class TimeService:
         minutes = sum(e.minutes for e in entries)
         billable = sum(e.minutes for e in entries if e.billable)
         return minutes, billable
+
+    # --- budget burn-down aggregates ----------------------------------------- #
+    # Published for the projects/companies list columns (#25). Grouped in SQL, one query for a
+    # whole page of rows — a per-row `logged()` call would be the N+1 that makes a list crawl
+    # (docs/PERFORMANCE.md). Running timers (`ended_at IS NULL`) never count: their `minutes` is
+    # 0 anyway, but the filter says so out loud. Approved leave cannot leak in here — it lives in
+    # `leave_requests` and is never written as a time entry (CLAUDE.md §14).
+
+    @staticmethod
+    def _sum(*conditions: Any) -> Any:
+        summed = func.sum(TimeEntry.minutes)
+        if conditions:
+            summed = summed.filter(*conditions)
+        return func.coalesce(summed, 0)
+
+    async def minutes_by_project(
+        self, periods: dict[uuid.UUID, datetime]
+    ) -> dict[uuid.UUID, LoggedMinutes]:
+        """Logged minutes per project, each counted from **its own** period start.
+
+        Projects on one page can carry different budget periods (monthly, weekly, daily, total),
+        so a single ``WHERE started_at >= x`` cannot serve them all. The period starts ride along
+        as a ``VALUES`` join, keeping this to one grouped query however many distinct periods the
+        page contains.
+
+        The period bound is a ``FILTER``, not a ``WHERE``: the same scan then yields both the
+        in-period figures and the untruncated ``all_time`` total that the client roll-up needs.
+        """
+        if not periods:
+            return {}
+        bounds = values(
+            column("project_id", PGUUID(as_uuid=True)),
+            column("period_start", DateTime(timezone=True)),
+            name="period_bounds",
+        ).data(list(periods.items()))
+
+        in_period = TimeEntry.started_at >= bounds.c.period_start
+        stmt = (
+            select(
+                TimeEntry.project_id,
+                self._sum(in_period),
+                self._sum(in_period, TimeEntry.billable.is_(True)),
+                self._sum(in_period, TimeEntry.approved_at.is_(None)),
+                self._sum(),
+            )
+            .select_from(TimeEntry)
+            .join(bounds, bounds.c.project_id == TimeEntry.project_id)
+            .where(
+                TimeEntry.org_id == self.ctx.org.id,
+                TimeEntry.ended_at.is_not(None),
+            )
+            .group_by(TimeEntry.project_id)
+        )
+        rows = (await self.ctx.session.execute(stmt)).all()
+        return {
+            r[0]: LoggedMinutes(int(r[1]), int(r[2]), int(r[3]), int(r[4])) for r in rows
+        }
+
+    async def minutes_by_company(
+        self, company_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, LoggedMinutes]:
+        """All-time logged minutes per company, however the entry was attributed.
+
+        Feeds the client's *unbudgeted* hours — work with no project budget to burn against. Not
+        period-scoped: a client's projects may each reset on a different schedule, so there is no
+        single period this figure could honestly belong to.
+        """
+        if not company_ids:
+            return {}
+        total = self._sum()
+        stmt = (
+            select(
+                TimeEntry.company_id,
+                total,
+                self._sum(TimeEntry.billable.is_(True)),
+                self._sum(TimeEntry.approved_at.is_(None)),
+                total,
+            )
+            .select_from(TimeEntry)
+            .where(
+                TimeEntry.org_id == self.ctx.org.id,
+                TimeEntry.ended_at.is_not(None),
+                TimeEntry.company_id.in_(company_ids),
+            )
+            .group_by(TimeEntry.company_id)
+        )
+        rows = (await self.ctx.session.execute(stmt)).all()
+        return {
+            r[0]: LoggedMinutes(int(r[1]), int(r[2]), int(r[3]), int(r[4])) for r in rows
+        }
 
     async def delete(self, entry_id: uuid.UUID) -> None:
         self.ctx.ensure_can_write()

@@ -642,6 +642,7 @@
   "errors.validation": "Sommige velden zijn ongeldig.",
   "errors.required": "Dit veld is verplicht.",
   "errors.invalid_email": "Voer een geldig e-mailadres in.",
+  "errors.invalid_sort": "Op die kolom kun je niet sorteren.",
   "errors.invalid_url": "Voer een geldige URL in.",
   "errors.not_found": "Niet gevonden.",
   "errors.unauthorized": "Log in om verder te gaan.",

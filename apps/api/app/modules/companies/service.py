@@ -17,11 +17,27 @@ from sqlalchemy import func, or_, select
 from app.core.assignees import AssigneeService
 from app.core.customfields import CustomFieldsService
 from app.core.events import emit
+from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
 from app.modules.companies.models import Company, CompanyAssignee
 from app.modules.companies.schemas import CompanyCreate, CompanyUpdate
+from app.schemas import CompanyBudgetHours
 
 ENTITY_TYPE = "company"
+
+# Sortable columns; anything else in ``?sort=`` is rejected (app/core/sorting.py).
+# ``name`` sorts case-insensitively: Postgres' default collation would otherwise file every
+# lowercase name after every uppercase one, which reads as broken.
+SORTABLE = {
+    "name": func.lower(Company.name),
+    "status": Company.status,
+    "created_at": Company.created_at,
+    "updated_at": Company.updated_at,
+}
+
+
+def _hours(minutes: int) -> float:
+    return round(minutes / 60, 2)
 
 
 class CompanyService:
@@ -39,6 +55,70 @@ class CompanyService:
         for company in companies:
             company.assignees = grouped.get(company.id, [])
 
+    async def _attach_hours(self, companies: Sequence[Company]) -> None:
+        """Roll each client's budget up from its active, budgeted projects (#25).
+
+        Three grouped queries for the whole page — the client's budgeted projects, the minutes
+        those projects burned, and the client's own total — never one per row. Only runs when the
+        column is visible, so a list that doesn't show it pays nothing.
+
+        The other modules are reached through their published services, imported inside this
+        branch (CLAUDE.md §6): a company knows nothing of a project's or an entry's tables.
+        """
+        if not companies:
+            return
+        from app.modules.projects.service import ProjectService
+        from app.modules.time.service import LoggedMinutes, TimeService
+
+        company_ids = [c.id for c in companies]
+        projects = ProjectService(self.ctx)
+        budgeted = await projects.budgeted_active_for_companies(company_ids)
+
+        periods = {p.id: p.period_start for rows in budgeted.values() for p in rows}
+        time_service = TimeService(self.ctx)
+        by_project = await time_service.minutes_by_project(periods)
+        by_company = await time_service.minutes_by_company(company_ids)
+
+        for company in companies:
+            rows = budgeted.get(company.id, [])
+            company_total = by_company.get(company.id, LoggedMinutes())
+
+            # Everything the budgeted projects ever absorbed — *not* the period figure, or a
+            # monthly project's earlier months would masquerade as unbudgeted work.
+            absorbed = sum(by_project.get(p.id, LoggedMinutes()).all_time for p in rows)
+            unbudgeted = max(0, company_total.all_time - absorbed)
+
+            if not rows:
+                # No allowance to report. Show the hours spent anyway — an em-dash where the
+                # budget goes, never a fabricated total.
+                company.hours = CompanyBudgetHours(
+                    period=None,
+                    budget_hours=None,
+                    remaining_hours=None,
+                    unbudgeted_hours=_hours(company_total.all_time),
+                    project_count=0,
+                )
+                continue
+
+            spent = sum(by_project.get(p.id, LoggedMinutes()).total for p in rows)
+            billable = sum(by_project.get(p.id, LoggedMinutes()).billable for p in rows)
+            unapproved = sum(by_project.get(p.id, LoggedMinutes()).unapproved for p in rows)
+            budget = round(sum(p.budget_hours for p in rows), 2)
+            periods_seen = {p.budget_period for p in rows}
+
+            company.hours = CompanyBudgetHours(
+                # A client whose projects reset on different schedules has no single period the
+                # number belongs to; say so rather than pick one.
+                period=periods_seen.pop() if len(periods_seen) == 1 else None,
+                budget_hours=budget,
+                spent_hours=_hours(spent),
+                billable_hours=_hours(billable),
+                unapproved_hours=_hours(unapproved),
+                remaining_hours=round(budget - _hours(spent), 2),
+                unbudgeted_hours=_hours(unbudgeted),
+                project_count=len(rows),
+            )
+
     async def list(
         self,
         *,
@@ -46,6 +126,8 @@ class CompanyService:
         offset: int,
         q: str | None = None,
         mine: bool = False,
+        sort: str | None = None,
+        hours: bool = False,
         count: bool = True,
     ) -> tuple[Sequence[Company], int]:
         conditions = []
@@ -58,14 +140,13 @@ class CompanyService:
                 Company.id.in_(self.assignees.entity_ids_for_user(self.ctx.user.id))
             )
 
-        stmt = (
-            self.repo.scoped_select()
-            .where(*conditions)
-            # A search ranks by name; the plain list stays newest-first.
-            .order_by(Company.name.asc() if q else Company.created_at.desc())
-            .limit(limit)
-            .offset(offset)
-        )
+        stmt = apply_sort(
+            self.repo.scoped_select().where(*conditions),
+            sort,
+            SORTABLE,
+            # Unsorted, a search ranks by name and the plain list stays newest-first.
+            default=Company.name.asc() if q else Company.created_at.desc(),
+        ).limit(limit).offset(offset)
         items = list((await self.ctx.session.execute(stmt)).scalars().all())
         # ``count=False`` skips the discarded COUNT(*) for name-only lookups (pickers,
         # dashboard grouping) — see docs/PERFORMANCE.md.
@@ -82,6 +163,8 @@ class CompanyService:
             else len(items)
         )
         await self._attach_assignees(items)
+        if hours:
+            await self._attach_hours(items)
         return items, total
 
     async def get(self, company_id: uuid.UUID) -> Company:

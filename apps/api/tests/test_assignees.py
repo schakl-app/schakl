@@ -196,7 +196,7 @@ async def test_assignee_must_be_a_member_of_this_org(client_for) -> None:
 
 # --- projects ----------------------------------------------------------------- #
 async def test_project_inherits_only_the_companys_primary(client_for) -> None:
-    """A client's roster is a superset of any one project's team — inherit the star, not the list."""
+    """A client's roster is a superset of a project's team — inherit the primary, not the list."""
     t = await make_tenant("asg-inherit")
     owner = str(t.user.id)
     other = str((await _add_member(t.org.id, "other@asg-inherit.test")).id)

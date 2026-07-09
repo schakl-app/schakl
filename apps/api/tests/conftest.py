@@ -13,6 +13,7 @@ import uuid
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -127,3 +128,49 @@ def client_for() -> Callable[[str], AsyncClient]:
         )
 
     return _make
+
+
+class QueryCounter:
+    """Counts the SQL statements a block of code issues, so "no N+1" can be *asserted*.
+
+    An aggregate that is one grouped query at ten rows and one-per-row at a thousand looks
+    identical from the outside — same JSON, same test, a list that dies in production. The only
+    honest check is to count the statements, so this exists.
+    """
+
+    def __init__(self) -> None:
+        self.statements: list[str] = []
+
+    def matching(self, needle: str) -> list[str]:
+        """Statements containing ``needle`` (case-insensitive) — e.g. a table name."""
+        return [s for s in self.statements if needle.lower() in s.lower()]
+
+    def __len__(self) -> int:
+        return len(self.statements)
+
+
+@pytest.fixture
+def count_queries() -> Callable[[], Any]:
+    """Context manager yielding a :class:`QueryCounter` for the statements executed inside it.
+
+    Listens on the sync engine behind the async one — that is where SQLAlchemy emits the event.
+    """
+    from contextlib import contextmanager
+
+    from sqlalchemy import event
+
+    @contextmanager
+    def _counting():
+        counter = QueryCounter()
+
+        def _on_execute(conn, cursor, statement, parameters, context, executemany):  # noqa: ANN001
+            counter.statements.append(statement)
+
+        target = engine.sync_engine
+        event.listen(target, "before_cursor_execute", _on_execute)
+        try:
+            yield counter
+        finally:
+            event.remove(target, "before_cursor_execute", _on_execute)
+
+    return _counting

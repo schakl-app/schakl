@@ -642,6 +642,7 @@
   "errors.validation": "Some fields are invalid.",
   "errors.required": "This field is required.",
   "errors.invalid_email": "Enter a valid email address.",
+  "errors.invalid_sort": "You can't sort by that column.",
   "errors.invalid_url": "Enter a valid URL.",
   "errors.not_found": "Not found.",
   "errors.unauthorized": "Please sign in.",

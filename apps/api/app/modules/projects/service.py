@@ -11,16 +11,53 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
+from dataclasses import dataclass
+from datetime import datetime
 
 from sqlalchemy import func, select
 
 from app.core.assignees import AssigneeService
 from app.core.customfields import CustomFieldsService
+from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
+from app.modules.projects.budget import period_bound, period_start
 from app.modules.projects.models import Project, ProjectAssignee, ProjectStatus
 from app.modules.projects.schemas import ProjectCreate, ProjectUpdate
+from app.schemas import BudgetHours
 
 ENTITY_TYPE = "project"
+
+# Columns a client may sort by. The value comes from the URL, so anything not named here is
+# rejected rather than reaching the query (app/core/sorting.py).
+SORTABLE = {
+    # Case-insensitive, or Postgres' default collation files lowercase names after uppercase.
+    "name": func.lower(Project.name),
+    "status": Project.status,
+    "start_date": Project.start_date,
+    "end_date": Project.end_date,
+    "budget_hours": Project.budget_hours,
+    "created_at": Project.created_at,
+    "updated_at": Project.updated_at,
+}
+
+
+def _hours(minutes: int) -> float:
+    return round(minutes / 60, 2)
+
+
+@dataclass(frozen=True)
+class BudgetedProject:
+    """An active project with an hour budget — what a client's roll-up is made of (#25).
+
+    Carries its own ``period_start`` already resolved, so `companies` can roll these up without
+    knowing how a budget period turns into an instant (that rule is ours, in `budget.py`).
+    """
+
+    id: uuid.UUID
+    company_id: uuid.UUID
+    budget_hours: float
+    budget_period: str
+    period_start: datetime
 
 
 class ProjectService:
@@ -38,6 +75,63 @@ class ProjectService:
         for project in projects:
             project.assignees = grouped.get(project.id, [])
 
+    async def _attach_hours(self, projects: Sequence[Project]) -> None:
+        """Budget burn for the page, in one grouped query. Only runs when the column is visible.
+
+        The time module is reached through its published service, imported here rather than at
+        module scope: nothing outside this branch should drag `time` in, and a module must never
+        import another's internals (CLAUDE.md §6).
+        """
+        if not projects:
+            return
+        from app.modules.time.service import LoggedMinutes, TimeService
+
+        periods = {p.id: period_bound(p.budget_period) for p in projects}
+        logged = await TimeService(self.ctx).minutes_by_project(periods)
+        for project in projects:
+            minutes = logged.get(project.id, LoggedMinutes())
+            budget = float(project.budget_hours) if project.budget_hours is not None else None
+            spent = _hours(minutes.total)
+            start = period_start(project.budget_period)
+            project.hours = BudgetHours(
+                period=project.budget_period,
+                period_start=start.date() if start is not None else None,
+                budget_hours=budget,
+                spent_hours=spent,
+                billable_hours=_hours(minutes.billable),
+                unapproved_hours=_hours(minutes.unapproved),
+                # Deliberately unclamped: an over-budget project reports a negative remainder.
+                remaining_hours=round(budget - spent, 2) if budget is not None else None,
+            )
+
+    async def budgeted_active_for_companies(
+        self, company_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, list[BudgetedProject]]:
+        """The active, budgeted projects of each client — the only projects a client's remaining
+        hours can be rolled up from. Published so `companies` never imports our models (§6)."""
+        if not company_ids:
+            return {}
+        stmt = select(
+            Project.id, Project.company_id, Project.budget_hours, Project.budget_period
+        ).where(
+            Project.org_id == self.ctx.org.id,
+            Project.company_id.in_(company_ids),
+            Project.status == ProjectStatus.ACTIVE.value,
+            Project.budget_hours.is_not(None),
+        )
+        grouped: dict[uuid.UUID, list[BudgetedProject]] = {cid: [] for cid in company_ids}
+        for row in (await self.ctx.session.execute(stmt)).all():
+            grouped[row[1]].append(
+                BudgetedProject(
+                    id=row[0],
+                    company_id=row[1],
+                    budget_hours=float(row[2]),
+                    budget_period=row[3],
+                    period_start=period_bound(row[3]),
+                )
+            )
+        return grouped
+
     async def list(
         self,
         *,
@@ -47,6 +141,8 @@ class ProjectService:
         status: ProjectStatus | None = None,
         q: str | None = None,
         mine: bool = False,
+        sort: str | None = None,
+        hours: bool = False,
         count: bool = True,
     ) -> tuple[Sequence[Project], int]:
         conditions = []
@@ -61,13 +157,12 @@ class ProjectService:
             conditions.append(
                 Project.id.in_(self.assignees.entity_ids_for_user(self.ctx.user.id))
             )
-        stmt = (
-            self.repo.scoped_select()
-            .where(*conditions)
-            .order_by(Project.name.asc())
-            .limit(limit)
-            .offset(offset)
-        )
+        stmt = apply_sort(
+            self.repo.scoped_select().where(*conditions),
+            sort,
+            SORTABLE,
+            default=Project.name.asc(),
+        ).limit(limit).offset(offset)
         items = list((await self.ctx.session.execute(stmt)).scalars().all())
         # ``count=False`` skips the discarded COUNT(*) for name-only lookups.
         total = (
@@ -83,6 +178,8 @@ class ProjectService:
             else len(items)
         )
         await self._attach_assignees(items)
+        if hours:
+            await self._attach_hours(items)
         return items, total
 
     async def get(self, project_id: uuid.UUID) -> Project:

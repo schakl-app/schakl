@@ -9,7 +9,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.modules.companies.models import CompanyStatus
-from app.schemas import AssigneeRead, AssigneeWrite
+from app.schemas import AssigneeRead, AssigneeWrite, CompanyBudgetHours
 
 
 def _blank_to_none(value: Any) -> Any:
@@ -63,3 +63,6 @@ class CompanyRead(CompanyBase):
     updated_at: datetime
     # Primary first, then oldest assignment first.
     assignees: list[AssigneeRead] = Field(default_factory=list)
+    # Budget burn rolled up from the client's projects. Only present when the list was asked for
+    # it (``?hours=true``) — a hidden column must not pay for an aggregate (#24, #25).
+    hours: CompanyBudgetHours | None = None
