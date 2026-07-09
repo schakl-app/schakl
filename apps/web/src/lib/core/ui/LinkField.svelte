@@ -78,9 +78,26 @@
     });
   }
 
-  const chipClass = (isPrimary: boolean) =>
-    `inline-flex items-center gap-1.5 rounded-full py-1 text-sm ${editing ? "pl-2.5 pr-1.5" : "px-2.5"} ` +
-    (isPrimary ? "bg-brand/10 text-brand ring-1 ring-inset ring-brand/30" : "bg-surface text-text");
+  /** In use mode a chip navigates (when it has an href); in edit mode it promotes, unless it
+   *  already is the primary. Only a chip that does something gets a hover. */
+  const isClickable = (isPrimary: boolean) => (editing ? !isPrimary : Boolean(chipHref));
+
+  const chipClass = (isPrimary: boolean) => {
+    const base = `relative inline-flex items-center gap-1.5 rounded-full py-1 text-sm transition-colors ${
+      editing ? "pl-2.5 pr-1.5" : "px-2.5"
+    }`;
+    if (isPrimary) {
+      // Already brand-coloured, so its hover deepens the ring rather than changing the fill.
+      const hover = isClickable(true) ? "hover:ring-brand/60" : "";
+      return `${base} bg-brand/10 text-brand ring-1 ring-inset ring-brand/30 ${hover}`;
+    }
+    // A grey chip's hover previews the brand colour it takes when clicked — a promotion in edit
+    // mode, and in use mode simply the affordance that it leads somewhere.
+    const hover = isClickable(false)
+      ? "hover:bg-brand/10 hover:text-brand hover:ring-1 hover:ring-inset hover:ring-brand/30"
+      : "";
+    return `${base} bg-surface text-text ${hover}`;
+  };
 </script>
 
 <div class="space-y-3">
@@ -88,29 +105,40 @@
     <ul class="flex flex-wrap gap-2">
       {#each links as chip (chip.id)}
         <li class={chipClass(chip.is_primary)}>
-          {#if chip.is_primary}
-            <!-- Colour alone can't carry meaning for a screen reader (WCAG 1.4.1). -->
-            <span class="sr-only">({labels.primary})</span>
-          {/if}
-
+          <!-- The whole chip is the target — navigation in use mode, promote in edit mode —
+               stretched over the pill rather than wrapping it, since the ✕ is a control of its own
+               and anchors/buttons cannot nest. -->
           {#if !editing && chipHref}
-            <a href={chipHref(chip.id)} class="font-medium hover:underline">{chip.label}</a>
-          {:else if !editing || chip.is_primary}
-            <span class="font-medium">{chip.label}</span>
-          {:else}
-            <!-- In edit mode the chip *is* the promote control, so the marker never doubles as a
-                 button and no glyph is needed. -->
-            <form method="POST" action={primaryAction} use:enhance class="flex">
+            <a
+              href={chipHref(chip.id)}
+              class="absolute inset-0 rounded-full"
+              aria-label={chip.label}
+            ></a>
+          {:else if editing && !chip.is_primary}
+            <form method="POST" action={primaryAction} use:enhance class="absolute inset-0">
               <input type="hidden" name={idField} value={chip.id} />
-              <button type="submit" class="font-medium hover:text-brand" title={labels.makePrimary}
-                >{chip.label}</button
-              >
+              <button
+                type="submit"
+                class="h-full w-full cursor-pointer rounded-full"
+                title={labels.makePrimary}
+                aria-label={labels.makePrimary}
+              ></button>
             </form>
           {/if}
-          {#if chip.hint}<span class="text-xs opacity-70">{chip.hint}</span>{/if}
+
+          <span class="pointer-events-none font-medium">
+            {chip.label}
+            {#if chip.is_primary}
+              <!-- Colour alone can't carry meaning for a screen reader (WCAG 1.4.1). -->
+              <span class="sr-only">({labels.primary})</span>
+            {/if}
+          </span>
+          {#if chip.hint}
+            <span class="pointer-events-none text-xs opacity-70">{chip.hint}</span>
+          {/if}
 
           {#if editing}
-            <form method="POST" action={unlinkAction} use:enhance class="flex">
+            <form method="POST" action={unlinkAction} use:enhance class="relative flex">
               <input type="hidden" name={idField} value={chip.id} />
               <button
                 type="submit"

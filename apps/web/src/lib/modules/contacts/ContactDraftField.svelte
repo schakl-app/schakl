@@ -170,30 +170,35 @@
     <ul class="flex flex-wrap gap-2">
       {#each chips as chip (chip.key)}
         <li
-          class="inline-flex items-center gap-1.5 rounded-full py-1 pl-2.5 pr-1.5 text-sm
+          class="relative inline-flex items-center gap-1.5 rounded-full py-1 pl-2.5 pr-1.5 text-sm
+            transition-colors
             {chip.key === primary
             ? 'bg-brand/10 text-brand ring-1 ring-inset ring-brand/30'
-            : 'bg-surface text-text'}"
+            : 'bg-surface text-text hover:bg-brand/10 hover:text-brand hover:ring-1 hover:ring-inset hover:ring-brand/30'}"
         >
-          {#if chip.key === primary}
-            <span class="font-medium" title={t("contacts.primary")}>
-              {chip.label}
-              <!-- Colour alone can't carry meaning for a screen reader (WCAG 1.4.1). -->
-              <span class="sr-only">({t("contacts.primary")})</span>
-            </span>
-          {:else}
-            <!-- The chip itself promotes: no glyph marks the primary, only its colour. -->
+          {#if chip.key !== primary}
+            <!-- The whole chip promotes; the hover previews the colour it is about to take. -->
             <button
               type="button"
-              class="font-medium hover:text-brand"
+              class="absolute inset-0 cursor-pointer rounded-full"
               title={t("contacts.make_primary")}
-              onclick={() => (primaryKey = chip.key)}>{chip.label}</button
-            >
+              aria-label={t("contacts.make_primary")}
+              onclick={() => (primaryKey = chip.key)}
+            ></button>
           {/if}
-          {#if chip.hint}<span class="text-xs opacity-70">{chip.hint}</span>{/if}
+          <span class="pointer-events-none font-medium">
+            {chip.label}
+            {#if chip.key === primary}
+              <!-- Colour alone can't carry meaning for a screen reader (WCAG 1.4.1). -->
+              <span class="sr-only">({t("contacts.primary")})</span>
+            {/if}
+          </span>
+          {#if chip.hint}
+            <span class="pointer-events-none text-xs opacity-70">{chip.hint}</span>
+          {/if}
           <button
             type="button"
-            class="rounded-full p-0.5 opacity-60 hover:bg-black/5 hover:opacity-100"
+            class="relative rounded-full p-0.5 opacity-60 hover:bg-black/5 hover:opacity-100 dark:hover:bg-white/10"
             title={t("contacts.unlink")}
             aria-label={t("contacts.unlink")}
             onclick={() => remove(chip.key)}><X size={14} /></button

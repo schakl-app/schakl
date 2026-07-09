@@ -47,8 +47,8 @@
   let primaryId = $state(value.find((a) => a.is_primary)?.user_id ?? "");
   let comboValue = $state("");
 
-  // The star always lands on someone: an explicit pick, else the first chip — which is what the
-  // API would do with an unstarred roster anyway.
+  // Someone is always primary: an explicit pick, else the first chip — which is what the API would
+  // do with a roster that designates nobody anyway.
   const primary = $derived(picked.includes(primaryId) ? primaryId : (picked[0] ?? ""));
 
   const label = (userId: string) => {
@@ -83,29 +83,34 @@
     <ul class="flex flex-wrap gap-2">
       {#each picked as userId (userId)}
         <li
-          class="inline-flex items-center gap-1.5 rounded-full py-1 pl-2.5 pr-1.5 text-sm
+          class="relative inline-flex items-center gap-1.5 rounded-full py-1 pl-2.5 pr-1.5 text-sm
+            transition-colors
             {userId === primary
             ? 'bg-brand/10 text-brand ring-1 ring-inset ring-brand/30'
-            : 'bg-surface text-text'}"
+            : 'bg-surface text-text hover:bg-brand/10 hover:text-brand hover:ring-1 hover:ring-inset hover:ring-brand/30'}"
         >
-          {#if userId === primary}
-            <span class="font-medium" title={t("assignees.primary")}>
-              {label(userId)}
-              <!-- Colour alone can't carry meaning for a screen reader (WCAG 1.4.1). -->
-              <span class="sr-only">({t("assignees.primary")})</span>
-            </span>
-          {:else}
-            <!-- The chip itself promotes: no glyph marks the primary, only its colour. -->
+          {#if userId !== primary}
+            <!-- The whole chip promotes, so the label stays plain text and the hover previews the
+                 colour it is about to take. Stretched over the pill rather than wrapping it: the ✕
+                 is a button too, and buttons cannot nest. -->
             <button
               type="button"
-              class="font-medium hover:text-brand"
+              class="absolute inset-0 cursor-pointer rounded-full"
               title={t("assignees.make_primary")}
-              onclick={() => (primaryId = userId)}>{label(userId)}</button
-            >
+              aria-label={t("assignees.make_primary")}
+              onclick={() => (primaryId = userId)}
+            ></button>
           {/if}
+          <span class="pointer-events-none font-medium">
+            {label(userId)}
+            {#if userId === primary}
+              <!-- Colour alone can't carry meaning for a screen reader (WCAG 1.4.1). -->
+              <span class="sr-only">({t("assignees.primary")})</span>
+            {/if}
+          </span>
           <button
             type="button"
-            class="rounded-full p-0.5 opacity-60 hover:bg-black/5 hover:opacity-100"
+            class="relative rounded-full p-0.5 opacity-60 hover:bg-black/5 hover:opacity-100 dark:hover:bg-white/10"
             title={t("assignees.remove")}
             aria-label={t("assignees.remove")}
             onclick={() => remove(userId)}><X size={14} /></button
