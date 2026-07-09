@@ -153,7 +153,11 @@ exactly why they are not fields.
 | Facet | `security` · `i18n` · `ux` · `documentation` · `epic` · `question` |
 | Status | `needs testing` |
 | Triage | `duplicate` · `invalid` · `wontfix` · `good first issue` · `help wanted` |
-| Area | `area:` + `api` · `auth` · `automation` · `billing` · `calendar` · `companies` · `dashboard` · `google` · `infra` · `integrations` · `mcp` · `notifications` · `projects` · `rbac` · `tenancy` · `time` · `web` |
+| Area | `area: ` + `api` · `auth` · `automation` · `billing` · `calendar` · `companies` · `dashboard` · `google` · `infra` · `integrations` · `mcp` · `notifications` · `projects` · `rbac` · `tenancy` · `time` · `web` |
+
+The area prefix is `area:` **followed by a space** — `area: companies`, not `area:companies`.
+`gh` matches label names exactly and fails the whole command on a miss, so the wrong form
+takes the rest of your `--label` flags down with it.
 
 A facet crosses types: a `Bug` can be `security`, a `Feature` can be `i18n`. That is the
 test for whether something belongs here rather than in the type.
