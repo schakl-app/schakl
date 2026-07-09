@@ -533,3 +533,102 @@ async def test_unknown_uuid_in_another_tenant_yields_no_hours(client_for) -> Non
             (await c.get("/api/v1/projects?hours=true", headers=headers)).json(), project
         )["hours"]
         assert hours["spent_hours"] == 0.0
+
+
+# --- sorting by assigned employee ------------------------------------------------ #
+async def _member(org_id, email: str, full_name: str | None) -> str:
+    """An extra employee, so a list has more than one name to order by."""
+    import uuid as _uuid
+
+    from pwdlib import PasswordHash
+
+    from app.core.auth.models import User
+    from app.core.models import Membership
+    from app.db import async_session_maker, set_current_org
+
+    async with async_session_maker() as session:
+        user = User(
+            id=_uuid.uuid4(),
+            email=email,
+            full_name=full_name,
+            hashed_password=PasswordHash.recommended().hash("secret1234"),
+            is_active=True,
+            is_verified=True,
+        )
+        session.add(user)
+        await session.flush()
+        await set_current_org(session, org_id)
+        session.add(Membership(org_id=org_id, user_id=user.id, role="member"))
+        await session.commit()
+        return str(user.id)
+
+
+async def test_sorting_by_assignee_orders_by_the_primarys_display_name(client_for) -> None:
+    """Mobile can't tap a header, so this sort has to exist server-side to be offered anywhere."""
+    t = await make_tenant("sort-assignee")
+    zoe = await _member(t.org.id, "zoe@sort.test", "Zoe Zwart")
+    ann = await _member(t.org.id, "ann@sort.test", "Ann Appel")
+    # No full name: the UI shows the email, so the sort must too.
+    bob = await _member(t.org.id, "bob@sort.test", None)
+
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        for name, user_id in (("Zed", zoe), ("Alpha", ann), ("Mid", bob)):
+            await c.post(
+                "/api/v1/companies",
+                json={"name": name, "assignees": [{"user_id": user_id, "is_primary": True}]},
+                headers=headers,
+            )
+        await c.post("/api/v1/companies", json={"name": "Nobody"}, headers=headers)
+
+        asc = (await c.get("/api/v1/companies?sort=assignee", headers=headers)).json()
+        # Ann Appel < bob@sort.test < Zoe Zwart; the unassigned client sorts last.
+        assert [i["name"] for i in asc["items"]] == ["Alpha", "Mid", "Zed", "Nobody"]
+
+        desc = (await c.get("/api/v1/companies?sort=-assignee", headers=headers)).json()
+        # Reversed — but "nobody assigned" stays at the bottom in both directions.
+        assert [i["name"] for i in desc["items"]] == ["Zed", "Mid", "Alpha", "Nobody"]
+
+
+async def test_sorting_by_assignee_does_not_duplicate_rows_with_several_assignees(
+    client_for,
+) -> None:
+    """A join would multiply the row; the correlated subquery must not."""
+    t = await make_tenant("sort-assignee-dup")
+    other = await _member(t.org.id, "other@dup.test", "Bea Blauw")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        await c.post(
+            "/api/v1/companies",
+            json={
+                "name": "Crowded",
+                "assignees": [
+                    {"user_id": str(t.user.id), "is_primary": True},
+                    {"user_id": other},
+                ],
+            },
+            headers=headers,
+        )
+        page = (await c.get("/api/v1/companies?sort=assignee", headers=headers)).json()
+        assert [i["name"] for i in page["items"]] == ["Crowded"]
+        assert page["total"] == 1
+
+
+async def test_projects_sort_by_assignee_too(client_for) -> None:
+    t = await make_tenant("sort-assignee-proj")
+    ann = await _member(t.org.id, "ann@proj.test", "Ann Appel")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        await c.post(
+            "/api/v1/projects",
+            json={"name": "Zed", "assignees": [{"user_id": ann, "is_primary": True}]},
+            headers=headers,
+        )
+        await c.post(
+            "/api/v1/projects",
+            json={"name": "Alpha", "assignees": [{"user_id": str(t.user.id), "is_primary": True}]},
+            headers=headers,
+        )
+        items = (await c.get("/api/v1/projects?sort=assignee", headers=headers)).json()["items"]
+        # Ann Appel sorts before the tenant owner's "sort-assignee-proj@example.com".
+        assert [i["name"] for i in items] == ["Zed", "Alpha"]

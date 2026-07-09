@@ -19,7 +19,13 @@ export const COMPANY_COLUMNS: ColumnMeta[] = [
   { key: "name", labelKey: "companies.name", sortKey: "name", primary: true, width: 260 },
   { key: "website", labelKey: "companies.website", defaultVisible: true },
   { key: "status", labelKey: "companies.field.status", sortKey: "status", defaultVisible: true },
-  { key: "assignees", labelKey: "companies.field.assignees", defaultVisible: true },
+  // Sorts by the *primary* assignee's display name; the API orders by it, not by user id.
+  {
+    key: "assignees",
+    labelKey: "companies.field.assignees",
+    sortKey: "assignee",
+    defaultVisible: true,
+  },
   // Shown by default — seeing who has budget left is the point of the column (#25). Turning it
   // off is what proves a hidden aggregate costs nothing.
   {

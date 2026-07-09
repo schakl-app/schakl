@@ -17,7 +17,13 @@ export const PROJECT_COLUMNS: ColumnMeta[] = [
   { key: "name", labelKey: "projects.field.name", sortKey: "name", primary: true, width: 240 },
   { key: "company", labelKey: "projects.field.company", defaultVisible: true },
   { key: "status", labelKey: "projects.field.status", sortKey: "status", defaultVisible: true },
-  { key: "assignees", labelKey: "projects.field.assignees", defaultVisible: true },
+  // Sorts by the *primary* assignee's display name; the API orders by it, not by user id.
+  {
+    key: "assignees",
+    labelKey: "projects.field.assignees",
+    sortKey: "assignee",
+    defaultVisible: true,
+  },
   {
     key: HOURS_COLUMN,
     labelKey: "table.column.available_hours",

@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
+from typing import Any
 
 from sqlalchemy import func, or_, select
 
 from app.core.assignees import AssigneeService
+from app.core.auth.models import User
 from app.core.customfields import CustomFieldsService
 from app.core.events import emit
 from app.core.sorting import apply_sort
@@ -25,12 +27,36 @@ from app.schemas import CompanyBudgetHours
 
 ENTITY_TYPE = "company"
 
+
+def _primary_assignee_name() -> Any:
+    """Sort key for "assigned employee": the *primary* assignee's display name.
+
+    A correlated subquery, not a join — a client has many assignees, and joining would multiply
+    its row and quietly change the page's contents. Falls back to the email exactly as the UI
+    does when someone has no full name, so the list orders the way it reads. A client with nobody
+    assigned yields NULL, which ``apply_sort`` files last in both directions.
+    """
+    return (
+        select(func.lower(func.coalesce(User.full_name, User.email)))
+        .select_from(CompanyAssignee)
+        .join(User, User.id == CompanyAssignee.user_id)
+        .where(
+            CompanyAssignee.company_id == Company.id,
+            CompanyAssignee.org_id == Company.org_id,
+            CompanyAssignee.is_primary.is_(True),
+        )
+        .correlate(Company)
+        .scalar_subquery()
+    )
+
+
 # Sortable columns; anything else in ``?sort=`` is rejected (app/core/sorting.py).
 # ``name`` sorts case-insensitively: Postgres' default collation would otherwise file every
 # lowercase name after every uppercase one, which reads as broken.
 SORTABLE = {
     "name": func.lower(Company.name),
     "status": Company.status,
+    "assignee": _primary_assignee_name(),
     "created_at": Company.created_at,
     "updated_at": Company.updated_at,
 }

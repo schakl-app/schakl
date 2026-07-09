@@ -110,6 +110,12 @@
     the rows you happen to hold sorts the wrong set. A header is clickable only when the API can
     order by that column (`sortKey`, not `sortable`) — a header that claims to sort and doesn't is
     worse than a quiet one. Derived and custom-field columns are honest about this.
+  - **Every sort is reachable from the Kolommen menu, not only from a header.** Below `sm` there
+    *are* no headers, so a header-only sort is a sort mobile users don't have. The menu is the one
+    surface both sizes share: each sortable column carries an ↕ that cycles ascending → descending →
+    off, and the active sort is named at the top. Headers stay clickable on desktop; they are the
+    shortcut, never the only way in. Sorting by a *person* (assigned employee) orders by their
+    display name — never by a user id, which is what a naive `ORDER BY` on the FK would do.
   - **A hidden column costs nothing.** An expensive column (the budget roll-up) is an opt-in
     aggregate: the page's `load` asks the API for it only when the column is visible. This is why
     column metadata is a plain module and the cell renderers are snippets — a server load can read

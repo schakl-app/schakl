@@ -54,6 +54,7 @@
       key: c.key,
       label: c.label ?? t(c.labelKey ?? c.key),
       primary: c.primary,
+      sortKey: c.sortKey,
     })),
   );
 
@@ -255,7 +256,13 @@
     </button>
   {/if}
   <div class="ml-auto">
-    <ColumnPicker all={pickerColumns} visible={visibleKeys} onchange={onColumnsChange} />
+    <ColumnPicker
+      all={pickerColumns}
+      visible={visibleKeys}
+      sort={data.table.sort}
+      onchange={onColumnsChange}
+      onsort={onSort}
+    />
   </div>
 </div>
 

@@ -13,10 +13,12 @@ import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import func, select
 
 from app.core.assignees import AssigneeService
+from app.core.auth.models import User
 from app.core.customfields import CustomFieldsService
 from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
@@ -27,12 +29,34 @@ from app.schemas import BudgetHours
 
 ENTITY_TYPE = "project"
 
+
+def _primary_assignee_name() -> Any:
+    """Sort key for "assigned employee" — the primary assignee's display name.
+
+    Correlated, not joined: a project has many assignees and a join would multiply its row.
+    Falls back to email like the UI does; no primary sorts last (see ``apply_sort``).
+    """
+    return (
+        select(func.lower(func.coalesce(User.full_name, User.email)))
+        .select_from(ProjectAssignee)
+        .join(User, User.id == ProjectAssignee.user_id)
+        .where(
+            ProjectAssignee.project_id == Project.id,
+            ProjectAssignee.org_id == Project.org_id,
+            ProjectAssignee.is_primary.is_(True),
+        )
+        .correlate(Project)
+        .scalar_subquery()
+    )
+
+
 # Columns a client may sort by. The value comes from the URL, so anything not named here is
 # rejected rather than reaching the query (app/core/sorting.py).
 SORTABLE = {
     # Case-insensitive, or Postgres' default collation files lowercase names after uppercase.
     "name": func.lower(Project.name),
     "status": Project.status,
+    "assignee": _primary_assignee_name(),
     "start_date": Project.start_date,
     "end_date": Project.end_date,
     "budget_hours": Project.budget_hours,

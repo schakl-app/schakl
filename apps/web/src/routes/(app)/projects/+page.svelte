@@ -46,6 +46,7 @@
       key: c.key,
       label: c.label ?? t(c.labelKey ?? c.key),
       primary: c.primary,
+      sortKey: c.sortKey,
     })),
   );
 
@@ -228,7 +229,13 @@
       onclick={toggleMine}>{t("projects.filter.mine")}</button
     >
     <SearchInput />
-    <ColumnPicker all={pickerColumns} visible={visibleKeys} onchange={onColumnsChange} />
+    <ColumnPicker
+      all={pickerColumns}
+      visible={visibleKeys}
+      sort={data.table.sort}
+      onchange={onColumnsChange}
+      onsort={onSort}
+    />
   </div>
   <button
     class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
