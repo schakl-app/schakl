@@ -101,6 +101,27 @@
   user's own view (UX Principle 6) — e.g. the timesheet's 7-day vs Mon–Fri **Weergave** switch
   and its jump-to-date picker sit quietly in the toolbar and persist per user (via
   `/api/v1/prefs`), never in org Settings.
+- **Lists are one shared `DataTable`, driven by column descriptors** (`core/table/columns.ts`) —
+  never a hand-rolled `<ul>` per concept. The user picks, orders, resizes and sorts the columns
+  from the **Kolommen** popover on the list itself (personal, per user, `prefs.tables.<list>`),
+  and a tenant's custom fields appear there as columns with no per-module code. Three rules the
+  component enforces so lists can't drift apart:
+  - **Sorting and paging belong to the server.** A list shows a page of a longer set, so sorting
+    the rows you happen to hold sorts the wrong set. A header is clickable only when the API can
+    order by that column (`sortKey`, not `sortable`) — a header that claims to sort and doesn't is
+    worse than a quiet one. Derived and custom-field columns are honest about this.
+  - **A hidden column costs nothing.** An expensive column (the budget roll-up) is an opt-in
+    aggregate: the page's `load` asks the API for it only when the column is visible. This is why
+    column metadata is a plain module and the cell renderers are snippets — a server load can read
+    the first and cannot import the second.
+  - **A grid is not a mobile UI.** Below `sm` the table gives way to the concept's shared row, never
+    a twelve-column sideways scroll. Rows keep their ⋯ `ActionsMenu`, and since a `<tr>` cannot be
+    wrapped in an `<a>`, the primary cell carries the link and the row highlights.
+- **Budget burn has exactly one scale**, in `core/burn.ts` — green < 75 %, amber < 100 %, red ≥ 100 %.
+  The percentage is **unclamped** so an over-budget project reports a negative remainder and reads
+  red; only the drawn bar's width clamps, because a bar cannot be 130 % long. A record with no
+  budget shows an em-dash and still reports what it spent — never a fabricated total, and never a
+  reassuring zero.
 - **Forms are SSR form actions** with `use:enhance`. Mind the default reset: forms whose
   inputs must keep their values after save use `update({ reset: false })`.
 - **An edit surface shows every field the view shows.** If a record's page displays it, its edit
@@ -171,3 +192,7 @@
   the marker, the glyph was noise. Meaning that colour alone carries goes in an `sr-only` label.
 - Chip fields that were editable in use mode: a stray click could detach a contact or move the
   primary. Linking, unlinking and promoting are definition changes and live behind edit mode.
+- A burn bar clamped at 100 % (`Math.min(100, pct)`): a project 40 % over budget drew exactly like
+  one that had just landed on it. Clamp the bar, never the number.
+- A hardcoded `<ul>` per list. Six of them and no user could hide a column; the seventh is what
+  `DataTable` exists to prevent.
