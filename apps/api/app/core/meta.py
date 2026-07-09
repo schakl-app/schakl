@@ -64,6 +64,9 @@ class ModulesMeta(BaseModel):
     default_locale: str
     supported_locales: list[str]
     local_login_enabled: bool
+    # True iff the OIDC routes are actually mounted (settings.oidc_configured, issue #6) —
+    # the login page renders its SSO button from this, so it must never say "enabled" while
+    # /auth/oidc/login would 404.
     oidc_enabled: bool
     # Instance config, not a secret (it is in every tenant URL): lets the instance-admin UI
     # compute an org's address as <slug>.<base_domain> when no custom domain is set.
@@ -227,6 +230,6 @@ async def modules() -> ModulesMeta:
         default_locale=settings.default_locale,
         supported_locales=settings.supported_locales,
         local_login_enabled=settings.local_login_enabled,
-        oidc_enabled=settings.oidc_enabled,
+        oidc_enabled=settings.oidc_configured,
         base_domain=settings.base_domain,
     )

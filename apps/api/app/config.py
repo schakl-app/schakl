@@ -110,6 +110,27 @@ class Settings(BaseSettings):
         return not self.oidc_enforced
 
     @property
+    def oidc_missing_settings(self) -> list[str]:
+        """The env vars the OIDC flow needs but that are unset (empty string counts as unset)."""
+        required = {
+            "VLOTR_OIDC_ENABLED": self.oidc_enabled,
+            "VLOTR_OIDC_DISCOVERY_URL": self.oidc_discovery_url,
+            "VLOTR_OIDC_CLIENT_ID": self.oidc_client_id,
+            "VLOTR_OIDC_CLIENT_SECRET": self.oidc_client_secret,
+        }
+        return [name for name, value in required.items() if not value]
+
+    @property
+    def oidc_configured(self) -> bool:
+        """Single gate for the whole OIDC surface (issue #6).
+
+        Both the route mount (``build_oidc_router``) and the login page's SSO button
+        (``/meta/modules``) key off this one property, so the button can never point at a
+        route that was not mounted.
+        """
+        return not self.oidc_missing_settings
+
+    @property
     def is_production(self) -> bool:
         return self.environment.lower() in {"production", "prod"}
 

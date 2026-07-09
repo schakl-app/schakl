@@ -10,6 +10,7 @@ fails when unconfigured.
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Request
@@ -20,9 +21,25 @@ from app.core.auth.backend import cookie_transport, get_jwt_strategy
 from app.core.auth.models import User
 from app.db import async_session_maker
 
+logger = logging.getLogger("vlotr.auth.oidc")
+
 
 def build_oidc_router() -> APIRouter | None:
-    if not settings.oidc_enabled or not settings.oidc_discovery_url:
+    if not settings.oidc_configured:
+        missing = settings.oidc_missing_settings
+        if settings.oidc_enforced:
+            # Enforced OIDC disables local login; silently dropping the SSO routes on top
+            # of that would lock every user out. Refuse to boot instead (issue #6).
+            raise RuntimeError(
+                "VLOTR_OIDC_ENFORCED=true but OIDC is not configured, which would disable "
+                f"local login with no SSO to fall back on. Set: {', '.join(missing)}."
+            )
+        if settings.oidc_enabled:
+            logger.warning(
+                "OIDC is enabled but not configured; the SSO routes are not mounted and "
+                "the login page will not offer SSO. Set: %s.",
+                ", ".join(missing),
+            )
         return None
 
     from authlib.integrations.starlette_client import OAuth

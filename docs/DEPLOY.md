@@ -63,6 +63,30 @@ Hard delete refuses to run without an export taken *after* the soft delete — t
 safe; the same file can be imported again on this or another instance running the **same
 release** (imports across schema revisions are rejected).
 
+## Single sign-on (OIDC, off by default)
+
+Federates login to an external IdP (Authentik, Keycloak, Entra ID, …). Register the app
+there with callback URL `https://<your-host>/api/v1/auth/oidc/callback`, then set:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `VLOTR_OIDC_ENABLED` | `false` | Mount the SSO routes and show the SSO button on the login page. |
+| `VLOTR_OIDC_DISCOVERY_URL` | — | The IdP's `/.well-known/openid-configuration` URL. **Required when enabled.** |
+| `VLOTR_OIDC_CLIENT_ID` | — | Client id registered at the IdP. **Required when enabled.** |
+| `VLOTR_OIDC_CLIENT_SECRET` | — | Client secret. **Required when enabled.** |
+| `VLOTR_OIDC_ENFORCED` | `false` | Disable local username/password login; SSO becomes the only way in. |
+| `VLOTR_OIDC_NAME` | `sso` | Internal client name; cosmetic. |
+| `VLOTR_OIDC_AUTO_PROVISION_MEMBERSHIP` | `true` | First SSO login auto-grants a membership in the resolved org. Set `false` to require an explicit invite first. |
+| `VLOTR_OIDC_DEFAULT_ROLE` | `member` | Role granted by auto-provisioning. |
+
+All three of discovery URL, client id and client secret must be set (non-empty) for OIDC
+to be considered configured — one gate covers both the routes and the login-page button,
+so a half-configured instance never shows an SSO button that 404s (issue #6). If
+`VLOTR_OIDC_ENABLED=true` with any of them missing, the API logs a startup `WARNING`
+naming the missing variables and runs with local login only. If `VLOTR_OIDC_ENFORCED=true`
+with any of them missing, the API **refuses to start** — enforced OIDC turns local login
+off, so booting anyway would lock every user out.
+
 ## Releases and image tags
 
 Images are built **only** when a `v*` tag is pushed (`.github/workflows/release.yml`). Pushing
