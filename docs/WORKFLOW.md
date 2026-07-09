@@ -74,19 +74,89 @@ Comment on the issue you worked, and be specific:
   ceiling for a UI change. Say that plainly instead of implying a click-through happened.
 - Anything the next agent needs: a conflict you expect, a file another agent had open.
 
-## Labels
+## Classifying an issue
 
-Every issue carries a **type**, a **priority**, and one or more **areas**. Phase labels come
-from the plan in `CLAUDE.md` §10.
+Four things classify an issue, and only one of them is labels. **Type, priority, milestone
+and relationships are native GitHub fields** — reach for a label only for what none of them
+express.
+
+| Axis | Where it lives | Values |
+|---|---|---|
+| Type | native issue **type** (org-level) | `Bug` · `Feature` · `Task` |
+| Priority | native issue **field** (org-level, single-select) | `Urgent` · `High` · `Medium` · `Low` |
+| Phase | native **milestone** | `P1 MVP` · `P2 Agency core` · `P3 Google Workspace` · `P4 Automation & public API` |
+| Structure | native **sub-issues** and **dependencies** | parent ↔ child · blocked-by ↔ blocking |
+| Everything else | **labels** | see below |
+
+A field beats a label because it is single-valued, sortable, and rendered in the issue
+sidebar rather than as one chip among ten. The `bug`, `enhancement`, `tech-debt`,
+`priority: *` and `phase: *` labels **no longer exist** — they were deleted once their
+values moved into the fields above. Do not recreate them.
+
+### Type
+
+Set by the issue templates on creation (`type:` in the form YAML), so most issues arrive
+typed. `Task` covers chores, docs, and tech debt — anything that is neither a defect nor new
+functionality.
+
+`epic` is still a **label**, not a type: the org's type list is `Bug`/`Feature`/`Task`, and
+adding to it needs `admin:org` scope. An epic is a `Feature` carrying the `epic` label and
+owning its children as sub-issues. If someone later creates an `Epic` type, migrate the five
+epics and delete the label.
+
+### Priority
+
+Not on the issue by default — **set it at triage**, every time. It is an organization issue
+field, so `gh issue edit` cannot touch it; use the REST API with the field's numeric id:
+
+```bash
+gh api /orgs/vlotr-crm/issue-fields -q '.[] | "\(.id)\t\(.name)"'   # 43901503 = Priority
+
+gh api -X PATCH /repos/vlotr-crm/vlotr/issues/<N> \
+  -f 'type=Bug' \
+  -F 'issue_field_values[][field_id]=43901503' \
+  -f 'issue_field_values[][value]=High'
+```
+
+Read it back from `.issue_field_values[].single_select_option.name` — it is **not** in
+`gh issue view --json`.
+
+### Milestone = phase
+
+The phases are the build gates in `CLAUDE.md` §10. An issue with no phase yet simply has no
+milestone; do not guess one to fill the bar.
+
+```bash
+gh issue edit <N> --milestone "P2 Agency core"
+```
+
+### Relationships
+
+Express structure with the native links, never by writing "part of #16" in the body and
+hoping. An epic's children are **sub-issues**; work that cannot start until another lands is
+**blocked by** it.
+
+```bash
+gh issue edit 21 --parent 22                    # sub-issue of the google epic
+
+id=$(gh api /repos/vlotr-crm/vlotr/issues/19 -q .id)          # note: .id, not the number
+gh api -X POST /repos/vlotr-crm/vlotr/issues/20/dependencies/blocked_by -F issue_id=$id
+```
+
+### Labels
+
+What remains is genuinely multi-valued — an issue can be several of these at once, which is
+exactly why they are not fields.
 
 | Group | Labels |
 |---|---|
-| Type | `bug` · `enhancement` · `documentation` · `tech-debt` · `security` · `i18n` · `ux` · `epic` · `question` |
-| Priority | `priority: critical` · `priority: high` · `priority: medium` · `priority: low` |
-| Phase | `phase: P1` · `phase: P2` · `phase: P3` · `phase: P4` |
+| Facet | `security` · `i18n` · `ux` · `documentation` · `epic` · `question` |
 | Status | `needs testing` |
 | Triage | `duplicate` · `invalid` · `wontfix` · `good first issue` · `help wanted` |
 | Area | `area:` + `api` · `auth` · `automation` · `billing` · `calendar` · `companies` · `dashboard` · `google` · `infra` · `integrations` · `mcp` · `notifications` · `projects` · `rbac` · `tenancy` · `time` · `web` |
+
+A facet crosses types: a `Bug` can be `security`, a `Feature` can be `i18n`. That is the
+test for whether something belongs here rather than in the type.
 
 `needs testing` means: implemented and pushed, but the behaviour was never exercised in a
 browser. **Apply it to any UI change you land** — given the missing harness, that is nearly
