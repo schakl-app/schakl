@@ -40,7 +40,6 @@ services:
       APP_DB_PASSWORD: ${APP_DB_PASSWORD}
     volumes:
       - db-data:/var/lib/postgresql/data
-      - ./db/init:/docker-entrypoint-initdb.d:ro,z
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_ADMIN_USER:-vlotr} -d ${POSTGRES_DB:-vlotr}"]
       interval: 5s
@@ -49,6 +48,44 @@ services:
     restart: unless-stopped
     # Declaring `networks:` on ANY service means services that omit it land on `default`
     # instead — a separate network from `vlotr`, so `db` would not resolve from `api`.
+    networks: [vlotr]
+
+  # Creates the NON-superuser application role the API/worker connect as, so Postgres RLS is
+  # enforced (superusers bypass it). It owns the public schema so alembic can create tables
+  # and policies while still being subject to FORCE ROW LEVEL SECURITY. See CLAUDE.md §5.
+  #
+  # Deliberately NOT /docker-entrypoint-initdb.d: that only runs when PGDATA is empty, and it
+  # needed a host file, which a Portainer web-editor stack cannot provide. This runs on every
+  # `up`, is idempotent, and needs nothing on disk.
+  db-init:
+    image: postgres:16-alpine
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_ADMIN_USER:-vlotr}
+      PGPASSWORD: ${POSTGRES_ADMIN_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB:-vlotr}
+      APP_DB_USER: ${APP_DB_USER:-vlotr_app}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD}
+    # `$$` escapes Compose interpolation so the shell expands these, not Compose.
+    entrypoint:
+      - sh
+      - -ec
+      - |
+        psql -v ON_ERROR_STOP=1 \
+          -v app_user="$$APP_DB_USER" -v app_pass="$$APP_DB_PASSWORD" -v db="$$PGDATABASE" <<'SQL'
+        SELECT format('CREATE ROLE %I LOGIN PASSWORD %L NOSUPERUSER', :'app_user', :'app_pass')
+        WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'app_user')\gexec
+
+        ALTER ROLE :"app_user" WITH LOGIN PASSWORD :'app_pass' NOSUPERUSER;
+        GRANT ALL ON DATABASE :"db" TO :"app_user";
+        ALTER SCHEMA public OWNER TO :"app_user";
+        GRANT ALL ON SCHEMA public TO :"app_user";
+        SQL
+        echo "→ app role '$$APP_DB_USER' present and in sync"
+    restart: "no"
     networks: [vlotr]
 
   redis:
@@ -65,8 +102,10 @@ services:
     image: ghcr.io/vlotr-crm/vlotr-api:${VLOTR_TAG:-latest}
     environment: *api-env
     depends_on:
-      db:
-        condition: service_healthy
+      # Not `db: service_healthy` — the app role must exist before `alembic upgrade head`
+      # connects as it. db-init already waits on db being healthy.
+      db-init:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     healthcheck:
