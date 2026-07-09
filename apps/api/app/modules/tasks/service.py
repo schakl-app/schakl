@@ -10,11 +10,13 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy import text as sql_text
 
 from app.core.auth.models import User
+from app.core.sorting import apply_sort, user_sort_name
 from app.core.tenancy import RequestContext
 from app.errors import AppError
 from app.modules.tasks import recurrence as rec_mod
@@ -29,6 +31,7 @@ from app.modules.tasks.models import (
     TaskLabel,
     TaskLabelLink,
     TaskLink,
+    TaskPriority,
     TaskStatus,
 )
 from app.modules.tasks.schemas import (
@@ -69,6 +72,35 @@ _TRACKED_FIELDS = (
     "project_id",
     "recurrence",
 )
+
+
+def _rank(column: Any, order: Sequence[str]) -> Any:
+    """Order a small closed vocabulary by *meaning*, not by spelling.
+
+    ``priority`` and ``status`` are stored as strings, so a plain ``ORDER BY`` files them
+    alphabetically — ``done, in_progress, open`` for a workflow that runs the other way, and
+    ``high, low, normal`` for a scale nobody reads that way. The rank makes ascending mean
+    "earliest in the workflow" and "least urgent", so ``-priority`` puts the fires on top.
+    """
+    return case({value: i for i, value in enumerate(order)}, value=column, else_=len(order))
+
+
+# Columns a client may sort by; anything else in ``?sort=`` is rejected (app/core/sorting.py).
+# ``title`` sorts case-insensitively, or Postgres' collation files every lowercase title after
+# every uppercase one. ``assignee`` orders by the employee's display name, never by their user id
+# — a list sorted by a person has to read that way (docs/UX.md).
+_PRIORITY_ORDER = (TaskPriority.LOW.value, TaskPriority.NORMAL.value, TaskPriority.HIGH.value)
+_STATUS_ORDER = (TaskStatus.OPEN.value, TaskStatus.IN_PROGRESS.value, TaskStatus.DONE.value)
+
+SORTABLE = {
+    "title": func.lower(Task.title),
+    "due_date": Task.due_date,
+    "priority": _rank(Task.priority, _PRIORITY_ORDER),
+    "status": _rank(Task.status, _STATUS_ORDER),
+    "assignee": user_sort_name(Task.assignee_user_id),
+    "created_at": Task.created_at,
+    "updated_at": Task.updated_at,
+}
 
 
 def _display_name(user: User | None) -> str | None:
@@ -178,6 +210,7 @@ class TaskService:
         label_id: uuid.UUID | None = None,
         due: str | None = None,
         q: str | None = None,
+        sort: str | None = None,
         with_meta: bool = True,
         count: bool = True,
     ) -> tuple[list[TaskListItem], int]:
@@ -214,7 +247,16 @@ class TaskService:
             count_stmt = select(func.count()).select_from(stmt.subquery())
             total = int(await self.ctx.session.scalar(count_stmt) or 0)
 
-        stmt = stmt.order_by(Task.position.asc(), Task.created_at.asc()).limit(limit).offset(offset)
+        # Unsorted, the board keeps its hand-dragged order. A requested sort replaces `position`
+        # but keeps `created_at` as the tiebreak, so paging stays deterministic either way. The
+        # web groups the rows by status afterwards; a sort therefore orders *within* a section
+        # and never reshuffles the sections themselves (#38, #41).
+        stmt = (
+            apply_sort(stmt, sort, SORTABLE, default=Task.position.asc())
+            .order_by(Task.created_at.asc())
+            .limit(limit)
+            .offset(offset)
+        )
         tasks = (await self.ctx.session.execute(stmt)).scalars().all()
         if not count:
             total = len(tasks)

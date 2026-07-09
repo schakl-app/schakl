@@ -138,6 +138,28 @@
   - **A grid is not a mobile UI.** Below `sm` the table gives way to the concept's shared row, never
     a twelve-column sideways scroll. Rows keep their ⋯ `ActionsMenu`, and since a `<tr>` cannot be
     wrapped in an `<a>`, the primary cell carries the link and the row highlights.
+  - **A column sorts by what it prints.** A person sorts by display name, a client/project/task by
+    its name — never by the foreign key behind it (the API resolves each with a correlated
+    subquery, which a join would turn into duplicated rows). A small closed vocabulary sorts by
+    *meaning*: `priority` ranks low→high and `status` runs along the workflow, because
+    alphabetically they read `high, low, normal` and `done, in_progress, open`. A value the server
+    genuinely cannot order by — a derived status pill, a JSONB custom field — carries no `sortKey`
+    and gets a quiet header.
+  - **Grouping and sorting compose.** A sort orders rows *within* each section and never reorders
+    the sections; so a board that groups by status declares no status column, because sorting one
+    would visibly do nothing. Which sections are folded is a personal view option, saved with the
+    columns.
+- **A panel is how a number opens.** A module hangs a panel off another module's detail page by
+  registering an `EntityPanelSpec` (`core/registry.ts`), never by having the host page import it —
+  a tenant with the module disabled then simply never renders it, and pays for no call. The panel
+  loads through the typed client inside the host's `Promise.all`, and the host hands down the
+  lookups it already fetched (`EntityPanelLookups`) rather than letting the panel refetch 200 rows
+  the page is holding. A panel that edits its records posts to the **host page's** form actions,
+  because that is where SvelteKit actions live.
+- **A period an aggregate counts from is the API's, not the browser's.** `budget_period` resolves
+  to a *local* Amsterdam day (`projects/budget.py::period_start_date`), and the entries behind a
+  budget bar are filtered by exactly that day. A page that recomputed it in UTC landed on the
+  previous day for half the year, quietly dragging last month's evening into this month's total.
 - **Budget burn has exactly one scale**, in `core/burn.ts` — green < 75 %, amber < 100 %, red ≥ 100 %.
   The percentage is **unclamped** so an over-budget project reports a negative remainder and reads
   red; only the drawn bar's width clamps, because a bar cannot be 130 % long. A record with no
@@ -217,3 +239,8 @@
   one that had just landed on it. Clamp the bar, never the number.
 - A hardcoded `<ul>` per list. Six of them and no user could hide a column; the seventh is what
   `DataTable` exists to prevent.
+- Taking `.date()` of a UTC instant to name a local day. Amsterdam's midnight is 22:00 UTC the day
+  *before* in summer, so a monthly budget reported its period as starting 30 June. Half the year the
+  bug is invisible, which is why it is pinned on a fixed date rather than on `today`.
+- A totals row summed from `rows`. The page holds 200 of a longer set, so it prints the total *of
+  the page* — which looks exactly like the right answer. Totals come from the API.

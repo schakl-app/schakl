@@ -34,6 +34,77 @@ export interface CompanyPanelSpec {
   position?: number;
 }
 
+/** A member as `/api/v1/members/lookup` returns them. Panels print names, never user ids. */
+export interface PanelMember {
+  user_id: string;
+  full_name: string | null;
+  email: string;
+}
+
+/**
+ * The lookups a detail page has already fetched, handed down to its panels.
+ *
+ * A panel that refetched these would be the exact bug `docs/PERFORMANCE.md` names: a second
+ * 200-row company fetch to render a name the page is already holding. So the host passes what it
+ * has, and a panel that needs none of it ignores the lot. `id`+name shapes only — a panel renders
+ * labels and fills pickers, it does not need the records.
+ */
+export interface EntityPanelLookups {
+  members: PanelMember[];
+  companies: { id: string; name: string }[];
+  projects: { id: string; name: string; company_id?: string | null }[];
+  tasks: {
+    id: string;
+    title: string;
+    project_id?: string | null;
+    allocated_minutes?: number | null;
+  }[];
+}
+
+/** What a host page tells a panel about the entity it is hanging off. */
+export interface EntityPanelContext {
+  entityId: string;
+  /**
+   * The day the host's aggregate starts counting from — a project's budget-period start (from the
+   * API, never recomputed in the browser). `null` means "no lower bound" (a `total` budget).
+   * A panel that answers "which records made that number" must count exactly what the number did.
+   */
+  periodStart: string | null;
+}
+
+/**
+ * A panel a module contributes to some *other* module's detail page (#43).
+ *
+ * The company detail view composes `CompanyPanelSpec`s through the API's panel providers, which
+ * hand back an opaque dict. This is the other seam: the panel loads through the **typed client**,
+ * the way a dashboard widget does, because a panel that pages, counts and links needs its
+ * endpoint's types more than it needs a generic envelope.
+ *
+ * The point is the same either way — a project page renders whatever the enabled modules offer,
+ * so a tenant without `time` simply never sees a Uren panel, and no route file imports another
+ * module's internals (CLAUDE.md §6).
+ *
+ * A panel that edits its records posts to the **host page's** form actions: SvelteKit actions
+ * live on the page, so the host owns them. Say which ones a panel needs in its own doc comment.
+ */
+export interface EntityPanelSpec {
+  /** Unique panel key, e.g. "time.entries". */
+  key: string;
+  module: string;
+  /** The host entity this attaches to, e.g. "project". */
+  entityType: string;
+  position?: number;
+  /** i18n key for the panel heading. */
+  titleKey: string;
+  /** Server-side loader; runs inside the host page's `load`, API-only. */
+  load: (api: ApiClient, context: EntityPanelContext) => Promise<unknown>;
+  component: Component<{
+    data: unknown;
+    context: EntityPanelContext;
+    lookups: EntityPanelLookups;
+  }>;
+}
+
 export interface DashboardWidgetSpec {
   /** Unique widget key, e.g. "time.today". */
   key: string;
@@ -75,6 +146,8 @@ export interface WebModule {
   name: string;
   nav?: NavItem[];
   companyPanels?: CompanyPanelSpec[];
+  /** Panels this module hangs off another module's detail page (e.g. Uren on a project). */
+  entityPanels?: EntityPanelSpec[];
   dashboardWidgets?: DashboardWidgetSpec[];
   /** Event feeds composed by the shared calendar — Google Calendar plugs in here later (P3). */
   calendarSources?: CalendarSourceSpec[];
@@ -103,6 +176,14 @@ export function companyPanelComponent(
   return enabledWebModules(enabled)
     .flatMap((m) => m.companyPanels ?? [])
     .find((p) => p.key === key);
+}
+
+/** The panels enabled modules attach to `entityType`, in display order. */
+export function entityPanelsFor(enabled: string[], entityType: string): EntityPanelSpec[] {
+  return enabledWebModules(enabled)
+    .flatMap((m) => m.entityPanels ?? [])
+    .filter((p) => p.entityType === entityType)
+    .sort((a, b) => (a.position ?? 100) - (b.position ?? 100));
 }
 
 export function dashboardWidgetsFor(enabled: string[]): DashboardWidgetSpec[] {

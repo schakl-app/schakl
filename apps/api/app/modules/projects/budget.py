@@ -12,7 +12,7 @@ still UTC; only the *day* it names is local.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 # The same timezone the task recurrence engine already runs on (tasks/recurrence.py).
@@ -25,20 +25,34 @@ EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 BUDGET_PERIODS: tuple[str, ...] = ("total", "monthly", "weekly", "daily")
 
 
+def period_start_date(budget_period: str, *, now: datetime | None = None) -> date | None:
+    """The **local calendar day** the current budget period began. ``None`` for ``total``.
+
+    This is the day a human names ("since 1 July"), and the one a client sends back as a
+    ``date_from`` filter. It is emphatically *not* ``period_start(...).date()``: in summer the
+    UTC instant for Amsterdam-local midnight is 22:00 the day **before**, so that expression
+    reports 30 June for a July budget and drags the previous month's last evening into the
+    period it is supposed to exclude.
+
+    ``now`` is injectable so tests can pin a date instead of racing the clock.
+    """
+    today = (now or datetime.now(UTC)).astimezone(_TZ).date()
+    if budget_period == "monthly":
+        return today.replace(day=1)
+    if budget_period == "weekly":
+        return today - timedelta(days=today.weekday())  # Monday
+    if budget_period == "daily":
+        return today
+    return None
+
+
 def period_start(budget_period: str, *, now: datetime | None = None) -> datetime | None:
     """The UTC instant the current budget period began. ``None`` for ``total`` — it never resets.
 
     ``now`` is injectable so tests can pin a date instead of racing the clock.
     """
-    local = (now or datetime.now(UTC)).astimezone(_TZ)
-    today = local.date()
-    if budget_period == "monthly":
-        day = today.replace(day=1)
-    elif budget_period == "weekly":
-        day = today - timedelta(days=today.weekday())  # Monday
-    elif budget_period == "daily":
-        day = today
-    else:
+    day = period_start_date(budget_period, now=now)
+    if day is None:
         return None
     return datetime.combine(day, time.min, tzinfo=_TZ).astimezone(UTC)
 

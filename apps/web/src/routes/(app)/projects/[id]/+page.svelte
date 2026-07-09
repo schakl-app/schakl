@@ -3,20 +3,33 @@
   import { dndzone } from "svelte-dnd-action";
 
   import { enhance } from "$app/forms";
+  import { page } from "$app/state";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import CustomFieldsView from "$lib/core/customfields/CustomFieldsView.svelte";
   import { burnBarClass, burnBarWidth, burnPct } from "$lib/core/burn";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { entityPanelsFor } from "$lib/core/registry";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import AssigneePicker from "$lib/core/ui/AssigneePicker.svelte";
   import AvatarStack from "$lib/core/ui/AvatarStack.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import TaskRow from "$lib/modules/tasks/TaskRow.svelte";
-  import { hoursFromMinutes } from "$lib/modules/time/format";
 
   let { data, form } = $props();
+
+  // Panels are contributed by enabled modules and composed here — this page never names `time`.
+  const enabled = $derived(page.data.theme?.enabledModules ?? []);
+  const panelSpecs = $derived(entityPanelsFor(enabled, "project"));
+  const panelComponent = (key: string) => panelSpecs.find((spec) => spec.key === key)?.component;
+  // The lookups this page already holds, handed down so a panel never refetches them.
+  const panelLookups = $derived({
+    members: data.members,
+    companies: data.companies,
+    projects: data.projects,
+    tasks: data.tasks,
+  });
 
   // Use mode vs edit mode (UX §3): the definition is edited behind the ⋯ → Bewerken toggle.
   let editing = $state(false);
@@ -73,10 +86,12 @@
       : (project.budget_amount ?? null),
   );
 
-  // Actuals from logged time (team-wide) against the budget.
-  const loggedHours = $derived(hoursFromMinutes(data.logged.minutes));
+  // Actuals from logged time (team-wide) against the budget, computed by the API over the budget's
+  // current period — the same figures the projects list column shows, and the same period the Uren
+  // panel below lists the entries for.
+  const loggedHours = $derived(project.hours?.spent_hours ?? 0);
   const billableValue = $derived(
-    project.hourly_rate != null ? (data.logged.billable_minutes / 60) * project.hourly_rate : null,
+    project.hourly_rate != null ? (project.hours?.billable_hours ?? 0) * project.hourly_rate : null,
   );
   // The one burn scale (core/burn.ts, docs/UX.md). Unclamped: this used to `Math.min(100, …)`,
   // so a project 40 % over budget drew exactly like one that had just landed on it.
@@ -390,6 +405,18 @@
     {/if}
   </section>
 </div>
+
+<!-- Panels contributed by enabled modules — the Uren panel answers the budget bar above it.
+     Every number opens (docs/UX.md principle 7). -->
+{#each data.panels as panel (panel.key)}
+  {@const PanelComponent = panelComponent(panel.key)}
+  {#if PanelComponent}
+    <section class="mt-4 rounded-xl border border-border bg-surface-raised p-5">
+      <h2 class="mb-3 text-sm font-semibold text-text">{t(panel.titleKey)}</h2>
+      <PanelComponent data={panel.data} context={data.context} lookups={panelLookups} />
+    </section>
+  {/if}
+{/each}
 
 <!-- To-dos -->
 <section class="mt-4 rounded-xl border border-border bg-surface-raised p-5">

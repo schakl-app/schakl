@@ -26,3 +26,24 @@ export function formatTime(iso: string | null | undefined): string {
 export function hoursFromMinutes(minutes: number): number {
   return Math.round((minutes / 60) * 10) / 10;
 }
+
+/** Where an entry sits in the sign-off chain. Read-only sugar over the three stored columns. */
+export type EntryStatus = "open" | "approved" | "to_invoice" | "invoiced";
+
+/**
+ * The one place that turns `billable × approved_at × invoiced_at` into the word the UI prints.
+ *
+ * It mirrors the report's status filter exactly (`overview/+page.server.ts::statusFlags`), so a
+ * row can never show a pill the filter that produced it disagrees with. Invoiced implies approved
+ * — the API enforces that, and the order of these branches is what keeps the UI honest about it
+ * (docs/UX.md: states never contradict each other).
+ */
+export function entryStatus(entry: {
+  billable?: boolean;
+  approved_at?: string | null;
+  invoiced_at?: string | null;
+}): EntryStatus {
+  if (entry.invoiced_at) return "invoiced";
+  if (entry.approved_at) return entry.billable ? "to_invoice" : "approved";
+  return "open";
+}

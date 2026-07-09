@@ -22,7 +22,7 @@ from app.core.auth.models import User
 from app.core.customfields import CustomFieldsService
 from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
-from app.modules.projects.budget import period_bound, period_start
+from app.modules.projects.budget import period_bound, period_start_date
 from app.modules.projects.models import Project, ProjectAssignee, ProjectStatus
 from app.modules.projects.schemas import ProjectCreate, ProjectUpdate
 from app.schemas import BudgetHours
@@ -116,10 +116,11 @@ class ProjectService:
             minutes = logged.get(project.id, LoggedMinutes())
             budget = float(project.budget_hours) if project.budget_hours is not None else None
             spent = _hours(minutes.total)
-            start = period_start(project.budget_period)
             project.hours = BudgetHours(
                 period=project.budget_period,
-                period_start=start.date() if start is not None else None,
+                # The local day the period began — what a client sends back as `date_from` to list
+                # the entries behind this number (#43). Never the UTC instant's `.date()`.
+                period_start=period_start_date(project.budget_period),
                 budget_hours=budget,
                 spent_hours=spent,
                 billable_hours=_hours(minutes.billable),
@@ -206,9 +207,15 @@ class ProjectService:
             await self._attach_hours(items)
         return items, total
 
-    async def get(self, project_id: uuid.UUID) -> Project:
+    async def get(self, project_id: uuid.UUID, *, hours: bool = False) -> Project:
         project = await self.repo.get_or_404(project_id)
         await self._attach_assignees([project])
+        # Opt-in, exactly as on the list. The detail page asks for it because its budget bar and
+        # its Uren panel must both count from the *same* period start (#43) — one the API resolves
+        # in Europe/Amsterdam (budget.py), which a browser recomputing it in UTC gets wrong twice
+        # a year.
+        if hours:
+            await self._attach_hours([project])
         return project
 
     async def primary_assignee(self, project_id: uuid.UUID) -> uuid.UUID | None:

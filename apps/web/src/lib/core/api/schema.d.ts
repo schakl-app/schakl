@@ -5811,7 +5811,10 @@ export interface operations {
     };
     get_project_api_v1_projects__project_id__get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Include the budget burn-down for the current period; one extra query */
+                hours?: boolean;
+            };
             header?: never;
             path: {
                 project_id: string;
@@ -5936,6 +5939,8 @@ export interface operations {
                 label_id?: string | null;
                 due?: ("overdue" | "today" | "week") | null;
                 q?: string | null;
+                /** @description title | due_date | priority | status | assignee | …, '-' desc */
+                sort?: string | null;
                 /** @description Include label/checklist/comment aggregates */
                 meta?: boolean;
                 /** @description Compute total; set false for name-only lookups */
@@ -6988,6 +6993,16 @@ export interface operations {
                 offset?: number;
                 user_id?: string | null;
                 company_id?: string | null;
+                project_id?: string | null;
+                task_id?: string | null;
+                date_from?: string | null;
+                date_to?: string | null;
+                /** @description Filter running timers in/out; unset = both */
+                running?: boolean | null;
+                /** @description The whole team's entries, not just mine. Free to anyone when the query names a company/project/task — those hours already show as a budget bar; managers only when it doesn't. */
+                all_users?: boolean;
+                /** @description date | employee | company | project | task | minutes | …, '-' desc */
+                sort?: string | null;
             };
             header?: never;
             path?: never;
@@ -7257,6 +7272,8 @@ export interface operations {
                 billable?: boolean | null;
                 approved?: boolean | null;
                 invoiced?: boolean | null;
+                /** @description date | employee | company | project | task | minutes | …, '-' desc */
+                sort?: string | null;
             };
             header?: never;
             path?: never;

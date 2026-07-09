@@ -63,9 +63,12 @@ async def create_project(
 @router.get("/{project_id}", response_model=ProjectRead)
 async def get_project(
     project_id: uuid.UUID,
+    hours: bool = Query(
+        False, description="Include the budget burn-down for the current period; one extra query"
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> ProjectRead:
-    project = await ProjectService(ctx).get(project_id)
+    project = await ProjectService(ctx).get(project_id, hours=hours)
     return ProjectRead.model_validate(project)
 
 

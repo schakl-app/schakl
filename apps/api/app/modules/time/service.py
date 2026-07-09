@@ -14,10 +14,12 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
-from sqlalchemy import DateTime, column, func, select, values
+from sqlalchemy import DateTime, column, func, select, table, values
 from sqlalchemy import text as sql_text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 
+from app.core.roles import Role
+from app.core.sorting import apply_sort, user_sort_name
 from app.core.tenancy import RequestContext
 from app.errors import AppError
 from app.modules.time.models import TimeEntry
@@ -57,6 +59,49 @@ def _now() -> datetime:
 
 def _duration_minutes(started_at: datetime, ended_at: datetime) -> int:
     return max(0, round((ended_at - started_at).total_seconds() / 60))
+
+
+# The three tables an entry points at, named rather than imported. A module never imports another
+# module's internals (CLAUDE.md §6) — the same rule `revenue()` already follows by joining
+# `projects` in raw SQL. These stand-ins carry only the columns we order by.
+_companies = table("companies", column("id"), column("org_id"), column("name"))
+_projects = table("projects", column("id"), column("org_id"), column("name"))
+_tasks = table("tasks", column("id"), column("org_id"), column("title"))
+
+
+def _related_name(source: Any, fk: Any, name_column: Any) -> Any:
+    """Order by the *name* the report prints, not by the foreign key behind it.
+
+    Correlated, so it joins nothing and can never multiply an entry into two rows. Both sides
+    carry the org filter (Golden Rule 1); RLS backs it up. An entry with no client/project/task
+    yields NULL, which ``apply_sort`` files last in both directions.
+    """
+    return (
+        select(func.lower(name_column))
+        .select_from(source)
+        .where(source.c.id == fk, source.c.org_id == TimeEntry.org_id)
+        .correlate(TimeEntry)
+        .scalar_subquery()
+    )
+
+
+# Columns a client may sort by; anything else in ``?sort=`` is rejected (app/core/sorting.py).
+# There is deliberately no ``status`` key: the report's status pill is derived from three
+# columns (billable × approved × invoiced), so no single ``ORDER BY`` reproduces it, and a header
+# that claims to sort and doesn't is worse than a quiet one (docs/UX.md).
+SORTABLE = {
+    "date": TimeEntry.started_at,
+    "employee": user_sort_name(TimeEntry.user_id),
+    "company": _related_name(_companies, TimeEntry.company_id, _companies.c.name),
+    "project": _related_name(_projects, TimeEntry.project_id, _projects.c.name),
+    "task": _related_name(_tasks, TimeEntry.task_id, _tasks.c.title),
+    "description": func.lower(TimeEntry.description),
+    "minutes": TimeEntry.minutes,
+    "billable": TimeEntry.billable,
+    "approver": user_sort_name(TimeEntry.approved_by_user_id),
+    "approved_at": TimeEntry.approved_at,
+    "invoiced_at": TimeEntry.invoiced_at,
+}
 
 
 class TimeService:
@@ -322,15 +367,74 @@ class TimeService:
         offset: int,
         user_id: uuid.UUID | None = None,
         company_id: uuid.UUID | None = None,
+        project_id: uuid.UUID | None = None,
+        task_id: uuid.UUID | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        running: bool | None = None,
+        all_users: bool = False,
+        sort: str | None = None,
     ) -> tuple[Sequence[TimeEntry], int]:
-        uid = self._effective_user_id(user_id)
-        filters: dict = {"user_id": uid}
+        """Entries, by default the caller's own.
+
+        ``all_users`` drops the per-user filter, and it is **not** a manager-only switch when the
+        query names an entity. A project's logged hours are already team-visible — ``/time/logged``
+        is what draws every budget bar, for members and managers alike — so the entries that add up
+        to that number are too, and the "where did the budget go" panel (#43) must answer in place
+        rather than bounce a member to the manager-only report.
+
+        Unscoped, though, ``all_users`` *is* the manager report: the whole org's hours, whoever
+        logged them. That needs the same gate ``report()`` has. External ``client`` users get
+        neither.
+        """
+        conditions = []
+        if all_users:
+            if self.ctx.role == Role.CLIENT:
+                raise AppError("forbidden", "errors.forbidden", status_code=403)
+            if company_id is None and project_id is None and task_id is None:
+                self.ctx.ensure_can_manage()
+        else:
+            conditions.append(TimeEntry.user_id == self._effective_user_id(user_id))
         if company_id is not None:
-            filters["company_id"] = company_id
-        items = await self.repo.list(
-            limit=limit, offset=offset, order_by=TimeEntry.started_at.desc(), **filters
+            conditions.append(TimeEntry.company_id == company_id)
+        if project_id is not None:
+            conditions.append(TimeEntry.project_id == project_id)
+        if task_id is not None:
+            conditions.append(TimeEntry.task_id == task_id)
+        if date_from is not None:
+            conditions.append(
+                TimeEntry.started_at >= datetime.combine(date_from, time.min, tzinfo=UTC)
+            )
+        if date_to is not None:
+            conditions.append(
+                TimeEntry.started_at
+                < datetime.combine(date_to, time.min, tzinfo=UTC) + timedelta(days=1)
+            )
+        if running is not None:
+            # A running timer is not a logged entry: its `minutes` is 0 and it burns no budget.
+            conditions.append(
+                TimeEntry.ended_at.is_(None) if running else TimeEntry.ended_at.is_not(None)
+            )
+
+        stmt = (
+            apply_sort(
+                self.repo.scoped_select().where(*conditions),
+                sort,
+                SORTABLE,
+                default=TimeEntry.started_at.desc(),
+            )
+            .limit(limit)
+            .offset(offset)
         )
-        total = await self.repo.count(**filters)
+        items = (await self.ctx.session.execute(stmt)).scalars().all()
+        total = int(
+            await self.ctx.session.scalar(
+                select(func.count())
+                .select_from(TimeEntry)
+                .where(TimeEntry.org_id == self.ctx.org.id, *conditions)
+            )
+            or 0
+        )
         return items, total
 
     # --- approval / invoicing (manager surface) -------------------------------- #
@@ -387,6 +491,7 @@ class TimeService:
         billable: bool | None = None,
         approved: bool | None = None,
         invoiced: bool | None = None,
+        sort: str | None = None,
     ) -> tuple[Sequence[TimeEntry], int, dict[str, int]]:
         """Org-wide entries for the approval/invoicing overview. Managers only."""
         self.ctx.ensure_can_manage()
@@ -401,9 +506,12 @@ class TimeService:
             invoiced=invoiced,
         )
         stmt = (
-            self.repo.scoped_select()
-            .where(*conditions)
-            .order_by(TimeEntry.started_at.desc())
+            apply_sort(
+                self.repo.scoped_select().where(*conditions),
+                sort,
+                SORTABLE,
+                default=TimeEntry.started_at.desc(),
+            )
             .limit(limit)
             .offset(offset)
         )

@@ -48,6 +48,9 @@ async def time_report(
     billable: bool | None = Query(None),
     approved: bool | None = Query(None),
     invoiced: bool | None = Query(None),
+    sort: str | None = Query(
+        None, description="date | employee | company | project | task | minutes | …, '-' desc"
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> TimeReport:
     """Org-wide entries with filter + sign-off totals, for the hours overview."""
@@ -62,6 +65,7 @@ async def time_report(
         billable=billable,
         approved=approved,
         invoiced=invoiced,
+        sort=sort,
     )
     return TimeReport(
         items=[TimeEntryRead.model_validate(e) for e in items],
@@ -202,10 +206,36 @@ async def list_entries(
     offset: int = Query(0, ge=0),
     user_id: uuid.UUID | None = Query(None),
     company_id: uuid.UUID | None = Query(None),
+    project_id: uuid.UUID | None = Query(None),
+    task_id: uuid.UUID | None = Query(None),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
+    running: bool | None = Query(None, description="Filter running timers in/out; unset = both"),
+    all_users: bool = Query(
+        False,
+        description=(
+            "The whole team's entries, not just mine. Free to anyone when the query names a "
+            "company/project/task — those hours already show as a budget bar; managers only "
+            "when it doesn't."
+        ),
+    ),
+    sort: str | None = Query(
+        None, description="date | employee | company | project | task | minutes | …, '-' desc"
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> Page[TimeEntryRead]:
     items, total = await TimeService(ctx).list(
-        limit=limit, offset=offset, user_id=user_id, company_id=company_id
+        limit=limit,
+        offset=offset,
+        user_id=user_id,
+        company_id=company_id,
+        project_id=project_id,
+        task_id=task_id,
+        date_from=date_from,
+        date_to=date_to,
+        running=running,
+        all_users=all_users,
+        sort=sort,
     )
     return Page(
         items=[TimeEntryRead.model_validate(e) for e in items],

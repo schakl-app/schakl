@@ -60,6 +60,9 @@ async def list_tasks(
     label_id: uuid.UUID | None = Query(None),
     due: Literal["overdue", "today", "week"] | None = Query(None),
     q: str | None = Query(None, max_length=200),
+    sort: str | None = Query(
+        None, description="title | due_date | priority | status | assignee | …, '-' desc"
+    ),
     meta: bool = Query(True, description="Include label/checklist/comment aggregates"),
     count: bool = Query(True, description="Compute total; set false for name-only lookups"),
     ctx: RequestContext = Depends(require_context),
@@ -74,6 +77,7 @@ async def list_tasks(
         label_id=label_id,
         due=due,
         q=q,
+        sort=sort,
         with_meta=meta,
         count=count,
     )
