@@ -15,6 +15,10 @@ export interface OrgTheme {
   accentColor: string;
   defaultLocale: string;
   enabledModules: string[];
+  /** False when the hostname resolved to no org (unknown host, or a fresh install). */
+  resolved: boolean;
+  /** The org exists but is suspended: branding renders, every signed-in request is blocked. */
+  suspended: boolean;
 }
 
 // Neutral fallback used only before/without tenant settings — not a product brand.
@@ -27,6 +31,8 @@ export const DEFAULT_THEME: OrgTheme = {
   accentColor: "#0ea5e9",
   defaultLocale: "nl",
   enabledModules: ["companies"],
+  resolved: false,
+  suspended: false,
 };
 
 // The API validates colours as hex on write; re-check here because the value is interpolated

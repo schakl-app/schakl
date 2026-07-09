@@ -11,8 +11,10 @@
     Handshake,
     LayoutDashboard,
     LogOut,
+    ServerCog,
     Settings,
     UserRound,
+    VenetianMask,
   } from "@lucide/svelte";
 
   import { page } from "$app/state";
@@ -220,6 +222,16 @@
           {#if !collapsed}<span class="truncate">{t("nav.settings")}</span>{/if}
         </a>
       {/if}
+      {#if user?.isInstanceAdmin}
+        <a
+          href="/instance"
+          class={itemClass(path.startsWith("/instance"))}
+          title={collapsed ? t("nav.instance") : undefined}
+        >
+          <ServerCog size={18} class="shrink-0 text-text-muted" />
+          {#if !collapsed}<span class="truncate">{t("nav.instance")}</span>{/if}
+        </a>
+      {/if}
     </nav>
     <div class="p-2">
       <button
@@ -240,6 +252,29 @@
   </aside>
 
   <div class="flex flex-1 flex-col">
+    {#if user?.impersonatedBy}
+      <!-- Impersonation is never silent (issue #26): banner on every screen, one-click stop. -->
+      <div
+        class="flex items-center justify-between gap-3 bg-amber-500 px-4 py-2 text-sm font-medium text-amber-950 sm:px-6"
+      >
+        <span class="flex min-w-0 items-center gap-2">
+          <VenetianMask size={16} class="shrink-0" />
+          <span class="truncate">
+            {t("instance.impersonation_banner", {
+              actor: user.impersonatedBy,
+              target: user.full_name || user.email,
+            })}
+          </span>
+        </span>
+        <form method="POST" action="/impersonation/stop">
+          <button
+            class="shrink-0 rounded-lg bg-amber-950/10 px-3 py-1 font-semibold hover:bg-amber-950/20"
+          >
+            {t("instance.impersonation_stop")}
+          </button>
+        </form>
+      </div>
+    {/if}
     <header
       class="flex h-14 items-center justify-between gap-4 border-b border-border bg-surface-raised px-4 text-sm sm:justify-end sm:px-6"
     >

@@ -14,10 +14,8 @@ x-api-env: &api-env
   VLOTR_SECRET_KEY: ${VLOTR_SECRET_KEY:-dev-secret-change-me-in-production}
   VLOTR_BASE_DOMAIN: ${VLOTR_BASE_DOMAIN:-localhost}
   VLOTR_ENVIRONMENT: ${VLOTR_ENVIRONMENT:-development}
-  VLOTR_SEED_ORG_SLUG: ${VLOTR_SEED_ORG_SLUG:-vlotr}
-  VLOTR_SEED_ORG_NAME: ${VLOTR_SEED_ORG_NAME:-vlotr}
-  VLOTR_SEED_ADMIN_EMAIL: ${VLOTR_SEED_ADMIN_EMAIL:-admin@example.com}
-  VLOTR_SEED_ADMIN_PASSWORD: ${VLOTR_SEED_ADMIN_PASSWORD:-changeme123}
+  # Cross-tenant admin surface (issue #26): off by default; instance owners only.
+  VLOTR_INSTANCE_ADMIN_ENABLED: ${VLOTR_INSTANCE_ADMIN_ENABLED:-false}
   # --- OIDC single sign-on (optional; CLAUDE.md §3). Set _ENABLED to turn the button on;
   # set _ENFORCED to true to disable local password login entirely. ---
   VLOTR_OIDC_ENABLED: ${VLOTR_OIDC_ENABLED:-false}

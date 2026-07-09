@@ -7,6 +7,8 @@ its settings through the RLS GUC (no membership required for public branding).
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -14,7 +16,7 @@ from sqlalchemy import select
 from app.config import settings
 from app.core.auth.models import User
 from app.core.customfields import customizable_entity_types
-from app.core.models import OrgSettings
+from app.core.models import OrgSettings, OrgStatus
 from app.core.tenancy import RequestContext, request_hostname, require_context, resolve_org
 from app.db import async_session_maker, set_current_org
 from app.errors import AppError
@@ -33,6 +35,9 @@ class TenantBranding(BaseModel):
     accent_color: str
     default_locale: str
     enabled_modules: list[str]
+    # Suspended orgs still expose branding (the login screen needs it) but every
+    # authenticated request is blocked with errors.org_suspended.
+    suspended: bool = False
 
 
 _HEX_COLOR = r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
@@ -60,6 +65,9 @@ class ModulesMeta(BaseModel):
     supported_locales: list[str]
     local_login_enabled: bool
     oidc_enabled: bool
+    # Instance config, not a secret (it is in every tenant URL): lets the instance-admin UI
+    # compute an org's address as <slug>.<base_domain> when no custom domain is set.
+    base_domain: str
 
 
 class MeInfo(BaseModel):
@@ -71,6 +79,11 @@ class MeInfo(BaseModel):
     role: str
     can_manage: bool
     locale: str | None
+    # Instance administration (issue #26). ``is_instance_admin`` reflects the *effective*
+    # user, so it goes false while impersonating; the banner comes from the two fields below.
+    is_instance_admin: bool = False
+    impersonated_by: str | None = None
+    impersonation_expires_at: datetime | None = None
 
 
 class MeUpdate(BaseModel):
@@ -88,6 +101,13 @@ def _me_info(ctx: RequestContext, user: User) -> MeInfo:
         role=ctx.role.value,
         can_manage=ctx.role.can_manage,
         locale=user.locale,
+        is_instance_admin=(
+            settings.instance_admin_enabled
+            and user.is_superuser
+            and ctx.impersonated_by is None
+        ),
+        impersonated_by=ctx.impersonated_by.email if ctx.impersonated_by else None,
+        impersonation_expires_at=ctx.impersonation_expires_at,
     )
 
 
@@ -129,7 +149,7 @@ async def tenant_branding(request: Request) -> TenantBranding:
     async with async_session_maker() as session:
         org = await resolve_org(session, request_hostname(request))
         if org is None:
-            raise AppError("not_found", "errors.not_found", status_code=404)
+            raise AppError("unknown_host", "errors.unknown_host", status_code=404)
         await set_current_org(session, org.id)
         s = await session.scalar(select(OrgSettings).where(OrgSettings.org_id == org.id))
         return TenantBranding(
@@ -144,6 +164,7 @@ async def tenant_branding(request: Request) -> TenantBranding:
             enabled_modules=list(s.enabled_modules)
             if s and s.enabled_modules
             else list(settings.enabled_modules),
+            suspended=org.status == OrgStatus.SUSPENDED.value,
         )
 
 
@@ -207,4 +228,5 @@ async def modules() -> ModulesMeta:
         supported_locales=settings.supported_locales,
         local_login_enabled=settings.local_login_enabled,
         oidc_enabled=settings.oidc_enabled,
+        base_domain=settings.base_domain,
     )

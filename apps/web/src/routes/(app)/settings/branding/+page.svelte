@@ -162,4 +162,100 @@
       </div>
     </aside>
   </div>
+
+  <!-- Custom domain (issue #26): claimed here, proven via DNS TXT, only then routed. -->
+  <section class="mt-4 max-w-2xl rounded-xl border border-border bg-surface-raised p-5">
+    <h2 class="text-sm font-semibold text-text">{t("settings.branding.domain.title")}</h2>
+    <p class="mt-1 text-xs text-text-muted">{t("settings.branding.domain.subtitle")}</p>
+
+    {#if data.domain?.custom_domain}
+      <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p class="font-mono text-sm text-text">{data.domain.custom_domain}</p>
+          <p class="mt-0.5 text-xs text-green-600 dark:text-green-400">
+            {t("settings.branding.domain.verified")}
+          </p>
+        </div>
+        <form method="POST" action="?/clearDomain" use:enhance>
+          <button
+            class="rounded-lg border border-border px-3 py-1.5 text-sm text-text hover:bg-surface"
+          >
+            {t("settings.branding.domain.remove")}
+          </button>
+        </form>
+      </div>
+    {/if}
+
+    {#if data.domain?.pending_domain}
+      <div
+        class="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30"
+      >
+        <p class="text-sm font-medium text-text">
+          {t("settings.branding.domain.pending", { domain: data.domain.pending_domain })}
+        </p>
+        <p class="mt-2 text-xs text-text-muted">
+          {t("settings.branding.domain.txt_instructions")}
+        </p>
+        <dl class="mt-2 space-y-1 font-mono text-xs text-text">
+          <div class="flex gap-2">
+            <dt class="shrink-0 text-text-muted">TXT</dt>
+            <dd class="break-all">{data.domain.txt_record_name}</dd>
+          </div>
+          <div class="flex gap-2">
+            <dt class="shrink-0 text-text-muted">→</dt>
+            <dd class="break-all">{data.domain.txt_record_value}</dd>
+          </div>
+        </dl>
+        <div class="mt-3 flex gap-2">
+          <form method="POST" action="?/verifyDomain" use:enhance>
+            <button
+              class="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
+            >
+              {t("settings.branding.domain.verify")}
+            </button>
+          </form>
+          <form method="POST" action="?/clearDomain" use:enhance>
+            <button
+              class="rounded-lg border border-border px-3 py-1.5 text-sm text-text hover:bg-surface"
+            >
+              {t("common.cancel")}
+            </button>
+          </form>
+        </div>
+      </div>
+    {:else}
+      <form
+        method="POST"
+        action="?/claimDomain"
+        use:enhance
+        class="mt-4 flex flex-wrap items-end gap-3"
+      >
+        <div class="grow">
+          <label for="domain" class="mb-1 block text-sm font-medium text-text">
+            {t("settings.branding.domain.claim_label")}
+          </label>
+          <input
+            id="domain"
+            name="domain"
+            placeholder={t("settings.branding.domain.placeholder")}
+            class="{inputClass} font-mono"
+          />
+        </div>
+        <button
+          class="rounded-lg border border-border px-4 py-2 text-sm font-medium text-text hover:bg-surface"
+        >
+          {t("settings.branding.domain.claim")}
+        </button>
+      </form>
+    {/if}
+
+    {#if form?.error && form?.domainError}
+      <p class="mt-2 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
+    {/if}
+    {#if form?.domainVerified}
+      <p class="mt-2 text-sm text-green-600 dark:text-green-400">
+        {t("settings.branding.domain.verified_now")}
+      </p>
+    {/if}
+  </section>
 {/if}

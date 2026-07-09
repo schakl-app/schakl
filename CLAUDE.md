@@ -88,11 +88,19 @@ scripts/           # i18n:check, i18n:sync, gen:client
 - **Never** expose a raw `id` lookup that isn't tenant-scoped.
 
 **Deployment model: build multi-tenant, deploy single-tenant.** Each agency **self-hosts**
-its own instance, seeded with **one org** at install — so day-to-day it runs as a single
-tenant, and the agency's clients are `companies` (data), not tenants. Keep `org_id` + RLS
-on every table anyway: it's near-free now and is the only thing that lets the *same code*
-run a future multi-org **cloud** version with the tenant resolved by hostname. Don't take
-shortcuts that assume one org.
+its own instance and creates **one org** via the first-run wizard (`/setup`) — so day-to-day
+it runs as a single tenant, and the agency's clients are `companies` (data), not tenants.
+Keep `org_id` + RLS on every table anyway: it's near-free now and is the only thing that
+lets the *same code* run a future multi-org **cloud** version with the tenant resolved by
+hostname. Don't take shortcuts that assume one org.
+
+- **Hostname resolution is strict**: a verified custom domain (`orgs.custom_domain`) or
+  `<slug>.<base_domain>` — an unknown host is an explicit error, never "the only org".
+- **Org lifecycle & instance administration** (issue #26) live in `app/core/instance/`:
+  the one sanctioned unscoped crossing (`repo.py`, for global slug/domain uniqueness), the
+  audit trail, org lifecycle, export/import, and time-boxed impersonation. The surface is
+  gated on `users.is_superuser` (the *instance owner*, distinct from an org `owner`) and
+  disabled by default (`VLOTR_INSTANCE_ADMIN_ENABLED`).
 
 ## 6. Module pattern (how to add a domain)
 
@@ -139,10 +147,12 @@ table.
 
 Per-org settings drive branding at runtime — no rebuild:
 `org_settings(org_id, brand_name, logo_url, favicon_url, primary_color, accent_color,
-custom_domain, default_locale, enabled_modules[])`.
+default_locale, enabled_modules[])`.
 The web app loads the tenant theme on first render and applies it via CSS custom properties.
-Emails and generated PDFs use the same tenant branding. Tenant resolution: `custom_domain`
-or `<slug>.PLATFORM_BASE_DOMAIN` → org.
+Emails and generated PDFs use the same tenant branding. Tenant resolution: **verified**
+`orgs.custom_domain` or `<slug>.PLATFORM_BASE_DOMAIN` → org. The custom domain lives on
+`orgs`, not `org_settings`: resolution runs *before* RLS is bound, so it may only read
+tables without RLS — and a claimed domain routes traffic only after DNS TXT verification.
 
 ## 8. Internationalization (first-class)
 

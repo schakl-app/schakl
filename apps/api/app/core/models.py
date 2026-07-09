@@ -7,8 +7,10 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
+from enum import StrEnum
 
-from sqlalchemy import Boolean, ForeignKey, Index, String, UniqueConstraint, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -19,14 +21,45 @@ from app.core.roles import Role
 from app.db import Base
 
 
+class OrgStatus(StrEnum):
+    """Org lifecycle (issue #26). ``deleted`` is the soft state; hard delete removes the row."""
+
+    ACTIVE = "active"
+    SUSPENDED = "suspended"
+    DELETED = "deleted"
+
+
 class Org(UUIDPrimaryKeyMixin, TimestampMixin, Base):
-    """A tenant. Resolved from the request hostname (CLAUDE.md §5, §7)."""
+    """A tenant. Resolved from the request hostname (CLAUDE.md §5, §7).
+
+    Hostname→org routing data (``custom_domain``) lives here, not on ``org_settings``:
+    resolution runs *before* a tenant is known, so it can only read tables without RLS.
+    Only a **verified** custom domain resolves — an unverified claim must never route
+    traffic, or anyone could park another agency's domain on their own org (issue #26).
+    """
 
     __tablename__ = "orgs"
 
     slug: Mapped[str] = mapped_column(String(63), unique=True, index=True, nullable=False)
     # Internal name; the *displayed* brand comes from org_settings.brand_name.
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=OrgStatus.ACTIVE.value, server_default="active"
+    )
+    suspended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Stamped by the per-org export; hard delete refuses to run without a post-soft-delete export.
+    exported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    custom_domain: Mapped[str | None] = mapped_column(
+        String(255), nullable=True, unique=True, index=True
+    )
+    custom_domain_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # A claim awaiting DNS TXT verification; promoted to custom_domain by the verify endpoint.
+    pending_domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    domain_verification_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class Membership(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
@@ -59,6 +92,8 @@ class OrgSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     favicon_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     primary_color: Mapped[str] = mapped_column(String(32), nullable=False, default="#4f46e5")
     accent_color: Mapped[str] = mapped_column(String(32), nullable=False, default="#0ea5e9")
+    # DEPRECATED (expand/contract, issue #26): moved to orgs.custom_domain because resolution
+    # runs before RLS is bound. Kept mapped so the column survives one release; drop next.
     custom_domain: Mapped[str | None] = mapped_column(
         String(255), nullable=True, unique=True, index=True
     )
@@ -118,4 +153,35 @@ class UserPref(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     )
     prefs: Mapped[dict] = mapped_column(
         JSONB, nullable=False, default=dict, server_default="{}"
+    )
+
+
+class InstanceAuditLog(UUIDPrimaryKeyMixin, Base):
+    """Audit trail for instance-level administration (issue #26).
+
+    Instance-level like ``orgs``/``users`` — deliberately **not** org-scoped and **not** under
+    RLS: it records the actions that manage or cross tenants (org lifecycle, impersonation,
+    domain claims), and the trail must survive the org it describes. ``actor_email`` and
+    ``org_slug`` are denormalized snapshots so a hard-deleted org's history stays readable.
+    Only written through :mod:`app.core.instance.audit`; only read by the instance admin.
+    """
+
+    __tablename__ = "instance_audit_log"
+
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    actor_email: Mapped[str] = mapped_column(String(320), nullable=False)
+    # e.g. "org.create", "org.suspend", "impersonate.start", "domain.claim".
+    action: Mapped[str] = mapped_column(String(64), nullable=False)
+    org_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("orgs.id", ondelete="SET NULL"), nullable=True
+    )
+    org_slug: Mapped[str | None] = mapped_column(String(63), nullable=True)
+    target_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    detail: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
     )

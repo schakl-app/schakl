@@ -17,6 +17,11 @@ export interface SessionUser {
   canManage: boolean;
   /** Personal display-language preference (null → org default). */
   locale: string | null;
+  /** Instance owner with the instance-admin surface enabled (issue #26). */
+  isInstanceAdmin: boolean;
+  /** Set while an instance owner impersonates this user — drives the banner. */
+  impersonatedBy: string | null;
+  impersonationExpiresAt: string | null;
 }
 
 // Minimal shape shared by SvelteKit load events and action/request events.
@@ -35,7 +40,7 @@ export function apiFor(event: ApiEvent): ApiClient {
 
 export async function fetchTenant(event: ApiEvent): Promise<OrgTheme> {
   const { data } = await apiFor(event).GET("/api/v1/meta/tenant");
-  if (!data) return DEFAULT_THEME;
+  if (!data) return DEFAULT_THEME; // resolved: false — unknown host or fresh install
   return {
     brandName: data.brand_name,
     showBrandName: data.show_brand_name,
@@ -45,6 +50,8 @@ export async function fetchTenant(event: ApiEvent): Promise<OrgTheme> {
     accentColor: data.accent_color,
     defaultLocale: data.default_locale,
     enabledModules: data.enabled_modules,
+    resolved: true,
+    suspended: data.suspended,
   };
 }
 
@@ -59,5 +66,8 @@ export async function fetchUser(event: ApiEvent): Promise<SessionUser | null> {
     role: data.role,
     canManage: data.can_manage,
     locale: data.locale ?? null,
+    isInstanceAdmin: data.is_instance_admin ?? false,
+    impersonatedBy: data.impersonated_by ?? null,
+    impersonationExpiresAt: data.impersonation_expires_at ?? null,
   };
 }

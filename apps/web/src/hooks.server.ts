@@ -18,7 +18,7 @@ import "$lib/modules"; // self-register web modules
 
 import { asLocale, LOCALE_COOKIE, LOCALE_COOKIE_OPTIONS, parseLocaleCookie } from "$lib/core/i18n";
 import { withRequestLocale } from "$lib/core/locale-context.server";
-import { fetchTenant, fetchUser } from "$lib/core/session";
+import { apiFor, fetchTenant, fetchUser } from "$lib/core/session";
 import { themeStyle } from "$lib/core/theme";
 import { parseThemeCookie } from "$lib/core/theme-mode";
 import { paraglideMiddleware } from "$lib/paraglide/server";
@@ -32,6 +32,15 @@ const handleContext: Handle = async ({ event, resolve }) => {
   const [theme, user] = await Promise.all([fetchTenant(event), fetchUser(event)]);
   event.locals.theme = theme;
   event.locals.user = user;
+
+  // A hostname that resolves to no org is either a fresh install (route every visit to the
+  // first-run wizard) or an unknown host (the login screen explains — issue #26).
+  if (!theme.resolved && !event.url.pathname.startsWith("/setup")) {
+    const { data: setup } = await apiFor(event).GET("/api/v1/setup/status");
+    if (setup?.needs_setup) {
+      return new Response(null, { status: 303, headers: { location: "/setup" } });
+    }
+  }
 
   // `users.locale` is the source of truth; the cookie is a per-browser cache of it (and the
   // only signal Paraglide can read while hydrating). Order: personal preference → this

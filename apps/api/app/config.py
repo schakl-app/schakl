@@ -96,12 +96,13 @@ class Settings(BaseSettings):
     # Shared message catalogs (single source of truth with the web app).
     messages_dir: Path = Field(default_factory=_default_messages_dir)
 
-    # --- Seed (first-run single org; CLAUDE.md §5) ---
-    seed_org_slug: str = "vlotr"
-    seed_org_name: str = "vlotr"  # default brand; tenant changes it at runtime
-    # Uses a valid TLD (`.localhost` is rejected by EmailStr). Override per install.
-    seed_admin_email: str = "admin@example.com"
-    seed_admin_password: str = "changeme123"
+    # --- Instance administration (issue #26) ---
+    # The cross-tenant admin surface is pure attack surface on a single-tenant box, so it
+    # ships **disabled**; VLOTR_INSTANCE_ADMIN_ENABLED=true opens it to instance owners
+    # (users.is_superuser — the operator principal, distinct from an org's `owner` role).
+    instance_admin_enabled: bool = False
+    # Upper bound for a single impersonation grant; every grant is audited and time-boxed.
+    impersonation_max_minutes: int = 60
 
     @property
     def local_login_enabled(self) -> bool:

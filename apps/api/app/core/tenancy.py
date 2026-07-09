@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.core.auth.models import User
 from app.core.auth.users import current_active_user
-from app.core.models import Membership, Org
+from app.core.models import Membership, Org, OrgStatus
 from app.core.roles import Role
 from app.db import async_session_maker, set_current_org
 from app.errors import AppError
@@ -48,35 +48,31 @@ def request_hostname(request: Request) -> str:
 
 
 async def resolve_org(session: AsyncSession, host: str) -> Org | None:
-    """Resolve the tenant from a request hostname (custom domain or ``<slug>.base_domain``).
+    """Resolve the tenant strictly from the request hostname.
 
-    Falls back to the single seeded org for self-hosted, single-tenant installs where the
-    hostname (e.g. ``api.localhost``) doesn't encode a slug — never a shortcut that assumes
-    one org, just a sensible default when resolution is ambiguous.
+    Exactly two ways a host maps to an org — a **verified** custom domain, or
+    ``<slug>.<base_domain>``. Anything else resolves to nothing and the caller must fail
+    explicitly (issue #26): guessing "the only org" would serve tenant data on any typo'd
+    or hijacked hostname. Soft-deleted orgs no longer resolve at all; suspended orgs do
+    resolve (the login screen still needs their branding) and ``require_context`` blocks them.
     """
-    if host:
-        # custom_domain lives on org_settings; match there first.
-        from app.core.models import OrgSettings
+    if not host:
+        return None
 
-        settings_hit = await session.scalar(
-            select(OrgSettings).where(OrgSettings.custom_domain == host)
+    org = await session.scalar(
+        select(Org).where(
+            Org.custom_domain == host,
+            Org.custom_domain_verified_at.is_not(None),
         )
-        if settings_hit is not None:
-            return await session.get(Org, settings_hit.org_id)
-
+    )
+    if org is None:
         base = settings.base_domain.lower()
         if host.endswith("." + base):
             slug = host[: -(len(base) + 1)]
             org = await session.scalar(select(Org).where(Org.slug == slug))
-            if org is not None:
-                return org
-
-    # Fallback: the configured seed slug, else the only org if exactly one exists.
-    org = await session.scalar(select(Org).where(Org.slug == settings.seed_org_slug))
-    if org is not None:
-        return org
-    orgs = (await session.execute(select(Org).limit(2))).scalars().all()
-    return orgs[0] if len(orgs) == 1 else None
+    if org is None or org.status == OrgStatus.DELETED.value:
+        return None
+    return org
 
 
 # --------------------------------------------------------------------------- #
@@ -90,6 +86,10 @@ class RequestContext:
     org: Org
     role: Role
     session: AsyncSession
+    # Set only during an instance-admin impersonation (issue #26): ``user`` is then the
+    # impersonated member and ``impersonated_by`` the real, authenticated instance owner.
+    impersonated_by: User | None = None
+    impersonation_expires_at: Any | None = None
 
     def repo(self, model: type[ModelT]) -> TenantScopedRepository[ModelT]:
         return TenantScopedRepository(self.session, self.org.id, model)
@@ -115,7 +115,22 @@ async def require_context(
     async with async_session_maker() as session:
         org = await resolve_org(session, request_hostname(request))
         if org is None:
-            raise AppError("not_found", "errors.not_found", status_code=404)
+            raise AppError("unknown_host", "errors.unknown_host", status_code=404)
+        if org.status == OrgStatus.SUSPENDED.value:
+            raise AppError("org_suspended", "errors.org_suspended", status_code=403)
+
+        # Instance-admin impersonation (issue #26): a valid, time-boxed grant swaps the
+        # effective user; authentication above stays the real (superuser) principal.
+        from app.core.instance.impersonation import read_impersonation
+
+        impersonator: User | None = None
+        expires_at = None
+        claims = read_impersonation(request, user)
+        if claims is not None and claims.org_id == org.id:
+            target = await session.get(User, claims.target_user_id)
+            if target is not None and target.is_active:
+                impersonator, user = user, target
+                expires_at = claims.expires_at
 
         # Bind RLS to this org, then verify membership *through* RLS.
         await set_current_org(session, org.id)
@@ -128,7 +143,14 @@ async def require_context(
         if membership is None:
             raise AppError("forbidden", "errors.forbidden", status_code=403)
 
-        ctx = RequestContext(user=user, org=org, role=Role(membership.role), session=session)
+        ctx = RequestContext(
+            user=user,
+            org=org,
+            role=Role(membership.role),
+            session=session,
+            impersonated_by=impersonator,
+            impersonation_expires_at=expires_at,
+        )
         try:
             yield ctx
             await session.commit()

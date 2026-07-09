@@ -24,7 +24,12 @@
       <p class="mt-1 text-sm text-text-muted">{t("auth.sign_in")}</p>
     </div>
 
-    {#if data.localLoginEnabled}
+    {#if !page.data.theme?.resolved}
+      <!-- Unknown hostname: resolution is strict (issue #26) — say so instead of a dead form. -->
+      <p class="text-center text-sm text-text-muted">{t("auth.unknown_host")}</p>
+    {:else if page.data.theme?.suspended}
+      <p class="text-center text-sm text-text-muted">{t("auth.org_suspended")}</p>
+    {:else if data.localLoginEnabled}
       <form method="POST" use:enhance class="space-y-4">
         <div>
           <label for="email" class="mb-1 block text-sm font-medium text-text">

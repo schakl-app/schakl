@@ -15,10 +15,8 @@ x-api-env: &api-env
   VLOTR_SECRET_KEY: ${VLOTR_SECRET_KEY}
   VLOTR_BASE_DOMAIN: ${VLOTR_BASE_DOMAIN}
   VLOTR_ENVIRONMENT: ${VLOTR_ENVIRONMENT:-production}
-  VLOTR_SEED_ORG_SLUG: ${VLOTR_SEED_ORG_SLUG:-vlotr}
-  VLOTR_SEED_ORG_NAME: ${VLOTR_SEED_ORG_NAME:-vlotr}
-  VLOTR_SEED_ADMIN_EMAIL: ${VLOTR_SEED_ADMIN_EMAIL}
-  VLOTR_SEED_ADMIN_PASSWORD: ${VLOTR_SEED_ADMIN_PASSWORD}
+  # Cross-tenant admin surface (issue #26): off by default; instance owners only.
+  VLOTR_INSTANCE_ADMIN_ENABLED: ${VLOTR_INSTANCE_ADMIN_ENABLED:-false}
   # Daily, unauthenticated GET to the GitHub Releases API; sends nothing about this instance.
   # Set false to disable all outbound update traffic (docs/DEPLOY.md).
   VLOTR_UPDATE_CHECK_ENABLED: ${VLOTR_UPDATE_CHECK_ENABLED:-true}

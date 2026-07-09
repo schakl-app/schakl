@@ -9,6 +9,60 @@ Self-hosted, single-org install (CLAUDE.md §5). Two Compose files, both self-co
 
 The `worker` reuses the API image, so only two images exist: `vlotr-api`, `vlotr-web`.
 
+## First run: the setup wizard (there is no seed step)
+
+A fresh install has an empty database. Open the app in a browser and every route lands on
+`/setup` — the first-run wizard creates the organization, its branding/locale/modules, and
+the **owner account** in one step. The owner is also the **instance owner**
+(`users.is_superuser`): whoever installs the box operates it. The wizard closes permanently
+the moment the first org exists.
+
+The hostname you run the wizard on is **claimed as the org's verified custom domain**
+(unless it is already `<slug>.<VLOTR_BASE_DOMAIN>`), because hostname → org resolution is
+strict — see below. So run the wizard on the address you intend to keep.
+
+The old `VLOTR_SEED_*` variables are gone; leftover values in a stack's environment are
+ignored.
+
+## Hostname resolution is strict (upgrade note)
+
+A request resolves to an org in exactly two ways: a **verified custom domain**, or
+`<slug>.<VLOTR_BASE_DOMAIN>`. An unknown hostname is a 404 — there is **no fallback to "the
+only org"** anymore (issue #26): a fallback would serve tenant data on any typo'd or
+hijacked hostname.
+
+**Upgrading an existing install:** the migration keeps you resolving.
+
+- A custom domain already present in `org_settings` is moved to `orgs` and grandfathered
+  as verified.
+- A single-org install with no custom domain gets **`app.<VLOTR_BASE_DOMAIN>`** claimed as
+  its verified domain — the hostname both compose files serve the app on.
+
+If you serve vlotr on any *other* hostname (e.g. `crm.agency.nl` while
+`VLOTR_BASE_DOMAIN=agency.nl`), that host stopped resolving with this release. Fix: sign in
+via `app.<base domain>` (or `<slug>.<base domain>`) once, then set your real hostname under
+*Instellingen → Huisstijl → Eigen domein* — it activates after a DNS TXT verification.
+Alternatively set it directly in the database (`orgs.custom_domain` +
+`orgs.custom_domain_verified_at = now()`).
+
+For local dev without Traefik (`pnpm dev` + local API): browse `http://vlotr.localhost:5173`
+(slug + base domain `localhost`), not bare `localhost` — or run the wizard on the host you
+prefer and it claims it.
+
+## Instance administration (off by default)
+
+`VLOTR_INSTANCE_ADMIN_ENABLED=true` opens `/instance` (and `/api/v1/instance/*`) to
+**instance owners** (`users.is_superuser`): org lifecycle (create, rename, re-slug,
+suspend, soft-delete, hard-delete), per-org module toggles, per-org **export/import**, an
+**audit log**, and time-boxed, bannered **impersonation**. It ships disabled because a
+cross-tenant surface on a single-tenant box is pure attack surface; the API answers 404
+while it is off. Every mutation lands in `instance_audit_log`.
+
+Hard delete refuses to run without an export taken *after* the soft delete — that export
+(a JSON file with every row of the org) is the only copy that remains. Keep it somewhere
+safe; the same file can be imported again on this or another instance running the **same
+release** (imports across schema revisions are rejected).
+
 ## Releases and image tags
 
 Images are built **only** when a `v*` tag is pushed (`.github/workflows/release.yml`). Pushing
@@ -44,8 +98,8 @@ not a failed install.
 
 Portainer → *Stacks → Add stack → Repository*. Set the secrets under the stack's Environment
 variables. Required (no defaults): `POSTGRES_ADMIN_PASSWORD`, `APP_DB_PASSWORD`,
-`VLOTR_SECRET_KEY`, `VLOTR_BASE_DOMAIN`, `VLOTR_SEED_ADMIN_EMAIL`,
-`VLOTR_SEED_ADMIN_PASSWORD`.
+`VLOTR_SECRET_KEY`, `VLOTR_BASE_DOMAIN`. The org and its owner are created in the browser
+by the first-run wizard, not by environment variables.
 
 Pasting YAML into the web editor works, but relative paths in the file have no host directory
 to resolve against — Docker silently creates an *empty* one rather than failing. Deploying

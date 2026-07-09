@@ -43,7 +43,8 @@ _DOMAIN_TABLES = (
     "task_comments, task_activities, task_template_items, task_templates, "
     "leave_requests, leave_entitlements, leave_profiles, leave_types, "
     "time_entries, tasks, projects, contacts, custom_field_definitions, "
-    "dashboard_prefs, user_prefs, companies, memberships, org_settings, users, orgs"
+    "dashboard_prefs, user_prefs, companies, memberships, org_settings, "
+    "instance_audit_log, users, orgs"
 )
 _ENABLED_MODULES = ["companies", "contacts", "tasks", "projects", "time", "leave"]
 
