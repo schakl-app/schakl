@@ -87,8 +87,12 @@
   `Combobox`/`DateInput` when fields live in different layout columns) with one save at the
   end. Per-field save buttons are a known corrected mistake.
 - **Native controls inherit the huisstijl** via `accent-color: var(--brand-primary)` on
-  `:root` (date/time picker popups, checkboxes, radios). Time is 24-hour via the European
-  `<html lang>` (nl / en-GB) — never introduce an AM/PM surface.
+  `:root` (checkboxes, radios). But `<html lang>` does **not** control how they format:
+  browsers render `<input type="date">` and `<input type="time">` after the *browser/OS*
+  locale, so an en-US machine gets US dates and an AM/PM clock whatever the document says.
+  Dates go through `DateInput`, times through `TimeInput` — both own the field, post a
+  hidden ISO / `HH:MM` value, and parse loose typing. Time is always 24-hour: never
+  introduce an AM/PM surface.
 - **Budgets colour-code burn**: green < 75 %, amber < 100 %, red ≥ 100 % — the same scale
   for task time budgets and project hour budgets (total or monthly).
 - **Verlof is tracked in hours, shown with a days equivalent** (`≈ n dagen` from the
@@ -128,7 +132,8 @@
 
 - Buttons that configure org-wide behaviour placed inside a working screen (the old "save
   as team default" on the dashboard) — config goes to Settings.
-- Native date inputs (US format, popup anchored to the window corner).
+- Native date and time inputs (US format, AM/PM clock, popup anchored to the window corner) —
+  assuming a native control honours our locale hints when it does not.
 - Two favicon `<link>`s competing (static + tenant) — exactly one, tenant-driven.
 - Edit-everything screens with no read/use mode — cards got an explicit mode split.
 - Refetching all lookups on every filter/tab navigation — that's what layout loads are for.

@@ -9,6 +9,7 @@
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
+  import TimeInput from "$lib/core/ui/TimeInput.svelte";
   import {
     endFromDuration,
     formatDurationInput,
@@ -153,28 +154,24 @@
       <label for="start-{action}" class="mb-1 block text-xs font-medium text-neutral-500"
         >{t("time.field.start")}</label
       >
-      <input
+      <TimeInput
         id="start-{action}"
         name="start"
-        type="time"
         required
         bind:value={fStart}
-        oninput={syncDurationFromTimes}
-        class={inputClass}
+        onchange={syncDurationFromTimes}
       />
     </div>
     <div>
       <label for="end-{action}" class="mb-1 block text-xs font-medium text-neutral-500"
         >{t("time.field.end")}</label
       >
-      <input
+      <TimeInput
         id="end-{action}"
         name="end"
-        type="time"
         required
         bind:value={fEnd}
-        oninput={syncDurationFromTimes}
-        class={inputClass}
+        onchange={syncDurationFromTimes}
       />
     </div>
     <div>
