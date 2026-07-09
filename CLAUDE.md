@@ -208,6 +208,9 @@ or `<slug>.PLATFORM_BASE_DOMAIN` → org.
   and push straight to `dev`), the label set, what to write on the issue, and the rules for
   working a tree that **other agents are editing at the same time**: stage explicit paths,
   never `git add -A`, and push your own commit by SHA so you don't publish someone else's.
+  It also holds the rule for **breaking database changes**: existing self-hosted releases
+  migrate themselves unattended on upgrade, so destructive schema changes go out over two
+  releases (expand/contract) and the upgrade path is written down before the migration is.
 - Keep this file updated when architecture decisions change.
 - Never leave a hardcoded user-facing string or an unscoped query — treat both as build breaks.
 - After each module: register it, add its panels, add its i18n keys, run `i18n:check` + tests.

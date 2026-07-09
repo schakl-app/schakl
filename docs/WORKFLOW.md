@@ -101,12 +101,58 @@ gh issue edit <N> --add-label "needs testing"
 gh issue comment <N> --body "…"
 ```
 
+## Breaking database changes need a migration plan
+
+**Every schema change ships to databases that already have data in them.** Agencies
+self-host (CLAUDE.md §5) and upgrade by pulling a new image tag. The API entrypoint runs
+`alembic upgrade head` under `set -e` before uvicorn binds (`docs/DEPLOY.md`), so the
+migration runs **unattended, on someone else's production data, with no operator watching**.
+Nobody reviews it at that moment. You are the review.
+
+So a change is not "add a column" — it is "move every existing release from its schema to
+this one without losing a row". Before writing the migration, answer in the PR or the issue:
+
+- **Which released versions upgrade into this?** Self-hosters skip tags. A migration must
+  apply on top of any older `head`, not just the one on your laptop.
+- **What happens to existing rows?** A new `NOT NULL` column needs a server default or a
+  backfill in the same migration. Never a `NOT NULL` with no default on a populated table —
+  it aborts the upgrade and the API never starts.
+- **Is it reversible?** Write a real `downgrade()` — all current migrations have one. A
+  half-applied upgrade on a stranger's server is the failure you are guarding against.
+- **Can the previous image still run against the new schema?** The entrypoint migrates on
+  start, so rolling the image tag *back* leaves old code on a new schema. A migration that
+  drops or renames anything the previous release still reads makes rollback impossible.
+
+### Destructive changes go out over two releases (expand / contract)
+
+Never drop, rename, or retype a populated column in the release that stops using it.
+
+1. **Expand** — add the new column/table nullable, backfill it, write to both, keep reading
+   the old one. Ships in release *N*. Safe to roll back: the old code ignores the new column.
+2. **Contract** — once *N* is out and adopted, stop reading the old column, then drop it in
+   release *N+1*.
+
+A rename is expand/contract, not `op.alter_column(new_column_name=…)`. A type change is
+expand/contract. Splitting or merging a table is expand/contract.
+
+### Rules
+
+- Backfills must be **idempotent** and must not assume they run once, or on a small table.
+- Data migrations that touch tenant rows are **per-org and `org_id`-scoped** like everything
+  else (Golden Rule 1); RLS is on, and the migration runs as `vlotr_app`, not a superuser.
+- One migration per change, named `<module>_<verb>_<noun>` (CLAUDE.md §9).
+- Test the upgrade against a database with rows in it, not an empty one. An empty database
+  will happily accept a migration that destroys a populated one.
+- If a change genuinely cannot be made non-destructively, say so on the issue **before**
+  building it, and write the operator steps (backup, downtime, order) into `docs/DEPLOY.md`.
+
 ## Definition of done
 
 `CLAUDE.md` §9 governs: migration, endpoints + tenant scoping, web UI, **both** `en.json`
 and `nl.json`, a tenant-isolation test, OpenAPI. On top of that, before you call an issue
 done: `pnpm run check` clean, lint no worse than baseline, `i18n:check` passing, the issue
-commented, and the label applied.
+commented, and the label applied. If the change touches the schema, the upgrade plan for
+existing releases is written down and the migration was run against a populated database.
 
 Lint is currently **red on pre-existing errors** (`svelte/prefer-writable-derived`,
 `svelte/prefer-svelte-reactivity`). Do not add to the count, and do not fix unrelated ones
