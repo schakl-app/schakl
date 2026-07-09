@@ -5,6 +5,7 @@
   import { enhance } from "$app/forms";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import CustomFieldsView from "$lib/core/customfields/CustomFieldsView.svelte";
+  import { burnBarClass, burnBarWidth, burnPct } from "$lib/core/burn";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
@@ -77,11 +78,9 @@
   const billableValue = $derived(
     project.hourly_rate != null ? (data.logged.billable_minutes / 60) * project.hourly_rate : null,
   );
-  const budgetPct = $derived(
-    project.budget_hours
-      ? Math.min(100, Math.round((loggedHours / project.budget_hours) * 100))
-      : null,
-  );
+  // The one burn scale (core/burn.ts, docs/UX.md). Unclamped: this used to `Math.min(100, …)`,
+  // so a project 40 % over budget drew exactly like one that had just landed on it.
+  const budgetPct = $derived(burnPct(loggedHours, project.budget_hours));
 
   const money = (n: number) =>
     new Intl.NumberFormat("nl-NL", {
@@ -172,11 +171,10 @@
       </div>
       {#if budgetPct != null}
         <div class="mt-1.5 h-2 overflow-hidden rounded-full bg-surface">
+          <!-- The number may exceed 100 %; the bar it draws cannot. -->
           <div
-            class="h-full rounded-full {budgetPct >= 100
-              ? 'bg-red-500 dark:bg-red-400'
-              : 'bg-brand'}"
-            style="width: {budgetPct}%"
+            class="h-full rounded-full {burnBarClass(budgetPct)}"
+            style="width: {burnBarWidth(budgetPct)}%"
           ></div>
         </div>
       {/if}

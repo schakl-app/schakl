@@ -2,17 +2,26 @@
   import { Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
-  import { goto } from "$app/navigation";
+  import { goto, invalidateAll } from "$app/navigation";
   import { page } from "$app/state";
+  import { fmtNumber, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { customFieldColumns, resolveColumns } from "$lib/core/table/columns";
+  import type { ColumnSpec } from "$lib/core/table/columns";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import AssigneePicker from "$lib/core/ui/AssigneePicker.svelte";
   import AvatarStack from "$lib/core/ui/AvatarStack.svelte";
+  import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import DataTable from "$lib/core/ui/DataTable.svelte";
+  import HoursCell from "$lib/core/ui/HoursCell.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
+  import { PROJECT_COLUMNS } from "$lib/modules/projects/columns";
 
   let { data, form } = $props();
+
+  type Project = (typeof data.projects)[number];
 
   let showCreate = $state(false);
   let deleteId = $state("");
@@ -25,6 +34,78 @@
     id ? (data.companies.find((c) => c.id === id)?.name ?? "") : "",
   );
 
+  // --- columns ---------------------------------------------------------------
+  const allColumns = $derived([
+    ...PROJECT_COLUMNS,
+    ...customFieldColumns(data.definitions, data.locale),
+  ]);
+  const resolved = $derived(resolveColumns(allColumns, data.table.pref));
+  const visibleKeys = $derived(resolved.columns.map((c) => c.key));
+  const pickerColumns = $derived(
+    allColumns.map((c) => ({
+      key: c.key,
+      label: c.label ?? t(c.labelKey ?? c.key),
+      primary: c.primary,
+    })),
+  );
+
+  const cells: Record<string, unknown> = $derived({
+    name: nameCell,
+    company: companyCell,
+    status: statusCell,
+    assignees: assigneesCell,
+    hours: hoursCell,
+    budget_hours: budgetCell,
+    hourly_rate: rateCell,
+    start_date: startCell,
+    end_date: endCell,
+  });
+
+  const columns = $derived(
+    resolved.columns.map((meta) => ({
+      ...meta,
+      label: meta.label ?? t(meta.labelKey ?? meta.key),
+      cell: cells[meta.key],
+    })) as ColumnSpec<Project>[],
+  );
+
+  // --- persistence -----------------------------------------------------------
+  let saveForm: HTMLFormElement | undefined = $state();
+  let pendingColumns = $state("");
+  let pendingSort = $state("");
+  let pendingWidths = $state("{}");
+  let reloadAfterSave = $state(false);
+
+  function persist(
+    next: { columns?: string[]; sort?: string | null; widths?: Record<string, number> },
+    reload = false,
+  ) {
+    pendingColumns = (next.columns ?? visibleKeys).join(",");
+    pendingSort = next.sort ?? data.table.sort ?? "";
+    pendingWidths = JSON.stringify(next.widths ?? resolved.widths);
+    reloadAfterSave = reload;
+    setTimeout(() => saveForm?.requestSubmit(), 0);
+  }
+
+  function onColumnsChange(keys: string[]) {
+    // Reload: showing the hours column means the list must now ask the API for the aggregate.
+    persist({ columns: keys }, true);
+  }
+
+  function onSort(next: string | null) {
+    const url = new URL(page.url);
+    if (next) url.searchParams.set("sort", next);
+    else url.searchParams.delete("sort");
+    void goto(url, { keepFocus: true, noScroll: true });
+    persist({ sort: next });
+  }
+
+  function confirmDeleteOf(project: Project) {
+    deleteId = project.id;
+    deleteName = project.name;
+    confirmDelete = true;
+  }
+
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 
@@ -36,6 +117,97 @@
     void goto(url, { keepFocus: true, noScroll: true });
   }
 </script>
+
+{#snippet nameCell(project: Project)}
+  <a href="/projects/{project.id}" class="font-medium text-text hover:text-brand">{project.name}</a>
+{/snippet}
+
+{#snippet companyCell(project: Project)}
+  {#if companyName(project.company_id)}
+    <a href="/companies/{project.company_id}" class="text-text-muted hover:text-brand"
+      >{companyName(project.company_id)}</a
+    >
+  {:else}<span class="text-text-muted">—</span>{/if}
+{/snippet}
+
+{#snippet statusCell(project: Project)}
+  <span class="rounded-full bg-surface px-2.5 py-0.5 text-xs font-medium text-text-muted">
+    {t(`projects.status.${project.status}`)}
+  </span>
+{/snippet}
+
+{#snippet assigneesCell(project: Project)}
+  <AvatarStack assignees={project.assignees ?? []} members={data.members} />
+{/snippet}
+
+{#snippet hoursCell(project: Project)}
+  <HoursCell hours={project.hours} />
+{/snippet}
+
+{#snippet budgetCell(project: Project)}
+  {#if project.budget_hours != null}
+    <span class="text-text">{fmtNumber(project.budget_hours)} u</span>
+  {:else}<span class="text-text-muted">—</span>{/if}
+{/snippet}
+
+{#snippet rateCell(project: Project)}
+  {#if project.hourly_rate != null}
+    <span class="text-text">{fmtNumber(project.hourly_rate)}</span>
+  {:else}<span class="text-text-muted">—</span>{/if}
+{/snippet}
+
+{#snippet startCell(project: Project)}
+  {#if project.start_date}
+    <span class="text-text-muted">{fmtNumericDate(project.start_date)}</span>
+  {:else}<span class="text-text-muted">—</span>{/if}
+{/snippet}
+
+{#snippet endCell(project: Project)}
+  {#if project.end_date}
+    <span class="text-text-muted">{fmtNumericDate(project.end_date)}</span>
+  {:else}<span class="text-text-muted">—</span>{/if}
+{/snippet}
+
+{#snippet rowActions(project: Project)}
+  <ActionsMenu
+    items={[
+      {
+        label: t("common.delete"),
+        icon: Trash2,
+        danger: true,
+        onclick: () => confirmDeleteOf(project),
+      },
+    ]}
+  />
+{/snippet}
+
+{#snippet mobileRow(project: Project)}
+  <!-- A phone gets the concept's row, not a sideways-scrolling grid (docs/UX.md). -->
+  <div class="flex items-center gap-3">
+    <a href="/projects/{project.id}" class="min-w-0 flex-1">
+      <span class="font-medium text-text">{project.name}</span>
+      {#if companyName(project.company_id)}
+        <span class="ml-2 text-sm text-text-muted">· {companyName(project.company_id)}</span>
+      {/if}
+      {#if visibleKeys.includes("hours") && project.hours}
+        <span class="mt-0.5 block text-xs"><HoursCell hours={project.hours} /></span>
+      {/if}
+    </a>
+    <span
+      class="shrink-0 rounded-full bg-surface px-2.5 py-0.5 text-xs font-medium text-text-muted"
+    >
+      {t(`projects.status.${project.status}`)}
+    </span>
+    {@render rowActions(project)}
+  </div>
+{/snippet}
+
+{#snippet emptyState()}
+  <div class="rounded-xl border border-dashed border-border bg-surface-raised p-10 text-center">
+    <p class="font-medium text-text">{t("projects.empty")}</p>
+    <p class="mt-1 text-sm text-text-muted">{t("projects.empty_hint")}</p>
+  </div>
+{/snippet}
 
 <svelte:head>
   <title>{t("projects.title")}</title>
@@ -56,6 +228,7 @@
       onclick={toggleMine}>{t("projects.filter.mine")}</button
     >
     <SearchInput />
+    <ColumnPicker all={pickerColumns} visible={visibleKeys} onchange={onColumnsChange} />
   </div>
   <button
     class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
@@ -64,6 +237,23 @@
     {t("projects.new")}
   </button>
 </div>
+
+<form
+  bind:this={saveForm}
+  method="POST"
+  action="?/saveTable"
+  class="hidden"
+  use:enhance={() =>
+    async ({ update }) => {
+      // A layout change may change what the API must compute, so it reloads; a resize must not.
+      if (reloadAfterSave) await invalidateAll();
+      else await update({ reset: false, invalidateAll: false });
+    }}
+>
+  <input type="hidden" name="columns" value={pendingColumns} />
+  <input type="hidden" name="sort" value={pendingSort} />
+  <input type="hidden" name="widths" value={pendingWidths} />
+</form>
 
 {#if showCreate}
   <form
@@ -202,45 +392,20 @@
   </form>
 {/if}
 
-{#if data.projects.length === 0}
-  <div class="rounded-xl border border-dashed border-border bg-surface-raised p-10 text-center">
-    <p class="font-medium text-text">{t("projects.empty")}</p>
-    <p class="mt-1 text-sm text-text-muted">{t("projects.empty_hint")}</p>
-  </div>
-{:else}
-  <ul class="divide-y divide-border rounded-xl border border-border bg-surface-raised">
-    {#each data.projects as project (project.id)}
-      <li
-        class="flex items-center justify-between gap-3 px-4 py-3 first:rounded-t-xl last:rounded-b-xl hover:bg-surface"
-      >
-        <a href="/projects/{project.id}" class="min-w-0 flex-1">
-          <span class="font-medium text-text">{project.name}</span>
-          {#if companyName(project.company_id)}
-            <span class="ml-2 text-sm text-text-muted">· {companyName(project.company_id)}</span>
-          {/if}
-        </a>
-        <AvatarStack assignees={project.assignees ?? []} members={data.members} />
-        <span class="rounded-full bg-surface px-2.5 py-0.5 text-xs font-medium text-text-muted">
-          {t(`projects.status.${project.status}`)}
-        </span>
-        <ActionsMenu
-          items={[
-            {
-              label: t("common.delete"),
-              icon: Trash2,
-              danger: true,
-              onclick: () => {
-                deleteId = project.id;
-                deleteName = project.name;
-                confirmDelete = true;
-              },
-            },
-          ]}
-        />
-      </li>
-    {/each}
-  </ul>
-{/if}
+<DataTable
+  rows={data.projects}
+  {columns}
+  sort={data.table.sort}
+  widths={resolved.widths}
+  definitions={data.definitions}
+  locale={data.locale}
+  rowHref={(project) => `/projects/${project.id}`}
+  actions={rowActions}
+  {mobileRow}
+  empty={emptyState}
+  onsort={onSort}
+  onresize={(widths) => persist({ widths })}
+/>
 
 <ConfirmDialog
   bind:open={confirmDelete}
