@@ -1,18 +1,28 @@
 <script lang="ts">
   import { applyAction, enhance } from "$app/forms";
-  import { goto } from "$app/navigation";
+  import { goto, invalidateAll } from "$app/navigation";
   import { page } from "$app/state";
   import { Trash2 } from "@lucide/svelte";
 
+  import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { customFieldColumns, resolveColumns } from "$lib/core/table/columns";
+  import type { ColumnSpec } from "$lib/core/table/columns";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import AvatarStack from "$lib/core/ui/AvatarStack.svelte";
+  import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import DataTable from "$lib/core/ui/DataTable.svelte";
+  import HoursCell from "$lib/core/ui/HoursCell.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import CompanyForm from "$lib/modules/companies/CompanyForm.svelte";
+  import { COMPANY_COLUMNS } from "$lib/modules/companies/columns";
   import { COMPANY_STATUSES, statusPillClass } from "$lib/modules/companies/status";
   import ContactDraftField from "$lib/modules/contacts/ContactDraftField.svelte";
 
   let { data, form } = $props();
+
+  type Company = (typeof data.companies)[number];
 
   let showCreate = $state(false);
 
@@ -27,6 +37,77 @@
   let deleteId = $state("");
   let deleteName = $state("");
   let confirmDelete = $state(false);
+
+  // --- columns ---------------------------------------------------------------
+  // The tenant's custom fields join the built-ins as selectable columns with no code here — that
+  // is the whole point of the descriptor list (#24).
+  const allColumns = $derived([
+    ...COMPANY_COLUMNS,
+    ...customFieldColumns(data.definitions, data.locale),
+  ]);
+  const resolved = $derived(resolveColumns(allColumns, data.table.pref));
+  const visibleKeys = $derived(resolved.columns.map((c) => c.key));
+
+  /** The picker sees plain labels; built-ins carry an i18n key, custom fields carry tenant text. */
+  const pickerColumns = $derived(
+    allColumns.map((c) => ({
+      key: c.key,
+      label: c.label ?? t(c.labelKey ?? c.key),
+      primary: c.primary,
+    })),
+  );
+
+  const cells: Record<string, unknown> = $derived({
+    name: nameCell,
+    website: websiteCell,
+    status: statusCell,
+    assignees: assigneesCell,
+    hours: hoursCell,
+    created_at: createdCell,
+  });
+
+  const columns = $derived(
+    resolved.columns.map((meta) => ({
+      ...meta,
+      label: meta.label ?? t(meta.labelKey ?? meta.key),
+      cell: cells[meta.key],
+    })) as ColumnSpec<Company>[],
+  );
+
+  // --- persistence -----------------------------------------------------------
+  // One hidden form posts the whole layout: `/api/v1/prefs` replaces a list's entry wholesale, so
+  // a partial write would erase the fields it left out.
+  let saveForm: HTMLFormElement | undefined = $state();
+  let pendingColumns = $state("");
+  let pendingSort = $state("");
+  let pendingWidths = $state("{}");
+  let reloadAfterSave = $state(false);
+
+  function persist(
+    next: { columns?: string[]; sort?: string | null; widths?: Record<string, number> },
+    reload = false,
+  ) {
+    pendingColumns = (next.columns ?? visibleKeys).join(",");
+    pendingSort = next.sort ?? data.table.sort ?? "";
+    pendingWidths = JSON.stringify(next.widths ?? resolved.widths);
+    reloadAfterSave = reload;
+    // Next tick, so the hidden inputs carry the fresh values.
+    setTimeout(() => saveForm?.requestSubmit(), 0);
+  }
+
+  function onColumnsChange(keys: string[]) {
+    // Reload: turning the hours column on means the list must now ask the API for the aggregate.
+    persist({ columns: keys }, true);
+  }
+
+  function onSort(next: string | null) {
+    const url = new URL(page.url);
+    if (next) url.searchParams.set("sort", next);
+    else url.searchParams.delete("sort");
+    // The URL drives the fetch (server-side sort, shareable); the pref just remembers it.
+    void goto(url, { keepFocus: true, noScroll: true });
+    persist({ sort: next });
+  }
 
   const filtered = $derived(
     data.statusFilter
@@ -49,7 +130,84 @@
     else url.searchParams.set("mine", "1");
     void goto(url, { keepFocus: true, noScroll: true });
   }
+
+  function confirmDeleteOf(company: Company) {
+    deleteId = company.id;
+    deleteName = company.name;
+    confirmDelete = true;
+  }
 </script>
+
+{#snippet nameCell(company: Company)}
+  <a href="/companies/{company.id}" class="font-medium text-text hover:text-brand">{company.name}</a
+  >
+{/snippet}
+
+{#snippet websiteCell(company: Company)}
+  {#if company.website}
+    <span class="truncate text-text-muted">{company.website}</span>
+  {:else}<span class="text-text-muted">—</span>{/if}
+{/snippet}
+
+{#snippet statusCell(company: Company)}
+  <span class="rounded-full px-2.5 py-0.5 text-xs font-medium {statusPillClass(company.status)}">
+    {t(`companies.status.${company.status}`)}
+  </span>
+{/snippet}
+
+{#snippet assigneesCell(company: Company)}
+  <AvatarStack assignees={company.assignees ?? []} members={data.members} />
+{/snippet}
+
+{#snippet hoursCell(company: Company)}
+  <HoursCell hours={company.hours} />
+{/snippet}
+
+{#snippet createdCell(company: Company)}
+  <span class="text-text-muted">{fmtNumericDate(company.created_at.slice(0, 10))}</span>
+{/snippet}
+
+{#snippet rowActions(company: Company)}
+  <ActionsMenu
+    items={[
+      {
+        label: t("common.delete"),
+        icon: Trash2,
+        danger: true,
+        onclick: () => confirmDeleteOf(company),
+      },
+    ]}
+  />
+{/snippet}
+
+{#snippet mobileRow(company: Company)}
+  <!-- A phone gets the concept's row, not a sideways-scrolling grid (docs/UX.md). -->
+  <div class="flex items-center gap-3">
+    <a href="/companies/{company.id}" class="min-w-0 flex-1">
+      <span class="font-medium text-text">{company.name}</span>
+      {#if visibleKeys.includes("hours") && company.hours}
+        <span class="mt-0.5 block text-xs"><HoursCell hours={company.hours} /></span>
+      {:else if company.website}
+        <span class="mt-0.5 block truncate text-sm text-text-muted">{company.website}</span>
+      {/if}
+    </a>
+    <span
+      class="shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium {statusPillClass(
+        company.status,
+      )}"
+    >
+      {t(`companies.status.${company.status}`)}
+    </span>
+    {@render rowActions(company)}
+  </div>
+{/snippet}
+
+{#snippet emptyState()}
+  <div class="rounded-xl border border-dashed border-border bg-surface-raised p-10 text-center">
+    <p class="font-medium text-text">{t("companies.empty")}</p>
+    <p class="mt-1 text-sm text-text-muted">{t("companies.empty_hint")}</p>
+  </div>
+{/snippet}
 
 <svelte:head>
   <title>{t("companies.title")}</title>
@@ -68,7 +226,7 @@
   </button>
 </div>
 
-<!-- Search + status filter pills -->
+<!-- Search + status filter pills + the personal column picker -->
 <div class="mb-4 flex flex-wrap items-center gap-2">
   <SearchInput placeholder={t("companies.search_placeholder")} />
   <button
@@ -96,7 +254,27 @@
       {t("tasks.filter.clear")}
     </button>
   {/if}
+  <div class="ml-auto">
+    <ColumnPicker all={pickerColumns} visible={visibleKeys} onchange={onColumnsChange} />
+  </div>
 </div>
+
+<form
+  bind:this={saveForm}
+  method="POST"
+  action="?/saveTable"
+  class="hidden"
+  use:enhance={() =>
+    async ({ update }) => {
+      // A layout change may change what the API must compute, so it reloads; a resize must not.
+      if (reloadAfterSave) await invalidateAll();
+      else await update({ reset: false, invalidateAll: false });
+    }}
+>
+  <input type="hidden" name="columns" value={pendingColumns} />
+  <input type="hidden" name="sort" value={pendingSort} />
+  <input type="hidden" name="widths" value={pendingWidths} />
+</form>
 
 {#if showCreate}
   <!-- Same field set as the edit surface (CompanyForm), plus the contact persons — which only a
@@ -153,48 +331,20 @@
   {/if}
 {/if}
 
-{#if filtered.length === 0}
-  <div class="rounded-xl border border-dashed border-border bg-surface-raised p-10 text-center">
-    <p class="font-medium text-text">{t("companies.empty")}</p>
-    <p class="mt-1 text-sm text-text-muted">{t("companies.empty_hint")}</p>
-  </div>
-{:else}
-  <ul class="divide-y divide-border rounded-xl border border-border bg-surface-raised">
-    {#each filtered as company (company.id)}
-      <li
-        class="flex items-center gap-3 px-4 py-3 first:rounded-t-xl last:rounded-b-xl hover:bg-surface"
-      >
-        <a href="/companies/{company.id}" class="min-w-0 flex-1">
-          <span class="font-medium text-text">{company.name}</span>
-          {#if company.website}
-            <span class="ml-2 truncate text-sm text-text-muted">{company.website}</span>
-          {/if}
-        </a>
-        <span
-          class="shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium {statusPillClass(
-            company.status,
-          )}"
-        >
-          {t(`companies.status.${company.status}`)}
-        </span>
-        <ActionsMenu
-          items={[
-            {
-              label: t("common.delete"),
-              icon: Trash2,
-              danger: true,
-              onclick: () => {
-                deleteId = company.id;
-                deleteName = company.name;
-                confirmDelete = true;
-              },
-            },
-          ]}
-        />
-      </li>
-    {/each}
-  </ul>
-{/if}
+<DataTable
+  rows={filtered}
+  {columns}
+  sort={data.table.sort}
+  widths={resolved.widths}
+  definitions={data.definitions}
+  locale={data.locale}
+  rowHref={(company) => `/companies/${company.id}`}
+  actions={rowActions}
+  {mobileRow}
+  empty={emptyState}
+  onsort={onSort}
+  onresize={(widths) => persist({ widths })}
+/>
 
 <ConfirmDialog
   bind:open={confirmDelete}

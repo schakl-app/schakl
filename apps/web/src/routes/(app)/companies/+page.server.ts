@@ -3,6 +3,9 @@ import { fail } from "@sveltejs/kit";
 import { parseAssignees } from "$lib/core/assignees";
 import { apiErrorKey } from "$lib/core/errors";
 import { apiFor } from "$lib/core/session";
+import { readTablePref, resolveColumns } from "$lib/core/table/columns";
+import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
+import { COMPANIES_TABLE_ID, COMPANY_COLUMNS, HOURS_COLUMN } from "$lib/modules/companies/columns";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -39,30 +42,53 @@ export const load: PageServerLoad = async (event) => {
   const mine = event.url.searchParams.get("mine") === "1";
   const api = apiFor(event);
 
-  // The create form's lookups are streamed, not awaited: the list paints on the companies call
-  // alone, and the (hidden) form fills in behind it. See docs/PERFORMANCE.md.
-  const createForm = Promise.all([
-    api.GET("/api/v1/members/lookup"),
-    api.GET("/api/v1/contacts", { params: { query: { limit: 200, offset: 0 } } }),
+  // The saved column layout comes from the layout load, which does not rerun on filter or sort
+  // navigation (docs/PERFORMANCE.md). Two things depend on it before a single row is fetched:
+  const { prefs } = await event.parent();
+  const pref = readTablePref(prefs, COMPANIES_TABLE_ID);
+  const resolved = resolveColumns(COMPANY_COLUMNS, pref);
+
+  //   1. the sort, which the *server* applies — sorting a 200-row page of a longer list in the
+  //      browser sorts the wrong set. The URL wins over the saved default so a sorted list stays
+  //      shareable and the back button works.
+  const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
+  //   2. whether to pay for the budget roll-up at all. Hidden column, no aggregate (#24).
+  const hours = resolved.columns.some((column) => column.key === HOURS_COLUMN);
+
+  // Definitions and members are awaited, not streamed: the table needs the tenant's custom-field
+  // definitions to render (and offer) their columns, and the assignees column needs names. All
+  // three calls go out together, so this costs one round trip, not three.
+  const [companiesRes, definitionsRes, membersRes] = await Promise.all([
+    api.GET("/api/v1/companies", {
+      params: { query: { limit: 200, offset: 0, q, mine, sort, hours } },
+    }),
     api.GET("/api/v1/custom-fields/definitions", { params: { query: { entity_type: "company" } } }),
+    api.GET("/api/v1/members/lookup"),
+  ]);
+
+  const definitions = definitionsRes.data ?? [];
+  const members = membersRes.data ?? [];
+
+  // The create form's remaining lookups still stream in behind the list.
+  const createForm = Promise.all([
+    api.GET("/api/v1/contacts", { params: { query: { limit: 200, offset: 0 } } }),
     api.GET("/api/v1/custom-fields/definitions", { params: { query: { entity_type: "contact" } } }),
   ])
-    .then(([members, contacts, definitions, contactDefinitions]) => ({
-      members: members.data ?? [],
+    .then(([contacts, contactDefinitions]) => ({
+      members,
       contacts: contacts.data?.items ?? [],
-      definitions: definitions.data ?? [],
+      definitions,
       contactDefinitions: contactDefinitions.data ?? [],
     }))
-    .catch(() => ({ members: [], contacts: [], definitions: [], contactDefinitions: [] }));
-
-  const companiesRes = await api.GET("/api/v1/companies", {
-    params: { query: { limit: 200, offset: 0, q, mine } },
-  });
+    .catch(() => ({ members, contacts: [], definitions, contactDefinitions: [] }));
 
   return {
     companies: companiesRes.data?.items ?? [],
     total: companiesRes.data?.total ?? 0,
     createForm,
+    definitions,
+    members,
+    table: { pref, sort: sort ?? null, widths: resolved.widths },
     statusFilter: event.url.searchParams.get("status") ?? "",
     mine,
     locale: event.locals.locale,
@@ -70,6 +96,13 @@ export const load: PageServerLoad = async (event) => {
 };
 
 export const actions: Actions = {
+  /** Persist this user's column layout. Personal, in-view — never org settings (docs/UX.md §6). */
+  saveTable: async (event) => {
+    const form = await event.request.formData();
+    await saveTablePref(event, COMPANIES_TABLE_ID, parseTablePref(form));
+    return { tableSaved: true };
+  },
+
   create: async (event) => {
     const form = await event.request.formData();
     const name = String(form.get("name") ?? "").trim();
