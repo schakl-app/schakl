@@ -60,7 +60,7 @@
   }
 
   const inputClass =
-    "w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
+    "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
 
 <svelte:head>
@@ -68,11 +68,9 @@
 </svelte:head>
 
 <div class="mb-6">
-  <a href="/settings" class="text-sm text-neutral-500 hover:text-neutral-900"
-    >← {t("settings.title")}</a
-  >
-  <h1 class="mt-2 text-xl font-semibold text-neutral-900">{t("settings.leave.title")}</h1>
-  <p class="mt-1 text-sm text-neutral-500">{t("settings.leave.subtitle")}</p>
+  <a href="/settings" class="text-sm text-text-muted hover:text-text">← {t("settings.title")}</a>
+  <h1 class="mt-2 text-xl font-semibold text-text">{t("settings.leave.title")}</h1>
+  <p class="mt-1 text-sm text-text-muted">{t("settings.leave.subtitle")}</p>
 </div>
 
 {#if form?.error}
@@ -82,7 +80,7 @@
 <!-- Leave types -->
 <section class="mb-8">
   <div class="mb-3 flex items-center justify-between">
-    <h2 class="text-xs font-semibold uppercase tracking-wide text-neutral-400">
+    <h2 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
       {t("settings.leave.types_heading")}
     </h2>
     <button
@@ -93,11 +91,11 @@
       {t("settings.leave.new_type")}
     </button>
   </div>
-  <div class="overflow-hidden rounded-xl border border-neutral-200 bg-white">
+  <div class="overflow-hidden rounded-xl border border-border bg-surface-raised">
     <div class="overflow-x-auto">
       <table class="w-full text-sm">
         <thead>
-          <tr class="border-b border-neutral-100 text-left text-xs text-neutral-400">
+          <tr class="border-b border-border text-left text-xs text-text-muted">
             <th class="px-4 py-2 font-medium">{t("settings.leave.type_label")}</th>
             <th class="px-2 py-2 font-medium">{t("settings.leave.type_props")}</th>
             <th class="px-2 py-2 text-right font-medium">{t("settings.leave.type_weeks")}</th>
@@ -105,39 +103,39 @@
             <th class="px-2 py-2"></th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-neutral-50">
+        <tbody class="divide-y divide-border">
           {#each types as lt (lt.id)}
             <tr class={lt.active ? "" : "opacity-50"}>
               <td class="px-4 py-2">
-                <span class="inline-flex items-center gap-2 font-medium text-neutral-800">
+                <span class="inline-flex items-center gap-2 font-medium text-text">
                   <span class="h-2.5 w-2.5 rounded-full {labelDotClass(lt.color)}"></span>
                   {typeLabel(lt, data.locale)}
                 </span>
-                <p class="mt-0.5 text-xs text-neutral-400">{lt.key}</p>
+                <p class="mt-0.5 text-xs text-text-muted">{lt.key}</p>
               </td>
               <td class="px-2 py-2">
                 <span class="flex flex-wrap gap-1">
                   {#if lt.paid}
-                    <span class="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600">
+                    <span class="rounded-full bg-surface px-2 py-0.5 text-xs text-text-muted">
                       {t("settings.leave.prop_paid")}
                     </span>
                   {/if}
                   {#if lt.tracks_balance}
-                    <span class="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600">
+                    <span class="rounded-full bg-surface px-2 py-0.5 text-xs text-text-muted">
                       {t("settings.leave.prop_balance")}
                     </span>
                   {/if}
                   {#if lt.requires_approval}
-                    <span class="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600">
+                    <span class="rounded-full bg-surface px-2 py-0.5 text-xs text-text-muted">
                       {t("settings.leave.prop_approval")}
                     </span>
                   {/if}
                 </span>
               </td>
-              <td class="px-2 py-2 text-right tabular-nums text-neutral-700">
+              <td class="px-2 py-2 text-right tabular-nums text-text">
                 {lt.default_weeks != null ? fmtHours(lt.default_weeks) : "—"}
               </td>
-              <td class="px-2 py-2 text-right tabular-nums text-neutral-700">
+              <td class="px-2 py-2 text-right tabular-nums text-text">
                 {lt.carry_over_months != null
                   ? t("settings.leave.carry_months", { months: lt.carry_over_months })
                   : "—"}
@@ -178,25 +176,25 @@
 <section>
   <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
     <div class="flex items-center gap-3">
-      <h2 class="text-xs font-semibold uppercase tracking-wide text-neutral-400">
+      <h2 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
         {t("settings.leave.team_heading", { year: data.year })}
       </h2>
       <div class="flex items-center gap-1 text-sm" data-sveltekit-preload-data="hover">
         <a
           href="?year={data.year - 1}"
-          class="rounded px-1.5 py-0.5 text-neutral-400 hover:text-brand">‹</a
+          class="rounded px-1.5 py-0.5 text-text-muted hover:text-brand">‹</a
         >
-        <span class="font-medium text-neutral-700">{data.year}</span>
+        <span class="font-medium text-text">{data.year}</span>
         <a
           href="?year={data.year + 1}"
-          class="rounded px-1.5 py-0.5 text-neutral-400 hover:text-brand">›</a
+          class="rounded px-1.5 py-0.5 text-text-muted hover:text-brand">›</a
         >
       </div>
     </div>
     <form method="POST" action="?/generate" use:enhance>
       <input type="hidden" name="year" value={data.year} />
       <button
-        class="flex items-center gap-2 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:border-brand hover:text-brand"
+        class="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm text-text hover:border-brand hover:text-brand"
         title={t("settings.leave.generate_hint")}
       >
         <Sparkles size={14} />
@@ -209,11 +207,11 @@
       {t("settings.leave.generated", { count: form.generated })}
     </p>
   {/if}
-  <div class="overflow-hidden rounded-xl border border-neutral-200 bg-white">
+  <div class="overflow-hidden rounded-xl border border-border bg-surface-raised">
     <div class="overflow-x-auto">
       <table class="w-full text-sm">
         <thead>
-          <tr class="border-b border-neutral-100 text-left text-xs text-neutral-400">
+          <tr class="border-b border-border text-left text-xs text-text-muted">
             <th class="px-4 py-2 font-medium">{t("leave.team.member")}</th>
             <th class="px-2 py-2 text-right font-medium">{t("leave.team.contract_hours")}</th>
             {#each trackedTypes as lt (lt.id)}
@@ -222,17 +220,17 @@
             <th class="px-2 py-2"></th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-neutral-50">
+        <tbody class="divide-y divide-border">
           {#each data.members as member (member.user_id)}
             <tr>
-              <td class="px-4 py-2 font-medium text-neutral-800">
+              <td class="px-4 py-2 font-medium text-text">
                 {member.full_name || member.email}
               </td>
-              <td class="px-2 py-2 text-right tabular-nums text-neutral-700">
+              <td class="px-2 py-2 text-right tabular-nums text-text">
                 {fmtHours(hoursByUser[member.user_id] ?? 40)}
               </td>
               {#each trackedTypes as lt (lt.id)}
-                <td class="px-2 py-2 text-right tabular-nums text-neutral-700">
+                <td class="px-2 py-2 text-right tabular-nums text-text">
                   {fmtHours(entitledByUserType[`${member.user_id}|${lt.id}`] ?? 0)}
                 </td>
               {/each}
@@ -269,7 +267,7 @@
         <input type="hidden" name="id" value={editType.id} />
       {:else}
         <div>
-          <label class="mb-1 block text-xs font-medium text-neutral-500" for="type-key">
+          <label class="mb-1 block text-xs font-medium text-text-muted" for="type-key">
             {t("settings.leave.type_key")}
           </label>
           <input
@@ -284,7 +282,7 @@
       {/if}
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
-          <label class="mb-1 block text-xs font-medium text-neutral-500" for="type-label-nl">
+          <label class="mb-1 block text-xs font-medium text-text-muted" for="type-label-nl">
             {t("settings.leave.label_nl")}
           </label>
           <input
@@ -296,7 +294,7 @@
           />
         </div>
         <div>
-          <label class="mb-1 block text-xs font-medium text-neutral-500" for="type-label-en">
+          <label class="mb-1 block text-xs font-medium text-text-muted" for="type-label-en">
             {t("settings.leave.label_en")}
           </label>
           <input
@@ -309,7 +307,7 @@
         </div>
       </div>
       <div>
-        <span class="mb-1 block text-xs font-medium text-neutral-500">
+        <span class="mb-1 block text-xs font-medium text-text-muted">
           {t("settings.leave.type_color")}
         </span>
         <input type="hidden" name="color" value={typeColor} />
@@ -319,7 +317,7 @@
               type="button"
               aria-label={color}
               class="h-6 w-6 rounded-full {labelDotClass(color)} {typeColor === color
-                ? 'ring-2 ring-neutral-800 ring-offset-1'
+                ? 'ring-2 ring-text ring-offset-1'
                 : ''}"
               onclick={() => (typeColor = color)}
             ></button>
@@ -327,11 +325,11 @@
         </div>
       </div>
       <div class="space-y-2">
-        <label class="flex items-center gap-2 text-sm text-neutral-700">
+        <label class="flex items-center gap-2 text-sm text-text">
           <input type="checkbox" name="paid" checked={editType?.paid ?? true} />
           {t("settings.leave.prop_paid")}
         </label>
-        <label class="flex items-center gap-2 text-sm text-neutral-700">
+        <label class="flex items-center gap-2 text-sm text-text">
           <input
             type="checkbox"
             name="tracks_balance"
@@ -339,7 +337,7 @@
           />
           {t("settings.leave.prop_balance_long")}
         </label>
-        <label class="flex items-center gap-2 text-sm text-neutral-700">
+        <label class="flex items-center gap-2 text-sm text-text">
           <input
             type="checkbox"
             name="requires_approval"
@@ -350,7 +348,7 @@
       </div>
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
-          <label class="mb-1 block text-xs font-medium text-neutral-500" for="type-weeks">
+          <label class="mb-1 block text-xs font-medium text-text-muted" for="type-weeks">
             {t("settings.leave.type_weeks_long")}
           </label>
           <input
@@ -365,7 +363,7 @@
           />
         </div>
         <div>
-          <label class="mb-1 block text-xs font-medium text-neutral-500" for="type-carry">
+          <label class="mb-1 block text-xs font-medium text-text-muted" for="type-carry">
             {t("settings.leave.type_carry_long")}
           </label>
           <input
@@ -409,7 +407,7 @@
         <input type="hidden" name="user_id" value={editMember.user_id} />
         <input type="hidden" name="year" value={data.year} />
         <div>
-          <label class="mb-1 block text-xs font-medium text-neutral-500" for="member-hours">
+          <label class="mb-1 block text-xs font-medium text-text-muted" for="member-hours">
             {t("leave.team.contract_hours")}
           </label>
           <input
@@ -425,13 +423,13 @@
           />
         </div>
         <fieldset>
-          <legend class="mb-1 text-xs font-medium text-neutral-500">
+          <legend class="mb-1 text-xs font-medium text-text-muted">
             {t("settings.leave.entitlements_for", { year: data.year })}
           </legend>
           <div class="space-y-2">
             {#each trackedTypes as lt (lt.id)}
               <div class="flex items-center gap-3">
-                <span class="flex flex-1 items-center gap-2 text-sm text-neutral-700">
+                <span class="flex flex-1 items-center gap-2 text-sm text-text">
                   <span class="h-2 w-2 rounded-full {labelDotClass(lt.color)}"></span>
                   {typeLabel(lt, data.locale)}
                 </span>
@@ -441,7 +439,7 @@
                   min="0"
                   step="0.5"
                   value={entitledByUserType[`${editMember.user_id}|${lt.id}`] ?? 0}
-                  class="w-28 rounded-lg border border-neutral-300 px-3 py-1.5 text-right text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                  class="w-28 rounded-lg border border-border px-3 py-1.5 text-right text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
                 />
               </div>
             {/each}

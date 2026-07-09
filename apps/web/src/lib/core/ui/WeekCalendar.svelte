@@ -31,12 +31,12 @@
 </script>
 
 <!-- ≥sm: one week row -->
-<div class="hidden overflow-hidden rounded-xl border border-neutral-200 bg-white sm:block">
+<div class="hidden overflow-hidden rounded-xl border border-border bg-surface-raised sm:block">
   <div class="grid grid-cols-7">
     {#each days as day, i (day)}
       {@const isToday = day === today}
-      <div class="min-h-56 border-b border-neutral-100 p-2 {i % 7 !== 6 ? 'border-r' : ''}">
-        <p class="mb-2 text-xs font-medium {isToday ? 'font-bold text-brand' : 'text-neutral-500'}">
+      <div class="min-h-56 border-b border-border p-2 {i % 7 !== 6 ? 'border-r' : ''}">
+        <p class="mb-2 text-xs font-medium {isToday ? 'font-bold text-brand' : 'text-text-muted'}">
           <span class="capitalize">{fmtWeekdayShort(day)}</span>
           {Number(day.slice(8, 10))}
         </p>

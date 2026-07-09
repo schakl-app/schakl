@@ -85,19 +85,19 @@
   const leaveTotal = $derived(sum(leaveMinutes));
 </script>
 
-<section class="overflow-hidden rounded-xl border border-neutral-200 bg-white">
+<section class="overflow-hidden rounded-xl border border-border bg-surface-raised">
   <h2
-    class="border-b border-neutral-100 bg-neutral-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-neutral-500"
+    class="border-b border-border bg-surface px-4 py-2 text-xs font-semibold uppercase tracking-wide text-text-muted"
   >
     {t("time.timesheet.heading")}
   </h2>
   {#if sorted.length === 0 && leaveTotal === 0}
-    <p class="p-6 text-sm text-neutral-500">{t("time.timesheet.empty")}</p>
+    <p class="p-6 text-sm text-text-muted">{t("time.timesheet.empty")}</p>
   {:else}
     <div class="overflow-x-auto">
       <table class="w-full text-sm">
         <thead>
-          <tr class="border-b border-neutral-100 text-left text-xs text-neutral-400">
+          <tr class="border-b border-border text-left text-xs text-text-muted">
             <th class="px-4 py-2 font-medium">{t("time.timesheet.row")}</th>
             {#each visibleDays as day (day)}
               <th class="px-2 py-2 text-right font-medium capitalize">{fmtWeekdayDay(day)}</th>
@@ -105,61 +105,62 @@
             <th class="px-4 py-2 text-right font-medium">{t("time.timesheet.total")}</th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-neutral-50">
+        <tbody class="divide-y divide-border">
           {#each sorted as row (row.company_id + "|" + row.project_id + "|" + row.task_id)}
             <tr>
-              <td class="max-w-[16rem] truncate px-4 py-2 font-medium text-neutral-800"
-                >{rowLabel(row)}</td
+              <td class="max-w-[16rem] truncate px-4 py-2 font-medium text-text">{rowLabel(row)}</td
               >
               {#each row.visibleMinutes as minutes, i (i)}
                 <td
                   class="px-2 py-2 text-right tabular-nums {minutes
-                    ? 'text-neutral-800'
-                    : 'text-neutral-300'}"
+                    ? 'text-text'
+                    : 'text-text-muted'}"
                 >
                   {minutes ? formatMinutes(minutes) : "·"}
                 </td>
               {/each}
-              <td class="px-4 py-2 text-right font-semibold tabular-nums text-neutral-900"
+              <td class="px-4 py-2 text-right font-semibold tabular-nums text-text"
                 >{formatMinutes(row.visibleTotal)}</td
               >
             </tr>
           {/each}
           {#if leaveTotal > 0}
             <!-- Approved leave: shown for context, excluded from the worked totals (§14). -->
-            <tr class="bg-teal-50/40">
-              <td class="px-4 py-2 font-medium italic text-teal-700">{t("time.timesheet.leave")}</td
+            <tr class="bg-teal-50/40 dark:bg-teal-950/40">
+              <td class="px-4 py-2 font-medium italic text-teal-700 dark:text-teal-300"
+                >{t("time.timesheet.leave")}</td
               >
               {#each leaveMinutes as minutes, i (i)}
                 <td
                   class="px-2 py-2 text-right italic tabular-nums {minutes
-                    ? 'text-teal-700'
-                    : 'text-neutral-300'}"
+                    ? 'text-teal-700 dark:text-teal-300'
+                    : 'text-text-muted'}"
                 >
                   {minutes ? formatMinutes(minutes) : "·"}
                 </td>
               {/each}
-              <td class="px-4 py-2 text-right font-semibold italic tabular-nums text-teal-700"
+              <td
+                class="px-4 py-2 text-right font-semibold italic tabular-nums text-teal-700 dark:text-teal-300"
                 >{formatMinutes(leaveTotal)}</td
               >
             </tr>
           {/if}
         </tbody>
         <tfoot>
-          <tr class="border-t border-neutral-200 bg-neutral-50/60">
-            <td class="px-4 py-2 text-xs font-semibold text-neutral-500"
+          <tr class="border-t border-border bg-surface/60">
+            <td class="px-4 py-2 text-xs font-semibold text-text-muted"
               >{t("time.timesheet.total")}</td
             >
             {#each dayTotals as minutes, i (i)}
               <td
                 class="px-2 py-2 text-right text-xs font-semibold tabular-nums {minutes
-                  ? 'text-neutral-800'
-                  : 'text-neutral-300'}"
+                  ? 'text-text'
+                  : 'text-text-muted'}"
               >
                 {minutes ? formatMinutes(minutes) : "·"}
               </td>
             {/each}
-            <td class="px-4 py-2 text-right text-sm font-bold tabular-nums text-neutral-900"
+            <td class="px-4 py-2 text-right text-sm font-bold tabular-nums text-text"
               >{formatMinutes(grandTotal)}</td
             >
           </tr>

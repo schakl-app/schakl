@@ -9,7 +9,7 @@
   let accent = $state(data.branding?.accent_color ?? "#0ea5e9");
 
   const inputClass =
-    "w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
+    "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
 
 <svelte:head>
@@ -17,11 +17,9 @@
 </svelte:head>
 
 <div class="mb-6">
-  <a href="/settings" class="text-sm text-neutral-500 hover:text-neutral-900"
-    >← {t("settings.title")}</a
-  >
-  <h1 class="mt-2 text-xl font-semibold text-neutral-900">{t("settings.branding.title")}</h1>
-  <p class="mt-1 text-sm text-neutral-500">{t("settings.branding.subtitle")}</p>
+  <a href="/settings" class="text-sm text-text-muted hover:text-text">← {t("settings.title")}</a>
+  <h1 class="mt-2 text-xl font-semibold text-text">{t("settings.branding.title")}</h1>
+  <p class="mt-1 text-sm text-text-muted">{t("settings.branding.subtitle")}</p>
 </div>
 
 {#if branding}
@@ -35,11 +33,11 @@
         async ({ update }) => {
           await update({ reset: false });
         }}
-      class="rounded-xl border border-neutral-200 bg-white p-5"
+      class="rounded-xl border border-border bg-surface-raised p-5"
     >
       <div class="grid gap-3 sm:grid-cols-2">
         <div>
-          <label for="brand_name" class="mb-1 block text-sm font-medium text-neutral-700"
+          <label for="brand_name" class="mb-1 block text-sm font-medium text-text"
             >{t("settings.branding.brand_name")}</label
           >
           <input
@@ -49,18 +47,18 @@
             required
             class={inputClass}
           />
-          <label class="mt-2 flex items-center gap-2 text-sm text-neutral-700">
+          <label class="mt-2 flex items-center gap-2 text-sm text-text">
             <input
               type="checkbox"
               name="show_brand_name"
               checked={branding.show_brand_name}
-              class="h-4 w-4 rounded border-neutral-300 text-brand focus:ring-brand"
+              class="h-4 w-4 rounded border-border text-brand focus:ring-brand"
             />
             {t("settings.branding.show_brand_name")}
           </label>
         </div>
         <div>
-          <label for="default_locale" class="mb-1 block text-sm font-medium text-neutral-700"
+          <label for="default_locale" class="mb-1 block text-sm font-medium text-text"
             >{t("settings.branding.default_locale")}</label
           >
           <select id="default_locale" name="default_locale" class={inputClass}>
@@ -72,7 +70,7 @@
           </select>
         </div>
         <div>
-          <label for="logo_url" class="mb-1 block text-sm font-medium text-neutral-700"
+          <label for="logo_url" class="mb-1 block text-sm font-medium text-text"
             >{t("settings.branding.logo_url")}</label
           >
           <input
@@ -84,7 +82,7 @@
           />
         </div>
         <div>
-          <label for="favicon_url" class="mb-1 block text-sm font-medium text-neutral-700"
+          <label for="favicon_url" class="mb-1 block text-sm font-medium text-text"
             >{t("settings.branding.favicon_url")}</label
           >
           <input
@@ -96,7 +94,7 @@
           />
         </div>
         <div>
-          <label for="primary_color" class="mb-1 block text-sm font-medium text-neutral-700"
+          <label for="primary_color" class="mb-1 block text-sm font-medium text-text"
             >{t("settings.branding.primary_color")}</label
           >
           <div class="flex items-center gap-2">
@@ -105,13 +103,13 @@
               name="primary_color"
               type="color"
               bind:value={primary}
-              class="h-9 w-12 cursor-pointer rounded border border-neutral-300"
+              class="h-9 w-12 cursor-pointer rounded border border-border"
             />
-            <span class="font-mono text-sm text-neutral-500">{primary}</span>
+            <span class="font-mono text-sm text-text-muted">{primary}</span>
           </div>
         </div>
         <div>
-          <label for="accent_color" class="mb-1 block text-sm font-medium text-neutral-700"
+          <label for="accent_color" class="mb-1 block text-sm font-medium text-text"
             >{t("settings.branding.accent_color")}</label
           >
           <div class="flex items-center gap-2">
@@ -120,15 +118,17 @@
               name="accent_color"
               type="color"
               bind:value={accent}
-              class="h-9 w-12 cursor-pointer rounded border border-neutral-300"
+              class="h-9 w-12 cursor-pointer rounded border border-border"
             />
-            <span class="font-mono text-sm text-neutral-500">{accent}</span>
+            <span class="font-mono text-sm text-text-muted">{accent}</span>
           </div>
         </div>
       </div>
-      <p class="mt-3 text-xs text-neutral-400">{t("settings.branding.hint")}</p>
-      {#if form?.error}<p class="mt-2 text-sm text-red-600">{t(form.error)}</p>{/if}
-      {#if form?.updated}<p class="mt-2 text-sm text-green-600">
+      <p class="mt-3 text-xs text-text-muted">{t("settings.branding.hint")}</p>
+      {#if form?.error}<p class="mt-2 text-sm text-red-600 dark:text-red-400">
+          {t(form.error)}
+        </p>{/if}
+      {#if form?.updated}<p class="mt-2 text-sm text-green-600 dark:text-green-400">
           {t("settings.account.saved")}
         </p>{/if}
       <button
@@ -140,18 +140,18 @@
 
     <!-- Live preview -->
     <aside
-      class="h-fit rounded-xl border border-neutral-200 bg-white p-5"
+      class="h-fit rounded-xl border border-border bg-surface-raised p-5"
       style="--brand-primary: {primary}; --brand-accent: {accent};"
     >
-      <h2 class="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+      <h2 class="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
         {t("settings.branding.preview")}
       </h2>
-      <div class="rounded-lg border border-neutral-200 p-4">
+      <div class="rounded-lg border border-border p-4">
         <div class="mb-3 flex items-center gap-2">
           {#if branding.logo_url}
             <img src={branding.logo_url} alt="" class="h-6 w-auto" />
           {/if}
-          <span class="font-semibold text-neutral-900">{branding.brand_name}</span>
+          <span class="font-semibold text-text">{branding.brand_name}</span>
         </div>
         <button type="button" class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
           >{t("common.save")}</button

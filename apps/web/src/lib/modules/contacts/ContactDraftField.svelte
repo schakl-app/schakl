@@ -138,13 +138,13 @@
   }
 
   const inputClass =
-    "w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
+    "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
 
 <input type="hidden" {name} value={payload} />
 
 <div class="space-y-2">
-  <span class="block text-sm font-medium text-neutral-700">{t("contacts.panel.title")}</span>
+  <span class="block text-sm font-medium text-text">{t("contacts.panel.title")}</span>
 
   {#if chips.length > 0}
     <ul class="flex flex-wrap gap-2">
@@ -153,14 +153,14 @@
           class="inline-flex items-center gap-1.5 rounded-full py-1 pl-2.5 pr-1.5 text-sm
             {chip.key === primary
             ? 'bg-brand/10 text-brand ring-1 ring-inset ring-brand/30'
-            : 'bg-neutral-100 text-neutral-700'}"
+            : 'bg-surface text-text'}"
         >
           {#if chip.key === primary}
             <span title={t("contacts.primary")}>★</span>
           {:else}
             <button
               type="button"
-              class="text-neutral-400 hover:text-brand"
+              class="text-text-muted hover:text-brand"
               title={t("contacts.make_primary")}
               aria-label={t("contacts.make_primary")}
               onclick={() => (primaryKey = chip.key)}><Star size={13} /></button
@@ -198,31 +198,31 @@
   <div class="space-y-3" role="group" onkeydown={onDialogKeydown}>
     <div class="grid gap-3 sm:grid-cols-2">
       <div>
-        <label for="qcd-first" class="mb-1 block text-sm font-medium text-neutral-700"
+        <label for="qcd-first" class="mb-1 block text-sm font-medium text-text"
           >{t("contacts.first_name")}</label
         >
         <input id="qcd-first" bind:value={draft.first_name} required class={inputClass} />
       </div>
       <div>
-        <label for="qcd-last" class="mb-1 block text-sm font-medium text-neutral-700"
+        <label for="qcd-last" class="mb-1 block text-sm font-medium text-text"
           >{t("contacts.last_name")}</label
         >
         <input id="qcd-last" bind:value={draft.last_name} class={inputClass} />
       </div>
       <div>
-        <label for="qcd-email" class="mb-1 block text-sm font-medium text-neutral-700"
+        <label for="qcd-email" class="mb-1 block text-sm font-medium text-text"
           >{t("contacts.email")}</label
         >
         <input id="qcd-email" type="email" bind:value={draft.email} class={inputClass} />
       </div>
       <div>
-        <label for="qcd-phone" class="mb-1 block text-sm font-medium text-neutral-700"
+        <label for="qcd-phone" class="mb-1 block text-sm font-medium text-text"
           >{t("contacts.phone")}</label
         >
         <input id="qcd-phone" bind:value={draft.phone} class={inputClass} />
       </div>
       <div class="sm:col-span-2">
-        <label for="qcd-job" class="mb-1 block text-sm font-medium text-neutral-700"
+        <label for="qcd-job" class="mb-1 block text-sm font-medium text-text"
           >{t("contacts.job_title")}</label
         >
         <input id="qcd-job" bind:value={draft.job_title} class={inputClass} />
@@ -242,7 +242,7 @@
     <div class="flex justify-end gap-2 pt-1">
       <button
         type="button"
-        class="rounded-lg border border-neutral-300 px-4 py-2 text-sm"
+        class="rounded-lg border border-border px-4 py-2 text-sm"
         onclick={() => (showCreate = false)}>{t("common.cancel")}</button
       >
       <button

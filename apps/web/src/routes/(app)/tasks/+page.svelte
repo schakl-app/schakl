@@ -56,7 +56,7 @@
   const hasFilters = $derived(Object.values(data.filters).some(Boolean));
 
   const inputClass =
-    "w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
+    "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
 
 <svelte:head>
@@ -67,11 +67,11 @@
 
 <div class="mb-6 flex items-center justify-between">
   <div>
-    <h1 class="text-xl font-semibold text-neutral-900">{t("tasks.title")}</h1>
-    <p class="mt-1 text-sm text-neutral-500">
+    <h1 class="text-xl font-semibold text-text">{t("tasks.title")}</h1>
+    <p class="mt-1 text-sm text-text-muted">
       {t("tasks.count", { count: data.total })}
       {#if overdueCount > 0}
-        · <span class="font-medium text-red-600"
+        · <span class="font-medium text-red-600 dark:text-red-400"
           >{t("tasks.overdue_count", { count: overdueCount })}</span
         >
       {/if}
@@ -123,7 +123,7 @@
       class="rounded-full px-3 py-1 text-xs font-medium
         {data.filters.due === option
         ? 'bg-brand text-white'
-        : 'border border-neutral-300 text-neutral-600 hover:border-brand hover:text-brand'}"
+        : 'border border-border text-text-muted hover:border-brand hover:text-brand'}"
       onclick={() => setFilter("due", data.filters.due === option ? "" : option)}
       >{t(`tasks.due.${option}`)}</button
     >
@@ -139,7 +139,7 @@
     >
   {/each}
   {#if hasFilters}
-    <a href="/tasks" class="text-xs text-neutral-500 underline hover:text-neutral-900"
+    <a href="/tasks" class="text-xs text-text-muted underline hover:text-text"
       >{t("tasks.filter.clear")}</a
     >
   {/if}
@@ -153,23 +153,23 @@
       ({ update }) => {
         void update().then(() => (showCreate = false));
       }}
-    class="mb-6 rounded-xl border border-neutral-200 bg-white p-4"
+    class="mb-6 rounded-xl border border-border bg-surface-raised p-4"
   >
     <div class="grid gap-3 sm:grid-cols-2">
       <div class="sm:col-span-2">
-        <label for="title" class="mb-1 block text-sm font-medium text-neutral-700"
+        <label for="title" class="mb-1 block text-sm font-medium text-text"
           >{t("tasks.field.title")}</label
         >
         <input id="title" name="title" required class={inputClass} />
       </div>
       <div class="sm:col-span-2">
-        <label for="description" class="mb-1 block text-sm font-medium text-neutral-700"
+        <label for="description" class="mb-1 block text-sm font-medium text-text"
           >{t("tasks.field.description")}</label
         >
         <textarea id="description" name="description" rows="2" class={inputClass}></textarea>
       </div>
       <div>
-        <label for="create-project" class="mb-1 block text-sm font-medium text-neutral-700"
+        <label for="create-project" class="mb-1 block text-sm font-medium text-text"
           >{t("tasks.field.project")}</label
         >
         <Combobox
@@ -181,7 +181,7 @@
         />
       </div>
       <div>
-        <label for="create-company" class="mb-1 block text-sm font-medium text-neutral-700"
+        <label for="create-company" class="mb-1 block text-sm font-medium text-text"
           >{t("tasks.field.company")}</label
         >
         <Combobox
@@ -192,14 +192,14 @@
         />
       </div>
       <div>
-        <label for="create-assignee" class="mb-1 block text-sm font-medium text-neutral-700"
+        <label for="create-assignee" class="mb-1 block text-sm font-medium text-text"
           >{t("tasks.field.assignee")}</label
         >
         <Combobox items={memberItems} name="assignee_user_id" value={userId} id="create-assignee" />
       </div>
       <div class="grid grid-cols-2 gap-3">
         <div>
-          <label for="priority" class="mb-1 block text-sm font-medium text-neutral-700"
+          <label for="priority" class="mb-1 block text-sm font-medium text-text"
             >{t("tasks.field.priority")}</label
           >
           <select id="priority" name="priority" class={inputClass}>
@@ -209,21 +209,21 @@
           </select>
         </div>
         <div>
-          <label for="due_date" class="mb-1 block text-sm font-medium text-neutral-700"
+          <label for="due_date" class="mb-1 block text-sm font-medium text-text"
             >{t("tasks.field.due_date")}</label
           >
           <DateInput id="due_date" name="due_date" />
         </div>
       </div>
     </div>
-    {#if form?.error}<p class="mt-2 text-sm text-red-600">{t(form.error)}</p>{/if}
+    {#if form?.error}<p class="mt-2 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
     <div class="mt-4 flex gap-2">
       <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
         >{t("common.save")}</button
       >
       <button
         type="button"
-        class="rounded-lg border border-neutral-300 px-4 py-2 text-sm"
+        class="rounded-lg border border-border px-4 py-2 text-sm"
         onclick={() => (showCreate = false)}>{t("common.cancel")}</button
       >
     </div>
@@ -231,21 +231,21 @@
 {/if}
 
 {#if data.tasks.length === 0}
-  <div class="rounded-xl border border-dashed border-neutral-300 bg-white p-10 text-center">
-    <p class="font-medium text-neutral-900">{t("tasks.empty")}</p>
-    <p class="mt-1 text-sm text-neutral-500">{t("tasks.empty_hint")}</p>
+  <div class="rounded-xl border border-dashed border-border bg-surface-raised p-10 text-center">
+    <p class="font-medium text-text">{t("tasks.empty")}</p>
+    <p class="mt-1 text-sm text-text-muted">{t("tasks.empty_hint")}</p>
   </div>
 {:else}
   <div class="space-y-4">
     {#each [{ key: "open", rows: open }, { key: "in_progress", rows: inProgress }] as group (group.key)}
       {#if group.rows.length > 0}
-        <section class="overflow-hidden rounded-xl border border-neutral-200 bg-white">
+        <section class="overflow-hidden rounded-xl border border-border bg-surface-raised">
           <h2
-            class="border-b border-neutral-100 bg-neutral-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-neutral-500"
+            class="border-b border-border bg-surface px-4 py-2 text-xs font-semibold uppercase tracking-wide text-text-muted"
           >
             {t(`tasks.group.${group.key}`)} · {group.rows.length}
           </h2>
-          <div class="divide-y divide-neutral-100">
+          <div class="divide-y divide-border">
             {#each group.rows as task (task.id)}
               <TaskRow {task} members={data.members} {today} />
             {/each}
@@ -255,16 +255,16 @@
     {/each}
 
     {#if done.length > 0}
-      <section class="overflow-hidden rounded-xl border border-neutral-200 bg-white">
+      <section class="overflow-hidden rounded-xl border border-border bg-surface-raised">
         <button
-          class="flex w-full items-center justify-between border-b border-neutral-100 bg-neutral-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-neutral-500 hover:text-neutral-800"
+          class="flex w-full items-center justify-between border-b border-border bg-surface px-4 py-2 text-xs font-semibold uppercase tracking-wide text-text-muted hover:text-text"
           onclick={() => (showDone = !showDone)}
         >
           <span>{t("tasks.group.done")} · {done.length}</span>
           <span>{showDone ? "▾" : "▸"}</span>
         </button>
         {#if showDone}
-          <div class="divide-y divide-neutral-100">
+          <div class="divide-y divide-border">
             {#each done as task (task.id)}
               <TaskRow {task} members={data.members} {today} />
             {/each}

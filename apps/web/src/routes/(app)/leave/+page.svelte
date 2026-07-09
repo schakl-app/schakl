@@ -45,16 +45,16 @@
 
 <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
   <div class="flex items-center gap-3">
-    <h1 class="text-xl font-semibold text-neutral-900">{t("leave.title")}</h1>
+    <h1 class="text-xl font-semibold text-text">{t("leave.title")}</h1>
     <div class="flex items-center gap-1 text-sm" data-sveltekit-preload-data="hover">
       <a
         href={yearLink(data.year - 1)}
-        class="rounded px-1.5 py-0.5 text-neutral-400 hover:text-brand">‹</a
+        class="rounded px-1.5 py-0.5 text-text-muted hover:text-brand">‹</a
       >
-      <span class="font-medium text-neutral-700">{data.year}</span>
+      <span class="font-medium text-text">{data.year}</span>
       <a
         href={yearLink(data.year + 1)}
-        class="rounded px-1.5 py-0.5 text-neutral-400 hover:text-brand">›</a
+        class="rounded px-1.5 py-0.5 text-text-muted hover:text-brand">›</a
       >
     </div>
   </div>
@@ -72,35 +72,35 @@
 <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
   {#each data.balances as balance (balance.leave_type_id)}
     {@const leaveType = typeById[balance.leave_type_id]}
-    <div class="rounded-xl border border-neutral-200 bg-white p-5">
+    <div class="rounded-xl border border-border bg-surface-raised p-5">
       <div class="mb-2 flex items-center gap-2">
         <span class="h-2.5 w-2.5 rounded-full {labelDotClass(leaveType?.color ?? '')}"></span>
-        <h2 class="text-sm font-semibold text-neutral-900">
+        <h2 class="text-sm font-semibold text-text">
           {typeLabel(leaveType, data.locale)}
         </h2>
       </div>
       <p
         class="text-2xl font-semibold {Number(balance.remaining_hours) < 0
-          ? 'text-red-600'
-          : 'text-neutral-900'}"
+          ? 'text-red-600 dark:text-red-400'
+          : 'text-text'}"
       >
         {t("leave.balance.remaining", { hours: fmtHours(balance.remaining_hours) })}
       </p>
-      <p class="mt-1 text-sm text-neutral-500">
+      <p class="mt-1 text-sm text-text-muted">
         {t("leave.balance.days_equiv", {
           days: fmtHours(hoursToDays(balance.remaining_hours, data.hoursPerWeek)),
         })}
         · {t("leave.balance.of_total", { hours: fmtHours(balance.entitled_hours) })}
       </p>
       {#if Number(balance.pending_hours) > 0}
-        <p class="mt-1 text-xs text-amber-600">
+        <p class="mt-1 text-xs text-amber-600 dark:text-amber-400">
           {t("leave.balance.pending", { hours: fmtHours(balance.pending_hours) })}
         </p>
       {/if}
     </div>
   {:else}
     <p
-      class="rounded-xl border border-neutral-200 bg-white p-5 text-sm text-neutral-500 sm:col-span-2 lg:col-span-3"
+      class="rounded-xl border border-border bg-surface-raised p-5 text-sm text-text-muted sm:col-span-2 lg:col-span-3"
     >
       {t("leave.balance.none")}
     </p>
@@ -108,19 +108,19 @@
 </div>
 
 <!-- My requests -->
-<section class="overflow-hidden rounded-xl border border-neutral-200 bg-white">
+<section class="overflow-hidden rounded-xl border border-border bg-surface-raised">
   <h2
-    class="border-b border-neutral-100 bg-neutral-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-neutral-500"
+    class="border-b border-border bg-surface px-4 py-2 text-xs font-semibold uppercase tracking-wide text-text-muted"
   >
     {t("leave.requests.heading")}
   </h2>
   {#if data.requests.length === 0}
-    <p class="p-6 text-sm text-neutral-500">{t("leave.requests.empty")}</p>
+    <p class="p-6 text-sm text-text-muted">{t("leave.requests.empty")}</p>
   {:else}
     <div class="overflow-x-auto">
       <table class="w-full text-sm">
         <thead>
-          <tr class="border-b border-neutral-100 text-left text-xs text-neutral-400">
+          <tr class="border-b border-border text-left text-xs text-text-muted">
             <th class="px-4 py-2 font-medium">{t("leave.requests.period")}</th>
             <th class="px-4 py-2 font-medium">{t("leave.form.type")}</th>
             <th class="px-4 py-2 text-right font-medium">{t("leave.form.hours")}</th>
@@ -128,32 +128,32 @@
             <th class="px-2 py-2"></th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-neutral-50">
+        <tbody class="divide-y divide-border">
           {#each data.requests as request (request.id)}
             {@const leaveType = typeById[request.leave_type_id]}
             {@const pending = request.status === "pending"}
             <tr>
-              <td class="px-4 py-2 font-medium text-neutral-800">
+              <td class="px-4 py-2 font-medium text-text">
                 {period(request)}
                 {#if request.note}
-                  <p class="mt-0.5 max-w-[16rem] truncate text-xs font-normal text-neutral-400">
+                  <p class="mt-0.5 max-w-[16rem] truncate text-xs font-normal text-text-muted">
                     {request.note}
                   </p>
                 {/if}
               </td>
               <td class="px-4 py-2">
-                <span class="inline-flex items-center gap-1.5 text-neutral-700">
+                <span class="inline-flex items-center gap-1.5 text-text">
                   <span class="h-2 w-2 rounded-full {labelDotClass(leaveType?.color ?? '')}"></span>
                   {typeLabel(leaveType, data.locale)}
                 </span>
               </td>
-              <td class="px-4 py-2 text-right tabular-nums text-neutral-800">
+              <td class="px-4 py-2 text-right tabular-nums text-text">
                 {fmtHours(request.hours)}
               </td>
               <td class="px-4 py-2">
                 <LeaveStatusPill status={request.status} />
                 {#if request.status === "rejected" && request.decision_note}
-                  <p class="mt-0.5 max-w-[14rem] truncate text-xs text-neutral-400">
+                  <p class="mt-0.5 max-w-[14rem] truncate text-xs text-text-muted">
                     {request.decision_note}
                   </p>
                 {/if}

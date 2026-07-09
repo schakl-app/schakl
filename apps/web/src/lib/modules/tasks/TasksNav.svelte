@@ -6,7 +6,7 @@
   const path = $derived(page.url.pathname);
   const tabClass = (active: boolean) =>
     `rounded-lg px-3 py-1.5 text-sm font-medium ${
-      active ? "bg-brand text-white" : "text-neutral-600 hover:bg-neutral-100"
+      active ? "bg-brand text-white" : "text-text-muted hover:bg-surface"
     }`;
 </script>
 

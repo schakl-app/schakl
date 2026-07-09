@@ -40,8 +40,8 @@
 
 <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
   <div>
-    <h1 class="text-xl font-semibold text-neutral-900">{t("overview.productivity.title")}</h1>
-    <p class="mt-1 text-sm text-neutral-500">{t("overview.productivity.subtitle")}</p>
+    <h1 class="text-xl font-semibold text-text">{t("overview.productivity.title")}</h1>
+    <p class="mt-1 text-sm text-text-muted">{t("overview.productivity.subtitle")}</p>
   </div>
   <div class="flex items-center gap-2">
     <div class="w-36">
@@ -52,7 +52,7 @@
         onchange={(v) => setFilter("date_from", v)}
       />
     </div>
-    <span class="text-xs text-neutral-400">–</span>
+    <span class="text-xs text-text-muted">–</span>
     <div class="w-36">
       <DateInput
         name="_f_to"
@@ -66,58 +66,58 @@
 
 <!-- Totals -->
 <div class="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-  <div class="rounded-xl border border-neutral-200 bg-white p-4">
-    <p class="text-xs text-neutral-500">{t("time.overview.total.minutes")}</p>
-    <p class="mt-1 text-lg font-semibold tabular-nums text-neutral-900">
+  <div class="rounded-xl border border-border bg-surface-raised p-4">
+    <p class="text-xs text-text-muted">{t("time.overview.total.minutes")}</p>
+    <p class="mt-1 text-lg font-semibold tabular-nums text-text">
       {formatMinutes(totals.minutes)}
     </p>
   </div>
-  <div class="rounded-xl border border-neutral-200 bg-white p-4">
-    <p class="text-xs text-neutral-500">{t("time.overview.total.billable")}</p>
-    <p class="mt-1 text-lg font-semibold tabular-nums text-neutral-900">
+  <div class="rounded-xl border border-border bg-surface-raised p-4">
+    <p class="text-xs text-text-muted">{t("time.overview.total.billable")}</p>
+    <p class="mt-1 text-lg font-semibold tabular-nums text-text">
       {formatMinutes(totals.billable)}
-      <span class="text-sm font-normal text-neutral-400"
+      <span class="text-sm font-normal text-text-muted"
         >({pct(totals.billable, totals.minutes)}%)</span
       >
     </p>
   </div>
-  <div class="rounded-xl border border-neutral-200 bg-white p-4">
-    <p class="text-xs text-neutral-500">{t("time.overview.status.approved")}</p>
-    <p class="mt-1 text-lg font-semibold tabular-nums text-neutral-900">
+  <div class="rounded-xl border border-border bg-surface-raised p-4">
+    <p class="text-xs text-text-muted">{t("time.overview.status.approved")}</p>
+    <p class="mt-1 text-lg font-semibold tabular-nums text-text">
       {formatMinutes(totals.approved)}
-      <span class="text-sm font-normal text-neutral-400"
+      <span class="text-sm font-normal text-text-muted"
         >({pct(totals.approved, totals.minutes)}%)</span
       >
     </p>
   </div>
-  <div class="rounded-xl border border-neutral-200 bg-white p-4">
-    <p class="text-xs text-neutral-500">{t("overview.productivity.employees")}</p>
-    <p class="mt-1 text-lg font-semibold tabular-nums text-neutral-900">{rows.length}</p>
+  <div class="rounded-xl border border-border bg-surface-raised p-4">
+    <p class="text-xs text-text-muted">{t("overview.productivity.employees")}</p>
+    <p class="mt-1 text-lg font-semibold tabular-nums text-text">{rows.length}</p>
   </div>
 </div>
 
 <!-- Per-employee bars -->
-<section class="overflow-hidden rounded-xl border border-neutral-200 bg-white">
+<section class="overflow-hidden rounded-xl border border-border bg-surface-raised">
   {#if rows.length === 0}
-    <p class="p-8 text-center text-sm text-neutral-500">{t("overview.productivity.empty")}</p>
+    <p class="p-8 text-center text-sm text-text-muted">{t("overview.productivity.empty")}</p>
   {:else}
-    <div class="divide-y divide-neutral-50">
+    <div class="divide-y divide-border">
       {#each rows as row (row.user_id)}
         {@const billablePct = pct(row.billable_minutes, row.minutes)}
         <div class="px-4 py-3">
           <div class="mb-1.5 flex items-baseline justify-between gap-3">
-            <span class="min-w-0 truncate text-sm font-medium text-neutral-900"
+            <span class="min-w-0 truncate text-sm font-medium text-text"
               >{memberName(row.user_id)}</span
             >
-            <span class="shrink-0 text-sm font-semibold tabular-nums text-neutral-900">
+            <span class="shrink-0 text-sm font-semibold tabular-nums text-text">
               {formatMinutes(row.minutes)}
-              <span class="ml-2 text-xs font-normal text-neutral-400">
+              <span class="ml-2 text-xs font-normal text-text-muted">
                 {t("overview.productivity.meta", { days: row.active_days, billable: billablePct })}
               </span>
             </span>
           </div>
           <div
-            class="flex h-3 overflow-hidden rounded-full bg-neutral-100"
+            class="flex h-3 overflow-hidden rounded-full bg-surface"
             style="width: {Math.max(4, (row.minutes / maxMinutes) * 100)}%"
             title="{formatMinutes(row.billable_minutes)} / {formatMinutes(row.minutes)}"
           >
@@ -131,7 +131,7 @@
       {/each}
     </div>
     <div
-      class="flex items-center gap-4 border-t border-neutral-100 bg-neutral-50/60 px-4 py-2 text-xs text-neutral-600"
+      class="flex items-center gap-4 border-t border-border bg-surface/60 px-4 py-2 text-xs text-text-muted"
     >
       <span class="flex items-center gap-1.5">
         <span class="h-2.5 w-2.5 rounded-sm" style="background:{BILLABLE_COLOR}"></span>

@@ -137,21 +137,18 @@
   <div class="flex items-center gap-2 text-sm">
     <a
       href={`?week=${shiftWeek(data.week_start, -7)}&date=${shiftWeek(data.selectedDate, -7)}`}
-      class="rounded-lg border border-neutral-300 px-2 py-1 hover:bg-neutral-50"
+      class="rounded-lg border border-border px-2 py-1 hover:bg-surface"
       aria-label="←">←</a
     >
-    <span class="font-medium text-neutral-800">
+    <span class="font-medium text-text">
       {week ? `${fmtDayMonth(week.days[0])} – ${fmtDayMonth(lastVisibleDay)}` : ""}
     </span>
     <a
       href={`?week=${shiftWeek(data.week_start, 7)}&date=${shiftWeek(data.selectedDate, 7)}`}
-      class="rounded-lg border border-neutral-300 px-2 py-1 hover:bg-neutral-50"
+      class="rounded-lg border border-border px-2 py-1 hover:bg-surface"
       aria-label="→">→</a
     >
-    <a
-      href={dayHref(data.today)}
-      class="ml-1 rounded-lg px-2 py-1 text-neutral-500 hover:text-neutral-900"
-    >
+    <a href={dayHref(data.today)} class="ml-1 rounded-lg px-2 py-1 text-text-muted hover:text-text">
       {t("time.today_badge")}
     </a>
     <!-- Low-key: jump to a specific date/week, and choose the week view. -->
@@ -163,7 +160,7 @@
         name="week_view"
         aria-label={t("time.view.label")}
         onchange={() => viewForm?.requestSubmit()}
-        class="rounded-lg border border-neutral-300 px-2 py-1 text-xs text-neutral-500 hover:text-neutral-900"
+        class="rounded-lg border border-border px-2 py-1 text-xs text-text-muted hover:text-text"
       >
         <option value="full" selected={weekView === "full"}>{t("time.view.full_week")}</option>
         <option value="work" selected={weekView === "work"}>{t("time.view.work_week")}</option>
@@ -175,10 +172,10 @@
     {#if data.running}
       <div class="flex items-center gap-2">
         <span class="h-2.5 w-2.5 animate-pulse rounded-full bg-green-500"></span>
-        <span class="font-mono text-sm tabular-nums text-neutral-800"
+        <span class="font-mono text-sm tabular-nums text-text"
           >{elapsed(data.running.started_at)}</span
         >
-        <span class="max-w-[16rem] truncate text-sm text-neutral-500">
+        <span class="max-w-[16rem] truncate text-sm text-text-muted">
           {data.running.description || entryLabel(data.running)}
         </span>
       </div>
@@ -199,7 +196,7 @@
         <input
           name="description"
           placeholder={t("time.field.description")}
-          class="w-40 rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+          class="w-40 rounded-lg border border-border px-2 py-1.5 text-sm"
         />
         <div class="w-40">
           <Combobox
@@ -232,7 +229,7 @@
 <!-- Day tabs -->
 {#if week}
   <div
-    class="mb-4 grid overflow-hidden rounded-xl border border-neutral-200 bg-white {weekView ===
+    class="mb-4 grid overflow-hidden rounded-xl border border-border bg-surface-raised {weekView ===
     'work'
       ? 'grid-cols-5'
       : 'grid-cols-7'}"
@@ -242,16 +239,14 @@
       {@const sel = day === data.selectedDate}
       <a
         href={dayHref(day)}
-        class="flex flex-col items-center gap-0.5 border-r border-neutral-100 px-1 py-2 text-center last:border-r-0 hover:bg-neutral-50
+        class="flex flex-col items-center gap-0.5 border-r border-border px-1 py-2 text-center last:border-r-0 hover:bg-surface
           {sel ? 'bg-brand/5' : ''}"
       >
-        <span class="text-[11px] uppercase {sel ? 'text-brand' : 'text-neutral-400'}"
+        <span class="text-[11px] uppercase {sel ? 'text-brand' : 'text-text-muted'}"
           >{fmtWeekdayShort(day)}</span
         >
-        <span class="text-sm font-semibold {sel ? 'text-brand' : 'text-neutral-800'}"
-          >{dayNum(day)}</span
-        >
-        <span class="text-[11px] text-neutral-400"
+        <span class="text-sm font-semibold {sel ? 'text-brand' : 'text-text'}">{dayNum(day)}</span>
+        <span class="text-[11px] text-text-muted"
           >{week.day_totals[i] ? formatMinutes(week.day_totals[i]) : "·"}</span
         >
       </a>
@@ -261,10 +256,10 @@
 
 <div class="grid gap-4 lg:grid-cols-[1fr_360px]">
   <!-- Selected day: entries -->
-  <main class="rounded-xl border border-neutral-200 bg-white p-5">
+  <main class="rounded-xl border border-border bg-surface-raised p-5">
     <div class="mb-4 flex items-center justify-between">
       <div>
-        <h2 class="text-base font-semibold capitalize text-neutral-900">
+        <h2 class="text-base font-semibold capitalize text-text">
           {fmtLongDay(data.selectedDate)}
         </h2>
         {#if data.selectedDate === data.today}
@@ -276,13 +271,11 @@
       </div>
       <div class="flex items-center gap-2">
         {#if data.day && data.day.total_minutes > 0}
-          <span class="text-sm font-medium text-neutral-700"
-            >{formatMinutes(data.day.total_minutes)}</span
-          >
+          <span class="text-sm font-medium text-text">{formatMinutes(data.day.total_minutes)}</span>
         {/if}
         <button
           type="button"
-          class="flex h-7 w-7 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 hover:border-brand hover:text-brand"
+          class="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-text-muted hover:border-brand hover:text-brand"
           onclick={jumpToNewEntry}
           aria-label={t("time.add_hours")}
           title={t("time.add_hours")}
@@ -293,9 +286,9 @@
     </div>
 
     {#if entries.length === 0}
-      <div class="rounded-xl border border-dashed border-neutral-300 p-10 text-center">
-        <p class="font-medium text-neutral-900">{t("time.day_empty")}</p>
-        <p class="mt-1 text-sm text-neutral-500">{t("time.day_empty_hint")}</p>
+      <div class="rounded-xl border border-dashed border-border p-10 text-center">
+        <p class="font-medium text-text">{t("time.day_empty")}</p>
+        <p class="mt-1 text-sm text-text-muted">{t("time.day_empty_hint")}</p>
       </div>
     {:else}
       <ul class="space-y-2">
@@ -305,45 +298,50 @@
             <button
               type="button"
               class="flex w-full items-center gap-3 rounded-lg border p-3 text-left
-                {editingId === e.id ? 'border-brand ring-1 ring-brand' : 'border-neutral-200'}
+                {editingId === e.id ? 'border-brand ring-1 ring-brand' : 'border-border'}
                 {locked || e.is_running
                 ? 'cursor-default'
-                : 'hover:border-brand/60 hover:bg-neutral-50'}"
+                : 'hover:border-brand/60 hover:bg-surface'}"
               onclick={() => rowClick(e)}
               title={locked ? t("time.approved_locked_hint") : undefined}
               aria-expanded={editingId === e.id}
             >
-              <div class="w-24 shrink-0 text-sm text-neutral-500">
+              <div class="w-24 shrink-0 text-sm text-text-muted">
                 {#if e.is_running}
-                  <span class="text-green-600">● {t("time.timer.running")}</span>
+                  <span class="text-green-600 dark:text-green-400">● {t("time.timer.running")}</span
+                  >
                 {:else}
                   {formatTime(e.started_at)}–{formatTime(e.ended_at)}
                 {/if}
               </div>
               <div class="min-w-0 flex-1">
-                <p class="truncate text-sm font-medium text-neutral-900">{entryLabel(e)}</p>
-                {#if e.description}<p class="truncate text-xs text-neutral-500">
+                <p class="truncate text-sm font-medium text-text">{entryLabel(e)}</p>
+                {#if e.description}<p class="truncate text-xs text-text-muted">
                     {e.description}
                   </p>{/if}
               </div>
               {#if e.approved_at}
-                <span title={t("time.approved")} class="shrink-0 text-green-600">
+                <span
+                  title={t("time.approved")}
+                  class="shrink-0 text-green-600 dark:text-green-400"
+                >
                   <CircleCheck size={16} />
                 </span>
               {/if}
               {#if e.break_minutes > 0}
-                <span class="shrink-0 text-xs text-neutral-400"
+                <span class="shrink-0 text-xs text-text-muted"
                   >{t("time.break_short", { minutes: e.break_minutes })}</span
                 >
               {/if}
               <span
                 class="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium
-                {e.billable ? 'bg-green-50 text-green-700' : 'bg-neutral-100 text-neutral-500'}"
+                {e.billable
+                  ? 'bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300'
+                  : 'bg-surface text-text-muted'}"
               >
                 {e.billable ? t("time.billable") : t("time.not_billable")}
               </span>
-              <span
-                class="w-16 shrink-0 text-right text-sm font-semibold tabular-nums text-neutral-900"
+              <span class="w-16 shrink-0 text-right text-sm font-semibold tabular-nums text-text"
                 >{formatMinutes(e.minutes)}</span
               >
             </button>
@@ -356,13 +354,15 @@
   <!-- New registration / edit panel -->
   <aside
     bind:this={panelEl}
-    class="h-fit scroll-mt-4 rounded-xl border border-neutral-200 bg-white p-5"
+    class="h-fit scroll-mt-4 rounded-xl border border-border bg-surface-raised p-5"
   >
     {#if editingEntry}
       <div class="mb-4 flex items-center justify-between">
-        <h2 class="text-sm font-semibold text-neutral-900">{t("time.edit_entry")}</h2>
+        <h2 class="text-sm font-semibold text-text">{t("time.edit_entry")}</h2>
         {#if editingEntry.approved_at}
-          <span class="flex items-center gap-1 text-xs font-medium text-green-600">
+          <span
+            class="flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400"
+          >
             <CircleCheck size={14} />
             {t("time.approved")}
           </span>
@@ -391,7 +391,7 @@
         />
       {/key}
     {:else}
-      <h2 class="mb-4 text-sm font-semibold text-neutral-900">{t("time.new_registration")}</h2>
+      <h2 class="mb-4 text-sm font-semibold text-text">{t("time.new_registration")}</h2>
       {#key data.selectedDate}
         <EntryForm
           action="?/createEntry"
@@ -432,7 +432,7 @@
     >
       <div class="grid gap-3 sm:grid-cols-2">
         <div>
-          <label for="qc-company-name" class="mb-1 block text-sm font-medium text-neutral-700"
+          <label for="qc-company-name" class="mb-1 block text-sm font-medium text-text"
             >{t("companies.name")}</label
           >
           <input
@@ -440,17 +440,17 @@
             name="name"
             value={draftCompanyName}
             required
-            class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+            class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
           />
         </div>
         <div>
-          <label for="qc-company-status" class="mb-1 block text-sm font-medium text-neutral-700"
+          <label for="qc-company-status" class="mb-1 block text-sm font-medium text-text"
             >{t("companies.field.status")}</label
           >
           <select
             id="qc-company-status"
             name="status"
-            class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+            class="w-full rounded-lg border border-border px-3 py-2 text-sm"
           >
             {#each COMPANY_STATUSES as status (status)}
               <option value={status} selected={status === "active"}
@@ -460,14 +460,14 @@
           </select>
         </div>
         <div class="sm:col-span-2">
-          <label for="qc-company-website" class="mb-1 block text-sm font-medium text-neutral-700"
+          <label for="qc-company-website" class="mb-1 block text-sm font-medium text-text"
             >{t("companies.website")}</label
           >
           <input
             id="qc-company-website"
             name="website"
             placeholder="https://…"
-            class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+            class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
           />
         </div>
       </div>
@@ -476,11 +476,11 @@
       {:else}
         <input type="hidden" name="custom" value={"{}"} />
       {/if}
-      {#if form?.error}<p class="text-sm text-red-600">{t(form.error)}</p>{/if}
+      {#if form?.error}<p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
       <div class="flex justify-end gap-2">
         <button
           type="button"
-          class="rounded-lg border border-neutral-300 px-4 py-2 text-sm"
+          class="rounded-lg border border-border px-4 py-2 text-sm"
           onclick={() => (showNewCompany = false)}>{t("common.cancel")}</button
         >
         <button
@@ -506,7 +506,7 @@
     >
       <div class="grid gap-3 sm:grid-cols-2">
         <div>
-          <label for="qc-project-name" class="mb-1 block text-sm font-medium text-neutral-700"
+          <label for="qc-project-name" class="mb-1 block text-sm font-medium text-text"
             >{t("projects.field.name")}</label
           >
           <input
@@ -514,11 +514,11 @@
             name="name"
             value={draftProjectName}
             required
-            class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+            class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
           />
         </div>
         <div>
-          <label for="qc-project-company" class="mb-1 block text-sm font-medium text-neutral-700"
+          <label for="qc-project-company" class="mb-1 block text-sm font-medium text-text"
             >{t("projects.field.company")}</label
           >
           <Combobox
@@ -529,7 +529,7 @@
           />
         </div>
         <div>
-          <label for="qc-project-rate" class="mb-1 block text-sm font-medium text-neutral-700"
+          <label for="qc-project-rate" class="mb-1 block text-sm font-medium text-text"
             >{t("projects.field.hourly_rate")}</label
           >
           <input
@@ -538,7 +538,7 @@
             type="number"
             min="0"
             step="0.01"
-            class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+            class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
           />
         </div>
         <div class="flex items-center gap-2 pt-6">
@@ -547,9 +547,9 @@
             name="billable_default"
             type="checkbox"
             checked
-            class="h-4 w-4 rounded border-neutral-300 text-brand focus:ring-brand"
+            class="h-4 w-4 rounded border-border text-brand focus:ring-brand"
           />
-          <label for="qc-project-billable" class="text-sm font-medium text-neutral-700"
+          <label for="qc-project-billable" class="text-sm font-medium text-text"
             >{t("projects.field.billable_default")}</label
           >
         </div>
@@ -559,11 +559,11 @@
       {:else}
         <input type="hidden" name="custom" value={"{}"} />
       {/if}
-      {#if form?.error}<p class="text-sm text-red-600">{t(form.error)}</p>{/if}
+      {#if form?.error}<p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
       <div class="flex justify-end gap-2">
         <button
           type="button"
-          class="rounded-lg border border-neutral-300 px-4 py-2 text-sm"
+          class="rounded-lg border border-border px-4 py-2 text-sm"
           onclick={() => (showNewProject = false)}>{t("common.cancel")}</button
         >
         <button

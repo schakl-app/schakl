@@ -125,7 +125,7 @@
   }
 
   const inputClass =
-    "w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
+    "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
 
 <svelte:head>
@@ -133,14 +133,14 @@
 </svelte:head>
 
 <div class="mb-4">
-  <a href="/tasks" class="text-sm text-neutral-500 hover:text-neutral-900">← {t("tasks.title")}</a>
+  <a href="/tasks" class="text-sm text-text-muted hover:text-text">← {t("tasks.title")}</a>
 </div>
 
 <div class="grid gap-4 lg:grid-cols-[1fr_320px]">
   <!-- Main column -->
   <div class="space-y-4">
     <!-- Title + mode menu -->
-    <section class="rounded-xl border border-neutral-200 bg-white p-5">
+    <section class="rounded-xl border border-border bg-surface-raised p-5">
       <div class="flex items-start gap-3">
         {#if editMode}
           <input
@@ -148,13 +148,13 @@
             value={task.title}
             required
             form="task-edit"
-            class="w-full flex-1 rounded-lg border border-neutral-300 p-2 text-lg font-semibold text-neutral-900 outline-none focus:border-brand"
+            class="w-full flex-1 rounded-lg border border-border p-2 text-lg font-semibold text-text outline-none focus:border-brand"
           />
         {:else}
           <h1
             class="flex-1 text-lg font-semibold {task.status === 'done'
-              ? 'text-neutral-400 line-through'
-              : 'text-neutral-900'}"
+              ? 'text-text-muted line-through'
+              : 'text-text'}"
           >
             {task.title}
           </h1>
@@ -185,14 +185,13 @@
           >
         {/each}
         {#if overdue}
-          <span class="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-600"
+          <span
+            class="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-600 dark:bg-red-950 dark:text-red-400"
             >{t("tasks.due.overdue")}</span
           >
         {/if}
         {#if task.recurrence}
-          <span
-            class="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-600"
-          >
+          <span class="rounded-full bg-surface px-2 py-0.5 text-[11px] font-medium text-text-muted">
             ↻ {t(`tasks.recurrence.freq.${task.recurrence.freq}`)}
           </span>
         {/if}
@@ -204,8 +203,8 @@
       </div>
 
       <!-- Description -->
-      <div class="mt-4 border-t border-neutral-100 pt-4">
-        <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+      <div class="mt-4 border-t border-border pt-4">
+        <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
           {t("tasks.field.description")}
         </h3>
         {#if editMode}
@@ -213,16 +212,16 @@
             >{task.description ?? ""}</textarea
           >
         {:else if task.description}
-          <p class="whitespace-pre-wrap text-sm text-neutral-700">{task.description}</p>
+          <p class="whitespace-pre-wrap text-sm text-text">{task.description}</p>
         {:else}
-          <p class="text-sm text-neutral-400">{t("tasks.detail.description_placeholder")}</p>
+          <p class="text-sm text-text-muted">{t("tasks.detail.description_placeholder")}</p>
         {/if}
       </div>
     </section>
 
     <!-- Checklists (always interactive — ticking items is "using") -->
-    <section class="rounded-xl border border-neutral-200 bg-white p-5">
-      <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+    <section class="rounded-xl border border-border bg-surface-raised p-5">
+      <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
         {t("tasks.checklist.title")}
       </h3>
 
@@ -232,9 +231,9 @@
         {@const doneCount = items.filter((i) => i.done).length}
         <div class="mb-4">
           <div class="mb-1 flex items-center justify-between">
-            <h4 class="text-sm font-semibold text-neutral-900">{checklist.title}</h4>
+            <h4 class="text-sm font-semibold text-text">{checklist.title}</h4>
             <div class="flex items-center gap-2">
-              <span class="text-xs tabular-nums text-neutral-400"
+              <span class="text-xs tabular-nums text-text-muted"
                 >{t("tasks.checklist.progress", { done: doneCount, total })}</span
               >
               {#if items.length > 0}
@@ -242,7 +241,7 @@
                   <input type="hidden" name="title" value={checklist.title} />
                   <input type="hidden" name="items" value={items.map((i) => i.title).join("\n")} />
                   <button
-                    class="text-xs text-neutral-400 hover:text-brand"
+                    class="text-xs text-text-muted hover:text-brand"
                     title={t("tasks.checklist.save_template_hint")}
                   >
                     {t("tasks.checklist.save_template")}
@@ -268,7 +267,7 @@
             </div>
           </div>
           {#if total > 0}
-            <div class="mb-2 h-1.5 overflow-hidden rounded-full bg-neutral-100">
+            <div class="mb-2 h-1.5 overflow-hidden rounded-full bg-surface">
               <div
                 class="h-full rounded-full {doneCount === total ? 'bg-green-500' : 'bg-brand'}"
                 style="width: {total ? Math.round((doneCount / total) * 100) : 0}%"
@@ -286,14 +285,13 @@
                     class="flex h-4 w-4 items-center justify-center rounded border text-[10px]
                       {item.done
                       ? 'border-brand bg-brand text-white'
-                      : 'border-neutral-300 text-transparent hover:border-brand'}"
+                      : 'border-border text-transparent hover:border-brand'}"
                     aria-label={t("tasks.toggle_done")}>✓</button
                   >
                 </form>
                 <span
-                  class="flex-1 text-sm {item.done
-                    ? 'text-neutral-400 line-through'
-                    : 'text-neutral-800'}">{item.title}</span
+                  class="flex-1 text-sm {item.done ? 'text-text-muted line-through' : 'text-text'}"
+                  >{item.title}</span
                 >
                 <ActionsMenu
                   compact
@@ -320,10 +318,10 @@
               name="title"
               placeholder={t("tasks.checklist.item_placeholder")}
               required
-              class="flex-1 rounded-lg border border-neutral-200 px-2 py-1 text-sm outline-none focus:border-brand"
+              class="flex-1 rounded-lg border border-border px-2 py-1 text-sm outline-none focus:border-brand"
             />
             <button
-              class="rounded-lg border border-neutral-300 px-2 py-1 text-xs text-neutral-600 hover:border-brand hover:text-brand"
+              class="rounded-lg border border-border px-2 py-1 text-xs text-text-muted hover:border-brand hover:text-brand"
               >＋</button
             >
           </form>
@@ -335,10 +333,10 @@
           name="title"
           placeholder={t("tasks.checklist.add")}
           required
-          class="flex-1 rounded-lg border border-dashed border-neutral-300 px-3 py-1.5 text-sm outline-none focus:border-brand"
+          class="flex-1 rounded-lg border border-dashed border-border px-3 py-1.5 text-sm outline-none focus:border-brand"
         />
         <button
-          class="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs text-neutral-600 hover:border-brand hover:text-brand"
+          class="rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:border-brand hover:text-brand"
         >
           {t("common.create")}
         </button>
@@ -348,7 +346,7 @@
           <select
             name="template_id"
             required
-            class="flex-1 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600"
+            class="flex-1 rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted"
           >
             {#each data.checklistTemplates as checklistTemplate (checklistTemplate.id)}
               <option value={checklistTemplate.id}>
@@ -357,7 +355,7 @@
             {/each}
           </select>
           <button
-            class="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs text-neutral-600 hover:border-brand hover:text-brand"
+            class="rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:border-brand hover:text-brand"
           >
             {t("tasks.checklist.from_template")}
           </button>
@@ -366,17 +364,17 @@
     </section>
 
     <!-- Links (URL attachments) -->
-    <section class="rounded-xl border border-neutral-200 bg-white p-5">
-      <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+    <section class="rounded-xl border border-border bg-surface-raised p-5">
+      <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
         {t("tasks.links.title")}
       </h3>
       {#if (task.links ?? []).length === 0}
-        <p class="mb-3 text-sm text-neutral-400">{t("tasks.links.empty")}</p>
+        <p class="mb-3 text-sm text-text-muted">{t("tasks.links.empty")}</p>
       {:else}
         <ul class="mb-3 space-y-1">
           {#each task.links ?? [] as link (link.id)}
             <li class="group flex items-center gap-2">
-              <LinkIcon size={14} class="shrink-0 text-neutral-400" />
+              <LinkIcon size={14} class="shrink-0 text-text-muted" />
               <a
                 href={link.url}
                 target="_blank"
@@ -417,25 +415,25 @@
           name="url"
           required
           placeholder={t("tasks.links.url_placeholder")}
-          class="min-w-[12rem] flex-1 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none focus:border-brand"
+          class="min-w-[12rem] flex-1 rounded-lg border border-border px-3 py-1.5 text-sm outline-none focus:border-brand"
         />
         <input
           name="title"
           placeholder={t("tasks.links.title_placeholder")}
-          class="w-40 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none focus:border-brand"
+          class="w-40 rounded-lg border border-border px-3 py-1.5 text-sm outline-none focus:border-brand"
         />
         <button
-          class="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs text-neutral-600 hover:border-brand hover:text-brand"
+          class="rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:border-brand hover:text-brand"
         >
           {t("common.create")}
         </button>
       </form>
-      <p class="mt-2 text-[11px] text-neutral-400">{t("tasks.links.files_hint")}</p>
+      <p class="mt-2 text-[11px] text-text-muted">{t("tasks.links.files_hint")}</p>
     </section>
 
     <!-- Comments -->
-    <section class="rounded-xl border border-neutral-200 bg-white p-5">
-      <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+    <section class="rounded-xl border border-border bg-surface-raised p-5">
+      <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
         {t("tasks.comments.title")}
       </h3>
 
@@ -462,18 +460,16 @@
       </form>
 
       {#if (task.comments ?? []).length === 0}
-        <p class="text-sm text-neutral-400">{t("tasks.comments.empty")}</p>
+        <p class="text-sm text-text-muted">{t("tasks.comments.empty")}</p>
       {:else}
         <ul class="space-y-3">
           {#each task.comments ?? [] as comment (comment.id)}
             {@const canEditComment = comment.author_user_id === userId}
             {@const canDeleteComment = canEditComment || canManage}
-            <li class="rounded-lg border border-neutral-100 bg-neutral-50/50 p-3">
+            <li class="rounded-lg border border-border bg-surface/50 p-3">
               <div class="mb-1 flex items-center justify-between gap-2">
-                <span class="text-xs font-semibold text-neutral-700"
-                  >{comment.author_name ?? "—"}</span
-                >
-                <div class="flex items-center gap-1 text-[11px] text-neutral-400">
+                <span class="text-xs font-semibold text-text">{comment.author_name ?? "—"}</span>
+                <div class="flex items-center gap-1 text-[11px] text-text-muted">
                   <span>{when(comment.created_at)}</span>
                   {#if comment.edited_at}<span>({t("tasks.comments.edited")})</span>{/if}
                   {#if canDeleteComment}
@@ -527,13 +523,13 @@
                     >
                     <button
                       type="button"
-                      class="rounded-lg border border-neutral-300 px-2 py-1 text-xs"
+                      class="rounded-lg border border-border px-2 py-1 text-xs"
                       onclick={() => (editingCommentId = null)}>{t("common.cancel")}</button
                     >
                   </div>
                 </form>
               {:else}
-                <p class="whitespace-pre-wrap text-sm text-neutral-800">{comment.body}</p>
+                <p class="whitespace-pre-wrap text-sm text-text">{comment.body}</p>
               {/if}
             </li>
           {/each}
@@ -542,20 +538,20 @@
     </section>
 
     <!-- Activity -->
-    <section class="rounded-xl border border-neutral-200 bg-white p-5">
-      <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+    <section class="rounded-xl border border-border bg-surface-raised p-5">
+      <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
         {t("tasks.activity.title")}
       </h3>
       {#if (task.activities ?? []).length === 0}
-        <p class="text-sm text-neutral-400">—</p>
+        <p class="text-sm text-text-muted">—</p>
       {:else}
         <ul class="space-y-2">
           {#each task.activities ?? [] as activity (activity.id)}
             <li class="flex items-baseline gap-2 text-sm">
-              <span class="shrink-0 text-[11px] tabular-nums text-neutral-400"
+              <span class="shrink-0 text-[11px] tabular-nums text-text-muted"
                 >{when(activity.created_at)}</span
               >
-              <span class="text-neutral-700">
+              <span class="text-text">
                 <span class="font-medium">{activity.actor_name ?? t("tasks.activity.system")}</span>
                 {activityText(activity)}
               </span>
@@ -568,11 +564,11 @@
 
   <!-- Sidebar -->
   <aside class="space-y-4">
-    <section class="rounded-xl border border-neutral-200 bg-white p-4">
+    <section class="rounded-xl border border-border bg-surface-raised p-4">
       <div class="space-y-3">
         <!-- Status is core workflow → always editable -->
         <div>
-          <label for="status" class="mb-1 block text-xs font-medium text-neutral-500"
+          <label for="status" class="mb-1 block text-xs font-medium text-text-muted"
             >{t("tasks.field.status")}</label
           >
           <form method="POST" action="?/update" use:enhance>
@@ -593,15 +589,15 @@
         {#if task.allocated_minutes || task.logged_minutes}
           <div>
             <div class="mb-1 flex items-center justify-between text-xs">
-              <span class="font-medium text-neutral-500">{t("tasks.field.allocated")}</span>
-              <span class="tabular-nums text-neutral-700">
+              <span class="font-medium text-text-muted">{t("tasks.field.allocated")}</span>
+              <span class="tabular-nums text-text">
                 {formatMinutes(task.logged_minutes)}{#if task.allocated_minutes}&nbsp;/ {formatMinutes(
                     task.allocated_minutes,
                   )}{/if}
               </span>
             </div>
             {#if budgetPct != null}
-              <div class="h-2 overflow-hidden rounded-full bg-neutral-100">
+              <div class="h-2 overflow-hidden rounded-full bg-surface">
                 <div
                   class="h-full rounded-full {budgetColor}"
                   style="width: {Math.min(100, budgetPct)}%"
@@ -609,7 +605,9 @@
               </div>
               {#if task.allocated_minutes}
                 <p
-                  class="mt-1 text-[11px] {budgetPct >= 100 ? 'text-red-600' : 'text-neutral-400'}"
+                  class="mt-1 text-[11px] {budgetPct >= 100
+                    ? 'text-red-600 dark:text-red-400'
+                    : 'text-text-muted'}"
                 >
                   {budgetPct >= 100
                     ? t("tasks.budget.over", {
@@ -626,7 +624,7 @@
 
         {#if editMode}
           <div>
-            <label for="allocated" class="mb-1 block text-xs font-medium text-neutral-500"
+            <label for="allocated" class="mb-1 block text-xs font-medium text-text-muted"
               >{t("tasks.field.allocated_input")}</label
             >
             <input
@@ -641,7 +639,7 @@
             />
           </div>
           <div>
-            <label for="priority" class="mb-1 block text-xs font-medium text-neutral-500"
+            <label for="priority" class="mb-1 block text-xs font-medium text-text-muted"
               >{t("tasks.field.priority")}</label
             >
             <select id="priority" name="priority" form="task-edit" class={inputClass}>
@@ -651,7 +649,7 @@
             </select>
           </div>
           <div>
-            <label for="assignee" class="mb-1 block text-xs font-medium text-neutral-500"
+            <label for="assignee" class="mb-1 block text-xs font-medium text-text-muted"
               >{t("tasks.field.assignee")}</label
             >
             <Combobox
@@ -663,7 +661,7 @@
             />
           </div>
           <div>
-            <label for="project" class="mb-1 block text-xs font-medium text-neutral-500"
+            <label for="project" class="mb-1 block text-xs font-medium text-text-muted"
               >{t("tasks.field.project")}</label
             >
             <Combobox
@@ -675,7 +673,7 @@
             />
           </div>
           <div>
-            <label for="company" class="mb-1 block text-xs font-medium text-neutral-500"
+            <label for="company" class="mb-1 block text-xs font-medium text-text-muted"
               >{t("tasks.field.company")}</label
             >
             <Combobox
@@ -687,7 +685,7 @@
             />
           </div>
           <div>
-            <label for="due_date" class="mb-1 block text-xs font-medium text-neutral-500"
+            <label for="due_date" class="mb-1 block text-xs font-medium text-text-muted"
               >{t("tasks.field.due_date")}</label
             >
             <DateInput
@@ -697,18 +695,18 @@
               formId="task-edit"
               onchange={onDueChanged}
             />
-            <p class="mt-1 text-[11px] text-neutral-400">{t("tasks.detail.due_reason_hint")}</p>
+            <p class="mt-1 text-[11px] text-text-muted">{t("tasks.detail.due_reason_hint")}</p>
           </div>
         {:else}
           <!-- Use mode: compact read-only summary -->
           <dl class="space-y-2 text-sm">
             <div class="flex items-center justify-between gap-2">
-              <dt class="text-xs font-medium text-neutral-500">{t("tasks.field.assignee")}</dt>
-              <dd class="text-neutral-800">{memberName(task.assignee_user_id) ?? "—"}</dd>
+              <dt class="text-xs font-medium text-text-muted">{t("tasks.field.assignee")}</dt>
+              <dd class="text-text">{memberName(task.assignee_user_id) ?? "—"}</dd>
             </div>
             <div class="flex items-center justify-between gap-2">
-              <dt class="text-xs font-medium text-neutral-500">{t("tasks.field.project")}</dt>
-              <dd class="truncate text-neutral-800">
+              <dt class="text-xs font-medium text-text-muted">{t("tasks.field.project")}</dt>
+              <dd class="truncate text-text">
                 {#if task.project_id}
                   <a href={`/projects/${task.project_id}`} class="hover:text-brand"
                     >{projectName(task.project_id) ?? "—"}</a
@@ -717,8 +715,8 @@
               </dd>
             </div>
             <div class="flex items-center justify-between gap-2">
-              <dt class="text-xs font-medium text-neutral-500">{t("tasks.field.company")}</dt>
-              <dd class="truncate text-neutral-800">
+              <dt class="text-xs font-medium text-text-muted">{t("tasks.field.company")}</dt>
+              <dd class="truncate text-text">
                 {#if task.company_id}
                   <a href={`/companies/${task.company_id}`} class="hover:text-brand"
                     >{companyName(task.company_id) ?? "—"}</a
@@ -727,16 +725,18 @@
               </dd>
             </div>
             <div class="flex items-center justify-between gap-2">
-              <dt class="text-xs font-medium text-neutral-500">{t("tasks.field.due_date")}</dt>
+              <dt class="text-xs font-medium text-text-muted">{t("tasks.field.due_date")}</dt>
               <dd
-                class="tabular-nums {overdue ? 'font-semibold text-red-600' : 'text-neutral-800'}"
+                class="tabular-nums {overdue
+                  ? 'font-semibold text-red-600 dark:text-red-400'
+                  : 'text-text'}"
               >
                 {task.due_date ? fmtDayMonth(task.due_date) : "—"}
               </dd>
             </div>
             <div class="flex items-center justify-between gap-2">
-              <dt class="text-xs font-medium text-neutral-500">{t("tasks.field.priority")}</dt>
-              <dd class="text-neutral-800">{t(`tasks.priority.${task.priority}`)}</dd>
+              <dt class="text-xs font-medium text-text-muted">{t("tasks.field.priority")}</dt>
+              <dd class="text-text">{t(`tasks.priority.${task.priority}`)}</dd>
             </div>
           </dl>
         {/if}
@@ -744,14 +744,14 @@
     </section>
 
     <!-- Labels -->
-    <section class="rounded-xl border border-neutral-200 bg-white p-4">
+    <section class="rounded-xl border border-border bg-surface-raised p-4">
       <div class="mb-2 flex items-center justify-between">
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-neutral-400">
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
           {t("tasks.field.labels")}
         </h3>
         <button
           type="button"
-          class="text-xs text-neutral-500 hover:text-brand"
+          class="text-xs text-text-muted hover:text-brand"
           onclick={() => (showLabelPicker = !showLabelPicker)}
         >
           {showLabelPicker ? t("common.cancel") : t("common.edit")}
@@ -770,16 +770,16 @@
           class="space-y-1"
         >
           {#each data.labels as label (label.id)}
-            <label class="flex items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-neutral-50">
+            <label class="flex items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-surface">
               <input
                 type="checkbox"
                 name="label_ids"
                 value={label.id}
                 checked={currentLabelIds.includes(label.id)}
-                class="h-4 w-4 rounded border-neutral-300 text-brand focus:ring-brand"
+                class="h-4 w-4 rounded border-border text-brand focus:ring-brand"
               />
               <span class="h-2.5 w-2.5 rounded-full {labelDotClass(label.color)}"></span>
-              <span class="text-neutral-800">{label.name}</span>
+              <span class="text-text">{label.name}</span>
             </label>
           {/each}
           <button
@@ -796,7 +796,7 @@
               showLabelPicker = false;
               void update();
             }}
-          class="mt-3 border-t border-neutral-100 pt-3"
+          class="mt-3 border-t border-border pt-3"
         >
           {#each currentLabelIds as id (id)}
             <input type="hidden" name="current_label_ids" value={id} />
@@ -805,7 +805,7 @@
             name="name"
             placeholder={t("tasks.labels.new_placeholder")}
             required
-            class="w-full rounded-lg border border-neutral-300 px-2 py-1 text-sm"
+            class="w-full rounded-lg border border-border px-2 py-1 text-sm"
           />
           <input type="hidden" name="color" value={newLabelColor} />
           <div class="mt-2 flex flex-wrap gap-1">
@@ -814,20 +814,20 @@
                 type="button"
                 aria-label={color}
                 class="h-5 w-5 rounded-full {labelDotClass(color)} {newLabelColor === color
-                  ? 'ring-2 ring-neutral-800 ring-offset-1'
+                  ? 'ring-2 ring-text ring-offset-1'
                   : ''}"
                 onclick={() => (newLabelColor = color)}
               ></button>
             {/each}
           </div>
           <button
-            class="mt-2 w-full rounded-lg border border-neutral-300 px-3 py-1.5 text-xs text-neutral-600 hover:border-brand hover:text-brand"
+            class="mt-2 w-full rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:border-brand hover:text-brand"
           >
             {t("tasks.labels.create")}
           </button>
         </form>
       {:else if (task.labels ?? []).length === 0}
-        <p class="text-sm text-neutral-400">{t("tasks.labels.empty")}</p>
+        <p class="text-sm text-text-muted">{t("tasks.labels.empty")}</p>
       {:else}
         <div class="flex flex-wrap gap-1">
           {#each task.labels ?? [] as label (label.id)}
@@ -842,8 +842,8 @@
 
     <!-- Recurrence (definition → edit mode only) -->
     {#if editMode}
-      <section class="rounded-xl border border-neutral-200 bg-white p-4">
-        <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+      <section class="rounded-xl border border-border bg-surface-raised p-4">
+        <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
           {t("tasks.recurrence.title")}
         </h3>
         <div class="space-y-2">
@@ -880,7 +880,7 @@
               </option>
             </select>
           </div>
-          <p class="text-[11px] leading-snug text-neutral-400">{t("tasks.recurrence.hint")}</p>
+          <p class="text-[11px] leading-snug text-text-muted">{t("tasks.recurrence.hint")}</p>
         </div>
       </section>
 
@@ -908,13 +908,13 @@
 </div>
 
 {#if form?.error}
-  <p class="mt-3 text-sm text-red-600">{t(form.error)}</p>
+  <p class="mt-3 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
 {/if}
 
 <!-- Deadline extension requires a reason (logged in the activity feed) -->
 <Modal bind:open={reasonModalOpen} title={t("tasks.detail.due_reason_title")}>
   <div class="space-y-3">
-    <p class="text-sm text-neutral-600">
+    <p class="text-sm text-text-muted">
       {t("tasks.detail.due_reason_body", {
         from: task.due_date ? fmtDayMonth(task.due_date) : "—",
         to: stagedDueDate ? fmtDayMonth(stagedDueDate) : "—",
@@ -928,7 +928,7 @@
     <div class="flex justify-end gap-2">
       <button
         type="button"
-        class="rounded-lg border border-neutral-300 px-4 py-2 text-sm"
+        class="rounded-lg border border-border px-4 py-2 text-sm"
         onclick={() => (reasonModalOpen = false)}>{t("common.cancel")}</button
       >
       <button

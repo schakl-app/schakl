@@ -29,8 +29,8 @@
   function densityClass(count: number): string {
     if (count >= 7) return "bg-brand text-white";
     if (count >= 4) return "bg-brand/60 text-white";
-    if (count >= 2) return "bg-brand/30 text-neutral-900";
-    return "bg-brand/10 text-neutral-900";
+    if (count >= 2) return "bg-brand/30 text-text";
+    return "bg-brand/10 text-text";
   }
 
   function monthTotal(month: string): number {
@@ -45,8 +45,8 @@
 <!-- ≥sm: 12 mini-month grids, density-shaded -->
 <div class="hidden grid-cols-2 gap-4 sm:grid lg:grid-cols-3">
   {#each months as month, i (month)}
-    <div class="rounded-xl border border-neutral-200 bg-white p-3">
-      <h3 class="mb-2 text-sm font-medium capitalize text-neutral-700">{labels[i]}</h3>
+    <div class="rounded-xl border border-border bg-surface-raised p-3">
+      <h3 class="mb-2 text-sm font-medium capitalize text-text">{labels[i]}</h3>
       <div class="grid grid-cols-7 gap-0.5">
         {#each monthGrid(month) as day (day)}
           {@const inMonth = day.slice(0, 7) === month}
@@ -57,8 +57,8 @@
               href="?view=day&date={day}"
               class="flex aspect-square items-center justify-center rounded text-[10px] {agg
                 ? densityClass(agg.count)
-                : 'bg-neutral-50 text-neutral-400'} {agg?.tentativeOnly
-                ? 'border border-dashed border-neutral-400'
+                : 'bg-surface text-text-muted'} {agg?.tentativeOnly
+                ? 'border border-dashed border-border'
                 : ''} {isToday ? 'ring-1 ring-brand' : ''}"
               title={agg ? t("calendar.year.count", { count: agg.count }) : undefined}
             >
@@ -78,10 +78,10 @@
   {#each months as month, i (month)}
     <a
       href="?view=month&date={month}-01"
-      class="flex items-center justify-between rounded-xl border border-neutral-200 bg-white p-3"
+      class="flex items-center justify-between rounded-xl border border-border bg-surface-raised p-3"
     >
-      <span class="text-sm font-medium capitalize text-neutral-800">{labels[i]}</span>
-      <span class="text-xs text-neutral-500">
+      <span class="text-sm font-medium capitalize text-text">{labels[i]}</span>
+      <span class="text-xs text-text-muted">
         {t("calendar.year.count", { count: monthTotal(month) })}
       </span>
     </a>

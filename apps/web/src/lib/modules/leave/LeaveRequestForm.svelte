@@ -72,7 +72,7 @@
   }
 
   const inputClass =
-    "w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
+    "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
 
 <form
@@ -91,7 +91,7 @@
 
   {#if userOptions}
     <div>
-      <label class="mb-1 block text-xs font-medium text-neutral-500" for="leave-user">
+      <label class="mb-1 block text-xs font-medium text-text-muted" for="leave-user">
         {t("leave.form.employee")}
       </label>
       <Combobox
@@ -106,7 +106,7 @@
   {/if}
 
   <div>
-    <label class="mb-1 block text-xs font-medium text-neutral-500" for="leave-type">
+    <label class="mb-1 block text-xs font-medium text-text-muted" for="leave-type">
       {t("leave.form.type")}
     </label>
     <Combobox
@@ -118,7 +118,9 @@
       placeholder={t("leave.form.type")}
     />
     {#if remaining !== undefined}
-      <p class="mt-1 text-xs {remaining <= 0 ? 'text-red-600' : 'text-neutral-500'}">
+      <p
+        class="mt-1 text-xs {remaining <= 0 ? 'text-red-600 dark:text-red-400' : 'text-text-muted'}"
+      >
         {t("leave.form.remaining", { hours: fmtHours(remaining) })}
       </p>
     {/if}
@@ -126,7 +128,7 @@
 
   <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
     <div>
-      <label class="mb-1 block text-xs font-medium text-neutral-500" for="leave-start">
+      <label class="mb-1 block text-xs font-medium text-text-muted" for="leave-start">
         {t("leave.form.start")}
       </label>
       <DateInput
@@ -138,7 +140,7 @@
       />
     </div>
     <div>
-      <label class="mb-1 block text-xs font-medium text-neutral-500" for="leave-end">
+      <label class="mb-1 block text-xs font-medium text-text-muted" for="leave-end">
         {t("leave.form.end")}
       </label>
       <DateInput
@@ -152,7 +154,7 @@
   </div>
 
   <div>
-    <label class="mb-1 block text-xs font-medium text-neutral-500" for="leave-hours">
+    <label class="mb-1 block text-xs font-medium text-text-muted" for="leave-hours">
       {t("leave.form.hours")}
     </label>
     <input
@@ -167,14 +169,14 @@
       class={inputClass}
     />
     {#if days > 0}
-      <p class="mt-1 text-xs text-neutral-500">
+      <p class="mt-1 text-xs text-text-muted">
         {t("leave.form.days_equiv", { days: fmtHours(days) })}
       </p>
     {/if}
   </div>
 
   <div>
-    <label class="mb-1 block text-xs font-medium text-neutral-500" for="leave-note">
+    <label class="mb-1 block text-xs font-medium text-text-muted" for="leave-note">
       {t("leave.form.note")}
     </label>
     <textarea id="leave-note" name="note" rows="2" class={inputClass}
@@ -183,7 +185,7 @@
   </div>
 
   {#if error}
-    <p class="text-sm text-red-600">{t(error)}</p>
+    <p class="text-sm text-red-600 dark:text-red-400">{t(error)}</p>
   {/if}
 
   <div class="flex justify-end">

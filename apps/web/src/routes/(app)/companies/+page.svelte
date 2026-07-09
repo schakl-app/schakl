@@ -48,8 +48,8 @@
 
 <div class="mb-6 flex items-center justify-between">
   <div>
-    <h1 class="text-xl font-semibold text-neutral-900">{t("companies.title")}</h1>
-    <p class="mt-1 text-sm text-neutral-500">{t("companies.count", { count: data.total })}</p>
+    <h1 class="text-xl font-semibold text-text">{t("companies.title")}</h1>
+    <p class="mt-1 text-sm text-text-muted">{t("companies.count", { count: data.total })}</p>
   </div>
   <button
     class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
@@ -73,7 +73,7 @@
   {/each}
   {#if data.statusFilter}
     <button
-      class="text-xs text-neutral-500 underline hover:text-neutral-900"
+      class="text-xs text-text-muted underline hover:text-text"
       onclick={() => setStatusFilter("")}
     >
       {t("tasks.filter.clear")}
@@ -99,7 +99,7 @@
           // down with it, along with everything typed and every contact picked.
           await applyAction(result);
         }}
-      class="mb-6 rounded-xl border border-neutral-200 bg-white p-4"
+      class="mb-6 rounded-xl border border-border bg-surface-raised p-4"
     >
       <CompanyForm
         members={createForm.members}
@@ -114,7 +114,7 @@
         />
       </CompanyForm>
       {#if form?.error}
-        <p class="mt-2 text-sm text-red-600">{t(form.error)}</p>
+        <p class="mt-2 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
       {/if}
       <div class="mt-4 flex gap-2">
         <button
@@ -124,7 +124,7 @@
         </button>
         <button
           type="button"
-          class="rounded-lg border border-neutral-300 px-4 py-2 text-sm"
+          class="rounded-lg border border-border px-4 py-2 text-sm"
           onclick={() => (showCreate = false)}
         >
           {t("common.cancel")}
@@ -132,25 +132,25 @@
       </div>
     </form>
   {:else}
-    <div class="mb-6 h-64 animate-pulse rounded-xl border border-neutral-200 bg-white"></div>
+    <div class="mb-6 h-64 animate-pulse rounded-xl border border-border bg-surface-raised"></div>
   {/if}
 {/if}
 
 {#if filtered.length === 0}
-  <div class="rounded-xl border border-dashed border-neutral-300 bg-white p-10 text-center">
-    <p class="font-medium text-neutral-900">{t("companies.empty")}</p>
-    <p class="mt-1 text-sm text-neutral-500">{t("companies.empty_hint")}</p>
+  <div class="rounded-xl border border-dashed border-border bg-surface-raised p-10 text-center">
+    <p class="font-medium text-text">{t("companies.empty")}</p>
+    <p class="mt-1 text-sm text-text-muted">{t("companies.empty_hint")}</p>
   </div>
 {:else}
-  <ul class="divide-y divide-neutral-200 rounded-xl border border-neutral-200 bg-white">
+  <ul class="divide-y divide-border rounded-xl border border-border bg-surface-raised">
     {#each filtered as company (company.id)}
       <li
-        class="flex items-center gap-3 px-4 py-3 first:rounded-t-xl last:rounded-b-xl hover:bg-neutral-50"
+        class="flex items-center gap-3 px-4 py-3 first:rounded-t-xl last:rounded-b-xl hover:bg-surface"
       >
         <a href="/companies/{company.id}" class="min-w-0 flex-1">
-          <span class="font-medium text-neutral-900">{company.name}</span>
+          <span class="font-medium text-text">{company.name}</span>
           {#if company.website}
-            <span class="ml-2 truncate text-sm text-neutral-500">{company.website}</span>
+            <span class="ml-2 truncate text-sm text-text-muted">{company.website}</span>
           {/if}
         </a>
         <span

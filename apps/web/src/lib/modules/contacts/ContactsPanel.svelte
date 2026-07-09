@@ -58,11 +58,11 @@
   }
 
   const inputClass =
-    "w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
+    "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
 
 {#if links.length === 0}
-  <p class="mb-3 text-sm text-neutral-500">{t("contacts.empty")}</p>
+  <p class="mb-3 text-sm text-text-muted">{t("contacts.empty")}</p>
 {/if}
 
 <LinkField
@@ -88,31 +88,48 @@
     <form
       method="POST"
       action="?/createContact"
-      use:enhance={() => ({ update }) => {
-        showCreate = false;
-        void update();
-      }}
+      use:enhance={() =>
+        ({ update }) => {
+          showCreate = false;
+          void update();
+        }}
       class="space-y-3"
     >
       <div class="grid gap-3 sm:grid-cols-2">
         <div>
-          <label for="qc-contact-first" class="mb-1 block text-sm font-medium text-neutral-700">{t("contacts.first_name")}</label>
-          <input id="qc-contact-first" name="first_name" value={draftFirst} required class={inputClass} />
+          <label for="qc-contact-first" class="mb-1 block text-sm font-medium text-text"
+            >{t("contacts.first_name")}</label
+          >
+          <input
+            id="qc-contact-first"
+            name="first_name"
+            value={draftFirst}
+            required
+            class={inputClass}
+          />
         </div>
         <div>
-          <label for="qc-contact-last" class="mb-1 block text-sm font-medium text-neutral-700">{t("contacts.last_name")}</label>
+          <label for="qc-contact-last" class="mb-1 block text-sm font-medium text-text"
+            >{t("contacts.last_name")}</label
+          >
           <input id="qc-contact-last" name="last_name" value={draftLast} class={inputClass} />
         </div>
         <div>
-          <label for="qc-contact-email" class="mb-1 block text-sm font-medium text-neutral-700">{t("contacts.email")}</label>
+          <label for="qc-contact-email" class="mb-1 block text-sm font-medium text-text"
+            >{t("contacts.email")}</label
+          >
           <input id="qc-contact-email" name="email" type="email" class={inputClass} />
         </div>
         <div>
-          <label for="qc-contact-phone" class="mb-1 block text-sm font-medium text-neutral-700">{t("contacts.phone")}</label>
+          <label for="qc-contact-phone" class="mb-1 block text-sm font-medium text-text"
+            >{t("contacts.phone")}</label
+          >
           <input id="qc-contact-phone" name="phone" class={inputClass} />
         </div>
         <div class="sm:col-span-2">
-          <label for="qc-contact-job" class="mb-1 block text-sm font-medium text-neutral-700">{t("contacts.job_title")}</label>
+          <label for="qc-contact-job" class="mb-1 block text-sm font-medium text-text"
+            >{t("contacts.job_title")}</label
+          >
           <input id="qc-contact-job" name="job_title" class={inputClass} />
         </div>
       </div>
@@ -122,10 +139,16 @@
         <input type="hidden" name="custom" value={"{}"} />
       {/if}
       <div class="flex justify-end gap-2 pt-1">
-        <button type="button" class="rounded-lg border border-neutral-300 px-4 py-2 text-sm" onclick={() => (showCreate = false)}>
+        <button
+          type="button"
+          class="rounded-lg border border-border px-4 py-2 text-sm"
+          onclick={() => (showCreate = false)}
+        >
           {t("common.cancel")}
         </button>
-        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+        <button
+          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        >
           {t("common.create")}
         </button>
       </div>

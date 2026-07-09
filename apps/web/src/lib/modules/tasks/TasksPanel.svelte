@@ -27,15 +27,15 @@
 </script>
 
 {#if tasks.length === 0}
-  <p class="text-sm text-neutral-500">{t("tasks.empty")}</p>
+  <p class="text-sm text-text-muted">{t("tasks.empty")}</p>
 {:else}
-  <ul class="divide-y divide-neutral-100">
+  <ul class="divide-y divide-border">
     {#each tasks as task (task.id)}
       {@const overdue = task.due_date != null && task.due_date < today}
       <li class="flex items-center gap-2 py-2">
         <a
           href={`/tasks/${task.id}`}
-          class="min-w-0 flex-1 truncate text-sm font-medium text-neutral-900 hover:text-brand"
+          class="min-w-0 flex-1 truncate text-sm font-medium text-text hover:text-brand"
         >
           {task.title}
         </a>
@@ -46,7 +46,7 @@
           >
         {/each}
         {#if (task.checklist_total ?? 0) > 0}
-          <span class="text-[11px] tabular-nums text-neutral-400"
+          <span class="text-[11px] tabular-nums text-text-muted"
             >☑ {task.checklist_done}/{task.checklist_total}</span
           >
         {/if}
@@ -58,8 +58,8 @@
         {#if task.due_date}
           <span
             class="text-xs tabular-nums {overdue
-              ? 'font-semibold text-red-600'
-              : 'text-neutral-500'}"
+              ? 'font-semibold text-red-600 dark:text-red-400'
+              : 'text-text-muted'}"
           >
             {fmtDayMonth(task.due_date)}
           </span>

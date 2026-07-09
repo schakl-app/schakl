@@ -59,7 +59,7 @@
   const showOptions = $derived(selectedType === "select" || selectedType === "multi_select");
 
   const inputClass =
-    "w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
+    "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
 
 <svelte:head>
@@ -67,11 +67,9 @@
 </svelte:head>
 
 <div class="mb-6">
-  <a href="/settings" class="text-sm text-neutral-500 hover:text-neutral-900"
-    >← {t("settings.title")}</a
-  >
-  <h1 class="mt-2 text-xl font-semibold text-neutral-900">{t("settings.custom_fields.title")}</h1>
-  <p class="mt-1 text-sm text-neutral-500">{t("settings.custom_fields.subtitle")}</p>
+  <a href="/settings" class="text-sm text-text-muted hover:text-text">← {t("settings.title")}</a>
+  <h1 class="mt-2 text-xl font-semibold text-text">{t("settings.custom_fields.title")}</h1>
+  <p class="mt-1 text-sm text-text-muted">{t("settings.custom_fields.subtitle")}</p>
 </div>
 
 <!-- Entity type switcher -->
@@ -82,7 +80,7 @@
       class="rounded-lg border px-3 py-1.5 text-sm"
       class:border-brand={et === data.entityType}
       class:text-brand={et === data.entityType}
-      class:border-neutral-300={et !== data.entityType}
+      class:border-border={et !== data.entityType}
     >
       {t(`customfields.entity.${et}`)}
     </a>
@@ -90,14 +88,14 @@
 </div>
 
 <!-- Existing definitions -->
-<div class="mb-6 rounded-xl border border-neutral-200 bg-white">
+<div class="mb-6 rounded-xl border border-border bg-surface-raised">
   {#if data.definitions.length === 0}
-    <p class="p-6 text-center text-sm text-neutral-500">{t("settings.custom_fields.empty")}</p>
+    <p class="p-6 text-center text-sm text-text-muted">{t("settings.custom_fields.empty")}</p>
   {:else}
     <table class="w-full text-sm">
       <thead>
         <tr
-          class="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-500"
+          class="border-b border-border text-left text-xs uppercase tracking-wide text-text-muted"
         >
           <th class="px-4 py-2 font-medium">{t("settings.custom_fields.label")}</th>
           <th class="px-4 py-2 font-medium">{t("settings.custom_fields.key")}</th>
@@ -108,11 +106,11 @@
       </thead>
       <tbody>
         {#each data.definitions as def (def.id)}
-          <tr class="border-b border-neutral-100" class:opacity-50={!def.active}>
-            <td class="px-4 py-2 text-neutral-900">{fieldLabel(def, data.locale)}</td>
-            <td class="px-4 py-2 font-mono text-xs text-neutral-500">{def.key}</td>
-            <td class="px-4 py-2 text-neutral-600">{t(`customfields.type.${def.data_type}`)}</td>
-            <td class="px-4 py-2 text-neutral-600">{def.required ? t("common.required") : "—"}</td>
+          <tr class="border-b border-border" class:opacity-50={!def.active}>
+            <td class="px-4 py-2 text-text">{fieldLabel(def, data.locale)}</td>
+            <td class="px-4 py-2 font-mono text-xs text-text-muted">{def.key}</td>
+            <td class="px-4 py-2 text-text-muted">{t(`customfields.type.${def.data_type}`)}</td>
+            <td class="px-4 py-2 text-text-muted">{def.required ? t("common.required") : "—"}</td>
             <td class="px-4 py-2">
               <div class="flex items-center justify-end">
                 <ActionsMenu
@@ -150,13 +148,13 @@
   method="POST"
   action="?/create"
   use:enhance
-  class="rounded-xl border border-neutral-200 bg-white p-5"
+  class="rounded-xl border border-border bg-surface-raised p-5"
 >
-  <h2 class="mb-4 text-sm font-semibold text-neutral-900">{t("settings.custom_fields.new")}</h2>
+  <h2 class="mb-4 text-sm font-semibold text-text">{t("settings.custom_fields.new")}</h2>
   <input type="hidden" name="entity_type" value={data.entityType} />
   <div class="grid gap-3 sm:grid-cols-2">
     <div>
-      <label for="key" class="mb-1 block text-sm font-medium text-neutral-700"
+      <label for="key" class="mb-1 block text-sm font-medium text-text"
         >{t("settings.custom_fields.key")}</label
       >
       <input
@@ -165,49 +163,49 @@
         required
         pattern="[a-z][a-z0-9_]*"
         placeholder="vat_number"
-        class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+        class="w-full rounded-lg border border-border px-3 py-2 text-sm"
       />
-      <p class="mt-1 text-xs text-neutral-400">{t("settings.custom_fields.key_hint")}</p>
+      <p class="mt-1 text-xs text-text-muted">{t("settings.custom_fields.key_hint")}</p>
     </div>
     <div>
-      <label for="data_type" class="mb-1 block text-sm font-medium text-neutral-700"
+      <label for="data_type" class="mb-1 block text-sm font-medium text-text"
         >{t("settings.custom_fields.type")}</label
       >
       <select
         id="data_type"
         name="data_type"
         bind:value={selectedType}
-        class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+        class="w-full rounded-lg border border-border px-3 py-2 text-sm"
       >
         {#each TYPES as ty (ty)}<option value={ty}>{t(`customfields.type.${ty}`)}</option>{/each}
       </select>
     </div>
     <div>
-      <label for="label_nl" class="mb-1 block text-sm font-medium text-neutral-700"
+      <label for="label_nl" class="mb-1 block text-sm font-medium text-text"
         >{t("settings.custom_fields.label_nl")}</label
       >
       <input
         id="label_nl"
         name="label_nl"
-        class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+        class="w-full rounded-lg border border-border px-3 py-2 text-sm"
       />
     </div>
     <div>
-      <label for="label_en" class="mb-1 block text-sm font-medium text-neutral-700"
+      <label for="label_en" class="mb-1 block text-sm font-medium text-text"
         >{t("settings.custom_fields.label_en")}</label
       >
       <input
         id="label_en"
         name="label_en"
-        class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+        class="w-full rounded-lg border border-border px-3 py-2 text-sm"
       />
     </div>
-    <p class="text-xs text-neutral-400 sm:col-span-2 sm:-mt-1">
+    <p class="text-xs text-text-muted sm:col-span-2 sm:-mt-1">
       {t("settings.custom_fields.label_optional")}
     </p>
     {#if showOptions}
       <div class="sm:col-span-2">
-        <label for="options" class="mb-1 block text-sm font-medium text-neutral-700"
+        <label for="options" class="mb-1 block text-sm font-medium text-text"
           >{t("settings.custom_fields.options")}</label
         >
         <!-- eslint-disable svelte/no-useless-mustaches -- \n needs JS-string escaping; a bare attribute would render it literally -->
@@ -216,19 +214,18 @@
           name="options"
           rows="3"
           placeholder={"gold|Gold\nsilver|Silver"}
-          class="w-full rounded-lg border border-neutral-300 px-3 py-2 font-mono text-xs"
-        ></textarea>
+          class="w-full rounded-lg border border-border px-3 py-2 font-mono text-xs"></textarea>
         <!-- eslint-enable svelte/no-useless-mustaches -->
-        <p class="mt-1 text-xs text-neutral-400">{t("settings.custom_fields.options_hint")}</p>
+        <p class="mt-1 text-xs text-text-muted">{t("settings.custom_fields.options_hint")}</p>
       </div>
     {/if}
     <div class="flex items-center gap-4">
-      <label class="flex items-center gap-2 text-sm text-neutral-700">
-        <input type="checkbox" name="required" class="h-4 w-4 rounded border-neutral-300" />
+      <label class="flex items-center gap-2 text-sm text-text">
+        <input type="checkbox" name="required" class="h-4 w-4 rounded border-border" />
         {t("common.required")}
       </label>
       <div class="flex items-center gap-2">
-        <label for="position" class="text-sm text-neutral-700"
+        <label for="position" class="text-sm text-text"
           >{t("settings.custom_fields.position")}</label
         >
         <input
@@ -236,7 +233,7 @@
           name="position"
           type="number"
           value="0"
-          class="w-20 rounded-lg border border-neutral-300 px-2 py-1 text-sm"
+          class="w-20 rounded-lg border border-border px-2 py-1 text-sm"
         />
       </div>
     </div>
@@ -274,31 +271,31 @@
         <input type="hidden" name="data_type" value={editDef.data_type} />
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <div class="mb-1 block text-sm font-medium text-neutral-700">
+            <div class="mb-1 block text-sm font-medium text-text">
               {t("settings.custom_fields.key")}
             </div>
             <div
-              class="flex items-center gap-1 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 font-mono text-xs text-neutral-500"
+              class="flex items-center gap-1 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-xs text-text-muted"
             >
               🔒 {editDef.key}
             </div>
-            <p class="mt-1 text-xs text-neutral-400">{t("settings.custom_fields.key_locked")}</p>
+            <p class="mt-1 text-xs text-text-muted">{t("settings.custom_fields.key_locked")}</p>
           </div>
           <div>
-            <div class="mb-1 block text-sm font-medium text-neutral-700">
+            <div class="mb-1 block text-sm font-medium text-text">
               {t("settings.custom_fields.type")}
             </div>
             <div
-              class="flex items-center gap-1 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-500"
+              class="flex items-center gap-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-muted"
             >
               🔒 {t(`customfields.type.${editDef.data_type}`)}
             </div>
-            <p class="mt-1 text-xs text-neutral-400">{t("settings.custom_fields.type_locked")}</p>
+            <p class="mt-1 text-xs text-text-muted">{t("settings.custom_fields.type_locked")}</p>
           </div>
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label for="edit-label-nl" class="mb-1 block text-sm font-medium text-neutral-700"
+            <label for="edit-label-nl" class="mb-1 block text-sm font-medium text-text"
               >{t("settings.custom_fields.label_nl")}</label
             >
             <input
@@ -309,7 +306,7 @@
             />
           </div>
           <div>
-            <label for="edit-label-en" class="mb-1 block text-sm font-medium text-neutral-700"
+            <label for="edit-label-en" class="mb-1 block text-sm font-medium text-text"
               >{t("settings.custom_fields.label_en")}</label
             >
             <input
@@ -322,7 +319,7 @@
         </div>
         {#if editIsSelect}
           <div>
-            <label for="edit-options" class="mb-1 block text-sm font-medium text-neutral-700"
+            <label for="edit-options" class="mb-1 block text-sm font-medium text-text"
               >{t("settings.custom_fields.options")}</label
             >
             <textarea
@@ -331,21 +328,21 @@
               rows="3"
               class="{inputClass} font-mono text-xs">{optionsText(editDef)}</textarea
             >
-            <p class="mt-1 text-xs text-neutral-400">{t("settings.custom_fields.options_hint")}</p>
+            <p class="mt-1 text-xs text-text-muted">{t("settings.custom_fields.options_hint")}</p>
           </div>
         {/if}
         <div class="flex items-center gap-4">
-          <label class="flex items-center gap-2 text-sm text-neutral-700">
+          <label class="flex items-center gap-2 text-sm text-text">
             <input
               type="checkbox"
               name="required"
               checked={editDef.required}
-              class="h-4 w-4 rounded border-neutral-300"
+              class="h-4 w-4 rounded border-border"
             />
             {t("common.required")}
           </label>
           <div class="flex items-center gap-2">
-            <label for="edit-position" class="text-sm text-neutral-700"
+            <label for="edit-position" class="text-sm text-text"
               >{t("settings.custom_fields.position")}</label
             >
             <input
@@ -353,7 +350,7 @@
               name="position"
               type="number"
               value={editDef.position}
-              class="w-20 rounded-lg border border-neutral-300 px-2 py-1 text-sm"
+              class="w-20 rounded-lg border border-border px-2 py-1 text-sm"
             />
           </div>
         </div>
@@ -361,7 +358,7 @@
         <div class="flex justify-end gap-2 pt-1">
           <button
             type="button"
-            class="rounded-lg border border-neutral-300 px-4 py-2 text-sm"
+            class="rounded-lg border border-border px-4 py-2 text-sm"
             onclick={() => (showEdit = false)}
           >
             {t("common.cancel")}

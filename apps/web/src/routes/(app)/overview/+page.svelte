@@ -76,7 +76,7 @@
   });
 
   const bulkClass =
-    "rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:border-brand hover:text-brand disabled:cursor-not-allowed disabled:opacity-40";
+    "rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-text-muted hover:border-brand hover:text-brand disabled:cursor-not-allowed disabled:opacity-40";
 </script>
 
 <svelte:head>
@@ -84,17 +84,17 @@
 </svelte:head>
 
 <div class="mb-4">
-  <h1 class="text-xl font-semibold text-neutral-900">{t("time.overview.title")}</h1>
-  <p class="mt-1 text-sm text-neutral-500">{t("time.overview.subtitle")}</p>
+  <h1 class="text-xl font-semibold text-text">{t("time.overview.title")}</h1>
+  <p class="mt-1 text-sm text-text-muted">{t("time.overview.subtitle")}</p>
 </div>
 
 <!-- Totals -->
 {#if totals}
   <div class="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
-    {#each [{ key: "minutes", value: totals.minutes, accent: "" }, { key: "billable", value: totals.billable_minutes, accent: "" }, { key: "open", value: totals.open_minutes, accent: totals.open_minutes ? "text-amber-600" : "" }, { key: "to_invoice", value: totals.to_invoice_minutes, accent: totals.to_invoice_minutes ? "text-brand" : "" }, { key: "invoiced", value: totals.invoiced_minutes, accent: "text-green-600" }] as card (card.key)}
-      <div class="rounded-xl border border-neutral-200 bg-white p-4">
-        <p class="text-xs text-neutral-500">{t(`time.overview.total.${card.key}`)}</p>
-        <p class="mt-1 text-lg font-semibold tabular-nums {card.accent || 'text-neutral-900'}">
+    {#each [{ key: "minutes", value: totals.minutes, accent: "" }, { key: "billable", value: totals.billable_minutes, accent: "" }, { key: "open", value: totals.open_minutes, accent: totals.open_minutes ? "text-amber-600 dark:text-amber-400" : "" }, { key: "to_invoice", value: totals.to_invoice_minutes, accent: totals.to_invoice_minutes ? "text-brand" : "" }, { key: "invoiced", value: totals.invoiced_minutes, accent: "text-green-600 dark:text-green-400" }] as card (card.key)}
+      <div class="rounded-xl border border-border bg-surface-raised p-4">
+        <p class="text-xs text-text-muted">{t(`time.overview.total.${card.key}`)}</p>
+        <p class="mt-1 text-lg font-semibold tabular-nums {card.accent || 'text-text'}">
           {formatMinutes(card.value)}
         </p>
       </div>
@@ -142,7 +142,7 @@
       onchange={(v) => setFilter("date_from", v)}
     />
   </div>
-  <span class="text-xs text-neutral-400">–</span>
+  <span class="text-xs text-text-muted">–</span>
   <div class="w-36">
     <DateInput
       name="_f_to"
@@ -156,7 +156,7 @@
       class="rounded-full px-3 py-1 text-xs font-medium
         {data.filters.status === status
         ? 'bg-brand text-white'
-        : 'border border-neutral-300 text-neutral-600 hover:border-brand hover:text-brand'}"
+        : 'border border-border text-text-muted hover:border-brand hover:text-brand'}"
       onclick={() => setFilter("status", data.filters.status === status ? "" : status)}
       >{t(`time.overview.status.${status}`)}</button
     >
@@ -165,7 +165,7 @@
 
 <!-- Bulk actions -->
 <div class="mb-3 flex flex-wrap items-center gap-2">
-  <span class="text-xs text-neutral-500">
+  <span class="text-xs text-text-muted">
     {t("time.overview.selected", { count: selectedIds.length })}
   </span>
   {#each [{ action: "approve", label: t("time.overview.approve") }, { action: "unapprove", label: t("time.overview.unapprove") }, { action: "invoice", label: t("time.overview.mark_invoiced") }, { action: "uninvoice", label: t("time.overview.unmark_invoiced") }] as bulkAction (bulkAction.action)}
@@ -174,24 +174,24 @@
       <button class={bulkClass} disabled={selectedIds.length === 0}>{bulkAction.label}</button>
     </form>
   {/each}
-  {#if form?.error}<span class="text-xs text-red-600">{t(form.error)}</span>{/if}
+  {#if form?.error}<span class="text-xs text-red-600 dark:text-red-400">{t(form.error)}</span>{/if}
 </div>
 
 <!-- Entries table -->
-<section class="overflow-hidden rounded-xl border border-neutral-200 bg-white">
+<section class="overflow-hidden rounded-xl border border-border bg-surface-raised">
   {#if entries.length === 0}
-    <p class="p-8 text-center text-sm text-neutral-500">{t("time.overview.empty")}</p>
+    <p class="p-8 text-center text-sm text-text-muted">{t("time.overview.empty")}</p>
   {:else}
     <div class="overflow-x-auto">
       <table class="w-full text-sm">
         <thead>
-          <tr class="border-b border-neutral-100 text-left text-xs text-neutral-400">
+          <tr class="border-b border-border text-left text-xs text-text-muted">
             <th class="w-8 px-3 py-2">
               <input
                 type="checkbox"
                 checked={allSelected}
                 onchange={toggleAll}
-                class="h-4 w-4 rounded border-neutral-300 text-brand focus:ring-brand"
+                class="h-4 w-4 rounded border-border text-brand focus:ring-brand"
                 aria-label={t("time.overview.select_all")}
               />
             </th>
@@ -203,33 +203,32 @@
             <th class="px-2 py-2 font-medium"></th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-neutral-50">
+        <tbody class="divide-y divide-border">
           {#each entries as e (e.id)}
-            <tr class="hover:bg-neutral-50/60 {selected[e.id] ? 'bg-brand/5' : ''}">
+            <tr class="hover:bg-surface/60 {selected[e.id] ? 'bg-brand/5' : ''}">
               <td class="px-3 py-2">
                 <input
                   type="checkbox"
                   bind:checked={selected[e.id]}
-                  class="h-4 w-4 rounded border-neutral-300 text-brand focus:ring-brand"
+                  class="h-4 w-4 rounded border-border text-brand focus:ring-brand"
                   aria-label={t("time.overview.select_row")}
                 />
               </td>
-              <td class="whitespace-nowrap px-2 py-2 tabular-nums text-neutral-600">
+              <td class="whitespace-nowrap px-2 py-2 tabular-nums text-text-muted">
                 {fmtNumericDate(e.started_at.slice(0, 10))}
-                <span class="text-xs text-neutral-400">{formatTime(e.started_at)}</span>
+                <span class="text-xs text-text-muted">{formatTime(e.started_at)}</span>
               </td>
-              <td class="whitespace-nowrap px-2 py-2 font-medium text-neutral-800"
+              <td class="whitespace-nowrap px-2 py-2 font-medium text-text"
                 >{memberName(e.user_id)}</td
               >
-              <td class="max-w-[16rem] truncate px-2 py-2 text-neutral-700">{entryLabel(e)}</td>
-              <td class="max-w-[14rem] truncate px-2 py-2 text-neutral-500"
-                >{e.description ?? ""}</td
+              <td class="max-w-[16rem] truncate px-2 py-2 text-text">{entryLabel(e)}</td>
+              <td class="max-w-[14rem] truncate px-2 py-2 text-text-muted">{e.description ?? ""}</td
               >
-              <td class="px-2 py-2 text-right font-semibold tabular-nums text-neutral-900">
+              <td class="px-2 py-2 text-right font-semibold tabular-nums text-text">
                 {formatMinutes(e.minutes)}
                 {#if !e.billable}
                   <span
-                    class="ml-1 rounded-full bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-500"
+                    class="ml-1 rounded-full bg-surface px-1.5 py-0.5 text-[10px] font-medium text-text-muted"
                   >
                     {t("time.not_billable")}
                   </span>
@@ -238,7 +237,7 @@
               <td class="whitespace-nowrap px-2 py-2">
                 <div class="flex items-center justify-end gap-1.5">
                   {#if e.approved_at}
-                    <span title={t("time.approved")} class="text-green-600"
+                    <span title={t("time.approved")} class="text-green-600 dark:text-green-400"
                       ><CircleCheck size={16} /></span
                     >
                   {/if}

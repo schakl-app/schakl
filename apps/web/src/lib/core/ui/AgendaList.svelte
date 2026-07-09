@@ -29,11 +29,11 @@
 
 <div class="space-y-3">
   {#each listDays as day (day)}
-    <section class="rounded-xl border border-neutral-200 bg-white p-4">
+    <section class="rounded-xl border border-border bg-surface-raised p-4">
       <h3
         class="mb-2 text-xs font-semibold capitalize {day === today
           ? 'text-brand'
-          : 'text-neutral-500'}"
+          : 'text-text-muted'}"
       >
         {fmtLongDay(day)}
       </h3>
@@ -43,25 +43,25 @@
             <li>
               <a
                 href={event.href ?? "#"}
-                class="flex items-center gap-2 text-sm text-neutral-800 {event.tentative
+                class="flex items-center gap-2 text-sm text-text {event.tentative
                   ? 'opacity-60'
                   : ''}"
               >
                 <span class="h-2 w-2 shrink-0 rounded-full {labelDotClass(event.color)}"></span>
                 <span class="truncate">{event.title}</span>
                 {#if event.tentative}
-                  <span class="text-xs text-neutral-400">{t("calendar.tentative")}</span>
+                  <span class="text-xs text-text-muted">{t("calendar.tentative")}</span>
                 {/if}
               </a>
             </li>
           {/each}
         </ul>
       {:else}
-        <p class="text-sm text-neutral-400">{t("calendar.day_empty")}</p>
+        <p class="text-sm text-text-muted">{t("calendar.day_empty")}</p>
       {/if}
     </section>
   {:else}
-    <p class="rounded-xl border border-neutral-200 bg-white p-6 text-sm text-neutral-500">
+    <p class="rounded-xl border border-border bg-surface-raised p-6 text-sm text-text-muted">
       {emptyMessage}
     </p>
   {/each}

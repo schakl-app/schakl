@@ -34,10 +34,10 @@
 </script>
 
 <!-- ≥sm: the month grid -->
-<div class="hidden overflow-hidden rounded-xl border border-neutral-200 bg-white sm:block">
-  <div class="grid grid-cols-7 border-b border-neutral-100 bg-neutral-50">
+<div class="hidden overflow-hidden rounded-xl border border-border bg-surface-raised sm:block">
+  <div class="grid grid-cols-7 border-b border-border bg-surface">
     {#each weekdayHeaders as label (label)}
-      <div class="px-2 py-2 text-xs font-medium capitalize text-neutral-400">{label}</div>
+      <div class="px-2 py-2 text-xs font-medium capitalize text-text-muted">{label}</div>
     {/each}
   </div>
   <div class="grid grid-cols-7">
@@ -45,16 +45,16 @@
       {@const inMonth = day.slice(0, 7) === month}
       {@const isToday = day === today}
       <div
-        class="min-h-24 border-b border-neutral-100 p-1.5 {i % 7 !== 6 ? 'border-r' : ''} {inMonth
+        class="min-h-24 border-b border-border p-1.5 {i % 7 !== 6 ? 'border-r' : ''} {inMonth
           ? ''
-          : 'bg-neutral-50/60'}"
+          : 'bg-surface/60'}"
       >
         <p
           class="mb-1 text-xs {isToday
             ? 'font-bold text-brand'
             : inMonth
-              ? 'text-neutral-600'
-              : 'text-neutral-300'}"
+              ? 'text-text-muted'
+              : 'text-text-muted'}"
         >
           {Number(day.slice(8, 10))}
         </p>

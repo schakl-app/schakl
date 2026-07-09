@@ -34,13 +34,13 @@
 </svelte:head>
 
 <div class="mb-6">
-  <a href="/companies" class="text-sm text-neutral-500 hover:text-neutral-900">
+  <a href="/companies" class="text-sm text-text-muted hover:text-text">
     ← {t("companies.title")}
   </a>
   <div class="mt-2 flex flex-wrap items-start justify-between gap-3">
     <div>
       <div class="flex items-center gap-3">
-        <h1 class="text-xl font-semibold text-neutral-900">{company.name}</h1>
+        <h1 class="text-xl font-semibold text-text">{company.name}</h1>
         <span
           class="rounded-full px-2.5 py-0.5 text-xs font-medium {statusPillClass(company.status)}"
         >
@@ -52,26 +52,26 @@
           href={company.website.startsWith("http") ? company.website : `https://${company.website}`}
           target="_blank"
           rel="noopener noreferrer"
-          class="mt-1 inline-block text-sm text-neutral-500 hover:text-brand">{company.website} ↗</a
+          class="mt-1 inline-block text-sm text-text-muted hover:text-brand">{company.website} ↗</a
         >
       {/if}
       {#if responsibleName}
-        <p class="mt-1 text-sm text-neutral-500">
+        <p class="mt-1 text-sm text-text-muted">
           {t("companies.field.responsible")}:
-          <span class="text-neutral-700">{responsibleName}</span>
+          <span class="text-text">{responsibleName}</span>
         </p>
       {/if}
     </div>
     <div class="flex flex-wrap items-center gap-2">
       <a
         href={`/tasks?company_id=${company.id}`}
-        class="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600 hover:border-brand hover:text-brand"
+        class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"
       >
         {t("companies.actions.new_task")}
       </a>
       <a
         href="/time"
-        class="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600 hover:border-brand hover:text-brand"
+        class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"
       >
         {t("companies.actions.log_time")}
       </a>
@@ -92,7 +92,7 @@
     <form method="POST" action="?/applyTemplate" use:enhance class="mt-3 flex items-center gap-2">
       <select
         name="template_id"
-        class="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+        class="rounded-lg border border-border px-2 py-1.5 text-sm"
         required
       >
         {#each data.templates as template (template.id)}
@@ -100,12 +100,14 @@
         {/each}
       </select>
       <button
-        class="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600 hover:border-brand hover:text-brand"
+        class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"
       >
         {t("companies.actions.apply_template")}
       </button>
       {#if form?.templateApplied}
-        <span class="text-xs text-green-600">{t("companies.template_applied")}</span>
+        <span class="text-xs text-green-600 dark:text-green-400"
+          >{t("companies.template_applied")}</span
+        >
       {/if}
     </form>
   {/if}
@@ -114,13 +116,13 @@
 <div class="grid gap-4">
   {#each data.panels as panel (panel.key)}
     {@const spec = companyPanelComponent(enabled, panel.key)}
-    <section class="rounded-xl border border-neutral-200 bg-white p-5">
-      <h2 class="mb-4 text-sm font-semibold text-neutral-900">{t(panel.title_key)}</h2>
+    <section class="rounded-xl border border-border bg-surface-raised p-5">
+      <h2 class="mb-4 text-sm font-semibold text-text">{t(panel.title_key)}</h2>
       {#if spec}
         {@const PanelComponent = spec.component}
         <PanelComponent companyId={company.id} data={panel.data} />
       {:else}
-        <pre class="overflow-x-auto text-xs text-neutral-500">{JSON.stringify(
+        <pre class="overflow-x-auto text-xs text-text-muted">{JSON.stringify(
             panel.data,
             null,
             2,
@@ -154,7 +156,7 @@
     <div class="flex justify-end gap-2 pt-1">
       <button
         type="button"
-        class="rounded-lg border border-neutral-300 px-4 py-2 text-sm"
+        class="rounded-lg border border-border px-4 py-2 text-sm"
         onclick={() => (showEdit = false)}
       >
         {t("common.cancel")}

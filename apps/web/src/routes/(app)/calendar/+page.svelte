@@ -84,7 +84,7 @@
   }
 
   const navButton =
-    "flex items-center rounded-lg border border-neutral-300 p-2 text-neutral-500 hover:border-brand hover:text-brand";
+    "flex items-center rounded-lg border border-border p-2 text-text-muted hover:border-brand hover:text-brand";
 </script>
 
 <svelte:window {onkeydown} />
@@ -107,7 +107,7 @@
 </form>
 
 <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-  <h1 class="text-xl font-semibold text-neutral-900">{t("calendar.title")}</h1>
+  <h1 class="text-xl font-semibold text-text">{t("calendar.title")}</h1>
   <div class="flex flex-wrap items-center gap-2" data-sveltekit-preload-data="hover">
     <a
       href={hrefFor(data.view, shiftDate(data.date, data.view, -1))}
@@ -118,7 +118,7 @@
     </a>
     <a
       href={hrefFor(data.view, data.today)}
-      class="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:border-brand hover:text-brand"
+      class="rounded-lg border border-border px-3 py-1.5 text-sm text-text hover:border-brand hover:text-brand"
       title={t("calendar.view.shortcut_hint", { label: t("calendar.today"), key: "t" })}
     >
       {t("calendar.today")}
@@ -130,10 +130,10 @@
     >
       <ChevronRight size={16} />
     </a>
-    <span class="ml-1 text-sm font-medium capitalize text-neutral-700">{navLabel}</span>
+    <span class="ml-1 text-sm font-medium capitalize text-text">{navLabel}</span>
 
     <div
-      class="ml-2 flex overflow-hidden rounded-lg border border-neutral-300"
+      class="ml-2 flex overflow-hidden rounded-lg border border-border"
       role="group"
       aria-label={t("calendar.view.label")}
     >
@@ -147,7 +147,7 @@
           })}
           class="px-2.5 py-1.5 text-xs font-medium {view === data.view
             ? 'bg-brand text-white'
-            : 'text-neutral-500 hover:bg-neutral-50'}"
+            : 'text-text-muted hover:bg-surface'}"
         >
           {t(`calendar.view.${view}`)}
         </a>

@@ -25,6 +25,17 @@ export default tseslint.config(
     },
   },
   {
+    // Svelte 5 `.svelte.ts` modules (runes usable outside components) are picked up by
+    // eslint-plugin-svelte's recommended config, but without the inner TS parser it needs
+    // to read type annotations — same fix as the plain `**/*.svelte` block above.
+    files: ["**/*.svelte.ts"],
+    languageOptions: {
+      parserOptions: {
+        parser: tseslint.parser,
+      },
+    },
+  },
+  {
     rules: {
       // Svelte 5 runes ($state, $derived, …) and event-handler props read as unused to the
       // base no-unused-vars rule; svelte-eslint already understands the runes themselves.

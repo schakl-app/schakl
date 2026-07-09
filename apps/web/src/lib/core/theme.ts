@@ -115,8 +115,9 @@ function deriveOnDark(hex: string): string {
   const rgb = hexToRgb(hex);
   const dark = hexToRgb(DARK_SURFACE);
   if (contrastRatio(rgb, dark) >= MIN_CONTRAST) return hex;
-  let [h, s, l] = rgbToHsl(rgb);
-  s = Math.max(s * 0.85, 0.35);
+  const [h, initialS, initialL] = rgbToHsl(rgb);
+  const s = Math.max(initialS * 0.85, 0.35);
+  let l = initialL;
   for (let i = 0; i < 20 && contrastRatio(hslToRgb(h, s, l), dark) < MIN_CONTRAST; i++) {
     l = Math.min(l + 0.04, 0.92);
   }
