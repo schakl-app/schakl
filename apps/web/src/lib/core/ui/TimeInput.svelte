@@ -69,6 +69,13 @@
     return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
   });
 
+  /** Index in `steps` nearest the current time, rounded to the nearest STEP_MINUTES. */
+  function nearestStepIndex(): number {
+    const now = new Date();
+    const totalMinutes = now.getHours() * 60 + now.getMinutes();
+    return Math.round(totalMinutes / STEP_MINUTES) % steps.length;
+  }
+
   // Writable derived: follows outside value changes (e.g. a duration edit back-computing the
   // end time), and holds the half-typed draft until it parses.
   let text = $derived(toDisplay(value));
@@ -159,7 +166,9 @@
     class="w-full rounded-lg border border-neutral-300 px-3 py-2 pr-9 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
     onfocus={() => {
       open = true;
-      highlighted = 0;
+      // A blank field (new entry) scrolls to now instead of 00:00; a filled one narrows
+      // `filtered` to just its own value, so highlighting index 0 still lands on it.
+      highlighted = text.trim() ? 0 : nearestStepIndex();
     }}
     oninput={() => {
       open = true;
