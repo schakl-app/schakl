@@ -10,7 +10,7 @@
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
   import LinkField from "$lib/core/ui/LinkField.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
-  import { COMPANY_STATUSES } from "$lib/modules/companies/status";
+  import CompanyForm from "$lib/modules/companies/CompanyForm.svelte";
 
   let { data, form } = $props();
 
@@ -42,9 +42,6 @@
     draftCompanyName = query.trim();
     showCreateCompany = true;
   }
-
-  const inputClass =
-    "w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
 
 <svelte:head>
@@ -239,37 +236,14 @@
         }}
       class="space-y-3"
     >
-      <div class="grid gap-3 sm:grid-cols-2">
-        <div>
-          <label for="cc-name" class="mb-1 block text-sm font-medium text-neutral-700"
-            >{t("companies.name")}</label
-          >
-          <input id="cc-name" name="name" value={draftCompanyName} required class={inputClass} />
-        </div>
-        <div>
-          <label for="cc-status" class="mb-1 block text-sm font-medium text-neutral-700"
-            >{t("companies.field.status")}</label
-          >
-          <select id="cc-status" name="status" class={inputClass}>
-            {#each COMPANY_STATUSES as status (status)}
-              <option value={status} selected={status === "active"}
-                >{t(`companies.status.${status}`)}</option
-              >
-            {/each}
-          </select>
-        </div>
-        <div class="sm:col-span-2">
-          <label for="cc-website" class="mb-1 block text-sm font-medium text-neutral-700"
-            >{t("companies.website")}</label
-          >
-          <input id="cc-website" name="website" placeholder="https://…" class={inputClass} />
-        </div>
-      </div>
-      {#if companyDefinitions.length > 0}
-        <CustomFieldsForm definitions={companyDefinitions} locale={data.locale} />
-      {:else}
-        <input type="hidden" name="custom" value={"{}"} />
-      {/if}
+      <!-- The full client form, prefilled with what was typed — never a name-only stub. -->
+      <CompanyForm
+        company={{ name: draftCompanyName }}
+        members={data.members}
+        definitions={companyDefinitions}
+        locale={data.locale}
+        idPrefix="quick-company"
+      />
       {#if form?.error}<p class="text-sm text-red-600">{t(form.error)}</p>{/if}
       <div class="flex justify-end gap-2 pt-1">
         <button

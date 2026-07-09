@@ -3,14 +3,13 @@
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
-  import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import { t } from "$lib/core/i18n";
   import { companyPanelComponent } from "$lib/core/registry";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
-  import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
-  import { COMPANY_STATUSES, statusPillClass } from "$lib/modules/companies/status";
+  import CompanyForm from "$lib/modules/companies/CompanyForm.svelte";
+  import { statusPillClass } from "$lib/modules/companies/status";
 
   let { data, form } = $props();
 
@@ -18,9 +17,6 @@
   const enabled = $derived(page.data.theme?.enabledModules ?? []);
   const company = $derived(data.company);
 
-  const memberItems = $derived(
-    data.members.map((m) => ({ value: m.user_id, label: m.full_name || m.email })),
-  );
   const responsibleName = $derived(
     company.responsible_user_id
       ? (data.members.find((m) => m.user_id === company.responsible_user_id)?.full_name ??
@@ -31,9 +27,6 @@
 
   let showEdit = $state(false);
   let confirmDelete = $state(false);
-
-  const inputClass =
-    "w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
 
 <svelte:head>
@@ -148,62 +141,15 @@
       }}
     class="space-y-3"
   >
-    <div>
-      <label for="edit-name" class="mb-1 block text-sm font-medium text-neutral-700"
-        >{t("companies.name")}</label
-      >
-      <input id="edit-name" name="name" value={company.name} required class={inputClass} />
-    </div>
-    <div class="grid grid-cols-2 gap-3">
-      <div>
-        <label for="edit-website" class="mb-1 block text-sm font-medium text-neutral-700"
-          >{t("companies.website")}</label
-        >
-        <input id="edit-website" name="website" value={company.website ?? ""} class={inputClass} />
-      </div>
-      <div>
-        <label for="edit-status" class="mb-1 block text-sm font-medium text-neutral-700"
-          >{t("companies.field.status")}</label
-        >
-        <select id="edit-status" name="status" class={inputClass}>
-          {#each COMPANY_STATUSES as status (status)}
-            <option value={status} selected={company.status === status}
-              >{t(`companies.status.${status}`)}</option
-            >
-          {/each}
-        </select>
-      </div>
-    </div>
-    <div>
-      <label for="edit-responsible" class="mb-1 block text-sm font-medium text-neutral-700"
-        >{t("companies.field.responsible")}</label
-      >
-      <Combobox
-        items={memberItems}
-        name="responsible_user_id"
-        id="edit-responsible"
-        value={company.responsible_user_id ?? ""}
-        placeholder={t("common.unassigned")}
-      />
-    </div>
-    <div>
-      <label for="edit-notes" class="mb-1 block text-sm font-medium text-neutral-700"
-        >{t("companies.notes")}</label
-      >
-      <textarea id="edit-notes" name="notes" rows="3" class={inputClass}
-        >{company.notes ?? ""}</textarea
-      >
-    </div>
-    {#if data.definitions.length > 0}
-      <CustomFieldsForm
-        definitions={data.definitions}
-        values={company.custom ?? {}}
-        locale={data.locale}
-      />
-    {:else}
-      <input type="hidden" name="custom" value={JSON.stringify(company.custom ?? {})} />
-    {/if}
-    <p class="text-xs text-neutral-400">{t("companies.status_hint")}</p>
+    <!-- Same component the create form uses: one definition of a client's fields. Contact
+         persons are not here — this client has an id, so they live in the contacts panel. -->
+    <CompanyForm
+      {company}
+      members={data.members}
+      definitions={data.definitions}
+      locale={data.locale}
+      idPrefix="edit-company"
+    />
     {#if form?.error}<p class="text-sm text-red-600">{t(form.error)}</p>{/if}
     <div class="flex justify-end gap-2 pt-1">
       <button

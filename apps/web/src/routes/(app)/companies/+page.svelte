@@ -1,23 +1,29 @@
 <script lang="ts">
-  import { enhance } from "$app/forms";
+  import { applyAction, enhance } from "$app/forms";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { Trash2 } from "@lucide/svelte";
 
   import { t } from "$lib/core/i18n";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
-  import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
+  import CompanyForm from "$lib/modules/companies/CompanyForm.svelte";
   import { COMPANY_STATUSES, statusPillClass } from "$lib/modules/companies/status";
+  import ContactDraftField from "$lib/modules/contacts/ContactDraftField.svelte";
 
   let { data, form } = $props();
 
-  const memberItems = $derived(
-    data.members.map((m) => ({ value: m.user_id, label: m.full_name || m.email })),
-  );
-
   let showCreate = $state(false);
+
+  // The create form's lookups stream in behind the list. Held in state rather than awaited in the
+  // markup: a re-run load hands us a *new* promise, and an `{#await}` would fall back to its
+  // pending branch and remount the form, throwing away the contacts the user had picked.
+  let createForm = $state<Awaited<typeof data.createForm> | null>(null);
+  $effect(() => {
+    void data.createForm.then((resolved) => (createForm = resolved));
+  });
+
   let deleteId = $state("");
   let deleteName = $state("");
   let confirmDelete = $state(false);
@@ -34,9 +40,6 @@
     else url.searchParams.delete("status");
     void goto(url, { keepFocus: true, noScroll: true });
   }
-
-  const inputClass =
-    "w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
 
 <svelte:head>
@@ -79,69 +82,58 @@
 </div>
 
 {#if showCreate}
-  <form
-    method="POST"
-    action="?/create"
-    use:enhance={() =>
-      ({ update }) => {
-        void update().then(() => (showCreate = false));
-      }}
-    class="mb-6 rounded-xl border border-neutral-200 bg-white p-4"
-  >
-    <div class="grid gap-3 sm:grid-cols-3">
-      <div>
-        <label for="name" class="mb-1 block text-sm font-medium text-neutral-700">
-          {t("companies.name")}
-        </label>
-        <input id="name" name="name" required class={inputClass} />
-      </div>
-      <div>
-        <label for="website" class="mb-1 block text-sm font-medium text-neutral-700">
-          {t("companies.website")}
-        </label>
-        <input id="website" name="website" class={inputClass} />
-      </div>
-      <div>
-        <label for="status" class="mb-1 block text-sm font-medium text-neutral-700">
-          {t("companies.field.status")}
-        </label>
-        <select id="status" name="status" class={inputClass}>
-          {#each COMPANY_STATUSES as status (status)}
-            <option value={status} selected={status === "active"}
-              >{t(`companies.status.${status}`)}</option
-            >
-          {/each}
-        </select>
-      </div>
-      <div>
-        <label for="responsible" class="mb-1 block text-sm font-medium text-neutral-700">
-          {t("companies.field.responsible")}
-        </label>
-        <Combobox
-          items={memberItems}
-          name="responsible_user_id"
-          id="responsible"
-          placeholder={t("common.unassigned")}
-        />
-      </div>
-    </div>
-    <p class="mt-2 text-xs text-neutral-400">{t("companies.status_hint")}</p>
-    {#if form?.error}
-      <p class="mt-2 text-sm text-red-600">{t(form.error)}</p>
-    {/if}
-    <div class="mt-4 flex gap-2">
-      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
-        {t("common.save")}
-      </button>
-      <button
-        type="button"
-        class="rounded-lg border border-neutral-300 px-4 py-2 text-sm"
-        onclick={() => (showCreate = false)}
+  <!-- Same field set as the edit surface (CompanyForm), plus the contact persons — which only a
+       not-yet-created client needs to pick up front. -->
+  {#if createForm}
+    <form
+      method="POST"
+      action="?/create"
+      use:enhance={() =>
+        async ({ result, update }) => {
+          if (result.type === "success") {
+            await update();
+            showCreate = false;
+            return;
+          }
+          // Leave the form standing on a rejected save: closing it would take the error message
+          // down with it, along with everything typed and every contact picked.
+          await applyAction(result);
+        }}
+      class="mb-6 rounded-xl border border-neutral-200 bg-white p-4"
+    >
+      <CompanyForm
+        members={createForm.members}
+        definitions={createForm.definitions}
+        locale={data.locale}
+        idPrefix="new-company"
       >
-        {t("common.cancel")}
-      </button>
-    </div>
-  </form>
+        <ContactDraftField
+          contacts={createForm.contacts}
+          definitions={createForm.contactDefinitions}
+          locale={data.locale}
+        />
+      </CompanyForm>
+      {#if form?.error}
+        <p class="mt-2 text-sm text-red-600">{t(form.error)}</p>
+      {/if}
+      <div class="mt-4 flex gap-2">
+        <button
+          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        >
+          {t("common.save")}
+        </button>
+        <button
+          type="button"
+          class="rounded-lg border border-neutral-300 px-4 py-2 text-sm"
+          onclick={() => (showCreate = false)}
+        >
+          {t("common.cancel")}
+        </button>
+      </div>
+    </form>
+  {:else}
+    <div class="mb-6 h-64 animate-pulse rounded-xl border border-neutral-200 bg-white"></div>
+  {/if}
 {/if}
 
 {#if filtered.length === 0}
