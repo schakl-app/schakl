@@ -73,6 +73,63 @@ if the role is missing, the API exits and the healthcheck can never pass.
 It is deliberately **not** a `/docker-entrypoint-initdb.d` script: those run only when `PGDATA`
 is empty, so they never repair an existing volume, and they require a file on the host.
 
+## Health endpoints
+
+Three surfaces, kept apart on purpose — they have different callers and different threat models.
+
+| Endpoint | Auth | Checks | Use |
+|---|---|---|---|
+| `GET /health` | none | nothing | Liveness. Compose/orchestrator probes. Must stay cheap: a probe that touched Postgres would restart a healthy API whenever the database blipped. |
+| `GET /health/ready` | none | Postgres, Redis, Alembic at head | Readiness. `200 {"status":"ok"}` or `503 {"status":"degraded"}`. Deliberately **detail-free** — it never names the failing dependency, because anyone can call it. |
+| `GET /api/v1/system/info` | owner/admin | everything, in detail | The Instellingen → Systeem screen. Versions, git sha, migration revisions, worker heartbeat, queue depth. Gated because exact versions and dependency topology are reconnaissance. |
+
+The container healthcheck stays on `/health`. Point a *readiness* gate (a load balancer, or
+`depends_on: service_healthy` for something that must not start against a half-migrated box)
+at `/health/ready`.
+
+**Pending migrations are visible.** `up_to_date: false` on a running API means the schema is
+behind the code — the entrypoint's `alembic upgrade head` was skipped or failed, not that it is
+still in flight (it runs *before* uvicorn binds).
+
+**A dead worker is otherwise invisible.** The API keeps serving and ARQ jobs silently pile up.
+The worker writes a heartbeat to Redis every minute; `system/info` reports its last check-in
+and the queue depth.
+
+## Version stamping
+
+`VLOTR_VERSION`, `VLOTR_GIT_SHA` and `VLOTR_BUILT_AT` are baked into both images at build time
+(`.github/workflows/release.yml` passes them as build args) and re-exported as OCI labels, so
+`docker inspect` and the Systeem screen can never disagree:
+
+```bash
+docker inspect -f '{{index .Config.Labels "org.opencontainers.image.version"}}' \
+  ghcr.io/vlotr-crm/vlotr-api:1.2.3
+```
+
+A source checkout reports `0.0.0+dev`. That sorts below every release, so the update check
+stays quiet rather than claiming an update is always available.
+
+## Update check (and how to switch it off)
+
+A daily cron in the `worker` asks the **public GitHub Releases API** for the newest stable tag
+of `vlotr-crm/vlotr`, caches the answer in Redis, and the Systeem screen shows a notice when a
+newer release exists. It **never auto-updates** — pulling a new tag stays a human decision.
+
+What leaves the box: one unauthenticated `GET` to
+`https://api.github.com/repos/vlotr-crm/vlotr/releases/latest`. Nothing is sent about the
+instance — not its version, not its org, not a ping. There is no telemetry.
+
+It is an **instance** setting, not a per-tenant one: one box makes one call and the answer (a
+version number) is identical for every org on it.
+
+```yaml
+# infra/compose.tunnel.yaml → stack environment
+VLOTR_UPDATE_CHECK_ENABLED: "false"     # no outbound update traffic at all
+```
+
+With it off, the Systeem screen says so and shows no update state. Restart `worker` and `api`
+after changing it.
+
 ## Troubleshooting
 
 The API entrypoint runs `alembic upgrade head` under `set -e` before starting uvicorn. So a

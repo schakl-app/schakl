@@ -19,6 +19,9 @@ x-api-env: &api-env
   VLOTR_SEED_ORG_NAME: ${VLOTR_SEED_ORG_NAME:-vlotr}
   VLOTR_SEED_ADMIN_EMAIL: ${VLOTR_SEED_ADMIN_EMAIL}
   VLOTR_SEED_ADMIN_PASSWORD: ${VLOTR_SEED_ADMIN_PASSWORD}
+  # Daily, unauthenticated GET to the GitHub Releases API; sends nothing about this instance.
+  # Set false to disable all outbound update traffic (docs/DEPLOY.md).
+  VLOTR_UPDATE_CHECK_ENABLED: ${VLOTR_UPDATE_CHECK_ENABLED:-true}
   # --- OIDC single sign-on (optional; CLAUDE.md §3) ---
   VLOTR_OIDC_ENABLED: ${VLOTR_OIDC_ENABLED:-false}
   VLOTR_OIDC_ENFORCED: ${VLOTR_OIDC_ENFORCED:-false}

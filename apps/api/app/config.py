@@ -39,6 +39,18 @@ class Settings(BaseSettings):
     environment: str = "development"
     debug: bool = True
 
+    # --- Build stamp (injected at image build; left at the sentinels in a source tree) ---
+    # See apps/api/Dockerfile and .github/workflows/release.yml.
+    version: str = "0.0.0+dev"
+    git_sha: str = "unknown"
+    built_at: str | None = None
+
+    # --- Update check (instance-level; the box makes the outbound call, not the tenant) ---
+    # A daily, unauthenticated GET to the GitHub Releases API. Nothing is sent about this
+    # instance. Set false to disable all outbound update traffic (docs/DEPLOY.md).
+    update_check_enabled: bool = True
+    update_check_repo: str = "vlotr-crm/vlotr"
+
     # --- Database / cache ---
     # Async SQLAlchemy URL (asyncpg driver). The app connects as a NON-superuser role so
     # Postgres RLS is enforced (superusers bypass RLS) — see infra/db init and CLAUDE.md §5.
@@ -99,6 +111,15 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment.lower() in {"production", "prod"}
+
+    @property
+    def is_stamped_build(self) -> bool:
+        """True when a real version was baked in — i.e. this is a released image, not a checkout.
+
+        An unstamped tree sorts below every release, so the update check would always claim an
+        update is available. It stays quiet instead.
+        """
+        return self.version != "0.0.0+dev"
 
 
 @lru_cache

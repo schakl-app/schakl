@@ -790,6 +790,26 @@ export interface paths {
         patch: operations["update_project_api_v1_projects__project_id__patch"];
         trace?: never;
     };
+    "/api/v1/system/info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * System Info
+         * @description Diagnostics for the Settings → System screen. Owners and admins only.
+         */
+        get: operations["system_info_api_v1_system_info_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tasks": {
         parameters: {
             query?: never;
@@ -1432,8 +1452,37 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Health */
+        /**
+         * Health
+         * @description Liveness. Must stay cheap, dependency-free and unauthenticated: orchestrators poll
+         *     it, and a probe that touches Postgres would restart a healthy API when the database
+         *     blips. Readiness is a different question — see ``/health/ready``.
+         */
         get: operations["health_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/health/ready": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Health Ready
+         * @description Readiness: can this instance actually serve? Checks Postgres, Redis and Alembic.
+         *
+         *     Unauthenticated (a container healthcheck has no credentials), so the body is
+         *     deliberately detail-free — ``degraded`` never says *which* dependency is down.
+         *     Operators get the breakdown from ``/api/v1/system/info`` or the logs.
+         */
+        get: operations["health_ready_health_ready_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1520,6 +1569,19 @@ export interface components {
         Body_verify_verify_api_v1_auth_verify_post: {
             /** Token */
             token: string;
+        };
+        /** BuildInfo */
+        BuildInfo: {
+            /** Built At */
+            built_at: string | null;
+            /** Environment */
+            environment: string;
+            /** Git Sha */
+            git_sha: string;
+            /** Python Version */
+            python_version: string;
+            /** Version */
+            version: string;
         };
         /** BulkResult */
         BulkResult: {
@@ -1993,6 +2055,13 @@ export interface components {
             entries: components["schemas"]["TimeEntryRead"][];
             /** Total Minutes */
             total_minutes: number;
+        };
+        /** DependencyInfo */
+        DependencyInfo: {
+            /** Status */
+            status: string;
+            /** Version */
+            version?: string | null;
         };
         /**
          * EntitlementGenerate
@@ -2508,6 +2577,15 @@ export interface components {
         MemberRoleUpdate: {
             role: components["schemas"]["Role"];
         };
+        /** MigrationInfo */
+        MigrationInfo: {
+            /** Current */
+            current: string[];
+            /** Head */
+            head: string[];
+            /** Up To Date */
+            up_to_date: boolean;
+        };
         /** ModulesMeta */
         ModulesMeta: {
             /** Customizable Entity Types */
@@ -2855,6 +2933,19 @@ export interface components {
          * @enum {string}
          */
         Role: "owner" | "admin" | "member" | "client";
+        /** SystemInfo */
+        SystemInfo: {
+            build: components["schemas"]["BuildInfo"];
+            database: components["schemas"]["DependencyInfo"];
+            /** Enabled Modules */
+            enabled_modules: string[];
+            migrations: components["schemas"]["MigrationInfo"];
+            redis: components["schemas"]["DependencyInfo"];
+            /** Server Time */
+            server_time: string;
+            update: components["schemas"]["UpdateInfo"];
+            worker: components["schemas"]["WorkerInfo"];
+        };
         /** TaskCreate */
         TaskCreate: {
             /** Allocated Minutes */
@@ -3488,6 +3579,21 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** UpdateInfo */
+        UpdateInfo: {
+            /** Checked At */
+            checked_at?: string | null;
+            /** Current */
+            current: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Latest */
+            latest?: string | null;
+            /** Release Url */
+            release_url?: string | null;
+            /** Update Available */
+            update_available: boolean;
+        };
         /** UserCreate */
         UserCreate: {
             /**
@@ -3586,6 +3692,15 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** WorkerInfo */
+        WorkerInfo: {
+            /** Last Seen At */
+            last_seen_at?: string | null;
+            /** Queue Depth */
+            queue_depth?: number | null;
+            /** Status */
+            status: string;
         };
     };
     responses: never;
@@ -5649,6 +5764,26 @@ export interface operations {
             };
         };
     };
+    system_info_api_v1_system_info_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemInfo"];
+                };
+            };
+        };
+    };
     list_tasks_api_v1_tasks_get: {
         parameters: {
             query?: {
@@ -7470,6 +7605,26 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    health_ready_health_ready_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };

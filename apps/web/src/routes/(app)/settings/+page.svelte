@@ -86,3 +86,23 @@
     </a>
   </div>
 </section>
+
+<!--
+  A third scope. Personal settings belong to the user and org settings to the tenant; version,
+  health and migrations belong to the *installation* — they survive every org on the box and
+  would not be an org admin's business in a multi-org deploy (CLAUDE.md §5).
+-->
+<section class="mt-8">
+  <h2 class="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+    {t("settings.section_system")}
+  </h2>
+  <div class="grid gap-4 sm:grid-cols-2">
+    <a
+      href="/settings/system"
+      class="rounded-xl border border-neutral-200 bg-white p-5 hover:border-brand"
+    >
+      <h3 class="text-sm font-semibold text-neutral-900">{t("settings.system.title")}</h3>
+      <p class="mt-1 text-sm text-neutral-500">{t("settings.system.subtitle")}</p>
+    </a>
+  </div>
+</section>
