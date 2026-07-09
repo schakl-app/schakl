@@ -26,23 +26,25 @@
   <section class="rounded-xl border border-neutral-200 bg-white p-5">
     <h2 class="text-sm font-semibold text-neutral-900">{t("settings.account.language")}</h2>
     <p class="mt-1 text-sm text-neutral-500">{t("settings.account.language_help")}</p>
-    <div class="mt-4 flex flex-wrap gap-2">
-      {#each data.locales as loc (loc)}
-        <form method="POST" action="/set-locale">
-          <input type="hidden" name="redirect" value={path} />
-          <input type="hidden" name="locale" value={loc} />
-          <button
-            class="rounded-lg border px-4 py-2 text-sm font-medium transition
-              {data.currentLocale === loc
-              ? 'border-brand bg-brand text-white'
-              : 'border-neutral-300 text-neutral-700 hover:border-brand'}"
-            aria-pressed={data.currentLocale === loc}
-          >
-            {localeLabel(loc)}
-          </button>
-        </form>
-      {/each}
-    </div>
+    <form method="POST" action="/set-locale" class="mt-4">
+      <input type="hidden" name="redirect" value={path} />
+      <select
+        name="locale"
+        onchange={(e) => e.currentTarget.form?.requestSubmit()}
+        class="w-full max-w-xs rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand sm:w-auto"
+      >
+        {#each data.locales as loc (loc)}
+          <option value={loc} selected={data.currentLocale === loc}>{localeLabel(loc)}</option>
+        {/each}
+      </select>
+      <noscript>
+        <button
+          class="ml-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        >
+          {t("common.save")}
+        </button>
+      </noscript>
+    </form>
   </section>
 
   <!-- Profile -->
