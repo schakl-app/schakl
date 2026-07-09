@@ -24,6 +24,7 @@
   "table.select_all": "Selecteer alle rijen op deze pagina",
   "table.select_row": "Selecteer rij",
   "table.total": "Totaal",
+  "table.ungrouped": "Overig",
   "table.selected": "{count} geselecteerd",
   "table.selection_page_only": "De selectie geldt alleen voor deze pagina.",
   "table.column.created_at": "Aangemaakt",

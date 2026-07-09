@@ -24,6 +24,7 @@
   "table.select_all": "Select all rows on this page",
   "table.select_row": "Select row",
   "table.total": "Total",
+  "table.ungrouped": "Other",
   "table.selected": "{count} selected",
   "table.selection_page_only": "Selection covers this page only.",
   "table.column.created_at": "Created",

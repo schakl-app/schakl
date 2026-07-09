@@ -46,5 +46,10 @@ export function parseTablePref(form: FormData): TablePref {
     widths = {};
   }
 
-  return { columns, sort: sort || null, widths };
+  const collapsed = String(form.get("collapsed") ?? "")
+    .split(",")
+    .map((key) => key.trim())
+    .filter(Boolean);
+
+  return { columns, sort: sort || null, widths, collapsed };
 }

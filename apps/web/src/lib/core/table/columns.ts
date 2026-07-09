@@ -60,6 +60,8 @@ export interface TablePref {
   columns?: string[];
   sort?: string | null;
   widths?: Record<string, number>;
+  /** Keys of the collapsed row groups — a personal view option, like the columns (#38). */
+  collapsed?: string[];
 }
 
 export interface ResolvedTable<C> {
@@ -90,13 +92,16 @@ export function readTablePref(prefs: unknown, listId: string): TablePref {
     ? pref.columns.filter((c): c is string => typeof c === "string")
     : undefined;
   const sort = typeof pref.sort === "string" ? pref.sort : null;
+  const collapsed = Array.isArray(pref.collapsed)
+    ? pref.collapsed.filter((c): c is string => typeof c === "string")
+    : [];
   const widths: Record<string, number> = {};
   if (isPlainObject(pref.widths)) {
     for (const [key, value] of Object.entries(pref.widths)) {
       if (typeof value === "number" && Number.isFinite(value) && value > 0) widths[key] = value;
     }
   }
-  return { columns, sort, widths };
+  return { columns, sort, widths, collapsed };
 }
 
 /**

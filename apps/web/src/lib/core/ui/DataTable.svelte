@@ -17,7 +17,7 @@
    * A `<tr>` cannot be wrapped in an `<a>`, so `rowHref` links the primary cell and the row
    * merely highlights — the same compromise the time-overview table already made.
    */
-  import { ArrowDown, ArrowUp } from "@lucide/svelte";
+  import { ArrowDown, ArrowUp, ChevronDown, ChevronRight } from "@lucide/svelte";
   import type { Snippet } from "svelte";
 
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
@@ -39,6 +39,10 @@
     selectable = false,
     selected = $bindable([]),
     selection,
+    groups,
+    groupBy,
+    collapsed = [],
+    oncollapse,
     onsort,
     onresize,
   }: {
@@ -61,6 +65,15 @@
     selected?: string[];
     /** The bulk bar, shown above the table while anything is selected. */
     selection?: Snippet<[string[]]>;
+    /**
+     * Row groups, **in display order** (#38). `open, in_progress, done` is a workflow, not an
+     * alphabet, so the caller's order wins and no sort may disturb it.
+     */
+    groups?: { key: string; label: string; collapsible?: boolean }[];
+    groupBy?: (row: T) => string;
+    /** Keys of the collapsed groups. A personal view option, persisted with the columns. */
+    collapsed?: string[];
+    oncollapse?: (keys: string[]) => void;
     onsort?: (sort: string | null) => void;
     onresize?: (widths: Record<string, number>) => void;
   } = $props();
@@ -86,6 +99,43 @@
   function toggleRow(id: string) {
     selected = selectedSet.has(id) ? selected.filter((s) => s !== id) : [...selected, id];
   }
+
+  // --- grouping --------------------------------------------------------------
+  // Rows arrive from the API already in sort order. Bucketing preserves that order *inside* each
+  // group and never touches the order *of* the groups — a sort that reshuffled the sections would
+  // quietly turn a board into a list (#38).
+  const grouped = $derived.by(() => {
+    if (!groups || !groupBy) return null;
+    const buckets = new Map<string, T[]>(groups.map((group) => [group.key, []]));
+    // A row whose group was never declared must not silently disappear. It gets a trailing
+    // section of its own rather than being dropped on the floor — silent truncation reads as
+    // "that's all of them" (docs/PERFORMANCE.md), and here it would read as "that task is gone".
+    const strays: T[] = [];
+    for (const row of rows) {
+      const bucket = buckets.get(groupBy(row));
+      if (bucket) bucket.push(row);
+      else strays.push(row);
+    }
+    const declared = groups.map((group) => ({
+      ...group,
+      rows: buckets.get(group.key) ?? [],
+    }));
+    return strays.length > 0
+      ? [
+          ...declared,
+          { key: "__ungrouped", label: t("table.ungrouped"), collapsible: false, rows: strays },
+        ]
+      : declared;
+  });
+
+  const collapsedSet = $derived(new Set(collapsed));
+
+  function toggleGroup(key: string) {
+    oncollapse?.(collapsedSet.has(key) ? collapsed.filter((k) => k !== key) : [...collapsed, key]);
+  }
+
+  /** Columns + the checkbox and ⋯ gutters, so a group header can span the whole row. */
+  const columnCount = $derived(columns.length + (selectable ? 1 : 0) + (actions ? 1 : 0));
 
   // --- totals ----------------------------------------------------------------
   const hasTotals = $derived(columns.some((column) => column.total));
@@ -130,27 +180,26 @@
     {@render selection(selected)}
   {/if}
 
-  <!-- Phone: the concept's shared row, never a sideways-scrolling grid. -->
+  <!-- Phone: the concept's shared row, never a sideways-scrolling grid. Groups survive here;
+       they are how the board reads. -->
   {#if mobileRow}
     <ul class="divide-y divide-border rounded-xl border border-border bg-surface-raised sm:hidden">
-      {#each rows as row (row.id)}
-        <li
-          class="flex items-center gap-3 px-4 py-3 first:rounded-t-xl last:rounded-b-xl hover:bg-surface
-            {selectedSet.has(row.id) ? 'bg-brand/5' : ''}"
-        >
-          {#if selectable}
-            <!-- A phone gets the same bulk actions; it has rows, it just has no header row. -->
-            <input
-              type="checkbox"
-              class={checkboxClass}
-              checked={selectedSet.has(row.id)}
-              aria-label={t("table.select_row")}
-              onchange={() => toggleRow(row.id)}
-            />
+      {#if grouped}
+        {#each grouped as group (group.key)}
+          <li class="bg-surface px-4 py-2">
+            {@render groupToggle(group.key, group.label, group.rows.length, group.collapsible)}
+          </li>
+          {#if !collapsedSet.has(group.key)}
+            {#each group.rows as row (row.id)}
+              {@render mobileItem(row)}
+            {/each}
           {/if}
-          <div class="min-w-0 flex-1">{@render mobileRow(row)}</div>
-        </li>
-      {/each}
+        {/each}
+      {:else}
+        {#each rows as row (row.id)}
+          {@render mobileItem(row)}
+        {/each}
+      {/if}
     </ul>
   {/if}
 
@@ -218,47 +267,28 @@
           {/if}
         </tr>
       </thead>
-      <tbody class="divide-y divide-border">
-        {#each rows as row (row.id)}
-          <tr class="hover:bg-surface {selectedSet.has(row.id) ? 'bg-brand/5' : ''}">
-            {#if selectable}
-              <td class="px-3 py-2.5">
-                <input
-                  type="checkbox"
-                  class={checkboxClass}
-                  checked={selectedSet.has(row.id)}
-                  aria-label={t("table.select_row")}
-                  onchange={() => toggleRow(row.id)}
-                />
-              </td>
+      {#if grouped}
+        {#each grouped as group (group.key)}
+          <tbody class="divide-y divide-border">
+            <tr class="bg-surface">
+              <th scope="colgroup" colspan={columnCount} class="px-4 py-2 text-left">
+                {@render groupToggle(group.key, group.label, group.rows.length, group.collapsible)}
+              </th>
+            </tr>
+            {#if !collapsedSet.has(group.key)}
+              {#each group.rows as row (row.id)}
+                {@render bodyRow(row)}
+              {/each}
             {/if}
-            {#each columns as column, index (column.key)}
-              <td
-                class="px-4 py-2.5 {column.align === 'right'
-                  ? 'text-right tabular-nums'
-                  : 'text-left'}"
-              >
-                {#if column.cell}
-                  {@render column.cell(row)}
-                {:else if column.key.startsWith(CUSTOM_PREFIX)}
-                  <span class="text-text-muted"
-                    >{customCellText(column.key, row, definitions, locale)}</span
-                  >
-                {:else if index === 0 && rowHref}
-                  <a href={rowHref(row)} class="font-medium text-text hover:text-brand"
-                    >{String((row as Record<string, unknown>)[column.key] ?? "—")}</a
-                  >
-                {:else}
-                  {String((row as Record<string, unknown>)[column.key] ?? "—")}
-                {/if}
-              </td>
-            {/each}
-            {#if actions}
-              <td class="px-2 py-2.5 text-right">{@render actions(row)}</td>
-            {/if}
-          </tr>
+          </tbody>
         {/each}
-      </tbody>
+      {:else}
+        <tbody class="divide-y divide-border">
+          {#each rows as row (row.id)}
+            {@render bodyRow(row)}
+          {/each}
+        </tbody>
+      {/if}
 
       {#if hasTotals}
         <!-- Aligned under their own columns — that is the point of a grid. The figures are the
@@ -286,3 +316,79 @@
     </table>
   </div>
 {/if}
+
+{#snippet bodyRow(row: T)}
+  <tr class="hover:bg-surface {selectedSet.has(row.id) ? 'bg-brand/5' : ''}">
+    {#if selectable}
+      <td class="px-3 py-2.5">
+        <input
+          type="checkbox"
+          class={checkboxClass}
+          checked={selectedSet.has(row.id)}
+          aria-label={t("table.select_row")}
+          onchange={() => toggleRow(row.id)}
+        />
+      </td>
+    {/if}
+    {#each columns as column, index (column.key)}
+      <td class="px-4 py-2.5 {column.align === 'right' ? 'text-right tabular-nums' : 'text-left'}">
+        {#if column.cell}
+          {@render column.cell(row)}
+        {:else if column.key.startsWith(CUSTOM_PREFIX)}
+          <span class="text-text-muted">{customCellText(column.key, row, definitions, locale)}</span
+          >
+        {:else if index === 0 && rowHref}
+          <a href={rowHref(row)} class="font-medium text-text hover:text-brand"
+            >{String((row as Record<string, unknown>)[column.key] ?? "—")}</a
+          >
+        {:else}
+          {String((row as Record<string, unknown>)[column.key] ?? "—")}
+        {/if}
+      </td>
+    {/each}
+    {#if actions}
+      <td class="px-2 py-2.5 text-right">{@render actions(row)}</td>
+    {/if}
+  </tr>
+{/snippet}
+
+{#snippet mobileItem(row: T)}
+  <li
+    class="flex items-center gap-3 px-4 py-3 first:rounded-t-xl last:rounded-b-xl hover:bg-surface
+      {selectedSet.has(row.id) ? 'bg-brand/5' : ''}"
+  >
+    {#if selectable}
+      <!-- A phone gets the same bulk actions; it has rows, it just has no header row. -->
+      <input
+        type="checkbox"
+        class={checkboxClass}
+        checked={selectedSet.has(row.id)}
+        aria-label={t("table.select_row")}
+        onchange={() => toggleRow(row.id)}
+      />
+    {/if}
+    <div class="min-w-0 flex-1">{@render mobileRow?.(row)}</div>
+  </li>
+{/snippet}
+
+{#snippet groupToggle(key: string, label: string, count: number, collapsible?: boolean)}
+  {#if collapsible}
+    <button
+      type="button"
+      class="inline-flex cursor-pointer items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted hover:text-text"
+      aria-expanded={!collapsedSet.has(key)}
+      onclick={() => toggleGroup(key)}
+    >
+      {#if collapsedSet.has(key)}<ChevronRight size={13} />{:else}<ChevronDown size={13} />{/if}
+      {label}
+      <span class="font-normal tabular-nums">({count})</span>
+    </button>
+  {:else}
+    <span
+      class="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted"
+    >
+      {label}
+      <span class="font-normal tabular-nums">({count})</span>
+    </span>
+  {/if}
+{/snippet}
