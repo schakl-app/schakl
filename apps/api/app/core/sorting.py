@@ -13,9 +13,29 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import Select
+from sqlalchemy import Select, func
 
 from app.errors import AppError
+
+
+def user_sort_name(user_id_column: Any) -> Any:
+    """Order by a person's **display name**, the way the UI names them.
+
+    A list sorted by an employee column must not order by their user id, and `full_name` is
+    nullable — the UI falls back to the email, so the sort has to as well, or the list stops
+    ordering the way it reads. Correlated: it joins nothing, so a row is never multiplied.
+
+    Takes the FK column, so the same rule serves an assignee, an approver and a leave requester.
+    """
+    from sqlalchemy import select
+
+    from app.core.auth.models import User
+
+    return (
+        select(func.lower(func.coalesce(User.full_name, User.email)))
+        .where(User.id == user_id_column)
+        .scalar_subquery()
+    )
 
 
 def parse_sort(sort: str | None, allowed: dict[str, Any]) -> tuple[str, bool] | None:

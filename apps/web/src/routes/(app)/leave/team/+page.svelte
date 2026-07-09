@@ -4,15 +4,34 @@
 
   import { fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import DataTable from "$lib/core/ui/DataTable.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import { labelDotClass } from "$lib/core/ui/colors";
+  import { LEAVE_TEAM_COLUMNS } from "$lib/modules/leave/columns";
   import LeaveRequestForm from "$lib/modules/leave/LeaveRequestForm.svelte";
   import LeaveStatusPill from "$lib/modules/leave/LeaveStatusPill.svelte";
   import { fmtHours, typeLabel, type LeaveTypeInfo } from "$lib/modules/leave/format";
 
   let { data, form } = $props();
+
+  type Request = (typeof data.yearRequests)[number];
+
+  const table = createTableLayout<Request>({
+    all: () => LEAVE_TEAM_COLUMNS,
+    pref: () => data.table.pref,
+    sort: () => data.table.sort,
+    cells: () => ({
+      employee: employeeCell,
+      period: periodCell,
+      type: typeCell,
+      hours: hoursCell,
+      status: statusCell,
+    }),
+  });
 
   const types = $derived(data.leaveTypes as LeaveTypeInfo[]);
   const typeById = $derived(Object.fromEntries(types.map((lt) => [lt.id, lt])));
@@ -211,70 +230,93 @@
 </section>
 
 <!-- All requests this year -->
-<section class="overflow-hidden rounded-xl border border-border bg-surface-raised">
-  <h2
-    class="border-b border-border bg-surface px-4 py-2 text-xs font-semibold uppercase tracking-wide text-text-muted"
-  >
+{#snippet employeeCell(request: Request)}
+  <span class="font-medium text-text">{memberName[request.user_id] ?? "—"}</span>
+{/snippet}
+
+{#snippet periodCell(request: Request)}
+  <span class="text-text">{period(request)}</span>
+{/snippet}
+
+{#snippet typeCell(request: Request)}
+  {@const leaveType = typeById[request.leave_type_id]}
+  <span class="inline-flex items-center gap-1.5 text-text">
+    <span class="h-2 w-2 rounded-full {labelDotClass(leaveType?.color ?? '')}"></span>
+    {typeLabel(leaveType, data.locale)}
+  </span>
+{/snippet}
+
+{#snippet hoursCell(request: Request)}
+  <span class="text-text">{fmtHours(request.hours)}</span>
+{/snippet}
+
+{#snippet statusCell(request: Request)}
+  <LeaveStatusPill status={request.status} />
+{/snippet}
+
+{#snippet teamRowActions(request: Request)}
+  {#if request.status === "pending" || request.status === "approved"}
+    <ActionsMenu
+      compact
+      items={[
+        {
+          label: t("leave.requests.cancel"),
+          icon: Ban,
+          danger: true,
+          onclick: () => {
+            cancelId = request.id;
+            cancelOpen = true;
+          },
+        },
+      ]}
+    />
+  {/if}
+{/snippet}
+
+{#snippet teamMobileRow(request: Request)}
+  <div class="flex items-center gap-3">
+    <span class="min-w-0 flex-1">
+      <span class="font-medium text-text">{memberName[request.user_id] ?? "—"}</span>
+      <span class="mt-0.5 block text-sm text-text-muted">
+        {period(request)} · {fmtHours(request.hours)}
+      </span>
+    </span>
+    <LeaveStatusPill status={request.status} />
+    {@render teamRowActions(request)}
+  </div>
+{/snippet}
+
+{#snippet teamEmpty()}
+  <p class="rounded-xl border border-border bg-surface-raised p-6 text-sm text-text-muted">
+    {t("leave.requests.empty")}
+  </p>
+{/snippet}
+
+<div class="mb-2 mt-6 flex items-center justify-between">
+  <h2 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
     {t("leave.team.requests_heading", { year: data.year })}
   </h2>
-  {#if data.yearRequests.length === 0}
-    <p class="p-6 text-sm text-text-muted">{t("leave.requests.empty")}</p>
-  {:else}
-    <div class="overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead>
-          <tr class="border-b border-border text-left text-xs text-text-muted">
-            <th class="px-4 py-2 font-medium">{t("leave.team.member")}</th>
-            <th class="px-4 py-2 font-medium">{t("leave.requests.period")}</th>
-            <th class="px-4 py-2 font-medium">{t("leave.form.type")}</th>
-            <th class="px-4 py-2 text-right font-medium">{t("leave.form.hours")}</th>
-            <th class="px-4 py-2 font-medium">{t("leave.requests.status")}</th>
-            <th class="px-2 py-2"></th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-border">
-          {#each data.yearRequests as request (request.id)}
-            {@const leaveType = typeById[request.leave_type_id]}
-            <tr>
-              <td class="px-4 py-2 font-medium text-text">
-                {memberName[request.user_id] ?? "—"}
-              </td>
-              <td class="px-4 py-2 text-text">{period(request)}</td>
-              <td class="px-4 py-2">
-                <span class="inline-flex items-center gap-1.5 text-text">
-                  <span class="h-2 w-2 rounded-full {labelDotClass(leaveType?.color ?? '')}"></span>
-                  {typeLabel(leaveType, data.locale)}
-                </span>
-              </td>
-              <td class="px-4 py-2 text-right tabular-nums text-text">
-                {fmtHours(request.hours)}
-              </td>
-              <td class="px-4 py-2"><LeaveStatusPill status={request.status} /></td>
-              <td class="px-2 py-2 text-right">
-                {#if request.status === "pending" || request.status === "approved"}
-                  <ActionsMenu
-                    compact
-                    items={[
-                      {
-                        label: t("leave.requests.cancel"),
-                        icon: Ban,
-                        danger: true,
-                        onclick: () => {
-                          cancelId = request.id;
-                          cancelOpen = true;
-                        },
-                      },
-                    ]}
-                  />
-                {/if}
-              </td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
-  {/if}
-</section>
+  <ColumnPicker
+    all={table.pickerColumns}
+    visible={table.visibleKeys}
+    sort={table.sort}
+    onchange={table.onColumnsChange}
+    onsort={table.onSort}
+  />
+</div>
+
+<DataTable
+  rows={data.yearRequests}
+  columns={table.columns}
+  sort={table.sort}
+  widths={table.widths}
+  locale={data.locale}
+  actions={teamRowActions}
+  mobileRow={teamMobileRow}
+  empty={teamEmpty}
+  onsort={table.onSort}
+  onresize={table.onResize}
+/>
 
 <!-- Register leave for a team member (sick call, phoned-in request) -->
 <Modal bind:open={registerOpen} title={t("leave.team.register")}>

@@ -130,6 +130,7 @@
   "leave.requests.empty": "No leave requests yet.",
   "leave.requests.period": "Period",
   "leave.requests.status": "Status",
+  "leave.requests.days": "Days",
   "leave.requests.edit": "Edit request",
   "leave.requests.cancel": "Cancel request",
   "leave.requests.cancel_confirm": "Cancel this leave request? The hours return to the balance.",

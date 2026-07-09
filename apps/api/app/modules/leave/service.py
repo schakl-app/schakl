@@ -19,6 +19,7 @@ from sqlalchemy import func, select
 from app.core.auth.models import User
 from app.core.models import Membership
 from app.core.roles import Role
+from app.core.sorting import apply_sort, user_sort_name
 from app.core.tenancy import RequestContext
 from app.errors import AppError
 from app.modules.leave.models import (
@@ -107,6 +108,20 @@ _OCCUPYING = (LeaveRequestStatus.PENDING.value, LeaveRequestStatus.APPROVED.valu
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+# Columns a client may sort by; anything else in ``?sort=`` is rejected (app/core/sorting.py).
+# ``employee`` orders by the requester's display name, never by their user id — a list sorted by
+# a person must order the way it reads. ``type`` cannot be a sort key: a leave type's label is
+# per-locale tenant data in a JSONB column, so ``key`` is the closest honest thing.
+SORTABLE = {
+    "employee": user_sort_name(LeaveRequest.user_id),
+    "start_date": LeaveRequest.start_date,
+    "end_date": LeaveRequest.end_date,
+    "hours": LeaveRequest.hours,
+    "status": LeaveRequest.status,
+    "created_at": LeaveRequest.created_at,
+}
 
 
 class LeaveService:
@@ -455,6 +470,7 @@ class LeaveService:
         all_users: bool = False,
         year: int | None = None,
         status: LeaveRequestStatus | None = None,
+        sort: str | None = None,
     ) -> tuple[Sequence[LeaveRequest], int]:
         conditions = []
         if all_users:
@@ -466,13 +482,12 @@ class LeaveService:
             conditions.append(LeaveRequest.start_date < date(year + 1, 1, 1))
         if status is not None:
             conditions.append(LeaveRequest.status == status.value)
-        stmt = (
-            self.requests.scoped_select()
-            .where(*conditions)
-            .order_by(LeaveRequest.start_date.desc())
-            .limit(limit)
-            .offset(offset)
-        )
+        stmt = apply_sort(
+            self.requests.scoped_select().where(*conditions),
+            sort,
+            SORTABLE,
+            default=LeaveRequest.start_date.desc(),
+        ).limit(limit).offset(offset)
         items = (await self.ctx.session.execute(stmt)).scalars().all()
         count_stmt = (
             select(func.count())

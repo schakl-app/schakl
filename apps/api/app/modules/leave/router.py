@@ -169,10 +169,19 @@ async def list_requests(
     all_users: bool = Query(False),
     year: int | None = Query(None, ge=2000, le=2100),
     status: LeaveRequestStatus | None = Query(None),
+    sort: str | None = Query(
+        None, description="employee | start_date | end_date | hours | status, '-' desc"
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> Page[LeaveRequestRead]:
     items, total = await LeaveService(ctx).list(
-        limit=limit, offset=offset, user_id=user_id, all_users=all_users, year=year, status=status
+        limit=limit,
+        offset=offset,
+        user_id=user_id,
+        all_users=all_users,
+        year=year,
+        status=status,
+        sort=sort,
     )
     return Page(
         items=[LeaveRequestRead.model_validate(r) for r in items],

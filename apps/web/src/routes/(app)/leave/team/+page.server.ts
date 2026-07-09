@@ -2,6 +2,9 @@ import { fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
 import { apiFor } from "$lib/core/session";
+import { readTablePref, resolveColumns } from "$lib/core/table/columns";
+import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
+import { LEAVE_TEAM_COLUMNS, LEAVE_TEAM_TABLE_ID } from "$lib/modules/leave/columns";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -20,12 +23,18 @@ export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const year = parseYear(event.url.searchParams.get("year"));
 
+  // Only the year table is sortable; the pending approvals are a queue, not a list.
+  const { prefs } = await event.parent();
+  const pref = readTablePref(prefs, LEAVE_TEAM_TABLE_ID);
+  const resolved = resolveColumns(LEAVE_TEAM_COLUMNS, pref);
+  const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
+
   const [pending, yearRequests, members, entitlements, profiles] = await Promise.all([
     api.GET("/api/v1/leave/requests", {
       params: { query: { all_users: true, status: "pending", limit: 100, offset: 0 } },
     }),
     api.GET("/api/v1/leave/requests", {
-      params: { query: { all_users: true, year, limit: 200, offset: 0 } },
+      params: { query: { all_users: true, year, limit: 200, offset: 0, sort } },
     }),
     api.GET("/api/v1/members/lookup"),
     api.GET("/api/v1/leave/entitlements", { params: { query: { year } } }),
@@ -40,10 +49,18 @@ export const load: PageServerLoad = async (event) => {
     members: members.data ?? [],
     entitlements: entitlements.data ?? [],
     profiles: profiles.data ?? [],
+    table: { pref, sort: sort ?? null, widths: resolved.widths },
   };
 };
 
 export const actions: Actions = {
+  /** Persist this manager's column layout for the team table. Personal, in-view (docs/UX.md §6). */
+  saveTable: async (event) => {
+    const form = await event.request.formData();
+    await saveTablePref(event, LEAVE_TEAM_TABLE_ID, parseTablePref(form));
+    return { tableSaved: true };
+  },
+
   decide: async (event) => {
     const form = await event.request.formData();
     const id = String(form.get("id") ?? "");

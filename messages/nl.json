@@ -130,6 +130,7 @@
   "leave.requests.empty": "Nog geen verlofaanvragen.",
   "leave.requests.period": "Periode",
   "leave.requests.status": "Status",
+  "leave.requests.days": "Dagen",
   "leave.requests.edit": "Aanvraag bewerken",
   "leave.requests.cancel": "Aanvraag annuleren",
   "leave.requests.cancel_confirm": "Deze verlofaanvraag annuleren? De uren komen terug bij het saldo.",

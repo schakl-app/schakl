@@ -5042,6 +5042,8 @@ export interface operations {
                 all_users?: boolean;
                 year?: number | null;
                 status?: components["schemas"]["LeaveRequestStatus"] | null;
+                /** @description employee | start_date | end_date | hours | status, '-' desc */
+                sort?: string | null;
             };
             header?: never;
             path?: never;
