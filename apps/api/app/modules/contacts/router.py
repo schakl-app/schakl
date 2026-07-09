@@ -30,10 +30,13 @@ async def list_contacts(
     offset: int = Query(0, ge=0),
     company_id: uuid.UUID | None = Query(None),
     q: str | None = Query(None, max_length=200),
+    sort: str | None = Query(
+        None, description="first_name | last_name | email | job_title | company | …, '-' desc"
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> Page[ContactRead]:
     items, total = await ContactService(ctx).list(
-        limit=limit, offset=offset, company_id=company_id, q=q
+        limit=limit, offset=offset, company_id=company_id, q=q, sort=sort
     )
     return Page(
         items=[ContactRead.model_validate(c) for c in items],

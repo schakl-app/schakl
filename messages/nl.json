@@ -234,6 +234,7 @@
   "contacts.new": "Nieuwe contactpersoon",
   "contacts.first_name": "Voornaam",
   "contacts.last_name": "Achternaam",
+  "contacts.name": "Naam",
   "contacts.email": "E-mailadres",
   "contacts.phone": "Telefoon",
   "contacts.job_title": "Functie",

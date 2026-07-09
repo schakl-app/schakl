@@ -234,6 +234,7 @@
   "contacts.new": "New contact",
   "contacts.first_name": "First name",
   "contacts.last_name": "Last name",
+  "contacts.name": "Name",
   "contacts.email": "Email",
   "contacts.phone": "Phone",
   "contacts.job_title": "Job title",

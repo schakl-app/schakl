@@ -4317,6 +4317,8 @@ export interface operations {
                 offset?: number;
                 company_id?: string | null;
                 q?: string | null;
+                /** @description first_name | last_name | email | job_title | company | …, '-' desc */
+                sort?: string | null;
             };
             header?: never;
             path?: never;

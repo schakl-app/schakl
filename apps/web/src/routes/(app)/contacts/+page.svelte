@@ -2,13 +2,21 @@
   import { Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
+  import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { customFieldColumns } from "$lib/core/table/columns";
+  import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import DataTable from "$lib/core/ui/DataTable.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
+  import { CONTACT_COLUMNS } from "$lib/modules/contacts/columns";
 
   let { data, form } = $props();
+
+  type Contact = (typeof data.contacts)[number];
 
   let showCreate = $state(false);
   let deleteId = $state("");
@@ -18,7 +26,112 @@
   function fullName(c: { first_name: string; last_name?: string | null }) {
     return [c.first_name, c.last_name].filter(Boolean).join(" ");
   }
+
+  function confirmDeleteOf(contact: Contact) {
+    deleteId = contact.id;
+    deleteName = fullName(contact);
+    confirmDelete = true;
+  }
+
+  // Custom fields join the built-ins as selectable columns with no code here (#24).
+  const allColumns = $derived([
+    ...CONTACT_COLUMNS,
+    ...customFieldColumns(data.definitions, data.locale),
+  ]);
+
+  const table = createTableLayout<Contact>({
+    all: () => allColumns,
+    pref: () => data.table.pref,
+    sort: () => data.table.sort,
+    cells: () => ({
+      name: nameCell,
+      companies: companiesCell,
+      email: emailCell,
+      phone: phoneCell,
+      job_title: jobCell,
+      created_at: createdCell,
+    }),
+  });
 </script>
+
+{#snippet nameCell(contact: Contact)}
+  <a href="/contacts/{contact.id}" class="font-medium text-text hover:text-brand"
+    >{fullName(contact)}</a
+  >
+{/snippet}
+
+{#snippet companiesCell(contact: Contact)}
+  {#if contact.companies && contact.companies.length > 0}
+    <span class="flex flex-wrap gap-1">
+      {#each contact.companies as link (link.company_id)}
+        <!-- Colour is the marker: the client this person is the primary contact for is
+             brand-coloured, never starred (docs/UX.md). -->
+        <a
+          href="/companies/{link.company_id}"
+          class="rounded-full px-2 py-0.5 text-xs {link.is_primary
+            ? 'bg-brand/10 text-brand ring-1 ring-inset ring-brand/30'
+            : 'bg-surface text-text-muted'} hover:text-brand"
+        >
+          {link.name}
+          {#if link.is_primary}<span class="sr-only">({t("contacts.primary")})</span>{/if}
+        </a>
+      {/each}
+    </span>
+  {:else}<span class="text-text-muted">—</span>{/if}
+{/snippet}
+
+{#snippet emailCell(contact: Contact)}
+  {#if contact.email}
+    <a href="mailto:{contact.email}" class="text-text-muted hover:text-brand">{contact.email}</a>
+  {:else}<span class="text-text-muted">—</span>{/if}
+{/snippet}
+
+{#snippet phoneCell(contact: Contact)}
+  {#if contact.phone}
+    <a href="tel:{contact.phone}" class="text-text-muted hover:text-brand">{contact.phone}</a>
+  {:else}<span class="text-text-muted">—</span>{/if}
+{/snippet}
+
+{#snippet jobCell(contact: Contact)}
+  <span class="text-text-muted">{contact.job_title || "—"}</span>
+{/snippet}
+
+{#snippet createdCell(contact: Contact)}
+  <span class="text-text-muted">{fmtNumericDate(contact.created_at.slice(0, 10))}</span>
+{/snippet}
+
+{#snippet rowActions(contact: Contact)}
+  <ActionsMenu
+    items={[
+      {
+        label: t("common.delete"),
+        icon: Trash2,
+        danger: true,
+        onclick: () => confirmDeleteOf(contact),
+      },
+    ]}
+  />
+{/snippet}
+
+{#snippet mobileRow(contact: Contact)}
+  <!-- A phone gets the concept's row, not a sideways-scrolling grid (docs/UX.md). -->
+  <div class="flex items-center gap-3">
+    <a href="/contacts/{contact.id}" class="min-w-0 flex-1">
+      <span class="font-medium text-text">{fullName(contact)}</span>
+      {#if contact.email}
+        <span class="mt-0.5 block truncate text-sm text-text-muted">{contact.email}</span>
+      {/if}
+    </a>
+    {@render rowActions(contact)}
+  </div>
+{/snippet}
+
+{#snippet emptyState()}
+  <div class="rounded-xl border border-dashed border-border bg-surface-raised p-10 text-center">
+    <p class="font-medium text-text">{t("contacts.empty")}</p>
+    <p class="mt-1 text-sm text-text-muted">{t("contacts.empty_hint")}</p>
+  </div>
+{/snippet}
 
 <svelte:head>
   <title>{t("contacts.title")}</title>
@@ -29,7 +142,16 @@
     <h1 class="text-xl font-semibold text-text">{t("contacts.title")}</h1>
     <p class="mt-1 text-sm text-text-muted">{t("contacts.count", { count: data.total })}</p>
   </div>
-  <div class="ml-auto mr-3"><SearchInput /></div>
+  <div class="ml-auto mr-3 flex items-center gap-2">
+    <SearchInput />
+    <ColumnPicker
+      all={table.pickerColumns}
+      visible={table.visibleKeys}
+      sort={table.sort}
+      onchange={table.onColumnsChange}
+      onsort={table.onSort}
+    />
+  </div>
   <button
     class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
     onclick={() => (showCreate = !showCreate)}
@@ -128,41 +250,20 @@
   </form>
 {/if}
 
-{#if data.contacts.length === 0}
-  <div class="rounded-xl border border-dashed border-border bg-surface-raised p-10 text-center">
-    <p class="font-medium text-text">{t("contacts.empty")}</p>
-    <p class="mt-1 text-sm text-text-muted">{t("contacts.empty_hint")}</p>
-  </div>
-{:else}
-  <ul class="divide-y divide-border rounded-xl border border-border bg-surface-raised">
-    {#each data.contacts as contact (contact.id)}
-      <li
-        class="flex items-center justify-between gap-3 px-4 py-3 first:rounded-t-xl last:rounded-b-xl hover:bg-surface"
-      >
-        <a href="/contacts/{contact.id}" class="min-w-0 flex-1">
-          <span class="font-medium text-text">{fullName(contact)}</span>
-          {#if contact.email}
-            <span class="ml-2 truncate text-sm text-text-muted">{contact.email}</span>
-          {/if}
-        </a>
-        <ActionsMenu
-          items={[
-            {
-              label: t("common.delete"),
-              icon: Trash2,
-              danger: true,
-              onclick: () => {
-                deleteId = contact.id;
-                deleteName = fullName(contact);
-                confirmDelete = true;
-              },
-            },
-          ]}
-        />
-      </li>
-    {/each}
-  </ul>
-{/if}
+<DataTable
+  rows={data.contacts}
+  columns={table.columns}
+  sort={table.sort}
+  widths={table.widths}
+  definitions={data.definitions}
+  locale={data.locale}
+  rowHref={(contact) => `/contacts/${contact.id}`}
+  actions={rowActions}
+  {mobileRow}
+  empty={emptyState}
+  onsort={table.onSort}
+  onresize={table.onResize}
+/>
 
 <ConfirmDialog
   bind:open={confirmDelete}
