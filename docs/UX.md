@@ -103,6 +103,12 @@
   `/api/v1/prefs`), never in org Settings.
 - **Forms are SSR form actions** with `use:enhance`. Mind the default reset: forms whose
   inputs must keep their values after save use `update({ reset: false })`.
+- **An edit surface shows every field the view shows.** If a record's page displays it, its edit
+  modal edits it — a field the view has and the editor hides sends the user hunting for a second
+  surface. The client's edit modal therefore carries its contact persons alongside name, status and
+  assignees, even though the links are their own records: the picker collects them client-side and
+  the form action reconciles them against what the client already has. The contacts *panel* stays
+  as the quick-add accelerator, not as the only way in.
 - **One save button per editing surface — never per field.** An edit mode collects all its
   fields into a single form (use the HTML `form="…"` attribute / the `formId` prop on
   `Combobox`/`DateInput` when fields live in different layout columns) with one save at the

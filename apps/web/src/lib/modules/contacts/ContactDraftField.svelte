@@ -1,12 +1,14 @@
 <script lang="ts">
   /**
-   * Pick the contact persons for a client that does not exist yet (create form).
+   * Pick the contact persons for a client, inside the client's own form — create (no company row
+   * yet) or edit (seeded from `value`).
    *
-   * Same chips + type-ahead shape as {@link LinkField}, but there is no company id to POST links
-   * to, so nothing is submitted per chip: the whole selection — existing contacts *and* full
-   * new-contact drafts — is serialised into one hidden field, and the create action attaches
-   * them once the company row exists. Exactly one chip is the primary contact — marked by colour
-   * alone, no glyph (docs/UX.md) — defaulting to the first one picked; clicking another promotes it.
+   * Same chips + type-ahead shape as {@link LinkField}, but nothing is submitted per chip: the
+   * whole selection — existing contacts *and* full new-contact drafts — is serialised into one
+   * hidden field, and the form action reconciles the links against what the client already has.
+   * That is what lets the client's edit modal keep a single save button while still showing every
+   * editable field (docs/UX.md). Exactly one chip is the primary contact — marked by colour alone,
+   * no glyph — defaulting to the first one picked; clicking another promotes it.
    *
    * Typing an unknown name opens the *full* new-contact dialog (real fields plus the tenant's
    * contact custom fields), never a name-only stub (docs/UX.md).
@@ -49,16 +51,35 @@
     locale,
     name = "contacts",
     id = "company-contact-draft",
+    value = [],
   }: {
     contacts?: Contact[];
     definitions?: CustomFieldDefinition[];
     locale: string;
     name?: string;
     id?: string;
+    /** Contacts already linked to this client (edit mode); empty on create. */
+    value?: { contact_id: string; is_primary: boolean }[];
   } = $props();
 
-  let chips = $state<Chip[]>([]);
-  let primaryKey = $state("");
+  const fullName = (c: Contact) => [c.first_name, c.last_name].filter(Boolean).join(" ");
+
+  function seed(): Chip[] {
+    return value
+      .map(({ contact_id }) => contacts.find((c) => c.id === contact_id))
+      .filter((c): c is Contact => Boolean(c))
+      .map((c) => ({
+        key: c.id,
+        contact_id: c.id,
+        label: fullName(c),
+        hint: c.job_title ?? c.email ?? undefined,
+      }));
+  }
+
+  // Seeded once: the surface that holds this field is destroyed and rebuilt each time it opens,
+  // so there is no stale-state window to guard against.
+  let chips = $state<Chip[]>(seed());
+  let primaryKey = $state(value.find((v) => v.is_primary)?.contact_id ?? "");
   let comboValue = $state("");
 
   // The primary always exists: an explicit star, else the first pick (which is what the API's
@@ -67,7 +88,6 @@
     chips.some((c) => c.key === primaryKey) ? primaryKey : (chips[0]?.key ?? ""),
   );
 
-  const fullName = (c: Contact) => [c.first_name, c.last_name].filter(Boolean).join(" ");
   const chosenIds = $derived(new Set(chips.map((c) => c.contact_id).filter(Boolean)));
   const candidates = $derived(
     contacts

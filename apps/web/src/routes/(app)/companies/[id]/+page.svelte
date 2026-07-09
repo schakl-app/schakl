@@ -11,6 +11,7 @@
   import Modal from "$lib/core/ui/Modal.svelte";
   import CompanyForm from "$lib/modules/companies/CompanyForm.svelte";
   import { statusPillClass } from "$lib/modules/companies/status";
+  import ContactDraftField from "$lib/modules/contacts/ContactDraftField.svelte";
 
   let { data, form } = $props();
 
@@ -18,6 +19,16 @@
   const enabled = $derived(page.data.theme?.enabledModules ?? []);
   const company = $derived(data.company);
   const assignees = $derived(company.assignees ?? []);
+
+  // The contact persons currently on this client, primary first — derived from the org's contacts
+  // rather than fetched again, since each one carries the companies it is linked to.
+  const companyContacts = $derived(
+    data.contacts
+      .map((c) => ({ id: c.id, link: c.companies?.find((l) => l.company_id === company.id) }))
+      .filter((c) => c.link !== undefined)
+      .map((c) => ({ contact_id: c.id, is_primary: Boolean(c.link?.is_primary) }))
+      .sort((a, b) => Number(b.is_primary) - Number(a.is_primary)),
+  );
 
   let showEdit = $state(false);
   let confirmDelete = $state(false);
@@ -137,15 +148,24 @@
       }}
     class="space-y-3"
   >
-    <!-- Same component the create form uses: one definition of a client's fields. Contact
-         persons are not here — this client has an id, so they live in the contacts panel. -->
+    <!-- Same component the create form uses: one definition of a client's fields. Every editable
+         field is here, contact persons included — an edit surface that hides a field the view
+         shows sends you hunting for it (docs/UX.md). -->
     <CompanyForm
       {company}
       members={data.members}
       definitions={data.definitions}
       locale={data.locale}
       idPrefix="edit-company"
-    />
+    >
+      <ContactDraftField
+        contacts={data.contacts}
+        definitions={data.contactDefinitions}
+        locale={data.locale}
+        value={companyContacts}
+        id="edit-company-contacts"
+      />
+    </CompanyForm>
     {#if form?.error}<p class="text-sm text-red-600">{t(form.error)}</p>{/if}
     <div class="flex justify-end gap-2 pt-1">
       <button
