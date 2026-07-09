@@ -52,6 +52,7 @@ export const actions: Actions = {
       body: {
         name,
         website: String(form.get("website") ?? "").trim() || null,
+        invoice_email: String(form.get("invoice_email") ?? "").trim() || null,
         notes: String(form.get("notes") ?? "").trim() || null,
         status: String(form.get("status") ?? "active") as "active",
         responsible_user_id: String(form.get("responsible_user_id") ?? "") || null,

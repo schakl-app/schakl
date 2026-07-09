@@ -1714,6 +1714,8 @@ export interface components {
             custom?: {
                 [key: string]: unknown;
             };
+            /** Invoice Email */
+            invoice_email?: string | null;
             /** Name */
             name: string;
             /** Notes */
@@ -1741,6 +1743,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Invoice Email */
+            invoice_email?: string | null;
             /** Name */
             name: string;
             /** Notes */
@@ -1774,6 +1778,8 @@ export interface components {
             custom?: {
                 [key: string]: unknown;
             } | null;
+            /** Invoice Email */
+            invoice_email?: string | null;
             /** Name */
             name?: string | null;
             /** Notes */

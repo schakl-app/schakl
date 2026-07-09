@@ -46,6 +46,9 @@ class Company(
 
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     website: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # Invoices routinely go to a different mailbox than the day-to-day contact person;
+    # read by subscriptions/invoicing (#30), SnelStart export (#31), and PDF reports.
+    invoice_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default=CompanyStatus.ACTIVE.value, index=True

@@ -24,6 +24,7 @@
   interface CompanyValues {
     name?: string;
     website?: string | null;
+    invoice_email?: string | null;
     notes?: string | null;
     status?: string | null;
     responsible_user_id?: string | null;
@@ -79,6 +80,19 @@
         name="website"
         value={company.website ?? ""}
         placeholder="https://…"
+        class={inputClass}
+      />
+    </div>
+    <div>
+      <label for="{idPrefix}-invoice-email" class="mb-1 block text-sm font-medium text-neutral-700">
+        {t("companies.invoice_email")}
+      </label>
+      <input
+        id="{idPrefix}-invoice-email"
+        name="invoice_email"
+        type="email"
+        value={company.invoice_email ?? ""}
+        placeholder="facturen@…"
         class={inputClass}
       />
     </div>
