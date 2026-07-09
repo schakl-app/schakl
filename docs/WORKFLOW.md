@@ -69,9 +69,12 @@ Comment on the issue you worked, and be specific:
 
 - The **real** commit SHA (see the rewrite warning above) and the exact files it contains.
 - The acceptance criteria, ticked or not, each with the evidence.
-- **What you did not verify.** There is no web test harness in this repo — no vitest, no
-  Playwright, no browser. `svelte-check`, lint, a compile, and pure-logic assertions are the
-  ceiling for a UI change. Say that plainly instead of implying a click-through happened.
+- **What you did not verify.** There is no repo-committed web test harness — no vitest, no
+  Playwright test suite. If you have a Playwright MCP server configured (personal, local
+  setup — not every agent has one), use it to actually click through the change before
+  claiming it works. If you don't, `svelte-check`, lint, a compile, and pure-logic assertions
+  are the ceiling for a UI change. Say plainly which one happened — a real click-through, or
+  static checks only — instead of implying a browser touched it when it didn't.
 - Anything the next agent needs: a conflict you expect, a file another agent had open.
 
 ## Classifying an issue
@@ -163,9 +166,10 @@ A facet crosses types: a `Bug` can be `security`, a `Feature` can be `i18n`. Tha
 test for whether something belongs here rather than in the type.
 
 `needs testing` means: implemented and pushed, but the behaviour was never exercised in a
-browser. **Apply it to any UI change you land** — given the missing harness, that is nearly
-all of them — and in the same comment list the clicks that would clear it. Remove it once
-someone confirms.
+browser. **Apply it to any UI change you land that you did not personally click through** —
+if you have a Playwright MCP server configured, drive the real flow yourself and skip the
+label; without one, that covers nearly all UI changes. When you do apply it, list in the same
+comment the clicks that would clear it. Remove it once someone confirms.
 
 Prefer an existing label. Create one only when no existing label fits, keep it lowercase,
 give it a description, and reuse the group's colour (`#0052cc` for areas).
