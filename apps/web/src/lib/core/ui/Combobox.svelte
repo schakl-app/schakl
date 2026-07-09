@@ -124,7 +124,7 @@
       aria-expanded={open}
       aria-controls="{id}-listbox"
       {placeholder}
-      class="w-full rounded-lg border border-neutral-300 px-3 py-2 pr-8 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+      class="w-full rounded-lg border border-border px-3 py-2 pr-8 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand"
       onfocus={() => {
         open = true;
         query = "";
@@ -137,7 +137,7 @@
       <button
         type="button"
         tabindex="-1"
-        class="absolute inset-y-0 right-2 text-neutral-400 hover:text-neutral-700"
+        class="absolute inset-y-0 right-2 text-text-muted hover:text-text"
         aria-label={t("common.clear")}
         onmousedown={(e) => {
           e.preventDefault();
@@ -146,8 +146,7 @@
         }}>×</button
       >
     {:else}
-      <span
-        class="pointer-events-none absolute inset-y-0 right-2 flex items-center text-neutral-400"
+      <span class="pointer-events-none absolute inset-y-0 right-2 flex items-center text-text-muted"
         >▾</span
       >
     {/if}
@@ -157,13 +156,13 @@
     <ul
       id="{id}-listbox"
       role="listbox"
-      class="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-neutral-200 bg-white py-1 shadow-lg"
+      class="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-border bg-surface-raised py-1 shadow-lg"
     >
       {#if allowEmpty}
         <li>
           <button
             type="button"
-            class="w-full px-3 py-1.5 text-left text-sm text-neutral-400 hover:bg-neutral-50"
+            class="w-full px-3 py-1.5 text-left text-sm text-text-muted hover:bg-surface"
             onmousedown={(e) => {
               e.preventDefault();
               choose(null);
@@ -177,28 +176,28 @@
             type="button"
             role="option"
             aria-selected={item.value === value}
-            class="w-full px-3 py-1.5 text-left text-sm hover:bg-neutral-50
-              {i === highlighted ? 'bg-neutral-50' : ''}
-              {item.value === value ? 'font-medium text-brand' : 'text-neutral-800'}"
+            class="w-full px-3 py-1.5 text-left text-sm hover:bg-surface
+              {i === highlighted ? 'bg-surface' : ''}
+              {item.value === value ? 'font-medium text-brand' : 'text-text'}"
             onmousedown={(e) => {
               e.preventDefault();
               choose(item);
             }}
           >
             {item.label}
-            {#if item.hint}<span class="ml-1 text-xs text-neutral-400">{item.hint}</span>{/if}
+            {#if item.hint}<span class="ml-1 text-xs text-text-muted">{item.hint}</span>{/if}
           </button>
         </li>
       {:else}
         {#if !canCreate}
-          <li class="px-3 py-1.5 text-sm text-neutral-400">{t("common.no_results")}</li>
+          <li class="px-3 py-1.5 text-sm text-text-muted">{t("common.no_results")}</li>
         {/if}
       {/each}
       {#if canCreate}
-        <li class={filtered.length > 0 ? "border-t border-neutral-100" : ""}>
+        <li class={filtered.length > 0 ? "border-t border-border" : ""}>
           <button
             type="button"
-            class="w-full px-3 py-1.5 text-left text-sm font-medium text-brand hover:bg-neutral-50"
+            class="w-full px-3 py-1.5 text-left text-sm font-medium text-brand hover:bg-surface"
             onmousedown={(e) => {
               e.preventDefault();
               startCreate();

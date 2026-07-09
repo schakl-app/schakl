@@ -168,6 +168,7 @@
   "companies.new": "New client",
   "companies.name": "Name",
   "companies.website": "Website",
+  "companies.invoice_email": "Invoice email address",
   "companies.notes": "Notes",
   "companies.empty": "No clients yet",
   "companies.empty_hint": "Create your first client to get started.",

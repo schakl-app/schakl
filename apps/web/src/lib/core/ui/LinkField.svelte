@@ -79,7 +79,7 @@
           class="inline-flex items-center gap-1.5 rounded-full py-1 pl-2.5 pr-1.5 text-sm
             {chip.is_primary
             ? 'bg-brand/10 text-brand ring-1 ring-inset ring-brand/30'
-            : 'bg-neutral-100 text-neutral-700'}"
+            : 'bg-surface text-text'}"
         >
           {#if chip.is_primary}
             <span title={labels.primary}></span>
@@ -88,7 +88,7 @@
               <input type="hidden" name={idField} value={chip.id} />
               <button
                 type="submit"
-                class="text-neutral-400 hover:text-brand"
+                class="text-text-muted hover:text-brand"
                 title={labels.makePrimary}
                 aria-label={labels.makePrimary}><Star size={13} /></button
               >
@@ -106,7 +106,7 @@
             <input type="hidden" name={idField} value={chip.id} />
             <button
               type="submit"
-              class="rounded-full p-0.5 opacity-60 hover:bg-black/5 hover:opacity-100"
+              class="rounded-full p-0.5 opacity-60 hover:bg-black/5 hover:opacity-100 dark:hover:bg-white/10"
               title={labels.remove}
               aria-label={labels.remove}><X size={14} /></button
             >

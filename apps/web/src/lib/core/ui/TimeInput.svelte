@@ -163,7 +163,7 @@
     bind:value={text}
     {required}
     placeholder="hh:mm"
-    class="w-full rounded-lg border border-neutral-300 px-3 py-2 pr-9 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+    class="w-full rounded-lg border border-border px-3 py-2 pr-9 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand"
     onfocus={() => {
       open = true;
       // A blank field (new entry) scrolls to now instead of 00:00; a filled one narrows
@@ -181,7 +181,7 @@
       setTimeout(() => (open = false), 120);
     }}
   />
-  <span class="pointer-events-none absolute inset-y-0 right-2 flex items-center text-neutral-400">
+  <span class="pointer-events-none absolute inset-y-0 right-2 flex items-center text-text-muted">
     <Clock size={16} />
   </span>
 
@@ -190,7 +190,7 @@
       bind:this={listEl}
       id="{id}-listbox"
       role="listbox"
-      class="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-neutral-200 bg-white py-1 shadow-lg"
+      class="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-border bg-surface-raised py-1 shadow-lg"
     >
       {#each filtered as step (step)}
         <li>
@@ -198,9 +198,9 @@
             type="button"
             role="option"
             aria-selected={step === value}
-            class="w-full px-3 py-2 text-left text-sm tabular-nums hover:bg-neutral-50
-              {step === filtered[highlighted] ? 'bg-neutral-50' : ''}
-              {step === value ? 'font-medium text-brand' : 'text-neutral-800'}"
+            class="w-full px-3 py-2 text-left text-sm tabular-nums hover:bg-surface
+              {step === filtered[highlighted] ? 'bg-surface' : ''}
+              {step === value ? 'font-medium text-brand' : 'text-text'}"
             onmousedown={(e) => {
               e.preventDefault();
               choose(step);

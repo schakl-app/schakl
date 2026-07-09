@@ -175,9 +175,7 @@
     const outside = monthOf(day) !== viewMonth;
     if (day === value) return "bg-brand font-medium text-white";
     if (day === todayIso) return "font-semibold text-brand ring-1 ring-brand ring-inset";
-    return outside
-      ? "text-neutral-300 hover:bg-neutral-100"
-      : "text-neutral-700 hover:bg-neutral-100";
+    return outside ? "text-text-muted hover:bg-surface" : "text-text hover:bg-surface";
   };
 </script>
 
@@ -196,12 +194,12 @@
       if (e.key === "Enter") onTextChange();
       if (e.key === "Escape" && open) closePopover();
     }}
-    class="w-full rounded-lg border border-neutral-300 px-3 py-2 pr-9 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+    class="w-full rounded-lg border border-border px-3 py-2 pr-9 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand"
   />
   <button
     type="button"
     tabindex="-1"
-    class="absolute inset-y-0 right-2 flex items-center text-neutral-400 hover:text-brand"
+    class="absolute inset-y-0 right-2 flex items-center text-text-muted hover:text-brand"
     onclick={() => (open ? closePopover() : openPopover())}
     aria-label={t("calendar.title")}
     aria-expanded={open}
@@ -213,23 +211,21 @@
     <!-- Anchored to the field (docs/UX.md). `right-0 sm:right-auto` keeps it on screen when
          the field sits near the right edge on a phone. -->
     <div
-      class="absolute right-0 top-full z-50 mt-1 w-72 rounded-xl border border-neutral-200 bg-white p-3 shadow-lg sm:right-auto sm:left-0"
+      class="absolute right-0 top-full z-50 mt-1 w-72 rounded-xl border border-border bg-surface-raised p-3 shadow-lg sm:right-auto sm:left-0"
     >
       <div class="mb-2 flex items-center justify-between">
         <button
           type="button"
-          class="rounded p-1 text-neutral-500 hover:bg-neutral-100 hover:text-brand"
+          class="rounded p-1 text-text-muted hover:bg-surface hover:text-brand"
           onclick={() => (viewMonth = addMonths(viewMonth, -1))}
           aria-label={t("calendar.previous")}
         >
           ‹
         </button>
-        <span class="text-sm font-medium capitalize text-neutral-900"
-          >{fmtMonthYear(viewMonth)}</span
-        >
+        <span class="text-sm font-medium capitalize text-text">{fmtMonthYear(viewMonth)}</span>
         <button
           type="button"
-          class="rounded p-1 text-neutral-500 hover:bg-neutral-100 hover:text-brand"
+          class="rounded p-1 text-text-muted hover:bg-surface hover:text-brand"
           onclick={() => (viewMonth = addMonths(viewMonth, 1))}
           aria-label={t("calendar.next")}
         >
@@ -239,7 +235,7 @@
 
       <div class="grid grid-cols-7 gap-0.5 text-center">
         {#each weekdays as weekday (weekday)}
-          <span class="py-1 text-[11px] font-medium uppercase text-neutral-400">{weekday}</span>
+          <span class="py-1 text-[11px] font-medium uppercase text-text-muted">{weekday}</span>
         {/each}
       </div>
 
@@ -260,10 +256,10 @@
         {/each}
       </div>
 
-      <div class="mt-2 flex items-center justify-between border-t border-neutral-100 pt-2">
+      <div class="mt-2 flex items-center justify-between border-t border-border pt-2">
         <button
           type="button"
-          class="text-xs text-neutral-500 hover:text-brand"
+          class="text-xs text-text-muted hover:text-brand"
           onclick={() => {
             commit("");
             closePopover();

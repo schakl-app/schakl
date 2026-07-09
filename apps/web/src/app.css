@@ -1,6 +1,15 @@
 @import "tailwindcss";
 
 /*
+ * Personal dark mode (issue #14): `dark:` utilities key off `data-theme="dark"` on <html>
+ * (stamped server-side from a cookie, or by the no-flash inline script in app.html for
+ * "system" — see hooks.server.ts), not the default `prefers-color-scheme` media query. That
+ * default can't be overridden by an explicit choice — a user who picks "light" on a dark OS
+ * would otherwise still get dark styling.
+ */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/*
  * Per-tenant theme is applied at runtime via CSS custom properties set on <html>
  * from org_settings (see lib/core/theme.ts). Tailwind utilities read them so no
  * brand colour is hardcoded (Golden Rule 4).
@@ -8,11 +17,35 @@
 :root {
   --brand-primary: #4f46e5;
   --brand-accent: #0ea5e9;
+
+  /* Semantic surface tokens: swap for these instead of raw `neutral-*`/`white` utilities so
+   * dark mode is a value change here, not a find-and-replace across every component.
+   * --surface is the page background; --surface-raised is a panel/card sitting above it. */
+  --surface: #fafafa;
+  --surface-raised: #ffffff;
+  --text: #171717;
+  --text-muted: #737373;
+  --border: #e5e5e5;
+}
+
+/* Dark value must match `DARK_SURFACE` in lib/core/theme.ts, which contrast-corrects the
+ * tenant brand colour against this same background — keep the two in sync by hand. */
+:root[data-theme="dark"] {
+  --surface: #171717;
+  --surface-raised: #262626;
+  --text: #fafafa;
+  --text-muted: #a3a3a3;
+  --border: #404040;
 }
 
 @theme inline {
   --color-brand: var(--brand-primary);
   --color-accent: var(--brand-accent);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-border: var(--border);
 }
 
 /* Native form controls (date/time picker popups, checkboxes, radios, range) follow the
@@ -27,5 +60,5 @@ body {
 }
 
 body {
-  @apply bg-neutral-50 text-neutral-900 antialiased;
+  @apply bg-surface text-text antialiased;
 }

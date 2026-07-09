@@ -94,7 +94,7 @@
   </div>
 
   {#if task.priority === "high" && !done}
-    <span class="shrink-0 text-[11px] font-semibold uppercase text-red-500"
+    <span class="shrink-0 text-[11px] font-semibold uppercase text-red-500 dark:text-red-400"
       >{t("tasks.priority.high")}</span
     >
   {/if}
@@ -119,7 +119,7 @@
   {#if task.due_date}
     <span
       class="shrink-0 text-xs tabular-nums {overdue
-        ? 'font-semibold text-red-600'
+        ? 'font-semibold text-red-600 dark:text-red-400'
         : 'text-neutral-500'}"
     >
       {fmtDayMonth(task.due_date)}

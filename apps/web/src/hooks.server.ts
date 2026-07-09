@@ -20,6 +20,7 @@ import { asLocale, LOCALE_COOKIE, LOCALE_COOKIE_OPTIONS, parseLocaleCookie } fro
 import { withRequestLocale } from "$lib/core/locale-context.server";
 import { fetchTenant, fetchUser } from "$lib/core/session";
 import { themeStyle } from "$lib/core/theme";
+import { parseThemeCookie } from "$lib/core/theme-mode";
 import { paraglideMiddleware } from "$lib/paraglide/server";
 
 // The <html lang> steers how Chromium formats native date pickers, so map each UI locale to its
@@ -46,12 +47,23 @@ const handleContext: Handle = async ({ event, resolve }) => {
     event.cookies.set(LOCALE_COOKIE, userLocale, LOCALE_COOKIE_OPTIONS);
   }
 
+  // Explicit "light"/"dark" are stamped as-is; "system" (no cookie yet, or the cookie says
+  // "system") is left for the inline no-flash script in app.html to resolve client-side against
+  // the OS preference — there is no reliable way to know that server-side, and (unlike locale)
+  // this isn't worth an extra `/api/v1/prefs` fetch on every request just to try (see
+  // docs/PERFORMANCE.md). The Settings → Account page reconciles the cookie when visited.
+  const themeCookie = parseThemeCookie(event.request.headers.get("cookie"));
+  const colorScheme = themeCookie ?? "system";
+
   // Stamped server-side so the brand colours are on <html> at first paint (no flash of the
-  // fallback), and so inherited properties like `accent-color` compute against them.
-  const style = themeStyle(theme);
+  // fallback), and so inherited properties like `accent-color` compute against them. For
+  // "system" this assumes light (unknowable server-side); the client re-stamps once the real
+  // scheme resolves, same as the live re-stamp on a Huisstijl colour save.
+  const style = themeStyle(theme, colorScheme === "dark" ? "dark" : "light");
   return withRequestLocale(locale, () =>
     resolve(event, {
-      transformPageChunk: ({ html }) => html.replace("%theme%", () => style),
+      transformPageChunk: ({ html }) =>
+        html.replace("%theme%", () => style).replace("%colorScheme%", () => colorScheme),
     }),
   );
 };

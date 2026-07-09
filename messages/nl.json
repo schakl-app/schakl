@@ -168,6 +168,7 @@
   "companies.new": "Nieuwe klant",
   "companies.name": "Naam",
   "companies.website": "Website",
+  "companies.invoice_email": "Factuur-emailadres",
   "companies.notes": "Notities",
   "companies.empty": "Nog geen klanten",
   "companies.empty_hint": "Maak je eerste klant aan om te beginnen.",

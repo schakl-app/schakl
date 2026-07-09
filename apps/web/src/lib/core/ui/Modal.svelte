@@ -31,13 +31,13 @@
       role="dialog"
       aria-modal="true"
       aria-label={title}
-      class="relative z-50 mt-8 w-full max-w-lg rounded-xl border border-neutral-200 bg-white p-5 shadow-xl"
+      class="relative z-50 mt-8 w-full max-w-lg rounded-xl border border-border bg-surface-raised p-5 shadow-xl"
     >
       <div class="mb-4 flex items-center justify-between">
-        <h2 class="text-base font-semibold text-neutral-900">{title}</h2>
+        <h2 class="text-base font-semibold text-text">{title}</h2>
         <button
           type="button"
-          class="text-neutral-400 hover:text-neutral-700"
+          class="text-text-muted hover:text-text"
           aria-label="Close"
           onclick={() => (open = false)}>✕</button
         >

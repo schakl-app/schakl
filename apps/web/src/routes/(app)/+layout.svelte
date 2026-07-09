@@ -93,8 +93,8 @@
   }
 
   const itemClass = (active: boolean) =>
-    `flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-100 ${
-      active ? "bg-neutral-100 font-medium" : ""
+    `flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-text hover:bg-surface ${
+      active ? "bg-surface font-medium" : ""
     }`;
 </script>
 
@@ -118,15 +118,15 @@
   <aside
     class="{mobileNavOpen
       ? 'fixed inset-y-0 left-0 z-50 block w-64 overflow-y-auto shadow-xl'
-      : 'hidden'} shrink-0 border-r border-neutral-200 bg-white transition-[width] duration-150 sm:static sm:block
+      : 'hidden'} shrink-0 border-r border-border bg-surface-raised transition-[width] duration-150 sm:static sm:block
       {collapsed && !mobileNavOpen ? 'sm:w-16' : 'sm:w-60'}"
   >
-    <div class="flex h-14 items-center gap-2 border-b border-neutral-200 px-4">
+    <div class="flex h-14 items-center gap-2 border-b border-border px-4">
       {#if theme?.logoUrl}
         <img src={theme.logoUrl} alt={theme.brandName} class="h-7 w-auto" />
       {/if}
       {#if !collapsed && theme?.showBrandName !== false}
-        <span class="truncate font-semibold text-neutral-900">{theme?.brandName}</span>
+        <span class="truncate font-semibold text-text">{theme?.brandName}</span>
       {/if}
     </div>
     <nav class="space-y-1 p-2">
@@ -135,7 +135,7 @@
         class={itemClass(path === "/")}
         title={collapsed ? t("nav.dashboard") : undefined}
       >
-        <LayoutDashboard size={18} class="shrink-0 text-neutral-500" />
+        <LayoutDashboard size={18} class="shrink-0 text-text-muted" />
         {#if !collapsed}<span class="truncate">{t("nav.dashboard")}</span>{/if}
       </a>
       <a
@@ -143,7 +143,7 @@
         class={itemClass(path.startsWith("/calendar"))}
         title={collapsed ? t("nav.calendar") : undefined}
       >
-        <CalendarDays size={18} class="shrink-0 text-neutral-500" />
+        <CalendarDays size={18} class="shrink-0 text-text-muted" />
         {#if !collapsed}<span class="truncate">{t("nav.calendar")}</span>{/if}
       </a>
       {#each navEntries as entry (entry.kind === "group" ? `g:${entry.key}` : entry.item.key)}
@@ -155,7 +155,7 @@
             title={collapsed ? entry.item.label() : undefined}
           >
             {#if Icon}
-              <Icon size={18} class="shrink-0 text-neutral-500" />
+              <Icon size={18} class="shrink-0 text-text-muted" />
             {:else}
               <span class="h-[18px] w-[18px] shrink-0"></span>
             {/if}
@@ -166,23 +166,23 @@
           {#each entry.items as item (item.key)}
             {@const Icon = item.icon}
             <a href={item.href} class={itemClass(path.startsWith(item.href))} title={item.label()}>
-              {#if Icon}<Icon size={18} class="shrink-0 text-neutral-500" />{/if}
+              {#if Icon}<Icon size={18} class="shrink-0 text-text-muted" />{/if}
             </a>
           {/each}
         {:else}
           {@const open = isGroupOpen(entry)}
           <button
             type="button"
-            class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-100"
+            class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-text hover:bg-surface"
             onclick={() => toggleGroup(entry.key)}
             aria-expanded={open}
           >
-            <Handshake size={18} class="shrink-0 text-neutral-500" />
+            <Handshake size={18} class="shrink-0 text-text-muted" />
             <span class="flex-1 truncate text-left">{t(`nav.group.${entry.key}`)}</span>
             {#if open}
-              <ChevronDown size={14} class="shrink-0 text-neutral-400" />
+              <ChevronDown size={14} class="shrink-0 text-text-muted" />
             {:else}
-              <ChevronRight size={14} class="shrink-0 text-neutral-400" />
+              <ChevronRight size={14} class="shrink-0 text-text-muted" />
             {/if}
           </button>
           {#if open}
@@ -191,12 +191,10 @@
                 {@const Icon = item.icon}
                 <a
                   href={item.href}
-                  class="flex items-center gap-2.5 rounded-lg py-1.5 pl-9 pr-3 text-sm text-neutral-600 hover:bg-neutral-100
-                    {path.startsWith(item.href)
-                    ? 'bg-neutral-100 font-medium text-neutral-900'
-                    : ''}"
+                  class="flex items-center gap-2.5 rounded-lg py-1.5 pl-9 pr-3 text-sm text-text-muted hover:bg-surface
+                    {path.startsWith(item.href) ? 'bg-surface font-medium text-text' : ''}"
                 >
-                  {#if Icon}<Icon size={15} class="shrink-0 text-neutral-400" />{/if}
+                  {#if Icon}<Icon size={15} class="shrink-0 text-text-muted" />{/if}
                   <span class="truncate">{item.label()}</span>
                 </a>
               {/each}
@@ -210,7 +208,7 @@
           class={itemClass(path.startsWith("/overview"))}
           title={collapsed ? t("nav.overview") : undefined}
         >
-          <BarChart3 size={18} class="shrink-0 text-neutral-500" />
+          <BarChart3 size={18} class="shrink-0 text-text-muted" />
           {#if !collapsed}<span class="truncate">{t("nav.overview")}</span>{/if}
         </a>
         <a
@@ -218,7 +216,7 @@
           class={itemClass(path.startsWith("/settings") && !path.startsWith("/settings/account"))}
           title={collapsed ? t("nav.settings") : undefined}
         >
-          <Settings size={18} class="shrink-0 text-neutral-500" />
+          <Settings size={18} class="shrink-0 text-text-muted" />
           {#if !collapsed}<span class="truncate">{t("nav.settings")}</span>{/if}
         </a>
       {/if}
@@ -226,7 +224,7 @@
     <div class="p-2">
       <button
         type="button"
-        class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+        class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-text-muted hover:bg-surface hover:text-text"
         onclick={toggleSidebar}
         aria-label={collapsed ? t("nav.expand") : t("nav.collapse")}
         title={collapsed ? t("nav.expand") : t("nav.collapse")}
@@ -243,11 +241,11 @@
 
   <div class="flex flex-1 flex-col">
     <header
-      class="flex h-14 items-center justify-between gap-4 border-b border-neutral-200 bg-white px-4 text-sm sm:justify-end sm:px-6"
+      class="flex h-14 items-center justify-between gap-4 border-b border-border bg-surface-raised px-4 text-sm sm:justify-end sm:px-6"
     >
       <button
         type="button"
-        class="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100 sm:hidden"
+        class="rounded-lg p-2 text-text-muted hover:bg-surface sm:hidden"
         onclick={() => (mobileNavOpen = true)}
         aria-label={t("nav.expand")}
       >
@@ -256,7 +254,7 @@
       <div class="relative" data-profile-menu>
         <button
           type="button"
-          class="flex items-center gap-2 rounded-full py-1 pl-1 pr-3 hover:bg-neutral-100"
+          class="flex items-center gap-2 rounded-full py-1 pl-1 pr-3 hover:bg-surface"
           onclick={() => (profileOpen = !profileOpen)}
           aria-haspopup="menu"
           aria-expanded={profileOpen}
@@ -266,7 +264,7 @@
           >
             {initials(user?.full_name, user?.email)}
           </span>
-          <span class="hidden font-medium text-neutral-800 md:inline">
+          <span class="hidden font-medium text-text md:inline">
             {user?.full_name || user?.email}
           </span>
         </button>
@@ -274,29 +272,29 @@
         {#if profileOpen}
           <div
             role="menu"
-            class="absolute right-0 z-30 mt-1 w-64 rounded-xl border border-neutral-200 bg-white py-1 shadow-lg"
+            class="absolute right-0 z-30 mt-1 w-64 rounded-xl border border-border bg-surface-raised py-1 shadow-lg"
           >
-            <div class="border-b border-neutral-100 px-4 py-3">
-              <p class="truncate text-sm font-semibold text-neutral-900">
+            <div class="border-b border-border px-4 py-3">
+              <p class="truncate text-sm font-semibold text-text">
                 {user?.full_name || user?.email}
               </p>
               {#if user?.full_name}
-                <p class="truncate text-xs text-neutral-500">{user?.email}</p>
+                <p class="truncate text-xs text-text-muted">{user?.email}</p>
               {/if}
             </div>
             <a
               href="/settings/account"
-              class="flex items-center gap-2 px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
+              class="flex items-center gap-2 px-4 py-2 text-sm text-text hover:bg-surface"
               onclick={() => (profileOpen = false)}
             >
-              <UserRound size={16} class="text-neutral-400" />
+              <UserRound size={16} class="text-text-muted" />
               {t("header.my_settings")}
             </a>
-            <form method="POST" action="/logout" class="border-t border-neutral-100">
+            <form method="POST" action="/logout" class="border-t border-border">
               <button
-                class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-50"
+                class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-text hover:bg-surface"
               >
-                <LogOut size={16} class="text-neutral-400" />
+                <LogOut size={16} class="text-text-muted" />
                 {t("auth.sign_out")}
               </button>
             </form>

@@ -1,10 +1,26 @@
 <!doctype html>
 <!-- `lang` is the European BCP-47 *formatting* tag (en-GB, not en); `data-locale` is the app's
-     locale code. They are not interchangeable — see hooks.server.ts. -->
-<html lang="%lang%" data-locale="%locale%" style="%theme%">
+     locale code. They are not interchangeable — see hooks.server.ts. `data-theme` is the
+     personal dark-mode preference: "light"/"dark" is stamped server-side from a cookie, and
+     "system" (no stored preference) is resolved by the inline script below. -->
+<html lang="%lang%" data-locale="%locale%" style="%theme%" data-theme="%colorScheme%">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- Runs synchronously before first paint, so a "system" preference resolves to the OS
+         colour scheme with no flash of the wrong theme and no network round-trip (issue #14).
+         Explicit "light"/"dark" are already concrete by the time this runs — left alone. -->
+    <script>
+      (function () {
+        var t = document.documentElement.getAttribute("data-theme");
+        if (t !== "light" && t !== "dark") {
+          document.documentElement.setAttribute(
+            "data-theme",
+            window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
+          );
+        }
+      })();
+    </script>
     <!-- Per-tenant PWA manifest is resolved at runtime (Golden Rule 4); the favicon link is
          rendered by the root layout so the tenant's icon is the only one on the page. -->
     <link rel="manifest" href="/manifest.webmanifest" />
