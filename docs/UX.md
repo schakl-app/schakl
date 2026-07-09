@@ -31,6 +31,17 @@
    defaults, labels) belong in Settings — never as buttons inside a working screen. Personal
    preferences (language, own dashboard layout) belong to the user (profile menu → personal
    settings, or inline "customize" affordances that only touch their own view).
+7. **Every number opens.** A figure the user cannot take apart is a figure they will not trust,
+   and "12,5 / 40 u" invites exactly one question: *which hours?* So an aggregate is never a
+   dead end. **Answer it in place** — the records behind a total belong on the page where the
+   total is shown (the Uren panel under a project's budget bar), scoped to exactly what the
+   number counted, with the same ⋯ edit/delete the records get anywhere else. Then link out to
+   the full report for slicing, pre-filtered, never as the only way in: a reporting screen is
+   manager-only, and the person who wants to know where the budget went often isn't one.
+   The same rule governs a client's `unbudgeted_hours`, a task's checklist count, a
+   timesheet total. If a panel truncates, it says so — silent truncation reads as "that's all
+   of them" (docs/PERFORMANCE.md). **A convenience like this is not a nice-to-have bolted onto
+   one screen; it is what the screen was for.**
 
 ## Interaction patterns
 
@@ -101,8 +112,12 @@
   user's own view (UX Principle 6) — e.g. the timesheet's 7-day vs Mon–Fri **Weergave** switch
   and its jump-to-date picker sit quietly in the toolbar and persist per user (via
   `/api/v1/prefs`), never in org Settings.
-- **Lists are one shared `DataTable`, driven by column descriptors** (`core/table/columns.ts`) —
-  never a hand-rolled `<ul>` per concept. The user picks, orders, resizes and sorts the columns
+- **Every list is the shared `DataTable`, driven by column descriptors** (`core/table/columns.ts`)
+  — never a hand-rolled `<ul>` per concept. This is not a per-page choice: clients, projects,
+  contacts, tasks, verlof and the Overzicht reports all get configurable, sortable columns, and a
+  new list starts from the table rather than earning its way to it. Where a list needs something
+  the table lacks, **grow the table** — the reporting screen's bulk selection and totals row, the
+  task board's status sections — rather than forking a seventh bespoke grid. The user picks, orders, resizes and sorts the columns
   from the **Kolommen** popover on the list itself (personal, per user, `prefs.tables.<list>`),
   and a tenant's custom fields appear there as columns with no per-module code. Three rules the
   component enforces so lists can't drift apart:
