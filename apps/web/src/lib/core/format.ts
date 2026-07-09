@@ -54,6 +54,11 @@ export function fmtLongDay(isoDate: string): string {
   );
 }
 
+/** "juli 2026" — calendar popover heading. Takes a "yyyy-mm" month. */
+export function fmtMonthYear(month: string): string {
+  return fmt({ month: "long", year: "numeric", timeZone: "UTC" }).format(dateOnly(`${month}-01`));
+}
+
 /** "07-07-2026" — full numeric date, European order. Date-only ISO string. */
 export function fmtNumericDate(isoDate: string): string {
   return fmt({ day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" }).format(
