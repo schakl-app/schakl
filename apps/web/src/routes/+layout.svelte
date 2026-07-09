@@ -4,7 +4,11 @@
 
   let { data, children } = $props();
 
-  const style = $derived(themeStyle(data.theme));
+  // hooks.server.ts stamps the brand variables onto <html> for first paint; re-apply them here
+  // so saving Huisstijl recolours the running page without a reload.
+  $effect(() => {
+    document.documentElement.setAttribute("style", themeStyle(data.theme));
+  });
 </script>
 
 <svelte:head>
@@ -12,6 +16,8 @@
   <link rel="icon" href={data.theme.faviconUrl || "/favicon.svg"} />
 </svelte:head>
 
-<div {style} class="min-h-screen">
+<!-- Brand custom properties live on <html>, not on this wrapper: `accent-color` is inherited
+     from :root, so native controls never see an override made further down the tree. -->
+<div class="min-h-screen">
   {@render children()}
 </div>

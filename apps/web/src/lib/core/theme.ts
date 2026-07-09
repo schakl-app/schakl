@@ -29,7 +29,23 @@ export const DEFAULT_THEME: OrgTheme = {
   enabledModules: ["companies"],
 };
 
-/** Inline style string applied to <html> so SSR paints the brand colours immediately. */
+// The API validates colours as hex on write; re-check here because the value is interpolated
+// into an HTML attribute, and fall back rather than emit anything else.
+const HEX_COLOR = /^#[0-9a-fA-F]{3,8}$/;
+
+function safeColor(value: string, fallback: string): string {
+  return HEX_COLOR.test(value) ? value : fallback;
+}
+
+/**
+ * Inline style string stamped onto <html> so SSR paints the brand colours immediately.
+ *
+ * It must land on the root element, not a wrapper: `accent-color` is an inherited property
+ * computed once at :root, so a variable overridden further down the tree never reaches the
+ * native form controls (date/time pickers, checkboxes, radios, range).
+ */
 export function themeStyle(theme: OrgTheme): string {
-  return `--brand-primary:${theme.primaryColor};--brand-accent:${theme.accentColor};`;
+  const primary = safeColor(theme.primaryColor, DEFAULT_THEME.primaryColor);
+  const accent = safeColor(theme.accentColor, DEFAULT_THEME.accentColor);
+  return `--brand-primary:${primary};--brand-accent:${accent};`;
 }

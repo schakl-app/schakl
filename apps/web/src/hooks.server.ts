@@ -4,7 +4,8 @@
  * 1. Paraglide middleware binds the request locale (AsyncLocalStorage) so `m.*()` render in the
  *    right language during SSR, and stamps <html lang>.
  * 2. Context hook resolves the tenant theme + current user via the API and puts them on
- *    `event.locals` for layouts, guards, and the manifest/theme routes.
+ *    `event.locals` for layouts, guards, and the manifest/theme routes, and stamps the brand
+ *    custom properties onto <html> (Golden Rule 4).
  */
 import { sequence } from "@sveltejs/kit/hooks";
 import type { Handle } from "@sveltejs/kit";
@@ -13,6 +14,7 @@ import "$lib/core/paraglide-strategy.server"; // register custom locale strategy
 import "$lib/modules"; // self-register web modules
 
 import { fetchTenant, fetchUser } from "$lib/core/session";
+import { themeStyle } from "$lib/core/theme";
 import { getLocale } from "$lib/paraglide/runtime";
 import { paraglideMiddleware } from "$lib/paraglide/server";
 
@@ -33,7 +35,12 @@ const handleContext: Handle = async ({ event, resolve }) => {
   const [theme, user] = await Promise.all([fetchTenant(event), fetchUser(event)]);
   event.locals.theme = theme;
   event.locals.user = user;
-  return resolve(event);
+  // Stamped server-side so the brand colours are on <html> at first paint (no flash of the
+  // fallback), and so inherited properties like `accent-color` compute against them.
+  const style = themeStyle(theme);
+  return resolve(event, {
+    transformPageChunk: ({ html }) => html.replace("%theme%", () => style),
+  });
 };
 
 export const handle = sequence(handleParaglide, handleContext);
