@@ -204,6 +204,10 @@ or `<slug>.PLATFORM_BASE_DOMAIN` → org.
   pickers, no redundant API calls or queries), prefer fixing the data path over adding
   libraries, and when a page feels slow, count its API calls/queries before writing code.
   **Read `docs/PERFORMANCE.md`** — the data-path rules and the per-screen checklist.
+- **Read `docs/WORKFLOW.md` before your first commit in a session** — branches (agents commit
+  and push straight to `dev`), the label set, what to write on the issue, and the rules for
+  working a tree that **other agents are editing at the same time**: stage explicit paths,
+  never `git add -A`, and push your own commit by SHA so you don't publish someone else's.
 - Keep this file updated when architecture decisions change.
 - Never leave a hardcoded user-facing string or an unscoped query — treat both as build breaks.
 - After each module: register it, add its panels, add its i18n keys, run `i18n:check` + tests.
