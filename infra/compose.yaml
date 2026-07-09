@@ -40,14 +40,49 @@ services:
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:-vlotr_app}
     volumes:
       - db-data:/var/lib/postgresql/data
-      # ":z" relabels the bind mount for SELinux hosts (Fedora/RHEL); ignored elsewhere.
-      - ./db/init:/docker-entrypoint-initdb.d:ro,z
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_ADMIN_USER:-vlotr} -d ${POSTGRES_DB:-vlotr}"]
       interval: 5s
       timeout: 3s
       retries: 20
     restart: unless-stopped
+
+  # Creates the NON-superuser application role the API/worker connect as, so Postgres RLS is
+  # enforced (superusers bypass it). It owns the public schema so alembic can create tables
+  # and policies while still being subject to FORCE ROW LEVEL SECURITY. See CLAUDE.md §5.
+  #
+  # Deliberately NOT /docker-entrypoint-initdb.d: that only runs when PGDATA is empty. This
+  # runs on every `up`, is idempotent, and needs no host files — so the production stack in
+  # compose.tunnel.yaml bootstraps by the exact same path this one does.
+  db-init:
+    image: postgres:16-alpine
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_ADMIN_USER:-vlotr}
+      PGPASSWORD: ${POSTGRES_ADMIN_PASSWORD:-vlotr}
+      PGDATABASE: ${POSTGRES_DB:-vlotr}
+      APP_DB_USER: ${APP_DB_USER:-vlotr_app}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-vlotr_app}
+    # `$$` escapes Compose interpolation so the shell expands these, not Compose.
+    entrypoint:
+      - sh
+      - -ec
+      - |
+        psql -v ON_ERROR_STOP=1 \
+          -v app_user="$$APP_DB_USER" -v app_pass="$$APP_DB_PASSWORD" -v db="$$PGDATABASE" <<'SQL'
+        SELECT format('CREATE ROLE %I LOGIN PASSWORD %L NOSUPERUSER', :'app_user', :'app_pass')
+        WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'app_user')\gexec
+
+        ALTER ROLE :"app_user" WITH LOGIN PASSWORD :'app_pass' NOSUPERUSER;
+        GRANT ALL ON DATABASE :"db" TO :"app_user";
+        ALTER SCHEMA public OWNER TO :"app_user";
+        GRANT ALL ON SCHEMA public TO :"app_user";
+        SQL
+        echo "→ app role '$$APP_DB_USER' present and in sync"
+    restart: "no"
 
   redis:
     image: redis:7-alpine
@@ -65,8 +100,10 @@ services:
       dockerfile: apps/api/Dockerfile
     environment: *api-env
     depends_on:
-      db:
-        condition: service_healthy
+      # Not `db: service_healthy` — the app role must exist before `alembic upgrade head`
+      # connects as it. db-init already waits on db being healthy.
+      db-init:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     healthcheck:

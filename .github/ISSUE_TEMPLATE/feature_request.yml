@@ -1,0 +1,90 @@
+name: Feature or improvement
+description: Propose new functionality or an improvement to something that already exists
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is hard, slow, or impossible today? Describe the situation, not the solution.
+      placeholder: Account managers have to open every project to see which retainers are over budget this month.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Including "do nothing" — what happens if we don't build this?
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - api / core (tenancy, RLS, auth, module registry)
+        - api / module — companies
+        - api / module — contacts
+        - api / module — projects
+        - api / module — tasks
+        - api / module — time
+        - api / module — leave
+        - new module
+        - web (SvelteKit / PWA)
+        - i18n / translations
+        - custom fields
+        - MCP server
+        - infra (Docker, Traefik, CI)
+        - not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Phase
+      description: Which build gate does this belong to? See CLAUDE.md §10.
+      options:
+        - P0 — Foundation
+        - P1 — MVP
+        - P2 — Agency core
+        - P3 — Google Workspace
+        - P4 — Automation & public API
+        - Unscheduled / backlog
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Definition of done
+      description: >
+        From CLAUDE.md §9. Delete lines that genuinely don't apply, and say why in the
+        Notes field. Tenant scoping and complete nl + en catalogs are never optional.
+      value: |
+        - [ ] Alembic migration written
+        - [ ] Endpoints added, every query tenant-scoped
+        - [ ] Web UI
+        - [ ] `nl.json` + `en.json` keys added (nl is never partial)
+        - [ ] Tenant-isolation test
+        - [ ] Docs / OpenAPI updated
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Screenshots, sketches, links, prior art, or anything else worth knowing.
+    validations:
+      required: false

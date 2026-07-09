@@ -1,0 +1,92 @@
+name: Bug report
+description: Something in vlotr doesn't work the way it should
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: What you saw, and what you expected instead.
+      placeholder: |
+        Opening a company with more than 50 contacts shows an empty contacts panel.
+        Expected: the panel lists the contacts, paginated.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the platform is affected?
+      options:
+        - api / core (tenancy, RLS, auth, module registry)
+        - api / module — companies
+        - api / module — contacts
+        - api / module — projects
+        - api / module — tasks
+        - api / module — time
+        - api / module — leave
+        - web (SvelteKit / PWA)
+        - i18n / translations
+        - custom fields
+        - MCP server
+        - infra (Docker, Traefik, CI)
+        - not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - Tenant isolation or auth (data leak / privilege escalation)
+        - Data loss or corruption
+        - Feature broken, no workaround
+        - Feature broken, workaround exists
+        - Cosmetic / minor
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      value: |
+        - Deployment: local dev / self-hosted / other
+        - Browser + OS:
+        - Locale: nl / en
+        - Commit or version:
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs, stack traces, or screenshots
+      description: Paste relevant output. It is rendered as a code block, no backticks needed.
+      render: shell
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this isn't a duplicate.
+          required: true
+        - label: If this is a tenant-isolation or auth bug, I have not included another tenant's real data in this report.
+          required: true
