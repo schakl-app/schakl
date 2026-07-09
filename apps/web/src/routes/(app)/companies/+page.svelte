@@ -1,13 +1,13 @@
 <script lang="ts">
   import { applyAction, enhance } from "$app/forms";
-  import { goto, invalidateAll } from "$app/navigation";
+  import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { Trash2 } from "@lucide/svelte";
 
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
-  import { customFieldColumns, resolveColumns } from "$lib/core/table/columns";
-  import type { ColumnSpec } from "$lib/core/table/columns";
+  import { customFieldColumns } from "$lib/core/table/columns";
+  import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import AvatarStack from "$lib/core/ui/AvatarStack.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
@@ -16,7 +16,7 @@
   import HoursCell from "$lib/core/ui/HoursCell.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import CompanyForm from "$lib/modules/companies/CompanyForm.svelte";
-  import { COMPANY_COLUMNS } from "$lib/modules/companies/columns";
+  import { COMPANY_COLUMNS, HOURS_COLUMN } from "$lib/modules/companies/columns";
   import { COMPANY_STATUSES, statusPillClass } from "$lib/modules/companies/status";
   import ContactDraftField from "$lib/modules/contacts/ContactDraftField.svelte";
 
@@ -40,75 +40,29 @@
 
   // --- columns ---------------------------------------------------------------
   // The tenant's custom fields join the built-ins as selectable columns with no code here — that
-  // is the whole point of the descriptor list (#24).
+  // is the whole point of the descriptor list (#24). Everything else — resolving the saved
+  // layout, persisting a change, deciding whether a change means the server must recompute — is
+  // the shared table layout's job.
   const allColumns = $derived([
     ...COMPANY_COLUMNS,
     ...customFieldColumns(data.definitions, data.locale),
   ]);
-  const resolved = $derived(resolveColumns(allColumns, data.table.pref));
-  const visibleKeys = $derived(resolved.columns.map((c) => c.key));
 
-  /** The picker sees plain labels; built-ins carry an i18n key, custom fields carry tenant text. */
-  const pickerColumns = $derived(
-    allColumns.map((c) => ({
-      key: c.key,
-      label: c.label ?? t(c.labelKey ?? c.key),
-      primary: c.primary,
-      sortKey: c.sortKey,
-    })),
-  );
-
-  const cells: Record<string, unknown> = $derived({
-    name: nameCell,
-    website: websiteCell,
-    status: statusCell,
-    assignees: assigneesCell,
-    hours: hoursCell,
-    created_at: createdCell,
+  const table = createTableLayout<Company>({
+    all: () => allColumns,
+    pref: () => data.table.pref,
+    sort: () => data.table.sort,
+    cells: () => ({
+      name: nameCell,
+      website: websiteCell,
+      status: statusCell,
+      assignees: assigneesCell,
+      hours: hoursCell,
+      created_at: createdCell,
+    }),
+    // Showing the budget roll-up means the API must compute it; hiding it means it must not.
+    reloadOn: [HOURS_COLUMN],
   });
-
-  const columns = $derived(
-    resolved.columns.map((meta) => ({
-      ...meta,
-      label: meta.label ?? t(meta.labelKey ?? meta.key),
-      cell: cells[meta.key],
-    })) as ColumnSpec<Company>[],
-  );
-
-  // --- persistence -----------------------------------------------------------
-  // One hidden form posts the whole layout: `/api/v1/prefs` replaces a list's entry wholesale, so
-  // a partial write would erase the fields it left out.
-  let saveForm: HTMLFormElement | undefined = $state();
-  let pendingColumns = $state("");
-  let pendingSort = $state("");
-  let pendingWidths = $state("{}");
-  let reloadAfterSave = $state(false);
-
-  function persist(
-    next: { columns?: string[]; sort?: string | null; widths?: Record<string, number> },
-    reload = false,
-  ) {
-    pendingColumns = (next.columns ?? visibleKeys).join(",");
-    pendingSort = next.sort ?? data.table.sort ?? "";
-    pendingWidths = JSON.stringify(next.widths ?? resolved.widths);
-    reloadAfterSave = reload;
-    // Next tick, so the hidden inputs carry the fresh values.
-    setTimeout(() => saveForm?.requestSubmit(), 0);
-  }
-
-  function onColumnsChange(keys: string[]) {
-    // Reload: turning the hours column on means the list must now ask the API for the aggregate.
-    persist({ columns: keys }, true);
-  }
-
-  function onSort(next: string | null) {
-    const url = new URL(page.url);
-    if (next) url.searchParams.set("sort", next);
-    else url.searchParams.delete("sort");
-    // The URL drives the fetch (server-side sort, shareable); the pref just remembers it.
-    void goto(url, { keepFocus: true, noScroll: true });
-    persist({ sort: next });
-  }
 
   const filtered = $derived(
     data.statusFilter
@@ -186,7 +140,7 @@
   <div class="flex items-center gap-3">
     <a href="/companies/{company.id}" class="min-w-0 flex-1">
       <span class="font-medium text-text">{company.name}</span>
-      {#if visibleKeys.includes("hours") && company.hours}
+      {#if table.visibleKeys.includes("hours") && company.hours}
         <span class="mt-0.5 block text-xs"><HoursCell hours={company.hours} /></span>
       {:else if company.website}
         <span class="mt-0.5 block truncate text-sm text-text-muted">{company.website}</span>
@@ -257,31 +211,14 @@
   {/if}
   <div class="ml-auto">
     <ColumnPicker
-      all={pickerColumns}
-      visible={visibleKeys}
-      sort={data.table.sort}
-      onchange={onColumnsChange}
-      onsort={onSort}
+      all={table.pickerColumns}
+      visible={table.visibleKeys}
+      sort={table.sort}
+      onchange={table.onColumnsChange}
+      onsort={table.onSort}
     />
   </div>
 </div>
-
-<form
-  bind:this={saveForm}
-  method="POST"
-  action="?/saveTable"
-  class="hidden"
-  use:enhance={() =>
-    async ({ update }) => {
-      // A layout change may change what the API must compute, so it reloads; a resize must not.
-      if (reloadAfterSave) await invalidateAll();
-      else await update({ reset: false, invalidateAll: false });
-    }}
->
-  <input type="hidden" name="columns" value={pendingColumns} />
-  <input type="hidden" name="sort" value={pendingSort} />
-  <input type="hidden" name="widths" value={pendingWidths} />
-</form>
 
 {#if showCreate}
   <!-- Same field set as the edit surface (CompanyForm), plus the contact persons — which only a
@@ -340,17 +277,17 @@
 
 <DataTable
   rows={filtered}
-  {columns}
-  sort={data.table.sort}
-  widths={resolved.widths}
+  columns={table.columns}
+  sort={table.sort}
+  widths={table.widths}
   definitions={data.definitions}
   locale={data.locale}
   rowHref={(company) => `/companies/${company.id}`}
   actions={rowActions}
   {mobileRow}
   empty={emptyState}
-  onsort={onSort}
-  onresize={(widths) => persist({ widths })}
+  onsort={table.onSort}
+  onresize={table.onResize}
 />
 
 <ConfirmDialog

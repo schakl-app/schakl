@@ -2,12 +2,12 @@
   import { Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
-  import { goto, invalidateAll } from "$app/navigation";
+  import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { fmtNumber, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
-  import { customFieldColumns, resolveColumns } from "$lib/core/table/columns";
-  import type { ColumnSpec } from "$lib/core/table/columns";
+  import { customFieldColumns } from "$lib/core/table/columns";
+  import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import AssigneePicker from "$lib/core/ui/AssigneePicker.svelte";
   import AvatarStack from "$lib/core/ui/AvatarStack.svelte";
@@ -17,7 +17,7 @@
   import HoursCell from "$lib/core/ui/HoursCell.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
-  import { PROJECT_COLUMNS } from "$lib/modules/projects/columns";
+  import { HOURS_COLUMN, PROJECT_COLUMNS } from "$lib/modules/projects/columns";
 
   let { data, form } = $props();
 
@@ -39,67 +39,25 @@
     ...PROJECT_COLUMNS,
     ...customFieldColumns(data.definitions, data.locale),
   ]);
-  const resolved = $derived(resolveColumns(allColumns, data.table.pref));
-  const visibleKeys = $derived(resolved.columns.map((c) => c.key));
-  const pickerColumns = $derived(
-    allColumns.map((c) => ({
-      key: c.key,
-      label: c.label ?? t(c.labelKey ?? c.key),
-      primary: c.primary,
-      sortKey: c.sortKey,
-    })),
-  );
 
-  const cells: Record<string, unknown> = $derived({
-    name: nameCell,
-    company: companyCell,
-    status: statusCell,
-    assignees: assigneesCell,
-    hours: hoursCell,
-    budget_hours: budgetCell,
-    hourly_rate: rateCell,
-    start_date: startCell,
-    end_date: endCell,
+  const table = createTableLayout<Project>({
+    all: () => allColumns,
+    pref: () => data.table.pref,
+    sort: () => data.table.sort,
+    cells: () => ({
+      name: nameCell,
+      company: companyCell,
+      status: statusCell,
+      assignees: assigneesCell,
+      hours: hoursCell,
+      budget_hours: budgetCell,
+      hourly_rate: rateCell,
+      start_date: startCell,
+      end_date: endCell,
+    }),
+    // Showing the burn-down means the API must compute it; hiding it means it must not.
+    reloadOn: [HOURS_COLUMN],
   });
-
-  const columns = $derived(
-    resolved.columns.map((meta) => ({
-      ...meta,
-      label: meta.label ?? t(meta.labelKey ?? meta.key),
-      cell: cells[meta.key],
-    })) as ColumnSpec<Project>[],
-  );
-
-  // --- persistence -----------------------------------------------------------
-  let saveForm: HTMLFormElement | undefined = $state();
-  let pendingColumns = $state("");
-  let pendingSort = $state("");
-  let pendingWidths = $state("{}");
-  let reloadAfterSave = $state(false);
-
-  function persist(
-    next: { columns?: string[]; sort?: string | null; widths?: Record<string, number> },
-    reload = false,
-  ) {
-    pendingColumns = (next.columns ?? visibleKeys).join(",");
-    pendingSort = next.sort ?? data.table.sort ?? "";
-    pendingWidths = JSON.stringify(next.widths ?? resolved.widths);
-    reloadAfterSave = reload;
-    setTimeout(() => saveForm?.requestSubmit(), 0);
-  }
-
-  function onColumnsChange(keys: string[]) {
-    // Reload: showing the hours column means the list must now ask the API for the aggregate.
-    persist({ columns: keys }, true);
-  }
-
-  function onSort(next: string | null) {
-    const url = new URL(page.url);
-    if (next) url.searchParams.set("sort", next);
-    else url.searchParams.delete("sort");
-    void goto(url, { keepFocus: true, noScroll: true });
-    persist({ sort: next });
-  }
 
   function confirmDeleteOf(project: Project) {
     deleteId = project.id;
@@ -190,7 +148,7 @@
       {#if companyName(project.company_id)}
         <span class="ml-2 text-sm text-text-muted">· {companyName(project.company_id)}</span>
       {/if}
-      {#if visibleKeys.includes("hours") && project.hours}
+      {#if table.visibleKeys.includes("hours") && project.hours}
         <span class="mt-0.5 block text-xs"><HoursCell hours={project.hours} /></span>
       {/if}
     </a>
@@ -230,11 +188,11 @@
     >
     <SearchInput />
     <ColumnPicker
-      all={pickerColumns}
-      visible={visibleKeys}
-      sort={data.table.sort}
-      onchange={onColumnsChange}
-      onsort={onSort}
+      all={table.pickerColumns}
+      visible={table.visibleKeys}
+      sort={table.sort}
+      onchange={table.onColumnsChange}
+      onsort={table.onSort}
     />
   </div>
   <button
@@ -244,23 +202,6 @@
     {t("projects.new")}
   </button>
 </div>
-
-<form
-  bind:this={saveForm}
-  method="POST"
-  action="?/saveTable"
-  class="hidden"
-  use:enhance={() =>
-    async ({ update }) => {
-      // A layout change may change what the API must compute, so it reloads; a resize must not.
-      if (reloadAfterSave) await invalidateAll();
-      else await update({ reset: false, invalidateAll: false });
-    }}
->
-  <input type="hidden" name="columns" value={pendingColumns} />
-  <input type="hidden" name="sort" value={pendingSort} />
-  <input type="hidden" name="widths" value={pendingWidths} />
-</form>
 
 {#if showCreate}
   <form
@@ -401,17 +342,17 @@
 
 <DataTable
   rows={data.projects}
-  {columns}
-  sort={data.table.sort}
-  widths={resolved.widths}
+  columns={table.columns}
+  sort={table.sort}
+  widths={table.widths}
   definitions={data.definitions}
   locale={data.locale}
   rowHref={(project) => `/projects/${project.id}`}
   actions={rowActions}
   {mobileRow}
   empty={emptyState}
-  onsort={onSort}
-  onresize={(widths) => persist({ widths })}
+  onsort={table.onSort}
+  onresize={table.onResize}
 />
 
 <ConfirmDialog
