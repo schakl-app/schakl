@@ -7,15 +7,23 @@
  * bundle and SvelteKit's server-only guard fails the client build.
  *
  * On the client the built-in `cookie` strategy already runs first, so this only fires when no
- * cookie is set: fall back to whatever locale the server resolved (stamped on `<html lang>`).
+ * readable cookie is set: fall back to the locale the server resolved, which it stamps on
+ * `<html data-locale>`.
+ *
+ * NEVER fall back to `<html lang>`: that is the European formatting tag (`en-GB`), not a
+ * locale code. Returning it made Paraglide's `assertIsLocale` throw during hydration, which
+ * tore the page down — the `nl → en` white screen. Everything returned from here is validated,
+ * so an unknown value yields `undefined` and Paraglide falls through to `baseLocale`.
  */
-import { parseLocaleCookie } from "./i18n";
+import { asLocale, parseLocaleCookie } from "./i18n";
 import { defineCustomClientStrategy } from "$lib/paraglide/runtime";
 
 defineCustomClientStrategy("custom-vlotrDefault", {
   getLocale: (): string | undefined =>
-    parseLocaleCookie(document.cookie) ?? (document.documentElement.lang || undefined),
-  // Language changes go through the `/set-locale` server round-trip (sets cookie + persists
-  // the per-user preference), so client-side setLocale is intentionally a no-op.
+    parseLocaleCookie(document.cookie) ??
+    asLocale(document.documentElement.dataset.locale) ??
+    undefined,
+  // Language changes go through the `/set-locale` server round-trip (persists the per-user
+  // preference + refreshes the cookie), so client-side setLocale is intentionally a no-op.
   setLocale: () => {},
 });

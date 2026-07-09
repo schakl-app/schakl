@@ -1,5 +1,7 @@
 <!doctype html>
-<html lang="%lang%" style="%theme%">
+<!-- `lang` is the European BCP-47 *formatting* tag (en-GB, not en); `data-locale` is the app's
+     locale code. They are not interchangeable — see hooks.server.ts. -->
+<html lang="%lang%" data-locale="%locale%" style="%theme%">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
