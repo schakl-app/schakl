@@ -70,11 +70,13 @@
   />
 </div>
 
-<!-- Linked clients: chips + type-ahead, immediate actions (docs/UX.md use-mode). -->
+<!-- Linked clients: chips navigate in use mode; attaching, detaching and promoting appear only
+     under the header's ⋯ → Bewerken, like every other definition change (docs/UX.md §3). -->
 <section class="mb-4 rounded-xl border border-border bg-surface-raised p-5">
   <h2 class="mb-4 text-sm font-semibold text-text">{t("contacts.companies")}</h2>
   <LinkField
     {links}
+    {editing}
     candidates={candidateCompanies}
     idField="company_id"
     linkAction="?/linkCompany"

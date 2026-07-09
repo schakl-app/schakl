@@ -4,13 +4,20 @@
    * A chip field ({@link LinkField}) attaches existing contacts by type-ahead — the primary one is
    * brand-coloured — and typing an unknown name opens the *full* new-contact dialog (real fields +
    * the tenant's custom fields), which creates the contact and attaches it in one step.
+   *
+   * The panel owns its own use/edit toggle rather than riding the page's: the client page's ⋯ →
+   * Bewerken edits the *client's* fields, a different surface. Attaching, detaching and promoting
+   * a contact are definition changes, so they only appear once this panel is in edit mode.
    */
+  import { Check, Pencil } from "@lucide/svelte";
+
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
 
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
   import { t } from "$lib/core/i18n";
+  import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import LinkField from "$lib/core/ui/LinkField.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
 
@@ -45,6 +52,9 @@
     candidates.map((c) => ({ value: c.id, label: fullName(c), hint: c.email ?? undefined })),
   );
 
+  // Use mode is the default; the ⋯ menu opens edit mode (docs/UX.md §3).
+  let editing = $state(false);
+
   // --- quick-create dialog (opened by typing an unknown name) ------------------
   let showCreate = $state(false);
   let draftFirst = $state("");
@@ -61,12 +71,27 @@
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
 
+<!-- The panel's <h2> is rendered by the host page, so the toggle sits at the top of the body. -->
+<div class="mb-3 flex justify-end">
+  <ActionsMenu
+    compact
+    items={[
+      {
+        label: editing ? t("common.done") : t("common.edit"),
+        icon: editing ? Check : Pencil,
+        onclick: () => (editing = !editing),
+      },
+    ]}
+  />
+</div>
+
 {#if links.length === 0}
   <p class="mb-3 text-sm text-text-muted">{t("contacts.empty")}</p>
 {/if}
 
 <LinkField
   {links}
+  {editing}
   candidates={pickItems}
   idField="contact_id"
   linkAction="?/linkContact"

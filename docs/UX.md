@@ -51,15 +51,21 @@
   primary; a ★ next to it is decoration, and decoration is what makes a dense screen look cheap.
   Because colour cannot be read by a screen reader (WCAG 1.4.1), the primary chip carries an
   `sr-only` label — that, not a glyph, is how the meaning is made accessible.
-  In the client-state pickers (`AssigneePicker` for the employees on a client or project,
-  `ContactDraftField` for contacts on a not-yet-created client) **clicking any other chip promotes
-  it**, so the marker never doubles as a control. `LinkField` is the one exception: its chips
-  navigate to the linked record, so it cannot promote on click and keeps a separate small control.
-  Every chip carries an ✕ to drop it. `AssigneePicker` posts the whole roster in one hidden field
-  (an edit surface has exactly one save button); `LinkField` posts per chip, because there each
-  link is its own record. Detail headers name the primary and render the rest as an `AvatarStack`
-  of initials. **"Mine" filters match any assignee, never only the primary** — otherwise the
-  feature is invisible to everyone but the owner.
+  **Clicking a chip promotes it to primary** — the marker never doubles as a control — and each
+  chip carries an ✕ to drop it. Both gestures are *edit-mode only* (Principle 3): attaching,
+  detaching and re-designating the primary all change the record's definition. So `LinkField`
+  (contacts on a client, clients on a contact) shows quiet navigation chips by default and only
+  turns them into buttons, reveals the ✕ and reveals the type-ahead once its parent is `editing`.
+  A panel that has no page-level edit mode to ride carries its own ⋯ → Bewerken / Klaar (the
+  contacts panel on a client does; the client page's own ⋯ edits the *client*, a different
+  surface). The pickers used *inside* an edit surface — `AssigneePicker` for the employees on a
+  client or project, `ContactDraftField` for contacts on a not-yet-created client — are always
+  interactive, because the surface itself is already edit mode.
+  `AssigneePicker` posts the whole roster in one hidden field (an edit surface has exactly one
+  save button); `LinkField` posts per chip, because there each link is its own record.
+  Detail headers name the primary and render the rest as an `AvatarStack` of initials.
+  **"Mine" filters match any assignee, never only the primary** — otherwise the feature is
+  invisible to everyone but the owner.
 - **One shared row/tile per concept** (`TaskRow`, panel rows): title link, chips (labels,
   checklist n/m, ⏱ allocated), red overdue date, assignee initials — identical wherever the
   concept appears.
@@ -157,3 +163,5 @@
   they belong in the ⋯ `ActionsMenu`, and every delete confirms via `ConfirmDialog`.
 - A ★ (or any emoji/glyph) marking the primary chip on top of its brand colour — the colour is
   the marker, the glyph was noise. Meaning that colour alone carries goes in an `sr-only` label.
+- Chip fields that were editable in use mode: a stray click could detach a contact or move the
+  primary. Linking, unlinking and promoting are definition changes and live behind edit mode.
