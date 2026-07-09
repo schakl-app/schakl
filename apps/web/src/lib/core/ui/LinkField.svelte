@@ -82,8 +82,12 @@
             : 'bg-surface text-text'}"
         >
           {#if chip.is_primary}
-            <span title={labels.primary}></span>
+            <!-- Colour alone can't carry meaning for a screen reader (WCAG 1.4.1). -->
+            <span class="sr-only">({labels.primary})</span>
           {:else}
+            <!-- These chips are navigation links, so unlike the pure pickers they cannot promote
+                 on click and keep a control of their own. The primary is still marked by colour
+                 alone, never a glyph (docs/UX.md). -->
             <form method="POST" action={primaryAction} use:enhance class="flex">
               <input type="hidden" name={idField} value={chip.id} />
               <button

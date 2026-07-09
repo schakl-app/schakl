@@ -5,13 +5,13 @@
    * Same chips + type-ahead shape as {@link LinkField}, but there is no company id to POST links
    * to, so nothing is submitted per chip: the whole selection — existing contacts *and* full
    * new-contact drafts — is serialised into one hidden field, and the create action attaches
-   * them once the company row exists. Exactly one chip is the primary contact (★), defaulting to
-   * the first one picked.
+   * them once the company row exists. Exactly one chip is the primary contact — marked by colour
+   * alone, no glyph (docs/UX.md) — defaulting to the first one picked; clicking another promotes it.
    *
    * Typing an unknown name opens the *full* new-contact dialog (real fields plus the tenant's
    * contact custom fields), never a name-only stub (docs/UX.md).
    */
-  import { Star, X } from "@lucide/svelte";
+  import { X } from "@lucide/svelte";
 
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
@@ -156,17 +156,20 @@
             : 'bg-surface text-text'}"
         >
           {#if chip.key === primary}
-            <span title={t("contacts.primary")}>★</span>
+            <span class="font-medium" title={t("contacts.primary")}>
+              {chip.label}
+              <!-- Colour alone can't carry meaning for a screen reader (WCAG 1.4.1). -->
+              <span class="sr-only">({t("contacts.primary")})</span>
+            </span>
           {:else}
+            <!-- The chip itself promotes: no glyph marks the primary, only its colour. -->
             <button
               type="button"
-              class="text-text-muted hover:text-brand"
+              class="font-medium hover:text-brand"
               title={t("contacts.make_primary")}
-              aria-label={t("contacts.make_primary")}
-              onclick={() => (primaryKey = chip.key)}><Star size={13} /></button
+              onclick={() => (primaryKey = chip.key)}>{chip.label}</button
             >
           {/if}
-          <span class="font-medium">{chip.label}</span>
           {#if chip.hint}<span class="text-xs opacity-70">{chip.hint}</span>{/if}
           <button
             type="button"

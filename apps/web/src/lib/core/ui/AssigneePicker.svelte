@@ -1,14 +1,17 @@
 <script lang="ts">
   /**
-   * Pick the employees working a client or project: one is the verantwoordelijke (★), the rest
-   * are assigned. Same chips + type-ahead shape as the contact picker (docs/UX.md: pickers are
+   * Pick the employees working a client or project: one is the verantwoordelijke, the rest are
+   * assigned. Same chips + type-ahead shape as the contact picker (docs/UX.md: pickers are
    * comboboxes, never native multi-selects).
+   *
+   * The primary is marked by **colour alone** — no star, no glyph (docs/UX.md). Clicking any other
+   * chip promotes it, so the marker never doubles as a control.
    *
    * Nothing is posted per chip — an edit surface has exactly one save button (docs/UX.md), so the
    * whole roster is serialised into one hidden field that the form action forwards to the API as
    * `assignees`. `formId` associates it with a <form> it does not sit inside.
    */
-  import { Star, X } from "@lucide/svelte";
+  import { X } from "@lucide/svelte";
 
   import { t } from "$lib/core/i18n";
   import Combobox from "$lib/core/ui/Combobox.svelte";
@@ -86,17 +89,20 @@
             : 'bg-surface text-text'}"
         >
           {#if userId === primary}
-            <span title={t("assignees.primary")}>★</span>
+            <span class="font-medium" title={t("assignees.primary")}>
+              {label(userId)}
+              <!-- Colour alone can't carry meaning for a screen reader (WCAG 1.4.1). -->
+              <span class="sr-only">({t("assignees.primary")})</span>
+            </span>
           {:else}
+            <!-- The chip itself promotes: no glyph marks the primary, only its colour. -->
             <button
               type="button"
-              class="text-text-muted hover:text-brand"
+              class="font-medium hover:text-brand"
               title={t("assignees.make_primary")}
-              aria-label={t("assignees.make_primary")}
-              onclick={() => (primaryId = userId)}><Star size={13} /></button
+              onclick={() => (primaryId = userId)}>{label(userId)}</button
             >
           {/if}
-          <span class="font-medium">{label(userId)}</span>
           <button
             type="button"
             class="rounded-full p-0.5 opacity-60 hover:bg-black/5 hover:opacity-100"
