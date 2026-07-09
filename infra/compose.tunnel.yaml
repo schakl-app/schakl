@@ -47,6 +47,9 @@ services:
       timeout: 3s
       retries: 20
     restart: unless-stopped
+    # Declaring `networks:` on ANY service means services that omit it land on `default`
+    # instead — a separate network from `vlotr`, so `db` would not resolve from `api`.
+    networks: [vlotr]
 
   redis:
     image: redis:7-alpine
@@ -56,6 +59,7 @@ services:
       timeout: 3s
       retries: 20
     restart: unless-stopped
+    networks: [vlotr]
 
   api:
     image: ghcr.io/vlotr-crm/vlotr-api:${VLOTR_TAG:-latest}
@@ -86,6 +90,8 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    # Reaches db + redis only; never addressed by cloudflared, so not on `tunnel`.
+    networks: [vlotr]
 
   web:
     image: ghcr.io/vlotr-crm/vlotr-web:${VLOTR_TAG:-latest}
