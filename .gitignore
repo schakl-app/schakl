@@ -39,3 +39,7 @@ infra/.env
 
 # --- Local container/data volumes ---
 infra/data/
+
+# Cloudflare Tunnel credentials: `cloudflared tunnel create` writes <TUNNEL_ID>.json here.
+# It is a long-lived secret for the tunnel — never commit it.
+infra/cloudflared/*.json

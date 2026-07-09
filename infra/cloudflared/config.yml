@@ -1,0 +1,29 @@
+# Locally-managed Cloudflare Tunnel — single public hostname, path-based split to two
+# containers (CLAUDE.md §3 Cloudflare Zero Trust; keeps web & api as separate services).
+#
+# ── One-time setup (on any machine logged in to your Cloudflare account) ───────────────
+#   cloudflared tunnel login
+#   cloudflared tunnel create vlotr                 # prints a <TUNNEL_ID>, writes <TUNNEL_ID>.json
+#   cloudflared tunnel route dns vlotr app.youragency.nl
+#   cp ~/.cloudflared/<TUNNEL_ID>.json infra/cloudflared/
+# Then replace <TUNNEL_ID> and app.youragency.nl below with your real values.
+#
+# NOTE: this config file is NOT env-interpolated by cloudflared — use literal values here.
+
+tunnel: <TUNNEL_ID>
+credentials-file: /etc/cloudflared/<TUNNEL_ID>.json
+
+# First match wins. cloudflared preserves the Host header, so the API resolves the tenant
+# from app.youragency.nl exactly as it would behind Traefik.
+ingress:
+  # External API integrations + MCP → FastAPI. Same origin as the web app, under /api.
+  - hostname: app.youragency.nl
+    path: ^/(api|mcp)(/.*)?$
+    service: http://api:8000
+
+  # Everything else → SvelteKit web app.
+  - hostname: app.youragency.nl
+    service: http://web:3000
+
+  # Required catch-all.
+  - service: http_status:404
