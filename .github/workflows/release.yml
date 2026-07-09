@@ -1,10 +1,10 @@
 name: Release
 
-# Build and publish container images to GitHub Container Registry (GHCR).
+# Build and publish container images to GHCR, then cut a GitHub Release.
+# Images are built ONLY for version tags (v1.2.3, v1.2.3-rc.1) — never for branch pushes.
 # The worker reuses the API image, so only two images are built: api + web.
 on:
   push:
-    branches: [main]
     tags: ["v*"]
   workflow_dispatch:
 
@@ -42,12 +42,13 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/vlotr-crm/vlotr-${{ matrix.name }}
+          # `latest` tracks the newest STABLE tag: a pre-release (v1.2.3-rc.1) must not
+          # move it, or infra/compose.tunnel.yaml (VLOTR_TAG:-latest) would deploy an rc.
           tags: |
-            type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -59,3 +60,57 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  release:
+    # Only publish the Release once both images are actually in GHCR, so the notes
+    # never point at images that failed to build.
+    needs: images
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          prerelease=""
+          case "$TAG" in *-*) prerelease="--prerelease" ;; esac
+
+          cat > notes.md <<EOF
+          ## Container images
+
+          \`\`\`
+          ghcr.io/vlotr-crm/vlotr-api:${version}
+          ghcr.io/vlotr-crm/vlotr-web:${version}
+          \`\`\`
+
+          Deploy with \`VLOTR_TAG=${version}\` (see \`infra/compose.tunnel.yaml\`).
+
+          EOF
+
+          # Append GitHub's auto-generated changelog. Done via the API rather than
+          # `--generate-notes`, which not every gh version accepts alongside --notes-file.
+          gh api -X POST "repos/${REPO}/releases/generate-notes" \
+            -f tag_name="$TAG" -q .body >> notes.md
+
+          # The release may already exist: publishing from the github.com UI creates it,
+          # and the resulting tag push is what triggered this run. Don't fail, and don't
+          # clobber notes a human wrote there.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists (created in the UI) — leaving its notes alone."
+            exit 0
+          fi
+
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes-file notes.md \
+            $prerelease

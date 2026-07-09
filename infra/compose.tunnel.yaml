@@ -1,0 +1,110 @@
+# vlotr — PRODUCTION stack for Portainer, behind YOUR existing Cloudflare Tunnel.
+#
+# Self-contained (no overlays). Differences vs infra/compose.yaml:
+#   • no Traefik, no published ports — your host cloudflared is the only ingress
+#   • web + api join the EXTERNAL network your cloudflared stack created, so cloudflared
+#     reaches them by name:  /api/*, /mcp/*  → http://api:8000 ;  everything else → http://web:3000
+#
+# Portainer: create a Stack from this file. Set CF_TUNNEL_NETWORK (+ the secrets below) in the
+# stack's Environment variables. The external network must already exist (docker network ls).
+name: vlotr
+
+x-api-env: &api-env
+  VLOTR_DATABASE_URL: postgresql+asyncpg://${APP_DB_USER:-vlotr_app}:${APP_DB_PASSWORD}@db:5432/${POSTGRES_DB:-vlotr}
+  VLOTR_REDIS_URL: redis://redis:6379/0
+  VLOTR_SECRET_KEY: ${VLOTR_SECRET_KEY}
+  VLOTR_BASE_DOMAIN: ${VLOTR_BASE_DOMAIN}
+  VLOTR_ENVIRONMENT: ${VLOTR_ENVIRONMENT:-production}
+  VLOTR_SEED_ORG_SLUG: ${VLOTR_SEED_ORG_SLUG:-vlotr}
+  VLOTR_SEED_ORG_NAME: ${VLOTR_SEED_ORG_NAME:-vlotr}
+  VLOTR_SEED_ADMIN_EMAIL: ${VLOTR_SEED_ADMIN_EMAIL}
+  VLOTR_SEED_ADMIN_PASSWORD: ${VLOTR_SEED_ADMIN_PASSWORD}
+  # --- OIDC single sign-on (optional; CLAUDE.md §3) ---
+  VLOTR_OIDC_ENABLED: ${VLOTR_OIDC_ENABLED:-false}
+  VLOTR_OIDC_ENFORCED: ${VLOTR_OIDC_ENFORCED:-false}
+  VLOTR_OIDC_NAME: ${VLOTR_OIDC_NAME:-sso}
+  VLOTR_OIDC_DISCOVERY_URL: ${VLOTR_OIDC_DISCOVERY_URL:-}
+  VLOTR_OIDC_CLIENT_ID: ${VLOTR_OIDC_CLIENT_ID:-}
+  VLOTR_OIDC_CLIENT_SECRET: ${VLOTR_OIDC_CLIENT_SECRET:-}
+  VLOTR_OIDC_AUTO_PROVISION_MEMBERSHIP: ${VLOTR_OIDC_AUTO_PROVISION_MEMBERSHIP:-true}
+  VLOTR_OIDC_DEFAULT_ROLE: ${VLOTR_OIDC_DEFAULT_ROLE:-member}
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_ADMIN_USER:-vlotr}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-vlotr}
+      APP_DB_USER: ${APP_DB_USER:-vlotr_app}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro,z
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_ADMIN_USER:-vlotr} -d ${POSTGRES_DB:-vlotr}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    image: ghcr.io/vlotr-crm/vlotr-api:${VLOTR_TAG:-latest}
+    environment: *api-env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+    restart: unless-stopped
+    # Joins the tunnel network ONLY so cloudflared can route /api/* + /mcp/* to it.
+    # Publishes no host ports. Remove from `tunnel` (and drop the /api rule in cloudflared)
+    # if you don't expose the API on the tunnel.
+    networks: [vlotr, tunnel]
+
+  worker:
+    image: ghcr.io/vlotr-crm/vlotr-api:${VLOTR_TAG:-latest}
+    command: ["worker"]
+    environment: *api-env
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    image: ghcr.io/vlotr-crm/vlotr-web:${VLOTR_TAG:-latest}
+    environment:
+      VLOTR_API_URL: http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    # Internal network (to reach the API) + the tunnel network (cloudflared → http://web:3000).
+    networks: [vlotr, tunnel]
+
+volumes:
+  db-data:
+
+networks:
+  vlotr:
+  # The network your cloudflared stack already created. Set CF_TUNNEL_NETWORK to its real
+  # name (docker network ls — usually "<cloudflared-project>_default").
+  tunnel:
+    external: true
+    name: tunnel

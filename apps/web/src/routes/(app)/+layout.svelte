@@ -2,6 +2,7 @@
   import "$lib/modules"; // ensure the web-module registry is populated
   import {
     BarChart3,
+    CalendarDays,
     Menu,
     ChevronDown,
     ChevronRight,
@@ -136,6 +137,14 @@
       >
         <LayoutDashboard size={18} class="shrink-0 text-neutral-500" />
         {#if !collapsed}<span class="truncate">{t("nav.dashboard")}</span>{/if}
+      </a>
+      <a
+        href="/calendar"
+        class={itemClass(path.startsWith("/calendar"))}
+        title={collapsed ? t("nav.calendar") : undefined}
+      >
+        <CalendarDays size={18} class="shrink-0 text-neutral-500" />
+        {#if !collapsed}<span class="truncate">{t("nav.calendar")}</span>{/if}
       </a>
       {#each navEntries as entry (entry.kind === "group" ? `g:${entry.key}` : entry.item.key)}
         {#if entry.kind === "item"}

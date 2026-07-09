@@ -350,6 +350,258 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/leave/balance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Balances */
+        get: operations["balances_api_v1_leave_balance_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/entitlements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Entitlements
+         * @description Own entitlements; managers see everyone's when no ``user_id`` is given.
+         */
+        get: operations["list_entitlements_api_v1_leave_entitlements_get"];
+        /** Upsert Entitlement */
+        put: operations["upsert_entitlement_api_v1_leave_entitlements_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/entitlements/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Generate Entitlements */
+        post: operations["generate_entitlements_api_v1_leave_entitlements_generate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** My Profile */
+        get: operations["my_profile_api_v1_leave_profile_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Profiles
+         * @description Contract hours per user (managers). Users without a row default to 40.
+         */
+        get: operations["list_profiles_api_v1_leave_profiles_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/profiles/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Profile */
+        put: operations["set_profile_api_v1_leave_profiles__user_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Requests */
+        get: operations["list_requests_api_v1_leave_requests_get"];
+        put?: never;
+        /** Create Request */
+        post: operations["create_request_api_v1_leave_requests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/requests/{request_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Request */
+        get: operations["get_request_api_v1_leave_requests__request_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Request */
+        patch: operations["update_request_api_v1_leave_requests__request_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/leave/requests/{request_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Request */
+        post: operations["cancel_request_api_v1_leave_requests__request_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/requests/{request_id}/decide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide Request
+         * @description Approve or reject a pending request (managers).
+         */
+        post: operations["decide_request_api_v1_leave_requests__request_id__decide_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Summary */
+        get: operations["summary_api_v1_leave_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/team": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Team */
+        get: operations["team_api_v1_leave_team_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Types */
+        get: operations["list_types_api_v1_leave_types_get"];
+        put?: never;
+        /** Create Type */
+        post: operations["create_type_api_v1_leave_types_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/types/{type_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Type */
+        delete: operations["delete_type_api_v1_leave_types__type_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Type */
+        patch: operations["update_type_api_v1_leave_types__type_id__patch"];
+        trace?: never;
+    };
     "/api/v1/members": {
         parameters: {
             query?: never;
@@ -1742,6 +1994,14 @@ export interface components {
             /** Total Minutes */
             total_minutes: number;
         };
+        /**
+         * EntitlementGenerate
+         * @description Fill missing entitlements for a year from each type's default_weeks × contract hours.
+         */
+        EntitlementGenerate: {
+            /** Year */
+            year: number;
+        };
         /** EntryApproval */
         EntryApproval: {
             /**
@@ -1768,6 +2028,11 @@ export interface components {
             detail: string | {
                 [key: string]: string;
             };
+        };
+        /** GenerateResult */
+        GenerateResult: {
+            /** Created */
+            created: number;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1811,6 +2076,335 @@ export interface components {
             name?: string | null;
             /** Position */
             position?: number | null;
+        };
+        /**
+         * LeaveBalance
+         * @description Balance per tracks_balance type: entitled + carried − approved − pending.
+         */
+        LeaveBalance: {
+            /** Approved Hours */
+            approved_hours: string;
+            /** Entitled Hours */
+            entitled_hours: string;
+            /**
+             * Leave Type Id
+             * Format: uuid
+             */
+            leave_type_id: string;
+            /** Pending Hours */
+            pending_hours: string;
+            /** Remaining Hours */
+            remaining_hours: string;
+            /** Year */
+            year: number;
+        };
+        /** LeaveEntitlementRead */
+        LeaveEntitlementRead: {
+            /** Hours */
+            hours: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Leave Type Id
+             * Format: uuid
+             */
+            leave_type_id: string;
+            /** Note */
+            note: string | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Year */
+            year: number;
+        };
+        /** LeaveEntitlementUpsert */
+        LeaveEntitlementUpsert: {
+            /** Hours */
+            hours: number | string;
+            /**
+             * Leave Type Id
+             * Format: uuid
+             */
+            leave_type_id: string;
+            /** Note */
+            note?: string | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Year */
+            year: number;
+        };
+        /** LeaveProfileRead */
+        LeaveProfileRead: {
+            /** Hours Per Week */
+            hours_per_week: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** LeaveProfileUpdate */
+        LeaveProfileUpdate: {
+            /** Hours Per Week */
+            hours_per_week: number | string;
+        };
+        /** LeaveRequestCreate */
+        LeaveRequestCreate: {
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /** Hours */
+            hours: number | string;
+            /**
+             * Leave Type Id
+             * Format: uuid
+             */
+            leave_type_id: string;
+            /** Note */
+            note?: string | null;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /** User Id */
+            user_id?: string | null;
+        };
+        /** LeaveRequestDecision */
+        LeaveRequestDecision: {
+            /** Approved */
+            approved: boolean;
+            /** Note */
+            note?: string | null;
+        };
+        /** LeaveRequestRead */
+        LeaveRequestRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Decided At */
+            decided_at: string | null;
+            /** Decided By User Id */
+            decided_by_user_id: string | null;
+            /** Decision Note */
+            decision_note: string | null;
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /** Hours */
+            hours: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Leave Type Id
+             * Format: uuid
+             */
+            leave_type_id: string;
+            /** Note */
+            note: string | null;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            status: components["schemas"]["LeaveRequestStatus"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /**
+         * LeaveRequestStatus
+         * @enum {string}
+         */
+        LeaveRequestStatus: "pending" | "approved" | "rejected" | "cancelled";
+        /** LeaveRequestUpdate */
+        LeaveRequestUpdate: {
+            /** End Date */
+            end_date?: string | null;
+            /** Hours */
+            hours?: number | string | null;
+            /** Leave Type Id */
+            leave_type_id?: string | null;
+            /** Note */
+            note?: string | null;
+            /** Start Date */
+            start_date?: string | null;
+        };
+        /**
+         * LeaveSummary
+         * @description My Day widget payload: own vacation balance + pending count + next approved leave.
+         */
+        LeaveSummary: {
+            /** Hours Per Week */
+            hours_per_week: string;
+            /** Next Leave End */
+            next_leave_end: string | null;
+            /** Next Leave Start */
+            next_leave_start: string | null;
+            /** Pending Count */
+            pending_count: number;
+            /** Remaining Hours */
+            remaining_hours: string;
+            /** Year */
+            year: number;
+        };
+        /** LeaveTypeCreate */
+        LeaveTypeCreate: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Carry Over Months */
+            carry_over_months?: number | null;
+            /**
+             * Color
+             * @default emerald
+             */
+            color: string;
+            /** Default Weeks */
+            default_weeks?: number | string | null;
+            /** Key */
+            key: string;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            };
+            /**
+             * Paid
+             * @default true
+             */
+            paid: boolean;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /**
+             * Requires Approval
+             * @default true
+             */
+            requires_approval: boolean;
+            /**
+             * Tracks Balance
+             * @default false
+             */
+            tracks_balance: boolean;
+        };
+        /** LeaveTypeRead */
+        LeaveTypeRead: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Carry Over Months */
+            carry_over_months?: number | null;
+            /**
+             * Color
+             * @default emerald
+             */
+            color: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Default Weeks */
+            default_weeks?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Key */
+            key: string;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            };
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /**
+             * Paid
+             * @default true
+             */
+            paid: boolean;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /**
+             * Requires Approval
+             * @default true
+             */
+            requires_approval: boolean;
+            /**
+             * Tracks Balance
+             * @default false
+             */
+            tracks_balance: boolean;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** LeaveTypeUpdate */
+        LeaveTypeUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Carry Over Months */
+            carry_over_months?: number | null;
+            /** Color */
+            color?: string | null;
+            /** Default Weeks */
+            default_weeks?: number | string | null;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            } | null;
+            /** Paid */
+            paid?: boolean | null;
+            /** Position */
+            position?: number | null;
+            /** Requires Approval */
+            requires_approval?: boolean | null;
+            /** Tracks Balance */
+            tracks_balance?: boolean | null;
         };
         /** LinkCreate */
         LinkCreate: {
@@ -1944,6 +2538,17 @@ export interface components {
         Page_ContactRead_: {
             /** Items */
             items: components["schemas"]["ContactRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[LeaveRequestRead] */
+        Page_LeaveRequestRead_: {
+            /** Items */
+            items: components["schemas"]["LeaveRequestRead"][];
             /** Limit */
             limit: number;
             /** Offset */
@@ -2489,6 +3094,42 @@ export interface components {
             status?: components["schemas"]["TaskStatus"] | null;
             /** Title */
             title?: string | null;
+        };
+        /**
+         * TeamLeaveItem
+         * @description One (approved or pending) absence for the team calendar / timesheet overlay.
+         */
+        TeamLeaveItem: {
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /** Hours */
+            hours: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Leave Type Id
+             * Format: uuid
+             */
+            leave_type_id: string;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            status: components["schemas"]["LeaveRequestStatus"];
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** User Name */
+            user_name: string;
         };
         /** TemplateApply */
         TemplateApply: {
@@ -3927,6 +4568,593 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DashboardPrefs"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    balances_api_v1_leave_balance_get: {
+        parameters: {
+            query: {
+                year: number;
+                user_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveBalance"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_entitlements_api_v1_leave_entitlements_get: {
+        parameters: {
+            query: {
+                year: number;
+                user_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveEntitlementRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upsert_entitlement_api_v1_leave_entitlements_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveEntitlementUpsert"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveEntitlementRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_entitlements_api_v1_leave_entitlements_generate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EntitlementGenerate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenerateResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_profile_api_v1_leave_profile_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveProfileRead"];
+                };
+            };
+        };
+    };
+    list_profiles_api_v1_leave_profiles_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveProfileRead"][];
+                };
+            };
+        };
+    };
+    set_profile_api_v1_leave_profiles__user_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveProfileUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveProfileRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_requests_api_v1_leave_requests_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                user_id?: string | null;
+                all_users?: boolean;
+                year?: number | null;
+                status?: components["schemas"]["LeaveRequestStatus"] | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_LeaveRequestRead_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_request_api_v1_leave_requests_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveRequestCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveRequestRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_request_api_v1_leave_requests__request_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveRequestRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_request_api_v1_leave_requests__request_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveRequestUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveRequestRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_request_api_v1_leave_requests__request_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveRequestRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_request_api_v1_leave_requests__request_id__decide_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveRequestDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveRequestRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    summary_api_v1_leave_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveSummary"];
+                };
+            };
+        };
+    };
+    team_api_v1_leave_team_get: {
+        parameters: {
+            query: {
+                date_from: string;
+                date_to: string;
+                user_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamLeaveItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_types_api_v1_leave_types_get: {
+        parameters: {
+            query?: {
+                include_inactive?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveTypeRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_type_api_v1_leave_types_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveTypeCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveTypeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_type_api_v1_leave_types__type_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                type_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_type_api_v1_leave_types__type_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                type_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveTypeUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveTypeRead"];
                 };
             };
             /** @description Validation Error */

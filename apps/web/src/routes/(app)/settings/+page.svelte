@@ -77,5 +77,12 @@
       <h3 class="text-sm font-semibold text-neutral-900">{t("settings.task_labels.title")}</h3>
       <p class="mt-1 text-sm text-neutral-500">{t("settings.task_labels.subtitle")}</p>
     </a>
+    <a
+      href="/settings/leave"
+      class="rounded-xl border border-neutral-200 bg-white p-5 hover:border-brand"
+    >
+      <h3 class="text-sm font-semibold text-neutral-900">{t("settings.leave.title")}</h3>
+      <p class="mt-1 text-sm text-neutral-500">{t("settings.leave.subtitle")}</p>
+    </a>
   </div>
 </section>

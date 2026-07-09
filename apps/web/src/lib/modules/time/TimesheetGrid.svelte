@@ -32,6 +32,7 @@
     projects,
     tasks,
     weekView = "full",
+    leaveHours = null,
   }: {
     week: Week;
     companies: Option[];
@@ -39,6 +40,11 @@
     tasks: Option[];
     /** "work" shows Mon–Fri only; totals then reflect the visible days. */
     weekView?: "full" | "work";
+    /**
+     * Approved leave per day column, in hours (CLAUDE.md §14): rendered as its own row,
+     * never mixed into the worked totals — leave is not a time entry.
+     */
+    leaveHours?: number[] | null;
   } = $props();
 
   // Workweek = first 5 day columns; totals recomputed from what's shown so the columns add up.
@@ -71,6 +77,12 @@
   );
   const dayTotals = $derived(week.day_totals.slice(0, dayCount));
   const grandTotal = $derived(sum(dayTotals));
+
+  // Leave row (visible-day slice, converted to minutes for the shared formatter).
+  const leaveMinutes = $derived(
+    (leaveHours ?? []).slice(0, dayCount).map((h) => Math.round(h * 60)),
+  );
+  const leaveTotal = $derived(sum(leaveMinutes));
 </script>
 
 <section class="overflow-hidden rounded-xl border border-neutral-200 bg-white">
@@ -79,7 +91,7 @@
   >
     {t("time.timesheet.heading")}
   </h2>
-  {#if sorted.length === 0}
+  {#if sorted.length === 0 && leaveTotal === 0}
     <p class="p-6 text-sm text-neutral-500">{t("time.timesheet.empty")}</p>
   {:else}
     <div class="overflow-x-auto">
@@ -113,6 +125,25 @@
               >
             </tr>
           {/each}
+          {#if leaveTotal > 0}
+            <!-- Approved leave: shown for context, excluded from the worked totals (§14). -->
+            <tr class="bg-teal-50/40">
+              <td class="px-4 py-2 font-medium italic text-teal-700">{t("time.timesheet.leave")}</td
+              >
+              {#each leaveMinutes as minutes, i (i)}
+                <td
+                  class="px-2 py-2 text-right italic tabular-nums {minutes
+                    ? 'text-teal-700'
+                    : 'text-neutral-300'}"
+                >
+                  {minutes ? formatMinutes(minutes) : "·"}
+                </td>
+              {/each}
+              <td class="px-4 py-2 text-right font-semibold italic tabular-nums text-teal-700"
+                >{formatMinutes(leaveTotal)}</td
+              >
+            </tr>
+          {/if}
         </tbody>
         <tfoot>
           <tr class="border-t border-neutral-200 bg-neutral-50/60">

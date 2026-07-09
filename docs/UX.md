@@ -91,14 +91,28 @@
   `<html lang>` (nl / en-GB) — never introduce an AM/PM surface.
 - **Budgets colour-code burn**: green < 75 %, amber < 100 %, red ≥ 100 % — the same scale
   for task time budgets and project hour budgets (total or monthly).
+- **Verlof is tracked in hours, shown with a days equivalent** (`≈ n dagen` from the
+  employee's contract hours ÷ 5). Employees request under Verlof (balance cards + one
+  request form; hours pre-filled from the date range, editable for part days); managers
+  approve/reject under Verlof → Team (approve/reject are inline status actions; reject asks
+  an optional reason) and register leave on someone's behalf (ziekmelding). Org config —
+  verloftypen (wettelijk/bovenwettelijk carry-over rules live here, not in code), contract
+  hours, and yearly saldi — lives under Instellingen → Verlof. Approved leave appears on the
+  timesheet as its own teal row, never mixed into worked totals, and on the Agenda.
 
 ## Navigation
 
-- Sidebar: Dashboard → **Relaties** (Klanten / Projecten / Contactpersonen as a collapsible
-  group) → Taken → Uren → Overzicht (managers) → Instellingen (managers). Icons from lucide;
-  collapsible to an icon rail; on mobile it is a drawer behind the hamburger.
+- Sidebar: Dashboard → Agenda → **Relaties** (Klanten / Projecten / Contactpersonen as a
+  collapsible group) → Taken → Uren → Verlof → Overzicht (managers) → Instellingen
+  (managers). Icons from lucide; collapsible to an icon rail; on mobile it is a drawer
+  behind the hamburger.
+- **Agenda is a core surface like the dashboard**: the month view composes event feeds that
+  modules contribute via the registry (`calendarSources`) — today the team's approved/pending
+  leave; Google Calendar plugs into the same seam in P3. Pending items render muted with a
+  "?"; on mobile the grid becomes a per-day agenda list.
 - Sections with multiple surfaces use **submenu tabs** at the top (Taken | Sjablonen;
-  Overzicht: Uren | Productiviteit | Omzet) — not nested sidebars.
+  Verlof: Mijn verlof | Team; Overzicht: Uren | Productiviteit | Omzet) — not nested
+  sidebars.
 - The header holds only the profile menu (avatar → name, personal settings, logout).
   Language lives in personal settings, not the header.
 
