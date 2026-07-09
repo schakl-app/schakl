@@ -1,0 +1,68 @@
+<script lang="ts">
+  /**
+   * Mobile-first per-day agenda list, shared by every calendar view (docs/UX.md: small
+   * screens get a list instead of cramped grid cells).
+   */
+  import { fmtLongDay } from "$lib/core/format";
+  import { t } from "$lib/core/i18n";
+  import { labelDotClass } from "$lib/core/ui/colors";
+  import type { CalendarEvent } from "$lib/core/registry";
+
+  let {
+    days,
+    eventsByDay,
+    today,
+    showEmptyDays = false,
+    emptyMessage = t("calendar.empty"),
+  }: {
+    days: string[];
+    eventsByDay: Record<string, CalendarEvent[]>;
+    today: string;
+    /** Show every day (week/day views) instead of only days that have events (month view). */
+    showEmptyDays?: boolean;
+    /** Shown when no day in `days` has any event. */
+    emptyMessage?: string;
+  } = $props();
+
+  const listDays = $derived(showEmptyDays ? days : days.filter((d) => d in eventsByDay));
+</script>
+
+<div class="space-y-3">
+  {#each listDays as day (day)}
+    <section class="rounded-xl border border-neutral-200 bg-white p-4">
+      <h3
+        class="mb-2 text-xs font-semibold capitalize {day === today
+          ? 'text-brand'
+          : 'text-neutral-500'}"
+      >
+        {fmtLongDay(day)}
+      </h3>
+      {#if (eventsByDay[day] ?? []).length > 0}
+        <ul class="space-y-1.5">
+          {#each eventsByDay[day] ?? [] as event (event.id + day)}
+            <li>
+              <a
+                href={event.href ?? "#"}
+                class="flex items-center gap-2 text-sm text-neutral-800 {event.tentative
+                  ? 'opacity-60'
+                  : ''}"
+              >
+                <span class="h-2 w-2 shrink-0 rounded-full {labelDotClass(event.color)}"></span>
+                <span class="truncate">{event.title}</span>
+                {#if event.tentative}
+                  <span class="text-xs text-neutral-400">{t("calendar.tentative")}</span>
+                {/if}
+              </a>
+            </li>
+          {/each}
+        </ul>
+      {:else}
+        <p class="text-sm text-neutral-400">{t("calendar.day_empty")}</p>
+      {/if}
+    </section>
+  {:else}
+    <p class="rounded-xl border border-neutral-200 bg-white p-6 text-sm text-neutral-500">
+      {emptyMessage}
+    </p>
+  {/each}
+</div>

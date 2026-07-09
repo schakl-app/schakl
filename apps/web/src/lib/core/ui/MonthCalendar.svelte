@@ -4,10 +4,10 @@
    * (multi-day events repeat per day). Mobile-first (docs/UX.md): small screens get a
    * per-day agenda list instead of cramped cells; ≥sm gets the full grid.
    */
-  import { monthGrid } from "$lib/core/calendar";
-  import { fmtLongDay, fmtWeekdayShort } from "$lib/core/format";
-  import { t } from "$lib/core/i18n";
-  import { labelChipClass, labelDotClass } from "$lib/core/ui/colors";
+  import { eventsByDayMap, monthGrid } from "$lib/core/calendar";
+  import { fmtWeekdayShort } from "$lib/core/format";
+  import AgendaList from "$lib/core/ui/AgendaList.svelte";
+  import { labelChipClass } from "$lib/core/ui/colors";
   import type { CalendarEvent } from "$lib/core/registry";
 
   let {
@@ -23,15 +23,9 @@
   } = $props();
 
   const days = $derived(monthGrid(month));
-  const eventsByDay = $derived.by(() => {
-    const byDay: Record<string, CalendarEvent[]> = {};
-    for (const day of days) {
-      const hits = events.filter((e) => e.start <= day && e.end >= day);
-      if (hits.length) byDay[day] = hits;
-    }
-    return byDay;
-  });
+  const eventsByDay = $derived(eventsByDayMap(days, events));
   const weekdayHeaders = $derived(days.slice(0, 7).map((d) => fmtWeekdayShort(d)));
+  const monthDays = $derived(days.filter((d) => d.slice(0, 7) === month));
 
   const chipClass = (e: CalendarEvent) =>
     `block truncate rounded px-1.5 py-0.5 text-xs ${labelChipClass(e.color)} ${
@@ -85,38 +79,6 @@
 </div>
 
 <!-- <sm: agenda list of the month's days that have events -->
-<div class="space-y-3 sm:hidden">
-  {#each days.filter((d) => d.slice(0, 7) === month && d in eventsByDay) as day (day)}
-    <section class="rounded-xl border border-neutral-200 bg-white p-4">
-      <h3
-        class="mb-2 text-xs font-semibold capitalize {day === today
-          ? 'text-brand'
-          : 'text-neutral-500'}"
-      >
-        {fmtLongDay(day)}
-      </h3>
-      <ul class="space-y-1.5">
-        {#each eventsByDay[day] ?? [] as event (event.id + day)}
-          <li>
-            <a
-              href={event.href ?? "#"}
-              class="flex items-center gap-2 text-sm text-neutral-800 {event.tentative
-                ? 'opacity-60'
-                : ''}"
-            >
-              <span class="h-2 w-2 shrink-0 rounded-full {labelDotClass(event.color)}"></span>
-              <span class="truncate">{event.title}</span>
-              {#if event.tentative}
-                <span class="text-xs text-neutral-400">{t("calendar.tentative")}</span>
-              {/if}
-            </a>
-          </li>
-        {/each}
-      </ul>
-    </section>
-  {:else}
-    <p class="rounded-xl border border-neutral-200 bg-white p-6 text-sm text-neutral-500">
-      {t("calendar.empty")}
-    </p>
-  {/each}
+<div class="sm:hidden">
+  <AgendaList days={monthDays} {eventsByDay} {today} />
 </div>
