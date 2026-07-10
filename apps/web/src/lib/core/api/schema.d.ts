@@ -871,6 +871,53 @@ export interface paths {
         patch: operations["update_member_role_api_v1_members__membership_id__patch"];
         trace?: never;
     };
+    "/api/v1/members/{membership_id}/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Member Permissions
+         * @description A member's effective permissions — the union over every role they hold.
+         *
+         *     Your *own* set arrives with ``/meta/me``; this is the manager's view of somebody else's.
+         */
+        get: operations["member_permissions_api_v1_members__membership_id__permissions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/members/{membership_id}/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Member Roles
+         * @description Replace a membership's whole role set in one save. A user may hold several roles.
+         *
+         *     Release *N* rejects a set with no ``is_system`` role: ``memberships.role`` is dual-written by
+         *     collapsing the system roles to the highest privilege, and a custom-role-only membership has no
+         *     legacy value the previous image could parse (issue #19, the rollback decision). The constraint
+         *     lifts when that column is dropped.
+         */
+        put: operations["set_member_roles_api_v1_members__membership_id__roles_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/meta/me": {
         parameters: {
             query?: never;
@@ -1123,6 +1170,23 @@ export interface paths {
         patch: operations["set_read_api_v1_notifications__notification_id__patch"];
         trace?: never;
     };
+    "/api/v1/permissions/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Permission Catalog */
+        get: operations["permission_catalog_api_v1_permissions_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/prefs": {
         parameters: {
             query?: never;
@@ -1176,6 +1240,62 @@ export interface paths {
         head?: never;
         /** Update Project */
         patch: operations["update_project_api_v1_projects__project_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Roles */
+        get: operations["list_roles_api_v1_roles_get"];
+        put?: never;
+        /**
+         * Create Role
+         * @description Create a custom role, optionally seeded from an existing one.
+         *
+         *     Duplicating a system role is how the restrictive ``member`` default gets loosened without
+         *     editing the system role itself. Copying ``owner`` copies its *effective* set — the wildcard,
+         *     which is not assignable — so it starts empty and the caller ticks what they mean.
+         */
+        post: operations["create_role_api_v1_roles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/roles/{role_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Role
+         * @description System roles are not deletable — they are what ``memberships.role`` still collapses to.
+         *
+         *     A custom role's ``membership_roles`` rows cascade away, so this can strand a membership with
+         *     no system role. The guard below is what catches the case where it strands the whole org.
+         */
+        delete: operations["delete_role_api_v1_roles__role_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Role
+         * @description Rename, reposition, or replace the whole permission set in one save.
+         *
+         *     ``owner`` is the one role whose permissions cannot be edited: it holds ``*`` so that it is
+         *     always possible to fix a mistake made anywhere else. The other system roles are freely
+         *     editable — that is the sanctioned way to loosen the restrictive ``member`` default.
+         */
+        patch: operations["update_role_api_v1_roles__role_id__patch"];
         trace?: never;
     };
     "/api/v1/setup": {
@@ -2675,6 +2795,17 @@ export interface components {
             /** Verification Token */
             verification_token: string | null;
         };
+        /** EffectivePermissions */
+        EffectivePermissions: {
+            /** Membership Id */
+            membership_id: string;
+            /** Permissions */
+            permissions: string[];
+            /** Role Ids */
+            role_ids: string[];
+            /** User Id */
+            user_id: string;
+        };
         /**
          * EntitlementGenerate
          * @description Fill missing entitlements for a year from each type's default_weeks × contract hours.
@@ -3270,6 +3401,11 @@ export interface components {
         MemberRoleUpdate: {
             role: components["schemas"]["Role"];
         };
+        /** MembershipRolesUpdate */
+        MembershipRolesUpdate: {
+            /** Role Ids */
+            role_ids: string[];
+        };
         /** MigrationInfo */
         MigrationInfo: {
             /** Current */
@@ -3527,6 +3663,29 @@ export interface components {
             position: number;
             /** Title Key */
             title_key: string;
+        };
+        /** PermissionCatalog */
+        PermissionCatalog: {
+            /** Groups */
+            groups: string[];
+            /** Permissions */
+            permissions: components["schemas"]["PermissionRead"][];
+        };
+        /**
+         * PermissionRead
+         * @description One entry of the code-defined catalog, as the permission matrix renders it.
+         */
+        PermissionRead: {
+            /** Group */
+            group: string;
+            /** Key */
+            key: string;
+            /** Label Key */
+            label_key: string;
+            /** Position */
+            position: number;
+            /** Scopes */
+            scopes: string[];
         };
         /** PreferenceMatrix */
         PreferenceMatrix: {
@@ -3857,6 +4016,67 @@ export interface components {
          * @enum {string}
          */
         Role: "owner" | "admin" | "member" | "client";
+        /** RoleCreate */
+        RoleCreate: {
+            /** Description I18N */
+            description_i18n?: {
+                [key: string]: string;
+            };
+            /** Key */
+            key: string;
+            /** Name I18N */
+            name_i18n?: {
+                [key: string]: string;
+            };
+            /** Permissions */
+            permissions?: string[] | null;
+            /**
+             * Position
+             * @default 100
+             */
+            position: number;
+        };
+        /** RoleRead */
+        RoleRead: {
+            /** Description I18N */
+            description_i18n: {
+                [key: string]: string;
+            };
+            /** Id */
+            id: string;
+            /** Is System */
+            is_system: boolean;
+            /** Key */
+            key: string;
+            /** Member Count */
+            member_count: number;
+            /** Name I18N */
+            name_i18n: {
+                [key: string]: string;
+            };
+            /** Permissions */
+            permissions: string[];
+            /** Position */
+            position: number;
+        };
+        /**
+         * RoleUpdate
+         * @description ``key`` is immutable, deliberately: it is what ``role_permissions`` rows point at.
+         */
+        RoleUpdate: {
+            /** Description I18N */
+            description_i18n?: {
+                [key: string]: string;
+            } | null;
+            /** Name I18N */
+            name_i18n?: {
+                [key: string]: string;
+            } | null;
+            /** Permissions */
+            permissions?: string[] | null;
+            /** Position */
+            position?: number | null;
+        };
         /** SetupRequest */
         SetupRequest: {
             /** Accent Color */
@@ -6868,6 +7088,72 @@ export interface operations {
             };
         };
     };
+    member_permissions_api_v1_members__membership_id__permissions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                membership_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EffectivePermissions"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_member_roles_api_v1_members__membership_id__roles_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                membership_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MembershipRolesUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EffectivePermissions"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     me_api_v1_meta_me_get: {
         parameters: {
             query?: never;
@@ -7405,6 +7691,26 @@ export interface operations {
             };
         };
     };
+    permission_catalog_api_v1_permissions_catalog_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PermissionCatalog"];
+                };
+            };
+        };
+    };
     get_prefs_api_v1_prefs_get: {
         parameters: {
             query?: never;
@@ -7619,6 +7925,126 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_roles_api_v1_roles_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleRead"][];
+                };
+            };
+        };
+    };
+    create_role_api_v1_roles_post: {
+        parameters: {
+            query?: {
+                /** @description Duplicate this role's permissions into the new one. */
+                from?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_role_api_v1_roles__role_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_role_api_v1_roles__role_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleRead"];
                 };
             };
             /** @description Validation Error */

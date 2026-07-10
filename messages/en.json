@@ -710,6 +710,8 @@
   "errors.due_reason_required": "Give a reason for moving the deadline.",
   "errors.last_owner": "You can't remove or demote the last owner.",
   "errors.last_role_manager": "This is the last role that can manage roles — the organisation would lock itself out.",
+  "errors.system_role_immutable": "This is a system role: its key cannot change, it cannot be deleted, and the owner role's permissions are fixed.",
+  "errors.system_role_required": "Every user must keep at least one system role (owner, administrator, member or client).",
   "errors.cannot_remove_self": "You can't remove your own membership.",
   "errors.server": "Something went wrong. Please try again.",
   "errors.leave_overlap": "This period overlaps another leave request.",

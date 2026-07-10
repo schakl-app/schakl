@@ -255,6 +255,58 @@ async def role_manager_count(session: AsyncSession, org_id: uuid.UUID) -> int:
     )
 
 
+async def member_counts(session: AsyncSession, org_id: uuid.UUID) -> dict[uuid.UUID, int]:
+    """``{role_id: how many memberships hold it}`` — one grouped query, not one per role."""
+    rows = await session.execute(
+        select(MembershipRole.role_id, func.count(func.distinct(MembershipRole.membership_id)))
+        .where(MembershipRole.org_id == org_id)
+        .group_by(MembershipRole.role_id)
+    )
+    return {role_id: int(count) for role_id, count in rows}
+
+
+async def permissions_by_role(
+    session: AsyncSession, org_id: uuid.UUID
+) -> dict[uuid.UUID, list[str]]:
+    """``{role_id: [permission, …]}`` for the whole org — one query, not one per role."""
+    rows = await session.execute(
+        select(RolePermission.role_id, RolePermission.permission)
+        .where(RolePermission.org_id == org_id)
+        .order_by(RolePermission.permission)
+    )
+    grouped: dict[uuid.UUID, list[str]] = {}
+    for role_id, permission in rows:
+        grouped.setdefault(role_id, []).append(permission)
+    return grouped
+
+
+async def replace_permissions(
+    session: AsyncSession,
+    org_id: uuid.UUID,
+    role_id: uuid.UUID,
+    permissions: Sequence[str],
+) -> None:
+    """Replace a role's whole permission set (one save)."""
+    wanted = set(permissions)
+    existing = list(
+        (
+            await session.execute(
+                select(RolePermission).where(
+                    RolePermission.org_id == org_id, RolePermission.role_id == role_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for row in existing:
+        if row.permission not in wanted:
+            await session.delete(row)
+    held = {row.permission for row in existing}
+    await grant(session, org_id, role_id, wanted - held)
+    await session.flush()
+
+
 def permission_holder_ids(org_id: uuid.UUID, permission: str):
     """A ``select(user_id)`` over the memberships holding ``permission`` at *any* scope.
 

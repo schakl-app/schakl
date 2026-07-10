@@ -23,15 +23,20 @@ from sqlalchemy import func, select
 
 from app.core.auth.models import User
 from app.core.models import Membership
+from app.core.permissions import audit
 from app.core.permissions.catalog import permission_keys
 from app.core.permissions.deps import no_permission_required, require_permission
 from app.core.permissions.models import MembershipRole
 from app.core.permissions.models import Role as RoleRow
+from app.core.permissions.schemas import EffectivePermissions, MembershipRolesUpdate
 from app.core.permissions.service import (
     create_membership,
+    effective_permissions,
+    membership_role_ids,
     permission_holder_ids,
     role_by_key,
     role_manager_count,
+    set_membership_roles,
 )
 from app.core.roles import Role
 from app.core.tenancy import RequestContext, require_context
@@ -92,6 +97,9 @@ async def ensure_a_role_manager_remains(ctx: RequestContext) -> None:
     what, counting ``memberships.role == 'owner'`` answers the wrong question — an org whose last
     owner becomes an admin has lost nothing, and an org whose last admin becomes a member has lost
     everything.
+
+    Four mutation shapes reach it; the other two (delete a role, untick the permission) live in
+    ``app/core/permissions/router.py`` and call the same function.
     """
     if await role_manager_count(ctx.session, ctx.org.id) == 0:
         raise AppError("last_role_manager", "errors.last_role_manager", status_code=409)
@@ -198,6 +206,14 @@ async def invite_member(
 
     membership = await create_membership(ctx.session, ctx.org.id, user.id, payload.role.value)
     logger.info("Invited %s to org %s as %s", email, ctx.org.slug, payload.role.value)
+    await audit.record(
+        ctx.session,
+        org_id=ctx.org.id,
+        actor=ctx.user,
+        action="membership.invited",
+        role_key=payload.role.value,
+        target_user_id=user.id,
+    )
     return _member_read(ctx, membership, user)
 
 
@@ -245,9 +261,21 @@ async def update_member_role(
         ctx.session.add(
             MembershipRole(org_id=ctx.org.id, membership_id=membership.id, role_id=target.id)
         )
+    previous = membership.role
     membership.role = payload.role.value  # dual write, release N only
     await ctx.session.flush()
     await ensure_a_role_manager_remains(ctx)
+    if previous != payload.role.value:
+        await audit.record(
+            ctx.session,
+            org_id=ctx.org.id,
+            actor=ctx.user,
+            action="membership.roles_changed",
+            role_id=target.id,
+            role_key=target.key,
+            target_user_id=membership.user_id,
+            detail={"from": previous, "to": payload.role.value},
+        )
 
     user = await ctx.session.get(User, membership.user_id)
     return _member_read(ctx, membership, user)  # type: ignore[arg-type]
@@ -268,3 +296,85 @@ async def revoke_member(
     await ctx.session.delete(membership)
     await ctx.session.flush()
     await ensure_a_role_manager_remains(ctx)
+    await audit.record(
+        ctx.session,
+        org_id=ctx.org.id,
+        actor=ctx.user,
+        action="membership.revoked",
+        target_user_id=membership.user_id,
+    )
+
+
+@router.put(
+    "/{membership_id}/roles",
+    response_model=EffectivePermissions,
+    dependencies=[require_permission("settings.roles.manage")],
+)
+async def set_member_roles(
+    membership_id: uuid.UUID,
+    payload: MembershipRolesUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> EffectivePermissions:
+    """Replace a membership's whole role set in one save. A user may hold several roles.
+
+    Release *N* rejects a set with no ``is_system`` role: ``memberships.role`` is dual-written by
+    collapsing the system roles to the highest privilege, and a custom-role-only membership has no
+    legacy value the previous image could parse (issue #19, the rollback decision). The constraint
+    lifts when that column is dropped.
+    """
+    membership = await _membership_or_404(ctx, membership_id)
+    role_ids = [uuid.UUID(value) for value in payload.role_ids]
+    roles = (
+        await ctx.session.execute(
+            select(RoleRow).where(
+                RoleRow.org_id == ctx.org.id, RoleRow.id.in_(role_ids or [uuid.uuid4()])
+            )
+        )
+    ).scalars().all()
+    if len(roles) != len(set(role_ids)):
+        raise AppError("not_found", "errors.not_found", status_code=404)
+    if not any(role.is_system for role in roles):
+        raise AppError("system_role_required", "errors.system_role_required", status_code=409)
+
+    before = set(await membership_role_ids(ctx.session, ctx.org.id, membership.id))
+    await set_membership_roles(ctx.session, ctx.org.id, membership, role_ids)
+    await ensure_a_role_manager_remains(ctx)
+    await audit.record(
+        ctx.session,
+        org_id=ctx.org.id,
+        actor=ctx.user,
+        action="membership.roles_changed",
+        target_user_id=membership.user_id,
+        detail={
+            "added": sorted(str(r) for r in set(role_ids) - before),
+            "removed": sorted(str(r) for r in before - set(role_ids)),
+        },
+    )
+    return await _effective(ctx, membership)
+
+
+@router.get(
+    "/{membership_id}/permissions",
+    response_model=EffectivePermissions,
+    dependencies=[require_permission("members.member.read")],
+)
+async def member_permissions(
+    membership_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> EffectivePermissions:
+    """A member's effective permissions — the union over every role they hold.
+
+    Your *own* set arrives with ``/meta/me``; this is the manager's view of somebody else's.
+    """
+    return await _effective(ctx, await _membership_or_404(ctx, membership_id))
+
+
+async def _effective(ctx: RequestContext, membership: Membership) -> EffectivePermissions:
+    role_ids = await membership_role_ids(ctx.session, ctx.org.id, membership.id)
+    permissions = await effective_permissions(ctx.session, ctx.org.id, membership.id)
+    return EffectivePermissions(
+        membership_id=str(membership.id),
+        user_id=str(membership.user_id),
+        role_ids=[str(role_id) for role_id in role_ids],
+        permissions=permissions.keys(),
+    )

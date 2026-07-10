@@ -44,6 +44,8 @@ _EXEMPT_OPERATIONS = frozenset(
         ("get", "/api/v1/prefs"),
         ("put", "/api/v1/prefs"),
         ("get", "/api/v1/members/lookup"),
+        # The code-defined registry. Holds no tenant data — it ships in the open-source repo.
+        ("get", "/api/v1/permissions/catalog"),
     }
 )
 

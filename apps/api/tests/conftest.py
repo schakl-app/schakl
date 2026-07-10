@@ -50,7 +50,7 @@ _DOMAIN_TABLES = (
     "leave_requests, leave_entitlements, leave_profiles, leave_types, "
     "time_entries, tasks, projects, contacts, custom_field_definitions, "
     "dashboard_prefs, user_prefs, companies, "
-    "membership_roles, role_permissions, roles, memberships, org_settings, "
+    "role_audit_log, membership_roles, role_permissions, roles, memberships, org_settings, "
     "instance_audit_log, users, orgs"
 )
 _ENABLED_MODULES = [

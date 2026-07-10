@@ -13,6 +13,7 @@ resolving a request never has to join ``roles``.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
@@ -48,7 +49,10 @@ class RolePermission(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     __tablename__ = "role_permissions"
     __table_args__ = (
         UniqueConstraint(
-            "org_id", "role_id", "permission", name="uq_role_permissions_org_id_role_id_permission"
+            "org_id",
+            "role_id",
+            "permission",
+            name="uq_role_permissions_org_id_role_id_permission",
         ),
         Index("ix_role_permissions_role_id_permission", "role_id", "permission"),
     )
@@ -78,4 +82,35 @@ class MembershipRole(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     )
     role_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("roles.id", ondelete="CASCADE"), nullable=False
+    )
+
+
+class RoleAuditLog(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """Append-only trail of who changed which role, and who holds which (issue #19).
+
+    **Org-scoped**, not the instance-level ``instance_audit_log``: granting someone
+    ``settings.roles.manage`` is a within-tenant action, and an agency must be able to read its
+    own history. It follows the ``task_activities`` pattern — an ``action`` key plus a JSONB
+    payload — rather than growing typed columns per action.
+
+    Nothing here cascades from ``roles``: the trail must survive the role it describes. The
+    ``role_id`` is therefore a plain column, not a foreign key, with a name snapshot beside it.
+    """
+
+    __tablename__ = "role_audit_log"
+    __table_args__ = (Index("ix_role_audit_log_org_id_created_at", "org_id", "created_at"),)
+
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    actor_email: Mapped[str] = mapped_column(String(320), nullable=False)
+    # e.g. "role.create", "role.update", "role.delete", "membership.roles_changed".
+    action: Mapped[str] = mapped_column(String(64), nullable=False)
+    role_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    role_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    target_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    detail: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
     )
