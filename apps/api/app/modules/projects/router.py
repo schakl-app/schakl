@@ -6,6 +6,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, Query
 
+from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
 from app.modules.projects.models import ProjectStatus
 from app.modules.projects.schemas import ProjectCreate, ProjectRead, ProjectUpdate
@@ -15,7 +16,11 @@ from app.schemas import Page
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 
-@router.get("", response_model=Page[ProjectRead])
+@router.get(
+    "",
+    response_model=Page[ProjectRead],
+    dependencies=[require_permission("projects.project.read")],
+)
 async def list_projects(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -51,7 +56,12 @@ async def list_projects(
     )
 
 
-@router.post("", response_model=ProjectRead, status_code=201)
+@router.post(
+    "",
+    response_model=ProjectRead,
+    status_code=201,
+    dependencies=[require_permission("projects.project.write")],
+)
 async def create_project(
     payload: ProjectCreate,
     ctx: RequestContext = Depends(require_context),
@@ -60,7 +70,11 @@ async def create_project(
     return ProjectRead.model_validate(project)
 
 
-@router.get("/{project_id}", response_model=ProjectRead)
+@router.get(
+    "/{project_id}",
+    response_model=ProjectRead,
+    dependencies=[require_permission("projects.project.read")],
+)
 async def get_project(
     project_id: uuid.UUID,
     hours: bool = Query(
@@ -72,7 +86,11 @@ async def get_project(
     return ProjectRead.model_validate(project)
 
 
-@router.patch("/{project_id}", response_model=ProjectRead)
+@router.patch(
+    "/{project_id}",
+    response_model=ProjectRead,
+    dependencies=[require_permission("projects.project.write")],
+)
 async def update_project(
     project_id: uuid.UUID,
     payload: ProjectUpdate,
@@ -82,7 +100,11 @@ async def update_project(
     return ProjectRead.model_validate(project)
 
 
-@router.delete("/{project_id}", status_code=204)
+@router.delete(
+    "/{project_id}",
+    status_code=204,
+    dependencies=[require_permission("projects.project.delete")],
+)
 async def delete_project(
     project_id: uuid.UUID,
     ctx: RequestContext = Depends(require_context),

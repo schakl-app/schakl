@@ -203,7 +203,7 @@ class CompanyService:
         return await self.assignees.primary(company_id)
 
     async def create(self, data: CompanyCreate) -> Company:
-        self.ctx.ensure_can_write()
+        self.ctx.require("companies.company.write")
         values = data.model_dump()
         values.pop("assignees", None)
         links = self.assignees.normalize(
@@ -233,7 +233,7 @@ class CompanyService:
         return company
 
     async def update(self, company_id: uuid.UUID, data: CompanyUpdate) -> Company:
-        self.ctx.ensure_can_write()
+        self.ctx.require("companies.company.write")
         company = await self.repo.get_or_404(company_id)
         previous_status = company.status
         values = data.model_dump(exclude_unset=True)
@@ -296,6 +296,6 @@ class CompanyService:
         return company
 
     async def delete(self, company_id: uuid.UUID) -> None:
-        self.ctx.ensure_can_write()
+        self.ctx.require("companies.company.delete")
         company = await self.repo.get_or_404(company_id)
         await self.repo.delete(company)

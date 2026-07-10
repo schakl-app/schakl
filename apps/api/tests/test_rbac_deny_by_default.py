@@ -31,7 +31,7 @@ _INFRA_ROUTE_NAMES = frozenset({"health", "health_ready"})
 #: shrinks**, and #52 empties it and adds the test that keeps it empty. Without it, `dev` would
 #: be red for the two commits in between.
 _UNDECLARED_ROUTERS: frozenset[str] = frozenset(
-    {"companies", "contacts", "projects", "tasks", "time", "leave", "notifications"}
+    {"tasks", "time", "leave", "notifications"}
 )
 
 #: Operations that legitimately answer before a permission exists. Kept as (method, path) so the

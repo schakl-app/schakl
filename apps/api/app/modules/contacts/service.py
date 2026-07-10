@@ -170,7 +170,7 @@ class ContactService:
 
     # --- writes -------------------------------------------------------------- #
     async def create(self, data: ContactCreate) -> Contact:
-        self.ctx.ensure_can_write()
+        self.ctx.require("contacts.contact.write")
         values = data.model_dump()
         company_ids = values.pop("company_ids", None) or []
         values["custom"] = await self.custom_fields.validate(
@@ -183,7 +183,7 @@ class ContactService:
         return contact
 
     async def update(self, contact_id: uuid.UUID, data: ContactUpdate) -> Contact:
-        self.ctx.ensure_can_write()
+        self.ctx.require("contacts.contact.write")
         contact = await self.repo.get_or_404(contact_id)
         values = data.model_dump(exclude_unset=True)
         if "custom" in values:
@@ -195,7 +195,7 @@ class ContactService:
         return contact
 
     async def delete(self, contact_id: uuid.UUID) -> None:
-        self.ctx.ensure_can_write()
+        self.ctx.require("contacts.contact.delete")
         contact = await self.repo.get_or_404(contact_id)
         await self.repo.delete(contact)
 
@@ -212,7 +212,7 @@ class ContactService:
         ``is_primary``: ``True`` forces primary (unsets any other), ``False`` forces non-primary,
         ``None`` auto-promotes to primary only when the company has no primary yet.
         """
-        self.ctx.ensure_can_write()
+        self.ctx.require("contacts.link.write")
         await self.repo.get_or_404(contact_id)  # tenant-scoped existence check
         await self._ensure_company_in_tenant(company_id)
 
@@ -233,14 +233,14 @@ class ContactService:
         return link
 
     async def set_primary(self, contact_id: uuid.UUID, company_id: uuid.UUID) -> None:
-        self.ctx.ensure_can_write()
+        self.ctx.require("contacts.link.write")
         link = await self._get_link(company_id, contact_id)
         if link is None:
             raise AppError("not_found", "errors.not_found", status_code=404)
         await self._set_company_primary(company_id, contact_id)
 
     async def unlink(self, contact_id: uuid.UUID, company_id: uuid.UUID) -> None:
-        self.ctx.ensure_can_write()
+        self.ctx.require("contacts.link.write")
         link = await self._get_link(company_id, contact_id)
         if link is not None:
             await self.links.delete(link)

@@ -224,7 +224,7 @@ class ProjectService:
         return await self.assignees.primary(project_id)
 
     async def create(self, data: ProjectCreate) -> Project:
-        self.ctx.ensure_can_write()
+        self.ctx.require("projects.project.write")
         values = data.model_dump()
         values.pop("assignees", None)
 
@@ -277,7 +277,7 @@ class ProjectService:
         return await CompanyService(self.ctx).primary_assignee(company_id)
 
     async def update(self, project_id: uuid.UUID, data: ProjectUpdate) -> Project:
-        self.ctx.ensure_can_write()
+        self.ctx.require("projects.project.write")
         project = await self.repo.get_or_404(project_id)
         previous_status = project.status
         values = data.model_dump(exclude_unset=True)
@@ -325,6 +325,6 @@ class ProjectService:
         return project
 
     async def delete(self, project_id: uuid.UUID) -> None:
-        self.ctx.ensure_can_write()
+        self.ctx.require("projects.project.delete")
         project = await self.repo.get_or_404(project_id)
         await self.repo.delete(project)
