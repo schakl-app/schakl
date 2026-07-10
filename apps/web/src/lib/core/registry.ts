@@ -8,8 +8,27 @@
 import type { Component } from "svelte";
 
 import type { ApiClient } from "./api/client";
+import { t } from "./i18n";
 import { can } from "./permissions";
 import type { SessionUser } from "./session";
+
+/**
+ * A module's own display name, for the screens that *list* modules rather than navigate to them
+ * (Instellingen → Modules, the instance-admin org view, the first-run wizard).
+ *
+ * It is deliberately not `nav.<name>`: a module need not contribute a nav item at all
+ * (`notifications` reaches you through the header bell), and those screens were printing the raw
+ * key `nav.notifications` to the user (issue #58). A label belongs to the module; a nav label
+ * belongs to the sidebar entry, and a module may have none.
+ *
+ * The name is the API's — an instance may ship a module this web build doesn't know — so an
+ * unlabelled module names itself rather than leaking an i18n key.
+ */
+export function moduleLabel(name: string): string {
+  const key = `module.${name}.label`;
+  const label = t(key);
+  return label === key ? name : label;
+}
 
 export interface NavItem {
   key: string;

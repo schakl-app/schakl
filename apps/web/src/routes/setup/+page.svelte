@@ -1,6 +1,7 @@
 <script lang="ts">
   import { enhance } from "$app/forms";
   import { localeLabel, t } from "$lib/core/i18n";
+  import { moduleLabel } from "$lib/core/registry";
 
   let { data, form } = $props();
 
@@ -137,7 +138,7 @@
                 disabled={module === "companies"}
                 class="accent-brand"
               />
-              {t(`nav.${module}`)}
+              {moduleLabel(module)}
             </label>
           {/each}
           <!-- The hub module is mandatory; a disabled checkbox posts nothing, so mirror it. -->

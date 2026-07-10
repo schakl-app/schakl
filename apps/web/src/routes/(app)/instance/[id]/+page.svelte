@@ -2,6 +2,7 @@
   import { enhance } from "$app/forms";
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { moduleLabel } from "$lib/core/registry";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
 
   let { data, form } = $props();
@@ -110,7 +111,7 @@
               class="accent-brand"
             />
             {#if isHub}<input type="hidden" name="modules" value="companies" />{/if}
-            {t(`nav.${moduleName}`)}
+            {moduleLabel(moduleName)}
           </label>
         {/each}
       </div>

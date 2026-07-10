@@ -1,6 +1,7 @@
 <script lang="ts">
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
+  import { moduleLabel } from "$lib/core/registry";
 
   let { data, form } = $props();
 </script>
@@ -39,7 +40,7 @@
             class="h-4 w-4 rounded border-border text-brand focus:ring-brand"
           />
           {#if isHub}<input type="hidden" name="modules" value="companies" />{/if}
-          <span class="flex-1 text-sm font-medium text-text">{t(`nav.${moduleName}`)}</span>
+          <span class="flex-1 text-sm font-medium text-text">{moduleLabel(moduleName)}</span>
           {#if isHub}
             <span class="rounded-full bg-surface px-2 py-0.5 text-[11px] text-text-muted">
               {t("settings.modules.always_on")}

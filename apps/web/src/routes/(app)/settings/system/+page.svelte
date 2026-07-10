@@ -1,6 +1,7 @@
 <script lang="ts">
   import { dateLocale } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { moduleLabel } from "$lib/core/registry";
 
   let { data } = $props();
 
@@ -214,7 +215,7 @@
     <ul class="mt-3 flex flex-wrap gap-2">
       {#each info.enabled_modules as moduleName (moduleName)}
         <li class="rounded-full bg-surface px-2.5 py-0.5 text-xs font-medium text-text-muted">
-          {t(`nav.${moduleName}`)}
+          {moduleLabel(moduleName)}
         </li>
       {/each}
     </ul>
