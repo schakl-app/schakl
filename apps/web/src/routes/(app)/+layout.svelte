@@ -259,7 +259,13 @@
     </div>
   </aside>
 
-  <div class="flex flex-1 flex-col">
+  <!-- `min-w-0`, because a flex item defaults to `min-width: auto` and is therefore sized by its
+       widest descendant, not by the row. Without it one over-wide page didn't scroll or clip — it
+       *grew the shell*, so <body> laid out at 716px on a 360px phone while `initial-scale=1` kept
+       one CSS pixel on one device pixel. The right half fell off screen, which reads as "the app
+       loaded zoomed in", and pinch-zooming out revealed the whole (correct-looking) layout. That
+       was issue #36. This also lets the inner `overflow-x-auto` wrappers do their job. -->
+  <div class="flex min-w-0 flex-1 flex-col">
     {#if user?.impersonatedBy}
       <!-- Impersonation is never silent (issue #26): banner on every screen, one-click stop. -->
       <div

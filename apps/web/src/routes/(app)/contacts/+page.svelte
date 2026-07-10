@@ -137,27 +137,33 @@
   <title>{t("contacts.title")}</title>
 </svelte:head>
 
-<div class="mb-6 flex items-center justify-between">
+<!-- Wraps: "Nieuwe contactpersoon" is a 192px button, and a phone has ~312px of content width
+     once the title has had its share. The Dutch label is the long one, so English never shows it. -->
+<div class="mb-6 flex flex-wrap items-center justify-between gap-3">
   <div>
     <h1 class="text-xl font-semibold text-text">{t("contacts.title")}</h1>
     <p class="mt-1 text-sm text-text-muted">{t("contacts.count", { count: data.total })}</p>
   </div>
-  <div class="ml-auto mr-3 flex items-center gap-2">
-    <SearchInput />
-    <ColumnPicker
-      all={table.pickerColumns}
-      visible={table.visibleKeys}
-      sort={table.sort}
-      onchange={table.onColumnsChange}
-      onsort={table.onSort}
-    />
-  </div>
   <button
-    class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+    class="shrink-0 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
     onclick={() => (showCreate = !showCreate)}
   >
     {t("contacts.new")}
   </button>
+</div>
+
+<!-- Search + the personal column picker, on their own wrapping row (issue #36): title, a fixed
+     224px search box, the picker and the primary action on one unwrappable line have a
+     min-content width no phone has. This is the shape `companies` already uses. -->
+<div class="mb-4 flex flex-wrap items-center gap-2">
+  <SearchInput />
+  <ColumnPicker
+    all={table.pickerColumns}
+    visible={table.visibleKeys}
+    sort={table.sort}
+    onchange={table.onColumnsChange}
+    onsort={table.onSort}
+  />
 </div>
 
 {#if showCreate}

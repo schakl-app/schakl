@@ -136,7 +136,9 @@
   class="mb-4 flex flex-wrap items-center justify-between gap-3"
   data-sveltekit-preload-data="hover"
 >
-  <div class="flex items-center gap-2 text-sm">
+  <!-- Wraps like its parent (issue #36): six controls, a `w-32` date field and a select add up to
+       a min-content width of ~468px, so a phone laid the whole shell out that wide. -->
+  <div class="flex flex-wrap items-center gap-2 text-sm">
     <a
       href={`?week=${shiftWeek(data.week_start, -7)}&date=${shiftWeek(data.selectedDate, -7)}`}
       class="rounded-lg border border-border px-2 py-1 hover:bg-surface"

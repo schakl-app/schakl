@@ -179,8 +179,10 @@
 </div>
 
 <div class="grid gap-4 lg:grid-cols-[1fr_320px]">
-  <!-- Main column -->
-  <div class="space-y-4">
+  <!-- Main column. `min-w-0` for the same reason the shell needs it (issue #36): a grid item's
+       automatic minimum size is its content's min-content width, so without it the widest card
+       inside dictates the column's width and the page grows past the viewport. -->
+  <div class="min-w-0 space-y-4">
     <!-- Title + mode menu -->
     <section class="rounded-xl border border-border bg-surface-raised p-5">
       <div class="flex items-start gap-3">
@@ -360,7 +362,7 @@
               name="title"
               placeholder={t("tasks.checklist.item_placeholder")}
               required
-              class="flex-1 rounded-lg border border-border px-2 py-1 text-sm outline-none focus:border-brand"
+              class="min-w-0 flex-1 rounded-lg border border-border px-2 py-1 text-sm outline-none focus:border-brand"
             />
             <button
               class="rounded-lg border border-border px-2 py-1 text-xs text-text-muted hover:border-brand hover:text-brand"
@@ -371,11 +373,14 @@
       {/each}
 
       <form method="POST" action="?/addChecklist" use:enhance class="flex gap-2">
+        <!-- `min-w-0`: a flex `<input>` keeps its browser-default width (~228px here) as its
+             min-content floor, so `flex-1` alone cannot shrink it and the row pushed the whole
+             card past a phone's width (issue #36). -->
         <input
           name="title"
           placeholder={t("tasks.checklist.add")}
           required
-          class="flex-1 rounded-lg border border-dashed border-border px-3 py-1.5 text-sm outline-none focus:border-brand"
+          class="min-w-0 flex-1 rounded-lg border border-dashed border-border px-3 py-1.5 text-sm outline-none focus:border-brand"
         />
         <button
           class="rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:border-brand hover:text-brand"
@@ -610,7 +615,7 @@
   </div>
 
   <!-- Sidebar -->
-  <aside class="space-y-4">
+  <aside class="min-w-0 space-y-4">
     <section class="rounded-xl border border-border bg-surface-raised p-4">
       <div class="space-y-3">
         <!-- Status is core workflow → always editable -->
