@@ -90,11 +90,16 @@ async def spawn_next(
     task: Task,
     *,
     actor_user_id: uuid.UUID | None,
+    actor_name: str | None = None,
 ) -> Task:
     """Clone the carrier into the next occurrence and hand it the recurrence.
 
     Copies title/description/priority/company/project/assignee, the label links, and the
     checklists with every item reset to not-done. The source task stops recurring.
+
+    ``actor_name`` snapshots whoever completed the carrier, so the spawned task's first activity
+    line keeps naming them after their account is deleted. The cron passes neither and is
+    genuinely the system — that is the distinction the snapshot exists to preserve (issue #64).
     """
     rec = dict(task.recurrence or {})
     due = next_due(task.due_date, rec)
@@ -171,6 +176,7 @@ async def spawn_next(
             org_id=org_id,
             task_id=clone.id,
             actor_user_id=actor_user_id,
+            actor_name=actor_name,
             action="recurrence_spawned",
             payload={"source_task_id": str(task.id)},
         )

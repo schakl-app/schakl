@@ -189,7 +189,11 @@ class CommentRead(BaseModel):
 
     id: uuid.UUID
     author_user_id: uuid.UUID | None
+    # The live account's name while it exists, else the snapshot taken when the comment was
+    # written (issue #64). ``author_deleted`` says which — the UI marks a departed author
+    # rather than dropping their name.
     author_name: str | None = None
+    author_deleted: bool = False
     body: str
     edited_at: datetime | None
     created_at: datetime
@@ -201,6 +205,9 @@ class ActivityRead(BaseModel):
     id: uuid.UUID
     actor_user_id: uuid.UUID | None
     actor_name: str | None = None
+    # A named actor with no live account is a deleted user; an unnamed one is the system
+    # (the recurrence cron). Without this the two collapse into each other (issue #64).
+    actor_deleted: bool = False
     action: str
     payload: dict[str, Any]
     created_at: datetime

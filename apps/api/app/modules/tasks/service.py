@@ -110,6 +110,19 @@ def _display_name(user: User | None) -> str | None:
     return user.full_name or user.email
 
 
+def _attribution(live: User | None, snapshot: str | None) -> tuple[str | None, bool]:
+    """How a stored row names the person behind it: ``(display name, actor was deleted)``.
+
+    The live account wins while it exists, so a rename shows through the whole history at once.
+    Once it is gone the FK reads ``NULL`` (``ON DELETE SET NULL``) and only the snapshot taken at
+    write time still knows who acted — which is also the one thing separating a departed human
+    from the system, whose rows never carried a name at all (issue #64).
+    """
+    if live is not None:
+        return _display_name(live), False
+    return snapshot, snapshot is not None
+
+
 def _excerpt(body: str, limit: int = 140) -> str:
     """A comment's first line, short enough to read in a notification list."""
     text = " ".join(body.split())
@@ -153,6 +166,8 @@ class TaskService:
                 org_id=self.ctx.org.id,
                 task_id=task_id,
                 actor_user_id=self.ctx.user.id,
+                # Snapshotted, so deleting the account doesn't hand this line to "System" (#64).
+                actor_name=_display_name(self.ctx.user),
                 action=action,
                 payload=payload or {},
             )
@@ -374,10 +389,14 @@ class TaskService:
                 .order_by(TaskComment.created_at.asc())
             )
         ).all()
-        detail.comments = [
-            CommentRead.model_validate(c).model_copy(update={"author_name": _display_name(u)})
-            for c, u in comment_rows
-        ]
+        detail.comments = []
+        for comment, author in comment_rows:
+            name, deleted = _attribution(author, comment.author_name)
+            detail.comments.append(
+                CommentRead.model_validate(comment).model_copy(
+                    update={"author_name": name, "author_deleted": deleted}
+                )
+            )
 
         activity_rows = (
             await self.ctx.session.execute(
@@ -391,10 +410,14 @@ class TaskService:
                 .limit(50)
             )
         ).all()
-        detail.activities = [
-            ActivityRead.model_validate(a).model_copy(update={"actor_name": _display_name(u)})
-            for a, u in activity_rows
-        ]
+        detail.activities = []
+        for activity, actor in activity_rows:
+            name, deleted = _attribution(actor, activity.actor_name)
+            detail.activities.append(
+                ActivityRead.model_validate(activity).model_copy(
+                    update={"actor_name": name, "actor_deleted": deleted}
+                )
+            )
         links = (
             await self.ctx.session.execute(
                 self.ctx.repo(TaskLink)
@@ -580,7 +603,11 @@ class TaskService:
             and (task.recurrence or {}).get("mode") == RecurrenceMode.AFTER_COMPLETION.value
         ):
             await rec_mod.spawn_next(
-                self.ctx.session, self.ctx.org.id, task, actor_user_id=self.ctx.user.id
+                self.ctx.session,
+                self.ctx.org.id,
+                task,
+                actor_user_id=self.ctx.user.id,
+                actor_name=_display_name(self.ctx.user),
             )
             # spawn_next mutates the source (recurrence handed off); reload server-side
             # defaults so serialization never lazy-loads.
@@ -682,6 +709,7 @@ class TaskService:
                     )
                 )
             await self.ctx.session.flush()
+        await self._record(task_id, "checklist_created", {"title": checklist.title})
         return checklist
 
     # ------------------------------------------------------------------ #
@@ -725,9 +753,16 @@ class TaskService:
     ) -> TaskChecklist:
         await self._writable_task_or_403(task_id)
         checklist = await self._checklist_or_404(task_id, checklist_id)
-        return await self.ctx.repo(TaskChecklist).update(
-            checklist, **data.model_dump(exclude_unset=True)
-        )
+        values = data.model_dump(exclude_unset=True)
+        old_title = checklist.title
+        checklist = await self.ctx.repo(TaskChecklist).update(checklist, **values)
+        # A reorder is noise, the way `position` is excluded from `_TRACKED_FIELDS`; a rename
+        # is a change to what the list *is*, so it belongs in the trail.
+        if checklist.title != old_title:
+            await self._record(
+                task_id, "checklist_renamed", {"from": old_title, "to": checklist.title}
+            )
+        return checklist
 
     async def delete_checklist(self, task_id: uuid.UUID, checklist_id: uuid.UUID) -> None:
         await self._writable_task_or_403(task_id)
@@ -742,7 +777,11 @@ class TaskService:
         await self._checklist_or_404(task_id, checklist_id)
         repo = self.ctx.repo(TaskChecklistItem)
         position = await repo.count(checklist_id=checklist_id)
-        return await repo.create(checklist_id=checklist_id, title=data.title, position=position)
+        item = await repo.create(
+            checklist_id=checklist_id, title=data.title, position=position
+        )
+        await self._record(task_id, "checklist_item_added", {"title": item.title})
+        return item
 
     async def _item_or_404(
         self, task_id: uuid.UUID, checklist_id: uuid.UUID, item_id: uuid.UUID
@@ -762,9 +801,23 @@ class TaskService:
     ) -> TaskChecklistItem:
         await self._writable_task_or_403(task_id)
         item = await self._item_or_404(task_id, checklist_id, item_id)
-        return await self.ctx.repo(TaskChecklistItem).update(
-            item, **data.model_dump(exclude_unset=True)
-        )
+        values = data.model_dump(exclude_unset=True)
+        was_done, old_title = item.done, item.title
+        item = await self.ctx.repo(TaskChecklistItem).update(item, **values)
+
+        # Ticking an item off is the most routine thing that happens on a task, and it was the
+        # one thing the trail never saw (#61) — it arrives here as an ordinary field update.
+        if item.done != was_done:
+            await self._record(
+                task_id,
+                "checklist_item_completed" if item.done else "checklist_item_reopened",
+                {"title": item.title},
+            )
+        if item.title != old_title:
+            await self._record(
+                task_id, "checklist_item_renamed", {"from": old_title, "to": item.title}
+            )
+        return item
 
     async def delete_checklist_item(
         self, task_id: uuid.UUID, checklist_id: uuid.UUID, item_id: uuid.UUID
@@ -780,17 +833,25 @@ class TaskService:
     async def add_comment(self, task_id: uuid.UUID, data: CommentCreate) -> CommentRead:
         self.ctx.require("tasks.comment.write")
         task = await self.repo.get_or_404(task_id)
+        excerpt = _excerpt(data.body)
         comment = await self.ctx.repo(TaskComment).create(
-            task_id=task_id, author_user_id=self.ctx.user.id, body=data.body
+            task_id=task_id,
+            author_user_id=self.ctx.user.id,
+            author_name=_display_name(self.ctx.user),
+            body=data.body,
         )
-        await self._record(task_id, "commented")
+        # The excerpt the notification has always carried belongs in the trail too, with the id
+        # to reach the comment by — "commented", on its own, sends you hunting for what (#61).
+        await self._record(
+            task_id, "commented", {"comment_id": str(comment.id), "excerpt": excerpt}
+        )
         # Everyone already in the conversation hears the reply; commenting also subscribes
         # the author to the task, so the fan-out keeps reaching them (issue #16).
         await self._emit_task(
             "task.commented",
             task,
             await self._comment_audience(task),
-            {"excerpt": _excerpt(data.body)},
+            {"excerpt": excerpt},
         )
         return CommentRead.model_validate(comment).model_copy(
             update={"author_name": _display_name(self.ctx.user)}
@@ -832,7 +893,11 @@ class TaskService:
         comment = await self.ctx.repo(TaskComment).update(
             comment, body=data.body, edited_at=datetime.now(UTC)
         )
-        await self._record(task_id, "comment_edited")
+        await self._record(
+            task_id,
+            "comment_edited",
+            {"comment_id": str(comment.id), "excerpt": _excerpt(comment.body)},
+        )
         return CommentRead.model_validate(comment).model_copy(
             update={"author_name": _display_name(self.ctx.user)}
         )
@@ -841,5 +906,7 @@ class TaskService:
         comment = await self._comment_or_404(task_id, comment_id)
         scope = None if comment.author_user_id == self.ctx.user.id else "any"
         self.ctx.require("tasks.comment.write", scope=scope)
+        body = comment.body
         await self.ctx.repo(TaskComment).delete(comment)
-        await self._record(task_id, "comment_deleted")
+        # No id to link to — the row is gone. The excerpt is the only record of what was said.
+        await self._record(task_id, "comment_deleted", {"excerpt": _excerpt(body)})

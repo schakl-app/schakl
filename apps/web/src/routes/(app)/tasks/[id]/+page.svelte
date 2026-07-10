@@ -92,6 +92,31 @@
 
   const when = (iso: string) => fmtDateTime(iso);
 
+  /**
+   * Who a stored row is attributed to (issue #64).
+   *
+   * A name with no live account is someone who has since been deleted — say so, rather than
+   * handing their work to "System" (which is what a NULL actor used to mean here, and still
+   * means when the recurrence cron writes the row). No name at all really is the system.
+   */
+  function actorLabel(a: { actor_name?: string | null; actor_deleted?: boolean }): string {
+    if (!a.actor_name) return t("tasks.activity.system");
+    return a.actor_deleted ? t("common.deleted_user", { name: a.actor_name }) : a.actor_name;
+  }
+
+  /** Same rule for a comment's author, whose absence used to render as a bare “—”. */
+  function authorLabel(c: { author_name?: string | null; author_deleted?: boolean }): string {
+    if (!c.author_name) return "—";
+    return c.author_deleted ? t("common.deleted_user", { name: c.author_name }) : c.author_name;
+  }
+
+  /** Comments the feed can still link to; a deleted one keeps its excerpt but has nowhere to go. */
+  function activityHref(a: { payload: Record<string, unknown> }): string | null {
+    const id = a.payload.comment_id ? String(a.payload.comment_id) : null;
+    if (!id) return null;
+    return (task.comments ?? []).some((c) => c.id === id) ? `#comment-${id}` : null;
+  }
+
   function activityText(a: { action: string; payload: Record<string, unknown> }): string {
     if (a.action === "status_changed") {
       return t("tasks.activity.status_changed", {
@@ -116,12 +141,27 @@
       const fields = changed.map((f) => t(`tasks.field.${names[f] ?? f}`)).join(", ");
       return t("tasks.activity.updated", { fields });
     }
+    if (a.action === "checklist_renamed" || a.action === "checklist_item_renamed") {
+      return t(`tasks.activity.${a.action}`, {
+        from: String(a.payload.from ?? ""),
+        to: String(a.payload.to ?? ""),
+      });
+    }
     if (
       a.action === "link_deleted" ||
+      a.action === "checklist_created" ||
       a.action === "checklist_deleted" ||
+      a.action === "checklist_item_added" ||
+      a.action === "checklist_item_completed" ||
+      a.action === "checklist_item_reopened" ||
       a.action === "checklist_item_deleted"
     ) {
       return t(`tasks.activity.${a.action}`, { title: String(a.payload.title ?? "") });
+    }
+    // Comment rows carry an excerpt of what was said; rows written before they did fall back
+    // to the bare verb rather than quoting an empty string (#61).
+    if (a.payload.excerpt) {
+      return t(`tasks.activity.${a.action}_excerpt`, { excerpt: String(a.payload.excerpt) });
     }
     return t(`tasks.activity.${a.action}`);
   }
@@ -468,9 +508,9 @@
           {#each task.comments ?? [] as comment (comment.id)}
             {@const canEditComment = comment.author_user_id === userId}
             {@const canDeleteComment = canEditComment || canDeleteAnyComment}
-            <li class="rounded-lg border border-border bg-surface/50 p-3">
+            <li id="comment-{comment.id}" class="rounded-lg border border-border bg-surface/50 p-3">
               <div class="mb-1 flex items-center justify-between gap-2">
-                <span class="text-xs font-semibold text-text">{comment.author_name ?? "—"}</span>
+                <span class="text-xs font-semibold text-text">{authorLabel(comment)}</span>
                 <div class="flex items-center gap-1 text-[11px] text-text-muted">
                   <span>{when(comment.created_at)}</span>
                   {#if comment.edited_at}<span>({t("tasks.comments.edited")})</span>{/if}
@@ -549,13 +589,18 @@
       {:else}
         <ul class="space-y-2">
           {#each task.activities ?? [] as activity (activity.id)}
+            {@const href = activityHref(activity)}
             <li class="flex items-baseline gap-2 text-sm">
               <span class="shrink-0 text-[11px] tabular-nums text-text-muted"
                 >{when(activity.created_at)}</span
               >
               <span class="text-text">
-                <span class="font-medium">{activity.actor_name ?? t("tasks.activity.system")}</span>
-                {activityText(activity)}
+                <span class="font-medium">{actorLabel(activity)}</span>
+                {#if href}
+                  <a class="hover:text-brand hover:underline" {href}>{activityText(activity)}</a>
+                {:else}
+                  {activityText(activity)}
+                {/if}
               </span>
             </li>
           {/each}

@@ -2181,6 +2181,11 @@ export interface components {
         ActivityRead: {
             /** Action */
             action: string;
+            /**
+             * Actor Deleted
+             * @default false
+             */
+            actor_deleted: boolean;
             /** Actor Name */
             actor_name?: string | null;
             /** Actor User Id */
@@ -2475,6 +2480,11 @@ export interface components {
         };
         /** CommentRead */
         CommentRead: {
+            /**
+             * Author Deleted
+             * @default false
+             */
+            author_deleted: boolean;
             /** Author Name */
             author_name?: string | null;
             /** Author User Id */
