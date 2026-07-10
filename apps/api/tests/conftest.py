@@ -12,6 +12,7 @@ import subprocess
 import uuid
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -134,6 +135,19 @@ async def add_membership(
     every gated endpoint 403s. Always go through this (or ``make_tenant``).
     """
     return await create_membership(session, org_id, user_id, role)
+
+
+def leave_workday(index: int = 0) -> date:
+    """The ``index``-th weekday from the first Monday of November, this year.
+
+    A leave request's hours are computed from the employee's schedule (#48), so a request on a
+    Saturday — or on Tweede Kerstdag — is worth zero hours and is refused outright. November is
+    the one month with no Dutch public holiday in it, so a weekday there is always worth a full
+    eight hours. Anchor leave test dates here rather than counting days from today and hoping.
+    """
+    first = date(date.today().year, 11, 1)
+    monday = first + timedelta(days=(7 - first.weekday()) % 7)
+    return monday + timedelta(weeks=index // 5, days=index % 5)
 
 
 async def auth_cookie(user: User) -> dict[str, str]:

@@ -5,6 +5,7 @@ import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { LEAVE_COLUMNS, LEAVE_TABLE_ID } from "$lib/modules/leave/columns";
+import { requestBody } from "$lib/modules/leave/request";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -45,16 +46,6 @@ export const load: PageServerLoad = async (event) => {
   };
 };
 
-function requestBody(form: FormData) {
-  return {
-    leave_type_id: String(form.get("leave_type_id") ?? ""),
-    start_date: String(form.get("start_date") ?? ""),
-    end_date: String(form.get("end_date") ?? ""),
-    hours: Number(form.get("hours") ?? 0),
-    note: String(form.get("note") ?? "").trim() || null,
-  };
-}
-
 export const actions: Actions = {
   /** Persist this user's column layout. Personal, in-view — never org settings (docs/UX.md §6). */
   saveTable: async (event) => {
@@ -66,7 +57,7 @@ export const actions: Actions = {
   create: async (event) => {
     const form = await event.request.formData();
     const body = requestBody(form);
-    if (!body.leave_type_id || !body.start_date || !body.end_date || !body.hours) {
+    if (!body.leave_type_id || !body.start_date || !body.end_date) {
       return fail(400, { error: "errors.required" });
     }
     const { error } = await apiFor(event).POST("/api/v1/leave/requests", { body });

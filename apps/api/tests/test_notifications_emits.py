@@ -15,7 +15,7 @@ from sqlalchemy import select
 
 from app.db import async_session_maker, set_current_org
 from app.modules.notifications.models import Notification, NotificationEvent
-from tests.conftest import Tenant, auth_cookie, make_tenant
+from tests.conftest import Tenant, auth_cookie, leave_workday, make_tenant
 from tests.test_notifications_fanout import _events, _member
 
 
@@ -338,7 +338,7 @@ async def test_leave_asks_the_managers_and_answers_the_requester(client_for) -> 
     member = await _member(t, "employee@example.com")
     owner_headers = await auth_cookie(t.user)
     member_headers = await auth_cookie(member)
-    start = (datetime.now(UTC).date() + timedelta(days=30)).isoformat()
+    start = leave_workday(0).isoformat()
 
     async with client_for(t.host) as c:
         types = (await c.get("/api/v1/leave/types", headers=member_headers)).json()
@@ -346,12 +346,7 @@ async def test_leave_asks_the_managers_and_answers_the_requester(client_for) -> 
         request = (
             await c.post(
                 "/api/v1/leave/requests",
-                json={
-                    "leave_type_id": unpaid["id"],
-                    "start_date": start,
-                    "end_date": start,
-                    "hours": 8,
-                },
+                json={"leave_type_id": unpaid["id"], "start_date": start, "end_date": start},
                 headers=member_headers,
             )
         ).json()
@@ -381,19 +376,14 @@ async def test_a_sick_registration_asks_nobody(client_for) -> None:
     member = await _member(t, "ill@example.com")
     owner_headers = await auth_cookie(t.user)
     member_headers = await auth_cookie(member)
-    start = (datetime.now(UTC).date() + timedelta(days=40)).isoformat()
+    start = leave_workday(6).isoformat()
 
     async with client_for(t.host) as c:
         types = (await c.get("/api/v1/leave/types", headers=member_headers)).json()
         sick = next(lt for lt in types if lt["key"] == "sick")
         created = await c.post(
             "/api/v1/leave/requests",
-            json={
-                "leave_type_id": sick["id"],
-                "start_date": start,
-                "end_date": start,
-                "hours": 8,
-            },
+            json={"leave_type_id": sick["id"], "start_date": start, "end_date": start},
             headers=member_headers,
         )
         assert created.json()["status"] == "approved"

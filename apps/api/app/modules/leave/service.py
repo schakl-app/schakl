@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -38,11 +38,14 @@ from app.modules.leave.schemas import (
     HolidayImport,
     HolidayImportResult,
     LeaveBalance,
+    LeaveDayHours,
     LeaveEntitlementUpsert,
     LeaveHolidayCreate,
     LeaveHolidayUpdate,
+    LeavePreviewResult,
     LeaveProfileUpdate,
     LeaveRequestCreate,
+    LeaveRequestPreview,
     LeaveRequestUpdate,
     LeaveSettingsUpdate,
     LeaveSummary,
@@ -116,6 +119,9 @@ _OCCUPYING = (LeaveRequestStatus.PENDING.value, LeaveRequestStatus.APPROVED.valu
 
 #: "Not looked up yet", distinct from "looked up, and there is no row".
 _UNSET = object()
+
+#: Midnight-to-midnight, in minutes: the window a day with no requested time covers.
+_DAY = sched.MINUTES_PER_DAY
 
 
 def _now() -> datetime:
@@ -582,6 +588,134 @@ class LeaveService:
             )
         return result
 
+    # --- the hour calculation (#48) --------------------------------------------------- #
+    def _breakdown(
+        self,
+        *,
+        schedule: sched.WorkSchedule,
+        holidays_off: set[date],
+        start_date: date,
+        start_time: time | None,
+        end_date: date,
+        end_time: time | None,
+    ) -> list[tuple[date, int, str | None]]:
+        """Per-day worked minutes, and why a day is worth nothing when it is.
+
+        For each date: not a scheduled working day → 0; an active holiday → 0; otherwise the
+        day's scheduled window intersected with the requested one, minus every break it overlaps.
+        The intersection *is* the clamp — "from 08:00" on an 08:30 day means "from the start".
+        """
+        rows: list[tuple[date, int, str | None]] = []
+        day = start_date
+        while day <= end_date:
+            work_day = schedule.day(day.weekday())
+            if work_day is None or sched.day_minutes(work_day) == 0:
+                rows.append((day, 0, "not_scheduled"))
+            elif day in holidays_off:
+                rows.append((day, 0, "holiday"))
+            else:
+                low = sched.to_minutes(start_time) if (day == start_date and start_time) else 0
+                high = sched.to_minutes(end_time) if (day == end_date and end_time) else _DAY
+                minutes = sched.day_minutes(work_day, (low, high))
+                rows.append((day, minutes, None if minutes else "outside_hours"))
+            day += timedelta(days=1)
+        return rows
+
+    async def compute_hours(
+        self,
+        user_id: uuid.UUID,
+        start_date: date,
+        start_time: time | None,
+        end_date: date,
+        end_time: time | None,
+    ) -> tuple[Decimal, list[LeaveDayHours]]:
+        """``(total hours, per-day breakdown)`` — the one place a leave hour is decided.
+
+        Rounds to two decimals **once**, on the summed minutes: rounding each day and adding the
+        results is how a 40-hour week becomes 39,99.
+        """
+        schedule = await self.effective_schedule(user_id)
+        holidays_off = await self.active_holidays_between(start_date, end_date)
+        rows = self._breakdown(
+            schedule=schedule,
+            holidays_off=holidays_off,
+            start_date=start_date,
+            start_time=start_time,
+            end_date=end_date,
+            end_time=end_time,
+        )
+        total = sched.to_hours(sum(minutes for _, minutes, _ in rows))
+        breakdown = [
+            LeaveDayHours(date=day, hours=sched.to_hours(minutes), reason=reason)
+            for day, minutes, reason in rows
+        ]
+        return total, breakdown
+
+    async def preview(self, data: LeaveRequestPreview) -> LeavePreviewResult:
+        """What the form shows before submitting — the number the server will store."""
+        uid = self._effective_user_id(data.user_id)
+        if uid != self.ctx.user.id:
+            # 404, not "the org default schedule", when the id belongs to another tenant.
+            await self._member_or_404(uid)
+        self._validate_span(data.start_date, data.start_time, data.end_date, data.end_time)
+        hours, breakdown = await self.compute_hours(
+            uid, data.start_date, data.start_time, data.end_date, data.end_time
+        )
+        per_day = sched.average_day_hours(await self.effective_schedule(uid))
+        days = (hours / per_day).quantize(Decimal("0.01")) if per_day else Decimal("0")
+        return LeavePreviewResult(hours=hours, days=days, breakdown=breakdown)
+
+    def _validate_span(
+        self,
+        start_date: date,
+        start_time: time | None,
+        end_date: date,
+        end_time: time | None,
+    ) -> None:
+        if end_date < start_date:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"end_date": "errors.leave_end_before_start"},
+            )
+        # Only on a *same-day* request: `Thu 15:00 → Fri 14:00` is an ordinary overnight span.
+        if start_date == end_date and start_time and end_time and end_time <= start_time:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"end_time": "errors.leave_end_time_before_start"},
+            )
+
+    async def _resolve_hours(
+        self,
+        *,
+        user_id: uuid.UUID,
+        start_date: date,
+        start_time: time | None,
+        end_date: date,
+        end_time: time | None,
+        override: Decimal | None,
+    ) -> Decimal:
+        """The stored ``hours``: the manager's number when there is one, else the computed one.
+
+        Whether the caller is *allowed* to set an override is checked where the intent is
+        visible — at the call site. Re-checking it here would 403 a member who merely edits the
+        note on a request a manager overrode last week.
+        """
+        self._validate_span(start_date, start_time, end_date, end_time)
+        if override is not None:
+            return override
+        hours, _ = await self.compute_hours(user_id, start_date, start_time, end_date, end_time)
+        if hours <= 0:
+            # A Saturday, a holiday, or half an hour that lands entirely inside lunch. Say so
+            # rather than storing a zero-hour request nobody will ever notice.
+            raise AppError(
+                "no_working_hours", "errors.leave_no_working_hours", status_code=422
+            )
+        return hours
+
     # --- requests ------------------------------------------------------------------- #
     async def _validate_request(
         self,
@@ -593,13 +727,6 @@ class LeaveService:
         hours: Decimal,
         exclude_id: uuid.UUID | None = None,
     ) -> None:
-        if end_date < start_date:
-            raise AppError(
-                "validation",
-                "errors.validation",
-                status_code=422,
-                fields={"end_date": "errors.leave_end_before_start"},
-            )
         # No two occupying (pending/approved) requests may overlap for the same user.
         stmt = self.requests.scoped_select().where(
             LeaveRequest.user_id == user_id,
@@ -639,12 +766,23 @@ class LeaveService:
         leave_type = await self.types.get_or_404(data.leave_type_id)
         if not leave_type.active:
             raise AppError("validation", "errors.validation", status_code=422)
+        # Setting `hours` by hand is an approver's act, and it is recorded as one.
+        if data.hours_override is not None:
+            self.ctx.require("leave.request.approve")
+        hours = await self._resolve_hours(
+            user_id=uid,
+            start_date=data.start_date,
+            start_time=data.start_time,
+            end_date=data.end_date,
+            end_time=data.end_time,
+            override=data.hours_override,
+        )
         await self._validate_request(
             user_id=uid,
             leave_type=leave_type,
             start_date=data.start_date,
             end_date=data.end_date,
-            hours=data.hours,
+            hours=hours,
         )
         # Types without approval (sick) are registrations: they go straight to approved.
         status = (
@@ -656,8 +794,12 @@ class LeaveService:
             user_id=uid,
             leave_type_id=data.leave_type_id,
             start_date=data.start_date,
+            start_time=data.start_time,
             end_date=data.end_date,
-            hours=data.hours,
+            end_time=data.end_time,
+            hours=hours,
+            hours_override=data.hours_override,
+            hours_override_by_user_id=self.ctx.user.id if data.hours_override else None,
             note=data.note,
             status=status,
         )
@@ -708,12 +850,36 @@ class LeaveService:
         leave_type = await self.types.get_or_404(
             values.get("leave_type_id", request.leave_type_id)
         )
+        start_date = values.get("start_date", request.start_date)
+        start_time = values.get("start_time", request.start_time)
+        end_date = values.get("end_date", request.end_date)
+        end_time = values.get("end_time", request.end_time)
+        override = values.get("hours_override", request.hours_override)
+        # Setting or clearing the override is an approver's act; leaving a stored one alone isn't.
+        if "hours_override" in data.model_fields_set:
+            self.ctx.require("leave.request.approve")
+
+        # Recomputed on every edit, so a request moved into Kerst week gets cheaper (#48).
+        values["hours"] = await self._resolve_hours(
+            user_id=request.user_id,
+            start_date=start_date,
+            start_time=start_time,
+            end_date=end_date,
+            end_time=end_time,
+            override=override,
+        )
+        if "hours_override" in data.model_fields_set:
+            values["hours_override"] = data.hours_override
+            values["hours_override_by_user_id"] = (
+                self.ctx.user.id if data.hours_override is not None else None
+            )
+
         await self._validate_request(
             user_id=request.user_id,
             leave_type=leave_type,
-            start_date=values.get("start_date", request.start_date),
-            end_date=values.get("end_date", request.end_date),
-            hours=Decimal(values.get("hours", request.hours)),
+            start_date=start_date,
+            end_date=end_date,
+            hours=values["hours"],
             exclude_id=request.id,
         )
         return await self.requests.update(request, **values)
@@ -795,6 +961,60 @@ class LeaveService:
         return items, total
 
     # --- team calendar feed ------------------------------------------------------------ #
+    def _shaped_days(
+        self,
+        request: LeaveRequest,
+        schedule: sched.WorkSchedule,
+        holidays_off: set[date],
+    ) -> list[LeaveDayHours]:
+        """The request's stored hours, laid out over its days in the shape the schedule gives.
+
+        Two rules that fight, and how they're reconciled: the **stored total** is what the
+        employee and their manager agreed to, and approved requests are never retroactively
+        recalculated (#47, #48). But the **shape** — 2 h Thursday, 5 h Friday — has to come from
+        the schedule, because spreading the total evenly is exactly the bug this replaces.
+
+        So: compute the shape, then distribute the stored total in proportion to it. For a
+        request created after this landed the factor is 1 and the days *are* the computation.
+        Only a request whose schedule or holidays changed underneath it gets scaled, and there
+        the total still reads as what was agreed. A request with a manager override, or one whose
+        every day has since become a holiday, has no shape at all — it lands on the start date.
+        """
+        rows = self._breakdown(
+            schedule=schedule,
+            holidays_off=holidays_off,
+            start_date=request.start_date,
+            start_time=request.start_time,
+            end_date=request.end_date,
+            end_time=request.end_time,
+        )
+        total_minutes = sum(minutes for _, minutes, _ in rows)
+        stored = Decimal(request.hours)
+        if total_minutes == 0:
+            return [
+                LeaveDayHours(
+                    date=day,
+                    hours=stored if day == request.start_date else Decimal("0.00"),
+                    reason=reason,
+                )
+                for day, _, reason in rows
+            ]
+
+        days = [
+            LeaveDayHours(
+                date=day,
+                hours=(stored * minutes / total_minutes).quantize(Decimal("0.01")),
+                reason=reason,
+            )
+            for day, minutes, reason in rows
+        ]
+        # Push the rounding residue onto the biggest day, so the row still sums to `hours`.
+        residue = stored - sum((d.hours for d in days), Decimal("0"))
+        if residue:
+            biggest = max(days, key=lambda d: d.hours)
+            biggest.hours += residue
+        return days
+
     async def team(
         self, *, date_from: date, date_to: date, user_id: uuid.UUID | None = None
     ) -> list[TeamLeaveItem]:
@@ -802,6 +1022,9 @@ class LeaveService:
 
         Open to all staff (who's off is normal team-visible information in an agency). A
         ``client`` role holds no ``leave.request.read`` at all, so the route already refused it.
+
+        Three extra reads, not three per row: every profile, the org default and the holidays in
+        range are fetched once and the per-day shapes computed in Python (docs/PERFORMANCE.md).
         """
         stmt = (
             select(LeaveRequest, User)
@@ -817,6 +1040,17 @@ class LeaveService:
         if user_id is not None:
             stmt = stmt.where(LeaveRequest.user_id == user_id)
         rows = (await self.ctx.session.execute(stmt)).all()
+        if not rows:
+            return []
+
+        default = await self.default_schedule()
+        profiles = (await self.ctx.session.execute(self.profiles.scoped_select())).scalars().all()
+        by_user = {p.user_id: p for p in profiles}
+        # A request may start before `date_from` and end after `date_to`; shape the whole of it.
+        span_from = min(req.start_date for req, _ in rows)
+        span_to = max(req.end_date for req, _ in rows)
+        holidays_off = await self.active_holidays_between(span_from, span_to)
+
         return [
             TeamLeaveItem(
                 id=req.id,
@@ -824,9 +1058,14 @@ class LeaveService:
                 user_name=user.full_name or user.email,
                 leave_type_id=req.leave_type_id,
                 start_date=req.start_date,
+                start_time=req.start_time,
                 end_date=req.end_date,
+                end_time=req.end_time,
                 hours=req.hours,
                 status=LeaveRequestStatus(req.status),
+                days=self._shaped_days(
+                    req, self._effective(by_user.get(req.user_id), default)[0], holidays_off
+                ),
             )
             for req, user in rows
         ]

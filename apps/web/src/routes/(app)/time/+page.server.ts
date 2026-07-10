@@ -34,25 +34,23 @@ function isoAddDays(iso: string, days: number): string {
 }
 
 /**
- * Own approved leave, spread evenly over each request's workdays → hours per weekday
- * column. Rendered as a separate timesheet row so it's visible without ever counting as a
- * time entry (CLAUDE.md §14).
+ * Own approved leave, per weekday column, from the API's per-day breakdown (#48).
+ *
+ * It used to spread a request's hours evenly over its Mon–Fri days, which is wrong the moment a
+ * schedule exists: a Thursday afternoon plus a Friday morning is 2 h and 5 h, not 3,5 and 3,5.
+ * The shape now comes from `TeamLeaveItem.days`, computed once, on the server, from the same
+ * schedule and holiday calendar the hours themselves came from.
  */
 function leaveHoursForWeek(
-  items: { start_date: string; end_date: string; hours: number | string; status: string }[],
+  items: { status: string; days: { date: string; hours: number | string }[] }[],
   weekDays: string[],
 ): number[] {
   const hoursByDay = new Map<string, number>();
   for (const item of items) {
     if (item.status !== "approved") continue;
-    const workdays: string[] = [];
-    for (let d = item.start_date; d <= item.end_date; d = isoAddDays(d, 1)) {
-      const weekday = new Date(d + "T00:00:00Z").getUTCDay();
-      if (weekday !== 0 && weekday !== 6) workdays.push(d);
+    for (const day of item.days) {
+      hoursByDay.set(day.date, (hoursByDay.get(day.date) ?? 0) + Number(day.hours));
     }
-    if (workdays.length === 0) continue;
-    const perDay = Number(item.hours) / workdays.length;
-    for (const d of workdays) hoursByDay.set(d, (hoursByDay.get(d) ?? 0) + perDay);
   }
   return weekDays.map((d) => hoursByDay.get(d) ?? 0);
 }

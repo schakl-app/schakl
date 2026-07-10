@@ -10,7 +10,7 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.modules.leave.models import LeaveRequestStatus
-from app.modules.leave.schedule import WorkSchedule
+from app.modules.leave.schedule import Clock, WorkSchedule
 
 # --- leave types ------------------------------------------------------------- #
 
@@ -201,22 +201,41 @@ class GenerateResult(BaseModel):
 # --- requests ------------------------------------------------------------------ #
 
 
-class LeaveRequestCreate(BaseModel):
-    leave_type_id: uuid.UUID
+class LeaveRequestSpan(BaseModel):
+    """The dates and times a request covers. ``None`` times mean whole scheduled days (#48)."""
+
     start_date: date
+    #: From the start of the scheduled day when omitted; clamped into it when it falls outside.
+    start_time: Clock | None = None
     end_date: date
-    hours: Decimal = Field(gt=0, le=Decimal("2000"))
+    #: Until the end of the scheduled day when omitted; clamped likewise.
+    end_time: Clock | None = None
+
+
+class LeaveRequestCreate(LeaveRequestSpan):
+    """``hours`` is **not** accepted. The server computes it from the schedule (#48).
+
+    A client that could post ``hours: 100`` for one afternoon is a client the balance cannot
+    trust, which is the whole reason the calculation moved here.
+    """
+
+    leave_type_id: uuid.UUID
     note: str | None = None
     # Managers may register leave for someone else (e.g. calling in sick by phone).
     user_id: uuid.UUID | None = None
+    #: A manager's deliberate departure from the computed hours. Needs ``leave.request.approve``.
+    hours_override: Decimal | None = Field(default=None, gt=0, le=Decimal("2000"))
 
 
 class LeaveRequestUpdate(BaseModel):
     leave_type_id: uuid.UUID | None = None
     start_date: date | None = None
+    start_time: Clock | None = None
     end_date: date | None = None
-    hours: Decimal | None = Field(default=None, gt=0, le=Decimal("2000"))
+    end_time: Clock | None = None
     note: str | None = None
+    #: Explicit ``null`` clears the override and returns the request to the computed hours.
+    hours_override: Decimal | None = Field(default=None, gt=0, le=Decimal("2000"))
 
 
 class LeaveRequestDecision(BaseModel):
@@ -232,8 +251,12 @@ class LeaveRequestRead(BaseModel):
     user_id: uuid.UUID
     leave_type_id: uuid.UUID
     start_date: date
+    start_time: Clock | None
     end_date: date
+    end_time: Clock | None
     hours: Decimal
+    hours_override: Decimal | None
+    hours_override_by_user_id: uuid.UUID | None
     note: str | None
     status: LeaveRequestStatus
     decided_by_user_id: uuid.UUID | None
@@ -241,6 +264,31 @@ class LeaveRequestRead(BaseModel):
     decision_note: str | None
     created_at: datetime
     updated_at: datetime
+
+
+# --- the hour calculation (#48) ------------------------------------------------ #
+
+
+class LeaveDayHours(BaseModel):
+    """One day of a request. ``reason`` says *why* a day is worth nothing, so the UI can too."""
+
+    date: dt.date
+    hours: Decimal
+    #: ``holiday`` | ``not_scheduled`` | ``outside_hours``, or ``None`` on an ordinary day.
+    reason: str | None = None
+
+
+class LeaveRequestPreview(LeaveRequestSpan):
+    """What the form asks before it submits, so the number shown is the number stored."""
+
+    user_id: uuid.UUID | None = None
+
+
+class LeavePreviewResult(BaseModel):
+    hours: Decimal
+    #: ``hours`` in average scheduled working days — the "≈ 2 dagen" hint.
+    days: Decimal
+    breakdown: list[LeaveDayHours]
 
 
 # --- balances -------------------------------------------------------------------- #
@@ -274,9 +322,14 @@ class TeamLeaveItem(BaseModel):
     user_name: str
     leave_type_id: uuid.UUID
     start_date: date
+    start_time: Clock | None
     end_date: date
+    end_time: Clock | None
     hours: Decimal
     status: LeaveRequestStatus
+    #: Hours per day, from the schedule (#48). The timesheet renders these rather than spreading
+    #: ``hours`` evenly, which would show 3,5 h Thursday and 3,5 h Friday for a 2 h + 5 h request.
+    days: list[LeaveDayHours]
 
 
 # --- dashboard widget ---------------------------------------------------------------- #

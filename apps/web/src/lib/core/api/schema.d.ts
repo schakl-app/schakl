@@ -732,6 +732,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/leave/requests/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Request
+         * @description What a span costs, before it is submitted — so the number shown is the number stored.
+         *
+         *     Declared **above** ``/requests/{request_id}``: FastAPI matches in declaration order, and
+         *     ``preview`` would otherwise be parsed as a request id and 422 on the UUID.
+         */
+        post: operations["preview_request_api_v1_leave_requests_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/leave/requests/{request_id}": {
         parameters: {
             query?: never;
@@ -3111,6 +3134,21 @@ export interface components {
             /** Year */
             year: number;
         };
+        /**
+         * LeaveDayHours
+         * @description One day of a request. ``reason`` says *why* a day is worth nothing, so the UI can too.
+         */
+        LeaveDayHours: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Hours */
+            hours: string;
+            /** Reason */
+            reason?: string | null;
+        };
         /** LeaveEntitlementRead */
         LeaveEntitlementRead: {
             /** Hours */
@@ -3205,6 +3243,15 @@ export interface components {
                 [key: string]: string;
             } | null;
         };
+        /** LeavePreviewResult */
+        LeavePreviewResult: {
+            /** Breakdown */
+            breakdown: components["schemas"]["LeaveDayHours"][];
+            /** Days */
+            days: string;
+            /** Hours */
+            hours: string;
+        };
         /**
          * LeaveProfileRead
          * @description The caller's **effective** profile: own schedule, else the org default.
@@ -3256,15 +3303,23 @@ export interface components {
             hours_per_week?: number | string | null;
             schedule?: components["schemas"]["WorkSchedule-Input"] | null;
         };
-        /** LeaveRequestCreate */
+        /**
+         * LeaveRequestCreate
+         * @description ``hours`` is **not** accepted. The server computes it from the schedule (#48).
+         *
+         *     A client that could post ``hours: 100`` for one afternoon is a client the balance cannot
+         *     trust, which is the whole reason the calculation moved here.
+         */
         LeaveRequestCreate: {
             /**
              * End Date
              * Format: date
              */
             end_date: string;
-            /** Hours */
-            hours: number | string;
+            /** End Time */
+            end_time?: string | null;
+            /** Hours Override */
+            hours_override?: number | string | null;
             /**
              * Leave Type Id
              * Format: uuid
@@ -3277,6 +3332,8 @@ export interface components {
              * Format: date
              */
             start_date: string;
+            /** Start Time */
+            start_time?: string | null;
             /** User Id */
             user_id?: string | null;
         };
@@ -3286,6 +3343,28 @@ export interface components {
             approved: boolean;
             /** Note */
             note?: string | null;
+        };
+        /**
+         * LeaveRequestPreview
+         * @description What the form asks before it submits, so the number shown is the number stored.
+         */
+        LeaveRequestPreview: {
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /** End Time */
+            end_time?: string | null;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /** Start Time */
+            start_time?: string | null;
+            /** User Id */
+            user_id?: string | null;
         };
         /** LeaveRequestRead */
         LeaveRequestRead: {
@@ -3305,8 +3384,14 @@ export interface components {
              * Format: date
              */
             end_date: string;
+            /** End Time */
+            end_time: string | null;
             /** Hours */
             hours: string;
+            /** Hours Override */
+            hours_override: string | null;
+            /** Hours Override By User Id */
+            hours_override_by_user_id: string | null;
             /**
              * Id
              * Format: uuid
@@ -3329,6 +3414,8 @@ export interface components {
              * Format: date
              */
             start_date: string;
+            /** Start Time */
+            start_time: string | null;
             status: components["schemas"]["LeaveRequestStatus"];
             /**
              * Updated At
@@ -3350,14 +3437,18 @@ export interface components {
         LeaveRequestUpdate: {
             /** End Date */
             end_date?: string | null;
-            /** Hours */
-            hours?: number | string | null;
+            /** End Time */
+            end_time?: string | null;
+            /** Hours Override */
+            hours_override?: number | string | null;
             /** Leave Type Id */
             leave_type_id?: string | null;
             /** Note */
             note?: string | null;
             /** Start Date */
             start_date?: string | null;
+            /** Start Time */
+            start_time?: string | null;
         };
         /** LeaveSettingsRead */
         LeaveSettingsRead: {
@@ -4628,11 +4719,15 @@ export interface components {
          * @description One (approved or pending) absence for the team calendar / timesheet overlay.
          */
         TeamLeaveItem: {
+            /** Days */
+            days: components["schemas"]["LeaveDayHours"][];
             /**
              * End Date
              * Format: date
              */
             end_date: string;
+            /** End Time */
+            end_time: string | null;
             /** Hours */
             hours: string;
             /**
@@ -4650,6 +4745,8 @@ export interface components {
              * Format: date
              */
             start_date: string;
+            /** Start Time */
+            start_time: string | null;
             status: components["schemas"]["LeaveRequestStatus"];
             /**
              * User Id
@@ -7088,6 +7185,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LeaveRequestRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_request_api_v1_leave_requests_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveRequestPreview"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeavePreviewResult"];
                 };
             };
             /** @description Validation Error */

@@ -10,7 +10,7 @@ seeded with sensible Dutch defaults.
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from enum import StrEnum
 
@@ -23,6 +23,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    Time,
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -165,9 +166,11 @@ class LeaveEntitlement(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base
 class LeaveRequest(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     """A leave request: members request, managers (owner/admin) decide.
 
-    ``hours`` is the total across the date range (part days welcome). A request counts
-    against the balance of ``start_date``'s year. Approved leave surfaces on the timesheet
-    without ever becoming a time entry (§14 — never double-counted).
+    ``hours`` is a **materialized result**, not a client input (#48): the service computes it
+    from the employee's schedule minus weekends, holidays and breaks, and recomputes it on every
+    edit. Balances, ``summary()``, ``generate_entitlements()`` and the timesheet all read it, so
+    the column stays. A request counts against the balance of ``start_date``'s year. Approved
+    leave surfaces on the timesheet without ever becoming a time entry (§14).
     """
 
     __tablename__ = "leave_requests"
@@ -186,7 +189,22 @@ class LeaveRequest(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     )
     start_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     end_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    #: ``NULL`` means "from the start of the scheduled day" / "until the end of it" — which is
+    #: exactly what every pre-#48 row is, hence no backfill. Local wall-clock ``TIME``, not
+    #: ``TIMESTAMPTZ``: "I'm off from 15:00" means 15:00 where the employee works, whether or
+    #: not the clocks changed that weekend, and a whole day would have to invent a time.
+    start_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    end_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     hours: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
+    #: A manager's deliberate departure from the computed hours (e.g. four hours agreed for a
+    #: day the employee was not scheduled). Attributed, so "the number is wrong" has an answer.
+    #: ``NULL`` — the ordinary case — means ``hours`` is exactly what ``compute_hours`` returned.
+    hours_override: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
+    hours_override_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default=LeaveRequestStatus.PENDING.value, index=True

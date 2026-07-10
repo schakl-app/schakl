@@ -6,7 +6,7 @@ import uuid
 from datetime import date, timedelta
 
 from app.core.auth.models import User
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import auth_cookie, leave_workday, make_tenant
 
 _YEAR = date.today().year
 
@@ -25,8 +25,9 @@ async def _invite_member(client, headers, email: str) -> User:
     )
 
 
-def _days(start_offset: int, length: int = 1) -> tuple[str, str]:
-    start = date(_YEAR, 1, 1) + timedelta(days=start_offset)
+def _span(week: int, length: int = 1) -> tuple[str, str]:
+    """`length` consecutive weekdays, starting `week` weeks into November (see `leave_workday`)."""
+    start = leave_workday(week * 5)
     return start.isoformat(), (start + timedelta(days=length - 1)).isoformat()
 
 
@@ -80,14 +81,13 @@ async def test_request_approval_flow_and_balance(client_for) -> None:
         assert float(statutory_balance["entitled_hours"]) == 128.0
 
         # Member requests two days (16 h) → pending, reflected in the balance.
-        start, end = _days(10, 2)
+        start, end = _span(0, 2)
         res = await c.post(
             "/api/v1/leave/requests",
             json={
                 "leave_type_id": statutory["id"],
                 "start_date": start,
                 "end_date": end,
-                "hours": 16,
             },
             headers=member_headers,
         )
@@ -146,21 +146,20 @@ async def test_overlap_and_balance_guards(client_for) -> None:
         statutory = next(lt for lt in types if lt["key"] == "vacation_statutory")
 
         # No entitlement yet → over-request on a balance-tracked type is blocked.
-        start, end = _days(20)
+        start, end = _span(1)
         res = await c.post(
             "/api/v1/leave/requests",
             json={
                 "leave_type_id": statutory["id"],
                 "start_date": start,
                 "end_date": end,
-                "hours": 8,
             },
             headers=headers,
         )
         assert res.status_code == 400
         assert res.json()["error"]["message"] == "errors.leave_insufficient_balance"
 
-        await c.put(
+        granted = await c.put(
             "/api/v1/leave/entitlements",
             json={
                 "user_id": str(t.user.id),
@@ -170,13 +169,13 @@ async def test_overlap_and_balance_guards(client_for) -> None:
             },
             headers=headers,
         )
+        assert granted.status_code == 200, granted.text
         res = await c.post(
             "/api/v1/leave/requests",
             json={
                 "leave_type_id": statutory["id"],
                 "start_date": start,
                 "end_date": end,
-                "hours": 8,
             },
             headers=headers,
         )
@@ -189,7 +188,6 @@ async def test_overlap_and_balance_guards(client_for) -> None:
                 "leave_type_id": statutory["id"],
                 "start_date": start,
                 "end_date": end,
-                "hours": 8,
             },
             headers=headers,
         )
@@ -203,10 +201,10 @@ async def test_sick_leave_is_registered_not_requested(client_for) -> None:
     async with client_for(t.host) as c:
         types = (await c.get("/api/v1/leave/types", headers=headers)).json()
         sick = next(lt for lt in types if lt["key"] == "sick")
-        start, end = _days(30)
+        start, end = _span(2)
         res = await c.post(
             "/api/v1/leave/requests",
-            json={"leave_type_id": sick["id"], "start_date": start, "end_date": end, "hours": 8},
+            json={"leave_type_id": sick["id"], "start_date": start, "end_date": end},
             headers=headers,
         )
         assert res.status_code == 201
@@ -227,7 +225,7 @@ async def test_member_scoping(client_for) -> None:
         types = (await c.get("/api/v1/leave/types", headers=owner_headers)).json()
         unpaid = next(lt for lt in types if lt["key"] == "unpaid")
 
-        start, end = _days(40)
+        start, end = _span(3)
         owner_req = (
             await c.post(
                 "/api/v1/leave/requests",
@@ -235,7 +233,6 @@ async def test_member_scoping(client_for) -> None:
                     "leave_type_id": unpaid["id"],
                     "start_date": start,
                     "end_date": end,
-                    "hours": 8,
                 },
                 headers=owner_headers,
             )
@@ -265,7 +262,7 @@ async def test_leave_tenant_isolation(client_for) -> None:
     async with client_for(a.host) as ca:
         types = (await ca.get("/api/v1/leave/types", headers=a_headers)).json()
         unpaid = next(lt for lt in types if lt["key"] == "unpaid")
-        start, end = _days(50)
+        start, end = _span(4)
         created = (
             await ca.post(
                 "/api/v1/leave/requests",
@@ -273,7 +270,6 @@ async def test_leave_tenant_isolation(client_for) -> None:
                     "leave_type_id": unpaid["id"],
                     "start_date": start,
                     "end_date": end,
-                    "hours": 8,
                 },
                 headers=a_headers,
             )

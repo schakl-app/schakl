@@ -1,10 +1,12 @@
 /**
- * Leave helpers: tenant-defined type labels, hours↔days conversion (leave is tracked in
- * hours, CLAUDE.md §14), and workday math for suggested request hours.
+ * Leave helpers: tenant-defined type labels and the hours↔days conversion (leave is tracked in
+ * hours, CLAUDE.md §14).
  *
- * The workday math below is provisional and knows nothing about the employee's schedule (#46)
- * or the holiday calendar (#47). #48 moves the calculation into `LeaveService.compute_hours`,
- * where it can see both, and deletes `workdaysBetween` / `suggestedHours` from here.
+ * The hour *arithmetic* is not here. It lives in `LeaveService.compute_hours` (#48), the only
+ * place that knows the employee's schedule and the holiday calendar. The browser used to guess
+ * with `suggestedHours()` / `workdaysBetween()` and to spread a request evenly with
+ * `leaveHoursByDay()`; all three are gone. Two implementations of one rule is one too many, and
+ * the browser's was the wrong one.
  */
 import { dateLocale } from "$lib/core/format";
 
@@ -59,48 +61,16 @@ export function hoursToDays(hours: number | string, hoursPerDay: number | string
   return perDay > 0 ? Number(hours) / perDay : 0;
 }
 
-/** Mon–Fri days in the inclusive date-only ISO range. Superseded by the schedule in #48. */
-export function workdaysBetween(startIso: string, endIso: string): number {
-  const start = new Date(startIso + "T00:00:00Z");
-  const end = new Date(endIso + "T00:00:00Z");
-  let count = 0;
-  for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
-    const day = d.getUTCDay();
-    if (day !== 0 && day !== 6) count += 1;
-  }
-  return count;
+/** One day of a request, as the API breaks it down (`POST /leave/requests/preview`). */
+export interface LeaveDayHours {
+  date: string;
+  hours: string | number;
+  /** `holiday` | `not_scheduled` | `outside_hours`, or null on an ordinary day. */
+  reason: string | null;
 }
 
-/** Suggested request hours: workdays in range × contract hours per day. Superseded in #48. */
-export function suggestedHours(
-  startIso: string,
-  endIso: string,
-  hoursPerDay: number | string,
-): number {
-  if (!startIso || !endIso || endIso < startIso) return 0;
-  return workdaysBetween(startIso, endIso) * Number(hoursPerDay);
-}
-
-/**
- * Spread a request's hours evenly over its workdays → per-ISO-date hours. Drives the
- * timesheet leave row (approved leave shows there without becoming a time entry, §14).
- * Wrong the moment a schedule exists: #48 replaces it with the API's per-day breakdown.
- */
-export function leaveHoursByDay(item: {
-  start_date: string;
-  end_date: string;
-  hours: number | string;
-}): Map<string, number> {
-  const days: string[] = [];
-  const start = new Date(item.start_date + "T00:00:00Z");
-  const end = new Date(item.end_date + "T00:00:00Z");
-  for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
-    const day = d.getUTCDay();
-    if (day !== 0 && day !== 6) days.push(d.toISOString().slice(0, 10));
-  }
-  const result = new Map<string, number>();
-  if (days.length === 0) return result;
-  const perDay = Number(item.hours) / days.length;
-  for (const day of days) result.set(day, perDay);
-  return result;
+/** Why a day of a request is worth nothing — as an i18n key, or null if it isn't. */
+export function dayReasonKey(reason: string | null): string | null {
+  if (!reason) return null;
+  return `leave.reason.${reason}`;
 }

@@ -14,7 +14,7 @@ from pwdlib import PasswordHash
 
 from app.core.auth.models import User
 from app.db import async_session_maker, set_current_org
-from tests.conftest import add_membership, auth_cookie, make_tenant
+from tests.conftest import add_membership, auth_cookie, leave_workday, make_tenant
 
 _ph = PasswordHash.recommended()
 
@@ -47,14 +47,14 @@ async def _leave_type(client, headers) -> str:
     return res.json()["id"]
 
 
-async def _request(client, headers, type_id: str, start: date, hours: float = 8) -> str:
+async def _request(client, headers, type_id: str, start: date, days: int = 1) -> str:
+    """`days` consecutive weekdays → `days` × 8 h, since the server does the arithmetic."""
     res = await client.post(
         "/api/v1/leave/requests",
         json={
             "leave_type_id": type_id,
             "start_date": start.isoformat(),
-            "end_date": start.isoformat(),
-            "hours": hours,
+            "end_date": (start + timedelta(days=days - 1)).isoformat(),
         },
         headers=headers,
     )
@@ -73,9 +73,8 @@ async def test_sorting_the_team_list_by_employee_uses_the_display_name(client_fo
         owner_headers = await auth_cookie(t.user)
         type_id = await _leave_type(c, owner_headers)
 
-        today = date.today()
         for i, user in enumerate((zoe, ann, bob)):
-            await _request(c, await auth_cookie(user), type_id, today + timedelta(days=i))
+            await _request(c, await auth_cookie(user), type_id, leave_workday(i))
 
         page = (
             await c.get(
@@ -99,7 +98,7 @@ async def test_sorting_by_employee_never_duplicates_a_request(client_for) -> Non
     async with client_for(t.host) as c:
         headers = await auth_cookie(t.user)
         type_id = await _leave_type(c, headers)
-        await _request(c, headers, type_id, date.today())
+        await _request(c, headers, type_id, leave_workday(0))
         page = (await c.get("/api/v1/leave/requests?sort=employee", headers=headers)).json()
         assert len(page["items"]) == 1
         assert page["total"] == 1
@@ -110,15 +109,16 @@ async def test_sorting_by_hours_and_start_date(client_for) -> None:
     async with client_for(t.host) as c:
         headers = await auth_cookie(t.user)
         type_id = await _leave_type(c, headers)
-        today = date.today()
-        await _request(c, headers, type_id, today, hours=4)
-        await _request(c, headers, type_id, today + timedelta(days=3), hours=16)
+        # One weekday (8 h) and, a week later, two (16 h) — the server derives both.
+        first, later = leave_workday(0), leave_workday(5)
+        await _request(c, headers, type_id, first)
+        await _request(c, headers, type_id, later, days=2)
 
         by_hours = (await c.get("/api/v1/leave/requests?sort=hours", headers=headers)).json()
-        assert [float(i["hours"]) for i in by_hours["items"]] == [4.0, 16.0]
+        assert [float(i["hours"]) for i in by_hours["items"]] == [8.0, 16.0]
 
         by_date = (await c.get("/api/v1/leave/requests?sort=-start_date", headers=headers)).json()
-        assert by_date["items"][0]["start_date"] == (today + timedelta(days=3)).isoformat()
+        assert by_date["items"][0]["start_date"] == later.isoformat()
 
 
 async def test_unknown_leave_sort_key_is_refused(client_for) -> None:

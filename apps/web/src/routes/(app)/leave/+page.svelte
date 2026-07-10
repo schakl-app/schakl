@@ -232,7 +232,6 @@
 <Modal bind:open={createOpen} title={t("leave.request_button")}>
   <LeaveRequestForm
     types={types.filter((lt) => lt.active)}
-    hoursPerDay={data.hoursPerDay}
     balances={remainingByType}
     error={form?.error ?? null}
     ondone={() => (createOpen = false)}
@@ -244,7 +243,6 @@
     {#key editRequest.id}
       <LeaveRequestForm
         types={types.filter((lt) => lt.active)}
-        hoursPerDay={data.hoursPerDay}
         balances={remainingByType}
         request={editRequest}
         action="?/update"

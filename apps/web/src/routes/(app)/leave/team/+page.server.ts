@@ -6,6 +6,7 @@ import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { LEAVE_TEAM_COLUMNS, LEAVE_TEAM_TABLE_ID } from "$lib/modules/leave/columns";
+import { requestBody } from "$lib/modules/leave/request";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -89,17 +90,14 @@ export const actions: Actions = {
   },
 
   // Register leave on someone's behalf (e.g. a sick call) — API enforces manager role.
+  // `hours` is not posted: the server computes it from that employee's schedule (#48).
   register: async (event) => {
     const form = await event.request.formData();
     const body = {
+      ...requestBody(form),
       user_id: String(form.get("user_id") ?? "") || null,
-      leave_type_id: String(form.get("leave_type_id") ?? ""),
-      start_date: String(form.get("start_date") ?? ""),
-      end_date: String(form.get("end_date") ?? ""),
-      hours: Number(form.get("hours") ?? 0),
-      note: String(form.get("note") ?? "").trim() || null,
     };
-    if (!body.leave_type_id || !body.start_date || !body.end_date || !body.hours) {
+    if (!body.leave_type_id || !body.start_date || !body.end_date) {
       return fail(400, { error: "errors.required" });
     }
     const { error } = await apiFor(event).POST("/api/v1/leave/requests", { body });

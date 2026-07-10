@@ -300,15 +300,44 @@ apply as everywhere.
   tenant can model, for example, Dutch statutory vs extra-statutory (*bovenwettelijk*) days
   and their differing carry-over/expiry. Sick leave is a separate type, not deducted from
   vacation balance.
-- **Requests + approval:** `leave_requests(org_id, user_id, leave_type_id, start, end,
-  amount, status[pending/approved/rejected/cancelled], approver_id, note, decided_at)`.
-  Members request; admins/managers approve. Tenant-scoped + role checks like every module.
+- **Work schedules, not a weekly total** (#46). `leave_profiles.schedule` is a JSONB week: per
+  weekday a working block and **any number of break windows** inside it. Breaks are *windows*,
+  not durations — you cannot subtract "30 minutes" from `15:00–17:00`, there is no break in it.
+  A day is `(end − start) − Σ overlap(window, break_i)`. `NULL` follows
+  `leave_settings.default_schedule` (`08:30–17:00` with one `12:30–13:00` break → 8.0 h/day,
+  40 h/week). `hours_per_week` is **derived** from the schedule and rewritten on every save, never
+  entered — but it stays authoritative while a profile has no schedule, so a pre-#46 part-timer on
+  32 h is not silently regranted the default's 40. A schedule is employment data: it lives on the
+  person (Instellingen → Gebruikers), not buried in leave settings.
+- **A holiday costs no leave hours** (#47). `leave_holidays(org_id, date, name_i18n, active,
+  source, key)` is tenant data seeded from a generator — the Dutch holidays *derived from Easter*,
+  so 2028 needs no code change — and never law written in Python: Goede Vrijdag is worked at many
+  Dutch employers, so the tenant deactivates what they work and a re-import never resurrects it.
+  A December ARQ cron tops up next year, per org, via `run_per_org`.
+- **Requests + approval:** `leave_requests(org_id, user_id, leave_type_id, start_date, start_time,
+  end_date, end_time, hours, hours_override, status[pending/approved/rejected/cancelled],
+  decided_by_user_id, note, decided_at)`. Members request; managers approve. Tenant-scoped, with a
+  declared permission on every route (§15), like every module.
+- **The API — not the browser — is the authority on `hours`** (#48). `LeaveService.compute_hours`
+  walks the span day by day: not a scheduled working day → 0; an active holiday → 0; otherwise the
+  day's scheduled window intersected with the requested one, minus every break it overlaps. It
+  rounds **once**, on the summed minutes. `start_time`/`end_time` are nullable `TIME` — leave is a
+  local-calendar concept, and a `TIMESTAMPTZ` would drag DST into a balance calculation for no
+  benefit. `hours` is not accepted from a client and is recomputed on every edit, so a request
+  moved into Kerst week gets cheaper. A span worth zero hours is rejected, never stored.
+  `POST /leave/requests/preview` returns `{hours, days, breakdown}` so the form shows the number
+  that will be stored, and *why*. A manager may set `hours_override` for what a schedule cannot
+  express (four hours agreed on a day they were not scheduled); it is recorded against their name.
+  **Approved requests are never retroactively recalculated** — new holidays do not rewrite last
+  year's balance.
 - **Balances:** entitlement + carry-over − used − pending, per user / type / year. Show the
   employee their remaining balance; block/warn on over-request.
-- **Unit:** track in **hours** (matches time tracking and part-time contracts); display as
-  days using the employee's contract hours.
-- **Ties to time tracking:** approved leave shows on the timesheet and is excluded from
-  billable capacity — never entered/counted twice as a time entry.
+- **Unit:** track in **hours** (matches time tracking and part-time contracts); display as days
+  using the employee's **average scheduled working day** — never `hours_per_week / 5`, which tells
+  a three-day part-timer their working day is 4,8 hours long.
+- **Ties to time tracking:** approved leave shows on the timesheet and is excluded from billable
+  capacity — never entered/counted twice as a time entry. Its per-day hours come from the API's
+  breakdown (2 h Thursday, 5 h Friday), not from spreading the total evenly over the range.
 - **Ties to calendar & reporting:** an in-app team leave calendar; approved leave syncs to
   Google Calendar (P3); feeds capacity / availability / utilization reporting.
 - **Phase:** P2.

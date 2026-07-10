@@ -320,10 +320,12 @@
 
 <!-- Register leave for a team member (sick call, phoned-in request) -->
 <Modal bind:open={registerOpen} title={t("leave.team.register")}>
+  <!-- This page is already gated on `leave.request.approve`, which is exactly who may set the
+       hours by hand — for the day an employee agrees to four hours they were not scheduled. -->
   <LeaveRequestForm
     types={types.filter((lt) => lt.active)}
-    hoursPerDay={data.hoursPerDay}
     userOptions={memberOptions}
+    canOverride
     action="?/register"
     error={form?.error ?? null}
     ondone={() => (registerOpen = false)}

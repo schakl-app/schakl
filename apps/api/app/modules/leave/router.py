@@ -28,11 +28,13 @@ from app.modules.leave.schemas import (
     LeaveHolidayCreate,
     LeaveHolidayRead,
     LeaveHolidayUpdate,
+    LeavePreviewResult,
     LeaveProfileRead,
     LeaveProfileSummary,
     LeaveProfileUpdate,
     LeaveRequestCreate,
     LeaveRequestDecision,
+    LeaveRequestPreview,
     LeaveRequestRead,
     LeaveRequestUpdate,
     LeaveSettingsRead,
@@ -395,6 +397,23 @@ async def create_request(
     ctx: RequestContext = Depends(require_context),
 ) -> LeaveRequestRead:
     return LeaveRequestRead.model_validate(await LeaveService(ctx).create(payload))
+
+
+@router.post(
+    "/requests/preview",
+    response_model=LeavePreviewResult,
+    dependencies=[require_permission("leave.request.read")],
+)
+async def preview_request(
+    payload: LeaveRequestPreview,
+    ctx: RequestContext = Depends(require_context),
+) -> LeavePreviewResult:
+    """What a span costs, before it is submitted — so the number shown is the number stored.
+
+    Declared **above** ``/requests/{request_id}``: FastAPI matches in declaration order, and
+    ``preview`` would otherwise be parsed as a request id and 422 on the UUID.
+    """
+    return await LeaveService(ctx).preview(payload)
 
 
 @router.get(

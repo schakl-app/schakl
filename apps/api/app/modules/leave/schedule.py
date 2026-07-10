@@ -25,11 +25,13 @@ from pydantic import BaseModel, Field, PlainSerializer, model_validator
 #: Weekday keys, Monday first (ISO order). ``date.weekday()`` indexes straight into this.
 WEEKDAYS: tuple[str, ...] = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
-_MINUTES_PER_DAY = 24 * 60
+MINUTES_PER_DAY = 24 * 60
 
 
-def _to_minutes(value: time) -> int:
+def to_minutes(value: time) -> int:
+    """Minutes since midnight — the unit every window in this module is expressed in."""
     return value.hour * 60 + value.minute
+
 
 
 def _format(value: time) -> str:
@@ -59,7 +61,7 @@ class BreakWindow(BaseModel):
     @model_validator(mode="after")
     def _ordered(self) -> BreakWindow:
         self.start, self.end = _truncate(self.start), _truncate(self.end)
-        if _to_minutes(self.start) >= _to_minutes(self.end):
+        if to_minutes(self.start) >= to_minutes(self.end):
             raise ValueError("errors.leave_schedule_break_invalid")
         return self
 
@@ -74,17 +76,17 @@ class WorkDay(BaseModel):
     @model_validator(mode="after")
     def _check(self) -> WorkDay:
         self.start, self.end = _truncate(self.start), _truncate(self.end)
-        day_start, day_end = _to_minutes(self.start), _to_minutes(self.end)
+        day_start, day_end = to_minutes(self.start), to_minutes(self.end)
         if day_start >= day_end:
             raise ValueError("errors.leave_schedule_day_invalid")
 
         # Sorted on the way in, so the overlap check is a single pass and every reader
         # (here, #48's compute_hours, the browser's live total) sees the same order.
-        self.breaks.sort(key=lambda b: _to_minutes(b.start))
+        self.breaks.sort(key=lambda b: to_minutes(b.start))
         previous_end = day_start
         consumed = 0
         for window in self.breaks:
-            start, end = _to_minutes(window.start), _to_minutes(window.end)
+            start, end = to_minutes(window.start), to_minutes(window.end)
             if start < day_start or end > day_end:
                 raise ValueError("errors.leave_schedule_break_outside")
             if start < previous_end:
@@ -158,15 +160,15 @@ def day_minutes(day: WorkDay | None, window: tuple[int, int] | None = None) -> i
     """
     if day is None:
         return 0
-    low, high = window or (0, _MINUTES_PER_DAY)
-    start = max(_to_minutes(day.start), low)
-    end = min(_to_minutes(day.end), high)
+    low, high = window or (0, MINUTES_PER_DAY)
+    start = max(to_minutes(day.start), low)
+    end = min(to_minutes(day.end), high)
     if end <= start:
         return 0
     worked = end - start
     for window_break in day.breaks:
         worked -= _overlap(
-            start, end, _to_minutes(window_break.start), _to_minutes(window_break.end)
+            start, end, to_minutes(window_break.start), to_minutes(window_break.end)
         )
     return max(0, worked)
 
