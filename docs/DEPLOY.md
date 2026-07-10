@@ -209,57 +209,6 @@ if the role is missing, the API exits and the healthcheck can never pass.
 It is deliberately **not** a `/docker-entrypoint-initdb.d` script: those run only when `PGDATA`
 is empty, so they never repair an existing volume, and they require a file on the host.
 
-## Rebrand upgrade note: the DB name/role became `schakl` (existing installs)
-
-The `vlotr` → `schakl` rebrand changed the **default** database name (`vlotr` → `schakl`) and
-app role (`vlotr_app` → `schakl_app`), and the config env prefix (`VLOTR_*` → `SCHAKL_*`, a hard
-cutover — the app no longer reads `VLOTR_*`). Fresh installs get the new names for free. An
-**existing** install has a populated database named `vlotr` owned by `vlotr_app`, so it must do
-one of the following on upgrade. **No migration does this for you** — `alembic upgrade head` runs
-*connected to* the database and cannot rename the database or its own role.
-
-**In every case, rename the runtime env keys** in your `infra/.env`: `VLOTR_SECRET_KEY` →
-`SCHAKL_SECRET_KEY`, `VLOTR_BASE_DOMAIN` → `SCHAKL_BASE_DOMAIN`, `VLOTR_OIDC_*` → `SCHAKL_OIDC_*`,
-`VLOTR_TAG` → `SCHAKL_TAG`, etc. A key left as `VLOTR_*` is silently ignored and the app falls
-back to its default (a missing `SCHAKL_SECRET_KEY` or `SCHAKL_BASE_DOMAIN` breaks auth / tenant
-resolution), so this is not optional.
-
-**Path A — keep the existing physical DB (recommended; no downtime).** You do not have to rename
-the database or role. Pin the old names explicitly so the new defaults don't apply, and pull the
-new image as usual:
-
-```dotenv
-POSTGRES_DB=vlotr
-APP_DB_USER=vlotr_app
-SCHAKL_DATABASE_URL=postgresql+asyncpg://vlotr_app:${APP_DB_PASSWORD}@db:5432/vlotr
-```
-
-The database staying named `vlotr` is purely cosmetic — it is never shown to a user.
-
-**Path B — rename the physical DB and role to match (optional; requires downtime).** For
-operators who want the objects to read `schakl` too. `ALTER DATABASE … RENAME` needs **zero**
-open connections to the database, so the app must be stopped first:
-
-```bash
-# 1. Back up.
-docker compose exec db pg_dump -U "$POSTGRES_ADMIN_USER" vlotr > backup.sql
-# 2. Stop everything that holds a connection to the 'vlotr' database.
-docker compose stop api worker
-# 3. Rename, connected to the 'postgres' maintenance DB (NOT to 'vlotr').
-docker compose exec db psql -U "$POSTGRES_ADMIN_USER" -d postgres -v ON_ERROR_STOP=1 <<'SQL'
-ALTER ROLE vlotr_app RENAME TO schakl_app;   -- grants and schema ownership follow the role
-ALTER DATABASE vlotr RENAME TO schakl;       -- fails if any session is still connected to vlotr
-SQL
-# 4. Update infra/.env to the new names, then bring the stack back up.
-#    POSTGRES_DB=schakl · APP_DB_USER=schakl_app · SCHAKL_DATABASE_URL=…@db:5432/schakl
-docker compose up -d
-```
-
-Postgres 16 uses SCRAM, so the role's password survives the rename. On the rare install still
-using md5, `ALTER ROLE … RENAME` clears the password — reset it with
-`ALTER ROLE schakl_app PASSWORD '…'` and update `APP_DB_PASSWORD`. Roll back by renaming the two
-objects the other way; you took the backup in step 1 either way.
-
 ## Health endpoints
 
 Three surfaces, kept apart on purpose — they have different callers and different threat models.

@@ -12,7 +12,7 @@ Org lifecycle + instance administration (issue #26):
 
 Upgrade path for existing installs (docs/DEPLOY.md): hostname resolution no longer falls
 back to the seeded org, so a single-org install whose settings carry no custom domain gets
-``app.<VLOTR_BASE_DOMAIN>`` — the documented ingress hostname of both compose files —
+``app.<SCHAKL_BASE_DOMAIN>`` — the documented ingress hostname of both compose files —
 claimed as its verified custom domain. Domains set manually before verification existed
 are grandfathered as verified, otherwise an unattended upgrade would stop resolving them.
 
@@ -75,7 +75,7 @@ def upgrade() -> None:
         )
 
     # Single-org installs resolved via the (removed) seed fallback until now. Both compose
-    # files serve the app at app.<VLOTR_BASE_DOMAIN>, so claim that as the org's verified
+    # files serve the app at app.<SCHAKL_BASE_DOMAIN>, so claim that as the org's verified
     # domain — idempotent to re-run, and freely changeable later in the branding settings.
     bind.execute(
         sa.text(
