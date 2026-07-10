@@ -2,6 +2,7 @@
   import "$lib/modules"; // ensure the web-module registry is populated
   import {
     BarChart3,
+    BellRing,
     CalendarDays,
     Menu,
     ChevronDown,
@@ -332,6 +333,17 @@
               <UserRound size={16} class="text-text-muted" />
               {t("header.my_settings")}
             </a>
+            {#if hasNotifications}
+              <!-- The settings hub is manager-only, but what reaches *me* is mine (UX §6). -->
+              <a
+                href="/settings/notifications"
+                class="flex items-center gap-2 px-4 py-2 text-sm text-text hover:bg-surface"
+                onclick={() => (profileOpen = false)}
+              >
+                <BellRing size={16} class="text-text-muted" />
+                {t("settings.notifications.title")}
+              </a>
+            {/if}
             <form method="POST" action="/logout" class="border-t border-border">
               <button
                 class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-text hover:bg-surface"

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from app.core.events import subscribe
 from app.modules.notifications.events import EVENT_TYPES
+from app.modules.notifications.panels import notifications_company_panel
 from app.modules.notifications.router import router
 from app.modules.notifications.service import make_handler
 from app.registry import ModuleDescriptor, registry
@@ -21,6 +22,7 @@ module = ModuleDescriptor(
     name="notifications",
     router=router,
     i18n_namespace="notifications",
+    panels=[notifications_company_panel],
 )
 
 registry.register(module)

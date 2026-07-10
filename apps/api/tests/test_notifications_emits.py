@@ -240,6 +240,25 @@ async def test_editing_a_company_without_touching_the_roster_reassigns_nobody(cl
     assert await _events(t, "company.assigned") == []
 
 
+async def test_the_client_page_composes_an_activity_panel(client_for) -> None:
+    """The hub picks the panel up from the registry — the company page names no module."""
+    t = await make_tenant("emit-company-panel")
+    headers = await auth_cookie(t.user)
+
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Panelled"}, headers=headers)
+        ).json()
+        panels = (
+            await c.get(f"/api/v1/companies/{company['id']}/panels", headers=headers)
+        ).json()
+
+    panel = next(p for p in panels if p["key"] == "notifications.activity")
+    assert panel["title_key"] == "notifications.activity.title"
+    assert [item["event_type"] for item in panel["data"]["items"]] == ["company.created"]
+    assert panel["data"]["items"][0]["payload"]["title"] == "Panelled"
+
+
 async def test_the_onboarding_automation_still_runs_alongside_the_fan_out(client_for) -> None:
     """Regression: notifications subscribed to the same company events the tasks module uses.
 

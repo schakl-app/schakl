@@ -20,6 +20,13 @@
       <h3 class="text-sm font-semibold text-text">{t("settings.account.title")}</h3>
       <p class="mt-1 text-sm text-text-muted">{t("settings.account.subtitle")}</p>
     </a>
+    <a
+      href="/settings/notifications"
+      class="rounded-xl border border-border bg-surface-raised p-5 hover:border-brand"
+    >
+      <h3 class="text-sm font-semibold text-text">{t("settings.notifications.title")}</h3>
+      <p class="mt-1 text-sm text-text-muted">{t("settings.notifications.subtitle")}</p>
+    </a>
   </div>
 </section>
 
@@ -55,6 +62,13 @@
     >
       <h3 class="text-sm font-semibold text-text">{t("settings.modules.title")}</h3>
       <p class="mt-1 text-sm text-text-muted">{t("settings.modules.subtitle")}</p>
+    </a>
+    <a
+      href="/settings/notification-defaults"
+      class="rounded-xl border border-border bg-surface-raised p-5 hover:border-brand"
+    >
+      <h3 class="text-sm font-semibold text-text">{t("settings.notification_defaults.title")}</h3>
+      <p class="mt-1 text-sm text-text-muted">{t("settings.notification_defaults.subtitle")}</p>
     </a>
     <a
       href="/settings/dashboard"
