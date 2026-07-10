@@ -41,9 +41,9 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/vlotr-crm/vlotr-${{ matrix.name }}
+          images: ghcr.io/schakl-app/schakl-${{ matrix.name }}
           # `latest` tracks the newest STABLE tag: a pre-release (v1.2.3-rc.1) must not
-          # move it, or infra/compose.tunnel.yaml (VLOTR_TAG:-latest) would deploy an rc.
+          # move it, or infra/compose.tunnel.yaml (SCHAKL_TAG:-latest) would deploy an rc.
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -63,9 +63,9 @@ jobs:
           # created timestamp is the one metadata-action already put in the OCI labels, so
           # `docker inspect` and the UI can never disagree.
           build-args: |
-            VLOTR_VERSION=${{ steps.meta.outputs.version }}
-            VLOTR_GIT_SHA=${{ github.sha }}
-            VLOTR_BUILT_AT=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+            SCHAKL_VERSION=${{ steps.meta.outputs.version }}
+            SCHAKL_GIT_SHA=${{ github.sha }}
+            SCHAKL_BUILT_AT=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
 
@@ -97,11 +97,11 @@ jobs:
           ## Container images
 
           \`\`\`
-          ghcr.io/vlotr-crm/vlotr-api:${version}
-          ghcr.io/vlotr-crm/vlotr-web:${version}
+          ghcr.io/schakl-app/schakl-api:${version}
+          ghcr.io/schakl-app/schakl-web:${version}
           \`\`\`
 
-          Deploy with \`VLOTR_TAG=${version}\` (see \`infra/compose.tunnel.yaml\`).
+          Deploy with \`SCHAKL_TAG=${version}\` (see \`infra/compose.tunnel.yaml\`).
 
           EOF
 

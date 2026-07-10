@@ -746,7 +746,7 @@
   "settings.system.up_to_date": "Je gebruikt de nieuwste versie.",
   "settings.system.update_unknown": "Nog geen updategegevens.",
   "settings.system.update_disabled": "De updatecontrole staat uit.",
-  "settings.system.update_disabled_help": "Zet VLOTR_UPDATE_CHECK_ENABLED=true om deze weer in te schakelen.",
+  "settings.system.update_disabled_help": "Zet SCHAKL_UPDATE_CHECK_ENABLED=true om deze weer in te schakelen.",
   "settings.system.update_dev_build": "Updatecontrole wordt overgeslagen op een ontwikkelversie.",
   "settings.system.checked_at": "Laatst gecontroleerd {time}",
   "settings.system.diagnostics": "Diagnostiek",

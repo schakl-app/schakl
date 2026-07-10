@@ -27,13 +27,13 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: vlotr
-          POSTGRES_PASSWORD: vlotr
-          POSTGRES_DB: vlotr
+          POSTGRES_USER: schakl
+          POSTGRES_PASSWORD: schakl
+          POSTGRES_DB: schakl
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U vlotr -d vlotr"
+          --health-cmd "pg_isready -U schakl -d schakl"
           --health-interval 5s --health-timeout 3s --health-retries 20
       # The readiness probe and system-info screen depend on Redis; without a live one here
       # their real client code path would never execute in CI.
@@ -46,18 +46,18 @@ jobs:
           --health-interval 5s --health-timeout 3s --health-retries 20
     env:
       # App connects as a NON-superuser so RLS is enforced (superusers bypass it).
-      VLOTR_DATABASE_URL: postgresql+asyncpg://vlotr_app:vlotr_app@localhost:5432/vlotr
-      VLOTR_REDIS_URL: redis://localhost:6379/0
+      SCHAKL_DATABASE_URL: postgresql+asyncpg://schakl_app:schakl_app@localhost:5432/schakl
+      SCHAKL_REDIS_URL: redis://localhost:6379/0
     steps:
       - uses: actions/checkout@v4
       - name: Create non-superuser app role
         run: |
           sudo apt-get update && sudo apt-get install -y postgresql-client
-          PGPASSWORD=vlotr psql -h localhost -U vlotr -d vlotr -v ON_ERROR_STOP=1 <<'SQL'
-          CREATE ROLE vlotr_app WITH LOGIN PASSWORD 'vlotr_app' NOSUPERUSER;
-          GRANT ALL ON DATABASE vlotr TO vlotr_app;
-          ALTER SCHEMA public OWNER TO vlotr_app;
-          GRANT ALL ON SCHEMA public TO vlotr_app;
+          PGPASSWORD=schakl psql -h localhost -U schakl -d schakl -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE schakl_app WITH LOGIN PASSWORD 'schakl_app' NOSUPERUSER;
+          GRANT ALL ON DATABASE schakl TO schakl_app;
+          ALTER SCHEMA public OWNER TO schakl_app;
+          GRANT ALL ON SCHEMA public TO schakl_app;
           SQL
       - uses: astral-sh/setup-uv@v5
         with:
@@ -87,11 +87,11 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Type check
-        run: pnpm --filter @vlotr/web check
+        run: pnpm --filter @schakl/web check
       - name: Unit tests
-        run: pnpm --filter @vlotr/web test:unit
+        run: pnpm --filter @schakl/web test:unit
       - name: Build
-        run: pnpm --filter @vlotr/web build
+        run: pnpm --filter @schakl/web build
 
   client-drift:
     name: Typed client is up to date

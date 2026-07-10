@@ -50,7 +50,7 @@ def create_app() -> FastAPI:
     _load_enabled_modules()
 
     app = FastAPI(
-        title="vlotr API",
+        title="schakl API",
         version=settings.version,
         description="Multi-tenant, modular, white-label agency operations platform.",
         lifespan=lifespan,

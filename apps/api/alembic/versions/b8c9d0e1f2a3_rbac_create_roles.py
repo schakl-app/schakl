@@ -23,7 +23,7 @@ later module introduces are granted by the app's startup reconciler, not by a mi
 
 The backfill is idempotent (``ON CONFLICT DO NOTHING`` / ``NOT EXISTS`` throughout) and runs
 per org with the RLS GUC bound, because the new tables are ``FORCE ROW LEVEL SECURITY`` and
-migrations run as ``vlotr_app``, not a superuser.
+migrations run as ``schakl_app``, not a superuser.
 
 Revision ID: b8c9d0e1f2a3
 Revises: a7b8c9d0e1f2

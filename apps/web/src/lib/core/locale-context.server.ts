@@ -1,6 +1,6 @@
 /**
  * Server-only: carries the locale resolved for the current request from `hooks.server.ts` down
- * into the Paraglide `custom-vlotrDefault` strategy.
+ * into the Paraglide `custom-schaklDefault` strategy.
  *
  * Why a context store and not another lookup: the strategy only receives the `Request`, but the
  * preference lives on the user, and `hooks.server.ts` has *already* fetched that user for

@@ -1,5 +1,5 @@
 /**
- * Client half of the `custom-vlotrDefault` Paraglide strategy (CLAUDE.md §8).
+ * Client half of the `custom-schaklDefault` Paraglide strategy (CLAUDE.md §8).
  *
  * See `paraglide-strategy.server.ts` for the full strategy rationale. This half is imported
  * for its side effect from `hooks.client.ts` and must stay free of any server-only imports
@@ -18,7 +18,7 @@
 import { asLocale, parseLocaleCookie } from "./i18n";
 import { defineCustomClientStrategy } from "$lib/paraglide/runtime";
 
-defineCustomClientStrategy("custom-vlotrDefault", {
+defineCustomClientStrategy("custom-schaklDefault", {
   getLocale: (): string | undefined =>
     parseLocaleCookie(document.cookie) ??
     asLocale(document.documentElement.dataset.locale) ??

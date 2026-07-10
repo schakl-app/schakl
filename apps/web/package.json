@@ -1,10 +1,10 @@
 {
-  "name": "@vlotr/web",
+  "name": "@schakl/web",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "machine:messages": "paraglide-js compile --project ../../project.inlang --outdir ./src/lib/paraglide --strategy cookie custom-vlotrDefault baseLocale --is-server import.meta.env.SSR",
+    "machine:messages": "paraglide-js compile --project ../../project.inlang --outdir ./src/lib/paraglide --strategy cookie custom-schaklDefault baseLocale --is-server import.meta.env.SSR",
     "dev": "pnpm run machine:messages && vite dev",
     "build": "pnpm run machine:messages && vite build",
     "preview": "vite preview",

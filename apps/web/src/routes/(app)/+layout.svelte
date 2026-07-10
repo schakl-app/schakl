@@ -60,7 +60,7 @@
   let groupOpen = $state<Record<string, boolean>>({});
   $effect(() => {
     try {
-      groupOpen = JSON.parse(localStorage.getItem("vlotr:navgroups") ?? "{}");
+      groupOpen = JSON.parse(localStorage.getItem("schakl:navgroups") ?? "{}");
     } catch {
       groupOpen = {};
     }
@@ -71,7 +71,7 @@
   }
   function toggleGroup(key: string) {
     groupOpen = { ...groupOpen, [key]: !(groupOpen[key] ?? true) };
-    localStorage.setItem("vlotr:navgroups", JSON.stringify(groupOpen));
+    localStorage.setItem("schakl:navgroups", JSON.stringify(groupOpen));
   }
 
   // --- mobile nav drawer -------------------------------------------------------
@@ -85,11 +85,11 @@
   // --- collapsible sidebar (persisted per browser) ---------------------------
   let collapsed = $state(false);
   $effect(() => {
-    collapsed = localStorage.getItem("vlotr:sidebar") === "collapsed";
+    collapsed = localStorage.getItem("schakl:sidebar") === "collapsed";
   });
   function toggleSidebar() {
     collapsed = !collapsed;
-    localStorage.setItem("vlotr:sidebar", collapsed ? "collapsed" : "open");
+    localStorage.setItem("schakl:sidebar", collapsed ? "collapsed" : "open");
   }
 
   // --- profile menu -----------------------------------------------------------

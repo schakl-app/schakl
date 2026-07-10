@@ -1,7 +1,7 @@
 # Single sign-on (OIDC) — setup & the redirect URI
 
 > How to point an external identity provider (Google, Entra ID, Authentik, Keycloak, …) at a
-> vlotr install, and how to get the **redirect URI** right — the one thing that trips up every
+> schakl install, and how to get the **redirect URI** right — the one thing that trips up every
 > first setup. The environment variables themselves are tabulated in
 > [`DEPLOY.md` → Single sign-on](DEPLOY.md#single-sign-on-oidc-off-by-default); this file is
 > the operator's how-to and troubleshooting guide. Design boundaries for *Google Workspace*
@@ -10,7 +10,7 @@
 ## The redirect URI is fixed by the code
 
 Every OIDC provider asks you to register one or more **authorized redirect URIs** (a.k.a.
-callback URL, reply URL). For vlotr it is always, exactly:
+callback URL, reply URL). For schakl it is always, exactly:
 
 ```
 https://<your-host>/api/v1/auth/oidc/callback
@@ -51,7 +51,7 @@ Two things must be true in production:
    (e.g. Cloudflare "Always Use HTTPS"), so the proxy sends `X-Forwarded-Proto: https` in the
    first place. If a user loads the site over `http`, the app will faithfully echo `http`.
 
-Also set `VLOTR_AUTH_COOKIE_SECURE=true` in production so the session cookie is only sent over
+Also set `SCHAKL_AUTH_COOKIE_SECURE=true` in production so the session cookie is only sent over
 HTTPS. It is not what causes the mismatch, but it belongs to the same "we are behind TLS" story.
 
 ## Provider setup
@@ -61,10 +61,10 @@ HTTPS. It is not what causes the mismatch, but it belongs to the same "we are be
 1. Register an application / OAuth client of type **web / confidential** (it has a client
    secret and does a server-side code exchange).
 2. Set the **redirect URI** to `https://<your-host>/api/v1/auth/oidc/callback`.
-3. Grant the scopes `openid email profile` (vlotr requests exactly these; `email` is required —
+3. Grant the scopes `openid email profile` (schakl requests exactly these; `email` is required —
    the callback rejects a login with no email).
 4. Note the **discovery URL** (`…/.well-known/openid-configuration`), the **client id**, and the
-   **client secret**, and set the `VLOTR_OIDC_*` variables from
+   **client secret**, and set the `SCHAKL_OIDC_*` variables from
    [`DEPLOY.md`](DEPLOY.md#single-sign-on-oidc-off-by-default).
 
 ### Google as the login provider
@@ -82,12 +82,12 @@ Using "Sign in with Google" as the OIDC IdP (distinct from Google *Workspace API
    client to your own domain and avoids Google's verification for the login scopes.
 4. You do **not** need an "Authorized JavaScript origin" — this is a server-side redirect flow,
    not a browser (GIS/implicit) one.
-5. Configure vlotr:
+5. Configure schakl:
    ```
-   VLOTR_OIDC_ENABLED=true
-   VLOTR_OIDC_DISCOVERY_URL=https://accounts.google.com/.well-known/openid-configuration
-   VLOTR_OIDC_CLIENT_ID=<client id>.apps.googleusercontent.com
-   VLOTR_OIDC_CLIENT_SECRET=<client secret>
+   SCHAKL_OIDC_ENABLED=true
+   SCHAKL_OIDC_DISCOVERY_URL=https://accounts.google.com/.well-known/openid-configuration
+   SCHAKL_OIDC_CLIENT_ID=<client id>.apps.googleusercontent.com
+   SCHAKL_OIDC_CLIENT_SECRET=<client secret>
    ```
 
 Changes to Google redirect URIs can take a few minutes to propagate.
@@ -117,19 +117,19 @@ byte-for-byte with what is registered. Usual culprits: a trailing slash, `http` 
 
 ### The login page shows no SSO button
 
-`VLOTR_OIDC_ENABLED=true` alone is not enough — discovery URL, client id, **and** client secret
+`SCHAKL_OIDC_ENABLED=true` alone is not enough — discovery URL, client id, **and** client secret
 must all be set, or the routes and the button are withheld (and a startup `WARNING` names what
 is missing). See [`DEPLOY.md`](DEPLOY.md#single-sign-on-oidc-off-by-default).
 
 ### The API refuses to start
 
-`VLOTR_OIDC_ENFORCED=true` with OIDC not fully configured is a deliberate boot failure —
+`SCHAKL_OIDC_ENFORCED=true` with OIDC not fully configured is a deliberate boot failure —
 enforced OIDC turns off local login, so booting anyway would lock everyone out. Finish the OIDC
-config or unset `VLOTR_OIDC_ENFORCED`.
+config or unset `SCHAKL_OIDC_ENFORCED`.
 
 ### Logged in via SSO but immediately 403 / "no access"
 
 A JIT-provisioned SSO user needs a membership in the resolved org. With
-`VLOTR_OIDC_AUTO_PROVISION_MEMBERSHIP=true` (default) the first login grants one at
-`VLOTR_OIDC_DEFAULT_ROLE`. With it `false`, invite the user first. If the host doesn't resolve
+`SCHAKL_OIDC_AUTO_PROVISION_MEMBERSHIP=true` (default) the first login grants one at
+`SCHAKL_OIDC_DEFAULT_ROLE`. With it `false`, invite the user first. If the host doesn't resolve
 to an org at all, no membership can be granted — check the tenant's custom domain / slug.

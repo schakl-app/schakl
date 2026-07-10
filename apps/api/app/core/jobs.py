@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.models import Org, OrgStatus
 from app.db import async_session_maker, set_current_org
 
-logger = logging.getLogger("vlotr.jobs")
+logger = logging.getLogger("schakl.jobs")
 
 PerOrgCallback = Callable[[Org, AsyncSession], Awaitable[None]]
 

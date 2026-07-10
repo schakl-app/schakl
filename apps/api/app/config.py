@@ -1,7 +1,7 @@
 """Application configuration (CLAUDE.md §3, §7).
 
-All settings come from the environment, prefixed ``VLOTR_`` (no secrets in code).
-The internal codename is ``vlotr``; the *user-facing* brand is per-tenant and never set here.
+All settings come from the environment, prefixed ``SCHAKL_`` (no secrets in code).
+The internal codename is ``schakl``; the *user-facing* brand is per-tenant and never set here.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ def _default_messages_dir() -> Path:
     """Locate the shared ``messages/`` catalogs without assuming a fixed directory depth.
 
     Works both in the source tree (repo-root/messages) and in the container image (where the
-    app is copied to /app and messages to /app/messages). Overridable via VLOTR_MESSAGES_DIR.
+    app is copied to /app and messages to /app/messages). Overridable via SCHAKL_MESSAGES_DIR.
     """
     here = Path(__file__).resolve()
     for parent in here.parents:
@@ -29,7 +29,7 @@ def _default_messages_dir() -> Path:
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_prefix="VLOTR_",
+        env_prefix="SCHAKL_",
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
@@ -49,12 +49,12 @@ class Settings(BaseSettings):
     # A daily, unauthenticated GET to the GitHub Releases API. Nothing is sent about this
     # instance. Set false to disable all outbound update traffic (docs/DEPLOY.md).
     update_check_enabled: bool = True
-    update_check_repo: str = "vlotr-crm/vlotr"
+    update_check_repo: str = "schakl-app/schakl"
 
     # --- Database / cache ---
     # Async SQLAlchemy URL (asyncpg driver). The app connects as a NON-superuser role so
     # Postgres RLS is enforced (superusers bypass RLS) — see infra/db init and CLAUDE.md §5.
-    database_url: str = "postgresql+asyncpg://vlotr_app:vlotr_app@localhost:5432/vlotr"
+    database_url: str = "postgresql+asyncpg://schakl_app:schakl_app@localhost:5432/schakl"
     redis_url: str = "redis://localhost:6379/0"
 
     # --- Tenancy / white-label ---
@@ -72,7 +72,7 @@ class Settings(BaseSettings):
     # --- Auth ---
     secret_key: str = "change-me-in-production-please-32bytes-min"
     # Cookie transport is used by the SSR web app.
-    auth_cookie_name: str = "vlotr_auth"
+    auth_cookie_name: str = "schakl_auth"
     auth_cookie_secure: bool = False  # True behind HTTPS in production
     auth_token_lifetime_seconds: int = 60 * 60 * 24 * 7
     allow_registration: bool = True
@@ -100,7 +100,7 @@ class Settings(BaseSettings):
 
     # --- Instance administration (issue #26) ---
     # The cross-tenant admin surface is pure attack surface on a single-tenant box, so it
-    # ships **disabled**; VLOTR_INSTANCE_ADMIN_ENABLED=true opens it to instance owners
+    # ships **disabled**; SCHAKL_INSTANCE_ADMIN_ENABLED=true opens it to instance owners
     # (users.is_superuser — the operator principal, distinct from an org's `owner` role).
     instance_admin_enabled: bool = False
     # Upper bound for a single impersonation grant; every grant is audited and time-boxed.
@@ -115,10 +115,10 @@ class Settings(BaseSettings):
     def oidc_missing_settings(self) -> list[str]:
         """The env vars the OIDC flow needs but that are unset (empty string counts as unset)."""
         required = {
-            "VLOTR_OIDC_ENABLED": self.oidc_enabled,
-            "VLOTR_OIDC_DISCOVERY_URL": self.oidc_discovery_url,
-            "VLOTR_OIDC_CLIENT_ID": self.oidc_client_id,
-            "VLOTR_OIDC_CLIENT_SECRET": self.oidc_client_secret,
+            "SCHAKL_OIDC_ENABLED": self.oidc_enabled,
+            "SCHAKL_OIDC_DISCOVERY_URL": self.oidc_discovery_url,
+            "SCHAKL_OIDC_CLIENT_ID": self.oidc_client_id,
+            "SCHAKL_OIDC_CLIENT_SECRET": self.oidc_client_secret,
         }
         return [name for name, value in required.items() if not value]
 

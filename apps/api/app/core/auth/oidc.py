@@ -21,7 +21,7 @@ from app.core.auth.backend import cookie_transport, get_jwt_strategy
 from app.core.auth.models import User
 from app.db import async_session_maker
 
-logger = logging.getLogger("vlotr.auth.oidc")
+logger = logging.getLogger("schakl.auth.oidc")
 
 
 def build_oidc_router() -> APIRouter | None:
@@ -31,7 +31,7 @@ def build_oidc_router() -> APIRouter | None:
             # Enforced OIDC disables local login; silently dropping the SSO routes on top
             # of that would lock every user out. Refuse to boot instead (issue #6).
             raise RuntimeError(
-                "VLOTR_OIDC_ENFORCED=true but OIDC is not configured, which would disable "
+                "SCHAKL_OIDC_ENFORCED=true but OIDC is not configured, which would disable "
                 f"local login with no SSO to fall back on. Set: {', '.join(missing)}."
             )
         if settings.oidc_enabled:

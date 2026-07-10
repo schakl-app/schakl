@@ -23,7 +23,7 @@ from app.core.models import Org
 from app.modules.leave import holidays
 from app.modules.leave.models import LeaveHoliday, LeaveSettings
 
-logger = logging.getLogger("vlotr.leave")
+logger = logging.getLogger("schakl.leave")
 
 _AMSTERDAM = ZoneInfo("Europe/Amsterdam")
 

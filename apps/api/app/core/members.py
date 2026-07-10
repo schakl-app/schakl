@@ -42,7 +42,7 @@ from app.core.roles import Role
 from app.core.tenancy import RequestContext, require_context
 from app.errors import AppError
 
-logger = logging.getLogger("vlotr.members")
+logger = logging.getLogger("schakl.members")
 _password_hash = PasswordHash.recommended()
 
 router = APIRouter(prefix="/members", tags=["members"])

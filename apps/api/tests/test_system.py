@@ -55,7 +55,7 @@ def _stub_probes(monkeypatch, *, redis_ok=True, worker_ok=True):
 # --------------------------------------------------------------------------- #
 async def test_health_is_unauthenticated_and_dependency_free(client_for):
     """It must stay cheap: a probe that touched Postgres would restart a healthy API."""
-    async with client_for("vlotr.localhost") as client:
+    async with client_for("schakl.localhost") as client:
         response = await client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
@@ -66,7 +66,7 @@ async def test_health_is_unauthenticated_and_dependency_free(client_for):
 # --------------------------------------------------------------------------- #
 async def test_ready_is_ok_when_every_probe_passes(client_for, monkeypatch):
     _stub_probes(monkeypatch)
-    async with client_for("vlotr.localhost") as client:
+    async with client_for("schakl.localhost") as client:
         response = await client.get("/health/ready")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
@@ -77,7 +77,7 @@ async def test_ready_is_degraded_and_detail_free_when_a_dependency_is_down(
 ):
     """503, and the body never names the failing dependency — it is unauthenticated."""
     _stub_probes(monkeypatch, redis_ok=False)
-    async with client_for("vlotr.localhost") as client:
+    async with client_for("schakl.localhost") as client:
         response = await client.get("/health/ready")
 
     assert response.status_code == 503
@@ -93,7 +93,7 @@ async def test_ready_is_degraded_when_migrations_are_behind(client_for, monkeypa
         return {"current": ["deadbeef"], "head": ["c0ffee"], "up_to_date": False}
 
     monkeypatch.setattr(system, "migration_status", behind)
-    async with client_for("vlotr.localhost") as client:
+    async with client_for("schakl.localhost") as client:
         response = await client.get("/health/ready")
     assert response.status_code == 503
     assert response.json() == {"status": "degraded"}
@@ -169,7 +169,7 @@ async def test_probe_redis_reads_a_live_server():
     ``Redis.from_url`` → ``INFO server`` path would never run anywhere."""
     result = await system.probe_redis()
     if result["status"] == "down":
-        pytest.skip("no Redis reachable at VLOTR_REDIS_URL")
+        pytest.skip("no Redis reachable at SCHAKL_REDIS_URL")
     assert result["version"]
 
 

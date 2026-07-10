@@ -22,10 +22,10 @@ API_DIR = Path(__file__).resolve().parents[1]
 
 # Point the app at the test database *before* importing anything that reads settings.
 os.environ.setdefault(
-    "VLOTR_DATABASE_URL",
-    "postgresql+asyncpg://vlotr_app:vlotr_app@localhost:5432/vlotr",
+    "SCHAKL_DATABASE_URL",
+    "postgresql+asyncpg://schakl_app:schakl_app@localhost:5432/schakl",
 )
-os.environ.setdefault("VLOTR_BASE_DOMAIN", "localhost")
+os.environ.setdefault("SCHAKL_BASE_DOMAIN", "localhost")
 
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 from pwdlib import PasswordHash  # noqa: E402
@@ -153,7 +153,7 @@ def leave_workday(index: int = 0) -> date:
 async def auth_cookie(user: User) -> dict[str, str]:
     """A Cookie header carrying a valid session for ``user`` (skips the login form)."""
     token = await get_jwt_strategy().write_token(user)
-    return {"Cookie": f"vlotr_auth={token}"}
+    return {"Cookie": f"schakl_auth={token}"}
 
 
 @pytest.fixture

@@ -11,7 +11,7 @@ Upgrade plan (docs/WORKFLOW.md → *Breaking database changes*):
   at 32 h; the app reads ``schedule ? sum(schedule) : hours_per_week``. Backfilling a 40 h
   default schedule here would silently regrant every part-timer eight hours a week.
 * **Rollback-safe.** The previous image never selects ``schedule`` or ``leave_settings``.
-* Idempotent, per-org, ``org_id``-scoped seed (RLS is FORCED and this runs as ``vlotr_app``).
+* Idempotent, per-org, ``org_id``-scoped seed (RLS is FORCED and this runs as ``schakl_app``).
 
 Revision ID: d0e1f2a3b4c5
 Revises: c9d0e1f2a3b4

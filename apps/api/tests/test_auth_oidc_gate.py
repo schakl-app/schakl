@@ -91,11 +91,11 @@ async def test_enabled_but_unconfigured_warns_naming_missing_settings(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     _apply(monkeypatch, oidc_enabled=True, oidc_discovery_url="", oidc_client_id=None)
-    with caplog.at_level(logging.WARNING, logger="vlotr.auth.oidc"):
+    with caplog.at_level(logging.WARNING, logger="schakl.auth.oidc"):
         _build_app()
     warning = next(r for r in caplog.records if r.levelno == logging.WARNING)
-    assert "VLOTR_OIDC_DISCOVERY_URL" in warning.getMessage()
-    assert "VLOTR_OIDC_CLIENT_ID" in warning.getMessage()
+    assert "SCHAKL_OIDC_DISCOVERY_URL" in warning.getMessage()
+    assert "SCHAKL_OIDC_CLIENT_ID" in warning.getMessage()
 
 
 async def test_enforced_but_unconfigured_refuses_to_boot(
@@ -103,5 +103,5 @@ async def test_enforced_but_unconfigured_refuses_to_boot(
 ) -> None:
     # Enforced OIDC disables local login; with no SSO routes either, nobody could sign in.
     _apply(monkeypatch, oidc_enabled=True, oidc_enforced=True, oidc_discovery_url="")
-    with pytest.raises(RuntimeError, match="VLOTR_OIDC_DISCOVERY_URL"):
+    with pytest.raises(RuntimeError, match="SCHAKL_OIDC_DISCOVERY_URL"):
         _build_app()

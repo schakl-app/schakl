@@ -1,5 +1,5 @@
-# vlotr API image — build context is the REPO ROOT (needs apps/api + shared messages/).
-# Published to ghcr.io/vlotr-crm/vlotr-api.
+# schakl API image — build context is the REPO ROOT (needs apps/api + shared messages/).
+# Published to ghcr.io/schakl-app/schakl-api.
 FROM python:3.12-slim AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:0.11 /uv /uvx /bin/
@@ -29,7 +29,7 @@ WORKDIR /app
 COPY --from=builder /app /app
 
 ENV PATH="/app/.venv/bin:${PATH}" \
-    VLOTR_MESSAGES_DIR=/app/messages \
+    SCHAKL_MESSAGES_DIR=/app/messages \
     PYTHONUNBUFFERED=1
 
 EXPOSE 8000
@@ -38,19 +38,19 @@ CMD ["api"]
 
 # --- Build stamp -------------------------------------------------------------------------
 # Last, so changing it never invalidates the layers above. Read back by the app as
-# VLOTR_VERSION / VLOTR_GIT_SHA / VLOTR_BUILT_AT (app/config.py) and surfaced on
+# SCHAKL_VERSION / SCHAKL_GIT_SHA / SCHAKL_BUILT_AT (app/config.py) and surfaced on
 # Settings → System. The defaults mark an unstamped build so the update check stays quiet.
 # CI passes these from .github/workflows/release.yml; the OCI labels there override ours.
-ARG VLOTR_VERSION=0.0.0+dev
-ARG VLOTR_GIT_SHA=unknown
-ARG VLOTR_BUILT_AT=""
+ARG SCHAKL_VERSION=0.0.0+dev
+ARG SCHAKL_GIT_SHA=unknown
+ARG SCHAKL_BUILT_AT=""
 
-ENV VLOTR_VERSION=${VLOTR_VERSION} \
-    VLOTR_GIT_SHA=${VLOTR_GIT_SHA} \
-    VLOTR_BUILT_AT=${VLOTR_BUILT_AT}
+ENV SCHAKL_VERSION=${SCHAKL_VERSION} \
+    SCHAKL_GIT_SHA=${SCHAKL_GIT_SHA} \
+    SCHAKL_BUILT_AT=${SCHAKL_BUILT_AT}
 
-LABEL org.opencontainers.image.title="vlotr-api" \
-      org.opencontainers.image.source="https://github.com/vlotr-crm/vlotr" \
-      org.opencontainers.image.version="${VLOTR_VERSION}" \
-      org.opencontainers.image.revision="${VLOTR_GIT_SHA}" \
-      org.opencontainers.image.created="${VLOTR_BUILT_AT}"
+LABEL org.opencontainers.image.title="schakl-api" \
+      org.opencontainers.image.source="https://github.com/schakl-app/schakl" \
+      org.opencontainers.image.version="${SCHAKL_VERSION}" \
+      org.opencontainers.image.revision="${SCHAKL_GIT_SHA}" \
+      org.opencontainers.image.created="${SCHAKL_BUILT_AT}"

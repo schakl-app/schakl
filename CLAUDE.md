@@ -12,8 +12,10 @@ time entries**. The platform is a web app (SSR) that is also installable as a **
 Primary language is **Dutch**; full internationalization with English as the second locale
 and trivial addition of more.
 
-Internal codename: `PLATFORM` (replace with your own). The **brand shown to users is
-per-tenant** and never hardcoded.
+Internal codename: `schakl`, shown to people as the product name **schakl.** (with the dot).
+The `schakl` form — no dot — is the only one used in code, urls, package names, env vars and
+other identifiers; the dot appears solely when the official product name is displayed. The
+**brand shown to users is per-tenant** and never hardcoded, so this name is never the tenant's.
 
 ## 2. Golden Rules (non-negotiable)
 
@@ -100,7 +102,7 @@ hostname. Don't take shortcuts that assume one org.
   the one sanctioned unscoped crossing (`repo.py`, for global slug/domain uniqueness), the
   audit trail, org lifecycle, export/import, and time-boxed impersonation. The surface is
   gated on `users.is_superuser` (the *instance owner*, distinct from an org `owner`) and
-  disabled by default (`VLOTR_INSTANCE_ADMIN_ENABLED`).
+  disabled by default (`SCHAKL_INSTANCE_ADMIN_ENABLED`).
 
 ## 6. Module pattern (how to add a domain)
 
@@ -156,7 +158,7 @@ Per-org settings drive branding at runtime — no rebuild:
 default_locale, enabled_modules[])`.
 The web app loads the tenant theme on first render and applies it via CSS custom properties.
 Emails and generated PDFs use the same tenant branding. Tenant resolution: **verified**
-`orgs.custom_domain` or `<slug>.PLATFORM_BASE_DOMAIN` → org. The custom domain lives on
+`orgs.custom_domain` or `<slug>.SCHAKL_BASE_DOMAIN` → org. The custom domain lives on
 `orgs`, not `org_settings`: resolution runs *before* RLS is bound, so it may only read
 tables without RLS — and a claimed domain routes traffic only after DNS TXT verification.
 

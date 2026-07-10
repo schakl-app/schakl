@@ -22,8 +22,8 @@ from fastapi.routing import APIRoute
 from app.core.tenancy import RequestContext, require_context
 
 #: Attribute names the introspection test looks for. Never read them by string elsewhere.
-PERMISSION_MARKER = "__vlotr_permission__"
-EXEMPTION_MARKER = "__vlotr_no_permission__"
+PERMISSION_MARKER = "__schakl_permission__"
+EXEMPTION_MARKER = "__schakl_no_permission__"
 
 
 def require_permission(permission: str, scope: str | None = None) -> Any:

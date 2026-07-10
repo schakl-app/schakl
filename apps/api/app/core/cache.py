@@ -26,10 +26,10 @@ def get_redis() -> Redis:
 
 #: ISO-8601 UTC timestamp, rewritten every minute by the worker's heartbeat cron.
 #: Absent (TTL expired) ⇒ no worker has checked in recently.
-WORKER_HEARTBEAT_KEY = "vlotr:worker:heartbeat"
+WORKER_HEARTBEAT_KEY = "schakl:worker:heartbeat"
 #: How long a heartbeat stays valid. Comfortably longer than the once-a-minute cron so a
 #: single missed tick (a slow job hogging the loop) doesn't read as a dead worker.
 WORKER_HEARTBEAT_TTL = 180
 
 #: JSON blob written by the daily update check: {latest, release_url, checked_at}.
-UPDATE_CHECK_KEY = "vlotr:update:latest"
+UPDATE_CHECK_KEY = "schakl:update:latest"

@@ -846,7 +846,7 @@ wheels = [
 ]
 
 [[package]]
-name = "vlotr-api"
+name = "schakl-api"
 version = "0.0.0"
 source = { virtual = "." }
 dependencies = [

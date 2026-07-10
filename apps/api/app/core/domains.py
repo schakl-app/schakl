@@ -6,7 +6,7 @@ anyone could park a competitor's hostname on their own org and phish it. Global 
 (the one legitimately cross-tenant check) goes through ``app.core.instance.repo``, and every
 step writes the instance audit trail.
 
-The TXT challenge: ``_vlotr-challenge.<domain>`` must contain the issued token.
+The TXT challenge: ``_schakl-challenge.<domain>`` must contain the issued token.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ router = APIRouter(prefix="/meta/tenant/domain", tags=["meta"])
 _HOSTNAME_RE = re.compile(
     r"^(?=.{4,255}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$"
 )
-_CHALLENGE_PREFIX = "_vlotr-challenge"
+_CHALLENGE_PREFIX = "_schakl-challenge"
 
 
 class DomainStatus(BaseModel):

@@ -21,7 +21,7 @@ from app.core.cache import WORKER_HEARTBEAT_KEY, WORKER_HEARTBEAT_TTL, get_redis
 from app.core.update_check import check_for_update
 from app.registry import registry
 
-logger = logging.getLogger("vlotr.worker")
+logger = logging.getLogger("schakl.worker")
 
 
 def _collect_cron_jobs() -> list:
@@ -46,7 +46,7 @@ async def heartbeat(ctx: dict) -> str:
 
 
 async def startup(ctx: dict) -> None:
-    logger.info("vlotr worker started (version %s)", settings.version)
+    logger.info("schakl worker started (version %s)", settings.version)
     # Don't wait up to a minute for the first cron tick to declare ourselves alive.
     await heartbeat(ctx)
 
