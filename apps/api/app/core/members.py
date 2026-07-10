@@ -16,17 +16,23 @@ import logging
 import secrets
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pwdlib import PasswordHash
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import func, select
 
 from app.core.auth.models import User
 from app.core.models import Membership
+from app.core.permissions.catalog import permission_keys
 from app.core.permissions.deps import no_permission_required, require_permission
 from app.core.permissions.models import MembershipRole
 from app.core.permissions.models import Role as RoleRow
-from app.core.permissions.service import create_membership, role_by_key, role_manager_count
+from app.core.permissions.service import (
+    create_membership,
+    permission_holder_ids,
+    role_by_key,
+    role_manager_count,
+)
 from app.core.roles import Role
 from app.core.tenancy import RequestContext, require_context
 from app.errors import AppError
@@ -115,16 +121,40 @@ async def list_members(ctx: RequestContext = Depends(require_context)) -> list[M
         no_permission_required("name/email of colleagues, for pickers; open to every member")
     ],
 )
-async def lookup_members(ctx: RequestContext = Depends(require_context)) -> list[MemberLookup]:
-    """Name/email of every org member, for assignee pickers. Open to all staff roles."""
-    rows = (
-        await ctx.session.execute(
-            select(User)
-            .join(Membership, Membership.user_id == User.id)
-            .where(Membership.org_id == ctx.org.id)
-            .order_by(User.full_name.asc().nulls_last(), User.email.asc())
-        )
-    ).scalars().all()
+async def lookup_members(
+    permission: str | None = Query(
+        None,
+        description=(
+            "Only members who hold this permission at some scope — e.g. `tasks.task.write` for "
+            "an assignee picker, `leave.request.approve` for an approver picker. Omit for "
+            "everyone in the org."
+        ),
+    ),
+    ctx: RequestContext = Depends(require_context),
+) -> list[MemberLookup]:
+    """Name/email of org members, for assignee/approver pickers. Open to every member.
+
+    Filtering by ``permission`` is what stops a picker from offering people who could never do
+    the thing being picked. It is one indexed, ``DISTINCT`` query: a user holding two granting
+    roles must not appear twice.
+    """
+    stmt = (
+        select(User)
+        .join(Membership, Membership.user_id == User.id)
+        .where(Membership.org_id == ctx.org.id)
+        .order_by(User.full_name.asc().nulls_last(), User.email.asc())
+    )
+    if permission is not None:
+        if permission not in set(permission_keys()):
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"permission": "errors.validation"},
+            )
+        stmt = stmt.where(User.id.in_(permission_holder_ids(ctx.org.id, permission)))
+
+    rows = (await ctx.session.execute(stmt)).scalars().all()
     return [
         MemberLookup(user_id=str(u.id), full_name=u.full_name, email=u.email) for u in rows
     ]

@@ -835,7 +835,11 @@ export interface paths {
         };
         /**
          * Lookup Members
-         * @description Name/email of every org member, for assignee pickers. Open to all staff roles.
+         * @description Name/email of org members, for assignee/approver pickers. Open to every member.
+         *
+         *     Filtering by ``permission`` is what stops a picker from offering people who could never do
+         *     the thing being picked. It is one indexed, ``DISTINCT`` query: a user holding two granting
+         *     roles must not appear twice.
          */
         get: operations["lookup_members_api_v1_members_lookup_get"];
         put?: never;
@@ -6770,7 +6774,10 @@ export interface operations {
     };
     lookup_members_api_v1_members_lookup_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Only members who hold this permission at some scope — e.g. `tasks.task.write` for an assignee picker, `leave.request.approve` for an approver picker. Omit for everyone in the org. */
+                permission?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -6784,6 +6791,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MemberLookup"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

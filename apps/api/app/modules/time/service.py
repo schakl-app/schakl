@@ -19,7 +19,6 @@ from sqlalchemy import text as sql_text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 
 from app.core.events import emit
-from app.core.roles import Role
 from app.core.sorting import apply_sort, user_sort_name
 from app.core.tenancy import RequestContext
 from app.errors import AppError
@@ -112,24 +111,37 @@ class TimeService:
 
     # --- access scoping ------------------------------------------------------ #
     def _effective_user_id(self, user_id: uuid.UUID | None) -> uuid.UUID:
-        """Resolve whose entries to act on: self, or another user if a manager asks."""
+        """Resolve whose entries to act on: self, or another user's with ``time.entry.read:any``."""
         if user_id is None or user_id == self.ctx.user.id:
             return self.ctx.user.id
-        if not self.ctx.role.can_manage:
-            raise AppError("forbidden", "errors.forbidden", status_code=403)
+        self.ctx.require("time.entry.read", scope="any")
         return user_id
 
     async def _owned_or_404(self, entry_id: uuid.UUID) -> TimeEntry:
+        """Load an entry, hiding *someone else's* behind a 404 rather than a 403.
+
+        A generic ``require_for(permission, owner_id)`` helper would raise 403 here and thereby
+        confirm, to anyone who guesses an id, that the entry exists. Scope-aware loading, not a
+        scope-aware assertion, is what keeps that from leaking (issue #19).
+        """
         entry = await self.repo.get_or_404(entry_id)
-        if entry.user_id != self.ctx.user.id and not self.ctx.role.can_manage:
-            # Don't reveal another user's entry exists.
+        if entry.user_id != self.ctx.user.id and not self.ctx.can("time.entry.read", scope="any"):
             raise AppError("not_found", "errors.not_found", status_code=404)
         return entry
 
     def _ensure_not_locked(self, entry: TimeEntry) -> None:
-        """Approved hours are signed off; only managers may still change them."""
-        if entry.approved_at is not None and not self.ctx.role.can_manage:
+        """Approved hours are signed off; only whoever may approve them may still change them.
+
+        This is a **capability**, not a scope: it is not about whose entry it is — the owner is
+        locked out of their own approved hours too. So 403, not 404, and no ``:own``/``:any``.
+        """
+        if entry.approved_at is not None and not self.ctx.can("time.entry.approve"):
             raise AppError("approved_locked", "errors.approved_locked", status_code=403)
+
+    def _ensure_writable(self, entry: TimeEntry) -> None:
+        """``time.entry.write:own`` covers your own hours; someone else's needs ``:any``."""
+        scope = None if entry.user_id == self.ctx.user.id else "any"
+        self.ctx.require("time.entry.write", scope=scope)
 
     # --- timer --------------------------------------------------------------- #
     async def running(self, user_id: uuid.UUID | None = None) -> TimeEntry | None:
@@ -144,7 +156,7 @@ class TimeService:
         return (await self.ctx.session.execute(stmt)).scalars().first()
 
     async def start_timer(self, data: TimerStart) -> TimeEntry:
-        self.ctx.ensure_can_write()
+        self.ctx.require("time.entry.write")
         # Starting a new timer stops the current one (common time-tracker behaviour).
         current = await self.running()
         if current is not None:
@@ -158,7 +170,7 @@ class TimeService:
         )
 
     async def stop_timer(self) -> TimeEntry:
-        self.ctx.ensure_can_write()
+        self.ctx.require("time.entry.write")
         current = await self.running()
         if current is None:
             raise AppError("not_found", "errors.not_found", status_code=404)
@@ -172,7 +184,7 @@ class TimeService:
 
     # --- manual entries ------------------------------------------------------ #
     async def create(self, data: TimeEntryCreate) -> TimeEntry:
-        self.ctx.ensure_can_write()
+        self.ctx.require("time.entry.write")
         values = data.model_dump()
         started_at = values["started_at"]
         ended_at = values.get("ended_at")
@@ -197,8 +209,8 @@ class TimeService:
         return await self.repo.create(user_id=self.ctx.user.id, **values)
 
     async def update(self, entry_id: uuid.UUID, data: TimeEntryUpdate) -> TimeEntry:
-        self.ctx.ensure_can_write()
         entry = await self._owned_or_404(entry_id)
+        self._ensure_writable(entry)
         self._ensure_not_locked(entry)
         values = data.model_dump(exclude_unset=True)
         entry = await self.repo.update(entry, **values)
@@ -352,8 +364,8 @@ class TimeService:
         }
 
     async def delete(self, entry_id: uuid.UUID) -> None:
-        self.ctx.ensure_can_write()
         entry = await self._owned_or_404(entry_id)
+        self._ensure_writable(entry)
         self._ensure_not_locked(entry)
         await self.repo.delete(entry)
 
@@ -385,15 +397,16 @@ class TimeService:
         rather than bounce a member to the manager-only report.
 
         Unscoped, though, ``all_users`` *is* the manager report: the whole org's hours, whoever
-        logged them. That needs the same gate ``report()`` has. External ``client`` users get
-        neither.
+        logged them, and it needs ``time.entry.read:any``. A ``client`` role holds no
+        ``time.entry.read`` at all, so the route's own gate already turned them away.
+
+        Do not "simplify" the route to declare ``scope="any"``: that would silently remove the
+        budget bars from every member's project page (issue #19).
         """
         conditions = []
         if all_users:
-            if self.ctx.role == Role.CLIENT:
-                raise AppError("forbidden", "errors.forbidden", status_code=403)
             if company_id is None and project_id is None and task_id is None:
-                self.ctx.ensure_can_manage()
+                self.ctx.require("time.entry.read", scope="any")
         else:
             conditions.append(TimeEntry.user_id == self._effective_user_id(user_id))
         if company_id is not None:
@@ -494,8 +507,8 @@ class TimeService:
         invoiced: bool | None = None,
         sort: str | None = None,
     ) -> tuple[Sequence[TimeEntry], int, dict[str, int]]:
-        """Org-wide entries for the approval/invoicing overview. Managers only."""
-        self.ctx.ensure_can_manage()
+        """Org-wide entries for the approval/invoicing overview (``time.report.read``)."""
+        self.ctx.require("time.report.read")
         conditions = self._report_conditions(
             user_id=user_id,
             company_id=company_id,
@@ -562,8 +575,8 @@ class TimeService:
     async def productivity(
         self, *, date_from: date, date_to: date
     ) -> list[dict[str, object]]:
-        """Per-employee totals for the productivity report. Managers only."""
-        self.ctx.ensure_can_manage()
+        """Per-employee totals for the productivity report (``time.report.read``)."""
+        self.ctx.require("time.report.read")
         start = datetime.combine(date_from, time.min, tzinfo=UTC)
         end = datetime.combine(date_to, time.min, tzinfo=UTC) + timedelta(days=1)
         stmt = (
@@ -608,7 +621,7 @@ class TimeService:
         Joins ``projects`` by table name only (mirroring the FK convention — no import of
         the projects module); both sides carry the explicit org filter and RLS backs it up.
         """
-        self.ctx.ensure_can_manage()
+        self.ctx.require("time.report.read")
         params = {
             "org_id": str(self.ctx.org.id),
             "start": datetime(year - 1, 1, 1, tzinfo=UTC),
@@ -685,7 +698,7 @@ class TimeService:
 
     async def set_approval(self, entry_ids: list[uuid.UUID], approved: bool) -> int:
         """(Un)approve entries — the sign-off a manager gives before invoicing."""
-        self.ctx.ensure_can_manage()
+        self.ctx.require("time.entry.approve")
         entries = await self._entries_by_ids(entry_ids)
         for entry in entries:
             entry.approved_at = _now() if approved else None
@@ -719,7 +732,7 @@ class TimeService:
             )
 
     async def set_invoiced(self, entry_ids: list[uuid.UUID], invoiced: bool) -> int:
-        self.ctx.ensure_can_manage()
+        self.ctx.require("time.entry.invoice")
         entries = await self._entries_by_ids(entry_ids)
         for entry in entries:
             entry.invoiced_at = _now() if invoiced else None

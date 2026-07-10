@@ -19,7 +19,7 @@ from sqlalchemy import func, select
 from app.core.auth.models import User
 from app.core.events import emit
 from app.core.models import Membership
-from app.core.roles import Role
+from app.core.permissions.service import permission_holder_ids
 from app.core.sorting import apply_sort, user_sort_name
 from app.core.tenancy import RequestContext
 from app.errors import AppError
@@ -135,19 +135,25 @@ class LeaveService:
 
     # --- access scoping ------------------------------------------------------ #
     def _effective_user_id(self, user_id: uuid.UUID | None) -> uuid.UUID:
-        """Resolve whose leave to act on: self, or another user if a manager asks."""
+        """Whose leave to act on: your own, or another's with ``leave.request.read:any``."""
         if user_id is None or user_id == self.ctx.user.id:
             return self.ctx.user.id
-        if not self.ctx.role.can_manage:
-            raise AppError("forbidden", "errors.forbidden", status_code=403)
+        self.ctx.require("leave.request.read", scope="any")
         return user_id
 
     async def _owned_or_404(self, request_id: uuid.UUID) -> LeaveRequest:
+        """404, not 403, on someone else's request — a 403 would confirm that it exists."""
         request = await self.requests.get_or_404(request_id)
-        if request.user_id != self.ctx.user.id and not self.ctx.role.can_manage:
-            # Don't reveal another user's request exists.
+        if request.user_id != self.ctx.user.id and not self.ctx.can(
+            "leave.request.read", scope="any"
+        ):
             raise AppError("not_found", "errors.not_found", status_code=404)
         return request
+
+    def _ensure_writable(self, request: LeaveRequest) -> None:
+        """``leave.request.write:own`` covers your own request; someone else's needs ``:any``."""
+        scope = None if request.user_id == self.ctx.user.id else "any"
+        self.ctx.require("leave.request.write", scope=scope)
 
     # --- leave types ---------------------------------------------------------- #
     async def list_types(self, *, include_inactive: bool = False) -> Sequence[LeaveType]:
@@ -159,7 +165,7 @@ class LeaveService:
 
     async def _ensure_default_types(self) -> None:
         """Seed the Dutch default types once per org (idempotent; skipped for read-only roles)."""
-        if not self.ctx.can_write:
+        if not self.ctx.can("leave.request.write"):
             return
         if await self.types.count() > 0:
             return
@@ -167,7 +173,7 @@ class LeaveService:
             await self.types.create(**spec)
 
     async def create_type(self, data: LeaveTypeCreate) -> LeaveType:
-        self.ctx.ensure_can_manage()
+        self.ctx.require("leave.type.write")
         existing = await self.ctx.session.scalar(
             self.types.scoped_select().where(LeaveType.key == data.key)
         )
@@ -176,13 +182,13 @@ class LeaveService:
         return await self.types.create(**data.model_dump())
 
     async def update_type(self, type_id: uuid.UUID, data: LeaveTypeUpdate) -> LeaveType:
-        self.ctx.ensure_can_manage()
+        self.ctx.require("leave.type.write")
         leave_type = await self.types.get_or_404(type_id)
         return await self.types.update(leave_type, **data.model_dump(exclude_unset=True))
 
     async def delete_type(self, type_id: uuid.UUID) -> None:
         """Hard-delete only unused types; ones with history should be deactivated instead."""
-        self.ctx.ensure_can_manage()
+        self.ctx.require("leave.type.write")
         leave_type = await self.types.get_or_404(type_id)
         if await self.requests.count(leave_type_id=type_id) > 0:
             raise AppError("conflict", "errors.leave_type_in_use", status_code=409)
@@ -197,13 +203,13 @@ class LeaveService:
         return profile.hours_per_week if profile else _DEFAULT_HOURS_PER_WEEK
 
     async def list_profiles(self) -> dict[uuid.UUID, Decimal]:
-        """Contract hours per user for every org member (managers)."""
-        self.ctx.ensure_can_manage()
+        """Contract hours per user for every org member (``leave.profile.manage``)."""
+        self.ctx.require("leave.profile.manage")
         rows = (await self.ctx.session.execute(self.profiles.scoped_select())).scalars().all()
         return {p.user_id: p.hours_per_week for p in rows}
 
     async def set_profile(self, user_id: uuid.UUID, hours: Decimal) -> LeaveProfile:
-        self.ctx.ensure_can_manage()
+        self.ctx.require("leave.profile.manage")
         await self._member_or_404(user_id)
         profile = await self.ctx.session.scalar(
             self.profiles.scoped_select().where(LeaveProfile.user_id == user_id)
@@ -227,12 +233,12 @@ class LeaveService:
     ) -> Sequence[LeaveEntitlement]:
         uid = self._effective_user_id(user_id)
         stmt = self.entitlements.scoped_select().where(LeaveEntitlement.year == year)
-        if not (self.ctx.role.can_manage and user_id is None):
+        if not (self.ctx.can("leave.entitlement.read", scope="any") and user_id is None):
             stmt = stmt.where(LeaveEntitlement.user_id == uid)
         return (await self.ctx.session.execute(stmt)).scalars().all()
 
     async def upsert_entitlement(self, data: LeaveEntitlementUpsert) -> LeaveEntitlement:
-        self.ctx.ensure_can_manage()
+        self.ctx.require("leave.entitlement.write")
         await self.types.get_or_404(data.leave_type_id)
         await self._member_or_404(data.user_id)
         existing = await self.ctx.session.scalar(
@@ -248,19 +254,18 @@ class LeaveService:
 
     async def generate_entitlements(self, year: int) -> int:
         """Create missing entitlements: default_weeks × contract hours, per staff member."""
-        self.ctx.ensure_can_manage()
+        self.ctx.require("leave.entitlement.write")
         types = [
             t
             for t in await self.list_types()
             if t.tracks_balance and t.default_weeks is not None
         ]
+        # Who accrues leave: the people who log hours here (issue #19). One indexed, DISTINCT
+        # query — a user holding two granting roles must not be entitled twice.
         staff = (
             (
                 await self.ctx.session.execute(
-                    select(Membership.user_id).where(
-                        Membership.org_id == self.ctx.org.id,
-                        Membership.role != Role.CLIENT.value,
-                    )
+                    permission_holder_ids(self.ctx.org.id, "time.entry.write")
                 )
             )
             .scalars()
@@ -376,7 +381,10 @@ class LeaveService:
                 )
 
     async def create(self, data: LeaveRequestCreate) -> LeaveRequest:
-        self.ctx.ensure_can_write()
+        self.ctx.require(
+            "leave.request.write",
+            scope=None if data.user_id in (None, self.ctx.user.id) else "any",
+        )
         uid = self._effective_user_id(data.user_id)
         leave_type = await self.types.get_or_404(data.leave_type_id)
         if not leave_type.active:
@@ -410,16 +418,11 @@ class LeaveService:
         return request
 
     async def _managers(self) -> list[uuid.UUID]:
-        """Who may approve leave here — owners and admins (``Role.can_manage``)."""
+        """Who may approve leave here: the holders of ``leave.request.approve`` (issue #19)."""
         return list(
             (
                 await self.ctx.session.execute(
-                    select(Membership.user_id).where(
-                        Membership.org_id == self.ctx.org.id,
-                        Membership.role.in_(
-                            [role.value for role in Role if role.can_manage]
-                        ),
-                    )
+                    permission_holder_ids(self.ctx.org.id, "leave.request.approve")
                 )
             ).scalars()
         )
@@ -441,11 +444,13 @@ class LeaveService:
         )
 
     async def update(self, request_id: uuid.UUID, data: LeaveRequestUpdate) -> LeaveRequest:
-        self.ctx.ensure_can_write()
         request = await self._owned_or_404(request_id)
-        # Members may only reshape their own *pending* request; managers may also fix
-        # approved ones (mirrors the approved-lock rule on time entries).
-        if request.status != LeaveRequestStatus.PENDING.value and not self.ctx.role.can_manage:
+        self._ensure_writable(request)
+        # Members may only reshape their own *pending* request; whoever may approve leave may
+        # also fix an approved one (mirrors the approved-lock rule on time entries).
+        if request.status != LeaveRequestStatus.PENDING.value and not self.ctx.can(
+            "leave.request.approve"
+        ):
             raise AppError("approved_locked", "errors.approved_locked", status_code=403)
         if request.status not in _OCCUPYING:
             raise AppError("conflict", "errors.leave_decided", status_code=409)
@@ -466,7 +471,7 @@ class LeaveService:
     async def decide(
         self, request_id: uuid.UUID, *, approved: bool, note: str | None = None
     ) -> LeaveRequest:
-        self.ctx.ensure_can_manage()
+        self.ctx.require("leave.request.approve")
         request = await self.requests.get_or_404(request_id)
         if request.status != LeaveRequestStatus.PENDING.value:
             raise AppError("conflict", "errors.leave_decided", status_code=409)
@@ -488,11 +493,11 @@ class LeaveService:
         return request
 
     async def cancel(self, request_id: uuid.UUID) -> LeaveRequest:
-        """Requester may cancel while pending; approved leave needs a manager."""
-        self.ctx.ensure_can_write()
+        """Requester may cancel while pending; cancelling approved leave needs an approver."""
         request = await self._owned_or_404(request_id)
+        self._ensure_writable(request)
         if request.status == LeaveRequestStatus.APPROVED.value:
-            if not self.ctx.role.can_manage:
+            if not self.ctx.can("leave.request.approve"):
                 raise AppError("approved_locked", "errors.approved_locked", status_code=403)
         elif request.status != LeaveRequestStatus.PENDING.value:
             raise AppError("conflict", "errors.leave_decided", status_code=409)
@@ -516,7 +521,7 @@ class LeaveService:
     ) -> tuple[Sequence[LeaveRequest], int]:
         conditions = []
         if all_users:
-            self.ctx.ensure_can_manage()
+            self.ctx.require("leave.request.read", scope="any")
         else:
             conditions.append(LeaveRequest.user_id == self._effective_user_id(user_id))
         if year is not None:
@@ -545,11 +550,9 @@ class LeaveService:
     ) -> list[TeamLeaveItem]:
         """Occupying absences overlapping the range, with names — the calendar/timesheet feed.
 
-        Open to all staff (who's off is normal team-visible information in an agency), but
-        not to external ``client`` users.
+        Open to all staff (who's off is normal team-visible information in an agency). A
+        ``client`` role holds no ``leave.request.read`` at all, so the route already refused it.
         """
-        if self.ctx.role == Role.CLIENT:
-            raise AppError("forbidden", "errors.forbidden", status_code=403)
         stmt = (
             select(LeaveRequest, User)
             .join(User, User.id == LeaveRequest.user_id)

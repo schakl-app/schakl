@@ -11,6 +11,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, Query
 
+from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
 from app.modules.notifications.defaults import ResolvedPref
 from app.modules.notifications.prefs import (
@@ -88,7 +89,11 @@ def _writes(payload: PreferenceUpdate) -> tuple[list[PrefWrite], GeneralWrite | 
 
 
 # --- inbox ---------------------------------------------------------------------------- #
-@router.get("", response_model=Page[NotificationRead])
+@router.get(
+    "",
+    response_model=Page[NotificationRead],
+    dependencies=[require_permission("notifications.notification.read")],
+)
 async def list_notifications(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -114,19 +119,31 @@ async def list_notifications(
     )
 
 
-@router.get("/unread-count", response_model=UnreadCount)
+@router.get(
+    "/unread-count",
+    response_model=UnreadCount,
+    dependencies=[require_permission("notifications.notification.read")],
+)
 async def unread_count(ctx: RequestContext = Depends(require_context)) -> UnreadCount:
     """The bell's badge. Comes from the API, never from counting the loaded page."""
     return UnreadCount(count=await NotificationService(ctx).unread_count())
 
 
-@router.post("/mark-all-read", response_model=MarkAllResult)
+@router.post(
+    "/mark-all-read",
+    response_model=MarkAllResult,
+    dependencies=[require_permission("notifications.notification.write")],
+)
 async def mark_all_read(ctx: RequestContext = Depends(require_context)) -> MarkAllResult:
     return MarkAllResult(updated=await NotificationService(ctx).mark_all_read())
 
 
 # --- activity feed (per record; powers the panels other modules host) ------------------ #
-@router.get("/activity", response_model=list[ActivityItem])
+@router.get(
+    "/activity",
+    response_model=list[ActivityItem],
+    dependencies=[require_permission("notifications.notification.read")],
+)
 async def activity(
     entity_type: EntityType = Query(...),
     entity_id: uuid.UUID = Query(...),
@@ -138,7 +155,11 @@ async def activity(
 
 
 # --- watch / mute a record ------------------------------------------------------------- #
-@router.get("/watch", response_model=WatchRead)
+@router.get(
+    "/watch",
+    response_model=WatchRead,
+    dependencies=[require_permission("notifications.notification.read")],
+)
 async def get_watch(
     entity_type: EntityType = Query(...),
     entity_id: uuid.UUID = Query(...),
@@ -147,7 +168,11 @@ async def get_watch(
     return WatchRead(watching=await NotificationService(ctx).watch_state(entity_type, entity_id))
 
 
-@router.put("/watch", response_model=WatchRead)
+@router.put(
+    "/watch",
+    response_model=WatchRead,
+    dependencies=[require_permission("notifications.notification.write")],
+)
 async def set_watch(
     payload: WatchUpdate, ctx: RequestContext = Depends(require_context)
 ) -> WatchRead:
@@ -158,13 +183,21 @@ async def set_watch(
 
 
 # --- preferences ------------------------------------------------------------------------ #
-@router.get("/preferences", response_model=PreferenceMatrix)
+@router.get(
+    "/preferences",
+    response_model=PreferenceMatrix,
+    dependencies=[require_permission("notifications.notification.read")],
+)
 async def get_preferences(ctx: RequestContext = Depends(require_context)) -> PreferenceMatrix:
     """My effective matrix: what will actually happen, and which layer decided it."""
     return _matrix(await effective_matrix(ctx.session, ctx.org.id, ctx.user.id))
 
 
-@router.put("/preferences", response_model=PreferenceMatrix)
+@router.put(
+    "/preferences",
+    response_model=PreferenceMatrix,
+    dependencies=[require_permission("notifications.notification.write")],
+)
 async def set_preferences(
     payload: PreferenceUpdate, ctx: RequestContext = Depends(require_context)
 ) -> PreferenceMatrix:
@@ -173,27 +206,37 @@ async def set_preferences(
     return _matrix(await effective_matrix(ctx.session, ctx.org.id, ctx.user.id))
 
 
-@router.get("/preferences/defaults", response_model=PreferenceMatrix)
+@router.get(
+    "/preferences/defaults",
+    response_model=PreferenceMatrix,
+    dependencies=[require_permission("notifications.defaults.manage")],
+)
 async def get_default_preferences(
     ctx: RequestContext = Depends(require_context),
 ) -> PreferenceMatrix:
     """What a member inherits before they override anything (org-wide)."""
-    ctx.ensure_can_manage()
     return _matrix(await effective_matrix(ctx.session, ctx.org.id, None))
 
 
-@router.put("/preferences/defaults", response_model=PreferenceMatrix)
+@router.put(
+    "/preferences/defaults",
+    response_model=PreferenceMatrix,
+    dependencies=[require_permission("notifications.defaults.manage")],
+)
 async def set_default_preferences(
     payload: PreferenceUpdate, ctx: RequestContext = Depends(require_context)
 ) -> PreferenceMatrix:
-    ctx.ensure_can_manage()
     events, general = _writes(payload)
     await replace_overrides(ctx.session, ctx.org.id, None, events, general)
     return _matrix(await effective_matrix(ctx.session, ctx.org.id, None))
 
 
 # --- single row (declared last: a static path must never be eaten by ``{id}``) ---------- #
-@router.patch("/{notification_id}", response_model=NotificationRead)
+@router.patch(
+    "/{notification_id}",
+    response_model=NotificationRead,
+    dependencies=[require_permission("notifications.notification.write")],
+)
 async def set_read(
     notification_id: uuid.UUID,
     payload: ReadUpdate,

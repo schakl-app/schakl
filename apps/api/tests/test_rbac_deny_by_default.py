@@ -27,12 +27,10 @@ from tests.conftest import auth_cookie, make_tenant
 #: Infra routes: not under ``/api/v1``, not authenticated, deliberately dependency-free.
 _INFRA_ROUTE_NAMES = frozenset({"health", "health_ready"})
 
-#: Routers whose permissions land in a later sub-issue of #19 (#51 then #52). **It only ever
-#: shrinks**, and #52 empties it and adds the test that keeps it empty. Without it, `dev` would
-#: be red for the two commits in between.
-_UNDECLARED_ROUTERS: frozenset[str] = frozenset(
-    {"tasks", "time", "leave", "notifications"}
-)
+#: Empty, and it stays empty. It existed only so ``dev`` stayed green across the two commits
+#: between the dependency landing (#50) and the last module converting (#52). A new module
+#: declares its permissions on its ``ModuleDescriptor``; it does not get an exception here.
+_UNDECLARED_ROUTERS: frozenset[str] = frozenset()
 
 #: Operations that legitimately answer before a permission exists. Kept as (method, path) so the
 #: behavioural sweep and the marker on the route can drift apart loudly rather than quietly.
@@ -134,4 +132,11 @@ async def test_a_member_with_no_permissions_is_refused_everywhere(client_for) ->
 
     assert not allowed, (
         "a member holding zero permissions reached these operations:\n  " + "\n  ".join(allowed)
+    )
+
+
+def test_the_undeclared_router_allowlist_is_empty() -> None:
+    assert _UNDECLARED_ROUTERS == frozenset(), (
+        "the allowlist is a migration aid, not an escape hatch: it was emptied by #52 and a "
+        "new module declares its permissions on its ModuleDescriptor."
     )

@@ -17,8 +17,8 @@ from sqlalchemy import distinct, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events import SystemContext, emit
-from app.core.models import Membership, Org
-from app.core.roles import Role
+from app.core.models import Org
+from app.core.permissions.service import permission_holder_ids
 from app.modules.time.models import TimeEntry
 
 _TZ = ZoneInfo("Europe/Amsterdam")
@@ -47,15 +47,10 @@ async def remind_for_org(org: Org, session: AsyncSession, *, week_start: date | 
     week_start = week_start or previous_week_start()
     start, end = _week_bounds(week_start)
 
+    # Who is expected to log hours: whoever may write a time entry (issue #19). One indexed
+    # query, DISTINCT — a user holding two granting roles must not be reminded twice.
     staff = set(
-        (
-            await session.execute(
-                select(Membership.user_id).where(
-                    Membership.org_id == org.id,
-                    Membership.role != Role.CLIENT.value,
-                )
-            )
-        ).scalars()
+        (await session.execute(permission_holder_ids(org.id, "time.entry.write"))).scalars()
     )
     logged = set(
         (

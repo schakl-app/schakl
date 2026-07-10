@@ -121,6 +121,27 @@ class TaskService:
         self.ctx = ctx
         self.repo = ctx.repo(Task)
 
+    # --- access scoping (issue #19) ------------------------------------------ #
+    async def _writable_task_or_403(self, task_id: uuid.UUID) -> Task:
+        """Load a task the caller may edit.
+
+        ``tasks.task.write:own`` means **assignee** — that is the answer to #12: a person may
+        edit the task assigned to them and nothing else. ``:any`` is the manager grant. 403, not
+        404: tasks are readable by everyone who can read the module, so nothing is leaked.
+        """
+        task = await self.repo.get_or_404(task_id)
+        self._ensure_can_write_task(task)
+        return task
+
+    def _ensure_can_write_task(self, task: Task) -> None:
+        if self.ctx.can("tasks.task.write", scope="any"):
+            return
+        if task.assignee_user_id == self.ctx.user.id and self.ctx.can(
+            "tasks.task.write", scope="own"
+        ):
+            return
+        raise AppError("forbidden", "errors.forbidden", status_code=403)
+
     # ------------------------------------------------------------------ #
     # Activity
     # ------------------------------------------------------------------ #
@@ -401,15 +422,14 @@ class TaskService:
     # Links (URL attachments)
     # ------------------------------------------------------------------ #
     async def add_link(self, task_id: uuid.UUID, data: LinkCreate) -> TaskLink:
-        self.ctx.ensure_can_write()
-        await self.repo.get_or_404(task_id)
+        await self._writable_task_or_403(task_id)
         url = data.url if "://" in data.url else f"https://{data.url}"
         return await self.ctx.repo(TaskLink).create(
             task_id=task_id, url=url, title=data.title
         )
 
     async def delete_link(self, task_id: uuid.UUID, link_id: uuid.UUID) -> None:
-        self.ctx.ensure_can_write()
+        await self._writable_task_or_403(task_id)
         repo = self.ctx.repo(TaskLink)
         link = await repo.get_or_404(link_id)
         if link.task_id != task_id:
@@ -424,7 +444,7 @@ class TaskService:
         return await self.repo.get_or_404(task_id)
 
     async def create(self, data: TaskCreate) -> Task:
-        self.ctx.ensure_can_write()
+        self.ctx.require("tasks.task.create")
         values = data.model_dump()
         # Verantwoordelijke defaults down: project's responsible → else the company's,
         # when the task has no explicit assignee (overridable per task).
@@ -471,8 +491,7 @@ class TaskService:
         return float(result or 0.0) + 1024.0
 
     async def update(self, task_id: uuid.UUID, data: TaskUpdate) -> Task:
-        self.ctx.ensure_can_write()
-        task = await self.repo.get_or_404(task_id)
+        task = await self._writable_task_or_403(task_id)
         values = data.model_dump(exclude_unset=True)
         reason = values.pop("due_change_reason", None)
 
@@ -569,7 +588,7 @@ class TaskService:
         return task
 
     async def delete(self, task_id: uuid.UUID) -> None:
-        self.ctx.ensure_can_write()
+        self.ctx.require("tasks.task.delete")
         task = await self.repo.get_or_404(task_id)
         await self.repo.delete(task)
 
@@ -582,20 +601,20 @@ class TaskService:
         )
 
     async def create_label(self, data: LabelCreate) -> TaskLabel:
-        self.ctx.ensure_can_write()
+        self.ctx.require("tasks.label.write")
         repo = self.ctx.repo(TaskLabel)
         if await repo.count(name=data.name):
             raise AppError("conflict", "errors.conflict", status_code=409)
         return await repo.create(**data.model_dump())
 
     async def update_label(self, label_id: uuid.UUID, data: LabelUpdate) -> TaskLabel:
-        self.ctx.ensure_can_write()
+        self.ctx.require("tasks.label.write")
         repo = self.ctx.repo(TaskLabel)
         label = await repo.get_or_404(label_id)
         return await repo.update(label, **data.model_dump(exclude_unset=True))
 
     async def delete_label(self, label_id: uuid.UUID) -> None:
-        self.ctx.ensure_can_write()
+        self.ctx.require("tasks.label.write")
         repo = self.ctx.repo(TaskLabel)
         label = await repo.get_or_404(label_id)
         await repo.delete(label)
@@ -603,8 +622,7 @@ class TaskService:
     async def set_task_labels(
         self, task_id: uuid.UUID, label_ids: list[uuid.UUID]
     ) -> list[TaskLabel]:
-        self.ctx.ensure_can_write()
-        await self.repo.get_or_404(task_id)
+        await self._writable_task_or_403(task_id)
         label_repo = self.ctx.repo(TaskLabel)
         labels = [await label_repo.get_or_404(label_id) for label_id in set(label_ids)]
 
@@ -636,8 +654,7 @@ class TaskService:
     # ------------------------------------------------------------------ #
     async def add_checklist(self, task_id: uuid.UUID, data: ChecklistCreate) -> TaskChecklist:
         """A fresh checklist, or a copy of an org checklist template (title + items)."""
-        self.ctx.ensure_can_write()
-        await self.repo.get_or_404(task_id)
+        await self._writable_task_or_403(task_id)
 
         template = None
         if data.template_id is not None:
@@ -678,19 +695,19 @@ class TaskService:
     async def create_checklist_template(
         self, data: ChecklistTemplateCreate
     ) -> TaskChecklistTemplate:
-        self.ctx.ensure_can_write()
+        self.ctx.require("tasks.checklist_template.write")
         return await self.ctx.repo(TaskChecklistTemplate).create(**data.model_dump())
 
     async def update_checklist_template(
         self, template_id: uuid.UUID, data: ChecklistTemplateUpdate
     ) -> TaskChecklistTemplate:
-        self.ctx.ensure_can_write()
+        self.ctx.require("tasks.checklist_template.write")
         repo = self.ctx.repo(TaskChecklistTemplate)
         template = await repo.get_or_404(template_id)
         return await repo.update(template, **data.model_dump(exclude_unset=True))
 
     async def delete_checklist_template(self, template_id: uuid.UUID) -> None:
-        self.ctx.ensure_can_write()
+        self.ctx.require("tasks.checklist_template.write")
         repo = self.ctx.repo(TaskChecklistTemplate)
         template = await repo.get_or_404(template_id)
         await repo.delete(template)
@@ -706,14 +723,14 @@ class TaskService:
     async def update_checklist(
         self, task_id: uuid.UUID, checklist_id: uuid.UUID, data: ChecklistUpdate
     ) -> TaskChecklist:
-        self.ctx.ensure_can_write()
+        await self._writable_task_or_403(task_id)
         checklist = await self._checklist_or_404(task_id, checklist_id)
         return await self.ctx.repo(TaskChecklist).update(
             checklist, **data.model_dump(exclude_unset=True)
         )
 
     async def delete_checklist(self, task_id: uuid.UUID, checklist_id: uuid.UUID) -> None:
-        self.ctx.ensure_can_write()
+        await self._writable_task_or_403(task_id)
         checklist = await self._checklist_or_404(task_id, checklist_id)
         await self.ctx.repo(TaskChecklist).delete(checklist)
         await self._record(task_id, "checklist_deleted", {"title": checklist.title})
@@ -721,7 +738,7 @@ class TaskService:
     async def add_checklist_item(
         self, task_id: uuid.UUID, checklist_id: uuid.UUID, data: ChecklistItemCreate
     ) -> TaskChecklistItem:
-        self.ctx.ensure_can_write()
+        await self._writable_task_or_403(task_id)
         await self._checklist_or_404(task_id, checklist_id)
         repo = self.ctx.repo(TaskChecklistItem)
         position = await repo.count(checklist_id=checklist_id)
@@ -743,7 +760,7 @@ class TaskService:
         item_id: uuid.UUID,
         data: ChecklistItemUpdate,
     ) -> TaskChecklistItem:
-        self.ctx.ensure_can_write()
+        await self._writable_task_or_403(task_id)
         item = await self._item_or_404(task_id, checklist_id, item_id)
         return await self.ctx.repo(TaskChecklistItem).update(
             item, **data.model_dump(exclude_unset=True)
@@ -752,7 +769,7 @@ class TaskService:
     async def delete_checklist_item(
         self, task_id: uuid.UUID, checklist_id: uuid.UUID, item_id: uuid.UUID
     ) -> None:
-        self.ctx.ensure_can_write()
+        await self._writable_task_or_403(task_id)
         item = await self._item_or_404(task_id, checklist_id, item_id)
         await self.ctx.repo(TaskChecklistItem).delete(item)
         await self._record(task_id, "checklist_item_deleted", {"title": item.title})
@@ -761,7 +778,7 @@ class TaskService:
     # Comments
     # ------------------------------------------------------------------ #
     async def add_comment(self, task_id: uuid.UUID, data: CommentCreate) -> CommentRead:
-        self.ctx.ensure_can_write()
+        self.ctx.require("tasks.comment.write")
         task = await self.repo.get_or_404(task_id)
         comment = await self.ctx.repo(TaskComment).create(
             task_id=task_id, author_user_id=self.ctx.user.id, body=data.body
@@ -807,10 +824,11 @@ class TaskService:
     async def update_comment(
         self, task_id: uuid.UUID, comment_id: uuid.UUID, data: CommentUpdate
     ) -> CommentRead:
-        self.ctx.ensure_can_write()
         comment = await self._comment_or_404(task_id, comment_id)
+        # Editing (as opposed to deleting) someone else's words is nobody's capability.
         if comment.author_user_id != self.ctx.user.id:
             raise AppError("forbidden", "errors.forbidden", status_code=403)
+        self.ctx.require("tasks.comment.write")
         comment = await self.ctx.repo(TaskComment).update(
             comment, body=data.body, edited_at=datetime.now(UTC)
         )
@@ -820,9 +838,8 @@ class TaskService:
         )
 
     async def delete_comment(self, task_id: uuid.UUID, comment_id: uuid.UUID) -> None:
-        self.ctx.ensure_can_write()
         comment = await self._comment_or_404(task_id, comment_id)
-        if comment.author_user_id != self.ctx.user.id and not self.ctx.role.can_manage:
-            raise AppError("forbidden", "errors.forbidden", status_code=403)
+        scope = None if comment.author_user_id == self.ctx.user.id else "any"
+        self.ctx.require("tasks.comment.write", scope=scope)
         await self.ctx.repo(TaskComment).delete(comment)
         await self._record(task_id, "comment_deleted")

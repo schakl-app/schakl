@@ -69,7 +69,7 @@ class TemplateService:
             await self.item_repo.create(template_id=template.id, **values)
 
     async def create(self, data: TemplateCreate) -> TemplateRead:
-        self.ctx.ensure_can_manage()
+        self.ctx.require("tasks.template.write")
         values = data.model_dump(exclude={"items"})
         values["trigger"] = data.trigger.value
         template = await self.repo.create(**values)
@@ -77,7 +77,7 @@ class TemplateService:
         return await self._read(template)
 
     async def update(self, template_id: uuid.UUID, data: TemplateUpdate) -> TemplateRead:
-        self.ctx.ensure_can_manage()
+        self.ctx.require("tasks.template.write")
         template = await self.repo.get_or_404(template_id)
         values = data.model_dump(exclude_unset=True, exclude={"items"})
         if values.get("trigger") is not None:
@@ -88,7 +88,7 @@ class TemplateService:
         return await self._read(template)
 
     async def delete(self, template_id: uuid.UUID) -> None:
-        self.ctx.ensure_can_manage()
+        self.ctx.require("tasks.template.write")
         template = await self.repo.get_or_404(template_id)
         await self.repo.delete(template)
 
@@ -96,7 +96,7 @@ class TemplateService:
     # Instantiation
     # ------------------------------------------------------------------ #
     async def apply(self, template_id: uuid.UUID, company_id: uuid.UUID) -> list[Task]:
-        self.ctx.ensure_can_write()
+        self.ctx.require("tasks.template.apply")
         template = await self.repo.get_or_404(template_id)
         return await self._instantiate(template, company_id, actor_id=self.ctx.user.id)
 
