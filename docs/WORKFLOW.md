@@ -69,12 +69,14 @@ Comment on the issue you worked, and be specific:
 
 - The **real** commit SHA (see the rewrite warning above) and the exact files it contains.
 - The acceptance criteria, ticked or not, each with the evidence.
-- **What you did not verify.** There is no repo-committed web test harness — no vitest, no
-  Playwright test suite. If you have a Playwright MCP server configured (personal, local
-  setup — not every agent has one), use it to actually click through the change before
-  claiming it works. If you don't, `svelte-check`, lint, a compile, and pure-logic assertions
-  are the ceiling for a UI change. Say plainly which one happened — a real click-through, or
-  static checks only — instead of implying a browser touched it when it didn't.
+- **What you did not verify.** There is a committed Playwright suite (`pnpm web test:e2e`,
+  see below) but it is a *smoke* suite: it proves the shell stands up, not that your screen
+  works. It will not catch your bug. So a UI change still needs a browser on it — the e2e
+  suite, a Playwright MCP server if you have one configured (personal, local setup — not every
+  agent has one), or nothing. If nothing, `svelte-check`, lint, a compile, and pure-logic
+  assertions are the ceiling. Say plainly which one happened — a real click-through, the smoke
+  suite, or static checks only — instead of implying a browser touched it when it didn't.
+  There is still no unit-test harness for the web app: no vitest.
 - Anything the next agent needs: a conflict you expect, a file another agent had open.
 
 ## Classifying an issue
@@ -112,17 +114,26 @@ epics and delete the label.
 Not on the issue by default — **set it at triage**, every time. It is an organization issue
 field, so `gh issue edit` cannot touch it; use the REST API with the field's numeric id:
 
+`value` is the **option's numeric id, not its name**. Passing `value=High` returns `200` and
+silently changes nothing — the field stays empty and you will believe you set it. Look the
+ids up once:
+
 ```bash
 gh api /orgs/vlotr-crm/issue-fields -q '.[] | "\(.id)\t\(.name)"'   # 43901503 = Priority
+gh api /orgs/vlotr-crm/issue-fields \
+  | jq -r '.[] | select(.name=="Priority") | .options[] | "\(.id)\t\(.name)"'
+# 76831411 Urgent · 76831412 High · 76831413 Medium · 76831414 Low
 
 gh api -X PATCH /repos/vlotr-crm/vlotr/issues/<N> \
   -f 'type=Bug' \
   -F 'issue_field_values[][field_id]=43901503' \
-  -f 'issue_field_values[][value]=High'
+  -F 'issue_field_values[][value]=76831412'
 ```
 
-Read it back from `.issue_field_values[].single_select_option.name` — it is **not** in
-`gh issue view --json`.
+The write key is `field_id`; the **read** key is `issue_field_id`. Filtering the response on
+`.field_id` matches nothing, which looks identical to "the write failed". Read it back from
+`.issue_field_values[] | select(.issue_field_name=="Priority") | .single_select_option.name`
+— it is **not** in `gh issue view --json`.
 
 ### Milestone = phase
 
@@ -167,9 +178,11 @@ test for whether something belongs here rather than in the type.
 
 `needs testing` means: implemented and pushed, but the behaviour was never exercised in a
 browser. **Apply it to any UI change you land that you did not personally click through** —
-if you have a Playwright MCP server configured, drive the real flow yourself and skip the
-label; without one, that covers nearly all UI changes. When you do apply it, list in the same
-comment the clicks that would clear it. Remove it once someone confirms.
+drive the real flow yourself with an e2e test or a Playwright MCP server and skip the label.
+Note that a green `pnpm web test:e2e` does **not** clear the label on its own: the committed
+suite is a smoke suite and touches almost nothing you changed. Adding a spec that covers your
+change does clear it. When you do apply the label, list in the same comment the clicks that
+would clear it. Remove it once someone confirms.
 
 Prefer an existing label. Create one only when no existing label fits, keep it lowercase,
 give it a description, and reuse the group's colour (`#0052cc` for areas).
@@ -223,6 +236,48 @@ expand/contract. Splitting or merging a table is expand/contract.
   will happily accept a migration that destroys a populated one.
 - If a change genuinely cannot be made non-destructively, say so on the issue **before**
   building it, and write the operator steps (backup, downtime, order) into `docs/DEPLOY.md`.
+
+## Browser tests (Playwright)
+
+`apps/web/tests/e2e/` holds a Playwright smoke suite. It asserts the shell stands up — SSR
+renders, the tenant resolves from the hostname, the auth guard fires — and nothing more.
+Treat it as a tripwire, not as coverage.
+
+The suite drives the **running dev stack**; there is no `webServer` in the config, on purpose.
+SSR resolves the tenant from the hostname (CLAUDE.md §5), so a `vite preview` on
+`localhost:4173` resolves to no org and every request lands on the first-run wizard.
+
+```bash
+docker compose -f infra/compose.yaml up -d          # the suite needs api + db + traefik
+pnpm --filter @vlotr/web exec playwright install chromium   # once, ~380 MB, not in the repo
+pnpm web test:e2e                                   # or test:e2e:ui for the runner
+```
+
+Traefik not on `:80` (rootless podman)? Point the suite at it:
+`PLAYWRIGHT_BASE_URL=http://app.localhost:8080 pnpm web test:e2e`.
+
+When you add a spec:
+
+- **Select by `name=` / role, never by visible text.** The UI ships in Dutch and every string
+  goes through Paraglide (CLAUDE.md §2). Matching text asserts the translation, not the
+  behaviour, and breaks the moment someone rewords a message.
+- **Assume nothing about seed data.** Other agents' stacks hold different rows. If a test
+  needs a company, it creates one.
+- Locale and timezone are pinned in `playwright.config.ts`; don't override them per test, or a
+  run on a Dutch laptop and a run in CI will disagree.
+
+Two things are deliberately *not* wired up, so don't "fix" them:
+
+- Playwright is **not** in `allowBuilds` in `pnpm-workspace.yaml`. Its postinstall would pull
+  ~150 MB of Chromium into the builder stage of every web image build. Browsers install
+  explicitly, with the command above.
+- `pnpm run check` does not typecheck `tests/e2e/` (SvelteKit's generated tsconfig only
+  includes `src/`, and Playwright transpiles without checking). A type error in a spec surfaces
+  when it runs, not when you check.
+
+On Fedora and other non-Debian hosts, `playwright install` prints `BEWARE: your OS is not
+officially supported` and downloads the `ubuntu24.04-x64` build. That is a warning, not a
+failure; the binary links and runs.
 
 ## Definition of done
 
