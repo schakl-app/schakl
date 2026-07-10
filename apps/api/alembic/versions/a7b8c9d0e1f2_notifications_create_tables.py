@@ -243,6 +243,26 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # Undo the module enablement too, so a downgraded install does not advertise a module whose
+    # tables no longer exist. Same GUC dance as the upgrade — org_settings is RLS-FORCED.
+    bind = op.get_bind()
+    org_ids = bind.execute(sa.text("SELECT id FROM orgs")).scalars().all()
+    for org_id in org_ids:
+        bind.execute(
+            sa.text("SELECT set_config('app.current_org', :org_id, true)"),
+            {"org_id": str(org_id)},
+        )
+        bind.execute(
+            sa.text(
+                """
+                UPDATE org_settings
+                SET enabled_modules = array_remove(enabled_modules, 'notifications')
+                WHERE org_id = :org_id
+                """
+            ),
+            {"org_id": str(org_id)},
+        )
+
     for table in _TABLES:
         disable_rls(table)
 
