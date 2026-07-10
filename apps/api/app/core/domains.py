@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 from app.config import settings
 from app.core import dnscheck
 from app.core.instance import audit, repo
+from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
 from app.errors import AppError
 
@@ -59,17 +60,23 @@ def _status(ctx: RequestContext) -> DomainStatus:
     )
 
 
-@router.get("", response_model=DomainStatus)
+@router.get(
+    "",
+    response_model=DomainStatus,
+    dependencies=[require_permission("settings.domain.read")],
+)
 async def domain_status(ctx: RequestContext = Depends(require_context)) -> DomainStatus:
-    ctx.ensure_can_manage()
     return _status(ctx)
 
 
-@router.post("", response_model=DomainStatus)
+@router.post(
+    "",
+    response_model=DomainStatus,
+    dependencies=[require_permission("settings.domain.write")],
+)
 async def claim_domain(
     payload: DomainClaim, ctx: RequestContext = Depends(require_context)
 ) -> DomainStatus:
-    ctx.ensure_can_manage()
     domain = payload.domain.strip().lower().rstrip(".")
     if not _HOSTNAME_RE.fullmatch(domain) or domain.endswith("." + settings.base_domain.lower()):
         # Hosts under the base domain are routed by slug; claiming one here could only
@@ -93,9 +100,12 @@ async def claim_domain(
     return _status(ctx)
 
 
-@router.post("/verify", response_model=DomainStatus)
+@router.post(
+    "/verify",
+    response_model=DomainStatus,
+    dependencies=[require_permission("settings.domain.write")],
+)
 async def verify_domain(ctx: RequestContext = Depends(require_context)) -> DomainStatus:
-    ctx.ensure_can_manage()
     org = ctx.org
     if not org.pending_domain or not org.domain_verification_token:
         raise AppError("not_found", "errors.not_found", status_code=404)
@@ -120,11 +130,14 @@ async def verify_domain(ctx: RequestContext = Depends(require_context)) -> Domai
     return _status(ctx)
 
 
-@router.delete("", response_model=DomainStatus)
+@router.delete(
+    "",
+    response_model=DomainStatus,
+    dependencies=[require_permission("settings.domain.write")],
+)
 async def clear_domain(ctx: RequestContext = Depends(require_context)) -> DomainStatus:
     """Remove the custom domain (and any pending claim). The org keeps resolving via
     ``<slug>.<base_domain>`` — the UI warns that this changes the org's address."""
-    ctx.ensure_can_manage()
     org = ctx.org
     cleared = org.custom_domain or org.pending_domain
     org.custom_domain = None

@@ -27,7 +27,7 @@ from app.modules.notifications.models import (
     NotificationWatcher,
 )
 from app.modules.notifications.prefs import compute_visible_at
-from tests.conftest import Tenant, make_tenant
+from tests.conftest import Tenant, add_membership, make_tenant
 
 
 @asynccontextmanager
@@ -46,8 +46,6 @@ async def _emit(tenant: Tenant, actor: User, event: str, payload: dict) -> None:
 
 async def _member(tenant: Tenant, email: str) -> User:
     """A second person in the org — the one who receives what the actor does."""
-    from app.core.models import Membership
-
     async with async_session_maker() as session:
         user = User(
             id=uuid.uuid4(), email=email, hashed_password="", is_active=True, is_verified=True
@@ -55,9 +53,7 @@ async def _member(tenant: Tenant, email: str) -> User:
         session.add(user)
         await session.flush()
         await set_current_org(session, tenant.org.id)
-        session.add(
-            Membership(org_id=tenant.org.id, user_id=user.id, role=Role.MEMBER.value)
-        )
+        await add_membership(session, tenant.org.id, user.id, Role.MEMBER.value)
         await session.commit()
         return User(id=user.id, email=email, hashed_password="", is_active=True)
 

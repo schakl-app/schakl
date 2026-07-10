@@ -17,6 +17,7 @@ from app.config import settings
 from app.core.auth.models import User
 from app.core.customfields import customizable_entity_types
 from app.core.models import OrgSettings, OrgStatus
+from app.core.permissions.deps import no_permission_required, require_permission
 from app.core.tenancy import RequestContext, request_hostname, require_context, resolve_org
 from app.db import async_session_maker, set_current_org
 from app.errors import AppError
@@ -114,12 +115,20 @@ def _me_info(ctx: RequestContext, user: User) -> MeInfo:
     )
 
 
-@router.get("/me", response_model=MeInfo)
+@router.get(
+    "/me",
+    response_model=MeInfo,
+    dependencies=[no_permission_required("who am I in this tenant; every member needs it")],
+)
 async def me(ctx: RequestContext = Depends(require_context)) -> MeInfo:
     return _me_info(ctx, ctx.user)
 
 
-@router.patch("/me", response_model=MeInfo)
+@router.patch(
+    "/me",
+    response_model=MeInfo,
+    dependencies=[no_permission_required("a user's own name and display language")],
+)
 async def update_me(
     payload: MeUpdate, ctx: RequestContext = Depends(require_context)
 ) -> MeInfo:
@@ -147,7 +156,11 @@ async def update_me(
     return _me_info(ctx, user)
 
 
-@router.get("/tenant", response_model=TenantBranding)
+@router.get(
+    "/tenant",
+    response_model=TenantBranding,
+    dependencies=[no_permission_required("public tenant branding; the login screen needs it")],
+)
 async def tenant_branding(request: Request) -> TenantBranding:
     async with async_session_maker() as session:
         org = await resolve_org(session, request_hostname(request))
@@ -171,12 +184,15 @@ async def tenant_branding(request: Request) -> TenantBranding:
         )
 
 
-@router.patch("/tenant", response_model=TenantBranding)
+@router.patch(
+    "/tenant",
+    response_model=TenantBranding,
+    dependencies=[require_permission("settings.branding.write")],
+)
 async def update_tenant_branding(
     payload: TenantBrandingUpdate, ctx: RequestContext = Depends(require_context)
 ) -> TenantBranding:
-    """Update the org's white-label settings (managers only). Applied on next render."""
-    ctx.ensure_can_manage()
+    """Update the org's white-label settings. Applied on next render."""
     data = payload.model_dump(exclude_unset=True)
     if "default_locale" in data and data["default_locale"] not in settings.supported_locales:
         raise AppError(
@@ -222,7 +238,13 @@ async def update_tenant_branding(
     )
 
 
-@router.get("/modules", response_model=ModulesMeta)
+@router.get(
+    "/modules",
+    response_model=ModulesMeta,
+    dependencies=[
+        no_permission_required("instance capabilities; the login screen renders from it")
+    ],
+)
 async def modules() -> ModulesMeta:
     return ModulesMeta(
         enabled_modules=[m.name for m in registry.enabled(settings.enabled_modules)],

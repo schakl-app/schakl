@@ -24,10 +24,17 @@ from app.core.instance.impersonation import (
     set_grant_cookie,
 )
 from app.core.models import InstanceAuditLog, Membership, Org, OrgSettings, OrgStatus
+from app.core.permissions.deps import no_permission_required
 from app.db import set_current_org
 from app.errors import AppError
 
-router = APIRouter(prefix="/instance", tags=["instance"])
+router = APIRouter(
+    prefix="/instance",
+    tags=["instance"],
+    # Gated on ``users.is_superuser`` (the instance owner, issue #26) — a different axis from a
+    # membership's permissions, and deliberately not expressible as one.
+    dependencies=[no_permission_required("instance administration: gated on users.is_superuser")],
+)
 
 
 # --------------------------------------------------------------------------- #

@@ -54,7 +54,7 @@ class CustomFieldsService:
     async def create_definition(
         self, data: CustomFieldDefinitionCreate
     ) -> CustomFieldDefinition:
-        self.ctx.ensure_can_manage()
+        self.ctx.require("settings.customfields.write")
         existing = await self.definitions(data.entity_type, include_inactive=True)
         if any(d.key == data.key for d in existing):
             raise AppError(
@@ -65,14 +65,14 @@ class CustomFieldsService:
     async def update_definition(
         self, definition_id: uuid.UUID, data: CustomFieldDefinitionUpdate
     ) -> CustomFieldDefinition:
-        self.ctx.ensure_can_manage()
+        self.ctx.require("settings.customfields.write")
         definition = await self.repo.get_or_404(definition_id)
         return await self.repo.update(
             definition, **data.model_dump(mode="json", exclude_unset=True)
         )
 
     async def delete_definition(self, definition_id: uuid.UUID) -> None:
-        self.ctx.ensure_can_manage()
+        self.ctx.require("settings.customfields.write")
         definition = await self.repo.get_or_404(definition_id)
         await self.repo.delete(definition)
 

@@ -27,12 +27,18 @@ from app.core.instance import audit, repo
 from app.core.instance import service as org_service
 from app.core.models import Org, OrgSettings
 from app.core.permissions.catalog import ROLE_OWNER
+from app.core.permissions.deps import no_permission_required
 from app.core.permissions.service import create_membership, seed_system_roles
 from app.core.tenancy import request_hostname
 from app.db import async_session_maker, set_current_org
 from app.errors import AppError
 
-router = APIRouter(prefix="/setup", tags=["setup"])
+router = APIRouter(
+    prefix="/setup",
+    tags=["setup"],
+    # There is no org, no user and no membership yet — there is nothing to have a permission in.
+    dependencies=[no_permission_required("first-run wizard: runs before any org exists")],
+)
 
 _password_hash = PasswordHash.recommended()
 _HEX_COLOR = r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"

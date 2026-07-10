@@ -23,6 +23,7 @@ from sqlalchemy import func, select
 
 from app.core.auth.models import User
 from app.core.models import Membership
+from app.core.permissions.deps import no_permission_required, require_permission
 from app.core.permissions.models import MembershipRole
 from app.core.permissions.models import Role as RoleRow
 from app.core.permissions.service import create_membership, role_by_key, role_manager_count
@@ -90,9 +91,12 @@ async def ensure_a_role_manager_remains(ctx: RequestContext) -> None:
         raise AppError("last_role_manager", "errors.last_role_manager", status_code=409)
 
 
-@router.get("", response_model=list[MemberRead])
+@router.get(
+    "",
+    response_model=list[MemberRead],
+    dependencies=[require_permission("members.member.read")],
+)
 async def list_members(ctx: RequestContext = Depends(require_context)) -> list[MemberRead]:
-    ctx.ensure_can_manage()
     rows = (
         await ctx.session.execute(
             select(Membership, User)
@@ -104,7 +108,13 @@ async def list_members(ctx: RequestContext = Depends(require_context)) -> list[M
     return [_member_read(ctx, m, u) for m, u in rows]
 
 
-@router.get("/lookup", response_model=list[MemberLookup])
+@router.get(
+    "/lookup",
+    response_model=list[MemberLookup],
+    dependencies=[
+        no_permission_required("name/email of colleagues, for pickers; open to every member")
+    ],
+)
 async def lookup_members(ctx: RequestContext = Depends(require_context)) -> list[MemberLookup]:
     """Name/email of every org member, for assignee pickers. Open to all staff roles."""
     rows = (
@@ -120,11 +130,15 @@ async def lookup_members(ctx: RequestContext = Depends(require_context)) -> list
     ]
 
 
-@router.post("/invite", response_model=MemberRead, status_code=201)
+@router.post(
+    "/invite",
+    response_model=MemberRead,
+    status_code=201,
+    dependencies=[require_permission("members.member.write")],
+)
 async def invite_member(
     payload: MemberInvite, ctx: RequestContext = Depends(require_context)
 ) -> MemberRead:
-    ctx.ensure_can_manage()
     email = payload.email.lower()
 
     user = await ctx.session.scalar(select(User).where(func.lower(User.email) == email))
@@ -168,14 +182,17 @@ async def _membership_or_404(ctx: RequestContext, membership_id: uuid.UUID) -> M
     return membership
 
 
-@router.patch("/{membership_id}", response_model=MemberRead)
+@router.patch(
+    "/{membership_id}",
+    response_model=MemberRead,
+    dependencies=[require_permission("members.member.write")],
+)
 async def update_member_role(
     membership_id: uuid.UUID,
     payload: MemberRoleUpdate,
     ctx: RequestContext = Depends(require_context),
 ) -> MemberRead:
     """Swap this membership's **system** role; any custom roles it also holds are untouched."""
-    ctx.ensure_can_manage()
     membership = await _membership_or_404(ctx, membership_id)
     target = await role_by_key(ctx.session, ctx.org.id, payload.role.value)
     if target is None:
@@ -206,12 +223,15 @@ async def update_member_role(
     return _member_read(ctx, membership, user)  # type: ignore[arg-type]
 
 
-@router.delete("/{membership_id}", status_code=204)
+@router.delete(
+    "/{membership_id}",
+    status_code=204,
+    dependencies=[require_permission("members.member.write")],
+)
 async def revoke_member(
     membership_id: uuid.UUID,
     ctx: RequestContext = Depends(require_context),
 ) -> None:
-    ctx.ensure_can_manage()
     membership = await _membership_or_404(ctx, membership_id)
     if membership.user_id == ctx.user.id:
         raise AppError("cannot_remove_self", "errors.cannot_remove_self", status_code=400)

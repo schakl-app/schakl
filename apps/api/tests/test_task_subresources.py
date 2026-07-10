@@ -7,9 +7,8 @@ import uuid
 from pwdlib import PasswordHash
 
 from app.core.auth.models import User
-from app.core.models import Membership
 from app.db import async_session_maker, set_current_org
-from tests.conftest import Tenant, auth_cookie, make_tenant
+from tests.conftest import Tenant, add_membership, auth_cookie, make_tenant
 
 _password_hash = PasswordHash.recommended()
 
@@ -28,7 +27,7 @@ async def add_member(tenant: Tenant, *, role: str = "member", name: str | None =
         session.add(user)
         await session.flush()
         await set_current_org(session, tenant.org.id)
-        session.add(Membership(org_id=tenant.org.id, user_id=user.id, role=role))
+        await add_membership(session, tenant.org.id, user.id, role)
         await session.commit()
         return User(id=user.id, email=user.email, hashed_password="", is_active=True)
 

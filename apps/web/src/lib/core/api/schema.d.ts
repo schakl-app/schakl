@@ -340,7 +340,7 @@ export interface paths {
         get?: never;
         /**
          * Set Default Prefs
-         * @description The org-wide template (managers only).
+         * @description The org-wide template that members inherit (``settings.dashboard.manage``).
          */
         put: operations["set_default_prefs_api_v1_dashboard_prefs_default_put"];
         post?: never;
@@ -860,7 +860,10 @@ export interface paths {
         delete: operations["revoke_member_api_v1_members__membership_id__delete"];
         options?: never;
         head?: never;
-        /** Update Member Role */
+        /**
+         * Update Member Role
+         * @description Swap this membership's **system** role; any custom roles it also holds are untouched.
+         */
         patch: operations["update_member_role_api_v1_members__membership_id__patch"];
         trace?: never;
     };
@@ -920,7 +923,7 @@ export interface paths {
         head?: never;
         /**
          * Update Tenant Branding
-         * @description Update the org's white-label settings (managers only). Applied on next render.
+         * @description Update the org's white-label settings. Applied on next render.
          */
         patch: operations["update_tenant_branding_api_v1_meta_tenant_patch"];
         trace?: never;
@@ -1214,7 +1217,7 @@ export interface paths {
         };
         /**
          * System Info
-         * @description Diagnostics for the Settings → System screen. Owners and admins only.
+         * @description Diagnostics for the Settings → System screen (``settings.system.read``).
          */
         get: operations["system_info_api_v1_system_info_get"];
         put?: never;

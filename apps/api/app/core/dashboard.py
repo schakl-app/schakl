@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.core.models import DashboardPref
+from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
@@ -39,7 +40,11 @@ async def _row(
     return await ctx.session.scalar(stmt)
 
 
-@router.get("/prefs", response_model=DashboardPrefs)
+@router.get(
+    "/prefs",
+    response_model=DashboardPrefs,
+    dependencies=[require_permission("dashboard.prefs.read")],
+)
 async def get_prefs(ctx: RequestContext = Depends(require_context)) -> DashboardPrefs:
     """The effective layout for the current user: own row → org template → none."""
     own = await _row(ctx, ctx.user.id)
@@ -64,7 +69,11 @@ async def _upsert(
     return row
 
 
-@router.put("/prefs", response_model=DashboardPrefs)
+@router.put(
+    "/prefs",
+    response_model=DashboardPrefs,
+    dependencies=[require_permission("dashboard.prefs.write")],
+)
 async def set_prefs(
     payload: DashboardPrefsUpdate, ctx: RequestContext = Depends(require_context)
 ) -> DashboardPrefs:
@@ -72,7 +81,11 @@ async def set_prefs(
     return DashboardPrefs(widgets=list(row.widgets), source="user")
 
 
-@router.delete("/prefs", status_code=204)
+@router.delete(
+    "/prefs",
+    status_code=204,
+    dependencies=[require_permission("dashboard.prefs.write")],
+)
 async def reset_prefs(ctx: RequestContext = Depends(require_context)) -> None:
     """Drop the personal layout; the user falls back to the org template."""
     row = await _row(ctx, ctx.user.id)
@@ -81,11 +94,14 @@ async def reset_prefs(ctx: RequestContext = Depends(require_context)) -> None:
         await ctx.session.flush()
 
 
-@router.put("/prefs/default", response_model=DashboardPrefs)
+@router.put(
+    "/prefs/default",
+    response_model=DashboardPrefs,
+    dependencies=[require_permission("settings.dashboard.manage")],
+)
 async def set_default_prefs(
     payload: DashboardPrefsUpdate, ctx: RequestContext = Depends(require_context)
 ) -> DashboardPrefs:
-    """The org-wide template (managers only)."""
-    ctx.ensure_can_manage()
+    """The org-wide template that members inherit (``settings.dashboard.manage``)."""
     row = await _upsert(ctx, None, payload.widgets)
     return DashboardPrefs(widgets=list(row.widgets), source="default")

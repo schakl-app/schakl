@@ -15,7 +15,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from app.modules.projects.budget import period_start, period_start_date
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import add_membership, auth_cookie, make_tenant
 
 
 def _iso(dt: datetime) -> str:
@@ -565,7 +565,6 @@ async def _member(org_id, email: str, full_name: str | None) -> str:
     from pwdlib import PasswordHash
 
     from app.core.auth.models import User
-    from app.core.models import Membership
     from app.db import async_session_maker, set_current_org
 
     async with async_session_maker() as session:
@@ -580,7 +579,7 @@ async def _member(org_id, email: str, full_name: str | None) -> str:
         session.add(user)
         await session.flush()
         await set_current_org(session, org_id)
-        session.add(Membership(org_id=org_id, user_id=user.id, role="member"))
+        await add_membership(session, org_id, user.id, "member")
         await session.commit()
         return str(user.id)
 

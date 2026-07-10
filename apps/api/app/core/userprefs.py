@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.core.models import UserPref
+from app.core.permissions.deps import no_permission_required
 from app.core.tenancy import RequestContext, require_context
 
 router = APIRouter(prefix="/prefs", tags=["prefs"])
@@ -35,13 +36,25 @@ async def _row(ctx: RequestContext) -> UserPref | None:
     return await ctx.session.scalar(stmt)
 
 
-@router.get("", response_model=UserPrefs)
+@router.get(
+    "",
+    response_model=UserPrefs,
+    dependencies=[
+        no_permission_required("a user's own in-view preferences; nobody else reads them")
+    ],
+)
 async def get_prefs(ctx: RequestContext = Depends(require_context)) -> UserPrefs:
     row = await _row(ctx)
     return UserPrefs(prefs=dict(row.prefs) if row is not None else {})
 
 
-@router.put("", response_model=UserPrefs)
+@router.put(
+    "",
+    response_model=UserPrefs,
+    dependencies=[
+        no_permission_required("a user's own in-view preferences; nobody else writes them")
+    ],
+)
 async def set_prefs(
     payload: UserPrefsUpdate, ctx: RequestContext = Depends(require_context)
 ) -> UserPrefs:

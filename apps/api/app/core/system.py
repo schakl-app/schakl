@@ -37,6 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.cache import WORKER_HEARTBEAT_KEY, get_redis
+from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
 from app.core.update_check import cached_update_status
 from app.db import async_session_maker
@@ -199,11 +200,13 @@ class SystemInfo(BaseModel):
     server_time: str
 
 
-@router.get("/info", response_model=SystemInfo)
+@router.get(
+    "/info",
+    response_model=SystemInfo,
+    dependencies=[require_permission("settings.system.read")],
+)
 async def system_info(ctx: RequestContext = Depends(require_context)) -> SystemInfo:
-    """Diagnostics for the Settings → System screen. Owners and admins only."""
-    ctx.ensure_can_manage()
-
+    """Diagnostics for the Settings → System screen (``settings.system.read``)."""
     database = await probe_database(ctx.session)
     migrations = await migration_status(ctx.session)
     redis = await probe_redis()
