@@ -121,8 +121,10 @@ release** (imports across schema revisions are rejected).
 
 ## Single sign-on (OIDC, off by default)
 
-Federates login to an external IdP (Authentik, Keycloak, Entra ID, …). Register the app
-there with callback URL `https://<your-host>/api/v1/auth/oidc/callback`, then set:
+Federates login to an external IdP (Authentik, Keycloak, Entra ID, Google, …). Register the app
+there with callback URL `https://<your-host>/api/v1/auth/oidc/callback`, then set the variables
+below. Provider walkthroughs, the exact-match rules for that callback URL, and the
+`redirect_uri_mismatch` fix live in [`SSO.md`](SSO.md).
 
 | Variable | Default | Meaning |
 |---|---|---|

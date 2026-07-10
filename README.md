@@ -75,6 +75,13 @@ pnpm run i18n:check     # fails on key drift between locales (nl must be complet
 pnpm run gen:client     # regenerate the typed API client from the API's OpenAPI
 ```
 
+## Docs
+
+`docs/` holds the topical guides: [`DEPLOY.md`](docs/DEPLOY.md) (self-host, upgrades, env),
+[`SSO.md`](docs/SSO.md) (OIDC login & the redirect URI), [`GOOGLE.md`](docs/GOOGLE.md) (Workspace
+integration design), [`WORKFLOW.md`](docs/WORKFLOW.md) (branches, commits, breaking DB changes),
+[`PERFORMANCE.md`](docs/PERFORMANCE.md), and [`UX.md`](docs/UX.md).
+
 ## Phases
 
 P0 Foundation (this) → P1 MVP (contacts/tasks/time + custom-fields) → P2 Agency core
