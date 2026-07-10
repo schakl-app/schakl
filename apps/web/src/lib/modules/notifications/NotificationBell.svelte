@@ -11,6 +11,8 @@
    * endpoint once a minute. That is a deliberate precedent, not an accident — there is no
    * SSE/WebSocket infrastructure here, and a badge that lies is worse than one that lags.
    */
+  import { untrack } from "svelte";
+
   import { invalidateAll } from "$app/navigation";
   import { Bell, CheckCheck } from "@lucide/svelte";
 
@@ -25,29 +27,43 @@
     created_at: string;
   }
 
-  /** The unread total from the layout's SSR load; the poll takes over once it has an answer. */
+  /** The unread total from the layout's SSR load; the poll refines it between loads. */
   let { count = 0 }: { count?: number } = $props();
 
   let open = $state(false);
-  /** Non-null once the browser has its own answer. Keeps `count` as a pure prop (no re-sync). */
-  let polled = $state<{ count: number; items: BellItem[] } | null>(null);
+  /**
+   * The browser's own answer, stamped with the `count` it was fetched against.
+   *
+   * That stamp is the whole point. Marking something read anywhere reruns the layout load and
+   * hands us a new `count`; a cache that simply won over the prop would then keep showing the
+   * *old* total until the next tick — a badge that lies for up to a minute. So a cache whose
+   * stamp no longer matches the server's count is stale by definition, and the server wins.
+   */
+  let polled = $state<{ count: number; items: BellItem[]; basedOn: number } | null>(null);
 
-  const unread = $derived(polled?.count ?? count);
-  const items = $derived(polled?.items ?? []);
+  const fresh = $derived(polled !== null && polled.basedOn === count ? polled : null);
+  const unread = $derived(fresh?.count ?? count);
+  const items = $derived(fresh?.items ?? []);
+  /** Distinguishes "nothing to show" from "not asked yet" — an empty state must not flash. */
+  const loading = $derived(fresh === null);
 
   async function refresh(): Promise<void> {
+    const basedOn = count;
     const response = await fetch("/notifications/bell");
-    if (response.ok) polled = await response.json();
+    if (response.ok) polled = { ...(await response.json()), basedOn };
   }
 
   async function markAllRead(): Promise<void> {
-    const response = await fetch("/notifications/bell", { method: "POST" });
-    if (response.ok) polled = await response.json();
+    await fetch("/notifications/bell", { method: "POST" });
     // The /notifications page, if that is where we are, must not keep showing them unread.
+    // The reload also hands the bell a fresh `count`, which retires the cache above.
     await invalidateAll();
   }
 
   $effect(() => {
+    // Fetch once on mount so the popover has rows before it is ever opened, then keep the badge
+    // honest between navigations. `untrack` keeps the timer from being torn down on every count.
+    untrack(() => void refresh());
     const timer = setInterval(() => void refresh(), 60_000);
     return () => clearInterval(timer);
   });
@@ -55,7 +71,7 @@
   function toggle(): void {
     open = !open;
     // The badge knows the count; the popover needs the rows behind it.
-    if (open && polled === null) void refresh();
+    if (open && loading) void refresh();
   }
 </script>
 
@@ -105,7 +121,9 @@
         {/if}
       </div>
 
-      {#if items.length === 0}
+      {#if loading}
+        <p class="px-4 py-6 text-center text-sm text-text-muted">{t("common.loading")}</p>
+      {:else if items.length === 0}
         <p class="px-4 py-6 text-center text-sm text-text-muted">
           {t("notifications.bell.empty")}
         </p>
