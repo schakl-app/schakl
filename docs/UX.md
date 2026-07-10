@@ -95,7 +95,19 @@
   hover-revealed ✕. You must always be able to **edit a comment (etc.) or delete it**, and
   every such edit/delete is **written to the record's activity feed** with actor + timestamp
   (the API `_record`s `comment_edited` / `comment_deleted` / `link_deleted` /
-  `checklist_deleted` / `checklist_item_deleted`, …).
+  `checklist_deleted` / `checklist_item_deleted`, …). **Creating and completing count too** —
+  the trail once recorded only a checklist *disappearing*, so ticking an item off, the most
+  routine thing that happens on a task, was invisible (#61). And a row says *what* happened:
+  a comment entry carries an excerpt and links to the comment, rather than reading "commented"
+  and sending the reader hunting.
+- **A feed names a person from a snapshot, never from a live join** (#64). Every FK to
+  `users.id` is `ON DELETE SET NULL`, so a joined-in display name is the one thing that cannot
+  survive the account it joins to. Store the name when the row is written: a name with no live
+  account is a departed human ("Jane Smith (verwijderd)"), and **no name at all is the system**
+  — which is what a NULL actor already meant, because the recurrence cron writes one on purpose.
+  Without the snapshot the two collapse into each other and a person's work is silently
+  reattributed to a bot. The live account still wins while it exists, so a rename shows through
+  the whole history at once.
 - **Confirmation dialogs** (`ConfirmDialog`) for **every** delete — no exceptions, including
   deletes reached from the ⋯ menu and from inside an edit surface (e.g. deleting a time
   registration). The ⋯ Delete item opens the dialog; the dialog owns the posting form.
@@ -274,3 +286,18 @@
   bug is invisible, which is why it is pinned on a fixed date rather than on `today`.
 - A totals row summed from `rows`. The page holds 200 of a longer set, so it prints the total *of
   the page* — which looks exactly like the right answer. Totals come from the API.
+- **A flex or grid item without `min-w-0`.** Its `min-width` defaults to `auto`, so it is sized by
+  its widest descendant instead of by the row. The shell's content column had no `min-w-0`, so one
+  over-wide page did not scroll or clip — it *grew the shell*: `<body>` laid out at 716 px on a
+  360 px phone while `initial-scale=1` kept one CSS pixel on one device pixel, the right half fell
+  off screen, and the app read as "loaded zoomed in" (#36). Pinch-zooming out revealed the whole
+  document, which is why the layout looked fine. The rule holds for grid items too. Never reach for
+  `maximum-scale`/`user-scalable=no` (an accessibility regression) or a body-level `overflow-x:
+  hidden` (it hides the next bug as well as this one) — make the document actually fit.
+- **A toolbar that cannot wrap.** Title + a fixed-width `SearchInput` + the Kolommen picker + the
+  primary button on one flex line has a min-content width around 490 px, which no phone has. Give
+  the toolbar its own `flex-wrap` row, the way the clients list does.
+- **A flex `<input>` without `min-w-0`.** `flex-1` alone cannot shrink it: a form control keeps its
+  browser-default width (~228 px) as its min-content floor, so the row it sits in never fits a
+  phone. This is not the same thing as an explicit `min-w-[12rem]`, and it is easy to clear the
+  wrong suspect.
