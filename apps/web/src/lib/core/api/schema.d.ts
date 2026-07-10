@@ -965,6 +965,157 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Notifications */
+        get: operations["list_notifications_api_v1_notifications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Activity */
+        get: operations["activity_api_v1_notifications_activity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/mark-all-read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark All Read */
+        post: operations["mark_all_read_api_v1_notifications_mark_all_read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Preferences
+         * @description My effective matrix: what will actually happen, and which layer decided it.
+         */
+        get: operations["get_preferences_api_v1_notifications_preferences_get"];
+        /** Set Preferences */
+        put: operations["set_preferences_api_v1_notifications_preferences_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/preferences/defaults": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Default Preferences
+         * @description What a member inherits before they override anything (org-wide).
+         */
+        get: operations["get_default_preferences_api_v1_notifications_preferences_defaults_get"];
+        /** Set Default Preferences */
+        put: operations["set_default_preferences_api_v1_notifications_preferences_defaults_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/unread-count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Unread Count
+         * @description The bell's badge. Comes from the API, never from counting the loaded page.
+         */
+        get: operations["unread_count_api_v1_notifications_unread_count_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/watch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Watch */
+        get: operations["get_watch_api_v1_notifications_watch_get"];
+        /** Set Watch */
+        put: operations["set_watch_api_v1_notifications_watch_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/{notification_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set Read
+         * @description Reversible: read and unread are the same non-destructive toggle (docs/UX.md).
+         */
+        patch: operations["set_read_api_v1_notifications__notification_id__patch"];
+        trace?: never;
+    };
     "/api/v1/prefs": {
         parameters: {
             query?: never;
@@ -1759,6 +1910,37 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * ActivityItem
+         * @description One line of a record's activity feed — recipient-independent.
+         */
+        ActivityItem: {
+            /** Actor Name */
+            actor_name?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Event Type */
+            event_type: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            };
+        };
         /** ActivityRead */
         ActivityRead: {
             /** Action */
@@ -2521,6 +2703,29 @@ export interface components {
                 [key: string]: string;
             };
         };
+        /** GeneralPreference */
+        GeneralPreference: {
+            /** Due Soon Days */
+            due_soon_days: number;
+            /** Quiet Hours End */
+            quiet_hours_end?: string | null;
+            /** Quiet Hours Start */
+            quiet_hours_start?: string | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "default" | "org" | "user";
+        };
+        /** GeneralPreferenceWrite */
+        GeneralPreferenceWrite: {
+            /** Due Soon Days */
+            due_soon_days?: number | null;
+            /** Quiet Hours End */
+            quiet_hours_end?: string | null;
+            /** Quiet Hours Start */
+            quiet_hours_start?: string | null;
+        };
         /** GenerateResult */
         GenerateResult: {
             /** Created */
@@ -2971,6 +3176,11 @@ export interface components {
             /** Minutes */
             minutes: number;
         };
+        /** MarkAllResult */
+        MarkAllResult: {
+            /** Updated */
+            updated: number;
+        };
         /**
          * MeInfo
          * @description The current user *within the resolved tenant* — includes their membership role.
@@ -3078,6 +3288,41 @@ export interface components {
             oidc_enabled: boolean;
             /** Supported Locales */
             supported_locales: string[];
+        };
+        /** NotificationRead */
+        NotificationRead: {
+            /** Actor Name */
+            actor_name?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Event Type */
+            event_type: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            };
+            /** Read At */
+            read_at?: string | null;
+            /**
+             * Visible At
+             * Format: date-time
+             */
+            visible_at: string;
         };
         /** OrgCreate */
         OrgCreate: {
@@ -3216,6 +3461,17 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** Page[NotificationRead] */
+        Page_NotificationRead_: {
+            /** Items */
+            items: components["schemas"]["NotificationRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
         /** Page[ProjectRead] */
         Page_ProjectRead_: {
             /** Items */
@@ -3264,6 +3520,68 @@ export interface components {
             position: number;
             /** Title Key */
             title_key: string;
+        };
+        /** PreferenceMatrix */
+        PreferenceMatrix: {
+            /** Events */
+            events: components["schemas"]["PreferenceRow"][];
+            general: components["schemas"]["GeneralPreference"];
+        };
+        /**
+         * PreferenceRow
+         * @description One event's effective delivery rule, and which layer decided it.
+         */
+        PreferenceRow: {
+            /** Delay Minutes */
+            delay_minutes: number;
+            /** Digest */
+            digest: string;
+            /** Digest Time */
+            digest_time?: string | null;
+            /** Digest Weekday */
+            digest_weekday?: number | null;
+            /** Enabled */
+            enabled: boolean;
+            /** Event Type */
+            event_type: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "default" | "org" | "user";
+        };
+        /** PreferenceRowWrite */
+        PreferenceRowWrite: {
+            /**
+             * Delay Minutes
+             * @default 0
+             */
+            delay_minutes: number;
+            /**
+             * Digest
+             * @default immediate
+             */
+            digest: string;
+            /** Digest Time */
+            digest_time?: string | null;
+            /** Digest Weekday */
+            digest_weekday?: number | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Event Type */
+            event_type: string;
+        };
+        /**
+         * PreferenceUpdate
+         * @description A PUT replaces this scope's overrides wholesale — an omitted event inherits again.
+         */
+        PreferenceUpdate: {
+            /** Events */
+            events?: components["schemas"]["PreferenceRowWrite"][];
+            general?: components["schemas"]["GeneralPreferenceWrite"] | null;
         };
         /**
          * ProductivityRow
@@ -3459,6 +3777,11 @@ export interface components {
         PurgeRequest: {
             /** Confirm */
             confirm: string;
+        };
+        /** ReadUpdate */
+        ReadUpdate: {
+            /** Read */
+            read: boolean;
         };
         /** Recurrence */
         Recurrence: {
@@ -4216,6 +4539,11 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** UnreadCount */
+        UnreadCount: {
+            /** Count */
+            count: number;
+        };
         /** UpdateInfo */
         UpdateInfo: {
             /** Checked At */
@@ -4329,6 +4657,29 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /**
+         * WatchRead
+         * @description Tri-state: ``True`` following, ``False`` muted, ``None`` the default fan-out.
+         */
+        WatchRead: {
+            /** Watching */
+            watching?: boolean | null;
+        };
+        /** WatchUpdate */
+        WatchUpdate: {
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /**
+             * Entity Type
+             * @enum {string}
+             */
+            entity_type: "task" | "project" | "company" | "leave_request" | "timesheet";
+            /** Watching */
+            watching?: boolean | null;
         };
         /** WorkerInfo */
         WorkerInfo: {
@@ -6713,6 +7064,324 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DomainStatus"];
+                };
+            };
+        };
+    };
+    list_notifications_api_v1_notifications_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                /** @description true = unread only, false = read only */
+                unread?: boolean | null;
+                entity_type?: ("task" | "project" | "company" | "leave_request" | "timesheet") | null;
+                /** @description created_at, '-' desc */
+                sort?: string | null;
+                /** @description false skips the count query (docs/PERFORMANCE.md) */
+                count?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_NotificationRead_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activity_api_v1_notifications_activity_get: {
+        parameters: {
+            query: {
+                entity_type: "task" | "project" | "company" | "leave_request" | "timesheet";
+                entity_id: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_all_read_api_v1_notifications_mark_all_read_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarkAllResult"];
+                };
+            };
+        };
+    };
+    get_preferences_api_v1_notifications_preferences_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferenceMatrix"];
+                };
+            };
+        };
+    };
+    set_preferences_api_v1_notifications_preferences_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreferenceUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferenceMatrix"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_default_preferences_api_v1_notifications_preferences_defaults_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferenceMatrix"];
+                };
+            };
+        };
+    };
+    set_default_preferences_api_v1_notifications_preferences_defaults_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreferenceUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferenceMatrix"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unread_count_api_v1_notifications_unread_count_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnreadCount"];
+                };
+            };
+        };
+    };
+    get_watch_api_v1_notifications_watch_get: {
+        parameters: {
+            query: {
+                entity_type: "task" | "project" | "company" | "leave_request" | "timesheet";
+                entity_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_watch_api_v1_notifications_watch_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WatchUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_read_api_v1_notifications__notification_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                notification_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReadUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
