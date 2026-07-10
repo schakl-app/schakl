@@ -130,10 +130,10 @@ class TaskService:
         404: tasks are readable by everyone who can read the module, so nothing is leaked.
         """
         task = await self.repo.get_or_404(task_id)
-        self._ensure_can_write_task(task)
+        self._ensure_task_writable(task)
         return task
 
-    def _ensure_can_write_task(self, task: Task) -> None:
+    def _ensure_task_writable(self, task: Task) -> None:
         if self.ctx.can("tasks.task.write", scope="any"):
             return
         if task.assignee_user_id == self.ctx.user.id and self.ctx.can(
