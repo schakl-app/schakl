@@ -322,7 +322,7 @@
 <Modal bind:open={registerOpen} title={t("leave.team.register")}>
   <LeaveRequestForm
     types={types.filter((lt) => lt.active)}
-    hoursPerWeek={40}
+    hoursPerDay={data.hoursPerDay}
     userOptions={memberOptions}
     action="?/register"
     error={form?.error ?? null}

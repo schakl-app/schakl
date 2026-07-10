@@ -15,6 +15,8 @@ from fastapi import APIRouter, Depends, Query
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
 from app.modules.leave.models import LeaveRequestStatus
+from app.modules.leave.schedule import WorkSchedule, average_day_hours
+from app.modules.leave.schedule import parse as parse_schedule
 from app.modules.leave.schemas import (
     EntitlementGenerate,
     GenerateResult,
@@ -22,11 +24,14 @@ from app.modules.leave.schemas import (
     LeaveEntitlementRead,
     LeaveEntitlementUpsert,
     LeaveProfileRead,
+    LeaveProfileSummary,
     LeaveProfileUpdate,
     LeaveRequestCreate,
     LeaveRequestDecision,
     LeaveRequestRead,
     LeaveRequestUpdate,
+    LeaveSettingsRead,
+    LeaveSettingsUpdate,
     LeaveSummary,
     LeaveTypeCreate,
     LeaveTypeRead,
@@ -91,45 +96,89 @@ async def delete_type(
     await LeaveService(ctx).delete_type(type_id)
 
 
-# --- profiles (contract hours) ------------------------------------------------ #
+# --- org settings (default work schedule) -------------------------------------- #
+@router.get(
+    "/settings",
+    response_model=LeaveSettingsRead,
+    dependencies=[require_permission("leave.profile.manage")],
+)
+async def get_settings(ctx: RequestContext = Depends(require_context)) -> LeaveSettingsRead:
+    """The schedule a new employee inherits. An org that never saved one gets the default."""
+    return LeaveSettingsRead(default_schedule=await LeaveService(ctx).default_schedule())
+
+
+@router.put(
+    "/settings",
+    response_model=LeaveSettingsRead,
+    dependencies=[require_permission("leave.profile.manage")],
+)
+async def update_settings(
+    payload: LeaveSettingsUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> LeaveSettingsRead:
+    row = await LeaveService(ctx).set_default_schedule(payload.default_schedule)
+    return LeaveSettingsRead(default_schedule=WorkSchedule.model_validate(row.default_schedule))
+
+
+# --- profiles (work schedule + contract hours) --------------------------------- #
 @router.get(
     "/profile",
     response_model=LeaveProfileRead,
     dependencies=[require_permission("leave.request.read")],
 )
 async def my_profile(ctx: RequestContext = Depends(require_context)) -> LeaveProfileRead:
-    hours = await LeaveService(ctx).hours_per_week(ctx.user.id)
-    return LeaveProfileRead(user_id=ctx.user.id, hours_per_week=hours)
+    """The caller's **effective** schedule — merged server-side, on purpose (#46)."""
+    schedule, hours, inherited = await LeaveService(ctx).profile_for(ctx.user.id)
+    return LeaveProfileRead(
+        user_id=ctx.user.id,
+        hours_per_week=hours,
+        hours_per_day=average_day_hours(schedule),
+        schedule=schedule,
+        inherited=inherited,
+    )
 
 
 @router.get(
     "/profiles",
-    response_model=list[LeaveProfileRead],
+    response_model=list[LeaveProfileSummary],
     dependencies=[require_permission("leave.profile.manage")],
 )
 async def list_profiles(
     ctx: RequestContext = Depends(require_context),
-) -> list[LeaveProfileRead]:
-    """Contract hours per user (managers). Users without a row default to 40."""
-    profiles = await LeaveService(ctx).list_profiles()
+) -> list[LeaveProfileSummary]:
+    """Contract hours + own schedule per user (managers). A null schedule follows the org's."""
+    service = LeaveService(ctx)
+    default = await service.default_schedule()
     return [
-        LeaveProfileRead(user_id=user_id, hours_per_week=hours)
-        for user_id, hours in profiles.items()
+        LeaveProfileSummary(
+            user_id=user_id,
+            hours_per_week=hours,
+            hours_per_day=average_day_hours(schedule or default),
+            schedule=schedule,
+        )
+        for user_id, hours, schedule in await service.list_profiles()
     ]
 
 
 @router.put(
     "/profiles/{user_id}",
-    response_model=LeaveProfileRead,
+    response_model=LeaveProfileSummary,
     dependencies=[require_permission("leave.profile.manage")],
 )
 async def set_profile(
     user_id: uuid.UUID,
     payload: LeaveProfileUpdate,
     ctx: RequestContext = Depends(require_context),
-) -> LeaveProfileRead:
-    profile = await LeaveService(ctx).set_profile(user_id, payload.hours_per_week)
-    return LeaveProfileRead(user_id=profile.user_id, hours_per_week=profile.hours_per_week)
+) -> LeaveProfileSummary:
+    service = LeaveService(ctx)
+    profile = await service.set_profile(user_id, payload)
+    own = parse_schedule(profile.schedule)
+    return LeaveProfileSummary(
+        user_id=profile.user_id,
+        hours_per_week=profile.hours_per_week,
+        hours_per_day=average_day_hours(own or await service.default_schedule()),
+        schedule=own,
+    )
 
 
 # --- entitlements --------------------------------------------------------------- #

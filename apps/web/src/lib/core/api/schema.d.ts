@@ -602,7 +602,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** My Profile */
+        /**
+         * My Profile
+         * @description The caller's **effective** schedule — merged server-side, on purpose (#46).
+         */
         get: operations["my_profile_api_v1_leave_profile_get"];
         put?: never;
         post?: never;
@@ -621,7 +624,7 @@ export interface paths {
         };
         /**
          * List Profiles
-         * @description Contract hours per user (managers). Users without a row default to 40.
+         * @description Contract hours + own schedule per user (managers). A null schedule follows the org's.
          */
         get: operations["list_profiles_api_v1_leave_profiles_get"];
         put?: never;
@@ -716,6 +719,27 @@ export interface paths {
          * @description Approve or reject a pending request (managers).
          */
         post: operations["decide_request_api_v1_leave_requests__request_id__decide_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Settings
+         * @description The schedule a new employee inherits. An org that never saved one gets the default.
+         */
+        get: operations["get_settings_api_v1_leave_settings_get"];
+        /** Update Settings */
+        put: operations["update_settings_api_v1_leave_settings_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2194,6 +2218,32 @@ export interface components {
             token: string;
         };
         /**
+         * BreakWindow
+         * @description An unpaid interval inside the working block — lunch, a coffee break, both.
+         */
+        "BreakWindow-Input": {
+            /**
+             * End
+             * Format: time
+             */
+            end: string;
+            /**
+             * Start
+             * Format: time
+             */
+            start: string;
+        };
+        /**
+         * BreakWindow
+         * @description An unpaid interval inside the working block — lunch, a coffee break, both.
+         */
+        "BreakWindow-Output": {
+            /** End */
+            end: string;
+            /** Start */
+            start: string;
+        };
+        /**
          * BudgetHours
          * @description A project's budget burn for the current period (#25). Opt-in — see ``hours=`` on the list.
          *
@@ -3020,20 +3070,56 @@ export interface components {
             /** Year */
             year: number;
         };
-        /** LeaveProfileRead */
+        /**
+         * LeaveProfileRead
+         * @description The caller's **effective** profile: own schedule, else the org default.
+         *
+         *     The browser must never merge the default itself — two clients would disagree about what a
+         *     day is worth, and only one of them would agree with the server.
+         */
         LeaveProfileRead: {
+            /** Hours Per Day */
+            hours_per_day: string;
             /** Hours Per Week */
             hours_per_week: string;
+            /** Inherited */
+            inherited: boolean;
+            schedule: components["schemas"]["WorkSchedule-Output"];
             /**
              * User Id
              * Format: uuid
              */
             user_id: string;
         };
-        /** LeaveProfileUpdate */
+        /**
+         * LeaveProfileSummary
+         * @description One row of the managers' roster: the employee's *own* schedule, or ``None``.
+         */
+        LeaveProfileSummary: {
+            /** Hours Per Day */
+            hours_per_day: string;
+            /** Hours Per Week */
+            hours_per_week: string;
+            schedule: components["schemas"]["WorkSchedule-Output"] | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /**
+         * LeaveProfileUpdate
+         * @description ``schedule`` is the input; ``hours_per_week`` is derived from it and stored.
+         *
+         *     ``hours_per_week`` is still **accepted** for one release so an older ``web`` container
+         *     keeps working (#46), and honoured only while the employee has no schedule. Once a schedule
+         *     exists it wins and any posted ``hours_per_week`` is ignored — accepted, not rejected, so a
+         *     stale client degrades instead of failing.
+         */
         LeaveProfileUpdate: {
             /** Hours Per Week */
-            hours_per_week: number | string;
+            hours_per_week?: number | string | null;
+            schedule?: components["schemas"]["WorkSchedule-Input"] | null;
         };
         /** LeaveRequestCreate */
         LeaveRequestCreate: {
@@ -3138,11 +3224,21 @@ export interface components {
             /** Start Date */
             start_date?: string | null;
         };
+        /** LeaveSettingsRead */
+        LeaveSettingsRead: {
+            default_schedule: components["schemas"]["WorkSchedule-Output"];
+        };
+        /** LeaveSettingsUpdate */
+        LeaveSettingsUpdate: {
+            default_schedule: components["schemas"]["WorkSchedule-Input"];
+        };
         /**
          * LeaveSummary
          * @description My Day widget payload: own vacation balance + pending count + next approved leave.
          */
         LeaveSummary: {
+            /** Hours Per Day */
+            hours_per_day: string;
             /** Hours Per Week */
             hours_per_week: string;
             /** Next Leave End */
@@ -4915,6 +5011,62 @@ export interface components {
             /** Watching */
             watching?: boolean | null;
         };
+        /**
+         * WorkDay
+         * @description One working block plus its breaks. ``breaks: []`` is an uninterrupted day.
+         */
+        "WorkDay-Input": {
+            /** Breaks */
+            breaks?: components["schemas"]["BreakWindow-Input"][];
+            /**
+             * End
+             * Format: time
+             */
+            end: string;
+            /**
+             * Start
+             * Format: time
+             */
+            start: string;
+        };
+        /**
+         * WorkDay
+         * @description One working block plus its breaks. ``breaks: []`` is an uninterrupted day.
+         */
+        "WorkDay-Output": {
+            /** Breaks */
+            breaks?: components["schemas"]["BreakWindow-Output"][];
+            /** End */
+            end: string;
+            /** Start */
+            start: string;
+        };
+        /**
+         * WorkSchedule
+         * @description A week. ``None`` on a weekday means the employee does not work it.
+         */
+        "WorkSchedule-Input": {
+            fri?: components["schemas"]["WorkDay-Input"] | null;
+            mon?: components["schemas"]["WorkDay-Input"] | null;
+            sat?: components["schemas"]["WorkDay-Input"] | null;
+            sun?: components["schemas"]["WorkDay-Input"] | null;
+            thu?: components["schemas"]["WorkDay-Input"] | null;
+            tue?: components["schemas"]["WorkDay-Input"] | null;
+            wed?: components["schemas"]["WorkDay-Input"] | null;
+        };
+        /**
+         * WorkSchedule
+         * @description A week. ``None`` on a weekday means the employee does not work it.
+         */
+        "WorkSchedule-Output": {
+            fri?: components["schemas"]["WorkDay-Output"] | null;
+            mon?: components["schemas"]["WorkDay-Output"] | null;
+            sat?: components["schemas"]["WorkDay-Output"] | null;
+            sun?: components["schemas"]["WorkDay-Output"] | null;
+            thu?: components["schemas"]["WorkDay-Output"] | null;
+            tue?: components["schemas"]["WorkDay-Output"] | null;
+            wed?: components["schemas"]["WorkDay-Output"] | null;
+        };
         /** WorkerInfo */
         WorkerInfo: {
             /** Last Seen At */
@@ -6522,7 +6674,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LeaveProfileRead"][];
+                    "application/json": components["schemas"]["LeaveProfileSummary"][];
                 };
             };
         };
@@ -6548,7 +6700,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LeaveProfileRead"];
+                    "application/json": components["schemas"]["LeaveProfileSummary"];
                 };
             };
             /** @description Validation Error */
@@ -6752,6 +6904,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LeaveRequestRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_settings_api_v1_leave_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveSettingsRead"];
+                };
+            };
+        };
+    };
+    update_settings_api_v1_leave_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveSettingsRead"];
                 };
             };
             /** @description Validation Error */

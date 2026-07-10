@@ -9,6 +9,7 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.modules.leave.models import LeaveRequestStatus
+from app.modules.leave.schedule import WorkSchedule
 
 # --- leave types ------------------------------------------------------------- #
 
@@ -53,16 +54,57 @@ class LeaveTypeRead(LeaveTypeBase):
     updated_at: datetime
 
 
-# --- profiles (contract hours) ------------------------------------------------ #
+# --- org settings (default work schedule) ------------------------------------- #
+
+
+class LeaveSettingsRead(BaseModel):
+    default_schedule: WorkSchedule
+
+
+class LeaveSettingsUpdate(BaseModel):
+    default_schedule: WorkSchedule
+
+
+# --- profiles (work schedule + contract hours) -------------------------------- #
 
 
 class LeaveProfileRead(BaseModel):
+    """The caller's **effective** profile: own schedule, else the org default.
+
+    The browser must never merge the default itself — two clients would disagree about what a
+    day is worth, and only one of them would agree with the server.
+    """
+
     user_id: uuid.UUID
     hours_per_week: Decimal
+    #: The average scheduled working day. What "≈ 2 dagen" divides by, never ``week / 5``.
+    hours_per_day: Decimal
+    schedule: WorkSchedule
+    #: True when ``schedule`` is the org default rather than this employee's own.
+    inherited: bool
+
+
+class LeaveProfileSummary(BaseModel):
+    """One row of the managers' roster: the employee's *own* schedule, or ``None``."""
+
+    user_id: uuid.UUID
+    hours_per_week: Decimal
+    hours_per_day: Decimal
+    schedule: WorkSchedule | None
 
 
 class LeaveProfileUpdate(BaseModel):
-    hours_per_week: Decimal = Field(gt=0, le=Decimal("80"))
+    """``schedule`` is the input; ``hours_per_week`` is derived from it and stored.
+
+    ``hours_per_week`` is still **accepted** for one release so an older ``web`` container
+    keeps working (#46), and honoured only while the employee has no schedule. Once a schedule
+    exists it wins and any posted ``hours_per_week`` is ignored — accepted, not rejected, so a
+    stale client degrades instead of failing.
+    """
+
+    hours_per_week: Decimal | None = Field(default=None, gt=0, le=Decimal("80"))
+    #: Explicit ``null`` clears the employee's own schedule → back to the org default.
+    schedule: WorkSchedule | None = None
 
 
 # --- entitlements -------------------------------------------------------------- #
@@ -187,6 +229,8 @@ class LeaveSummary(BaseModel):
     year: int
     remaining_hours: Decimal
     hours_per_week: Decimal
+    #: The average scheduled working day — the widget's "≈ n dagen" divides by this (#46).
+    hours_per_day: Decimal
     pending_count: int
     next_leave_start: date | None
     next_leave_end: date | None

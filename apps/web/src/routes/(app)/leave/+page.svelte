@@ -107,7 +107,7 @@
       </p>
       <p class="mt-1 text-sm text-text-muted">
         {t("leave.balance.days_equiv", {
-          days: fmtHours(hoursToDays(balance.remaining_hours, data.hoursPerWeek)),
+          days: fmtHours(hoursToDays(balance.remaining_hours, data.hoursPerDay)),
         })}
         · {t("leave.balance.of_total", { hours: fmtHours(balance.entitled_hours) })}
       </p>
@@ -151,7 +151,7 @@
 
 {#snippet daysCell(request: Request)}
   <!-- Verlof is tracked in hours and shown with a days equivalent (docs/UX.md). -->
-  <span class="text-text-muted">≈ {fmtHours(hoursToDays(request.hours, data.hoursPerWeek))}</span>
+  <span class="text-text-muted">≈ {fmtHours(hoursToDays(request.hours, data.hoursPerDay))}</span>
 {/snippet}
 
 {#snippet statusCell(request: Request)}
@@ -232,7 +232,7 @@
 <Modal bind:open={createOpen} title={t("leave.request_button")}>
   <LeaveRequestForm
     types={types.filter((lt) => lt.active)}
-    hoursPerWeek={data.hoursPerWeek}
+    hoursPerDay={data.hoursPerDay}
     balances={remainingByType}
     error={form?.error ?? null}
     ondone={() => (createOpen = false)}
@@ -244,7 +244,7 @@
     {#key editRequest.id}
       <LeaveRequestForm
         types={types.filter((lt) => lt.active)}
-        hoursPerWeek={data.hoursPerWeek}
+        hoursPerDay={data.hoursPerDay}
         balances={remainingByType}
         request={editRequest}
         action="?/update"

@@ -1,6 +1,10 @@
 /**
  * Leave helpers: tenant-defined type labels, hours↔days conversion (leave is tracked in
  * hours, CLAUDE.md §14), and workday math for suggested request hours.
+ *
+ * The workday math below is provisional and knows nothing about the employee's schedule (#46)
+ * or the holiday calendar (#47). #48 moves the calculation into `LeaveService.compute_hours`,
+ * where it can see both, and deletes `workdaysBetween` / `suggestedHours` from here.
  */
 import { dateLocale } from "$lib/core/format";
 
@@ -29,13 +33,19 @@ export function fmtHours(hours: number | string): string {
   return new Intl.NumberFormat(dateLocale(), { maximumFractionDigits: 2 }).format(Number(hours));
 }
 
-/** Hours expressed in workdays of the employee's contract (5-day week). */
-export function hoursToDays(hours: number | string, hoursPerWeek: number | string): number {
-  const perDay = Number(hoursPerWeek) / 5;
+/**
+ * Hours expressed in days of the employee's **average scheduled working day** (#46).
+ *
+ * Not `hoursPerWeek / 5`: a three-day week is still made of 8-hour days, and dividing a
+ * part-timer's 24 h week by five tells them their working day is 4,8 hours long. The API
+ * computes `hours_per_day` from the schedule and hands it over; the browser never guesses it.
+ */
+export function hoursToDays(hours: number | string, hoursPerDay: number | string): number {
+  const perDay = Number(hoursPerDay);
   return perDay > 0 ? Number(hours) / perDay : 0;
 }
 
-/** Mon–Fri days in the inclusive date-only ISO range. */
+/** Mon–Fri days in the inclusive date-only ISO range. Superseded by the schedule in #48. */
 export function workdaysBetween(startIso: string, endIso: string): number {
   const start = new Date(startIso + "T00:00:00Z");
   const end = new Date(endIso + "T00:00:00Z");
@@ -47,19 +57,20 @@ export function workdaysBetween(startIso: string, endIso: string): number {
   return count;
 }
 
-/** Suggested request hours: workdays in range × contract hours per day. */
+/** Suggested request hours: workdays in range × contract hours per day. Superseded in #48. */
 export function suggestedHours(
   startIso: string,
   endIso: string,
-  hoursPerWeek: number | string,
+  hoursPerDay: number | string,
 ): number {
   if (!startIso || !endIso || endIso < startIso) return 0;
-  return workdaysBetween(startIso, endIso) * (Number(hoursPerWeek) / 5);
+  return workdaysBetween(startIso, endIso) * Number(hoursPerDay);
 }
 
 /**
  * Spread a request's hours evenly over its workdays → per-ISO-date hours. Drives the
  * timesheet leave row (approved leave shows there without becoming a time entry, §14).
+ * Wrong the moment a schedule exists: #48 replaces it with the API's per-day breakdown.
  */
 export function leaveHoursByDay(item: {
   start_date: string;

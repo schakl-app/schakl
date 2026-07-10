@@ -23,16 +23,19 @@ from app.core.permissions.service import permission_holder_ids
 from app.core.sorting import apply_sort, user_sort_name
 from app.core.tenancy import RequestContext
 from app.errors import AppError
+from app.modules.leave import schedule as sched
 from app.modules.leave.models import (
     LeaveEntitlement,
     LeaveProfile,
     LeaveRequest,
     LeaveRequestStatus,
+    LeaveSettings,
     LeaveType,
 )
 from app.modules.leave.schemas import (
     LeaveBalance,
     LeaveEntitlementUpsert,
+    LeaveProfileUpdate,
     LeaveRequestCreate,
     LeaveRequestUpdate,
     LeaveSummary,
@@ -40,8 +43,6 @@ from app.modules.leave.schemas import (
     LeaveTypeUpdate,
     TeamLeaveItem,
 )
-
-_DEFAULT_HOURS_PER_WEEK = Decimal("40")
 
 # Seeded per org (also in the create-tables migration for existing orgs). Tenant-editable
 # config, not law: the Dutch defaults are 4 statutory weeks expiring 6 months into the next
@@ -106,6 +107,9 @@ DEFAULT_LEAVE_TYPES: list[dict] = [
 
 _OCCUPYING = (LeaveRequestStatus.PENDING.value, LeaveRequestStatus.APPROVED.value)
 
+#: "Not looked up yet", distinct from "looked up, and there is no row".
+_UNSET = object()
+
 
 def _now() -> datetime:
     return datetime.now(UTC)
@@ -132,6 +136,9 @@ class LeaveService:
         self.types = ctx.repo(LeaveType)
         self.profiles = ctx.repo(LeaveProfile)
         self.entitlements = ctx.repo(LeaveEntitlement)
+        self.settings = ctx.repo(LeaveSettings)
+        # One settings read per request, not one per profile resolved (docs/PERFORMANCE.md).
+        self._settings_row: LeaveSettings | None | object = _UNSET
 
     # --- access scoping ------------------------------------------------------ #
     def _effective_user_id(self, user_id: uuid.UUID | None) -> uuid.UUID:
@@ -195,28 +202,103 @@ class LeaveService:
         # Entitlements follow via the FK's ON DELETE CASCADE.
         await self.types.delete(leave_type)
 
-    # --- profiles (contract hours) --------------------------------------------- #
-    async def hours_per_week(self, user_id: uuid.UUID) -> Decimal:
-        profile = await self.ctx.session.scalar(
+    # --- org settings (the default work schedule) ------------------------------- #
+    async def settings_row(self) -> LeaveSettings | None:
+        """The org's settings row, if it has one. Memoized: several readers per request.
+
+        A missing row is not seeded here. Writing on a read would race two concurrent GETs into
+        a unique-violation, and the absent row already means exactly "the defaults".
+        """
+        if self._settings_row is _UNSET:
+            self._settings_row = await self.ctx.session.scalar(
+                self.settings.scoped_select().limit(1)
+            )
+        return self._settings_row
+
+    async def default_schedule(self) -> sched.WorkSchedule:
+        row = await self.settings_row()
+        return sched.parse(row.default_schedule) if row else sched.default_schedule()
+
+    async def set_default_schedule(self, schedule: sched.WorkSchedule) -> LeaveSettings:
+        self.ctx.require("leave.profile.manage")
+        row = await self.settings_row()
+        if row is None:
+            row = await self.settings.create(default_schedule=sched.dump(schedule))
+        else:
+            row = await self.settings.update(row, default_schedule=sched.dump(schedule))
+        self._settings_row = row
+        return row
+
+    # --- profiles (work schedule + contract hours) ------------------------------ #
+    async def _profile(self, user_id: uuid.UUID) -> LeaveProfile | None:
+        return await self.ctx.session.scalar(
             self.profiles.scoped_select().where(LeaveProfile.user_id == user_id)
         )
-        return profile.hours_per_week if profile else _DEFAULT_HOURS_PER_WEEK
 
-    async def list_profiles(self) -> dict[uuid.UUID, Decimal]:
-        """Contract hours per user for every org member (``leave.profile.manage``)."""
+    def _effective(
+        self, profile: LeaveProfile | None, default: sched.WorkSchedule
+    ) -> tuple[sched.WorkSchedule, Decimal, bool]:
+        """``(schedule, hours_per_week, inherited)`` for one profile.
+
+        ``hours_per_week`` follows the schedule when there is one. When there isn't, the
+        **stored** number wins: a pre-#46 part-timer on 32 h inherits the 40 h default
+        schedule for day-shape purposes, and regranting them 8 hours a week because of it
+        would be a data-integrity incident, not a migration.
+        """
+        own = sched.parse(profile.schedule) if profile else None
+        if own is not None:
+            return own, sched.week_hours(own), False
+        stored = profile.hours_per_week if profile else sched.week_hours(default)
+        return default, stored, True
+
+    async def profile_for(self, user_id: uuid.UUID) -> tuple[sched.WorkSchedule, Decimal, bool]:
+        """``(effective schedule, contract hours, inherited)`` for one employee."""
+        return self._effective(await self._profile(user_id), await self.default_schedule())
+
+    async def effective_schedule(self, user_id: uuid.UUID) -> sched.WorkSchedule:
+        """The week ``compute_hours`` measures against: this employee's own, else the org's."""
+        schedule, _, _ = await self.profile_for(user_id)
+        return schedule
+
+    async def hours_per_week(self, user_id: uuid.UUID) -> Decimal:
+        _, hours, _ = await self.profile_for(user_id)
+        return hours
+
+    async def list_profiles(self) -> list[tuple[uuid.UUID, Decimal, sched.WorkSchedule | None]]:
+        """Every profile row for the managers' roster (``leave.profile.manage``).
+
+        Returns each employee's **own** schedule (``None`` = follows the org default) rather
+        than the merged one: the settings screen already holds the default and rendering
+        "inherited" is the whole point of the distinction.
+        """
         self.ctx.require("leave.profile.manage")
         rows = (await self.ctx.session.execute(self.profiles.scoped_select())).scalars().all()
-        return {p.user_id: p.hours_per_week for p in rows}
+        return [(p.user_id, p.hours_per_week, sched.parse(p.schedule)) for p in rows]
 
-    async def set_profile(self, user_id: uuid.UUID, hours: Decimal) -> LeaveProfile:
+    async def set_profile(self, user_id: uuid.UUID, data: LeaveProfileUpdate) -> LeaveProfile:
+        """Save a schedule (and derive ``hours_per_week`` from it) or, legacy, bare hours."""
         self.ctx.require("leave.profile.manage")
         await self._member_or_404(user_id)
-        profile = await self.ctx.session.scalar(
-            self.profiles.scoped_select().where(LeaveProfile.user_id == user_id)
-        )
+        profile = await self._profile(user_id)
+
+        values: dict = {}
+        if "schedule" in data.model_fields_set:
+            values["schedule"] = sched.dump(data.schedule) if data.schedule else None
+            # Derived, never entered — including on a clear, which falls back to the org default.
+            values["hours_per_week"] = sched.week_hours(
+                data.schedule or await self.default_schedule()
+            )
+        elif data.hours_per_week is not None and (profile is None or profile.schedule is None):
+            # Release-N compatibility: an older `web` posts only hours_per_week. Honour it while
+            # the employee has no schedule; once they do, the schedule is the source of truth.
+            values["hours_per_week"] = data.hours_per_week
+
         if profile is None:
-            return await self.profiles.create(user_id=user_id, hours_per_week=hours)
-        return await self.profiles.update(profile, hours_per_week=hours)
+            values.setdefault("hours_per_week", await self.hours_per_week(user_id))
+            return await self.profiles.create(user_id=user_id, **values)
+        if not values:
+            return profile
+        return await self.profiles.update(profile, **values)
 
     async def _member_or_404(self, user_id: uuid.UUID) -> None:
         membership = await self.ctx.session.scalar(
@@ -275,9 +357,14 @@ class LeaveService:
             (e.user_id, e.leave_type_id)
             for e in await self.list_entitlements(year=year)
         }
+        # Contract hours for everyone in one read, not one per employee — the profile table is
+        # one row per member and this loop used to grow a query per person (docs/PERFORMANCE.md).
+        default = await self.default_schedule()
+        rows = (await self.ctx.session.execute(self.profiles.scoped_select())).scalars().all()
+        by_user = {p.user_id: p for p in rows}
         created = 0
         for user_id in staff:
-            hours_week = await self.hours_per_week(user_id)
+            _, hours_week, _ = self._effective(by_user.get(user_id), default)
             for leave_type in types:
                 if (user_id, leave_type.id) in existing:
                     continue
@@ -585,6 +672,7 @@ class LeaveService:
     async def summary(self) -> LeaveSummary:
         today = _now().date()
         year = today.year
+        schedule, hours_week, _ = await self.profile_for(self.ctx.user.id)
         balances = await self.balances(year=year)
         remaining = sum((b.remaining_hours for b in balances), Decimal(0))
         pending = await self.ctx.session.scalar(
@@ -611,7 +699,8 @@ class LeaveService:
         return LeaveSummary(
             year=year,
             remaining_hours=remaining,
-            hours_per_week=await self.hours_per_week(self.ctx.user.id),
+            hours_per_week=hours_week,
+            hours_per_day=sched.average_day_hours(schedule),
             pending_count=int(pending or 0),
             next_leave_start=next_leave.start_date if next_leave else None,
             next_leave_end=next_leave.end_date if next_leave else None,

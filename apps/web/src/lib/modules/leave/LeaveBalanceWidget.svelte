@@ -11,6 +11,7 @@
     year: number;
     remaining_hours: string | number;
     hours_per_week: string | number;
+    hours_per_day: string | number;
     pending_count: number;
     next_leave_start: string | null;
     next_leave_end: string | null;
@@ -19,12 +20,13 @@
     (data ?? {
       remaining_hours: 0,
       hours_per_week: 40,
+      hours_per_day: 8,
       pending_count: 0,
       next_leave_start: null,
       next_leave_end: null,
     }) as Summary,
   );
-  const days = $derived(hoursToDays(summary.remaining_hours, summary.hours_per_week));
+  const days = $derived(hoursToDays(summary.remaining_hours, summary.hours_per_day));
 </script>
 
 <div class="rounded-xl border border-border bg-surface-raised p-5">

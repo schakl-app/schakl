@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { UserMinus } from "@lucide/svelte";
+  import { CalendarClock, UserMinus } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
@@ -7,6 +7,15 @@
   import { effectivePermissions, WILDCARD } from "$lib/core/roles/permissions";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import Modal from "$lib/core/ui/Modal.svelte";
+  import { fmtHours } from "$lib/modules/leave/format";
+  import WorkScheduleEditor from "$lib/modules/leave/WorkScheduleEditor.svelte";
+  import {
+    cloneSchedule,
+    defaultSchedule,
+    weekHours,
+    type WorkSchedule,
+  } from "$lib/modules/leave/schedule";
 
   let { data, form } = $props();
 
@@ -22,6 +31,60 @@
   const locale = $derived(data.locale ?? "nl");
 
   const effectiveFor = (roleIds: string[]) => effectivePermissions(roles, roleIds);
+
+  // --- work schedules (leave module, #46) ---------------------------------------
+  // Employment data, so it lives on the person rather than under Instellingen → Verlof.
+  type Member = (typeof data.members)[number];
+  const profileByUser = $derived(Object.fromEntries(data.profiles.map((p) => [p.user_id, p])));
+
+  let scheduleOpen = $state(false);
+  let scheduleFor = $state<Member | null>(null);
+  let inherit = $state(true);
+  // Filled by `openSchedule` before the modal is ever shown; the initial value is never rendered.
+  let draft = $state<WorkSchedule>(defaultSchedule());
+
+  function openSchedule(member: Member) {
+    const own = profileByUser[member.user_id]?.schedule ?? null;
+    inherit = own === null;
+    draft = cloneSchedule((own ?? data.defaultSchedule) as WorkSchedule);
+    scheduleFor = member;
+    scheduleOpen = true;
+  }
+
+  /**
+   * A pre-#46 part-timer carries contract hours that predate any schedule. Say so out loud:
+   * silently measuring their leave against the 40 h default is the whole trap the issue names.
+   */
+  function staleHours(member: Member): number | null {
+    const profile = profileByUser[member.user_id];
+    if (!profile || profile.schedule !== null) return null;
+    const stored = Number(profile.hours_per_week);
+    const inherited = weekHours(data.defaultSchedule as WorkSchedule);
+    return stored === inherited ? null : stored;
+  }
+
+  function memberActions(member: Member) {
+    const items = [];
+    if (data.schedules) {
+      items.push({
+        label: t("settings.users.schedule"),
+        icon: CalendarClock,
+        onclick: () => openSchedule(member),
+      });
+    }
+    if (!member.is_self) {
+      items.push({
+        label: t("settings.users.revoke"),
+        icon: UserMinus,
+        danger: true,
+        onclick: () => {
+          revokeId = member.membership_id;
+          confirmRevoke = true;
+        },
+      });
+    }
+    return items;
+  }
 
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
@@ -125,6 +188,17 @@
             {/if}
           </div>
           {#if member.full_name}<p class="truncate text-sm text-text-muted">{member.email}</p>{/if}
+          {#if data.schedules}
+            {@const stale = staleHours(member)}
+            {#if stale !== null}
+              <p class="mt-0.5 text-xs text-amber-600 dark:text-amber-400">
+                {t("settings.users.schedule_stale_hours", {
+                  hours: fmtHours(stale),
+                  inherited: fmtHours(weekHours(data.defaultSchedule as WorkSchedule)),
+                })}
+              </p>
+            {/if}
+          {/if}
         </div>
 
         <button
@@ -137,20 +211,8 @@
             : t("settings.users.effective_count", { count: effective.length })}
         </button>
 
-        {#if !member.is_self}
-          <ActionsMenu
-            items={[
-              {
-                label: t("settings.users.revoke"),
-                icon: UserMinus,
-                danger: true,
-                onclick: () => {
-                  revokeId = member.membership_id;
-                  confirmRevoke = true;
-                },
-              },
-            ]}
-          />
+        {#if memberActions(member).length > 0}
+          <ActionsMenu items={memberActions(member)} />
         {/if}
       </li>
 
@@ -221,6 +283,64 @@
     {/each}
   </ul>
 {/if}
+
+<!-- This person's working week (#46). One save; contract hours are derived from it. -->
+<Modal bind:open={scheduleOpen} title={t("settings.users.schedule")}>
+  {#if scheduleFor}
+    {#key scheduleFor.user_id}
+      <div class="space-y-4">
+        <p class="text-sm text-text-muted">
+          {scheduleFor.full_name || scheduleFor.email}
+        </p>
+
+        <label class="flex items-center gap-2 text-sm text-text">
+          <input type="checkbox" bind:checked={inherit} class="h-4 w-4 rounded border-border" />
+          {t("settings.users.schedule_inherit")}
+        </label>
+
+        {#if inherit}
+          <p class="rounded-lg bg-surface px-3 py-2 text-xs text-text-muted">
+            {t("settings.users.schedule_inherited_hint", {
+              hours: fmtHours(weekHours(data.defaultSchedule as WorkSchedule)),
+            })}
+          </p>
+        {/if}
+
+        <!-- Rendered outside the form on purpose: its TimeInputs post hidden fields of their own
+             and a form they are not inside is a form they cannot pollute. -->
+        <div class:opacity-50={inherit} class:pointer-events-none={inherit}>
+          <WorkScheduleEditor
+            bind:schedule={draft}
+            formId="user-schedule-form"
+            disabled={inherit}
+          />
+        </div>
+
+        {#if form?.error}<p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
+
+        <form
+          id="user-schedule-form"
+          method="POST"
+          action="?/saveSchedule"
+          class="flex justify-end"
+          use:enhance={() =>
+            ({ result, update }) => {
+              if (result.type === "success") scheduleOpen = false;
+              void update({ reset: false });
+            }}
+        >
+          <input type="hidden" name="user_id" value={scheduleFor.user_id} />
+          <input type="hidden" name="inherit" value={String(inherit)} />
+          <button
+            class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+          >
+            {t("common.save")}
+          </button>
+        </form>
+      </div>
+    {/key}
+  {/if}
+</Modal>
 
 <ConfirmDialog
   bind:open={confirmRevoke}

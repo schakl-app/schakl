@@ -69,8 +69,27 @@ class LeaveType(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
+class LeaveSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """Org-wide leave configuration: the schedule new employees inherit (#46).
+
+    One row per org. ``default_schedule`` is a :class:`~app.modules.leave.schedule.WorkSchedule`
+    blob; an employee whose ``LeaveProfile.schedule`` is ``NULL`` follows it.
+    """
+
+    __tablename__ = "leave_settings"
+    __table_args__ = (UniqueConstraint("org_id"),)
+
+    default_schedule: Mapped[dict] = mapped_column(JSONB, nullable=False)
+
+
 class LeaveProfile(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
-    """Per-employee contract hours — the hours↔days conversion and entitlement base."""
+    """Per-employee work schedule and the contract hours derived from it.
+
+    ``hours_per_week`` is **maintained, not entered**: every schedule save recomputes it, and
+    entitlements, balances and the days-equivalent keep reading it. It stays authoritative for
+    a profile with no ``schedule`` — a pre-#46 part-timer on 32 h must not silently be granted
+    the 40 h org default (see ``LeaveService.hours_per_week``).
+    """
 
     __tablename__ = "leave_profiles"
     __table_args__ = (UniqueConstraint("org_id", "user_id"),)
@@ -84,6 +103,8 @@ class LeaveProfile(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     hours_per_week: Mapped[Decimal] = mapped_column(
         Numeric(5, 2), nullable=False, default=Decimal("40")
     )
+    #: This employee's own week, or ``NULL`` to follow ``LeaveSettings.default_schedule``.
+    schedule: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
 
 class LeaveEntitlement(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):

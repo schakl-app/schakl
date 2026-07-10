@@ -194,14 +194,27 @@
   introduce an AM/PM surface.
 - **Budgets colour-code burn**: green < 75 %, amber < 100 %, red ≥ 100 % — the same scale
   for task time budgets and project hour budgets (total or monthly).
-- **Verlof is tracked in hours, shown with a days equivalent** (`≈ n dagen` from the
-  employee's contract hours ÷ 5). Employees request under Verlof (balance cards + one
-  request form; hours pre-filled from the date range, editable for part days); managers
-  approve/reject under Verlof → Team (approve/reject are inline status actions; reject asks
-  an optional reason) and register leave on someone's behalf (ziekmelding). Org config —
-  verloftypen (wettelijk/bovenwettelijk carry-over rules live here, not in code), contract
-  hours, and yearly saldi — lives under Instellingen → Verlof. Approved leave appears on the
-  timesheet as its own teal row, never mixed into worked totals, and on the Agenda.
+- **Verlof is tracked in hours, shown with a days equivalent** (`≈ n dagen`). The divisor is the
+  employee's **average scheduled working day**, computed by the API — never `contracturen ÷ 5`,
+  which tells a three-day part-timer their working day is 4,8 hours long. Employees request under
+  Verlof (balance cards + one request form); managers approve/reject under Verlof → Team
+  (approve/reject are inline status actions; reject asks an optional reason) and register leave on
+  someone's behalf (ziekmelding). Approved leave appears on the timesheet as its own teal row,
+  never mixed into worked totals, and on the Agenda.
+- **A work schedule is employment data, so it lives on the person** (Instellingen → Gebruikers →
+  ⋯ → Werkrooster), not buried in Instellingen → Verlof. It is a weekly grid: per weekday a
+  working-day toggle, start/end, and the day's **breaks as a repeater** — a morning coffee break
+  next to lunch is an ordinary shape, so a second break is one click, and each day carries a
+  copy-to-other-days action. Times go through `TimeInput`, never a native `<input type="time">`.
+  Breaks are **not re-sorted while you type**: the API stores them sorted and hands them back that
+  way, whereas reordering rows on every committed time yanks the field out from under the cursor.
+  The grid renders *outside* its `<form>` and posts through `form="…"` — its `TimeInput`s each emit
+  a hidden field, and a form they are not inside is a form they cannot pollute.
+  `contracturen` is a **derived, read-only column** that links to the person: hours follow from the
+  schedule, they are never typed. Someone still carrying pre-schedule contract hours is flagged
+  where they are listed, rather than being silently measured against the org default.
+  Org config — verloftypen (wettelijk/bovenwettelijk carry-over rules live here, not in code), het
+  standaardrooster, and yearly saldi — lives under Instellingen → Verlof.
 
 ## Navigation
 

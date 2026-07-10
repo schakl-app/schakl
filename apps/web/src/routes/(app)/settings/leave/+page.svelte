@@ -9,6 +9,8 @@
   import Modal from "$lib/core/ui/Modal.svelte";
   import { LABEL_COLORS, labelDotClass } from "$lib/core/ui/colors";
   import { fmtHours, typeLabel, type LeaveTypeInfo } from "$lib/modules/leave/format";
+  import WorkScheduleEditor from "$lib/modules/leave/WorkScheduleEditor.svelte";
+  import { cloneSchedule, type WorkSchedule } from "$lib/modules/leave/schedule";
 
   let { data, form } = $props();
 
@@ -17,6 +19,12 @@
   const hoursByUser = $derived(
     Object.fromEntries(data.profiles.map((p) => [p.user_id, Number(p.hours_per_week)])),
   );
+  const inheritedByUser = $derived(
+    Object.fromEntries(data.profiles.map((p) => [p.user_id, p.schedule === null])),
+  );
+
+  // The org default, editable here; a person's own schedule lives on the person.
+  let defaultSchedule = $state(cloneSchedule(data.defaultSchedule as WorkSchedule));
   const entitledByUserType = $derived.by(() => {
     const byKey: Record<string, number> = {};
     for (const ent of data.entitlements) {
@@ -172,6 +180,37 @@
   </div>
 </section>
 
+<!-- The schedule new employees inherit (#46) -->
+<section class="mb-8">
+  <div class="mb-3">
+    <h2 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
+      {t("settings.leave.schedule_heading")}
+    </h2>
+    <p class="mt-1 text-sm text-text-muted">{t("settings.leave.schedule_hint")}</p>
+  </div>
+  <div class="rounded-xl border border-border bg-surface p-4">
+    <!-- The grid lives outside the <form> and posts through `form=`, so its TimeInputs' hidden
+         fields never reach the action (docs/UX.md — one save per surface). -->
+    <WorkScheduleEditor bind:schedule={defaultSchedule} formId="default-schedule-form" />
+    {#if form?.scheduleSaved}
+      <p class="mt-3 text-sm text-green-600">{t("settings.leave.schedule_saved")}</p>
+    {/if}
+    <form
+      id="default-schedule-form"
+      method="POST"
+      action="?/saveSchedule"
+      class="mt-3 flex justify-end"
+      use:enhance={() =>
+        ({ update }) =>
+          update({ reset: false })}
+    >
+      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+        {t("common.save")}
+      </button>
+    </form>
+  </div>
+</section>
+
 <!-- Contract hours + yearly entitlements -->
 <section>
   <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -226,8 +265,20 @@
               <td class="px-4 py-2 font-medium text-text">
                 {member.full_name || member.email}
               </td>
+              <!-- Derived from the person's schedule, so it is read here and edited there. -->
               <td class="px-2 py-2 text-right tabular-nums text-text">
-                {fmtHours(hoursByUser[member.user_id] ?? 40)}
+                <a
+                  href="/settings/users"
+                  class="hover:text-brand hover:underline"
+                  title={t("settings.leave.contract_hours_derived")}
+                >
+                  {fmtHours(hoursByUser[member.user_id] ?? 40)}
+                </a>
+                {#if inheritedByUser[member.user_id] !== false}
+                  <span class="ml-1 text-xs text-text-muted"
+                    >{t("settings.leave.schedule_inherited_short")}</span
+                  >
+                {/if}
               </td>
               {#each trackedTypes as lt (lt.id)}
                 <td class="px-2 py-2 text-right tabular-nums text-text">
@@ -406,22 +457,12 @@
       >
         <input type="hidden" name="user_id" value={editMember.user_id} />
         <input type="hidden" name="year" value={data.year} />
-        <div>
-          <label class="mb-1 block text-xs font-medium text-text-muted" for="member-hours">
-            {t("leave.team.contract_hours")}
-          </label>
-          <input
-            id="member-hours"
-            name="hours_per_week"
-            type="number"
-            min="1"
-            max="80"
-            step="0.5"
-            required
-            value={hoursByUser[editMember.user_id] ?? 40}
-            class={inputClass}
-          />
-        </div>
+        <p class="rounded-lg bg-surface px-3 py-2 text-xs text-text-muted">
+          {t("settings.leave.contract_hours_derived")}
+          <a href="/settings/users" class="text-brand hover:underline">
+            {t("settings.leave.manage_schedule")}
+          </a>
+        </p>
         <fieldset>
           <legend class="mb-1 text-xs font-medium text-text-muted">
             {t("settings.leave.entitlements_for", { year: data.year })}

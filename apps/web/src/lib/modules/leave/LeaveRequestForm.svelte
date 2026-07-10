@@ -23,7 +23,7 @@
 
   let {
     types,
-    hoursPerWeek,
+    hoursPerDay,
     request = null,
     balances = {},
     userOptions = null,
@@ -32,7 +32,8 @@
     ondone,
   }: {
     types: LeaveTypeInfo[];
-    hoursPerWeek: number | string;
+    /** The employee's average scheduled working day, from the API (#46) — never `week / 5`. */
+    hoursPerDay: number | string;
     /** Existing request → edit mode (posts its id). */
     request?: RequestValues | null;
     /** remaining_hours by leave_type_id, to show the balance next to the type. */
@@ -56,7 +57,7 @@
 
   const selectedType = $derived(types.find((lt) => lt.id === typeId));
   const remaining = $derived(selectedType?.tracks_balance ? balances[selectedType.id] : undefined);
-  const days = $derived(hours ? hoursToDays(Number(hours), hoursPerWeek) : 0);
+  const days = $derived(hours ? hoursToDays(Number(hours), hoursPerDay) : 0);
 
   function syncDates(which: "start" | "end", iso: string) {
     if (which === "start") {
@@ -66,7 +67,7 @@
       endDate = iso;
     }
     if (!hoursTouched) {
-      const suggestion = suggestedHours(startDate, endDate, hoursPerWeek);
+      const suggestion = suggestedHours(startDate, endDate, hoursPerDay);
       if (suggestion > 0) hours = String(suggestion);
     }
   }

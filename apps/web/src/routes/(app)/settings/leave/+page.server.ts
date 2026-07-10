@@ -3,8 +3,18 @@ import { fail, redirect } from "@sveltejs/kit";
 import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
+import { defaultSchedule, type WorkSchedule } from "$lib/modules/leave/schedule";
 
 import type { Actions, PageServerLoad } from "./$types";
+
+/** The editor posts the whole week as one JSON field; the API validates every rule again. */
+function parseSchedule(raw: FormDataEntryValue | null): WorkSchedule | null {
+  try {
+    return JSON.parse(String(raw ?? "")) as WorkSchedule;
+  } catch {
+    return null;
+  }
+}
 
 function currentYear(): number {
   return new Date().getUTCFullYear();
@@ -20,11 +30,12 @@ export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const year = parseYear(event.url.searchParams.get("year"));
 
-  const [types, members, profiles, entitlements] = await Promise.all([
+  const [types, members, profiles, entitlements, settings] = await Promise.all([
     api.GET("/api/v1/leave/types", { params: { query: { include_inactive: true } } }),
     api.GET("/api/v1/members/lookup"),
     api.GET("/api/v1/leave/profiles"),
     api.GET("/api/v1/leave/entitlements", { params: { query: { year } } }),
+    api.GET("/api/v1/leave/settings"),
   ]);
 
   return {
@@ -34,6 +45,7 @@ export const load: PageServerLoad = async (event) => {
     members: members.data ?? [],
     profiles: profiles.data ?? [],
     entitlements: entitlements.data ?? [],
+    defaultSchedule: settings.data?.default_schedule ?? defaultSchedule(),
     locale: event.locals.locale,
   };
 };
@@ -106,21 +118,26 @@ export const actions: Actions = {
     return { typeDeleted: true };
   },
 
-  // One save per member row: contract hours + this year's entitlement per tracked type.
+  /** The schedule every employee without their own inherits (#46). */
+  saveSchedule: async (event) => {
+    const schedule = parseSchedule((await event.request.formData()).get("schedule"));
+    if (!schedule) return fail(400, { error: "errors.required" });
+    const { error } = await apiFor(event).PUT("/api/v1/leave/settings", {
+      body: { default_schedule: schedule },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { scheduleSaved: true };
+  },
+
+  // One save per member row: this year's entitlement per tracked type. Contract hours are no
+  // longer entered here — they are derived from the person's schedule (Instellingen → Gebruikers).
   saveMember: async (event) => {
     const form = await event.request.formData();
     const userId = String(form.get("user_id") ?? "");
     const year = parseYear(String(form.get("year") ?? ""));
-    const hoursPerWeek = Number(form.get("hours_per_week") ?? 0);
-    if (!userId || !hoursPerWeek) return fail(400, { error: "errors.required" });
+    if (!userId) return fail(400, { error: "errors.required" });
 
     const api = apiFor(event);
-    const profile = await api.PUT("/api/v1/leave/profiles/{user_id}", {
-      params: { path: { user_id: userId } },
-      body: { hours_per_week: hoursPerWeek },
-    });
-    if (profile.error) return fail(400, { error: apiErrorKey(profile.error).key });
-
     // Entitlement inputs are posted as ent_<leave_type_id>.
     for (const [name, value] of form.entries()) {
       if (!name.startsWith("ent_")) continue;

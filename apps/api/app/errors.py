@@ -67,8 +67,17 @@ def _field_key(err: dict[str, Any]) -> str:
     # Pydantic v2's ``EmailStr`` failures collapse to the generic "value_error" type (no
     # more Pydantic-v1-style dotted subtypes), so email format is the one case matched by
     # message text rather than `type`.
-    if error_type == "value_error" and "valid email address" in str(err.get("msg", "")):
-        return "errors.invalid_email"
+    if error_type == "value_error":
+        message = str(err.get("msg", ""))
+        if "valid email address" in message:
+            return "errors.invalid_email"
+        # A validator that raises ``ValueError("errors.some_key")`` already speaks the
+        # envelope's language. Honour it, rather than flattening every rule a model knows how
+        # to explain (a break outside the working day, overlapping breaks) into
+        # "Some fields are invalid." Pydantic prefixes the message with "Value error, ".
+        key = message.removeprefix("Value error, ").strip()
+        if key.startswith("errors.") and " " not in key:
+            return key
     return _FIELD_MESSAGE_KEYS.get(error_type, "errors.validation")
 
 
