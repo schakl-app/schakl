@@ -4,7 +4,14 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: [".svelte-kit/**", "build/**", "src/lib/paraglide/**", "src/lib/core/api/schema.d.ts"],
+    ignores: [
+      ".svelte-kit/**",
+      "build/**",
+      "src/lib/paraglide/**",
+      "src/lib/core/api/schema.d.ts",
+      "playwright-report/**",
+      "test-results/**",
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

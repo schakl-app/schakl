@@ -11,3 +11,8 @@ src/lib/core/api/schema.d.ts
 
 # Intermediate spec, regenerated each time; not meant to be formatted by hand.
 openapi.json
+
+# Playwright run artifacts (root .gitignore).
+test-results/
+playwright-report/
+blob-report/

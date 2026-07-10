@@ -10,10 +10,13 @@
     "preview": "vite preview",
     "check": "pnpm run machine:messages && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "lint": "prettier --check . && eslint .",
-    "gen:client": "openapi-typescript ./openapi.json -o ./src/lib/core/api/schema.d.ts"
+    "gen:client": "openapi-typescript ./openapi.json -o ./src/lib/core/api/schema.d.ts",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.61.1",
     "@sveltejs/adapter-node": "^5.2.9",
     "@sveltejs/kit": "^2.8.0",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
