@@ -20,6 +20,7 @@
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
   import { navItemsFor, type NavItem } from "$lib/core/registry";
+  import NotificationBell from "$lib/modules/notifications/NotificationBell.svelte";
 
   let { children } = $props();
 
@@ -28,6 +29,8 @@
   const nav = $derived(navItemsFor(theme?.enabledModules ?? []));
   const path = $derived(page.url.pathname);
   const canManage = $derived(user?.canManage ?? false);
+  // The bell is a shell element, not a nav item, so it is gated here rather than by the registry.
+  const hasNotifications = $derived(theme?.enabledModules?.includes("notifications") ?? false);
 
   // Grouped nav: a group renders once, where its first item would sit, holding all members.
   type NavEntry =
@@ -286,6 +289,10 @@
       >
         <Menu size={20} />
       </button>
+      <div class="flex items-center gap-1">
+        {#if hasNotifications}
+          <NotificationBell count={page.data.unreadCount ?? 0} />
+        {/if}
       <div class="relative" data-profile-menu>
         <button
           type="button"
@@ -335,6 +342,7 @@
             </form>
           </div>
         {/if}
+        </div>
       </div>
     </header>
 

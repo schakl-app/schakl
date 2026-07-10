@@ -10,9 +10,23 @@ import type { LayoutServerLoad } from "./$types";
 // rerun on filter/sort/tab navigation, so the column prefs cost one call per section instead of
 // one per click (docs/PERFORMANCE.md). They are a small blob, and every list needs them before it
 // can decide which columns — and therefore which aggregates — to ask the API for.
+//
+// The bell's unread count rides in the same `Promise.all` so it costs no extra round-trip. It is
+// only the *first paint's* value: a layout load does not rerun on navigation, so the bell polls
+// its own endpoint to stay live. A tenant without the module never pays for the call.
 export const load: LayoutServerLoad = async (event) => {
   if (!event.locals.user) throw redirect(303, "/login");
+  const api = apiFor(event);
 
-  const prefs = await apiFor(event).GET("/api/v1/prefs");
-  return { user: event.locals.user, prefs: prefs.data?.prefs ?? {} };
+  const notificationsEnabled = event.locals.theme?.enabledModules?.includes("notifications");
+  const [prefs, unread] = await Promise.all([
+    api.GET("/api/v1/prefs"),
+    notificationsEnabled ? api.GET("/api/v1/notifications/unread-count") : undefined,
+  ]);
+
+  return {
+    user: event.locals.user,
+    prefs: prefs.data?.prefs ?? {},
+    unreadCount: unread?.data?.count ?? 0,
+  };
 };

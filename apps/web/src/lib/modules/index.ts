@@ -8,3 +8,4 @@ import "./tasks";
 import "./projects";
 import "./time";
 import "./leave";
+import "./notifications";
