@@ -20,6 +20,7 @@ registerWebModule({
       module: "leave",
       icon: TreePalm,
       position: 45,
+      requiresPermission: "leave.request.read",
     },
   ],
   dashboardWidgets: [
@@ -27,6 +28,7 @@ registerWebModule({
       key: "leave.balance",
       module: "leave",
       position: 20,
+      requiresPermission: "leave.request.read",
       load: (api) => api.GET("/api/v1/leave/summary").then((r) => r.data ?? null),
       component: LeaveBalanceWidget,
     },

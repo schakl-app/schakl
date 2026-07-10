@@ -5,6 +5,7 @@
   import { page } from "$app/state";
   import { fmtDateTime, fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { can } from "$lib/core/permissions";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
@@ -17,7 +18,8 @@
 
   const task = $derived(data.task);
   const userId = $derived(page.data.user?.id ?? "");
-  const canManage = $derived(Boolean(page.data.user?.canManage));
+  // `tasks.comment.write:any` lets a manager clean up anyone's comment; the author always can.
+  const canDeleteAnyComment = $derived(can(page.data.user, "tasks.comment.write", "any"));
 
   const statuses = ["open", "in_progress", "done"] as const;
   const priorities = ["low", "normal", "high"] as const;
@@ -465,7 +467,7 @@
         <ul class="space-y-3">
           {#each task.comments ?? [] as comment (comment.id)}
             {@const canEditComment = comment.author_user_id === userId}
-            {@const canDeleteComment = canEditComment || canManage}
+            {@const canDeleteComment = canEditComment || canDeleteAnyComment}
             <li class="rounded-lg border border-border bg-surface/50 p-3">
               <div class="mb-1 flex items-center justify-between gap-2">
                 <span class="text-xs font-semibold text-text">{comment.author_name ?? "—"}</span>

@@ -1,6 +1,7 @@
 import { fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
+import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -9,7 +10,7 @@ const ROLES = ["owner", "admin", "member", "client"] as const;
 
 export const load: PageServerLoad = async (event) => {
   // Manager-only screen (the API enforces this too).
-  if (!event.locals.user?.canManage) throw redirect(303, "/");
+  if (!can(event.locals.user, "members.member.read")) throw redirect(303, "/");
   const { data } = await apiFor(event).GET("/api/v1/members");
   return { members: data ?? [], roles: ROLES };
 };

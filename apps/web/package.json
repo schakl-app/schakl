@@ -11,6 +11,7 @@
     "check": "pnpm run machine:messages && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "lint": "prettier --check . && eslint .",
     "gen:client": "openapi-typescript ./openapi.json -o ./src/lib/core/api/schema.d.ts",
+    "test:unit": "node --test 'tests/unit/**/*.test.ts'",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui"
   },

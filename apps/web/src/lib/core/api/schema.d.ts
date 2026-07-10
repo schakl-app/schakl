@@ -3321,7 +3321,7 @@ export interface components {
         };
         /**
          * MeInfo
-         * @description The current user *within the resolved tenant* — includes their membership role.
+         * @description The current user *within the resolved tenant* — including what they may do.
          */
         MeInfo: {
             /** Can Manage */
@@ -3343,6 +3343,8 @@ export interface components {
             is_instance_admin: boolean;
             /** Locale */
             locale: string | null;
+            /** Permissions */
+            permissions: string[];
             /** Role */
             role: string;
         };

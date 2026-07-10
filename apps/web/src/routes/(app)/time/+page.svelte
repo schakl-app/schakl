@@ -6,6 +6,7 @@
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import { fmtDayMonth, fmtLongDay, fmtWeekdayShort } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { can } from "$lib/core/permissions";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
@@ -17,7 +18,8 @@
 
   let { data, form } = $props();
 
-  const canManage = $derived(page.data.user?.canManage ?? false);
+  // Approved hours are signed off; only whoever may approve them may still change them.
+  const canApprove = $derived(can(page.data.user, "time.entry.approve"));
 
   // Personal timesheet view (7-day vs Mon–Fri); day tabs mirror the grid.
   const weekView = $derived<"full" | "work">(data.weekView === "work" ? "work" : "full");
@@ -78,7 +80,7 @@
   });
   function rowClick(e: (typeof entries)[number]) {
     if (e.is_running) return;
-    if (e.approved_at && !canManage) return; // approved hours are locked for members
+    if (e.approved_at && !canApprove) return; // approved hours are locked
     editingId = editingId === e.id ? null : e.id;
   }
 
@@ -293,7 +295,7 @@
     {:else}
       <ul class="space-y-2">
         {#each entries as e (e.id)}
-          {@const locked = Boolean(e.approved_at) && !canManage}
+          {@const locked = Boolean(e.approved_at) && !canApprove}
           <li>
             <button
               type="button"

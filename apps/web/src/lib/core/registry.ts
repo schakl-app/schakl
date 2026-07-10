@@ -8,6 +8,8 @@
 import type { Component } from "svelte";
 
 import type { ApiClient } from "./api/client";
+import { can } from "./permissions";
+import type { SessionUser } from "./session";
 
 export interface NavItem {
   key: string;
@@ -24,6 +26,11 @@ export interface NavItem {
    * one header, labelled by the `nav.group.<key>` i18n key. Ungrouped items stay top-level.
    */
   group?: string;
+  /**
+   * Hide this item unless the user holds the permission (issue #19). UX, not security: the
+   * route it links to is gated server-side, in its `+page.server.ts` and again in the API.
+   */
+  requiresPermission?: string;
 }
 
 export interface CompanyPanelSpec {
@@ -113,8 +120,8 @@ export interface DashboardWidgetSpec {
   load: (api: ApiClient) => Promise<unknown>;
   component: Component<{ data: unknown }>;
   position?: number;
-  /** Only offered to owners/admins (its loader calls manager-gated endpoints). */
-  requiresManage?: boolean;
+  /** Only offered to holders of this permission — its loader calls an endpoint gated on it. */
+  requiresPermission?: string;
 }
 
 /** One entry on the shared calendar (`/calendar`), normalized across modules. */
@@ -163,9 +170,10 @@ export function enabledWebModules(enabled: string[]): WebModule[] {
   return enabled.map((name) => _modules.get(name)).filter((m): m is WebModule => Boolean(m));
 }
 
-export function navItemsFor(enabled: string[]): NavItem[] {
+export function navItemsFor(enabled: string[], user?: SessionUser | null): NavItem[] {
   return enabledWebModules(enabled)
     .flatMap((m) => m.nav ?? [])
+    .filter((item) => !item.requiresPermission || can(user, item.requiresPermission))
     .sort((a, b) => (a.position ?? 100) - (b.position ?? 100));
 }
 
@@ -186,9 +194,13 @@ export function entityPanelsFor(enabled: string[], entityType: string): EntityPa
     .sort((a, b) => (a.position ?? 100) - (b.position ?? 100));
 }
 
-export function dashboardWidgetsFor(enabled: string[]): DashboardWidgetSpec[] {
+export function dashboardWidgetsFor(
+  enabled: string[],
+  user?: SessionUser | null,
+): DashboardWidgetSpec[] {
   return enabledWebModules(enabled)
     .flatMap((m) => m.dashboardWidgets ?? [])
+    .filter((w) => !w.requiresPermission || can(user, w.requiresPermission))
     .sort((a, b) => (a.position ?? 100) - (b.position ?? 100));
 }
 

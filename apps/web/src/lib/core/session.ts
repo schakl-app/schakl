@@ -13,8 +13,10 @@ export interface SessionUser {
   full_name: string | null;
   /** Membership role within the resolved tenant (owner/admin/member/client). */
   role: string;
-  /** True for owner/admin — gates management UI (e.g. Settings). */
+  /** True for owner/admin. DEPRECATED (issue #19) — use `can(...)`; dropped next release. */
   canManage: boolean;
+  /** Effective permissions: the union over every role held. `["*"]` for an owner. */
+  permissions: string[];
   /** Personal display-language preference (null → org default). */
   locale: string | null;
   /** Instance owner with the instance-admin surface enabled (issue #26). */
@@ -65,6 +67,7 @@ export async function fetchUser(event: ApiEvent): Promise<SessionUser | null> {
     full_name: data.full_name ?? null,
     role: data.role,
     canManage: data.can_manage,
+    permissions: data.permissions ?? [],
     locale: data.locale ?? null,
     isInstanceAdmin: data.is_instance_admin ?? false,
     impersonatedBy: data.impersonated_by ?? null,

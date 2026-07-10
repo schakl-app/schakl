@@ -20,6 +20,7 @@ registerWebModule({
       module: "tasks",
       icon: SquareCheckBig,
       position: 30,
+      requiresPermission: "tasks.task.read",
     },
   ],
   companyPanels: [
@@ -35,12 +36,14 @@ registerWebModule({
       key: "tasks.my_open",
       module: "tasks",
       position: 20,
+      requiresPermission: "tasks.task.read",
       load: (api) => api.GET("/api/v1/tasks/mine").then((r) => r.data ?? []),
       component: MyTasksWidget,
     },
     {
       key: "tasks.by_group",
       module: "tasks",
+      requiresPermission: "tasks.task.read",
       position: 30,
       load: async (api) => {
         // Grouping needs only ids/names — skip the per-task aggregates (`meta`) and the

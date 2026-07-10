@@ -75,13 +75,19 @@ class ModulesMeta(BaseModel):
 
 
 class MeInfo(BaseModel):
-    """The current user *within the resolved tenant* — includes their membership role."""
+    """The current user *within the resolved tenant* — including what they may do."""
 
     id: str
     email: str
     full_name: str | None
+    # DEPRECATED (issue #19, expand/contract): ``role`` and ``can_manage`` are the coarse
+    # pre-RBAC axis. They stay one release so the API and the web can land independently;
+    # the web reads ``permissions`` and only falls back to ``can_manage`` when it is absent.
     role: str
     can_manage: bool
+    #: Effective permissions — the union over every role this membership holds. ``["*"]`` for an
+    #: owner. This is UX input, never the boundary: the API is the boundary (issue #19).
+    permissions: list[str]
     locale: str | None
     # Instance administration (issue #26). ``is_instance_admin`` reflects the *effective*
     # user, so it goes false while impersonating; the banner comes from the two fields below.
@@ -104,6 +110,7 @@ def _me_info(ctx: RequestContext, user: User) -> MeInfo:
         full_name=user.full_name,
         role=ctx.role.value,
         can_manage=ctx.role.can_manage,
+        permissions=ctx.permissions.keys(),
         locale=user.locale,
         is_instance_admin=(
             settings.instance_admin_enabled

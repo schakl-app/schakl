@@ -19,6 +19,7 @@ registerWebModule({
       group: "relations",
       icon: FolderKanban,
       position: 25,
+      requiresPermission: "projects.project.read",
     },
   ],
   companyPanels: [

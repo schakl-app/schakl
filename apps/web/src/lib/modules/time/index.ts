@@ -25,6 +25,7 @@ registerWebModule({
       module: "time",
       icon: Clock,
       position: 40,
+      requiresPermission: "time.entry.read",
     },
   ],
   companyPanels: [
@@ -78,6 +79,7 @@ registerWebModule({
       key: "time.today",
       module: "time",
       position: 10,
+      requiresPermission: "time.entry.read",
       load: (api) => api.GET("/api/v1/time/summary").then((r) => r.data ?? null),
       component: TimeTodayWidget,
     },
@@ -85,7 +87,7 @@ registerWebModule({
       key: "time.team_month",
       module: "time",
       position: 15,
-      requiresManage: true,
+      requiresPermission: "time.report.read",
       load: async (api) => {
         const today = new Date().toISOString().slice(0, 10);
         const monthStart = today.slice(0, 8) + "01";

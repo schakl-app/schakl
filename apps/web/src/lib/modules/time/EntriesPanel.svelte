@@ -22,6 +22,7 @@
   import { page } from "$app/state";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { can } from "$lib/core/permissions";
   import type { EntityPanelContext, EntityPanelLookups } from "$lib/core/registry";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
@@ -68,10 +69,10 @@
   );
   const truncated = $derived(panel.total > panel.entries.length);
 
-  // Overzicht is a manager surface: its layout redirects anyone else to the dashboard. Offering a
-  // member a link that bounces them is worse than offering none — which is the whole reason this
-  // panel exists (#43). They still get told when the list truncated.
-  const canManage = $derived(Boolean(page.data.user?.canManage));
+  // Overzicht is gated on `time.report.read`: its layout redirects anyone else to the dashboard.
+  // Offering a member a link that bounces them is worse than offering none — which is the whole
+  // reason this panel exists (#43). They still get told when the list truncated.
+  const canViewReport = $derived(can(page.data.user, "time.report.read"));
 
   const memberName = (id: string) => {
     const member = lookups.members.find((m) => m.user_id === id);
@@ -144,7 +145,7 @@
   </ul>
 {/if}
 
-{#if truncated || canManage}
+{#if truncated || canViewReport}
   <div class="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
     {#if truncated}
       <!-- It truncated, so it says so. -->
@@ -154,7 +155,7 @@
     {:else}
       <span></span>
     {/if}
-    {#if canManage}
+    {#if canViewReport}
       <a
         href={panel.viewAllHref}
         data-sveltekit-preload-data="hover"

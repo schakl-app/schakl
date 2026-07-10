@@ -20,7 +20,8 @@
   $effect(() => {
     tiles = data.widgetKeys.map((key: string) => ({ id: key }));
   });
-  const widgetFor = (key: string) => dashboardWidgetsFor(enabled).find((w) => w.key === key);
+  const widgetFor = (key: string) =>
+    dashboardWidgetsFor(enabled, page.data.user).find((w) => w.key === key);
 
   let layoutForm: HTMLFormElement | undefined = $state();
   let layoutValue = $state("");

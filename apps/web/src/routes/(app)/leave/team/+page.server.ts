@@ -1,6 +1,7 @@
 import { fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
+import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
@@ -18,8 +19,8 @@ function parseYear(raw: string | null): number {
 }
 
 export const load: PageServerLoad = async (event) => {
-  // Manager surface: approvals + team balances.
-  if (!event.locals.user?.canManage) throw redirect(303, "/leave");
+  // The approver surface: pending decisions + everyone's balances.
+  if (!can(event.locals.user, "leave.request.approve")) throw redirect(303, "/leave");
   const api = apiFor(event);
   const year = parseYear(event.url.searchParams.get("year"));
 

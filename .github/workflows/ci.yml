@@ -88,6 +88,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Type check
         run: pnpm --filter @vlotr/web check
+      - name: Unit tests
+        run: pnpm --filter @vlotr/web test:unit
       - name: Build
         run: pnpm --filter @vlotr/web build
 

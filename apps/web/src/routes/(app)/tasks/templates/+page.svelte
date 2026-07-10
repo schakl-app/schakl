@@ -4,13 +4,14 @@
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import { can } from "$lib/core/permissions";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import TasksNav from "$lib/modules/tasks/TasksNav.svelte";
 
   let { data, form } = $props();
 
-  const canManage = $derived(page.data.user?.canManage ?? false);
+  const canManageTemplates = $derived(can(page.data.user, "tasks.template.write"));
 
   // --- checklist template repository state ------------------------------------
   let editingChecklistId = $state<string | null>(null);
@@ -130,7 +131,7 @@
     <h1 class="text-xl font-semibold text-text">{t("settings.task_templates.title")}</h1>
     <p class="mt-1 text-sm text-text-muted">{t("settings.task_templates.subtitle")}</p>
   </div>
-  {#if canManage}
+  {#if canManageTemplates}
     <button
       class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
       onclick={startNew}
@@ -348,7 +349,7 @@
               · {t("tasks.templates.item_count", { count: (template.items ?? []).length })}
             </p>
           </div>
-          {#if canManage}
+          {#if canManageTemplates}
             <ActionsMenu
               items={[
                 { label: t("common.edit"), icon: Pencil, onclick: () => startEdit(template) },

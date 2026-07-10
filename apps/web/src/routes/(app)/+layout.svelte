@@ -20,6 +20,7 @@
 
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import { can, canAccessSettings } from "$lib/core/permissions";
   import { navItemsFor, type NavItem } from "$lib/core/registry";
   import NotificationBell from "$lib/modules/notifications/NotificationBell.svelte";
 
@@ -27,9 +28,10 @@
 
   const theme = $derived(page.data.theme);
   const user = $derived(page.data.user);
-  const nav = $derived(navItemsFor(theme?.enabledModules ?? []));
+  const nav = $derived(navItemsFor(theme?.enabledModules ?? [], user));
   const path = $derived(page.url.pathname);
-  const canManage = $derived(user?.canManage ?? false);
+  const showOverview = $derived(can(user, "time.report.read"));
+  const showSettings = $derived(canAccessSettings(user?.permissions));
   // The bell is a shell element, not a nav item, so it is gated here rather than by the registry.
   const hasNotifications = $derived(theme?.enabledModules?.includes("notifications") ?? false);
 
@@ -208,7 +210,7 @@
           {/if}
         {/if}
       {/each}
-      {#if canManage}
+      {#if showOverview}
         <a
           href="/overview"
           class={itemClass(path.startsWith("/overview"))}
@@ -217,6 +219,8 @@
           <BarChart3 size={18} class="shrink-0 text-text-muted" />
           {#if !collapsed}<span class="truncate">{t("nav.overview")}</span>{/if}
         </a>
+      {/if}
+      {#if showSettings}
         <a
           href="/settings"
           class={itemClass(path.startsWith("/settings") && !path.startsWith("/settings/account"))}
@@ -294,66 +298,66 @@
         {#if hasNotifications}
           <NotificationBell count={page.data.unreadCount ?? 0} />
         {/if}
-      <div class="relative" data-profile-menu>
-        <button
-          type="button"
-          class="flex items-center gap-2 rounded-full py-1 pl-1 pr-3 hover:bg-surface"
-          onclick={() => (profileOpen = !profileOpen)}
-          aria-haspopup="menu"
-          aria-expanded={profileOpen}
-        >
-          <span
-            class="flex h-8 w-8 items-center justify-center rounded-full bg-brand/10 text-xs font-semibold text-brand"
+        <div class="relative" data-profile-menu>
+          <button
+            type="button"
+            class="flex items-center gap-2 rounded-full py-1 pl-1 pr-3 hover:bg-surface"
+            onclick={() => (profileOpen = !profileOpen)}
+            aria-haspopup="menu"
+            aria-expanded={profileOpen}
           >
-            {initials(user?.full_name, user?.email)}
-          </span>
-          <span class="hidden font-medium text-text md:inline">
-            {user?.full_name || user?.email}
-          </span>
-        </button>
-
-        {#if profileOpen}
-          <div
-            role="menu"
-            class="absolute right-0 z-30 mt-1 w-64 rounded-xl border border-border bg-surface-raised py-1 shadow-lg"
-          >
-            <div class="border-b border-border px-4 py-3">
-              <p class="truncate text-sm font-semibold text-text">
-                {user?.full_name || user?.email}
-              </p>
-              {#if user?.full_name}
-                <p class="truncate text-xs text-text-muted">{user?.email}</p>
-              {/if}
-            </div>
-            <a
-              href="/settings/account"
-              class="flex items-center gap-2 px-4 py-2 text-sm text-text hover:bg-surface"
-              onclick={() => (profileOpen = false)}
+            <span
+              class="flex h-8 w-8 items-center justify-center rounded-full bg-brand/10 text-xs font-semibold text-brand"
             >
-              <UserRound size={16} class="text-text-muted" />
-              {t("header.my_settings")}
-            </a>
-            {#if hasNotifications}
-              <!-- The settings hub is manager-only, but what reaches *me* is mine (UX §6). -->
+              {initials(user?.full_name, user?.email)}
+            </span>
+            <span class="hidden font-medium text-text md:inline">
+              {user?.full_name || user?.email}
+            </span>
+          </button>
+
+          {#if profileOpen}
+            <div
+              role="menu"
+              class="absolute right-0 z-30 mt-1 w-64 rounded-xl border border-border bg-surface-raised py-1 shadow-lg"
+            >
+              <div class="border-b border-border px-4 py-3">
+                <p class="truncate text-sm font-semibold text-text">
+                  {user?.full_name || user?.email}
+                </p>
+                {#if user?.full_name}
+                  <p class="truncate text-xs text-text-muted">{user?.email}</p>
+                {/if}
+              </div>
               <a
-                href="/settings/notifications"
+                href="/settings/account"
                 class="flex items-center gap-2 px-4 py-2 text-sm text-text hover:bg-surface"
                 onclick={() => (profileOpen = false)}
               >
-                <BellRing size={16} class="text-text-muted" />
-                {t("settings.notifications.title")}
+                <UserRound size={16} class="text-text-muted" />
+                {t("header.my_settings")}
               </a>
-            {/if}
-            <form method="POST" action="/logout" class="border-t border-border">
-              <button
-                class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-text hover:bg-surface"
-              >
-                <LogOut size={16} class="text-text-muted" />
-                {t("auth.sign_out")}
-              </button>
-            </form>
-          </div>
-        {/if}
+              {#if hasNotifications}
+                <!-- The settings hub is manager-only, but what reaches *me* is mine (UX §6). -->
+                <a
+                  href="/settings/notifications"
+                  class="flex items-center gap-2 px-4 py-2 text-sm text-text hover:bg-surface"
+                  onclick={() => (profileOpen = false)}
+                >
+                  <BellRing size={16} class="text-text-muted" />
+                  {t("settings.notifications.title")}
+                </a>
+              {/if}
+              <form method="POST" action="/logout" class="border-t border-border">
+                <button
+                  class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-text hover:bg-surface"
+                >
+                  <LogOut size={16} class="text-text-muted" />
+                  {t("auth.sign_out")}
+                </button>
+              </form>
+            </div>
+          {/if}
         </div>
       </div>
     </header>
