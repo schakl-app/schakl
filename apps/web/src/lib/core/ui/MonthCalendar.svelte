@@ -4,10 +4,9 @@
    * (multi-day events repeat per day). Mobile-first (docs/UX.md): small screens get a
    * per-day agenda list instead of cramped cells; ≥sm gets the full grid.
    */
-  import { eventsByDayMap, monthGrid } from "$lib/core/calendar";
+  import { eventChipClass, eventsByDayMap, monthGrid } from "$lib/core/calendar";
   import { fmtWeekdayShort } from "$lib/core/format";
   import AgendaList from "$lib/core/ui/AgendaList.svelte";
-  import { labelChipClass } from "$lib/core/ui/colors";
   import type { CalendarEvent } from "$lib/core/registry";
 
   let {
@@ -27,10 +26,9 @@
   const weekdayHeaders = $derived(days.slice(0, 7).map((d) => fmtWeekdayShort(d)));
   const monthDays = $derived(days.filter((d) => d.slice(0, 7) === month));
 
+  // The holiday/leave distinction lives in `eventChipClass`, not here (#47).
   const chipClass = (e: CalendarEvent) =>
-    `block truncate rounded px-1.5 py-0.5 text-xs ${labelChipClass(e.color)} ${
-      e.tentative ? "opacity-60" : ""
-    }`;
+    `block truncate rounded px-1.5 py-0.5 text-xs ${eventChipClass(e)}`;
 </script>
 
 <!-- ≥sm: the month grid -->

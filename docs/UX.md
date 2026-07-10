@@ -214,7 +214,16 @@
   schedule, they are never typed. Someone still carrying pre-schedule contract hours is flagged
   where they are listed, rather than being silently measured against the org default.
   Org config — verloftypen (wettelijk/bovenwettelijk carry-over rules live here, not in code), het
-  standaardrooster, and yearly saldi — lives under Instellingen → Verlof.
+  standaardrooster, feestdagen, and yearly saldi — lives under Instellingen → Verlof.
+- **A feestdag is nobody's working day, not somebody's absence.** So it never renders as one more
+  coloured chip beside three people's vakantie: on the Agenda it is a quiet dashed marking that
+  links nowhere and never counts toward a "busy day" heatmap; on the timesheet it marks the *day
+  column*, because it is a property of the day rather than a row in the grid. The rule lives in
+  `core/calendar.ts::eventChipClass`, once, so no view can drift.
+  Not every feestdag is a day off everywhere (Goede Vrijdag is worked at many Dutch employers), so
+  Instellingen → Verlof → Feestdagen seeds the whole list and lets the tenant **deactivate** the
+  ones they work. Deactivate, never delete: a deleted holiday comes back on the next import, a
+  deactivated one does not, and it renders and counts nowhere in the meantime.
 
 ## Navigation
 

@@ -20,9 +20,14 @@ from app.modules.leave.schedule import parse as parse_schedule
 from app.modules.leave.schemas import (
     EntitlementGenerate,
     GenerateResult,
+    HolidayImport,
+    HolidayImportResult,
     LeaveBalance,
     LeaveEntitlementRead,
     LeaveEntitlementUpsert,
+    LeaveHolidayCreate,
+    LeaveHolidayRead,
+    LeaveHolidayUpdate,
     LeaveProfileRead,
     LeaveProfileSummary,
     LeaveProfileUpdate,
@@ -116,8 +121,89 @@ async def update_settings(
     payload: LeaveSettingsUpdate,
     ctx: RequestContext = Depends(require_context),
 ) -> LeaveSettingsRead:
-    row = await LeaveService(ctx).set_default_schedule(payload.default_schedule)
-    return LeaveSettingsRead(default_schedule=WorkSchedule.model_validate(row.default_schedule))
+    row = await LeaveService(ctx).update_settings(payload)
+    return LeaveSettingsRead(
+        default_schedule=WorkSchedule.model_validate(row.default_schedule),
+        holiday_country=row.holiday_country,
+        holiday_auto_import=row.holiday_auto_import,
+    )
+
+
+# --- holidays (#47) ------------------------------------------------------------ #
+@router.get(
+    "/holidays",
+    response_model=list[LeaveHolidayRead],
+    dependencies=[require_permission("leave.request.read")],
+)
+async def list_holidays(
+    year: int | None = Query(None, ge=2000, le=2100),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
+    include_inactive: bool = Query(False),
+    ctx: RequestContext = Depends(require_context),
+) -> list[LeaveHolidayRead]:
+    """The org's calendar. Any staff member: it drives the agenda and the timesheet.
+
+    By ``year`` (Settings) or by ``date_from``/``date_to`` — a timesheet week straddles New
+    Year's Eve, and a range spares it a second call. The range wins when both are given.
+    """
+    items = await LeaveService(ctx).list_holidays(
+        year=year, date_from=date_from, date_to=date_to, include_inactive=include_inactive
+    )
+    return [LeaveHolidayRead.model_validate(h) for h in items]
+
+
+@router.post(
+    "/holidays",
+    response_model=LeaveHolidayRead,
+    status_code=201,
+    dependencies=[require_permission("leave.holiday.write")],
+)
+async def create_holiday(
+    payload: LeaveHolidayCreate,
+    ctx: RequestContext = Depends(require_context),
+) -> LeaveHolidayRead:
+    return LeaveHolidayRead.model_validate(await LeaveService(ctx).create_holiday(payload))
+
+
+@router.patch(
+    "/holidays/{holiday_id}",
+    response_model=LeaveHolidayRead,
+    dependencies=[require_permission("leave.holiday.write")],
+)
+async def update_holiday(
+    holiday_id: uuid.UUID,
+    payload: LeaveHolidayUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> LeaveHolidayRead:
+    return LeaveHolidayRead.model_validate(
+        await LeaveService(ctx).update_holiday(holiday_id, payload)
+    )
+
+
+@router.delete(
+    "/holidays/{holiday_id}",
+    status_code=204,
+    dependencies=[require_permission("leave.holiday.write")],
+)
+async def delete_holiday(
+    holiday_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> None:
+    await LeaveService(ctx).delete_holiday(holiday_id)
+
+
+@router.post(
+    "/holidays/import",
+    response_model=HolidayImportResult,
+    dependencies=[require_permission("leave.holiday.write")],
+)
+async def import_holidays(
+    payload: HolidayImport,
+    ctx: RequestContext = Depends(require_context),
+) -> HolidayImportResult:
+    """Re-run the generator for a year. Manual and deactivated rows survive untouched."""
+    return await LeaveService(ctx).import_holidays(payload)
 
 
 # --- profiles (work schedule + contract hours) --------------------------------- #

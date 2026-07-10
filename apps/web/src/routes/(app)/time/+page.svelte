@@ -598,6 +598,7 @@
       projects={data.projects}
       tasks={data.tasks}
       leaveHours={data.leaveHours}
+      holidays={data.holidays}
     />
   </div>
 {/if}

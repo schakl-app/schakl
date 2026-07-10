@@ -33,6 +33,7 @@
     tasks,
     weekView = "full",
     leaveHours = null,
+    holidays = null,
   }: {
     week: Week;
     companies: Option[];
@@ -45,11 +46,18 @@
      * never mixed into the worked totals — leave is not a time entry.
      */
     leaveHours?: number[] | null;
+    /**
+     * Public-holiday name per day column, `null` on an ordinary day (#47). It marks the column
+     * header rather than adding a row: a holiday is not somebody's absence, it is a property
+     * of the day, and it costs no leave hours.
+     */
+    holidays?: (string | null)[] | null;
   } = $props();
 
   // Workweek = first 5 day columns; totals recomputed from what's shown so the columns add up.
   const dayCount = $derived(weekView === "work" ? 5 : week.days.length);
   const visibleDays = $derived(week.days.slice(0, dayCount));
+  const visibleHolidays = $derived((holidays ?? []).slice(0, dayCount));
   const sum = (nums: number[]) => nums.reduce((a, b) => a + b, 0);
 
   function rowLabel(row: Row): string {
@@ -99,8 +107,19 @@
         <thead>
           <tr class="border-b border-border text-left text-xs text-text-muted">
             <th class="px-4 py-2 font-medium">{t("time.timesheet.row")}</th>
-            {#each visibleDays as day (day)}
-              <th class="px-2 py-2 text-right font-medium capitalize">{fmtWeekdayDay(day)}</th>
+            {#each visibleDays as day, i (day)}
+              {@const holiday = visibleHolidays[i]}
+              <th class="px-2 py-2 text-right font-medium capitalize" title={holiday ?? undefined}>
+                {fmtWeekdayDay(day)}
+                {#if holiday}
+                  <!-- A holiday is nobody's working day: a quiet, uncoloured marking (#47). -->
+                  <span
+                    class="mt-0.5 block truncate text-[10px] font-normal normal-case text-text-muted"
+                  >
+                    {holiday}
+                  </span>
+                {/if}
+              </th>
             {/each}
             <th class="px-4 py-2 text-right font-medium">{t("time.timesheet.total")}</th>
           </tr>

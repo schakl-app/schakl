@@ -4,11 +4,10 @@
    * (mirrors MonthCalendar's cell markup). Mobile-first: <sm gets the shared agenda list,
    * showing every day (a week is short enough that hiding empty days loses "my week" context).
    */
-  import { eventsByDayMap } from "$lib/core/calendar";
+  import { eventChipClass, eventsByDayMap } from "$lib/core/calendar";
   import { fmtWeekdayShort } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import AgendaList from "$lib/core/ui/AgendaList.svelte";
-  import { labelChipClass } from "$lib/core/ui/colors";
   import type { CalendarEvent } from "$lib/core/registry";
 
   let {
@@ -24,10 +23,9 @@
 
   const eventsByDay = $derived(eventsByDayMap(days, events));
 
+  // The holiday/leave distinction lives in `eventChipClass`, not here (#47).
   const chipClass = (e: CalendarEvent) =>
-    `block truncate rounded px-1.5 py-0.5 text-xs ${labelChipClass(e.color)} ${
-      e.tentative ? "opacity-60" : ""
-    }`;
+    `block truncate rounded px-1.5 py-0.5 text-xs ${eventChipClass(e)}`;
 </script>
 
 <!-- ≥sm: one week row -->

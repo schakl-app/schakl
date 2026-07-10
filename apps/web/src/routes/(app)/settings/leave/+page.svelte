@@ -1,14 +1,22 @@
 <script lang="ts">
-  import { Pencil, Power, Sparkles, Trash2 } from "@lucide/svelte";
+  import { CalendarPlus, Pencil, Power, Plus, Sparkles, Trash2 } from "@lucide/svelte";
   import { tick } from "svelte";
 
   import { enhance } from "$app/forms";
+  import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import DateInput from "$lib/core/ui/DateInput.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import { LABEL_COLORS, labelDotClass } from "$lib/core/ui/colors";
-  import { fmtHours, typeLabel, type LeaveTypeInfo } from "$lib/modules/leave/format";
+  import {
+    fmtHours,
+    holidayName,
+    typeLabel,
+    type HolidayInfo,
+    type LeaveTypeInfo,
+  } from "$lib/modules/leave/format";
   import WorkScheduleEditor from "$lib/modules/leave/WorkScheduleEditor.svelte";
   import { cloneSchedule, type WorkSchedule } from "$lib/modules/leave/schedule";
 
@@ -56,6 +64,31 @@
     toggleId = lt.id;
     toggleActive = String(!lt.active);
     void tick().then(() => toggleForm?.requestSubmit());
+  }
+
+  // --- holidays (#47) --------------------------------------------------------------
+  const holidays = $derived(data.holidays as HolidayInfo[]);
+
+  let holidayOpen = $state(false);
+  let editHoliday = $state<HolidayInfo | null>(null);
+  let holidayDate = $state("");
+  let holidayDeleteId = $state("");
+  let confirmHolidayDelete = $state(false);
+
+  function openHoliday(holiday: HolidayInfo | null) {
+    editHoliday = holiday;
+    holidayDate = holiday?.date ?? "";
+    holidayOpen = true;
+  }
+
+  // Activate/deactivate: non-destructive, so it lives in the ⋯ menu without a confirm.
+  let holidayToggleForm: HTMLFormElement | undefined = $state();
+  let holidayToggleId = $state("");
+  let holidayToggleActive = $state("true");
+  function toggleHoliday(holiday: HolidayInfo) {
+    holidayToggleId = holiday.id;
+    holidayToggleActive = String(!holiday.active);
+    void tick().then(() => holidayToggleForm?.requestSubmit());
   }
 
   // --- member editing ------------------------------------------------------------
@@ -208,6 +241,111 @@
         {t("common.save")}
       </button>
     </form>
+  </div>
+</section>
+
+<!-- Feestdagen (#47): a holiday on a scheduled working day costs no leave hours -->
+<section class="mb-8">
+  <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <div class="flex items-center gap-3">
+        <h2 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
+          {t("settings.leave.holidays_heading")}
+        </h2>
+        <div class="flex items-center gap-1 text-sm" data-sveltekit-preload-data="hover">
+          <a
+            href="?year={data.year - 1}"
+            class="rounded px-1.5 py-0.5 text-text-muted hover:text-brand">‹</a
+          >
+          <span class="font-medium text-text">{data.year}</span>
+          <a
+            href="?year={data.year + 1}"
+            class="rounded px-1.5 py-0.5 text-text-muted hover:text-brand">›</a
+          >
+        </div>
+      </div>
+      <p class="mt-1 text-sm text-text-muted">{t("settings.leave.holidays_hint")}</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <form method="POST" action="?/importHolidays" use:enhance>
+        <input type="hidden" name="year" value={data.year} />
+        <button
+          class="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm text-text hover:border-brand hover:text-brand"
+        >
+          <CalendarPlus size={14} />
+          {t("settings.leave.import_holidays", { year: data.year })}
+        </button>
+      </form>
+      <button
+        type="button"
+        class="flex items-center gap-2 rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
+        onclick={() => openHoliday(null)}
+      >
+        <Plus size={14} />
+        {t("settings.leave.new_holiday")}
+      </button>
+    </div>
+  </div>
+
+  {#if form?.imported}
+    <p class="mb-3 text-sm text-green-600">
+      {t("settings.leave.imported", {
+        created: form.imported.created,
+        updated: form.imported.updated,
+        skipped: form.imported.skipped,
+      })}
+    </p>
+  {/if}
+
+  <div class="overflow-hidden rounded-xl border border-border bg-surface-raised">
+    {#if holidays.length === 0}
+      <p class="p-6 text-sm text-text-muted">{t("settings.leave.holidays_empty")}</p>
+    {:else}
+      <ul class="divide-y divide-border">
+        {#each holidays as holiday (holiday.id)}
+          <li class="flex items-center gap-3 px-4 py-2 {holiday.active ? '' : 'opacity-50'}">
+            <span class="w-32 shrink-0 tabular-nums text-sm text-text-muted"
+              >{fmtNumericDate(holiday.date)}</span
+            >
+            <span class="min-w-0 flex-1 truncate text-sm font-medium text-text">
+              {holidayName(holiday.name_i18n, data.locale)}
+            </span>
+            {#if holiday.source === "manual"}
+              <span class="rounded-full bg-surface px-2 py-0.5 text-xs text-text-muted">
+                {t("settings.leave.holiday_manual")}
+              </span>
+            {/if}
+            {#if !holiday.active}
+              <span class="rounded-full bg-surface px-2 py-0.5 text-xs text-text-muted">
+                {t("settings.leave.holiday_inactive")}
+              </span>
+            {/if}
+            <ActionsMenu
+              compact
+              items={[
+                { label: t("common.edit"), icon: Pencil, onclick: () => openHoliday(holiday) },
+                {
+                  label: holiday.active
+                    ? t("settings.leave.deactivate")
+                    : t("settings.leave.activate"),
+                  icon: Power,
+                  onclick: () => toggleHoliday(holiday),
+                },
+                {
+                  label: t("common.delete"),
+                  icon: Trash2,
+                  danger: true,
+                  onclick: () => {
+                    holidayDeleteId = holiday.id;
+                    confirmHolidayDelete = true;
+                  },
+                },
+              ]}
+            />
+          </li>
+        {/each}
+      </ul>
+    {/if}
   </div>
 </section>
 
@@ -499,10 +637,83 @@
   {/if}
 </Modal>
 
-<!-- Hidden activate/deactivate form, submitted from the ⋯ menu -->
+<!-- Holiday create/edit. Names are tenant data (nl/en), never message keys. -->
+<Modal
+  bind:open={holidayOpen}
+  title={editHoliday ? t("common.edit") : t("settings.leave.new_holiday")}
+>
+  {#key editHoliday?.id ?? "new"}
+    <form
+      method="POST"
+      action="?/saveHoliday"
+      class="space-y-4"
+      use:enhance={() =>
+        ({ result, update }) => {
+          if (result.type === "success") holidayOpen = false;
+          void update({ reset: false });
+        }}
+    >
+      {#if editHoliday}
+        <input type="hidden" name="id" value={editHoliday.id} />
+      {/if}
+      <div>
+        <label class="mb-1 block text-xs font-medium text-text-muted" for="holiday-date">
+          {t("settings.leave.holiday_date")}
+        </label>
+        <DateInput id="holiday-date" name="date" bind:value={holidayDate} required />
+      </div>
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <label class="mb-1 block text-xs font-medium text-text-muted" for="holiday-name-nl">
+            {t("settings.leave.label_nl")}
+          </label>
+          <input
+            id="holiday-name-nl"
+            name="name_nl"
+            required
+            value={editHoliday?.name_i18n?.nl ?? ""}
+            class={inputClass}
+          />
+        </div>
+        <div>
+          <label class="mb-1 block text-xs font-medium text-text-muted" for="holiday-name-en">
+            {t("settings.leave.label_en")}
+          </label>
+          <input
+            id="holiday-name-en"
+            name="name_en"
+            value={editHoliday?.name_i18n?.en ?? ""}
+            class={inputClass}
+          />
+        </div>
+      </div>
+      {#if form?.error}<p class="text-sm text-red-600">{t(form.error)}</p>{/if}
+      <div class="flex justify-end">
+        <button
+          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        >
+          {t("common.save")}
+        </button>
+      </div>
+    </form>
+  {/key}
+</Modal>
+
+<!-- Hidden activate/deactivate forms, submitted from the ⋯ menus -->
 <form bind:this={toggleForm} method="POST" action="?/toggleType" class="hidden" use:enhance>
   <input type="hidden" name="id" value={toggleId} />
   <input type="hidden" name="active" value={toggleActive} />
+</form>
+
+<form
+  bind:this={holidayToggleForm}
+  method="POST"
+  action="?/toggleHoliday"
+  class="hidden"
+  use:enhance
+>
+  <input type="hidden" name="id" value={holidayToggleId} />
+  <input type="hidden" name="active" value={holidayToggleActive} />
 </form>
 
 <ConfirmDialog
@@ -511,4 +722,12 @@
   message={t("settings.leave.delete_confirm")}
   action="?/deleteType"
   fields={{ id: deleteId }}
+/>
+
+<ConfirmDialog
+  bind:open={confirmHolidayDelete}
+  title={t("common.delete")}
+  message={t("settings.leave.holiday_delete_confirm")}
+  action="?/deleteHoliday"
+  fields={{ id: holidayDeleteId }}
 />

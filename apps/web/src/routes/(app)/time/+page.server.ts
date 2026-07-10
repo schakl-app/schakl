@@ -2,6 +2,7 @@ import { fail } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
 import { apiFor } from "$lib/core/session";
+import { holidayName } from "$lib/modules/leave/format";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -64,7 +65,8 @@ export const load: PageServerLoad = async (event) => {
 
   // Lookups (companies/projects/tasks/members) come from the /time layout load, which does
   // not rerun on day/week navigation — keep this load down to what actually changes.
-  const [timer, week, day, recent, leave] = await Promise.all([
+  const weekEnd = isoAddDays(week_start, 6);
+  const [timer, week, day, recent, leave, holidays] = await Promise.all([
     api.GET("/api/v1/time/timer"),
     api.GET("/api/v1/time/timesheet", { params: { query: { week_start } } }),
     api.GET("/api/v1/time/day", { params: { query: { date: selectedDate } } }),
@@ -74,18 +76,23 @@ export const load: PageServerLoad = async (event) => {
     leaveEnabled && event.locals.user
       ? api.GET("/api/v1/leave/team", {
           params: {
-            query: {
-              date_from: week_start,
-              date_to: isoAddDays(week_start, 6),
-              user_id: event.locals.user.id,
-            },
+            query: { date_from: week_start, date_to: weekEnd, user_id: event.locals.user.id },
           },
+        })
+      : Promise.resolve({ data: null }),
+    // One ranged call, not one per year: a timesheet week straddles New Year's Eve (#47).
+    leaveEnabled
+      ? api.GET("/api/v1/leave/holidays", {
+          params: { query: { date_from: week_start, date_to: weekEnd } },
         })
       : Promise.resolve({ data: null }),
   ]);
 
   const lastEntry = recent.data?.items?.[0] ?? null;
   const weekDays = week.data?.days ?? [];
+  const holidayByDate = new Map(
+    (holidays.data ?? []).map((h) => [h.date, holidayName(h.name_i18n, event.locals.locale)]),
+  );
   return {
     running: timer.data ?? null,
     week: week.data ?? null,
@@ -96,6 +103,7 @@ export const load: PageServerLoad = async (event) => {
     lastCompanyId: lastEntry?.company_id ?? "",
     lastProjectId: lastEntry?.project_id ?? "",
     leaveHours: leave.data ? leaveHoursForWeek(leave.data, weekDays) : null,
+    holidays: holidays.data ? weekDays.map((d) => holidayByDate.get(d) ?? null) : null,
   };
 };
 

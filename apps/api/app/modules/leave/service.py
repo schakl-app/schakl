@@ -23,9 +23,11 @@ from app.core.permissions.service import permission_holder_ids
 from app.core.sorting import apply_sort, user_sort_name
 from app.core.tenancy import RequestContext
 from app.errors import AppError
+from app.modules.leave import holidays
 from app.modules.leave import schedule as sched
 from app.modules.leave.models import (
     LeaveEntitlement,
+    LeaveHoliday,
     LeaveProfile,
     LeaveRequest,
     LeaveRequestStatus,
@@ -33,11 +35,16 @@ from app.modules.leave.models import (
     LeaveType,
 )
 from app.modules.leave.schemas import (
+    HolidayImport,
+    HolidayImportResult,
     LeaveBalance,
     LeaveEntitlementUpsert,
+    LeaveHolidayCreate,
+    LeaveHolidayUpdate,
     LeaveProfileUpdate,
     LeaveRequestCreate,
     LeaveRequestUpdate,
+    LeaveSettingsUpdate,
     LeaveSummary,
     LeaveTypeCreate,
     LeaveTypeUpdate,
@@ -137,6 +144,7 @@ class LeaveService:
         self.profiles = ctx.repo(LeaveProfile)
         self.entitlements = ctx.repo(LeaveEntitlement)
         self.settings = ctx.repo(LeaveSettings)
+        self.holidays = ctx.repo(LeaveHoliday)
         # One settings read per request, not one per profile resolved (docs/PERFORMANCE.md).
         self._settings_row: LeaveSettings | None | object = _UNSET
 
@@ -219,15 +227,170 @@ class LeaveService:
         row = await self.settings_row()
         return sched.parse(row.default_schedule) if row else sched.default_schedule()
 
-    async def set_default_schedule(self, schedule: sched.WorkSchedule) -> LeaveSettings:
+    async def update_settings(self, data: LeaveSettingsUpdate) -> LeaveSettings:
+        """Write only what the caller sent. See ``LeaveSettingsUpdate`` — two screens save here."""
         self.ctx.require("leave.profile.manage")
+        values: dict = {
+            key: value
+            for key, value in data.model_dump(exclude_unset=True).items()
+            if key != "default_schedule"
+        }
+        if data.default_schedule is not None:
+            values["default_schedule"] = sched.dump(data.default_schedule)
+
         row = await self.settings_row()
         if row is None:
-            row = await self.settings.create(default_schedule=sched.dump(schedule))
-        else:
-            row = await self.settings.update(row, default_schedule=sched.dump(schedule))
+            # A first save of holiday config must still give the row its NOT NULL schedule.
+            values.setdefault("default_schedule", sched.dump(await self.default_schedule()))
+            row = await self.settings.create(**values)
+        elif values:
+            row = await self.settings.update(row, **values)
         self._settings_row = row
         return row
+
+    # --- holidays (#47) --------------------------------------------------------- #
+    async def list_holidays(
+        self,
+        *,
+        year: int | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        include_inactive: bool = False,
+    ) -> Sequence[LeaveHoliday]:
+        """This org's calendar, by year (Settings) or by range (the agenda and the timesheet).
+
+        A range, not only a year, because a timesheet week and a calendar month both straddle
+        New Year's Eve and would otherwise need two calls to find one holiday.
+        """
+        await self._ensure_seeded_holidays()
+        if date_from is None or date_to is None:
+            target = year or _now().year
+            date_from, date_to = date(target, 1, 1), date(target, 12, 31)
+        stmt = self.holidays.scoped_select().where(
+            LeaveHoliday.date >= date_from, LeaveHoliday.date <= date_to
+        )
+        if not include_inactive:
+            stmt = stmt.where(LeaveHoliday.active.is_(True))
+        return (
+            (await self.ctx.session.execute(stmt.order_by(LeaveHoliday.date.asc())))
+            .scalars()
+            .all()
+        )
+
+    async def active_holidays_between(self, start: date, end: date) -> set[date]:
+        """The days in ``[start, end]`` that cost no leave hours (#48). One query, one set."""
+        stmt = select(LeaveHoliday.date).where(
+            LeaveHoliday.org_id == self.ctx.org.id,
+            LeaveHoliday.active.is_(True),
+            LeaveHoliday.date >= start,
+            LeaveHoliday.date <= end,
+        )
+        return set((await self.ctx.session.execute(stmt)).scalars().all())
+
+    async def _ensure_seeded_holidays(self) -> None:
+        """Seed this year + next once per org, the way ``_ensure_default_types`` seeds types."""
+        if not self.ctx.can("leave.request.write"):
+            return
+        if await self.holidays.count() > 0:
+            return
+        settings = await self.settings_row()
+        country = (settings.holiday_country if settings else None) or holidays.COUNTRY_NL
+        year = _now().year
+        for target in (year, year + 1):
+            await self._import_year(country, target)
+
+    async def create_holiday(self, data: LeaveHolidayCreate) -> LeaveHoliday:
+        self.ctx.require("leave.holiday.write")
+        if await self._on_date(data.date) is not None:
+            raise AppError("conflict", "errors.leave_holiday_exists", status_code=409)
+        return await self.holidays.create(
+            **data.model_dump(), source=holidays.SOURCE_MANUAL, key=None
+        )
+
+    async def update_holiday(self, holiday_id: uuid.UUID, data: LeaveHolidayUpdate) -> LeaveHoliday:
+        self.ctx.require("leave.holiday.write")
+        holiday = await self.holidays.get_or_404(holiday_id)
+        values = data.model_dump(exclude_unset=True)
+        moved = values.get("date")
+        if moved is not None and moved != holiday.date:
+            clash = await self._on_date(moved)
+            if clash is not None and clash.id != holiday.id:
+                raise AppError("conflict", "errors.leave_holiday_exists", status_code=409)
+        return await self.holidays.update(holiday, **values)
+
+    async def delete_holiday(self, holiday_id: uuid.UUID) -> None:
+        self.ctx.require("leave.holiday.write")
+        await self.holidays.delete(await self.holidays.get_or_404(holiday_id))
+
+    async def _on_date(self, day: date) -> LeaveHoliday | None:
+        return await self.ctx.session.scalar(
+            self.holidays.scoped_select().where(LeaveHoliday.date == day)
+        )
+
+    async def import_holidays(self, data: HolidayImport) -> HolidayImportResult:
+        self.ctx.require("leave.holiday.write")
+        settings = await self.settings_row()
+        country = data.country or (settings.holiday_country if settings else None)
+        return await self._import_year(country or holidays.COUNTRY_NL, data.year)
+
+    async def _import_year(self, country: str, year: int) -> HolidayImportResult:
+        """Replace this year's **generated** rows; never touch manual or deactivated ones.
+
+        Matching is by ``key``, not by date, so Koningsdag moving from the 27th to the 26th
+        *moves* the row instead of leaving two. A generated row the tenant deactivated keeps its
+        ``active = false`` — re-importing must not quietly reinstate a day they work.
+        """
+        generated = holidays.generate(country, year)
+        if not generated:
+            return HolidayImportResult(created=0, updated=0, skipped=0)
+
+        existing = (
+            (
+                await self.ctx.session.execute(
+                    self.holidays.scoped_select().where(
+                        LeaveHoliday.date >= date(year, 1, 1),
+                        LeaveHoliday.date < date(year + 1, 1, 1),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        by_key = {row.key: row for row in existing if row.key is not None}
+        by_date = {row.date: row for row in existing}
+
+        created = updated = skipped = 0
+        for holiday in generated:
+            current = by_key.get(holiday.key)
+            if current is not None:
+                if current.date == holiday.day:
+                    skipped += 1
+                    continue
+                # The date moved. Refuse to trample whatever now sits on the new one.
+                clash = by_date.get(holiday.day)
+                if clash is not None and clash.id != current.id:
+                    skipped += 1
+                    continue
+                by_date.pop(current.date, None)
+                await self.holidays.update(current, date=holiday.day)
+                by_date[holiday.day] = current
+                updated += 1
+                continue
+            if holiday.day in by_date:
+                # A manual row already owns the day; the tenant's own entry wins.
+                skipped += 1
+                continue
+            row = await self.holidays.create(
+                date=holiday.day,
+                name_i18n=holiday.name_i18n,
+                active=True,
+                source=country,
+                key=holiday.key,
+            )
+            by_date[holiday.day] = row
+            by_key[holiday.key] = row
+            created += 1
+        return HolidayImportResult(created=created, updated=updated, skipped=skipped)
 
     # --- profiles (work schedule + contract hours) ------------------------------ #
     async def _profile(self, user_id: uuid.UUID) -> LeaveProfile | None:

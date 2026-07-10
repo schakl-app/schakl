@@ -41,18 +41,27 @@
         <ul class="space-y-1.5">
           {#each eventsByDay[day] ?? [] as event (event.id + day)}
             <li>
-              <a
-                href={event.href ?? "#"}
-                class="flex items-center gap-2 text-sm text-text {event.tentative
-                  ? 'opacity-60'
-                  : ''}"
-              >
-                <span class="h-2 w-2 shrink-0 rounded-full {labelDotClass(event.color)}"></span>
-                <span class="truncate">{event.title}</span>
-                {#if event.tentative}
-                  <span class="text-xs text-text-muted">{t("calendar.tentative")}</span>
-                {/if}
-              </a>
+              {#if event.kind === "holiday"}
+                <!-- Nobody's absence, so it links nowhere and wears no leave colour (#47). -->
+                <span class="flex items-center gap-2 text-sm text-text-muted">
+                  <span class="h-2 w-2 shrink-0 rounded-full border border-dashed border-border"
+                  ></span>
+                  <span class="truncate">{event.title}</span>
+                </span>
+              {:else}
+                <a
+                  href={event.href ?? "#"}
+                  class="flex items-center gap-2 text-sm text-text {event.tentative
+                    ? 'opacity-60'
+                    : ''}"
+                >
+                  <span class="h-2 w-2 shrink-0 rounded-full {labelDotClass(event.color)}"></span>
+                  <span class="truncate">{event.title}</span>
+                  {#if event.tentative}
+                    <span class="text-xs text-text-muted">{t("calendar.tentative")}</span>
+                  {/if}
+                </a>
+              {/if}
             </li>
           {/each}
         </ul>

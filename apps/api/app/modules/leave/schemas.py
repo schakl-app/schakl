@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
@@ -54,15 +55,73 @@ class LeaveTypeRead(LeaveTypeBase):
     updated_at: datetime
 
 
-# --- org settings (default work schedule) ------------------------------------- #
+# --- org settings (default work schedule, holiday config) ---------------------- #
 
 
 class LeaveSettingsRead(BaseModel):
     default_schedule: WorkSchedule
+    holiday_country: str | None = None
+    holiday_auto_import: bool = True
 
 
 class LeaveSettingsUpdate(BaseModel):
-    default_schedule: WorkSchedule
+    """A **partial** update: only the fields present in the body are written.
+
+    The schedule screen and the holiday screen both save here, and a full replace would let
+    whichever one shipped first quietly reset the other's settings to their defaults.
+    """
+
+    default_schedule: WorkSchedule | None = None
+    holiday_country: str | None = Field(default=None, max_length=2)
+    holiday_auto_import: bool | None = None
+
+
+# --- holidays (#47) ------------------------------------------------------------ #
+# These models carry a field literally called ``date``, which shadows the type at class scope
+# as soon as it has a default: ``date | None`` would then be evaluated as ``None | None``.
+# Hence ``dt.date`` throughout this section — the JSON key stays ``date``.
+
+
+class LeaveHolidayRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    date: dt.date
+    name_i18n: dict[str, str]
+    active: bool
+    #: ``manual`` (hand-added, never touched by an import) or the generator's country code.
+    source: str
+    key: str | None
+
+
+class LeaveHolidayCreate(BaseModel):
+    date: dt.date
+    name_i18n: dict[str, str] = Field(default_factory=dict)
+    active: bool = True
+
+
+class LeaveHolidayUpdate(BaseModel):
+    date: dt.date | None = None
+    name_i18n: dict[str, str] | None = None
+    active: bool | None = None
+
+
+class HolidayImport(BaseModel):
+    year: int = Field(ge=2000, le=2100)
+    #: Which generator to run. Defaults to the org's ``holiday_country``.
+    country: str | None = Field(default=None, max_length=2)
+
+
+class HolidayImportResult(BaseModel):
+    """``created`` new rows, ``updated`` generated rows whose date moved, ``skipped`` the rest.
+
+    A deactivated holiday counts as skipped, never resurrected; a date already occupied by a
+    ``manual`` row is skipped too.
+    """
+
+    created: int
+    updated: int
+    skipped: int
 
 
 # --- profiles (work schedule + contract hours) -------------------------------- #

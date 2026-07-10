@@ -8,7 +8,7 @@ import { t } from "$lib/core/i18n";
 import { TreePalm } from "@lucide/svelte";
 
 import LeaveBalanceWidget from "./LeaveBalanceWidget.svelte";
-import { typeLabel, type LeaveTypeInfo } from "./format";
+import { holidayName, typeLabel, type LeaveTypeInfo } from "./format";
 
 registerWebModule({
   name: "leave",
@@ -57,6 +57,25 @@ registerWebModule({
             tentative: item.status === "pending",
           };
         });
+      },
+    },
+    {
+      // Its own source, not folded into `leave.team`: a holiday is nobody's absence, so it
+      // renders as a marking rather than a chip and never counts toward a busy day (#47).
+      key: "leave.holidays",
+      module: "leave",
+      load: async (api, { from, to, locale }): Promise<CalendarEvent[]> => {
+        const { data } = await api.GET("/api/v1/leave/holidays", {
+          params: { query: { date_from: from, date_to: to } },
+        });
+        return (data ?? []).map((holiday) => ({
+          id: `holiday-${holiday.id}`,
+          start: holiday.date,
+          end: holiday.date,
+          title: holidayName(holiday.name_i18n, locale),
+          color: "slate",
+          kind: "holiday" as const,
+        }));
       },
     },
   ],

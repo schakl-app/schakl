@@ -30,12 +30,14 @@ export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const year = parseYear(event.url.searchParams.get("year"));
 
-  const [types, members, profiles, entitlements, settings] = await Promise.all([
+  const [types, members, profiles, entitlements, settings, holidays] = await Promise.all([
     api.GET("/api/v1/leave/types", { params: { query: { include_inactive: true } } }),
     api.GET("/api/v1/members/lookup"),
     api.GET("/api/v1/leave/profiles"),
     api.GET("/api/v1/leave/entitlements", { params: { query: { year } } }),
     api.GET("/api/v1/leave/settings"),
+    // Deactivated holidays render nowhere and count nowhere — except here, where they are managed.
+    api.GET("/api/v1/leave/holidays", { params: { query: { year, include_inactive: true } } }),
   ]);
 
   return {
@@ -46,6 +48,7 @@ export const load: PageServerLoad = async (event) => {
     profiles: profiles.data ?? [],
     entitlements: entitlements.data ?? [],
     defaultSchedule: settings.data?.default_schedule ?? defaultSchedule(),
+    holidays: holidays.data ?? [],
     locale: event.locals.locale,
   };
 };
@@ -164,5 +167,66 @@ export const actions: Actions = {
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { generated: data?.created ?? 0 };
+  },
+
+  // --- holidays (#47) ---------------------------------------------------------------
+  saveHoliday: async (event) => {
+    const form = await event.request.formData();
+    const id = String(form.get("id") ?? "");
+    const body = {
+      date: String(form.get("date") ?? ""),
+      name_i18n: {
+        nl: String(form.get("name_nl") ?? "").trim(),
+        en: String(form.get("name_en") ?? "").trim(),
+      },
+    };
+    if (!body.date || !body.name_i18n.nl) return fail(400, { error: "errors.required" });
+
+    const api = apiFor(event);
+    if (id) {
+      const { error } = await api.PATCH("/api/v1/leave/holidays/{holiday_id}", {
+        params: { path: { holiday_id: id } },
+        body,
+      });
+      if (error) return fail(400, { error: apiErrorKey(error).key });
+      return { holidaySaved: true };
+    }
+    const { error } = await api.POST("/api/v1/leave/holidays", { body: { ...body, active: true } });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { holidaySaved: true };
+  },
+
+  /** Deactivate, never delete: a holiday the tenant works must stay off across re-imports. */
+  toggleHoliday: async (event) => {
+    const form = await event.request.formData();
+    const id = String(form.get("id") ?? "");
+    if (!id) return fail(400, { error: "errors.required" });
+    const { error } = await apiFor(event).PATCH("/api/v1/leave/holidays/{holiday_id}", {
+      params: { path: { holiday_id: id } },
+      body: { active: form.get("active") === "true" },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { holidaySaved: true };
+  },
+
+  deleteHoliday: async (event) => {
+    const form = await event.request.formData();
+    const id = String(form.get("id") ?? "");
+    if (!id) return fail(400, { error: "errors.required" });
+    const { error } = await apiFor(event).DELETE("/api/v1/leave/holidays/{holiday_id}", {
+      params: { path: { holiday_id: id } },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { holidayDeleted: true };
+  },
+
+  importHolidays: async (event) => {
+    const form = await event.request.formData();
+    const year = parseYear(String(form.get("year") ?? ""));
+    const { data, error } = await apiFor(event).POST("/api/v1/leave/holidays/import", {
+      body: { year },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { imported: data ?? { created: 0, updated: 0, skipped: 0 } };
   },
 };

@@ -70,7 +70,7 @@ class LeaveType(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
 
 
 class LeaveSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
-    """Org-wide leave configuration: the schedule new employees inherit (#46).
+    """Org-wide leave configuration: the schedule new employees inherit (#46), holidays (#47).
 
     One row per org. ``default_schedule`` is a :class:`~app.modules.leave.schedule.WorkSchedule`
     blob; an employee whose ``LeaveProfile.schedule`` is ``NULL`` follows it.
@@ -80,6 +80,38 @@ class LeaveSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     __table_args__ = (UniqueConstraint("org_id"),)
 
     default_schedule: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    #: Which generator seeds this tenant's calendar (``nl``), or ``NULL`` to seed nothing.
+    holiday_country: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    #: Import next year's holidays each December, unattended (ARQ cron, per org).
+    holiday_auto_import: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class LeaveHoliday(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """A day nobody works. Tenant data, seeded from a generator — never law hardcoded (§14).
+
+    Per-org rows rather than a shared country table: RLS then applies uniformly and a tenant
+    edits their own calendar without forking a global one (Golden Rule 1 stays trivially true).
+
+    ``active`` is not decoration. Goede Vrijdag is worked at many Dutch employers and
+    Bevrijdingsdag is a day off only every fifth year under a lot of CAOs, so the generator
+    emits every holiday and the tenant switches off the ones they work. A re-import never
+    resurrects what they turned off.
+
+    ``key`` names the holiday across years (``koningsdag``), which is what lets a generated date
+    that *moves* — Koningsdag when 27 April is a Sunday — move rather than duplicate. It is
+    ``NULL`` for hand-added rows, whose ``source`` is ``manual`` and which imports never touch.
+    """
+
+    __tablename__ = "leave_holidays"
+    __table_args__ = (UniqueConstraint("org_id", "date"),)
+
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    # Per-locale names ({"nl": "Tweede Kerstdag", "en": "Boxing Day"}) — tenant data, not keys.
+    name_i18n: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    #: ``manual`` or the country code of the generator that produced it (``nl``).
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="manual")
+    key: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
 
 class LeaveProfile(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):

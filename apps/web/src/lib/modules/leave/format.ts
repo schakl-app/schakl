@@ -22,10 +22,24 @@ export interface LeaveTypeInfo {
   active: boolean;
 }
 
+export interface HolidayInfo {
+  id: string;
+  date: string;
+  name_i18n: Record<string, string>;
+  active: boolean;
+  source: string;
+  key: string | null;
+}
+
 /** Tenant-provided label in the UI locale (labels are tenant data, not message keys). */
 export function typeLabel(type: LeaveTypeInfo | undefined, locale: string): string {
   if (!type) return "";
   return type.label_i18n[locale] ?? type.label_i18n.nl ?? type.label_i18n.en ?? type.key;
+}
+
+/** Same rule for a holiday's name — tenant data, in whatever locales the tenant filled in. */
+export function holidayName(names: Record<string, string>, locale: string): string {
+  return names[locale] ?? names.nl ?? names.en ?? Object.values(names)[0] ?? "";
 }
 
 /** "16" / "16,5" — hours in the active locale, without unnecessary decimals. */

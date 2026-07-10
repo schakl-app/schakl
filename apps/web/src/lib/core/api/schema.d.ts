@@ -595,6 +595,68 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/leave/holidays": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Holidays
+         * @description The org's calendar. Any staff member: it drives the agenda and the timesheet.
+         *
+         *     By ``year`` (Settings) or by ``date_from``/``date_to`` — a timesheet week straddles New
+         *     Year's Eve, and a range spares it a second call. The range wins when both are given.
+         */
+        get: operations["list_holidays_api_v1_leave_holidays_get"];
+        put?: never;
+        /** Create Holiday */
+        post: operations["create_holiday_api_v1_leave_holidays_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/holidays/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Holidays
+         * @description Re-run the generator for a year. Manual and deactivated rows survive untouched.
+         */
+        post: operations["import_holidays_api_v1_leave_holidays_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/holidays/{holiday_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Holiday */
+        delete: operations["delete_holiday_api_v1_leave_holidays__holiday_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Holiday */
+        patch: operations["update_holiday_api_v1_leave_holidays__holiday_id__patch"];
+        trace?: never;
+    };
     "/api/v1/leave/profile": {
         parameters: {
             query?: never;
@@ -2924,6 +2986,28 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** HolidayImport */
+        HolidayImport: {
+            /** Country */
+            country?: string | null;
+            /** Year */
+            year: number;
+        };
+        /**
+         * HolidayImportResult
+         * @description ``created`` new rows, ``updated`` generated rows whose date moved, ``skipped`` the rest.
+         *
+         *     A deactivated holiday counts as skipped, never resurrected; a date already occupied by a
+         *     ``manual`` row is skipped too.
+         */
+        HolidayImportResult: {
+            /** Created */
+            created: number;
+            /** Skipped */
+            skipped: number;
+            /** Updated */
+            updated: number;
+        };
         /** ImpersonateRequest */
         ImpersonateRequest: {
             /**
@@ -3069,6 +3153,57 @@ export interface components {
             user_id: string;
             /** Year */
             year: number;
+        };
+        /** LeaveHolidayCreate */
+        LeaveHolidayCreate: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Name I18N */
+            name_i18n?: {
+                [key: string]: string;
+            };
+        };
+        /** LeaveHolidayRead */
+        LeaveHolidayRead: {
+            /** Active */
+            active: boolean;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Key */
+            key: string | null;
+            /** Name I18N */
+            name_i18n: {
+                [key: string]: string;
+            };
+            /** Source */
+            source: string;
+        };
+        /** LeaveHolidayUpdate */
+        LeaveHolidayUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Date */
+            date?: string | null;
+            /** Name I18N */
+            name_i18n?: {
+                [key: string]: string;
+            } | null;
         };
         /**
          * LeaveProfileRead
@@ -3227,10 +3362,27 @@ export interface components {
         /** LeaveSettingsRead */
         LeaveSettingsRead: {
             default_schedule: components["schemas"]["WorkSchedule-Output"];
+            /**
+             * Holiday Auto Import
+             * @default true
+             */
+            holiday_auto_import: boolean;
+            /** Holiday Country */
+            holiday_country?: string | null;
         };
-        /** LeaveSettingsUpdate */
+        /**
+         * LeaveSettingsUpdate
+         * @description A **partial** update: only the fields present in the body are written.
+         *
+         *     The schedule screen and the holiday screen both save here, and a full replace would let
+         *     whichever one shipped first quietly reset the other's settings to their defaults.
+         */
         LeaveSettingsUpdate: {
-            default_schedule: components["schemas"]["WorkSchedule-Input"];
+            default_schedule?: components["schemas"]["WorkSchedule-Input"] | null;
+            /** Holiday Auto Import */
+            holiday_auto_import?: boolean | null;
+            /** Holiday Country */
+            holiday_country?: string | null;
         };
         /**
          * LeaveSummary
@@ -6626,6 +6778,170 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GenerateResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_holidays_api_v1_leave_holidays_get: {
+        parameters: {
+            query?: {
+                year?: number | null;
+                date_from?: string | null;
+                date_to?: string | null;
+                include_inactive?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveHolidayRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_holiday_api_v1_leave_holidays_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveHolidayCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveHolidayRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_holidays_api_v1_leave_holidays_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HolidayImport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HolidayImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_holiday_api_v1_leave_holidays__holiday_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                holiday_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_holiday_api_v1_leave_holidays__holiday_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                holiday_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveHolidayUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveHolidayRead"];
                 };
             };
             /** @description Validation Error */

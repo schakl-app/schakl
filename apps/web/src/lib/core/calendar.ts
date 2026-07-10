@@ -3,6 +3,7 @@
  * like `core/format.ts`) shared by the page load (fetch range) and the view components.
  */
 import type { CalendarEvent } from "./registry";
+import { labelChipClass } from "./ui/colors";
 
 export const CALENDAR_VIEWS = ["day", "week", "month", "year"] as const;
 export type CalendarView = (typeof CALENDAR_VIEWS)[number];
@@ -116,12 +117,16 @@ export interface CalendarDayAggregate {
 /**
  * Per-day event counts, keyed by ISO date. Used by the year view so only aggregates — never
  * full event bodies — are sent to the client (docs/PERFORMANCE.md).
+ *
+ * Holidays are excluded: the year heatmap answers "how much is happening", and a public holiday
+ * is the opposite of something happening.
  */
 export function aggregateEventsByDay(
   events: CalendarEvent[],
 ): Record<string, CalendarDayAggregate> {
   const byDay: Record<string, { count: number; allTentative: boolean }> = {};
   for (const event of events) {
+    if (event.kind === "holiday") continue;
     for (let d = event.start; d <= event.end; d = isoAddDays(d, 1)) {
       const entry = byDay[d] ?? { count: 0, allTentative: true };
       entry.count += 1;
@@ -134,4 +139,18 @@ export function aggregateEventsByDay(
     result[day] = { count, tentativeOnly: allTentative };
   }
   return result;
+}
+
+/**
+ * How one event renders in a calendar cell, decided in exactly one place.
+ *
+ * A holiday is not somebody's absence — it is nobody's working day — so it never wears a leave
+ * colour and never becomes one more coloured pill next to three people's vakantie. It gets a
+ * quiet, dashed, uncoloured band instead.
+ */
+export function eventChipClass(event: CalendarEvent): string {
+  if (event.kind === "holiday") {
+    return "border border-dashed border-border bg-surface text-text-muted";
+  }
+  return `${labelChipClass(event.color)} ${event.tentative ? "opacity-60" : ""}`;
 }

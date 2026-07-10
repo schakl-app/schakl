@@ -23,6 +23,8 @@ LEAVE_PERMISSIONS: list[PermissionSpec] = [
     PermissionSpec("leave.request.approve", position=30),
     PermissionSpec("leave.type.write", position=40),
     PermissionSpec("leave.profile.manage", position=50),
+    # Reading the calendar rides on ``leave.request.read`` — everyone needs to see the holidays.
+    PermissionSpec("leave.holiday.write", position=55),
     PermissionSpec(
         "leave.entitlement.read",
         scopes=SCOPES,

@@ -136,6 +136,12 @@ export interface CalendarEvent {
   href?: string;
   /** Tentative events (e.g. pending leave) render muted with a "?" marker. */
   tentative?: boolean;
+  /**
+   * `"holiday"` renders as a quiet full-width marking rather than a chip: a public holiday is
+   * not somebody's absence, it is nobody's working day, and drawing it as one more coloured
+   * pill next to three people's leave says the opposite.
+   */
+  kind?: "event" | "holiday";
 }
 
 export interface CalendarSourceSpec {
