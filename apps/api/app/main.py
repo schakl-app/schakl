@@ -7,6 +7,8 @@ under ``/api/v1``, and installs the standard error envelope. Modules self-regist
 from __future__ import annotations
 
 import importlib
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, FastAPI
 from fastapi.responses import JSONResponse
@@ -20,6 +22,7 @@ from app.core.domains import router as domains_router
 from app.core.instance.router import router as instance_router
 from app.core.members import router as members_router
 from app.core.meta import router as meta_router
+from app.core.permissions.reconcile import reconcile_permission_defaults
 from app.core.setup import router as setup_router
 from app.core.system import readiness
 from app.core.system import router as system_router
@@ -33,6 +36,15 @@ def _load_enabled_modules() -> None:
         importlib.import_module(f"app.modules.{name}")
 
 
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """Grant every org's system roles the permissions of any module that shipped after that org
+    was seeded (issue #19). One ``SELECT`` per org in steady state, and never fatal — a stale
+    catalog is a missing capability, not a reason to refuse to serve."""
+    await reconcile_permission_defaults()
+    yield
+
+
 def create_app() -> FastAPI:
     _load_enabled_modules()
 
@@ -40,6 +52,7 @@ def create_app() -> FastAPI:
         title="vlotr API",
         version=settings.version,
         description="Multi-tenant, modular, white-label agency operations platform.",
+        lifespan=lifespan,
     )
     # Needed by the optional OIDC flow (Authlib stores state in the session); harmless otherwise.
     app.add_middleware(

@@ -103,6 +103,12 @@ class OrgSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     enabled_modules: Mapped[list[str]] = mapped_column(
         ARRAY(String), nullable=False, default=list
     )
+    # Which permission-catalog keys this org's system roles have already been offered (issue
+    # #19). A module that ships later adds keys, which the startup reconciler grants exactly
+    # once — so a tenant who unticked a permission keeps it unticked.
+    applied_permission_defaults: Mapped[list[str]] = mapped_column(
+        ARRAY(String), nullable=False, default=list, server_default=text("'{}'")
+    )
 
 
 class DashboardPref(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):

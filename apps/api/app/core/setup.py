@@ -25,8 +25,9 @@ from app.config import settings
 from app.core.auth.models import User
 from app.core.instance import audit, repo
 from app.core.instance import service as org_service
-from app.core.models import Membership, Org, OrgSettings
-from app.core.roles import Role
+from app.core.models import Org, OrgSettings
+from app.core.permissions.catalog import ROLE_OWNER
+from app.core.permissions.service import create_membership, seed_system_roles
 from app.core.tenancy import request_hostname
 from app.db import async_session_maker, set_current_org
 from app.errors import AppError
@@ -109,7 +110,6 @@ async def run_setup(payload: SetupRequest, request: Request) -> SetupResult:
         await session.flush()
 
         await set_current_org(session, org.id)
-        session.add(Membership(org_id=org.id, user_id=owner.id, role=Role.OWNER.value))
         session.add(
             OrgSettings(
                 org_id=org.id,
@@ -120,6 +120,11 @@ async def run_setup(payload: SetupRequest, request: Request) -> SetupResult:
                 enabled_modules=modules,
             )
         )
+        await session.flush()
+        # The four system roles must exist before the first membership can hold one (issue #19),
+        # and ``seed_system_roles`` stamps ``org_settings.applied_permission_defaults``.
+        await seed_system_roles(session, org.id)
+        await create_membership(session, org.id, owner.id, ROLE_OWNER)
         await session.flush()
         await audit.record(
             session,

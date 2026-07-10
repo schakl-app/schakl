@@ -12,6 +12,7 @@ from arq import cron
 from app.core.events import subscribe
 from app.modules.tasks.mcp import TASK_MCP_TOOLS
 from app.modules.tasks.panels import tasks_company_panel
+from app.modules.tasks.permissions import TASK_PERMISSIONS
 from app.modules.tasks.recurrence import spawn_scheduled_recurrences
 from app.modules.tasks.reminders import send_task_reminders
 from app.modules.tasks.router import router
@@ -23,6 +24,7 @@ module = ModuleDescriptor(
     router=router,
     i18n_namespace="tasks",
     panels=[tasks_company_panel],
+    permissions=TASK_PERMISSIONS,
     mcp_tools=TASK_MCP_TOOLS,
     # 04:00 UTC ≈ early morning in Europe/Amsterdam; the job reasons in local dates itself.
     cron_jobs=[

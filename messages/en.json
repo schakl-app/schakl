@@ -709,6 +709,7 @@
   "errors.approved_locked": "These hours are approved and locked. A manager can change or unapprove them.",
   "errors.due_reason_required": "Give a reason for moving the deadline.",
   "errors.last_owner": "You can't remove or demote the last owner.",
+  "errors.last_role_manager": "This is the last role that can manage roles — the organisation would lock itself out.",
   "errors.cannot_remove_self": "You can't remove your own membership.",
   "errors.server": "Something went wrong. Please try again.",
   "errors.leave_overlap": "This period overlaps another leave request.",

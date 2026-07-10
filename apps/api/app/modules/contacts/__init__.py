@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from app.modules.contacts.mcp import CONTACT_MCP_TOOLS
 from app.modules.contacts.panels import contacts_company_panel
+from app.modules.contacts.permissions import CONTACT_PERMISSIONS
 from app.modules.contacts.router import router
 from app.registry import ModuleDescriptor, registry
 
@@ -16,6 +17,7 @@ module = ModuleDescriptor(
     router=router,
     i18n_namespace="contacts",
     panels=[contacts_company_panel],
+    permissions=CONTACT_PERMISSIONS,
     mcp_tools=CONTACT_MCP_TOOLS,
 )
 

@@ -1,9 +1,13 @@
 """Team / user management for the current org (CLAUDE.md §5, §9).
 
-Members are ``memberships`` (a global ``user`` linked to the org with a ``role``). This is a
-manager-only surface: list the team, invite by email, change a role, or revoke access. All
-queries are tenant-scoped (RLS + explicit ``org_id``); an invite creates the global user if
-needed. No SMTP in P0, so the invite is logged — the user sets a password via forgot-password.
+Members are ``memberships`` (a global ``user`` linked to the org). This is a manager-only
+surface: list the team, invite by email, change a role, or revoke access. All queries are
+tenant-scoped (RLS + explicit ``org_id``); an invite creates the global user if needed. No SMTP
+in P0, so the invite is logged — the user sets a password via forgot-password.
+
+Authorization is roles → permissions (issue #19). ``membership_roles`` is authoritative; the
+``memberships.role`` column is dual-written with the membership's highest-privilege system role,
+so rolling the image back to the previous release lands old code on a value it can still parse.
 """
 
 from __future__ import annotations
@@ -19,6 +23,9 @@ from sqlalchemy import func, select
 
 from app.core.auth.models import User
 from app.core.models import Membership
+from app.core.permissions.models import MembershipRole
+from app.core.permissions.models import Role as RoleRow
+from app.core.permissions.service import create_membership, role_by_key, role_manager_count
 from app.core.roles import Role
 from app.core.tenancy import RequestContext, require_context
 from app.errors import AppError
@@ -69,15 +76,18 @@ def _member_read(ctx: RequestContext, membership: Membership, user: User) -> Mem
     )
 
 
-async def _owner_count(ctx: RequestContext) -> int:
-    return int(
-        await ctx.session.scalar(
-            select(func.count())
-            .select_from(Membership)
-            .where(Membership.org_id == ctx.org.id, Membership.role == Role.OWNER.value)
-        )
-        or 0
-    )
+async def ensure_a_role_manager_remains(ctx: RequestContext) -> None:
+    """Reject any mutation that would leave nobody able to administer roles.
+
+    Called **after** the mutation is flushed, so it sees the world the caller is proposing; the
+    ``AppError`` unwinds ``require_context``, which rolls the transaction back. This replaces the
+    old "never demote the last owner" rule: the moment ``membership_roles`` decides who may do
+    what, counting ``memberships.role == 'owner'`` answers the wrong question — an org whose last
+    owner becomes an admin has lost nothing, and an org whose last admin becomes a member has lost
+    everything.
+    """
+    if await role_manager_count(ctx.session, ctx.org.id) == 0:
+        raise AppError("last_role_manager", "errors.last_role_manager", status_code=409)
 
 
 @router.get("", response_model=list[MemberRead])
@@ -142,9 +152,7 @@ async def invite_member(
     if existing is not None:
         raise AppError("conflict", "errors.conflict", status_code=409)
 
-    membership = Membership(org_id=ctx.org.id, user_id=user.id, role=payload.role.value)
-    ctx.session.add(membership)
-    await ctx.session.flush()
+    membership = await create_membership(ctx.session, ctx.org.id, user.id, payload.role.value)
     logger.info("Invited %s to org %s as %s", email, ctx.org.slug, payload.role.value)
     return _member_read(ctx, membership, user)
 
@@ -166,17 +174,34 @@ async def update_member_role(
     payload: MemberRoleUpdate,
     ctx: RequestContext = Depends(require_context),
 ) -> MemberRead:
+    """Swap this membership's **system** role; any custom roles it also holds are untouched."""
     ctx.ensure_can_manage()
     membership = await _membership_or_404(ctx, membership_id)
-    # Never leave the org without an owner.
-    if (
-        membership.role == Role.OWNER.value
-        and payload.role != Role.OWNER
-        and await _owner_count(ctx) <= 1
-    ):
-        raise AppError("last_owner", "errors.last_owner", status_code=400)
-    membership.role = payload.role.value
+    target = await role_by_key(ctx.session, ctx.org.id, payload.role.value)
+    if target is None:
+        raise AppError("not_found", "errors.not_found", status_code=404)
+
+    held_system_links = (
+        await ctx.session.execute(
+            select(MembershipRole)
+            .join(RoleRow, RoleRow.id == MembershipRole.role_id)
+            .where(
+                MembershipRole.org_id == ctx.org.id,
+                MembershipRole.membership_id == membership.id,
+                RoleRow.is_system.is_(True),
+            )
+        )
+    ).scalars().all()
+    if all(link.role_id != target.id for link in held_system_links):
+        for link in held_system_links:
+            await ctx.session.delete(link)
+        ctx.session.add(
+            MembershipRole(org_id=ctx.org.id, membership_id=membership.id, role_id=target.id)
+        )
+    membership.role = payload.role.value  # dual write, release N only
     await ctx.session.flush()
+    await ensure_a_role_manager_remains(ctx)
+
     user = await ctx.session.get(User, membership.user_id)
     return _member_read(ctx, membership, user)  # type: ignore[arg-type]
 
@@ -190,7 +215,6 @@ async def revoke_member(
     membership = await _membership_or_404(ctx, membership_id)
     if membership.user_id == ctx.user.id:
         raise AppError("cannot_remove_self", "errors.cannot_remove_self", status_code=400)
-    if membership.role == Role.OWNER.value and await _owner_count(ctx) <= 1:
-        raise AppError("last_owner", "errors.last_owner", status_code=400)
     await ctx.session.delete(membership)
     await ctx.session.flush()
+    await ensure_a_role_manager_remains(ctx)

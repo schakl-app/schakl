@@ -33,10 +33,14 @@ from sqlalchemy import text  # noqa: E402
 from app.core.auth.backend import get_jwt_strategy  # noqa: E402
 from app.core.auth.models import User  # noqa: E402
 from app.core.models import Membership, Org, OrgSettings  # noqa: E402
+from app.core.permissions.service import create_membership, seed_system_roles  # noqa: E402
 from app.db import async_session_maker, engine, set_current_org  # noqa: E402
 from app.main import app  # noqa: E402
 
 _password_hash = PasswordHash.recommended()
+# Truncated in FK-child-before-parent order: `membership_roles` and `role_permissions` hang off
+# `memberships`/`roles`, so they precede both (CASCADE would take them anyway, but the explicit
+# order is what documents the dependency).
 _DOMAIN_TABLES = (
     "notification_deliveries, notifications, notification_watchers, "
     "notification_preferences, notification_events, "
@@ -45,7 +49,8 @@ _DOMAIN_TABLES = (
     "task_comments, task_activities, task_template_items, task_templates, "
     "leave_requests, leave_entitlements, leave_profiles, leave_types, "
     "time_entries, tasks, projects, contacts, custom_field_definitions, "
-    "dashboard_prefs, user_prefs, companies, memberships, org_settings, "
+    "dashboard_prefs, user_prefs, companies, "
+    "membership_roles, role_permissions, roles, memberships, org_settings, "
     "instance_audit_log, users, orgs"
 )
 _ENABLED_MODULES = [
@@ -104,17 +109,30 @@ async def make_tenant(
 
         # Org-scoped rows require the RLS GUC bound to this org.
         await set_current_org(session, org.id)
-        session.add(Membership(org_id=org.id, user_id=user.id, role=role))
         session.add(
             OrgSettings(
                 org_id=org.id, brand_name=slug.title(), enabled_modules=list(_ENABLED_MODULES)
             )
         )
+        await session.flush()
+        await seed_system_roles(session, org.id)
+        await create_membership(session, org.id, user.id, role)
         await session.commit()
         # Detach copies for use outside the session.
         org_out = Org(id=org.id, slug=org.slug, name=org.name)
         user_out = User(id=user.id, email=user.email, hashed_password="", is_active=True)
     return Tenant(org=org_out, user=user_out, password=password, host=f"{slug}.localhost")
+
+
+async def add_membership(
+    session: Any, org_id: uuid.UUID, user_id: uuid.UUID, role: str = "member"
+) -> Membership:
+    """A membership **plus** the system role that carries its permissions (issue #19).
+
+    Constructing a bare ``Membership`` gives a user who authenticates and then holds nothing —
+    every gated endpoint 403s. Always go through this (or ``make_tenant``).
+    """
+    return await create_membership(session, org_id, user_id, role)
 
 
 async def auth_cookie(user: User) -> dict[str, str]:

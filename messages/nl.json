@@ -709,6 +709,7 @@
   "errors.approved_locked": "Deze uren zijn goedgekeurd en vergrendeld. Een beheerder kan ze aanpassen of de goedkeuring ongedaan maken.",
   "errors.due_reason_required": "Geef een reden op voor het verschuiven van de deadline.",
   "errors.last_owner": "Je kunt de laatste eigenaar niet verwijderen of degraderen.",
+  "errors.last_role_manager": "Dit is de laatste rol die rollen kan beheren — de organisatie zou zichzelf buitensluiten.",
   "errors.cannot_remove_self": "Je kunt je eigen lidmaatschap niet verwijderen.",
   "errors.server": "Er ging iets mis. Probeer het opnieuw.",
   "errors.leave_overlap": "Deze periode overlapt met een andere verlofaanvraag.",

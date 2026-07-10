@@ -7,6 +7,7 @@ contributes no company panels; the calendar and timesheet read it via its REST f
 
 from __future__ import annotations
 
+from app.modules.leave.permissions import LEAVE_PERMISSIONS
 from app.modules.leave.router import router
 from app.registry import ModuleDescriptor, registry
 
@@ -14,6 +15,7 @@ module = ModuleDescriptor(
     name="leave",
     router=router,
     i18n_namespace="leave",
+    permissions=LEAVE_PERMISSIONS,
 )
 
 registry.register(module)

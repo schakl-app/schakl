@@ -49,6 +49,62 @@ For local dev without Traefik (`pnpm dev` + local API): browse `http://vlotr.loc
 (slug + base domain `localhost`), not bare `localhost` — or run the wizard on the host you
 prefer and it claims it.
 
+## Roles and permissions (upgrade note — members lose write access)
+
+This release replaces the fixed four-role enum with **tenant-defined roles carrying explicit
+permissions** (issue #19). The migration seeds your existing four roles — `owner`, `admin`,
+`member`, `client` — and maps every existing membership onto the one it already had. Nothing
+is deleted, and `owner`/`admin`/`client` behave exactly as before.
+
+**`member` does not.** Its new default is deliberately restrictive: read everything, plus
+
+- create a task, and edit a task **assigned to them**;
+- comment on tasks;
+- log their **own** hours;
+- request their **own** leave.
+
+So on `alembic upgrade head` — which the API entrypoint runs unattended, before uvicorn binds
+— every `member` at your agency **loses** the ability to:
+
+| | |
+|---|---|
+| create / edit / delete | a company, a contact, a project |
+| edit | a task they are not the assignee of |
+| create / edit | task labels, checklist templates, task templates |
+| apply | a task template to a client |
+| create / edit | leave types |
+
+This is a stricter default posture, not a removal: **every one of these is a checkbox** in
+*Instellingen → Rollen*. Nobody is locked out of their own work, and no data is touched.
+
+**Before you upgrade**
+
+1. **Back up the database.** `docker compose exec db pg_dump -U vlotr vlotr > backup.sql`.
+   This migration is reversible (`alembic downgrade -1` drops the three new tables and the new
+   `org_settings` column, leaving `memberships.role` exactly as it was), but take the backup
+   anyway.
+2. Note who is a `member` today: *Instellingen → Gebruikers*.
+
+**After you upgrade**
+
+1. Sign in as an `owner` or `admin` and open *Instellingen → Rollen*.
+2. Either tick the permissions your `member` role should keep — the matrix is grouped per
+   module, with a *select all* per module — or **duplicate** `member` into a custom role
+   (e.g. *Senior medewerker*), grant it what you need, and assign it on
+   *Instellingen → Gebruikers*. A user may hold several roles; their permissions are the union.
+3. `owner` always holds `*` and cannot be edited or deleted. The other three system roles
+   cannot be deleted or renamed, but their permissions **are** editable.
+
+**Rolling back to the previous image** is safe for one release: `memberships.role` is still
+written on every role change (highest privilege wins when a user holds several system roles),
+so the old code keeps reading a value it understands. For that reason this release also refuses
+to give anyone *only* custom roles — every membership keeps at least one system role. That
+restriction lifts when `memberships.role` is dropped, one release later.
+
+A module that ships **after** your org was created (say, `subscriptions`) brings its own
+permissions. The API grants them to your system roles once, at boot, and records that it did
+so in `org_settings.applied_permission_defaults` — a permission you unticked stays unticked.
+
 ## Instance administration (off by default)
 
 `VLOTR_INSTANCE_ADMIN_ENABLED=true` opens `/instance` (and `/api/v1/instance/*`) to

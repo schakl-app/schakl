@@ -72,6 +72,7 @@ def build_oidc_router() -> APIRouter | None:
             from sqlalchemy import select
 
             from app.core.models import Membership
+            from app.core.permissions.service import create_membership
             from app.core.tenancy import request_hostname, resolve_org
             from app.db import set_current_org
 
@@ -101,12 +102,11 @@ def build_oidc_router() -> APIRouter | None:
                         )
                     )
                     if existing is None:
-                        session.add(
-                            Membership(
-                                org_id=org.id,
-                                user_id=user.id,
-                                role=settings.oidc_default_role,
-                            )
+                        # Goes through the RBAC helper so a JIT-provisioned user also holds the
+                        # system role that carries their permissions (issue #19) — a membership
+                        # without one authenticates and can then do nothing at all.
+                        await create_membership(
+                            session, org.id, user.id, settings.oidc_default_role
                         )
             await session.commit()
 

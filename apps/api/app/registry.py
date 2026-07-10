@@ -4,6 +4,9 @@ Every domain module self-registers a :class:`ModuleDescriptor`. ``main.py`` moun
 of enabled modules; the company detail view composes :class:`PanelSpec`s that modules attach to
 an entity (the "attach to company" hub). The ``mcp_tools`` field is the Phase-4 seam — captured
 now, served later. Modules never import each other's internals; they meet here.
+
+A module also declares the **permissions** it introduces (issue #19), which is why core holds no
+module permission list: adding a module ships its ``<module>.<resource>.<action>`` keys with it.
 """
 
 from __future__ import annotations
@@ -17,6 +20,7 @@ if TYPE_CHECKING:
 
     from fastapi import APIRouter
 
+    from app.core.permissions.spec import PermissionSpec
     from app.core.tenancy import RequestContext
 
 # A panel provider fetches this module's data for one target entity instance.
@@ -40,6 +44,9 @@ class ModuleDescriptor:
     router: APIRouter | None = None
     i18n_namespace: str | None = None
     panels: list[PanelSpec] = field(default_factory=list)
+    # The capabilities this module introduces (issue #19). Aggregated into the permission
+    # catalog by ``app.core.permissions.catalog.all_permissions``.
+    permissions: list[PermissionSpec] = field(default_factory=list)
     # Phase-4 MCP seam: opaque tool specs, not served in P0.
     mcp_tools: list[Any] = field(default_factory=list)
     # ARQ cron job specs; the worker collects these from enabled modules.

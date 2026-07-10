@@ -20,8 +20,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.core.auth.models import User
 from app.core.instance import audit, repo
-from app.core.models import Membership, Org, OrgSettings, OrgStatus
-from app.core.roles import Role
+from app.core.models import Org, OrgSettings, OrgStatus
+from app.core.permissions.catalog import ROLE_OWNER
+from app.core.permissions.service import create_membership, seed_system_roles
 from app.db import set_current_org
 from app.errors import AppError
 
@@ -101,11 +102,14 @@ async def create_org(
             enabled_modules=modules,
         )
     )
+    await session.flush()
+    # A new org gets the four system roles before anyone can be a member of it (issue #19).
+    await seed_system_roles(session, org.id)
 
     detail: dict[str, Any] = {"name": name, "modules": modules}
     if owner_email:
         owner = await _get_or_create_user(session, owner_email)
-        session.add(Membership(org_id=org.id, user_id=owner.id, role=Role.OWNER.value))
+        await create_membership(session, org.id, owner.id, ROLE_OWNER)
         detail["owner_email"] = owner_email
     await session.flush()
     await audit.record(session, actor=actor, action="org.create", org=org, detail=detail)

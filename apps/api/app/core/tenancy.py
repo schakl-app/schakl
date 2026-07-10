@@ -6,16 +6,18 @@ tenant-bound session, and is the *only* sanctioned way domain routers touch data
 1. authenticates the (global) user;
 2. resolves ``current_org`` from the request hostname (``orgs`` has no RLS);
 3. binds the RLS GUC to that org, then verifies the user's membership *through* RLS;
-4. hands work a ``TenantScopedRepository`` that auto-injects ``org_id`` on every operation.
+4. resolves that membership's **effective permissions** in the same round-trip (issue #19);
+5. hands work a ``TenantScopedRepository`` that auto-injects ``org_id`` on every operation.
 
-App-layer filtering and Postgres RLS thus enforce the same boundary from both sides.
+App-layer filtering and Postgres RLS thus enforce the same boundary from both sides. RLS answers
+"which tenant?"; the permission set answers "may they?" — the two never mix.
 """
 
 from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncGenerator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Generic, TypeVar
 
 from fastapi import Depends, Request
@@ -26,6 +28,8 @@ from app.config import settings
 from app.core.auth.models import User
 from app.core.auth.users import current_active_user
 from app.core.models import Membership, Org, OrgStatus
+from app.core.permissions.models import MembershipRole, RolePermission
+from app.core.permissions.permset import PermissionSet
 from app.core.roles import Role
 from app.db import async_session_maker, set_current_org
 from app.errors import AppError
@@ -86,6 +90,10 @@ class RequestContext:
     org: Org
     role: Role
     session: AsyncSession
+    membership_id: uuid.UUID | None = None
+    #: Effective permissions of this membership — the union over every role it holds, resolved
+    #: once in ``require_context``. Never re-query per check (docs/PERFORMANCE.md).
+    permissions: PermissionSet = field(default_factory=PermissionSet)
     # Set only during an instance-admin impersonation (issue #26): ``user`` is then the
     # impersonated member and ``impersonated_by`` the real, authenticated instance owner.
     impersonated_by: User | None = None
@@ -94,6 +102,16 @@ class RequestContext:
     def repo(self, model: type[ModelT]) -> TenantScopedRepository[ModelT]:
         return TenantScopedRepository(self.session, self.org.id, model)
 
+    # --- authorization (issue #19) ----------------------------------------- #
+    def can(self, permission: str, scope: str | None = None) -> bool:
+        """Does the caller hold ``permission``? ``scope=None`` means "at some scope"."""
+        return self.permissions.has(permission, scope)
+
+    def require(self, permission: str, scope: str | None = None) -> None:
+        if not self.can(permission, scope):
+            raise AppError("forbidden", "errors.forbidden", status_code=403)
+
+    # --- DEPRECATED coarse helpers (dropped with ``memberships.role``, issue #56) --------- #
     @property
     def can_write(self) -> bool:
         # Clients are read-only; staff (owner/admin/member) may mutate.
@@ -132,22 +150,42 @@ async def require_context(
                 impersonator, user = user, target
                 expires_at = claims.expires_at
 
-        # Bind RLS to this org, then verify membership *through* RLS.
+        # Bind RLS to this org, then verify membership *through* RLS. The permission fetch rides
+        # along on the same statement — one round-trip, whatever the role count. It must stay
+        # *below* the impersonation swap above: permissions resolve for the impersonated member,
+        # never for the instance owner, and ``is_superuser`` never implies ``*``.
+        #
+        # ``array_agg(...).filter(...)`` is load-bearing: a bare ``array_agg`` over the LEFT JOIN
+        # of a role-less membership yields ``{NULL}``, not an empty array.
         await set_current_org(session, org.id)
-        membership = await session.scalar(
-            select(Membership).where(
-                Membership.user_id == user.id,
-                Membership.org_id == org.id,
+        row = (
+            await session.execute(
+                select(
+                    Membership,
+                    func.array_agg(RolePermission.permission).filter(
+                        RolePermission.permission.is_not(None)
+                    ),
+                )
+                .outerjoin(MembershipRole, MembershipRole.membership_id == Membership.id)
+                .outerjoin(RolePermission, RolePermission.role_id == MembershipRole.role_id)
+                .where(
+                    Membership.user_id == user.id,
+                    Membership.org_id == org.id,
+                )
+                .group_by(Membership.id)
             )
-        )
-        if membership is None:
+        ).first()
+        if row is None:
             raise AppError("forbidden", "errors.forbidden", status_code=403)
+        membership, granted = row
 
         ctx = RequestContext(
             user=user,
             org=org,
             role=Role(membership.role),
             session=session,
+            membership_id=membership.id,
+            permissions=PermissionSet.of(granted),
             impersonated_by=impersonator,
             impersonation_expires_at=expires_at,
         )

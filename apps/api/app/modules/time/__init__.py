@@ -10,6 +10,7 @@ from arq import cron
 
 from app.modules.time.mcp import TIME_MCP_TOOLS
 from app.modules.time.panels import time_company_panel
+from app.modules.time.permissions import TIME_PERMISSIONS
 from app.modules.time.reminders import send_timesheet_reminders
 from app.modules.time.router import router
 from app.registry import ModuleDescriptor, registry
@@ -19,6 +20,7 @@ module = ModuleDescriptor(
     router=router,
     i18n_namespace="time",
     panels=[time_company_panel],
+    permissions=TIME_PERMISSIONS,
     mcp_tools=TIME_MCP_TOOLS,
     # Monday morning, once the week has actually started (weekday 0 = Monday).
     cron_jobs=[cron(send_timesheet_reminders, weekday=0, hour=7, minute=0)],
