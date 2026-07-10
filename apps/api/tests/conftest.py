@@ -38,6 +38,8 @@ from app.main import app  # noqa: E402
 
 _password_hash = PasswordHash.recommended()
 _DOMAIN_TABLES = (
+    "notification_deliveries, notifications, notification_watchers, "
+    "notification_preferences, notification_events, "
     "task_checklist_items, task_checklists, task_checklist_templates, task_links, "
     "task_label_links, task_labels, "
     "task_comments, task_activities, task_template_items, task_templates, "
@@ -46,7 +48,9 @@ _DOMAIN_TABLES = (
     "dashboard_prefs, user_prefs, companies, memberships, org_settings, "
     "instance_audit_log, users, orgs"
 )
-_ENABLED_MODULES = ["companies", "contacts", "tasks", "projects", "time", "leave"]
+_ENABLED_MODULES = [
+    "companies", "contacts", "tasks", "projects", "time", "leave", "notifications"
+]
 
 
 @pytest.fixture(scope="session", autouse=True)
