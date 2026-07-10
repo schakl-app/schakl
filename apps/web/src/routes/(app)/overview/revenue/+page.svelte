@@ -29,19 +29,19 @@
 
 <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
   <div>
-    <h1 class="text-xl font-semibold text-neutral-900">{t("overview.revenue.title")}</h1>
-    <p class="mt-1 text-sm text-neutral-500">{t("overview.revenue.subtitle")}</p>
+    <h1 class="text-xl font-semibold text-text">{t("overview.revenue.title")}</h1>
+    <p class="mt-1 text-sm text-text-muted">{t("overview.revenue.subtitle")}</p>
   </div>
   <div class="flex items-center gap-2 text-sm" data-sveltekit-preload-data="hover">
     <a
       href={`?year=${data.year - 1}`}
-      class="rounded-lg border border-neutral-300 px-2 py-1 hover:bg-neutral-50"
+      class="rounded-lg border border-border px-2 py-1 hover:bg-surface"
       aria-label="←">←</a
     >
-    <span class="font-semibold tabular-nums text-neutral-800">{data.year}</span>
+    <span class="font-semibold tabular-nums text-text">{data.year}</span>
     <a
       href={`?year=${data.year + 1}`}
-      class="rounded-lg border border-neutral-300 px-2 py-1 hover:bg-neutral-50"
+      class="rounded-lg border border-border px-2 py-1 hover:bg-surface"
       aria-label="→">→</a
     >
   </div>
@@ -50,30 +50,30 @@
 {#if stats}
   <!-- Totals -->
   <div class="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-3">
-    <div class="rounded-xl border border-neutral-200 bg-white p-4">
-      <p class="text-xs text-neutral-500">
+    <div class="rounded-xl border border-border bg-surface-raised p-4">
+      <p class="text-xs text-text-muted">
         {t("overview.revenue.total_year", { year: data.year })}
       </p>
-      <p class="mt-1 text-lg font-semibold tabular-nums text-neutral-900">
+      <p class="mt-1 text-lg font-semibold tabular-nums text-text">
         {fmtMoney(stats.total_current)}
       </p>
     </div>
-    <div class="rounded-xl border border-neutral-200 bg-white p-4">
-      <p class="text-xs text-neutral-500">
+    <div class="rounded-xl border border-border bg-surface-raised p-4">
+      <p class="text-xs text-text-muted">
         {t("overview.revenue.total_year", { year: data.year - 1 })}
       </p>
-      <p class="mt-1 text-lg font-semibold tabular-nums text-neutral-900">
+      <p class="mt-1 text-lg font-semibold tabular-nums text-text">
         {fmtMoney(stats.total_previous)}
       </p>
     </div>
-    <div class="rounded-xl border border-neutral-200 bg-white p-4">
-      <p class="text-xs text-neutral-500">{t("overview.revenue.delta")}</p>
+    <div class="rounded-xl border border-border bg-surface-raised p-4">
+      <p class="text-xs text-text-muted">{t("overview.revenue.delta")}</p>
       <p
         class="mt-1 text-lg font-semibold tabular-nums {delta == null
-          ? 'text-neutral-400'
+          ? 'text-text-muted'
           : delta >= 0
-            ? 'text-green-600'
-            : 'text-red-600'}"
+            ? 'text-green-600 dark:text-green-400'
+            : 'text-red-600 dark:text-red-400'}"
       >
         {delta == null ? "—" : `${delta >= 0 ? "+" : ""}${delta}%`}
       </p>
@@ -81,8 +81,8 @@
   </div>
 
   <!-- Monthly comparison -->
-  <section class="mb-4 rounded-xl border border-neutral-200 bg-white p-5">
-    <h2 class="mb-4 text-sm font-semibold text-neutral-900">{t("overview.revenue.monthly")}</h2>
+  <section class="mb-4 rounded-xl border border-border bg-surface-raised p-5">
+    <h2 class="mb-4 text-sm font-semibold text-text">{t("overview.revenue.monthly")}</h2>
     <MonthlyComparisonChart
       current={stats.months_current}
       previous={stats.months_previous}
@@ -92,12 +92,12 @@
   </section>
 
   <!-- Top clients -->
-  <section class="rounded-xl border border-neutral-200 bg-white p-5">
-    <h2 class="mb-4 text-sm font-semibold text-neutral-900">
+  <section class="rounded-xl border border-border bg-surface-raised p-5">
+    <h2 class="mb-4 text-sm font-semibold text-text">
       {t("overview.revenue.top_clients", { year: data.year })}
     </h2>
     {#if slices.length === 0}
-      <p class="text-sm text-neutral-500">{t("overview.revenue.empty")}</p>
+      <p class="text-sm text-text-muted">{t("overview.revenue.empty")}</p>
     {:else}
       <DonutChart
         {slices}
@@ -106,6 +106,6 @@
         centerLabel={t("overview.revenue.center_label")}
       />
     {/if}
-    <p class="mt-4 text-xs text-neutral-400">{t("overview.revenue.rate_hint")}</p>
+    <p class="mt-4 text-xs text-text-muted">{t("overview.revenue.rate_hint")}</p>
   </section>
 {/if}

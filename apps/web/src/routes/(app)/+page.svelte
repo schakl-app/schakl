@@ -20,7 +20,8 @@
   $effect(() => {
     tiles = data.widgetKeys.map((key: string) => ({ id: key }));
   });
-  const widgetFor = (key: string) => dashboardWidgetsFor(enabled).find((w) => w.key === key);
+  const widgetFor = (key: string) =>
+    dashboardWidgetsFor(enabled, page.data.user).find((w) => w.key === key);
 
   let layoutForm: HTMLFormElement | undefined = $state();
   let layoutValue = $state("");
@@ -52,13 +53,13 @@
 
 <div class="mb-6 flex items-start justify-between">
   <div>
-    <h1 class="text-xl font-semibold text-neutral-900">{t("dashboard.my_day.title")}</h1>
-    <p class="mt-1 text-sm text-neutral-500">
+    <h1 class="text-xl font-semibold text-text">{t("dashboard.my_day.title")}</h1>
+    <p class="mt-1 text-sm text-text-muted">
       {t("dashboard.welcome", { name: user?.full_name || user?.email || "" })}
     </p>
   </div>
   <button
-    class="flex items-center gap-2 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600 hover:border-brand hover:text-brand"
+    class="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"
     onclick={() => (customizing ? (customizing = false) : startCustomize())}
   >
     <SlidersHorizontal size={15} />
@@ -71,37 +72,37 @@
 </form>
 
 {#if customizing}
-  <div class="mb-6 rounded-xl border border-neutral-200 bg-white p-5">
-    <h2 class="mb-1 text-sm font-semibold text-neutral-900">{t("dashboard.customize.title")}</h2>
-    <p class="mb-3 text-xs text-neutral-500">{t("dashboard.customize.hint_dnd")}</p>
+  <div class="mb-6 rounded-xl border border-border bg-surface-raised p-5">
+    <h2 class="mb-1 text-sm font-semibold text-text">{t("dashboard.customize.title")}</h2>
+    <p class="mb-3 text-xs text-text-muted">{t("dashboard.customize.hint_dnd")}</p>
 
     <ul class="space-y-1">
       {#each draft as key (key)}
-        <li class="flex items-center gap-2 rounded-lg border border-neutral-200 px-3 py-2">
+        <li class="flex items-center gap-2 rounded-lg border border-border px-3 py-2">
           <input
             type="checkbox"
             checked
             onchange={() => toggle(key)}
-            class="h-4 w-4 rounded border-neutral-300 text-brand focus:ring-brand"
+            class="h-4 w-4 rounded border-border text-brand focus:ring-brand"
           />
-          <span class="flex-1 text-sm text-neutral-800">{t(`dashboard.widget.${key}`)}</span>
+          <span class="flex-1 text-sm text-text">{t(`dashboard.widget.${key}`)}</span>
         </li>
       {/each}
       {#each offKeys as key (key)}
         <li
-          class="flex items-center gap-2 rounded-lg border border-dashed border-neutral-200 px-3 py-2 opacity-60"
+          class="flex items-center gap-2 rounded-lg border border-dashed border-border px-3 py-2 opacity-60"
         >
           <input
             type="checkbox"
             onchange={() => toggle(key)}
-            class="h-4 w-4 rounded border-neutral-300 text-brand focus:ring-brand"
+            class="h-4 w-4 rounded border-border text-brand focus:ring-brand"
           />
-          <span class="flex-1 text-sm text-neutral-600">{t(`dashboard.widget.${key}`)}</span>
+          <span class="flex-1 text-sm text-text-muted">{t(`dashboard.widget.${key}`)}</span>
         </li>
       {/each}
     </ul>
 
-    {#if form?.error}<p class="mt-2 text-sm text-red-600">{t(form.error)}</p>{/if}
+    {#if form?.error}<p class="mt-2 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
     <div class="mt-4 flex flex-wrap items-center gap-2">
       <form
         method="POST"
@@ -130,7 +131,7 @@
             }}
         >
           <button
-            class="rounded-lg border border-neutral-300 px-4 py-2 text-sm text-neutral-500 hover:text-neutral-800"
+            class="rounded-lg border border-border px-4 py-2 text-sm text-text-muted hover:text-text"
           >
             {t("dashboard.customize.reset")}
           </button>
@@ -138,7 +139,7 @@
       {/if}
       <button
         type="button"
-        class="px-2 py-2 text-sm text-neutral-500 hover:text-neutral-800"
+        class="px-2 py-2 text-sm text-text-muted hover:text-text"
         onclick={() => (customizing = false)}
       >
         {t("common.cancel")}
@@ -148,8 +149,8 @@
 {/if}
 
 {#if tiles.length === 0}
-  <div class="rounded-xl border border-dashed border-neutral-300 bg-white p-10 text-center">
-    <p class="text-sm text-neutral-500">{t("dashboard.my_day.empty")}</p>
+  <div class="rounded-xl border border-dashed border-border bg-surface-raised p-10 text-center">
+    <p class="text-sm text-text-muted">{t("dashboard.my_day.empty")}</p>
   </div>
 {:else}
   <div

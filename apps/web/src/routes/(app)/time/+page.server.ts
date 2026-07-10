@@ -2,6 +2,7 @@ import { fail } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
 import { apiFor } from "$lib/core/session";
+import { holidayName } from "$lib/modules/leave/format";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -33,25 +34,23 @@ function isoAddDays(iso: string, days: number): string {
 }
 
 /**
- * Own approved leave, spread evenly over each request's workdays → hours per weekday
- * column. Rendered as a separate timesheet row so it's visible without ever counting as a
- * time entry (CLAUDE.md §14).
+ * Own approved leave, per weekday column, from the API's per-day breakdown (#48).
+ *
+ * It used to spread a request's hours evenly over its Mon–Fri days, which is wrong the moment a
+ * schedule exists: a Thursday afternoon plus a Friday morning is 2 h and 5 h, not 3,5 and 3,5.
+ * The shape now comes from `TeamLeaveItem.days`, computed once, on the server, from the same
+ * schedule and holiday calendar the hours themselves came from.
  */
 function leaveHoursForWeek(
-  items: { start_date: string; end_date: string; hours: number | string; status: string }[],
+  items: { status: string; days: { date: string; hours: number | string }[] }[],
   weekDays: string[],
 ): number[] {
   const hoursByDay = new Map<string, number>();
   for (const item of items) {
     if (item.status !== "approved") continue;
-    const workdays: string[] = [];
-    for (let d = item.start_date; d <= item.end_date; d = isoAddDays(d, 1)) {
-      const weekday = new Date(d + "T00:00:00Z").getUTCDay();
-      if (weekday !== 0 && weekday !== 6) workdays.push(d);
+    for (const day of item.days) {
+      hoursByDay.set(day.date, (hoursByDay.get(day.date) ?? 0) + Number(day.hours));
     }
-    if (workdays.length === 0) continue;
-    const perDay = Number(item.hours) / workdays.length;
-    for (const d of workdays) hoursByDay.set(d, (hoursByDay.get(d) ?? 0) + perDay);
   }
   return weekDays.map((d) => hoursByDay.get(d) ?? 0);
 }
@@ -64,7 +63,8 @@ export const load: PageServerLoad = async (event) => {
 
   // Lookups (companies/projects/tasks/members) come from the /time layout load, which does
   // not rerun on day/week navigation — keep this load down to what actually changes.
-  const [timer, week, day, recent, leave] = await Promise.all([
+  const weekEnd = isoAddDays(week_start, 6);
+  const [timer, week, day, recent, leave, holidays] = await Promise.all([
     api.GET("/api/v1/time/timer"),
     api.GET("/api/v1/time/timesheet", { params: { query: { week_start } } }),
     api.GET("/api/v1/time/day", { params: { query: { date: selectedDate } } }),
@@ -74,18 +74,23 @@ export const load: PageServerLoad = async (event) => {
     leaveEnabled && event.locals.user
       ? api.GET("/api/v1/leave/team", {
           params: {
-            query: {
-              date_from: week_start,
-              date_to: isoAddDays(week_start, 6),
-              user_id: event.locals.user.id,
-            },
+            query: { date_from: week_start, date_to: weekEnd, user_id: event.locals.user.id },
           },
+        })
+      : Promise.resolve({ data: null }),
+    // One ranged call, not one per year: a timesheet week straddles New Year's Eve (#47).
+    leaveEnabled
+      ? api.GET("/api/v1/leave/holidays", {
+          params: { query: { date_from: week_start, date_to: weekEnd } },
         })
       : Promise.resolve({ data: null }),
   ]);
 
   const lastEntry = recent.data?.items?.[0] ?? null;
   const weekDays = week.data?.days ?? [];
+  const holidayByDate = new Map(
+    (holidays.data ?? []).map((h) => [h.date, holidayName(h.name_i18n, event.locals.locale)]),
+  );
   return {
     running: timer.data ?? null,
     week: week.data ?? null,
@@ -96,6 +101,7 @@ export const load: PageServerLoad = async (event) => {
     lastCompanyId: lastEntry?.company_id ?? "",
     lastProjectId: lastEntry?.project_id ?? "",
     leaveHours: leave.data ? leaveHoursForWeek(leave.data, weekDays) : null,
+    holidays: holidays.data ? weekDays.map((d) => holidayByDate.get(d) ?? null) : null,
   };
 };
 

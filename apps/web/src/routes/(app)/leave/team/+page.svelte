@@ -4,15 +4,34 @@
 
   import { fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import DataTable from "$lib/core/ui/DataTable.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import { labelDotClass } from "$lib/core/ui/colors";
+  import { LEAVE_TEAM_COLUMNS } from "$lib/modules/leave/columns";
   import LeaveRequestForm from "$lib/modules/leave/LeaveRequestForm.svelte";
   import LeaveStatusPill from "$lib/modules/leave/LeaveStatusPill.svelte";
   import { fmtHours, typeLabel, type LeaveTypeInfo } from "$lib/modules/leave/format";
 
   let { data, form } = $props();
+
+  type Request = (typeof data.yearRequests)[number];
+
+  const table = createTableLayout<Request>({
+    all: () => LEAVE_TEAM_COLUMNS,
+    pref: () => data.table.pref,
+    sort: () => data.table.sort,
+    cells: () => ({
+      employee: employeeCell,
+      period: periodCell,
+      type: typeCell,
+      hours: hoursCell,
+      status: statusCell,
+    }),
+  });
 
   const types = $derived(data.leaveTypes as LeaveTypeInfo[]);
   const typeById = $derived(Object.fromEntries(types.map((lt) => [lt.id, lt])));
@@ -77,16 +96,14 @@
 
 <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
   <div class="flex items-center gap-3">
-    <h1 class="text-xl font-semibold text-neutral-900">{t("leave.team.title")}</h1>
+    <h1 class="text-xl font-semibold text-text">{t("leave.team.title")}</h1>
     <div class="flex items-center gap-1 text-sm" data-sveltekit-preload-data="hover">
-      <a
-        href="?year={data.year - 1}"
-        class="rounded px-1.5 py-0.5 text-neutral-400 hover:text-brand">‹</a
+      <a href="?year={data.year - 1}" class="rounded px-1.5 py-0.5 text-text-muted hover:text-brand"
+        >‹</a
       >
-      <span class="font-medium text-neutral-700">{data.year}</span>
-      <a
-        href="?year={data.year + 1}"
-        class="rounded px-1.5 py-0.5 text-neutral-400 hover:text-brand">›</a
+      <span class="font-medium text-text">{data.year}</span>
+      <a href="?year={data.year + 1}" class="rounded px-1.5 py-0.5 text-text-muted hover:text-brand"
+        >›</a
       >
     </div>
   </div>
@@ -101,28 +118,28 @@
 </div>
 
 {#if form?.error}
-  <p class="mb-4 text-sm text-red-600">{t(form.error)}</p>
+  <p class="mb-4 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
 {/if}
 
 <!-- Pending approvals -->
-<section class="mb-6 overflow-hidden rounded-xl border border-neutral-200 bg-white">
+<section class="mb-6 overflow-hidden rounded-xl border border-border bg-surface-raised">
   <h2
-    class="border-b border-neutral-100 bg-neutral-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-neutral-500"
+    class="border-b border-border bg-surface px-4 py-2 text-xs font-semibold uppercase tracking-wide text-text-muted"
   >
     {t("leave.team.pending_heading")}
   </h2>
   {#if data.pending.length === 0}
-    <p class="p-6 text-sm text-neutral-500">{t("leave.team.pending_empty")}</p>
+    <p class="p-6 text-sm text-text-muted">{t("leave.team.pending_empty")}</p>
   {:else}
-    <ul class="divide-y divide-neutral-50">
+    <ul class="divide-y divide-border">
       {#each data.pending as request (request.id)}
         {@const leaveType = typeById[request.leave_type_id]}
         <li class="flex flex-wrap items-center gap-3 px-4 py-3">
           <div class="min-w-0 flex-1">
-            <p class="text-sm font-medium text-neutral-900">
+            <p class="text-sm font-medium text-text">
               {memberName[request.user_id] ?? "—"}
             </p>
-            <p class="mt-0.5 flex flex-wrap items-center gap-x-2 text-sm text-neutral-500">
+            <p class="mt-0.5 flex flex-wrap items-center gap-x-2 text-sm text-text-muted">
               <span class="inline-flex items-center gap-1.5">
                 <span class="h-2 w-2 rounded-full {labelDotClass(leaveType?.color ?? '')}"></span>
                 {typeLabel(leaveType, data.locale)}
@@ -133,7 +150,7 @@
               </span>
             </p>
             {#if request.note}
-              <p class="mt-0.5 truncate text-xs text-neutral-400">{request.note}</p>
+              <p class="mt-0.5 truncate text-xs text-text-muted">{request.note}</p>
             {/if}
           </div>
           <div class="flex items-center gap-2">
@@ -149,7 +166,7 @@
             </form>
             <button
               type="button"
-              class="flex items-center gap-1.5 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:border-red-400 hover:text-red-600"
+              class="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-text hover:border-red-400 hover:text-red-600 dark:hover:border-red-500 dark:hover:text-red-400"
               onclick={() => {
                 rejectId = request.id;
                 rejectOpen = true;
@@ -166,16 +183,16 @@
 </section>
 
 <!-- Team balances -->
-<section class="mb-6 overflow-hidden rounded-xl border border-neutral-200 bg-white">
+<section class="mb-6 overflow-hidden rounded-xl border border-border bg-surface-raised">
   <h2
-    class="border-b border-neutral-100 bg-neutral-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-neutral-500"
+    class="border-b border-border bg-surface px-4 py-2 text-xs font-semibold uppercase tracking-wide text-text-muted"
   >
     {t("leave.team.balances_heading", { year: data.year })}
   </h2>
   <div class="overflow-x-auto">
     <table class="w-full text-sm">
       <thead>
-        <tr class="border-b border-neutral-100 text-left text-xs text-neutral-400">
+        <tr class="border-b border-border text-left text-xs text-text-muted">
           <th class="px-4 py-2 font-medium">{t("leave.team.member")}</th>
           <th class="px-2 py-2 text-right font-medium">{t("leave.team.contract_hours")}</th>
           {#each trackedTypes as lt (lt.id)}
@@ -183,13 +200,13 @@
           {/each}
         </tr>
       </thead>
-      <tbody class="divide-y divide-neutral-50">
+      <tbody class="divide-y divide-border">
         {#each balanceRows as row (row.member.user_id)}
           <tr>
-            <td class="px-4 py-2 font-medium text-neutral-800">
+            <td class="px-4 py-2 font-medium text-text">
               {row.member.full_name || row.member.email}
             </td>
-            <td class="px-2 py-2 text-right tabular-nums text-neutral-600">
+            <td class="px-2 py-2 text-right tabular-nums text-text-muted">
               {fmtHours(hoursByUser[row.member.user_id] ?? 40)}
             </td>
             {#each trackedTypes as lt (lt.id)}
@@ -197,12 +214,12 @@
               <td class="px-2 py-2 text-right tabular-nums">
                 <span
                   class={(cell?.remaining ?? 0) < 0
-                    ? "font-medium text-red-600"
-                    : "text-neutral-800"}
+                    ? "font-medium text-red-600 dark:text-red-400"
+                    : "text-text"}
                 >
                   {fmtHours(cell?.remaining ?? 0)}
                 </span>
-                <span class="text-xs text-neutral-400">/ {fmtHours(cell?.entitled ?? 0)}</span>
+                <span class="text-xs text-text-muted">/ {fmtHours(cell?.entitled ?? 0)}</span>
               </td>
             {/each}
           </tr>
@@ -213,77 +230,102 @@
 </section>
 
 <!-- All requests this year -->
-<section class="overflow-hidden rounded-xl border border-neutral-200 bg-white">
-  <h2
-    class="border-b border-neutral-100 bg-neutral-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-neutral-500"
-  >
+{#snippet employeeCell(request: Request)}
+  <span class="font-medium text-text">{memberName[request.user_id] ?? "—"}</span>
+{/snippet}
+
+{#snippet periodCell(request: Request)}
+  <span class="text-text">{period(request)}</span>
+{/snippet}
+
+{#snippet typeCell(request: Request)}
+  {@const leaveType = typeById[request.leave_type_id]}
+  <span class="inline-flex items-center gap-1.5 text-text">
+    <span class="h-2 w-2 rounded-full {labelDotClass(leaveType?.color ?? '')}"></span>
+    {typeLabel(leaveType, data.locale)}
+  </span>
+{/snippet}
+
+{#snippet hoursCell(request: Request)}
+  <span class="text-text">{fmtHours(request.hours)}</span>
+{/snippet}
+
+{#snippet statusCell(request: Request)}
+  <LeaveStatusPill status={request.status} />
+{/snippet}
+
+{#snippet teamRowActions(request: Request)}
+  {#if request.status === "pending" || request.status === "approved"}
+    <ActionsMenu
+      compact
+      items={[
+        {
+          label: t("leave.requests.cancel"),
+          icon: Ban,
+          danger: true,
+          onclick: () => {
+            cancelId = request.id;
+            cancelOpen = true;
+          },
+        },
+      ]}
+    />
+  {/if}
+{/snippet}
+
+{#snippet teamMobileRow(request: Request)}
+  <div class="flex items-center gap-3">
+    <span class="min-w-0 flex-1">
+      <span class="font-medium text-text">{memberName[request.user_id] ?? "—"}</span>
+      <span class="mt-0.5 block text-sm text-text-muted">
+        {period(request)} · {fmtHours(request.hours)}
+      </span>
+    </span>
+    <LeaveStatusPill status={request.status} />
+    {@render teamRowActions(request)}
+  </div>
+{/snippet}
+
+{#snippet teamEmpty()}
+  <p class="rounded-xl border border-border bg-surface-raised p-6 text-sm text-text-muted">
+    {t("leave.requests.empty")}
+  </p>
+{/snippet}
+
+<div class="mb-2 mt-6 flex items-center justify-between">
+  <h2 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
     {t("leave.team.requests_heading", { year: data.year })}
   </h2>
-  {#if data.yearRequests.length === 0}
-    <p class="p-6 text-sm text-neutral-500">{t("leave.requests.empty")}</p>
-  {:else}
-    <div class="overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead>
-          <tr class="border-b border-neutral-100 text-left text-xs text-neutral-400">
-            <th class="px-4 py-2 font-medium">{t("leave.team.member")}</th>
-            <th class="px-4 py-2 font-medium">{t("leave.requests.period")}</th>
-            <th class="px-4 py-2 font-medium">{t("leave.form.type")}</th>
-            <th class="px-4 py-2 text-right font-medium">{t("leave.form.hours")}</th>
-            <th class="px-4 py-2 font-medium">{t("leave.requests.status")}</th>
-            <th class="px-2 py-2"></th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-neutral-50">
-          {#each data.yearRequests as request (request.id)}
-            {@const leaveType = typeById[request.leave_type_id]}
-            <tr>
-              <td class="px-4 py-2 font-medium text-neutral-800">
-                {memberName[request.user_id] ?? "—"}
-              </td>
-              <td class="px-4 py-2 text-neutral-700">{period(request)}</td>
-              <td class="px-4 py-2">
-                <span class="inline-flex items-center gap-1.5 text-neutral-700">
-                  <span class="h-2 w-2 rounded-full {labelDotClass(leaveType?.color ?? '')}"></span>
-                  {typeLabel(leaveType, data.locale)}
-                </span>
-              </td>
-              <td class="px-4 py-2 text-right tabular-nums text-neutral-800">
-                {fmtHours(request.hours)}
-              </td>
-              <td class="px-4 py-2"><LeaveStatusPill status={request.status} /></td>
-              <td class="px-2 py-2 text-right">
-                {#if request.status === "pending" || request.status === "approved"}
-                  <ActionsMenu
-                    compact
-                    items={[
-                      {
-                        label: t("leave.requests.cancel"),
-                        icon: Ban,
-                        danger: true,
-                        onclick: () => {
-                          cancelId = request.id;
-                          cancelOpen = true;
-                        },
-                      },
-                    ]}
-                  />
-                {/if}
-              </td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
-  {/if}
-</section>
+  <ColumnPicker
+    all={table.pickerColumns}
+    visible={table.visibleKeys}
+    sort={table.sort}
+    onchange={table.onColumnsChange}
+    onsort={table.onSort}
+  />
+</div>
+
+<DataTable
+  rows={data.yearRequests}
+  columns={table.columns}
+  sort={table.sort}
+  widths={table.widths}
+  locale={data.locale}
+  actions={teamRowActions}
+  mobileRow={teamMobileRow}
+  empty={teamEmpty}
+  onsort={table.onSort}
+  onresize={table.onResize}
+/>
 
 <!-- Register leave for a team member (sick call, phoned-in request) -->
 <Modal bind:open={registerOpen} title={t("leave.team.register")}>
+  <!-- This page is already gated on `leave.request.approve`, which is exactly who may set the
+       hours by hand — for the day an employee agrees to four hours they were not scheduled. -->
   <LeaveRequestForm
     types={types.filter((lt) => lt.active)}
-    hoursPerWeek={40}
     userOptions={memberOptions}
+    canOverride
     action="?/register"
     error={form?.error ?? null}
     ondone={() => (registerOpen = false)}
@@ -305,20 +347,20 @@
     <input type="hidden" name="id" value={rejectId} />
     <input type="hidden" name="approved" value="false" />
     <div>
-      <label class="mb-1 block text-xs font-medium text-neutral-500" for="reject-note">
+      <label class="mb-1 block text-xs font-medium text-text-muted" for="reject-note">
         {t("leave.team.reject_reason")}
       </label>
       <textarea
         id="reject-note"
         name="note"
         rows="2"
-        class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+        class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
       ></textarea>
     </div>
     <div class="flex justify-end gap-2">
       <button
         type="button"
-        class="rounded-lg border border-neutral-300 px-4 py-2 text-sm"
+        class="rounded-lg border border-border px-4 py-2 text-sm"
         onclick={() => (rejectOpen = false)}>{t("common.cancel")}</button
       >
       <button

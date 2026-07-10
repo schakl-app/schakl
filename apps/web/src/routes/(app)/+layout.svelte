@@ -2,6 +2,7 @@
   import "$lib/modules"; // ensure the web-module registry is populated
   import {
     BarChart3,
+    BellRing,
     CalendarDays,
     Menu,
     ChevronDown,
@@ -11,21 +12,28 @@
     Handshake,
     LayoutDashboard,
     LogOut,
+    ServerCog,
     Settings,
     UserRound,
+    VenetianMask,
   } from "@lucide/svelte";
 
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import { can, canAccessSettings } from "$lib/core/permissions";
   import { navItemsFor, type NavItem } from "$lib/core/registry";
+  import NotificationBell from "$lib/modules/notifications/NotificationBell.svelte";
 
   let { children } = $props();
 
   const theme = $derived(page.data.theme);
   const user = $derived(page.data.user);
-  const nav = $derived(navItemsFor(theme?.enabledModules ?? []));
+  const nav = $derived(navItemsFor(theme?.enabledModules ?? [], user));
   const path = $derived(page.url.pathname);
-  const canManage = $derived(user?.canManage ?? false);
+  const showOverview = $derived(can(user, "time.report.read"));
+  const showSettings = $derived(canAccessSettings(user?.permissions));
+  // The bell is a shell element, not a nav item, so it is gated here rather than by the registry.
+  const hasNotifications = $derived(theme?.enabledModules?.includes("notifications") ?? false);
 
   // Grouped nav: a group renders once, where its first item would sit, holding all members.
   type NavEntry =
@@ -93,8 +101,8 @@
   }
 
   const itemClass = (active: boolean) =>
-    `flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-100 ${
-      active ? "bg-neutral-100 font-medium" : ""
+    `flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-text hover:bg-surface ${
+      active ? "bg-surface font-medium" : ""
     }`;
 </script>
 
@@ -118,15 +126,15 @@
   <aside
     class="{mobileNavOpen
       ? 'fixed inset-y-0 left-0 z-50 block w-64 overflow-y-auto shadow-xl'
-      : 'hidden'} shrink-0 border-r border-neutral-200 bg-white transition-[width] duration-150 sm:static sm:block
+      : 'hidden'} shrink-0 border-r border-border bg-surface-raised transition-[width] duration-150 sm:static sm:block
       {collapsed && !mobileNavOpen ? 'sm:w-16' : 'sm:w-60'}"
   >
-    <div class="flex h-14 items-center gap-2 border-b border-neutral-200 px-4">
+    <div class="flex h-14 items-center gap-2 border-b border-border px-4">
       {#if theme?.logoUrl}
         <img src={theme.logoUrl} alt={theme.brandName} class="h-7 w-auto" />
       {/if}
       {#if !collapsed && theme?.showBrandName !== false}
-        <span class="truncate font-semibold text-neutral-900">{theme?.brandName}</span>
+        <span class="truncate font-semibold text-text">{theme?.brandName}</span>
       {/if}
     </div>
     <nav class="space-y-1 p-2">
@@ -135,7 +143,7 @@
         class={itemClass(path === "/")}
         title={collapsed ? t("nav.dashboard") : undefined}
       >
-        <LayoutDashboard size={18} class="shrink-0 text-neutral-500" />
+        <LayoutDashboard size={18} class="shrink-0 text-text-muted" />
         {#if !collapsed}<span class="truncate">{t("nav.dashboard")}</span>{/if}
       </a>
       <a
@@ -143,7 +151,7 @@
         class={itemClass(path.startsWith("/calendar"))}
         title={collapsed ? t("nav.calendar") : undefined}
       >
-        <CalendarDays size={18} class="shrink-0 text-neutral-500" />
+        <CalendarDays size={18} class="shrink-0 text-text-muted" />
         {#if !collapsed}<span class="truncate">{t("nav.calendar")}</span>{/if}
       </a>
       {#each navEntries as entry (entry.kind === "group" ? `g:${entry.key}` : entry.item.key)}
@@ -155,7 +163,7 @@
             title={collapsed ? entry.item.label() : undefined}
           >
             {#if Icon}
-              <Icon size={18} class="shrink-0 text-neutral-500" />
+              <Icon size={18} class="shrink-0 text-text-muted" />
             {:else}
               <span class="h-[18px] w-[18px] shrink-0"></span>
             {/if}
@@ -166,23 +174,23 @@
           {#each entry.items as item (item.key)}
             {@const Icon = item.icon}
             <a href={item.href} class={itemClass(path.startsWith(item.href))} title={item.label()}>
-              {#if Icon}<Icon size={18} class="shrink-0 text-neutral-500" />{/if}
+              {#if Icon}<Icon size={18} class="shrink-0 text-text-muted" />{/if}
             </a>
           {/each}
         {:else}
           {@const open = isGroupOpen(entry)}
           <button
             type="button"
-            class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-100"
+            class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-text hover:bg-surface"
             onclick={() => toggleGroup(entry.key)}
             aria-expanded={open}
           >
-            <Handshake size={18} class="shrink-0 text-neutral-500" />
+            <Handshake size={18} class="shrink-0 text-text-muted" />
             <span class="flex-1 truncate text-left">{t(`nav.group.${entry.key}`)}</span>
             {#if open}
-              <ChevronDown size={14} class="shrink-0 text-neutral-400" />
+              <ChevronDown size={14} class="shrink-0 text-text-muted" />
             {:else}
-              <ChevronRight size={14} class="shrink-0 text-neutral-400" />
+              <ChevronRight size={14} class="shrink-0 text-text-muted" />
             {/if}
           </button>
           {#if open}
@@ -191,12 +199,10 @@
                 {@const Icon = item.icon}
                 <a
                   href={item.href}
-                  class="flex items-center gap-2.5 rounded-lg py-1.5 pl-9 pr-3 text-sm text-neutral-600 hover:bg-neutral-100
-                    {path.startsWith(item.href)
-                    ? 'bg-neutral-100 font-medium text-neutral-900'
-                    : ''}"
+                  class="flex items-center gap-2.5 rounded-lg py-1.5 pl-9 pr-3 text-sm text-text-muted hover:bg-surface
+                    {path.startsWith(item.href) ? 'bg-surface font-medium text-text' : ''}"
                 >
-                  {#if Icon}<Icon size={15} class="shrink-0 text-neutral-400" />{/if}
+                  {#if Icon}<Icon size={15} class="shrink-0 text-text-muted" />{/if}
                   <span class="truncate">{item.label()}</span>
                 </a>
               {/each}
@@ -204,29 +210,41 @@
           {/if}
         {/if}
       {/each}
-      {#if canManage}
+      {#if showOverview}
         <a
           href="/overview"
           class={itemClass(path.startsWith("/overview"))}
           title={collapsed ? t("nav.overview") : undefined}
         >
-          <BarChart3 size={18} class="shrink-0 text-neutral-500" />
+          <BarChart3 size={18} class="shrink-0 text-text-muted" />
           {#if !collapsed}<span class="truncate">{t("nav.overview")}</span>{/if}
         </a>
+      {/if}
+      {#if showSettings}
         <a
           href="/settings"
           class={itemClass(path.startsWith("/settings") && !path.startsWith("/settings/account"))}
           title={collapsed ? t("nav.settings") : undefined}
         >
-          <Settings size={18} class="shrink-0 text-neutral-500" />
+          <Settings size={18} class="shrink-0 text-text-muted" />
           {#if !collapsed}<span class="truncate">{t("nav.settings")}</span>{/if}
+        </a>
+      {/if}
+      {#if user?.isInstanceAdmin}
+        <a
+          href="/instance"
+          class={itemClass(path.startsWith("/instance"))}
+          title={collapsed ? t("nav.instance") : undefined}
+        >
+          <ServerCog size={18} class="shrink-0 text-text-muted" />
+          {#if !collapsed}<span class="truncate">{t("nav.instance")}</span>{/if}
         </a>
       {/if}
     </nav>
     <div class="p-2">
       <button
         type="button"
-        class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+        class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-text-muted hover:bg-surface hover:text-text"
         onclick={toggleSidebar}
         aria-label={collapsed ? t("nav.expand") : t("nav.collapse")}
         title={collapsed ? t("nav.expand") : t("nav.collapse")}
@@ -241,67 +259,112 @@
     </div>
   </aside>
 
-  <div class="flex flex-1 flex-col">
+  <!-- `min-w-0`, because a flex item defaults to `min-width: auto` and is therefore sized by its
+       widest descendant, not by the row. Without it one over-wide page didn't scroll or clip — it
+       *grew the shell*, so <body> laid out at 716px on a 360px phone while `initial-scale=1` kept
+       one CSS pixel on one device pixel. The right half fell off screen, which reads as "the app
+       loaded zoomed in", and pinch-zooming out revealed the whole (correct-looking) layout. That
+       was issue #36. This also lets the inner `overflow-x-auto` wrappers do their job. -->
+  <div class="flex min-w-0 flex-1 flex-col">
+    {#if user?.impersonatedBy}
+      <!-- Impersonation is never silent (issue #26): banner on every screen, one-click stop. -->
+      <div
+        class="flex items-center justify-between gap-3 bg-amber-500 px-4 py-2 text-sm font-medium text-amber-950 sm:px-6"
+      >
+        <span class="flex min-w-0 items-center gap-2">
+          <VenetianMask size={16} class="shrink-0" />
+          <span class="truncate">
+            {t("instance.impersonation_banner", {
+              actor: user.impersonatedBy,
+              target: user.full_name || user.email,
+            })}
+          </span>
+        </span>
+        <form method="POST" action="/impersonation/stop">
+          <button
+            class="shrink-0 rounded-lg bg-amber-950/10 px-3 py-1 font-semibold hover:bg-amber-950/20"
+          >
+            {t("instance.impersonation_stop")}
+          </button>
+        </form>
+      </div>
+    {/if}
     <header
-      class="flex h-14 items-center justify-between gap-4 border-b border-neutral-200 bg-white px-4 text-sm sm:justify-end sm:px-6"
+      class="flex h-14 items-center justify-between gap-4 border-b border-border bg-surface-raised px-4 text-sm sm:justify-end sm:px-6"
     >
       <button
         type="button"
-        class="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100 sm:hidden"
+        class="rounded-lg p-2 text-text-muted hover:bg-surface sm:hidden"
         onclick={() => (mobileNavOpen = true)}
         aria-label={t("nav.expand")}
       >
         <Menu size={20} />
       </button>
-      <div class="relative" data-profile-menu>
-        <button
-          type="button"
-          class="flex items-center gap-2 rounded-full py-1 pl-1 pr-3 hover:bg-neutral-100"
-          onclick={() => (profileOpen = !profileOpen)}
-          aria-haspopup="menu"
-          aria-expanded={profileOpen}
-        >
-          <span
-            class="flex h-8 w-8 items-center justify-center rounded-full bg-brand/10 text-xs font-semibold text-brand"
-          >
-            {initials(user?.full_name, user?.email)}
-          </span>
-          <span class="hidden font-medium text-neutral-800 md:inline">
-            {user?.full_name || user?.email}
-          </span>
-        </button>
-
-        {#if profileOpen}
-          <div
-            role="menu"
-            class="absolute right-0 z-30 mt-1 w-64 rounded-xl border border-neutral-200 bg-white py-1 shadow-lg"
-          >
-            <div class="border-b border-neutral-100 px-4 py-3">
-              <p class="truncate text-sm font-semibold text-neutral-900">
-                {user?.full_name || user?.email}
-              </p>
-              {#if user?.full_name}
-                <p class="truncate text-xs text-neutral-500">{user?.email}</p>
-              {/if}
-            </div>
-            <a
-              href="/settings/account"
-              class="flex items-center gap-2 px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
-              onclick={() => (profileOpen = false)}
-            >
-              <UserRound size={16} class="text-neutral-400" />
-              {t("header.my_settings")}
-            </a>
-            <form method="POST" action="/logout" class="border-t border-neutral-100">
-              <button
-                class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-50"
-              >
-                <LogOut size={16} class="text-neutral-400" />
-                {t("auth.sign_out")}
-              </button>
-            </form>
-          </div>
+      <div class="flex items-center gap-1">
+        {#if hasNotifications}
+          <NotificationBell count={page.data.unreadCount ?? 0} />
         {/if}
+        <div class="relative" data-profile-menu>
+          <button
+            type="button"
+            class="flex items-center gap-2 rounded-full py-1 pl-1 pr-3 hover:bg-surface"
+            onclick={() => (profileOpen = !profileOpen)}
+            aria-haspopup="menu"
+            aria-expanded={profileOpen}
+          >
+            <span
+              class="flex h-8 w-8 items-center justify-center rounded-full bg-brand/10 text-xs font-semibold text-brand"
+            >
+              {initials(user?.full_name, user?.email)}
+            </span>
+            <span class="hidden font-medium text-text md:inline">
+              {user?.full_name || user?.email}
+            </span>
+          </button>
+
+          {#if profileOpen}
+            <div
+              role="menu"
+              class="absolute right-0 z-30 mt-1 w-64 rounded-xl border border-border bg-surface-raised py-1 shadow-lg"
+            >
+              <div class="border-b border-border px-4 py-3">
+                <p class="truncate text-sm font-semibold text-text">
+                  {user?.full_name || user?.email}
+                </p>
+                {#if user?.full_name}
+                  <p class="truncate text-xs text-text-muted">{user?.email}</p>
+                {/if}
+              </div>
+              <a
+                href="/settings/account"
+                class="flex items-center gap-2 px-4 py-2 text-sm text-text hover:bg-surface"
+                onclick={() => (profileOpen = false)}
+              >
+                <UserRound size={16} class="text-text-muted" />
+                {t("header.my_settings")}
+              </a>
+              {#if hasNotifications}
+                <!-- The settings hub is manager-only, but what reaches *me* is mine (UX §6). -->
+                <a
+                  href="/settings/notifications"
+                  class="flex items-center gap-2 px-4 py-2 text-sm text-text hover:bg-surface"
+                  onclick={() => (profileOpen = false)}
+                >
+                  <BellRing size={16} class="text-text-muted" />
+                  {t("settings.notifications.title")}
+                </a>
+              {/if}
+              <form method="POST" action="/logout" class="border-t border-border">
+                <button
+                  class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-text hover:bg-surface"
+                >
+                  <LogOut size={16} class="text-text-muted" />
+                  {t("auth.sign_out")}
+                </button>
+              </form>
+            </div>
+          {/if}
+        </div>
       </div>
     </header>
 

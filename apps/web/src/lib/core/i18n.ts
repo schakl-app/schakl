@@ -12,6 +12,25 @@ import { cookieName, locales } from "$lib/paraglide/runtime";
 export const LOCALES = locales;
 export const LOCALE_COOKIE = cookieName;
 
+/**
+ * The locale cookie is a **cache of the `users.locale` preference**, not a credential, and both
+ * Paraglide strategies read it from `document.cookie` in the browser — so it must not be
+ * `httpOnly`. SvelteKit's `cookies.set` defaults to `httpOnly: true`; that default made the
+ * cookie invisible to the client and white-paged the app on a language switch. Always spread
+ * these options rather than restating them.
+ */
+export const LOCALE_COOKIE_OPTIONS = {
+  path: "/",
+  maxAge: 60 * 60 * 24 * 365,
+  sameSite: "lax",
+  httpOnly: false,
+} as const;
+
+/** Narrow an arbitrary string to a supported locale; `null` for anything else. */
+export function asLocale(value: string | null | undefined): string | null {
+  return value && (LOCALES as readonly string[]).includes(value) ? value : null;
+}
+
 type MessageFn = (params?: Record<string, unknown>) => string;
 
 export function t(key: string, params?: Record<string, unknown>): string {
@@ -37,5 +56,5 @@ export function parseLocaleCookie(cookieHeader: string | null | undefined): stri
     .map((c) => c.trim())
     .find((c) => c.startsWith(prefix))
     ?.slice(prefix.length);
-  return value && (LOCALES as readonly string[]).includes(value) ? value : null;
+  return asLocale(value);
 }

@@ -20,19 +20,17 @@
 </svelte:head>
 
 <div class="mb-6">
-  <a href="/settings" class="text-sm text-neutral-500 hover:text-neutral-900"
-    >← {t("settings.title")}</a
-  >
-  <h1 class="mt-2 text-xl font-semibold text-neutral-900">{t("settings.task_labels.title")}</h1>
-  <p class="mt-1 text-sm text-neutral-500">{t("settings.task_labels.subtitle")}</p>
+  <a href="/settings" class="text-sm text-text-muted hover:text-text">← {t("settings.title")}</a>
+  <h1 class="mt-2 text-xl font-semibold text-text">{t("settings.task_labels.title")}</h1>
+  <p class="mt-1 text-sm text-text-muted">{t("settings.task_labels.subtitle")}</p>
 </div>
 
 <div class="grid gap-4 lg:grid-cols-[1fr_320px]">
-  <section class="rounded-xl border border-neutral-200 bg-white">
+  <section class="rounded-xl border border-border bg-surface-raised">
     {#if data.labels.length === 0}
-      <p class="p-6 text-sm text-neutral-500">{t("tasks.labels.empty")}</p>
+      <p class="p-6 text-sm text-text-muted">{t("tasks.labels.empty")}</p>
     {:else}
-      <ul class="divide-y divide-neutral-100">
+      <ul class="divide-y divide-border">
         {#each data.labels as label (label.id)}
           <li class="flex items-center gap-3 px-4 py-3">
             {#if editingId === label.id}
@@ -51,9 +49,9 @@
                   name="name"
                   value={label.name}
                   required
-                  class="w-48 rounded-lg border border-neutral-300 px-2 py-1 text-sm"
+                  class="w-48 rounded-lg border border-border px-2 py-1 text-sm"
                 />
-                <select name="color" class="rounded-lg border border-neutral-300 px-2 py-1 text-sm">
+                <select name="color" class="rounded-lg border border-border px-2 py-1 text-sm">
                   {#each LABEL_COLORS as color (color)}
                     <option value={color} selected={label.color === color}>{color}</option>
                   {/each}
@@ -63,13 +61,13 @@
                 >
                 <button
                   type="button"
-                  class="text-xs text-neutral-500"
+                  class="text-xs text-text-muted"
                   onclick={() => (editingId = null)}>{t("common.cancel")}</button
                 >
               </form>
             {:else}
               <span class="h-3 w-3 rounded-full {labelDotClass(label.color)}"></span>
-              <span class="flex-1 text-sm font-medium text-neutral-900">{label.name}</span>
+              <span class="flex-1 text-sm font-medium text-text">{label.name}</span>
               <span
                 class="rounded-full px-2 py-0.5 text-[11px] font-medium {labelChipClass(
                   label.color,
@@ -96,8 +94,8 @@
     {/if}
   </section>
 
-  <aside class="h-fit rounded-xl border border-neutral-200 bg-white p-5">
-    <h2 class="mb-3 text-sm font-semibold text-neutral-900">{t("tasks.labels.create")}</h2>
+  <aside class="h-fit rounded-xl border border-border bg-surface-raised p-5">
+    <h2 class="mb-3 text-sm font-semibold text-text">{t("tasks.labels.create")}</h2>
     <form
       method="POST"
       action="?/create"
@@ -110,7 +108,7 @@
         name="name"
         required
         placeholder={t("tasks.labels.new_placeholder")}
-        class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+        class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
       />
       <input type="hidden" name="color" value={newColor} />
       <div class="flex flex-wrap gap-1.5">
@@ -119,7 +117,7 @@
             type="button"
             aria-label={color}
             class="h-6 w-6 rounded-full {labelDotClass(color)} {newColor === color
-              ? 'ring-2 ring-neutral-800 ring-offset-1'
+              ? 'ring-2 ring-text ring-offset-1'
               : ''}"
             onclick={() => (newColor = color)}
           ></button>

@@ -2,18 +2,26 @@
   import { Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
+  import { goto } from "$app/navigation";
+  import { page } from "$app/state";
+  import { fmtNumber, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { customFieldColumns } from "$lib/core/table/columns";
+  import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
-  import Combobox from "$lib/core/ui/Combobox.svelte";
+  import AssigneePicker from "$lib/core/ui/AssigneePicker.svelte";
+  import AvatarStack from "$lib/core/ui/AvatarStack.svelte";
+  import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import DataTable from "$lib/core/ui/DataTable.svelte";
+  import HoursCell from "$lib/core/ui/HoursCell.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
+  import { HOURS_COLUMN, PROJECT_COLUMNS } from "$lib/modules/projects/columns";
 
   let { data, form } = $props();
 
-  const memberItems = $derived(
-    data.members.map((m) => ({ value: m.user_id, label: m.full_name || m.email })),
-  );
+  type Project = (typeof data.projects)[number];
 
   let showCreate = $state(false);
   let deleteId = $state("");
@@ -26,26 +34,177 @@
     id ? (data.companies.find((c) => c.id === id)?.name ?? "") : "",
   );
 
+  // --- columns ---------------------------------------------------------------
+  const allColumns = $derived([
+    ...PROJECT_COLUMNS,
+    ...customFieldColumns(data.definitions, data.locale),
+  ]);
+
+  const table = createTableLayout<Project>({
+    all: () => allColumns,
+    pref: () => data.table.pref,
+    sort: () => data.table.sort,
+    cells: () => ({
+      name: nameCell,
+      company: companyCell,
+      status: statusCell,
+      assignees: assigneesCell,
+      hours: hoursCell,
+      budget_hours: budgetCell,
+      hourly_rate: rateCell,
+      start_date: startCell,
+      end_date: endCell,
+    }),
+    // Showing the burn-down means the API must compute it; hiding it means it must not.
+    reloadOn: [HOURS_COLUMN],
+  });
+
+  function confirmDeleteOf(project: Project) {
+    deleteId = project.id;
+    deleteName = project.name;
+    confirmDelete = true;
+  }
+
   const inputClass =
-    "w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
+    "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
+
+  // Filtered by the API — matching any assignee, not just the primary.
+  function toggleMine() {
+    const url = new URL(page.url);
+    if (data.mine) url.searchParams.delete("mine");
+    else url.searchParams.set("mine", "1");
+    void goto(url, { keepFocus: true, noScroll: true });
+  }
 </script>
+
+{#snippet nameCell(project: Project)}
+  <a href="/projects/{project.id}" class="font-medium text-text hover:text-brand">{project.name}</a>
+{/snippet}
+
+{#snippet companyCell(project: Project)}
+  {#if companyName(project.company_id)}
+    <a href="/companies/{project.company_id}" class="text-text-muted hover:text-brand"
+      >{companyName(project.company_id)}</a
+    >
+  {:else}<span class="text-text-muted">—</span>{/if}
+{/snippet}
+
+{#snippet statusCell(project: Project)}
+  <span class="rounded-full bg-surface px-2.5 py-0.5 text-xs font-medium text-text-muted">
+    {t(`projects.status.${project.status}`)}
+  </span>
+{/snippet}
+
+{#snippet assigneesCell(project: Project)}
+  <AvatarStack assignees={project.assignees ?? []} members={data.members} />
+{/snippet}
+
+{#snippet hoursCell(project: Project)}
+  <HoursCell hours={project.hours} />
+{/snippet}
+
+{#snippet budgetCell(project: Project)}
+  {#if project.budget_hours != null}
+    <span class="text-text">{fmtNumber(project.budget_hours)} u</span>
+  {:else}<span class="text-text-muted">—</span>{/if}
+{/snippet}
+
+{#snippet rateCell(project: Project)}
+  {#if project.hourly_rate != null}
+    <span class="text-text">{fmtNumber(project.hourly_rate)}</span>
+  {:else}<span class="text-text-muted">—</span>{/if}
+{/snippet}
+
+{#snippet startCell(project: Project)}
+  {#if project.start_date}
+    <span class="text-text-muted">{fmtNumericDate(project.start_date)}</span>
+  {:else}<span class="text-text-muted">—</span>{/if}
+{/snippet}
+
+{#snippet endCell(project: Project)}
+  {#if project.end_date}
+    <span class="text-text-muted">{fmtNumericDate(project.end_date)}</span>
+  {:else}<span class="text-text-muted">—</span>{/if}
+{/snippet}
+
+{#snippet rowActions(project: Project)}
+  <ActionsMenu
+    items={[
+      {
+        label: t("common.delete"),
+        icon: Trash2,
+        danger: true,
+        onclick: () => confirmDeleteOf(project),
+      },
+    ]}
+  />
+{/snippet}
+
+{#snippet mobileRow(project: Project)}
+  <!-- A phone gets the concept's row, not a sideways-scrolling grid (docs/UX.md). -->
+  <div class="flex items-center gap-3">
+    <a href="/projects/{project.id}" class="min-w-0 flex-1">
+      <span class="font-medium text-text">{project.name}</span>
+      {#if companyName(project.company_id)}
+        <span class="ml-2 text-sm text-text-muted">· {companyName(project.company_id)}</span>
+      {/if}
+      {#if table.visibleKeys.includes("hours") && project.hours}
+        <span class="mt-0.5 block text-xs"><HoursCell hours={project.hours} /></span>
+      {/if}
+    </a>
+    <span
+      class="shrink-0 rounded-full bg-surface px-2.5 py-0.5 text-xs font-medium text-text-muted"
+    >
+      {t(`projects.status.${project.status}`)}
+    </span>
+    {@render rowActions(project)}
+  </div>
+{/snippet}
+
+{#snippet emptyState()}
+  <div class="rounded-xl border border-dashed border-border bg-surface-raised p-10 text-center">
+    <p class="font-medium text-text">{t("projects.empty")}</p>
+    <p class="mt-1 text-sm text-text-muted">{t("projects.empty_hint")}</p>
+  </div>
+{/snippet}
 
 <svelte:head>
   <title>{t("projects.title")}</title>
 </svelte:head>
 
-<div class="mb-6 flex items-center justify-between">
+<div class="mb-6 flex flex-wrap items-center justify-between gap-3">
   <div>
-    <h1 class="text-xl font-semibold text-neutral-900">{t("projects.title")}</h1>
-    <p class="mt-1 text-sm text-neutral-500">{t("projects.count", { count: data.total })}</p>
+    <h1 class="text-xl font-semibold text-text">{t("projects.title")}</h1>
+    <p class="mt-1 text-sm text-text-muted">{t("projects.count", { count: data.total })}</p>
   </div>
-  <div class="ml-auto mr-3"><SearchInput /></div>
   <button
-    class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+    class="shrink-0 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
     onclick={() => (showCreate = !showCreate)}
   >
     {t("projects.new")}
   </button>
+</div>
+
+<!-- Filter + search + the personal column picker, on their own wrapping row (issue #36): title,
+     a fixed 224px search box, the picker and the primary action on one unwrappable line have a
+     min-content width no phone has. This is the shape `companies` already uses. -->
+<div class="mb-4 flex flex-wrap items-center gap-2">
+  <button
+    class="rounded-full px-3 py-1 text-xs font-medium
+      {data.mine
+      ? 'bg-brand/10 text-brand ring-2 ring-brand'
+      : 'bg-surface text-text-muted hover:text-text'}"
+    aria-pressed={data.mine}
+    onclick={toggleMine}>{t("projects.filter.mine")}</button
+  >
+  <SearchInput />
+  <ColumnPicker
+    all={table.pickerColumns}
+    visible={table.visibleKeys}
+    sort={table.sort}
+    onchange={table.onColumnsChange}
+    onsort={table.onSort}
+  />
 </div>
 
 {#if showCreate}
@@ -56,17 +215,17 @@
       ({ update }) => {
         void update().then(() => (showCreate = false));
       }}
-    class="mb-6 rounded-xl border border-neutral-200 bg-white p-4"
+    class="mb-6 rounded-xl border border-border bg-surface-raised p-4"
   >
     <div class="grid gap-3 sm:grid-cols-2">
       <div class="sm:col-span-2">
-        <label for="name" class="mb-1 block text-sm font-medium text-neutral-700">
+        <label for="name" class="mb-1 block text-sm font-medium text-text">
           {t("projects.field.name")}
         </label>
         <input id="name" name="name" required class={inputClass} />
       </div>
       <div>
-        <label for="company_id" class="mb-1 block text-sm font-medium text-neutral-700">
+        <label for="company_id" class="mb-1 block text-sm font-medium text-text">
           {t("projects.field.company")}
         </label>
         <select id="company_id" name="company_id" class={inputClass}>
@@ -77,7 +236,7 @@
         </select>
       </div>
       <div>
-        <label for="status" class="mb-1 block text-sm font-medium text-neutral-700">
+        <label for="status" class="mb-1 block text-sm font-medium text-text">
           {t("projects.field.status")}
         </label>
         <select id="status" name="status" class={inputClass}>
@@ -87,18 +246,17 @@
         </select>
       </div>
       <div>
-        <label for="responsible" class="mb-1 block text-sm font-medium text-neutral-700">
-          {t("projects.field.responsible")}
-        </label>
-        <Combobox
-          items={memberItems}
-          name="responsible_user_id"
-          id="responsible"
+        <span class="mb-1 block text-sm font-medium text-text">
+          {t("projects.field.assignees")}
+        </span>
+        <AssigneePicker
+          members={data.members}
+          id="new-project-assignees"
           placeholder={t("projects.responsible_inherits")}
         />
       </div>
       <div>
-        <label for="budget_hours" class="mb-1 block text-sm font-medium text-neutral-700">
+        <label for="budget_hours" class="mb-1 block text-sm font-medium text-text">
           {t("projects.field.budget_hours")}
         </label>
         <input
@@ -111,7 +269,7 @@
         />
       </div>
       <div>
-        <label for="budget_amount" class="mb-1 block text-sm font-medium text-neutral-700">
+        <label for="budget_amount" class="mb-1 block text-sm font-medium text-text">
           {t("projects.field.budget_amount")}
         </label>
         <input
@@ -124,7 +282,7 @@
         />
       </div>
       <div>
-        <label for="hourly_rate" class="mb-1 block text-sm font-medium text-neutral-700">
+        <label for="hourly_rate" class="mb-1 block text-sm font-medium text-text">
           {t("projects.field.hourly_rate")}
         </label>
         <input
@@ -137,13 +295,13 @@
         />
       </div>
       <div>
-        <label for="start_date" class="mb-1 block text-sm font-medium text-neutral-700">
+        <label for="start_date" class="mb-1 block text-sm font-medium text-text">
           {t("projects.field.start_date")}
         </label>
         <input id="start_date" name="start_date" type="date" class={inputClass} />
       </div>
       <div>
-        <label for="end_date" class="mb-1 block text-sm font-medium text-neutral-700">
+        <label for="end_date" class="mb-1 block text-sm font-medium text-text">
           {t("projects.field.end_date")}
         </label>
         <input id="end_date" name="end_date" type="date" class={inputClass} />
@@ -154,22 +312,22 @@
           name="billable_default"
           type="checkbox"
           checked
-          class="h-4 w-4 rounded border-neutral-300 text-brand focus:ring-brand"
+          class="h-4 w-4 rounded border-border text-brand focus:ring-brand"
         />
-        <label for="billable_default" class="text-sm font-medium text-neutral-700">
+        <label for="billable_default" class="text-sm font-medium text-text">
           {t("projects.field.billable_default")}
         </label>
       </div>
     </div>
 
     {#if data.definitions.length > 0}
-      <div class="mt-4 border-t border-neutral-100 pt-4">
+      <div class="mt-4 border-t border-border pt-4">
         <CustomFieldsForm definitions={data.definitions} locale={data.locale} />
       </div>
     {/if}
 
     {#if form?.error}
-      <p class="mt-2 text-sm text-red-600">{t(form.error)}</p>
+      <p class="mt-2 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
     {/if}
     <div class="mt-4 flex gap-2">
       <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
@@ -177,7 +335,7 @@
       </button>
       <button
         type="button"
-        class="rounded-lg border border-neutral-300 px-4 py-2 text-sm"
+        class="rounded-lg border border-border px-4 py-2 text-sm"
         onclick={() => (showCreate = false)}
       >
         {t("common.cancel")}
@@ -186,46 +344,20 @@
   </form>
 {/if}
 
-{#if data.projects.length === 0}
-  <div class="rounded-xl border border-dashed border-neutral-300 bg-white p-10 text-center">
-    <p class="font-medium text-neutral-900">{t("projects.empty")}</p>
-    <p class="mt-1 text-sm text-neutral-500">{t("projects.empty_hint")}</p>
-  </div>
-{:else}
-  <ul class="divide-y divide-neutral-200 rounded-xl border border-neutral-200 bg-white">
-    {#each data.projects as project (project.id)}
-      <li
-        class="flex items-center justify-between gap-3 px-4 py-3 first:rounded-t-xl last:rounded-b-xl hover:bg-neutral-50"
-      >
-        <a href="/projects/{project.id}" class="min-w-0 flex-1">
-          <span class="font-medium text-neutral-900">{project.name}</span>
-          {#if companyName(project.company_id)}
-            <span class="ml-2 text-sm text-neutral-500">· {companyName(project.company_id)}</span>
-          {/if}
-        </a>
-        <span
-          class="rounded-full bg-neutral-100 px-2.5 py-0.5 text-xs font-medium text-neutral-600"
-        >
-          {t(`projects.status.${project.status}`)}
-        </span>
-        <ActionsMenu
-          items={[
-            {
-              label: t("common.delete"),
-              icon: Trash2,
-              danger: true,
-              onclick: () => {
-                deleteId = project.id;
-                deleteName = project.name;
-                confirmDelete = true;
-              },
-            },
-          ]}
-        />
-      </li>
-    {/each}
-  </ul>
-{/if}
+<DataTable
+  rows={data.projects}
+  columns={table.columns}
+  sort={table.sort}
+  widths={table.widths}
+  definitions={data.definitions}
+  locale={data.locale}
+  rowHref={(project) => `/projects/${project.id}`}
+  actions={rowActions}
+  {mobileRow}
+  empty={emptyState}
+  onsort={table.onSort}
+  onresize={table.onResize}
+/>
 
 <ConfirmDialog
   bind:open={confirmDelete}

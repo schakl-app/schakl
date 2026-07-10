@@ -11,7 +11,13 @@ import importlib
 from app.config import settings
 from app.core.auth.models import User  # noqa: F401
 from app.core.customfields.models import CustomFieldDefinition  # noqa: F401
-from app.core.models import Membership, Org, OrgSettings  # noqa: F401
+from app.core.models import InstanceAuditLog, Membership, Org, OrgSettings  # noqa: F401
+from app.core.permissions.models import (  # noqa: F401
+    MembershipRole,
+    Role,
+    RoleAuditLog,
+    RolePermission,
+)
 from app.db import Base  # noqa: F401
 
 for _name in settings.enabled_modules:

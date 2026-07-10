@@ -27,7 +27,6 @@ _STATUS_MESSAGE_KEYS: dict[int, str] = {
 _FIELD_MESSAGE_KEYS: dict[str, str] = {
     "missing": "errors.required",
     "value_error.missing": "errors.required",
-    "value_error.email": "errors.invalid_email",
     "url_parsing": "errors.invalid_url",
     "url_type": "errors.invalid_url",
 }
@@ -63,7 +62,22 @@ def _envelope(
     return {"error": error}
 
 
-def _field_key(error_type: str) -> str:
+def _field_key(err: dict[str, Any]) -> str:
+    error_type = err.get("type", "")
+    # Pydantic v2's ``EmailStr`` failures collapse to the generic "value_error" type (no
+    # more Pydantic-v1-style dotted subtypes), so email format is the one case matched by
+    # message text rather than `type`.
+    if error_type == "value_error":
+        message = str(err.get("msg", ""))
+        if "valid email address" in message:
+            return "errors.invalid_email"
+        # A validator that raises ``ValueError("errors.some_key")`` already speaks the
+        # envelope's language. Honour it, rather than flattening every rule a model knows how
+        # to explain (a break outside the working day, overlapping breaks) into
+        # "Some fields are invalid." Pydantic prefixes the message with "Value error, ".
+        key = message.removeprefix("Value error, ").strip()
+        if key.startswith("errors.") and " " not in key:
+            return key
     return _FIELD_MESSAGE_KEYS.get(error_type, "errors.validation")
 
 
@@ -80,7 +94,7 @@ async def _validation_handler(_: Request, exc: RequestValidationError) -> JSONRe
         # loc is like ("body", "email"); use the last string segment as the field name.
         loc = [str(p) for p in err.get("loc", []) if p not in ("body", "query", "path")]
         field = loc[-1] if loc else "_"
-        fields[field] = _field_key(err.get("type", ""))
+        fields[field] = _field_key(err)
     return JSONResponse(
         status_code=422,
         content=_envelope("validation", "errors.validation", fields),

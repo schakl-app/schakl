@@ -10,11 +10,14 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy import text as sql_text
 
 from app.core.auth.models import User
+from app.core.events import emit
+from app.core.sorting import apply_sort, user_sort_name
 from app.core.tenancy import RequestContext
 from app.errors import AppError
 from app.modules.tasks import recurrence as rec_mod
@@ -29,6 +32,7 @@ from app.modules.tasks.models import (
     TaskLabel,
     TaskLabelLink,
     TaskLink,
+    TaskPriority,
     TaskStatus,
 )
 from app.modules.tasks.schemas import (
@@ -71,16 +75,85 @@ _TRACKED_FIELDS = (
 )
 
 
+def _rank(column: Any, order: Sequence[str]) -> Any:
+    """Order a small closed vocabulary by *meaning*, not by spelling.
+
+    ``priority`` and ``status`` are stored as strings, so a plain ``ORDER BY`` files them
+    alphabetically — ``done, in_progress, open`` for a workflow that runs the other way, and
+    ``high, low, normal`` for a scale nobody reads that way. The rank makes ascending mean
+    "earliest in the workflow" and "least urgent", so ``-priority`` puts the fires on top.
+    """
+    return case({value: i for i, value in enumerate(order)}, value=column, else_=len(order))
+
+
+# Columns a client may sort by; anything else in ``?sort=`` is rejected (app/core/sorting.py).
+# ``title`` sorts case-insensitively, or Postgres' collation files every lowercase title after
+# every uppercase one. ``assignee`` orders by the employee's display name, never by their user id
+# — a list sorted by a person has to read that way (docs/UX.md).
+_PRIORITY_ORDER = (TaskPriority.LOW.value, TaskPriority.NORMAL.value, TaskPriority.HIGH.value)
+_STATUS_ORDER = (TaskStatus.OPEN.value, TaskStatus.IN_PROGRESS.value, TaskStatus.DONE.value)
+
+SORTABLE = {
+    "title": func.lower(Task.title),
+    "due_date": Task.due_date,
+    "priority": _rank(Task.priority, _PRIORITY_ORDER),
+    "status": _rank(Task.status, _STATUS_ORDER),
+    "assignee": user_sort_name(Task.assignee_user_id),
+    "created_at": Task.created_at,
+    "updated_at": Task.updated_at,
+}
+
+
 def _display_name(user: User | None) -> str | None:
     if user is None:
         return None
     return user.full_name or user.email
 
 
+def _attribution(live: User | None, snapshot: str | None) -> tuple[str | None, bool]:
+    """How a stored row names the person behind it: ``(display name, actor was deleted)``.
+
+    The live account wins while it exists, so a rename shows through the whole history at once.
+    Once it is gone the FK reads ``NULL`` (``ON DELETE SET NULL``) and only the snapshot taken at
+    write time still knows who acted — which is also the one thing separating a departed human
+    from the system, whose rows never carried a name at all (issue #64).
+    """
+    if live is not None:
+        return _display_name(live), False
+    return snapshot, snapshot is not None
+
+
+def _excerpt(body: str, limit: int = 140) -> str:
+    """A comment's first line, short enough to read in a notification list."""
+    text = " ".join(body.split())
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
 class TaskService:
     def __init__(self, ctx: RequestContext) -> None:
         self.ctx = ctx
         self.repo = ctx.repo(Task)
+
+    # --- access scoping (issue #19) ------------------------------------------ #
+    async def _writable_task_or_403(self, task_id: uuid.UUID) -> Task:
+        """Load a task the caller may edit.
+
+        ``tasks.task.write:own`` means **assignee** — that is the answer to #12: a person may
+        edit the task assigned to them and nothing else. ``:any`` is the manager grant. 403, not
+        404: tasks are readable by everyone who can read the module, so nothing is leaked.
+        """
+        task = await self.repo.get_or_404(task_id)
+        self._ensure_task_writable(task)
+        return task
+
+    def _ensure_task_writable(self, task: Task) -> None:
+        if self.ctx.can("tasks.task.write", scope="any"):
+            return
+        if task.assignee_user_id == self.ctx.user.id and self.ctx.can(
+            "tasks.task.write", scope="own"
+        ):
+            return
+        raise AppError("forbidden", "errors.forbidden", status_code=403)
 
     # ------------------------------------------------------------------ #
     # Activity
@@ -93,11 +166,34 @@ class TaskService:
                 org_id=self.ctx.org.id,
                 task_id=task_id,
                 actor_user_id=self.ctx.user.id,
+                # Snapshotted, so deleting the account doesn't hand this line to "System" (#64).
+                actor_name=_display_name(self.ctx.user),
                 action=action,
                 payload=payload or {},
             )
         )
         await self.ctx.session.flush()
+
+    async def _emit_task(
+        self,
+        event: str,
+        task: Task,
+        recipients: Sequence[uuid.UUID | None],
+        params: dict[str, Any] | None = None,
+    ) -> None:
+        """Announce something that happened to a task (CLAUDE.md §6 — the bus, not an import).
+
+        This module resolves its *own* audience; the notifications module adds the task's
+        watchers, drops the actor and anyone who muted it, and applies each recipient's
+        delivery preference. ``title`` is snapshotted so the line still reads after a rename.
+        """
+        payload: dict[str, Any] = {
+            "task_id": task.id,
+            "title": task.title,
+            "_recipients": [r for r in recipients if r is not None],
+        }
+        payload.update(params or {})
+        await emit(event, self.ctx, payload)
 
     # ------------------------------------------------------------------ #
     # List / aggregates
@@ -178,6 +274,7 @@ class TaskService:
         label_id: uuid.UUID | None = None,
         due: str | None = None,
         q: str | None = None,
+        sort: str | None = None,
         with_meta: bool = True,
         count: bool = True,
     ) -> tuple[list[TaskListItem], int]:
@@ -214,7 +311,16 @@ class TaskService:
             count_stmt = select(func.count()).select_from(stmt.subquery())
             total = int(await self.ctx.session.scalar(count_stmt) or 0)
 
-        stmt = stmt.order_by(Task.position.asc(), Task.created_at.asc()).limit(limit).offset(offset)
+        # Unsorted, the board keeps its hand-dragged order. A requested sort replaces `position`
+        # but keeps `created_at` as the tiebreak, so paging stays deterministic either way. The
+        # web groups the rows by status afterwards; a sort therefore orders *within* a section
+        # and never reshuffles the sections themselves (#38, #41).
+        stmt = (
+            apply_sort(stmt, sort, SORTABLE, default=Task.position.asc())
+            .order_by(Task.created_at.asc())
+            .limit(limit)
+            .offset(offset)
+        )
         tasks = (await self.ctx.session.execute(stmt)).scalars().all()
         if not count:
             total = len(tasks)
@@ -283,10 +389,14 @@ class TaskService:
                 .order_by(TaskComment.created_at.asc())
             )
         ).all()
-        detail.comments = [
-            CommentRead.model_validate(c).model_copy(update={"author_name": _display_name(u)})
-            for c, u in comment_rows
-        ]
+        detail.comments = []
+        for comment, author in comment_rows:
+            name, deleted = _attribution(author, comment.author_name)
+            detail.comments.append(
+                CommentRead.model_validate(comment).model_copy(
+                    update={"author_name": name, "author_deleted": deleted}
+                )
+            )
 
         activity_rows = (
             await self.ctx.session.execute(
@@ -300,10 +410,14 @@ class TaskService:
                 .limit(50)
             )
         ).all()
-        detail.activities = [
-            ActivityRead.model_validate(a).model_copy(update={"actor_name": _display_name(u)})
-            for a, u in activity_rows
-        ]
+        detail.activities = []
+        for activity, actor in activity_rows:
+            name, deleted = _attribution(actor, activity.actor_name)
+            detail.activities.append(
+                ActivityRead.model_validate(activity).model_copy(
+                    update={"actor_name": name, "actor_deleted": deleted}
+                )
+            )
         links = (
             await self.ctx.session.execute(
                 self.ctx.repo(TaskLink)
@@ -331,15 +445,14 @@ class TaskService:
     # Links (URL attachments)
     # ------------------------------------------------------------------ #
     async def add_link(self, task_id: uuid.UUID, data: LinkCreate) -> TaskLink:
-        self.ctx.ensure_can_write()
-        await self.repo.get_or_404(task_id)
+        await self._writable_task_or_403(task_id)
         url = data.url if "://" in data.url else f"https://{data.url}"
         return await self.ctx.repo(TaskLink).create(
             task_id=task_id, url=url, title=data.title
         )
 
     async def delete_link(self, task_id: uuid.UUID, link_id: uuid.UUID) -> None:
-        self.ctx.ensure_can_write()
+        await self._writable_task_or_403(task_id)
         repo = self.ctx.repo(TaskLink)
         link = await repo.get_or_404(link_id)
         if link.task_id != task_id:
@@ -354,7 +467,7 @@ class TaskService:
         return await self.repo.get_or_404(task_id)
 
     async def create(self, data: TaskCreate) -> Task:
-        self.ctx.ensure_can_write()
+        self.ctx.require("tasks.task.create")
         values = data.model_dump()
         # Verantwoordelijke defaults down: project's responsible → else the company's,
         # when the task has no explicit assignee (overridable per task).
@@ -371,30 +484,27 @@ class TaskService:
         values["position"] = await self._next_position()
         task = await self.repo.create(**values)
         await self._record(task.id, "created")
+        if task.assignee_user_id is not None:
+            # Assigning yourself is silent — the fan-out drops the actor (issue #16).
+            await self._emit_task("task.assigned", task, [task.assignee_user_id])
         return task
 
     async def _default_assignee(
         self, project_id: uuid.UUID | None, company_id: uuid.UUID | None
     ) -> uuid.UUID | None:
-        """Inherit the verantwoordelijke from the parent project, else the company, via their
-        published services (§3 — no model cross-imports). ``None`` when neither has one."""
+        """Inherit the verantwoordelijke — the parent project's primary assignee, else the
+        company's — via their published services (§3 — no model cross-imports). Neither having
+        one, or neither existing, means the task starts unassigned."""
         if project_id is not None:
             from app.modules.projects.service import ProjectService
 
-            try:
-                project = await ProjectService(self.ctx).get(project_id)
-            except AppError:
-                project = None
-            if project is not None and project.responsible_user_id is not None:
-                return project.responsible_user_id
+            primary = await ProjectService(self.ctx).primary_assignee(project_id)
+            if primary is not None:
+                return primary
         if company_id is not None:
             from app.modules.companies.service import CompanyService
 
-            try:
-                company = await CompanyService(self.ctx).get(company_id)
-            except AppError:
-                return None
-            return company.responsible_user_id
+            return await CompanyService(self.ctx).primary_assignee(company_id)
         return None
 
     async def _next_position(self) -> float:
@@ -404,8 +514,7 @@ class TaskService:
         return float(result or 0.0) + 1024.0
 
     async def update(self, task_id: uuid.UUID, data: TaskUpdate) -> Task:
-        self.ctx.ensure_can_write()
-        task = await self.repo.get_or_404(task_id)
+        task = await self._writable_task_or_403(task_id)
         values = data.model_dump(exclude_unset=True)
         reason = values.pop("due_change_reason", None)
 
@@ -452,6 +561,11 @@ class TaskService:
         ]
         status_changed = "status" in values and old_status != new_status
         old_due = task.due_date
+        # Read the old assignee before the write; the diff drives who is told (issue #16).
+        old_assignee = task.assignee_user_id
+        assignee_changed = (
+            "assignee_user_id" in values and old_assignee != values["assignee_user_id"]
+        )
 
         task = await self.repo.update(task, **values)
 
@@ -459,6 +573,17 @@ class TaskService:
             await self._record(
                 task.id, "status_changed", {"from": old_status, "to": new_status}
             )
+            await self._emit_task(
+                "task.status_changed",
+                task,
+                [task.assignee_user_id],
+                {"from": old_status, "to": new_status},
+            )
+        if assignee_changed:
+            if task.assignee_user_id is not None:
+                await self._emit_task("task.assigned", task, [task.assignee_user_id])
+            if old_assignee is not None:
+                await self._emit_task("task.unassigned", task, [old_assignee])
         if due_extended:
             await self._record(
                 task.id,
@@ -478,7 +603,11 @@ class TaskService:
             and (task.recurrence or {}).get("mode") == RecurrenceMode.AFTER_COMPLETION.value
         ):
             await rec_mod.spawn_next(
-                self.ctx.session, self.ctx.org.id, task, actor_user_id=self.ctx.user.id
+                self.ctx.session,
+                self.ctx.org.id,
+                task,
+                actor_user_id=self.ctx.user.id,
+                actor_name=_display_name(self.ctx.user),
             )
             # spawn_next mutates the source (recurrence handed off); reload server-side
             # defaults so serialization never lazy-loads.
@@ -486,7 +615,7 @@ class TaskService:
         return task
 
     async def delete(self, task_id: uuid.UUID) -> None:
-        self.ctx.ensure_can_write()
+        self.ctx.require("tasks.task.delete")
         task = await self.repo.get_or_404(task_id)
         await self.repo.delete(task)
 
@@ -499,20 +628,20 @@ class TaskService:
         )
 
     async def create_label(self, data: LabelCreate) -> TaskLabel:
-        self.ctx.ensure_can_write()
+        self.ctx.require("tasks.label.write")
         repo = self.ctx.repo(TaskLabel)
         if await repo.count(name=data.name):
             raise AppError("conflict", "errors.conflict", status_code=409)
         return await repo.create(**data.model_dump())
 
     async def update_label(self, label_id: uuid.UUID, data: LabelUpdate) -> TaskLabel:
-        self.ctx.ensure_can_write()
+        self.ctx.require("tasks.label.write")
         repo = self.ctx.repo(TaskLabel)
         label = await repo.get_or_404(label_id)
         return await repo.update(label, **data.model_dump(exclude_unset=True))
 
     async def delete_label(self, label_id: uuid.UUID) -> None:
-        self.ctx.ensure_can_write()
+        self.ctx.require("tasks.label.write")
         repo = self.ctx.repo(TaskLabel)
         label = await repo.get_or_404(label_id)
         await repo.delete(label)
@@ -520,8 +649,7 @@ class TaskService:
     async def set_task_labels(
         self, task_id: uuid.UUID, label_ids: list[uuid.UUID]
     ) -> list[TaskLabel]:
-        self.ctx.ensure_can_write()
-        await self.repo.get_or_404(task_id)
+        await self._writable_task_or_403(task_id)
         label_repo = self.ctx.repo(TaskLabel)
         labels = [await label_repo.get_or_404(label_id) for label_id in set(label_ids)]
 
@@ -553,8 +681,7 @@ class TaskService:
     # ------------------------------------------------------------------ #
     async def add_checklist(self, task_id: uuid.UUID, data: ChecklistCreate) -> TaskChecklist:
         """A fresh checklist, or a copy of an org checklist template (title + items)."""
-        self.ctx.ensure_can_write()
-        await self.repo.get_or_404(task_id)
+        await self._writable_task_or_403(task_id)
 
         template = None
         if data.template_id is not None:
@@ -582,6 +709,7 @@ class TaskService:
                     )
                 )
             await self.ctx.session.flush()
+        await self._record(task_id, "checklist_created", {"title": checklist.title})
         return checklist
 
     # ------------------------------------------------------------------ #
@@ -595,19 +723,19 @@ class TaskService:
     async def create_checklist_template(
         self, data: ChecklistTemplateCreate
     ) -> TaskChecklistTemplate:
-        self.ctx.ensure_can_write()
+        self.ctx.require("tasks.checklist_template.write")
         return await self.ctx.repo(TaskChecklistTemplate).create(**data.model_dump())
 
     async def update_checklist_template(
         self, template_id: uuid.UUID, data: ChecklistTemplateUpdate
     ) -> TaskChecklistTemplate:
-        self.ctx.ensure_can_write()
+        self.ctx.require("tasks.checklist_template.write")
         repo = self.ctx.repo(TaskChecklistTemplate)
         template = await repo.get_or_404(template_id)
         return await repo.update(template, **data.model_dump(exclude_unset=True))
 
     async def delete_checklist_template(self, template_id: uuid.UUID) -> None:
-        self.ctx.ensure_can_write()
+        self.ctx.require("tasks.checklist_template.write")
         repo = self.ctx.repo(TaskChecklistTemplate)
         template = await repo.get_or_404(template_id)
         await repo.delete(template)
@@ -623,14 +751,21 @@ class TaskService:
     async def update_checklist(
         self, task_id: uuid.UUID, checklist_id: uuid.UUID, data: ChecklistUpdate
     ) -> TaskChecklist:
-        self.ctx.ensure_can_write()
+        await self._writable_task_or_403(task_id)
         checklist = await self._checklist_or_404(task_id, checklist_id)
-        return await self.ctx.repo(TaskChecklist).update(
-            checklist, **data.model_dump(exclude_unset=True)
-        )
+        values = data.model_dump(exclude_unset=True)
+        old_title = checklist.title
+        checklist = await self.ctx.repo(TaskChecklist).update(checklist, **values)
+        # A reorder is noise, the way `position` is excluded from `_TRACKED_FIELDS`; a rename
+        # is a change to what the list *is*, so it belongs in the trail.
+        if checklist.title != old_title:
+            await self._record(
+                task_id, "checklist_renamed", {"from": old_title, "to": checklist.title}
+            )
+        return checklist
 
     async def delete_checklist(self, task_id: uuid.UUID, checklist_id: uuid.UUID) -> None:
-        self.ctx.ensure_can_write()
+        await self._writable_task_or_403(task_id)
         checklist = await self._checklist_or_404(task_id, checklist_id)
         await self.ctx.repo(TaskChecklist).delete(checklist)
         await self._record(task_id, "checklist_deleted", {"title": checklist.title})
@@ -638,11 +773,15 @@ class TaskService:
     async def add_checklist_item(
         self, task_id: uuid.UUID, checklist_id: uuid.UUID, data: ChecklistItemCreate
     ) -> TaskChecklistItem:
-        self.ctx.ensure_can_write()
+        await self._writable_task_or_403(task_id)
         await self._checklist_or_404(task_id, checklist_id)
         repo = self.ctx.repo(TaskChecklistItem)
         position = await repo.count(checklist_id=checklist_id)
-        return await repo.create(checklist_id=checklist_id, title=data.title, position=position)
+        item = await repo.create(
+            checklist_id=checklist_id, title=data.title, position=position
+        )
+        await self._record(task_id, "checklist_item_added", {"title": item.title})
+        return item
 
     async def _item_or_404(
         self, task_id: uuid.UUID, checklist_id: uuid.UUID, item_id: uuid.UUID
@@ -660,16 +799,30 @@ class TaskService:
         item_id: uuid.UUID,
         data: ChecklistItemUpdate,
     ) -> TaskChecklistItem:
-        self.ctx.ensure_can_write()
+        await self._writable_task_or_403(task_id)
         item = await self._item_or_404(task_id, checklist_id, item_id)
-        return await self.ctx.repo(TaskChecklistItem).update(
-            item, **data.model_dump(exclude_unset=True)
-        )
+        values = data.model_dump(exclude_unset=True)
+        was_done, old_title = item.done, item.title
+        item = await self.ctx.repo(TaskChecklistItem).update(item, **values)
+
+        # Ticking an item off is the most routine thing that happens on a task, and it was the
+        # one thing the trail never saw (#61) — it arrives here as an ordinary field update.
+        if item.done != was_done:
+            await self._record(
+                task_id,
+                "checklist_item_completed" if item.done else "checklist_item_reopened",
+                {"title": item.title},
+            )
+        if item.title != old_title:
+            await self._record(
+                task_id, "checklist_item_renamed", {"from": old_title, "to": item.title}
+            )
+        return item
 
     async def delete_checklist_item(
         self, task_id: uuid.UUID, checklist_id: uuid.UUID, item_id: uuid.UUID
     ) -> None:
-        self.ctx.ensure_can_write()
+        await self._writable_task_or_403(task_id)
         item = await self._item_or_404(task_id, checklist_id, item_id)
         await self.ctx.repo(TaskChecklistItem).delete(item)
         await self._record(task_id, "checklist_item_deleted", {"title": item.title})
@@ -678,15 +831,50 @@ class TaskService:
     # Comments
     # ------------------------------------------------------------------ #
     async def add_comment(self, task_id: uuid.UUID, data: CommentCreate) -> CommentRead:
-        self.ctx.ensure_can_write()
-        await self.repo.get_or_404(task_id)
+        self.ctx.require("tasks.comment.write")
+        task = await self.repo.get_or_404(task_id)
+        excerpt = _excerpt(data.body)
         comment = await self.ctx.repo(TaskComment).create(
-            task_id=task_id, author_user_id=self.ctx.user.id, body=data.body
+            task_id=task_id,
+            author_user_id=self.ctx.user.id,
+            author_name=_display_name(self.ctx.user),
+            body=data.body,
         )
-        await self._record(task_id, "commented")
+        # The excerpt the notification has always carried belongs in the trail too, with the id
+        # to reach the comment by — "commented", on its own, sends you hunting for what (#61).
+        await self._record(
+            task_id, "commented", {"comment_id": str(comment.id), "excerpt": excerpt}
+        )
+        # Everyone already in the conversation hears the reply; commenting also subscribes
+        # the author to the task, so the fan-out keeps reaching them (issue #16).
+        await self._emit_task(
+            "task.commented",
+            task,
+            await self._comment_audience(task),
+            {"excerpt": excerpt},
+        )
         return CommentRead.model_validate(comment).model_copy(
             update={"author_name": _display_name(self.ctx.user)}
         )
+
+    async def _comment_audience(self, task: Task) -> list[uuid.UUID]:
+        """Who is in this conversation: the assignee and everyone who commented before."""
+        authors = set(
+            (
+                await self.ctx.session.execute(
+                    select(TaskComment.author_user_id)
+                    .where(
+                        TaskComment.org_id == self.ctx.org.id,
+                        TaskComment.task_id == task.id,
+                        TaskComment.author_user_id.is_not(None),
+                    )
+                    .distinct()
+                )
+            ).scalars()
+        )
+        if task.assignee_user_id is not None:
+            authors.add(task.assignee_user_id)
+        return list(authors)
 
     async def _comment_or_404(self, task_id: uuid.UUID, comment_id: uuid.UUID) -> TaskComment:
         comment = await self.ctx.repo(TaskComment).get_or_404(comment_id)
@@ -697,22 +885,28 @@ class TaskService:
     async def update_comment(
         self, task_id: uuid.UUID, comment_id: uuid.UUID, data: CommentUpdate
     ) -> CommentRead:
-        self.ctx.ensure_can_write()
         comment = await self._comment_or_404(task_id, comment_id)
+        # Editing (as opposed to deleting) someone else's words is nobody's capability.
         if comment.author_user_id != self.ctx.user.id:
             raise AppError("forbidden", "errors.forbidden", status_code=403)
+        self.ctx.require("tasks.comment.write")
         comment = await self.ctx.repo(TaskComment).update(
             comment, body=data.body, edited_at=datetime.now(UTC)
         )
-        await self._record(task_id, "comment_edited")
+        await self._record(
+            task_id,
+            "comment_edited",
+            {"comment_id": str(comment.id), "excerpt": _excerpt(comment.body)},
+        )
         return CommentRead.model_validate(comment).model_copy(
             update={"author_name": _display_name(self.ctx.user)}
         )
 
     async def delete_comment(self, task_id: uuid.UUID, comment_id: uuid.UUID) -> None:
-        self.ctx.ensure_can_write()
         comment = await self._comment_or_404(task_id, comment_id)
-        if comment.author_user_id != self.ctx.user.id and not self.ctx.role.can_manage:
-            raise AppError("forbidden", "errors.forbidden", status_code=403)
+        scope = None if comment.author_user_id == self.ctx.user.id else "any"
+        self.ctx.require("tasks.comment.write", scope=scope)
+        body = comment.body
         await self.ctx.repo(TaskComment).delete(comment)
-        await self._record(task_id, "comment_deleted")
+        # No id to link to — the row is gone. The excerpt is the only record of what was said.
+        await self._record(task_id, "comment_deleted", {"excerpt": _excerpt(body)})

@@ -1,0 +1,35 @@
+# Build context for this Dockerfile is the REPO ROOT (compose.yaml, release.yml), so the
+# ignore file must live next to the Dockerfile as `<dockerfile>.dockerignore` — BuildKit only
+# looks there or at the context root. A plain `apps/api/.dockerignore` is never read, and the
+# patterns below are relative to the repo root, not to apps/api/.
+#
+# This matters more here than for web: the runtime stage is `COPY --from=builder /app /app`,
+# so anything `COPY apps/api/ ./` pulls in ships to production.
+.git
+
+# Line 18 of the Dockerfile copies apps/api/ wholesale. A developer's virtualenv is hundreds
+# of megabytes of the wrong platform's wheels; the caches are noise.
+**/.venv
+**/__pycache__
+**/*.py[cod]
+**/*.egg-info
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+**/htmlcov
+**/.coverage
+
+# The test suite is not part of the runtime image.
+apps/api/tests
+
+# Web build output and deps live in this context too.
+**/node_modules
+**/.svelte-kit
+**/build
+**/.vite
+**/test-results
+**/playwright-report
+
+**/.env
+**/.env.*
+!**/.env.example

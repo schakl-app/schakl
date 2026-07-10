@@ -54,6 +54,11 @@ export function fmtLongDay(isoDate: string): string {
   );
 }
 
+/** "juli 2026" — calendar popover heading. Takes a "yyyy-mm" month. */
+export function fmtMonthYear(month: string): string {
+  return fmt({ month: "long", year: "numeric", timeZone: "UTC" }).format(dateOnly(`${month}-01`));
+}
+
 /** "07-07-2026" — full numeric date, European order. Date-only ISO string. */
 export function fmtNumericDate(isoDate: string): string {
   return fmt({ day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" }).format(
@@ -69,6 +74,15 @@ export function fmtDateTime(isoDateTime: string): string {
 }
 
 /** "€ 1.234" — whole-euro currency in the active locale. */
+/**
+ * A plain number in the active locale — `12,5` in Dutch, `12.5` in English (CLAUDE.md §8).
+ * Trailing zeros are dropped: hours read as `8 u`, not `8,00 u`. Negative values keep their sign,
+ * because an over-budget project's remainder is the whole point.
+ */
+export function fmtNumber(value: number, maximumFractionDigits = 2): string {
+  return new Intl.NumberFormat(dateLocale(), { maximumFractionDigits }).format(value);
+}
+
 export function fmtMoney(amount: number): string {
   return new Intl.NumberFormat(dateLocale(), {
     style: "currency",

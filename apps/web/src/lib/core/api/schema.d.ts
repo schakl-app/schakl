@@ -340,10 +340,200 @@ export interface paths {
         get?: never;
         /**
          * Set Default Prefs
-         * @description The org-wide template (managers only).
+         * @description The org-wide template that members inherit (``settings.dashboard.manage``).
          */
         put: operations["set_default_prefs_api_v1_dashboard_prefs_default_put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/instance/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Audit */
+        get: operations["list_audit_api_v1_instance_audit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/instance/impersonation/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop Impersonation */
+        post: operations["stop_impersonation_api_v1_instance_impersonation_stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/instance/orgs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Orgs */
+        get: operations["list_orgs_api_v1_instance_orgs_get"];
+        put?: never;
+        /** Create Org */
+        post: operations["create_org_api_v1_instance_orgs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/instance/orgs/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Org */
+        post: operations["import_org_api_v1_instance_orgs_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/instance/orgs/{org_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Org Detail */
+        get: operations["org_detail_api_v1_instance_orgs__org_id__get"];
+        put?: never;
+        post?: never;
+        /** Soft Delete Org */
+        delete: operations["soft_delete_org_api_v1_instance_orgs__org_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Org */
+        patch: operations["update_org_api_v1_instance_orgs__org_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/instance/orgs/{org_id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate Org */
+        post: operations["activate_org_api_v1_instance_orgs__org_id__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/instance/orgs/{org_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Org */
+        get: operations["export_org_api_v1_instance_orgs__org_id__export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/instance/orgs/{org_id}/impersonate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Impersonate */
+        post: operations["impersonate_api_v1_instance_orgs__org_id__impersonate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/instance/orgs/{org_id}/modules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Org Modules */
+        patch: operations["update_org_modules_api_v1_instance_orgs__org_id__modules_patch"];
+        trace?: never;
+    };
+    "/api/v1/instance/orgs/{org_id}/purge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Purge Org */
+        post: operations["purge_org_api_v1_instance_orgs__org_id__purge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/instance/orgs/{org_id}/suspend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Suspend Org */
+        post: operations["suspend_org_api_v1_instance_orgs__org_id__suspend_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -405,6 +595,68 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/leave/holidays": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Holidays
+         * @description The org's calendar. Any staff member: it drives the agenda and the timesheet.
+         *
+         *     By ``year`` (Settings) or by ``date_from``/``date_to`` — a timesheet week straddles New
+         *     Year's Eve, and a range spares it a second call. The range wins when both are given.
+         */
+        get: operations["list_holidays_api_v1_leave_holidays_get"];
+        put?: never;
+        /** Create Holiday */
+        post: operations["create_holiday_api_v1_leave_holidays_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/holidays/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Holidays
+         * @description Re-run the generator for a year. Manual and deactivated rows survive untouched.
+         */
+        post: operations["import_holidays_api_v1_leave_holidays_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/holidays/{holiday_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Holiday */
+        delete: operations["delete_holiday_api_v1_leave_holidays__holiday_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Holiday */
+        patch: operations["update_holiday_api_v1_leave_holidays__holiday_id__patch"];
+        trace?: never;
+    };
     "/api/v1/leave/profile": {
         parameters: {
             query?: never;
@@ -412,7 +664,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** My Profile */
+        /**
+         * My Profile
+         * @description The caller's **effective** schedule — merged server-side, on purpose (#46).
+         */
         get: operations["my_profile_api_v1_leave_profile_get"];
         put?: never;
         post?: never;
@@ -431,7 +686,7 @@ export interface paths {
         };
         /**
          * List Profiles
-         * @description Contract hours per user (managers). Users without a row default to 40.
+         * @description Contract hours + own schedule per user (managers). A null schedule follows the org's.
          */
         get: operations["list_profiles_api_v1_leave_profiles_get"];
         put?: never;
@@ -471,6 +726,29 @@ export interface paths {
         put?: never;
         /** Create Request */
         post: operations["create_request_api_v1_leave_requests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/requests/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Request
+         * @description What a span costs, before it is submitted — so the number shown is the number stored.
+         *
+         *     Declared **above** ``/requests/{request_id}``: FastAPI matches in declaration order, and
+         *     ``preview`` would otherwise be parsed as a request id and 422 on the UUID.
+         */
+        post: operations["preview_request_api_v1_leave_requests_preview_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -526,6 +804,27 @@ export interface paths {
          * @description Approve or reject a pending request (managers).
          */
         post: operations["decide_request_api_v1_leave_requests__request_id__decide_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Settings
+         * @description The schedule a new employee inherits. An org that never saved one gets the default.
+         */
+        get: operations["get_settings_api_v1_leave_settings_get"];
+        /** Update Settings */
+        put: operations["update_settings_api_v1_leave_settings_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -645,7 +944,11 @@ export interface paths {
         };
         /**
          * Lookup Members
-         * @description Name/email of every org member, for assignee pickers. Open to all staff roles.
+         * @description Name/email of org members, for assignee/approver pickers. Open to every member.
+         *
+         *     Filtering by ``permission`` is what stops a picker from offering people who could never do
+         *     the thing being picked. It is one indexed, ``DISTINCT`` query: a user holding two granting
+         *     roles must not appear twice.
          */
         get: operations["lookup_members_api_v1_members_lookup_get"];
         put?: never;
@@ -670,8 +973,58 @@ export interface paths {
         delete: operations["revoke_member_api_v1_members__membership_id__delete"];
         options?: never;
         head?: never;
-        /** Update Member Role */
+        /**
+         * Update Member Role
+         * @description Swap this membership's **system** role; any custom roles it also holds are untouched.
+         */
         patch: operations["update_member_role_api_v1_members__membership_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/members/{membership_id}/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Member Permissions
+         * @description A member's effective permissions — the union over every role they hold.
+         *
+         *     Your *own* set arrives with ``/meta/me``; this is the manager's view of somebody else's.
+         */
+        get: operations["member_permissions_api_v1_members__membership_id__permissions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/members/{membership_id}/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Member Roles
+         * @description Replace a membership's whole role set in one save. A user may hold several roles.
+         *
+         *     Release *N* rejects a set with no ``is_system`` role: ``memberships.role`` is dual-written by
+         *     collapsing the system roles to the highest privilege, and a custom-role-only membership has no
+         *     legacy value the previous image could parse (issue #19, the rollback decision). The constraint
+         *     lifts when that column is dropped.
+         */
+        put: operations["set_member_roles_api_v1_members__membership_id__roles_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/meta/me": {
@@ -730,9 +1083,217 @@ export interface paths {
         head?: never;
         /**
          * Update Tenant Branding
-         * @description Update the org's white-label settings (managers only). Applied on next render.
+         * @description Update the org's white-label settings. Applied on next render.
          */
         patch: operations["update_tenant_branding_api_v1_meta_tenant_patch"];
+        trace?: never;
+    };
+    "/api/v1/meta/tenant/domain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Domain Status */
+        get: operations["domain_status_api_v1_meta_tenant_domain_get"];
+        put?: never;
+        /** Claim Domain */
+        post: operations["claim_domain_api_v1_meta_tenant_domain_post"];
+        /**
+         * Clear Domain
+         * @description Remove the custom domain (and any pending claim). The org keeps resolving via
+         *     ``<slug>.<base_domain>`` — the UI warns that this changes the org's address.
+         */
+        delete: operations["clear_domain_api_v1_meta_tenant_domain_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta/tenant/domain/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify Domain */
+        post: operations["verify_domain_api_v1_meta_tenant_domain_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Notifications */
+        get: operations["list_notifications_api_v1_notifications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Activity */
+        get: operations["activity_api_v1_notifications_activity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/mark-all-read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark All Read */
+        post: operations["mark_all_read_api_v1_notifications_mark_all_read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Preferences
+         * @description My effective matrix: what will actually happen, and which layer decided it.
+         */
+        get: operations["get_preferences_api_v1_notifications_preferences_get"];
+        /** Set Preferences */
+        put: operations["set_preferences_api_v1_notifications_preferences_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/preferences/defaults": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Default Preferences
+         * @description What a member inherits before they override anything (org-wide).
+         */
+        get: operations["get_default_preferences_api_v1_notifications_preferences_defaults_get"];
+        /** Set Default Preferences */
+        put: operations["set_default_preferences_api_v1_notifications_preferences_defaults_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/unread-count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Unread Count
+         * @description The bell's badge. Comes from the API, never from counting the loaded page.
+         */
+        get: operations["unread_count_api_v1_notifications_unread_count_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/watch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Watch */
+        get: operations["get_watch_api_v1_notifications_watch_get"];
+        /** Set Watch */
+        put: operations["set_watch_api_v1_notifications_watch_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/{notification_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set Read
+         * @description Reversible: read and unread are the same non-destructive toggle (docs/UX.md).
+         */
+        patch: operations["set_read_api_v1_notifications__notification_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/permissions/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Permission Catalog */
+        get: operations["permission_catalog_api_v1_permissions_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/prefs": {
@@ -788,6 +1349,116 @@ export interface paths {
         head?: never;
         /** Update Project */
         patch: operations["update_project_api_v1_projects__project_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Roles */
+        get: operations["list_roles_api_v1_roles_get"];
+        put?: never;
+        /**
+         * Create Role
+         * @description Create a custom role, optionally seeded from an existing one.
+         *
+         *     Duplicating a system role is how the restrictive ``member`` default gets loosened without
+         *     editing the system role itself. Copying ``owner`` copies its *effective* set — the wildcard,
+         *     which is not assignable — so it starts empty and the caller ticks what they mean.
+         */
+        post: operations["create_role_api_v1_roles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/roles/{role_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Role
+         * @description System roles are not deletable — they are what ``memberships.role`` still collapses to.
+         *
+         *     A custom role's ``membership_roles`` rows cascade away, so this can strand a membership with
+         *     no system role. The guard below is what catches the case where it strands the whole org.
+         */
+        delete: operations["delete_role_api_v1_roles__role_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Role
+         * @description Rename, reposition, or replace the whole permission set in one save.
+         *
+         *     ``owner`` is the one role whose permissions cannot be edited: it holds ``*`` so that it is
+         *     always possible to fix a mistake made anywhere else. The other system roles are freely
+         *     editable — that is the sanctioned way to loosen the restrictive ``member`` default.
+         */
+        patch: operations["update_role_api_v1_roles__role_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run Setup */
+        post: operations["run_setup_api_v1_setup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/setup/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Setup Status */
+        get: operations["setup_status_api_v1_setup_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * System Info
+         * @description Diagnostics for the Settings → System screen (``settings.system.read``).
+         */
+        get: operations["system_info_api_v1_system_info_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/tasks": {
@@ -1432,8 +2103,37 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Health */
+        /**
+         * Health
+         * @description Liveness. Must stay cheap, dependency-free and unauthenticated: orchestrators poll
+         *     it, and a probe that touches Postgres would restart a healthy API when the database
+         *     blips. Readiness is a different question — see ``/health/ready``.
+         */
         get: operations["health_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/health/ready": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Health Ready
+         * @description Readiness: can this instance actually serve? Checks Postgres, Redis and Alembic.
+         *
+         *     Unauthenticated (a container healthcheck has no credentials), so the body is
+         *     deliberately detail-free — ``degraded`` never says *which* dependency is down.
+         *     Operators get the breakdown from ``/api/v1/system/info`` or the logs.
+         */
+        get: operations["health_ready_health_ready_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1446,10 +2146,46 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * ActivityItem
+         * @description One line of a record's activity feed — recipient-independent.
+         */
+        ActivityItem: {
+            /** Actor Name */
+            actor_name?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Event Type */
+            event_type: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            };
+        };
         /** ActivityRead */
         ActivityRead: {
             /** Action */
             action: string;
+            /**
+             * Actor Deleted
+             * @default false
+             */
+            actor_deleted: boolean;
             /** Actor Name */
             actor_name?: string | null;
             /** Actor User Id */
@@ -1468,6 +2204,56 @@ export interface components {
             payload: {
                 [key: string]: unknown;
             };
+        };
+        /** AssigneeRead */
+        AssigneeRead: {
+            /** Is Primary */
+            is_primary: boolean;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /**
+         * AssigneeWrite
+         * @description An employee assigned to a company or project; ``is_primary`` stars the responsible one.
+         *
+         *     A list with no star promotes its first entry — the picker's own default.
+         */
+        AssigneeWrite: {
+            /**
+             * Is Primary
+             * @default false
+             */
+            is_primary: boolean;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** AuditEntry */
+        AuditEntry: {
+            /** Action */
+            action: string;
+            /** Actor Email */
+            actor_email: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Detail */
+            detail: {
+                [key: string]: unknown;
+            };
+            /** Id */
+            id: string;
+            /** Org Slug */
+            org_slug: string | null;
+            /** Target User Id */
+            target_user_id: string | null;
         };
         /** Body_auth_cookie_login_api_v1_auth_login_post */
         Body_auth_cookie_login_api_v1_auth_login_post: {
@@ -1520,6 +2306,78 @@ export interface components {
         Body_verify_verify_api_v1_auth_verify_post: {
             /** Token */
             token: string;
+        };
+        /**
+         * BreakWindow
+         * @description An unpaid interval inside the working block — lunch, a coffee break, both.
+         */
+        "BreakWindow-Input": {
+            /**
+             * End
+             * Format: time
+             */
+            end: string;
+            /**
+             * Start
+             * Format: time
+             */
+            start: string;
+        };
+        /**
+         * BreakWindow
+         * @description An unpaid interval inside the working block — lunch, a coffee break, both.
+         */
+        "BreakWindow-Output": {
+            /** End */
+            end: string;
+            /** Start */
+            start: string;
+        };
+        /**
+         * BudgetHours
+         * @description A project's budget burn for the current period (#25). Opt-in — see ``hours=`` on the list.
+         *
+         *     ``spent_hours`` counts **all** logged hours, billable or not: internal work on a client's
+         *     project still consumes its budget. ``billable_hours`` and ``unapproved_hours`` are subsets of
+         *     it, so the UI can qualify a number rather than show a different one.
+         */
+        BudgetHours: {
+            /**
+             * Billable Hours
+             * @default 0
+             */
+            billable_hours: number;
+            /** Budget Hours */
+            budget_hours?: number | null;
+            /** Period */
+            period: string;
+            /** Period Start */
+            period_start?: string | null;
+            /** Remaining Hours */
+            remaining_hours?: number | null;
+            /**
+             * Spent Hours
+             * @default 0
+             */
+            spent_hours: number;
+            /**
+             * Unapproved Hours
+             * @default 0
+             */
+            unapproved_hours: number;
+        };
+        /** BuildInfo */
+        BuildInfo: {
+            /** Built At */
+            built_at: string | null;
+            /** Environment */
+            environment: string;
+            /** Git Sha */
+            git_sha: string;
+            /** Python Version */
+            python_version: string;
+            /** Version */
+            version: string;
         };
         /** BulkResult */
         BulkResult: {
@@ -1622,6 +2480,11 @@ export interface components {
         };
         /** CommentRead */
         CommentRead: {
+            /**
+             * Author Deleted
+             * @default false
+             */
+            author_deleted: boolean;
             /** Author Name */
             author_name?: string | null;
             /** Author User Id */
@@ -1646,12 +2509,59 @@ export interface components {
             /** Body */
             body: string;
         };
+        /**
+         * CompanyBudgetHours
+         * @description A client's budget burn, rolled up from its **active projects that have a budget**.
+         *
+         *     Hours on the client's other projects, or logged straight to the client, have no allowance to
+         *     burn against. Counting them would make ``budget − spent`` stop matching the number on screen,
+         *     so they are reported separately as ``unbudgeted_hours`` — never silently dropped, never folded
+         *     into the bar. A client with no budgeted project has ``budget_hours: None``: an em-dash, not a
+         *     fabricated total.
+         */
+        CompanyBudgetHours: {
+            /**
+             * Billable Hours
+             * @default 0
+             */
+            billable_hours: number;
+            /** Budget Hours */
+            budget_hours?: number | null;
+            /** Period */
+            period?: string | null;
+            /**
+             * Project Count
+             * @default 0
+             */
+            project_count: number;
+            /** Remaining Hours */
+            remaining_hours?: number | null;
+            /**
+             * Spent Hours
+             * @default 0
+             */
+            spent_hours: number;
+            /**
+             * Unapproved Hours
+             * @default 0
+             */
+            unapproved_hours: number;
+            /**
+             * Unbudgeted Hours
+             * @default 0
+             */
+            unbudgeted_hours: number;
+        };
         /** CompanyCreate */
         CompanyCreate: {
+            /** Assignees */
+            assignees?: components["schemas"]["AssigneeWrite"][] | null;
             /** Custom */
             custom?: {
                 [key: string]: unknown;
             };
+            /** Invoice Email */
+            invoice_email?: string | null;
             /** Name */
             name: string;
             /** Notes */
@@ -1665,6 +2575,8 @@ export interface components {
         };
         /** CompanyRead */
         CompanyRead: {
+            /** Assignees */
+            assignees?: components["schemas"]["AssigneeRead"][];
             /**
              * Created At
              * Format: date-time
@@ -1674,11 +2586,14 @@ export interface components {
             custom?: {
                 [key: string]: unknown;
             };
+            hours?: components["schemas"]["CompanyBudgetHours"] | null;
             /**
              * Id
              * Format: uuid
              */
             id: string;
+            /** Invoice Email */
+            invoice_email?: string | null;
             /** Name */
             name: string;
             /** Notes */
@@ -1708,10 +2623,14 @@ export interface components {
         CompanyStatus: "lead" | "onboarding" | "active" | "offboarding" | "archived";
         /** CompanyUpdate */
         CompanyUpdate: {
+            /** Assignees */
+            assignees?: components["schemas"]["AssigneeWrite"][] | null;
             /** Custom */
             custom?: {
                 [key: string]: unknown;
             } | null;
+            /** Invoice Email */
+            invoice_email?: string | null;
             /** Name */
             name?: string | null;
             /** Notes */
@@ -1994,6 +2913,44 @@ export interface components {
             /** Total Minutes */
             total_minutes: number;
         };
+        /** DependencyInfo */
+        DependencyInfo: {
+            /** Status */
+            status: string;
+            /** Version */
+            version?: string | null;
+        };
+        /** DomainClaim */
+        DomainClaim: {
+            /** Domain */
+            domain: string;
+        };
+        /** DomainStatus */
+        DomainStatus: {
+            /** Custom Domain */
+            custom_domain: string | null;
+            /** Custom Domain Verified At */
+            custom_domain_verified_at: string | null;
+            /** Pending Domain */
+            pending_domain: string | null;
+            /** Txt Record Name */
+            txt_record_name: string | null;
+            /** Txt Record Value */
+            txt_record_value: string | null;
+            /** Verification Token */
+            verification_token: string | null;
+        };
+        /** EffectivePermissions */
+        EffectivePermissions: {
+            /** Membership Id */
+            membership_id: string;
+            /** Permissions */
+            permissions: string[];
+            /** Role Ids */
+            role_ids: string[];
+            /** User Id */
+            user_id: string;
+        };
         /**
          * EntitlementGenerate
          * @description Fill missing entitlements for a year from each type's default_weeks × contract hours.
@@ -2029,6 +2986,29 @@ export interface components {
                 [key: string]: string;
             };
         };
+        /** GeneralPreference */
+        GeneralPreference: {
+            /** Due Soon Days */
+            due_soon_days: number;
+            /** Quiet Hours End */
+            quiet_hours_end?: string | null;
+            /** Quiet Hours Start */
+            quiet_hours_start?: string | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "default" | "org" | "user";
+        };
+        /** GeneralPreferenceWrite */
+        GeneralPreferenceWrite: {
+            /** Due Soon Days */
+            due_soon_days?: number | null;
+            /** Quiet Hours End */
+            quiet_hours_end?: string | null;
+            /** Quiet Hours Start */
+            quiet_hours_start?: string | null;
+        };
         /** GenerateResult */
         GenerateResult: {
             /** Created */
@@ -2038,6 +3018,72 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** HolidayImport */
+        HolidayImport: {
+            /** Country */
+            country?: string | null;
+            /** Year */
+            year: number;
+        };
+        /**
+         * HolidayImportResult
+         * @description ``created`` new rows, ``updated`` generated rows whose date moved, ``skipped`` the rest.
+         *
+         *     A deactivated holiday counts as skipped, never resurrected; a date already occupied by a
+         *     ``manual`` row is skipped too.
+         */
+        HolidayImportResult: {
+            /** Created */
+            created: number;
+            /** Skipped */
+            skipped: number;
+            /** Updated */
+            updated: number;
+        };
+        /** ImpersonateRequest */
+        ImpersonateRequest: {
+            /**
+             * Minutes
+             * @default 30
+             */
+            minutes: number;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** ImpersonateResponse */
+        ImpersonateResponse: {
+            /** Cookie */
+            cookie: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Token */
+            token: string;
+        };
+        /** ImportRequest */
+        ImportRequest: {
+            /** Data */
+            data: {
+                [key: string]: unknown;
+            };
+            /** Name */
+            name?: string | null;
+            /** Slug */
+            slug: string;
+        };
+        /** ImportResult */
+        ImportResult: {
+            org: components["schemas"]["OrgSummary"];
+            /** Tables */
+            tables: {
+                [key: string]: number;
+            };
         };
         /** LabelCreate */
         LabelCreate: {
@@ -2098,6 +3144,21 @@ export interface components {
             /** Year */
             year: number;
         };
+        /**
+         * LeaveDayHours
+         * @description One day of a request. ``reason`` says *why* a day is worth nothing, so the UI can too.
+         */
+        LeaveDayHours: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Hours */
+            hours: string;
+            /** Reason */
+            reason?: string | null;
+        };
         /** LeaveEntitlementRead */
         LeaveEntitlementRead: {
             /** Hours */
@@ -2141,30 +3202,134 @@ export interface components {
             /** Year */
             year: number;
         };
-        /** LeaveProfileRead */
+        /** LeaveHolidayCreate */
+        LeaveHolidayCreate: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Name I18N */
+            name_i18n?: {
+                [key: string]: string;
+            };
+        };
+        /** LeaveHolidayRead */
+        LeaveHolidayRead: {
+            /** Active */
+            active: boolean;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Key */
+            key: string | null;
+            /** Name I18N */
+            name_i18n: {
+                [key: string]: string;
+            };
+            /** Source */
+            source: string;
+        };
+        /** LeaveHolidayUpdate */
+        LeaveHolidayUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Date */
+            date?: string | null;
+            /** Name I18N */
+            name_i18n?: {
+                [key: string]: string;
+            } | null;
+        };
+        /** LeavePreviewResult */
+        LeavePreviewResult: {
+            /** Breakdown */
+            breakdown: components["schemas"]["LeaveDayHours"][];
+            /** Days */
+            days: string;
+            /** Hours */
+            hours: string;
+        };
+        /**
+         * LeaveProfileRead
+         * @description The caller's **effective** profile: own schedule, else the org default.
+         *
+         *     The browser must never merge the default itself — two clients would disagree about what a
+         *     day is worth, and only one of them would agree with the server.
+         */
         LeaveProfileRead: {
+            /** Hours Per Day */
+            hours_per_day: string;
             /** Hours Per Week */
             hours_per_week: string;
+            /** Inherited */
+            inherited: boolean;
+            schedule: components["schemas"]["WorkSchedule-Output"];
             /**
              * User Id
              * Format: uuid
              */
             user_id: string;
         };
-        /** LeaveProfileUpdate */
+        /**
+         * LeaveProfileSummary
+         * @description One row of the managers' roster: the employee's *own* schedule, or ``None``.
+         */
+        LeaveProfileSummary: {
+            /** Hours Per Day */
+            hours_per_day: string;
+            /** Hours Per Week */
+            hours_per_week: string;
+            schedule: components["schemas"]["WorkSchedule-Output"] | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /**
+         * LeaveProfileUpdate
+         * @description ``schedule`` is the input; ``hours_per_week`` is derived from it and stored.
+         *
+         *     ``hours_per_week`` is still **accepted** for one release so an older ``web`` container
+         *     keeps working (#46), and honoured only while the employee has no schedule. Once a schedule
+         *     exists it wins and any posted ``hours_per_week`` is ignored — accepted, not rejected, so a
+         *     stale client degrades instead of failing.
+         */
         LeaveProfileUpdate: {
             /** Hours Per Week */
-            hours_per_week: number | string;
+            hours_per_week?: number | string | null;
+            schedule?: components["schemas"]["WorkSchedule-Input"] | null;
         };
-        /** LeaveRequestCreate */
+        /**
+         * LeaveRequestCreate
+         * @description ``hours`` is **not** accepted. The server computes it from the schedule (#48).
+         *
+         *     A client that could post ``hours: 100`` for one afternoon is a client the balance cannot
+         *     trust, which is the whole reason the calculation moved here.
+         */
         LeaveRequestCreate: {
             /**
              * End Date
              * Format: date
              */
             end_date: string;
-            /** Hours */
-            hours: number | string;
+            /** End Time */
+            end_time?: string | null;
+            /** Hours Override */
+            hours_override?: number | string | null;
             /**
              * Leave Type Id
              * Format: uuid
@@ -2177,6 +3342,8 @@ export interface components {
              * Format: date
              */
             start_date: string;
+            /** Start Time */
+            start_time?: string | null;
             /** User Id */
             user_id?: string | null;
         };
@@ -2186,6 +3353,28 @@ export interface components {
             approved: boolean;
             /** Note */
             note?: string | null;
+        };
+        /**
+         * LeaveRequestPreview
+         * @description What the form asks before it submits, so the number shown is the number stored.
+         */
+        LeaveRequestPreview: {
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /** End Time */
+            end_time?: string | null;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /** Start Time */
+            start_time?: string | null;
+            /** User Id */
+            user_id?: string | null;
         };
         /** LeaveRequestRead */
         LeaveRequestRead: {
@@ -2205,8 +3394,14 @@ export interface components {
              * Format: date
              */
             end_date: string;
+            /** End Time */
+            end_time: string | null;
             /** Hours */
             hours: string;
+            /** Hours Override */
+            hours_override: string | null;
+            /** Hours Override By User Id */
+            hours_override_by_user_id: string | null;
             /**
              * Id
              * Format: uuid
@@ -2229,6 +3424,8 @@ export interface components {
              * Format: date
              */
             start_date: string;
+            /** Start Time */
+            start_time: string | null;
             status: components["schemas"]["LeaveRequestStatus"];
             /**
              * Updated At
@@ -2250,20 +3447,51 @@ export interface components {
         LeaveRequestUpdate: {
             /** End Date */
             end_date?: string | null;
-            /** Hours */
-            hours?: number | string | null;
+            /** End Time */
+            end_time?: string | null;
+            /** Hours Override */
+            hours_override?: number | string | null;
             /** Leave Type Id */
             leave_type_id?: string | null;
             /** Note */
             note?: string | null;
             /** Start Date */
             start_date?: string | null;
+            /** Start Time */
+            start_time?: string | null;
+        };
+        /** LeaveSettingsRead */
+        LeaveSettingsRead: {
+            default_schedule: components["schemas"]["WorkSchedule-Output"];
+            /**
+             * Holiday Auto Import
+             * @default true
+             */
+            holiday_auto_import: boolean;
+            /** Holiday Country */
+            holiday_country?: string | null;
+        };
+        /**
+         * LeaveSettingsUpdate
+         * @description A **partial** update: only the fields present in the body are written.
+         *
+         *     The schedule screen and the holiday screen both save here, and a full replace would let
+         *     whichever one shipped first quietly reset the other's settings to their defaults.
+         */
+        LeaveSettingsUpdate: {
+            default_schedule?: components["schemas"]["WorkSchedule-Input"] | null;
+            /** Holiday Auto Import */
+            holiday_auto_import?: boolean | null;
+            /** Holiday Country */
+            holiday_country?: string | null;
         };
         /**
          * LeaveSummary
          * @description My Day widget payload: own vacation balance + pending count + next approved leave.
          */
         LeaveSummary: {
+            /** Hours Per Day */
+            hours_per_day: string;
             /** Hours Per Week */
             hours_per_week: string;
             /** Next Leave End */
@@ -2435,9 +3663,14 @@ export interface components {
             /** Minutes */
             minutes: number;
         };
+        /** MarkAllResult */
+        MarkAllResult: {
+            /** Updated */
+            updated: number;
+        };
         /**
          * MeInfo
-         * @description The current user *within the resolved tenant* — includes their membership role.
+         * @description The current user *within the resolved tenant* — including what they may do.
          */
         MeInfo: {
             /** Can Manage */
@@ -2448,8 +3681,19 @@ export interface components {
             full_name: string | null;
             /** Id */
             id: string;
+            /** Impersonated By */
+            impersonated_by?: string | null;
+            /** Impersonation Expires At */
+            impersonation_expires_at?: string | null;
+            /**
+             * Is Instance Admin
+             * @default false
+             */
+            is_instance_admin: boolean;
             /** Locale */
             locale: string | null;
+            /** Permissions */
+            permissions: string[];
             /** Role */
             role: string;
         };
@@ -2501,6 +3745,11 @@ export interface components {
             membership_id: string;
             /** Role */
             role: string;
+            /**
+             * Role Ids
+             * @default []
+             */
+            role_ids: string[];
             /** User Id */
             user_id: string;
         };
@@ -2508,8 +3757,24 @@ export interface components {
         MemberRoleUpdate: {
             role: components["schemas"]["Role"];
         };
+        /** MembershipRolesUpdate */
+        MembershipRolesUpdate: {
+            /** Role Ids */
+            role_ids: string[];
+        };
+        /** MigrationInfo */
+        MigrationInfo: {
+            /** Current */
+            current: string[];
+            /** Head */
+            head: string[];
+            /** Up To Date */
+            up_to_date: boolean;
+        };
         /** ModulesMeta */
         ModulesMeta: {
+            /** Base Domain */
+            base_domain: string;
             /** Customizable Entity Types */
             customizable_entity_types: string[];
             /** Default Locale */
@@ -2522,6 +3787,145 @@ export interface components {
             oidc_enabled: boolean;
             /** Supported Locales */
             supported_locales: string[];
+        };
+        /** NotificationRead */
+        NotificationRead: {
+            /** Actor Name */
+            actor_name?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Event Type */
+            event_type: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            };
+            /** Read At */
+            read_at?: string | null;
+            /**
+             * Visible At
+             * Format: date-time
+             */
+            visible_at: string;
+        };
+        /** OrgCreate */
+        OrgCreate: {
+            /** Brand Name */
+            brand_name?: string | null;
+            /** Enabled Modules */
+            enabled_modules?: string[] | null;
+            /** Locale */
+            locale?: string | null;
+            /** Name */
+            name: string;
+            /** Owner Email */
+            owner_email?: string | null;
+            /** Slug */
+            slug: string;
+        };
+        /** OrgDetail */
+        OrgDetail: {
+            /** Brand Name */
+            brand_name: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Custom Domain */
+            custom_domain: string | null;
+            /** Custom Domain Verified */
+            custom_domain_verified: boolean;
+            /** Default Locale */
+            default_locale: string | null;
+            /** Deleted At */
+            deleted_at: string | null;
+            /** Enabled Modules */
+            enabled_modules: string[];
+            /** Exported At */
+            exported_at: string | null;
+            /** Id */
+            id: string;
+            /** Members */
+            members: components["schemas"]["OrgMember"][];
+            /** Name */
+            name: string;
+            /** Pending Domain */
+            pending_domain: string | null;
+            /** Slug */
+            slug: string;
+            /** Status */
+            status: string;
+            /** Suspended At */
+            suspended_at: string | null;
+        };
+        /** OrgMember */
+        OrgMember: {
+            /** Email */
+            email: string;
+            /** Full Name */
+            full_name: string | null;
+            /** Is Active */
+            is_active: boolean;
+            /** Role */
+            role: string;
+            /** User Id */
+            user_id: string;
+        };
+        /** OrgModulesUpdate */
+        OrgModulesUpdate: {
+            /** Enabled Modules */
+            enabled_modules: string[];
+        };
+        /** OrgSummary */
+        OrgSummary: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Custom Domain */
+            custom_domain: string | null;
+            /** Custom Domain Verified */
+            custom_domain_verified: boolean;
+            /** Deleted At */
+            deleted_at: string | null;
+            /** Exported At */
+            exported_at: string | null;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Pending Domain */
+            pending_domain: string | null;
+            /** Slug */
+            slug: string;
+            /** Status */
+            status: string;
+            /** Suspended At */
+            suspended_at: string | null;
+        };
+        /** OrgUpdate */
+        OrgUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Slug */
+            slug?: string | null;
         };
         /** Page[CompanyRead] */
         Page_CompanyRead_: {
@@ -2549,6 +3953,17 @@ export interface components {
         Page_LeaveRequestRead_: {
             /** Items */
             items: components["schemas"]["LeaveRequestRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[NotificationRead] */
+        Page_NotificationRead_: {
+            /** Items */
+            items: components["schemas"]["NotificationRead"][];
             /** Limit */
             limit: number;
             /** Offset */
@@ -2605,6 +4020,91 @@ export interface components {
             /** Title Key */
             title_key: string;
         };
+        /** PermissionCatalog */
+        PermissionCatalog: {
+            /** Groups */
+            groups: string[];
+            /** Permissions */
+            permissions: components["schemas"]["PermissionRead"][];
+        };
+        /**
+         * PermissionRead
+         * @description One entry of the code-defined catalog, as the permission matrix renders it.
+         */
+        PermissionRead: {
+            /** Group */
+            group: string;
+            /** Key */
+            key: string;
+            /** Label Key */
+            label_key: string;
+            /** Position */
+            position: number;
+            /** Scopes */
+            scopes: string[];
+        };
+        /** PreferenceMatrix */
+        PreferenceMatrix: {
+            /** Events */
+            events: components["schemas"]["PreferenceRow"][];
+            general: components["schemas"]["GeneralPreference"];
+        };
+        /**
+         * PreferenceRow
+         * @description One event's effective delivery rule, and which layer decided it.
+         */
+        PreferenceRow: {
+            /** Delay Minutes */
+            delay_minutes: number;
+            /** Digest */
+            digest: string;
+            /** Digest Time */
+            digest_time?: string | null;
+            /** Digest Weekday */
+            digest_weekday?: number | null;
+            /** Enabled */
+            enabled: boolean;
+            /** Event Type */
+            event_type: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "default" | "org" | "user";
+        };
+        /** PreferenceRowWrite */
+        PreferenceRowWrite: {
+            /**
+             * Delay Minutes
+             * @default 0
+             */
+            delay_minutes: number;
+            /**
+             * Digest
+             * @default immediate
+             */
+            digest: string;
+            /** Digest Time */
+            digest_time?: string | null;
+            /** Digest Weekday */
+            digest_weekday?: number | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Event Type */
+            event_type: string;
+        };
+        /**
+         * PreferenceUpdate
+         * @description A PUT replaces this scope's overrides wholesale — an omitted event inherits again.
+         */
+        PreferenceUpdate: {
+            /** Events */
+            events?: components["schemas"]["PreferenceRowWrite"][];
+            general?: components["schemas"]["GeneralPreferenceWrite"] | null;
+        };
         /**
          * ProductivityRow
          * @description Per-employee aggregates for the productivity report.
@@ -2643,6 +4143,8 @@ export interface components {
         };
         /** ProjectCreate */
         ProjectCreate: {
+            /** Assignees */
+            assignees?: components["schemas"]["AssigneeWrite"][] | null;
             /**
              * Billable Default
              * @default true
@@ -2687,6 +4189,8 @@ export interface components {
         };
         /** ProjectRead */
         ProjectRead: {
+            /** Assignees */
+            assignees?: components["schemas"]["AssigneeRead"][];
             /**
              * Billable Default
              * @default true
@@ -2725,6 +4229,7 @@ export interface components {
             end_date?: string | null;
             /** Hourly Rate */
             hourly_rate?: number | null;
+            hours?: components["schemas"]["BudgetHours"] | null;
             /**
              * Id
              * Format: uuid
@@ -2756,6 +4261,8 @@ export interface components {
         ProjectStatus: "active" | "on_hold" | "completed" | "archived";
         /** ProjectUpdate */
         ProjectUpdate: {
+            /** Assignees */
+            assignees?: components["schemas"]["AssigneeWrite"][] | null;
             /** Billable Default */
             billable_default?: boolean | null;
             /** Budget Amount */
@@ -2787,6 +4294,16 @@ export interface components {
             /** Start Date */
             start_date?: string | null;
             status?: components["schemas"]["ProjectStatus"] | null;
+        };
+        /** PurgeRequest */
+        PurgeRequest: {
+            /** Confirm */
+            confirm: string;
+        };
+        /** ReadUpdate */
+        ReadUpdate: {
+            /** Read */
+            read: boolean;
         };
         /** Recurrence */
         Recurrence: {
@@ -2855,6 +4372,118 @@ export interface components {
          * @enum {string}
          */
         Role: "owner" | "admin" | "member" | "client";
+        /** RoleCreate */
+        RoleCreate: {
+            /** Description I18N */
+            description_i18n?: {
+                [key: string]: string;
+            };
+            /** Key */
+            key: string;
+            /** Name I18N */
+            name_i18n?: {
+                [key: string]: string;
+            };
+            /** Permissions */
+            permissions?: string[] | null;
+            /**
+             * Position
+             * @default 100
+             */
+            position: number;
+        };
+        /** RoleRead */
+        RoleRead: {
+            /** Description I18N */
+            description_i18n: {
+                [key: string]: string;
+            };
+            /** Id */
+            id: string;
+            /** Is System */
+            is_system: boolean;
+            /** Key */
+            key: string;
+            /** Member Count */
+            member_count: number;
+            /** Name I18N */
+            name_i18n: {
+                [key: string]: string;
+            };
+            /** Permissions */
+            permissions: string[];
+            /** Position */
+            position: number;
+        };
+        /**
+         * RoleUpdate
+         * @description ``key`` is immutable, deliberately: it is what ``role_permissions`` rows point at.
+         */
+        RoleUpdate: {
+            /** Description I18N */
+            description_i18n?: {
+                [key: string]: string;
+            } | null;
+            /** Name I18N */
+            name_i18n?: {
+                [key: string]: string;
+            } | null;
+            /** Permissions */
+            permissions?: string[] | null;
+            /** Position */
+            position?: number | null;
+        };
+        /** SetupRequest */
+        SetupRequest: {
+            /** Accent Color */
+            accent_color?: string | null;
+            /** Brand Name */
+            brand_name?: string | null;
+            /** Enabled Modules */
+            enabled_modules?: string[] | null;
+            /** Locale */
+            locale?: string | null;
+            /** Org Name */
+            org_name: string;
+            /**
+             * Owner Email
+             * Format: email
+             */
+            owner_email: string;
+            /** Owner Full Name */
+            owner_full_name?: string | null;
+            /** Owner Password */
+            owner_password: string;
+            /** Primary Color */
+            primary_color?: string | null;
+            /** Slug */
+            slug: string;
+        };
+        /** SetupResult */
+        SetupResult: {
+            /** Host */
+            host: string | null;
+            /** Slug */
+            slug: string;
+        };
+        /** SetupStatus */
+        SetupStatus: {
+            /** Needs Setup */
+            needs_setup: boolean;
+        };
+        /** SystemInfo */
+        SystemInfo: {
+            build: components["schemas"]["BuildInfo"];
+            database: components["schemas"]["DependencyInfo"];
+            /** Enabled Modules */
+            enabled_modules: string[];
+            migrations: components["schemas"]["MigrationInfo"];
+            redis: components["schemas"]["DependencyInfo"];
+            /** Server Time */
+            server_time: string;
+            update: components["schemas"]["UpdateInfo"];
+            worker: components["schemas"]["WorkerInfo"];
+        };
         /** TaskCreate */
         TaskCreate: {
             /** Allocated Minutes */
@@ -3100,11 +4729,15 @@ export interface components {
          * @description One (approved or pending) absence for the team calendar / timesheet overlay.
          */
         TeamLeaveItem: {
+            /** Days */
+            days: components["schemas"]["LeaveDayHours"][];
             /**
              * End Date
              * Format: date
              */
             end_date: string;
+            /** End Time */
+            end_time: string | null;
             /** Hours */
             hours: string;
             /**
@@ -3122,6 +4755,8 @@ export interface components {
              * Format: date
              */
             start_date: string;
+            /** Start Time */
+            start_time: string | null;
             status: components["schemas"]["LeaveRequestStatus"];
             /**
              * User Id
@@ -3266,6 +4901,11 @@ export interface components {
             show_brand_name: boolean;
             /** Slug */
             slug: string;
+            /**
+             * Suspended
+             * @default false
+             */
+            suspended: boolean;
         };
         /**
          * TenantBrandingUpdate
@@ -3488,6 +5128,26 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** UnreadCount */
+        UnreadCount: {
+            /** Count */
+            count: number;
+        };
+        /** UpdateInfo */
+        UpdateInfo: {
+            /** Checked At */
+            checked_at?: string | null;
+            /** Current */
+            current: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Latest */
+            latest?: string | null;
+            /** Release Url */
+            release_url?: string | null;
+            /** Update Available */
+            update_available: boolean;
+        };
         /** UserCreate */
         UserCreate: {
             /**
@@ -3586,6 +5246,94 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /**
+         * WatchRead
+         * @description Tri-state: ``True`` following, ``False`` muted, ``None`` the default fan-out.
+         */
+        WatchRead: {
+            /** Watching */
+            watching?: boolean | null;
+        };
+        /** WatchUpdate */
+        WatchUpdate: {
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /**
+             * Entity Type
+             * @enum {string}
+             */
+            entity_type: "task" | "project" | "company" | "leave_request" | "timesheet";
+            /** Watching */
+            watching?: boolean | null;
+        };
+        /**
+         * WorkDay
+         * @description One working block plus its breaks. ``breaks: []`` is an uninterrupted day.
+         */
+        "WorkDay-Input": {
+            /** Breaks */
+            breaks?: components["schemas"]["BreakWindow-Input"][];
+            /**
+             * End
+             * Format: time
+             */
+            end: string;
+            /**
+             * Start
+             * Format: time
+             */
+            start: string;
+        };
+        /**
+         * WorkDay
+         * @description One working block plus its breaks. ``breaks: []`` is an uninterrupted day.
+         */
+        "WorkDay-Output": {
+            /** Breaks */
+            breaks?: components["schemas"]["BreakWindow-Output"][];
+            /** End */
+            end: string;
+            /** Start */
+            start: string;
+        };
+        /**
+         * WorkSchedule
+         * @description A week. ``None`` on a weekday means the employee does not work it.
+         */
+        "WorkSchedule-Input": {
+            fri?: components["schemas"]["WorkDay-Input"] | null;
+            mon?: components["schemas"]["WorkDay-Input"] | null;
+            sat?: components["schemas"]["WorkDay-Input"] | null;
+            sun?: components["schemas"]["WorkDay-Input"] | null;
+            thu?: components["schemas"]["WorkDay-Input"] | null;
+            tue?: components["schemas"]["WorkDay-Input"] | null;
+            wed?: components["schemas"]["WorkDay-Input"] | null;
+        };
+        /**
+         * WorkSchedule
+         * @description A week. ``None`` on a weekday means the employee does not work it.
+         */
+        "WorkSchedule-Output": {
+            fri?: components["schemas"]["WorkDay-Output"] | null;
+            mon?: components["schemas"]["WorkDay-Output"] | null;
+            sat?: components["schemas"]["WorkDay-Output"] | null;
+            sun?: components["schemas"]["WorkDay-Output"] | null;
+            thu?: components["schemas"]["WorkDay-Output"] | null;
+            tue?: components["schemas"]["WorkDay-Output"] | null;
+            wed?: components["schemas"]["WorkDay-Output"] | null;
+        };
+        /** WorkerInfo */
+        WorkerInfo: {
+            /** Last Seen At */
+            last_seen_at?: string | null;
+            /** Queue Depth */
+            queue_depth?: number | null;
+            /** Status */
+            status: string;
         };
     };
     responses: never;
@@ -3877,6 +5625,12 @@ export interface operations {
                 limit?: number;
                 offset?: number;
                 q?: string | null;
+                /** @description Only clients I'm assigned to (primary or not) */
+                mine?: boolean;
+                /** @description name | status | created_at | updated_at, '-' desc */
+                sort?: string | null;
+                /** @description Include the budget roll-up; costs three grouped queries */
+                hours?: boolean;
                 /** @description Compute total; set false for name-only lookups */
                 count?: boolean;
             };
@@ -4072,6 +5826,8 @@ export interface operations {
                 offset?: number;
                 company_id?: string | null;
                 q?: string | null;
+                /** @description first_name | last_name | email | job_title | company | …, '-' desc */
+                sort?: string | null;
             };
             header?: never;
             path?: never;
@@ -4581,6 +6337,437 @@ export interface operations {
             };
         };
     };
+    list_audit_api_v1_instance_audit_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditEntry"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stop_impersonation_api_v1_instance_impersonation_stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_orgs_api_v1_instance_orgs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgSummary"][];
+                };
+            };
+        };
+    };
+    create_org_api_v1_instance_orgs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrgCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_org_api_v1_instance_orgs_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    org_detail_api_v1_instance_orgs__org_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    soft_delete_org_api_v1_instance_orgs__org_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_org_api_v1_instance_orgs__org_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrgUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_org_api_v1_instance_orgs__org_id__activate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_org_api_v1_instance_orgs__org_id__export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impersonate_api_v1_instance_orgs__org_id__impersonate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImpersonateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpersonateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_org_modules_api_v1_instance_orgs__org_id__modules_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrgModulesUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    purge_org_api_v1_instance_orgs__org_id__purge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PurgeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suspend_org_api_v1_instance_orgs__org_id__suspend_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     balances_api_v1_leave_balance_get: {
         parameters: {
             query: {
@@ -4711,6 +6898,170 @@ export interface operations {
             };
         };
     };
+    list_holidays_api_v1_leave_holidays_get: {
+        parameters: {
+            query?: {
+                year?: number | null;
+                date_from?: string | null;
+                date_to?: string | null;
+                include_inactive?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveHolidayRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_holiday_api_v1_leave_holidays_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveHolidayCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveHolidayRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_holidays_api_v1_leave_holidays_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HolidayImport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HolidayImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_holiday_api_v1_leave_holidays__holiday_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                holiday_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_holiday_api_v1_leave_holidays__holiday_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                holiday_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveHolidayUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveHolidayRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     my_profile_api_v1_leave_profile_get: {
         parameters: {
             query?: never;
@@ -4746,7 +7097,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LeaveProfileRead"][];
+                    "application/json": components["schemas"]["LeaveProfileSummary"][];
                 };
             };
         };
@@ -4772,7 +7123,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LeaveProfileRead"];
+                    "application/json": components["schemas"]["LeaveProfileSummary"];
                 };
             };
             /** @description Validation Error */
@@ -4795,6 +7146,8 @@ export interface operations {
                 all_users?: boolean;
                 year?: number | null;
                 status?: components["schemas"]["LeaveRequestStatus"] | null;
+                /** @description employee | start_date | end_date | hours | status, '-' desc */
+                sort?: string | null;
             };
             header?: never;
             path?: never;
@@ -4842,6 +7195,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LeaveRequestRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_request_api_v1_leave_requests_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveRequestPreview"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeavePreviewResult"];
                 };
             };
             /** @description Validation Error */
@@ -4974,6 +7360,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LeaveRequestRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_settings_api_v1_leave_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveSettingsRead"];
+                };
+            };
+        };
+    };
+    update_settings_api_v1_leave_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveSettingsRead"];
                 };
             };
             /** @description Validation Error */
@@ -5223,7 +7662,10 @@ export interface operations {
     };
     lookup_members_api_v1_members_lookup_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Only members who hold this permission at some scope — e.g. `tasks.task.write` for an assignee picker, `leave.request.approve` for an approver picker. Omit for everyone in the org. */
+                permission?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -5237,6 +7679,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MemberLookup"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -5292,6 +7743,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MemberRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    member_permissions_api_v1_members__membership_id__permissions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                membership_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EffectivePermissions"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_member_roles_api_v1_members__membership_id__roles_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                membership_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MembershipRolesUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EffectivePermissions"];
                 };
             };
             /** @description Validation Error */
@@ -5431,6 +7948,437 @@ export interface operations {
             };
         };
     };
+    domain_status_api_v1_meta_tenant_domain_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainStatus"];
+                };
+            };
+        };
+    };
+    claim_domain_api_v1_meta_tenant_domain_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DomainClaim"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_domain_api_v1_meta_tenant_domain_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainStatus"];
+                };
+            };
+        };
+    };
+    verify_domain_api_v1_meta_tenant_domain_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainStatus"];
+                };
+            };
+        };
+    };
+    list_notifications_api_v1_notifications_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                /** @description true = unread only, false = read only */
+                unread?: boolean | null;
+                entity_type?: ("task" | "project" | "company" | "leave_request" | "timesheet") | null;
+                /** @description created_at, '-' desc */
+                sort?: string | null;
+                /** @description false skips the count query (docs/PERFORMANCE.md) */
+                count?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_NotificationRead_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activity_api_v1_notifications_activity_get: {
+        parameters: {
+            query: {
+                entity_type: "task" | "project" | "company" | "leave_request" | "timesheet";
+                entity_id: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_all_read_api_v1_notifications_mark_all_read_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarkAllResult"];
+                };
+            };
+        };
+    };
+    get_preferences_api_v1_notifications_preferences_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferenceMatrix"];
+                };
+            };
+        };
+    };
+    set_preferences_api_v1_notifications_preferences_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreferenceUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferenceMatrix"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_default_preferences_api_v1_notifications_preferences_defaults_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferenceMatrix"];
+                };
+            };
+        };
+    };
+    set_default_preferences_api_v1_notifications_preferences_defaults_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreferenceUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferenceMatrix"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unread_count_api_v1_notifications_unread_count_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnreadCount"];
+                };
+            };
+        };
+    };
+    get_watch_api_v1_notifications_watch_get: {
+        parameters: {
+            query: {
+                entity_type: "task" | "project" | "company" | "leave_request" | "timesheet";
+                entity_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_watch_api_v1_notifications_watch_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WatchUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_read_api_v1_notifications__notification_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                notification_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReadUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    permission_catalog_api_v1_permissions_catalog_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PermissionCatalog"];
+                };
+            };
+        };
+    };
     get_prefs_api_v1_prefs_get: {
         parameters: {
             query?: never;
@@ -5492,6 +8440,12 @@ export interface operations {
                 company_id?: string | null;
                 status?: components["schemas"]["ProjectStatus"] | null;
                 q?: string | null;
+                /** @description Only projects I'm assigned to (primary or not) */
+                mine?: boolean;
+                /** @description name | status | start_date | end_date | budget_hours | …, '-' desc */
+                sort?: string | null;
+                /** @description Include the budget burn-down; costs one grouped query */
+                hours?: boolean;
                 /** @description Compute total; set false for name-only lookups */
                 count?: boolean;
             };
@@ -5556,7 +8510,10 @@ export interface operations {
     };
     get_project_api_v1_projects__project_id__get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Include the budget burn-down for the current period; one extra query */
+                hours?: boolean;
+            };
             header?: never;
             path: {
                 project_id: string;
@@ -5649,6 +8606,199 @@ export interface operations {
             };
         };
     };
+    list_roles_api_v1_roles_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleRead"][];
+                };
+            };
+        };
+    };
+    create_role_api_v1_roles_post: {
+        parameters: {
+            query?: {
+                /** @description Duplicate this role's permissions into the new one. */
+                from?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_role_api_v1_roles__role_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_role_api_v1_roles__role_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_setup_api_v1_setup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetupRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    setup_status_api_v1_setup_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupStatus"];
+                };
+            };
+        };
+    };
+    system_info_api_v1_system_info_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemInfo"];
+                };
+            };
+        };
+    };
     list_tasks_api_v1_tasks_get: {
         parameters: {
             query?: {
@@ -5661,6 +8811,8 @@ export interface operations {
                 label_id?: string | null;
                 due?: ("overdue" | "today" | "week") | null;
                 q?: string | null;
+                /** @description title | due_date | priority | status | assignee | …, '-' desc */
+                sort?: string | null;
                 /** @description Include label/checklist/comment aggregates */
                 meta?: boolean;
                 /** @description Compute total; set false for name-only lookups */
@@ -6713,6 +9865,16 @@ export interface operations {
                 offset?: number;
                 user_id?: string | null;
                 company_id?: string | null;
+                project_id?: string | null;
+                task_id?: string | null;
+                date_from?: string | null;
+                date_to?: string | null;
+                /** @description Filter running timers in/out; unset = both */
+                running?: boolean | null;
+                /** @description The whole team's entries, not just mine. Free to anyone when the query names a company/project/task — those hours already show as a budget bar; managers only when it doesn't. */
+                all_users?: boolean;
+                /** @description date | employee | company | project | task | minutes | …, '-' desc */
+                sort?: string | null;
             };
             header?: never;
             path?: never;
@@ -6982,6 +10144,8 @@ export interface operations {
                 billable?: boolean | null;
                 approved?: boolean | null;
                 invoiced?: boolean | null;
+                /** @description date | employee | company | project | task | minutes | …, '-' desc */
+                sort?: string | null;
             };
             header?: never;
             path?: never;
@@ -7470,6 +10634,26 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    health_ready_health_ready_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };

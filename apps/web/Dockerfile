@@ -32,3 +32,17 @@ ENV NODE_ENV=production \
 
 EXPOSE 3000
 CMD ["node", "build"]
+
+# --- Build stamp -------------------------------------------------------------------------
+# Last, so changing it never invalidates the layers above. The web app displays the *API's*
+# version (one source of truth, and the two images are always released together), so these
+# exist for `docker inspect` parity rather than to be read at runtime.
+ARG VLOTR_VERSION=0.0.0+dev
+ARG VLOTR_GIT_SHA=unknown
+ARG VLOTR_BUILT_AT=""
+
+LABEL org.opencontainers.image.title="vlotr-web" \
+      org.opencontainers.image.source="https://github.com/vlotr-crm/vlotr" \
+      org.opencontainers.image.version="${VLOTR_VERSION}" \
+      org.opencontainers.image.revision="${VLOTR_GIT_SHA}" \
+      org.opencontainers.image.created="${VLOTR_BUILT_AT}"

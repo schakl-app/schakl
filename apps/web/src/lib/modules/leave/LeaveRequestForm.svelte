@@ -1,44 +1,68 @@
 <script lang="ts">
   /**
-   * One form for requesting + editing leave (docs/UX.md: one save per surface). Hours are
-   * suggested from the date range × contract hours but stay editable for part days.
-   * Managers may pass `userOptions` to register leave for someone else (e.g. a sick call).
+   * One form for requesting + editing leave (docs/UX.md: one save per surface).
+   *
+   * The hours are **not** typed and no longer guessed here: the server computes them from the
+   * employee's schedule minus weekends, holidays and breaks (#48). The field is read-only and
+   * fed by `POST /leave/preview`, debounced, so the number shown before submitting is the number
+   * that will be stored. The per-day breakdown underneath is what lets the form say
+   * "vrijdag 25 december — feestdag, 0 uur" instead of quietly charging nothing.
+   *
+   * Most requests are whole days and must stay two clicks, so the from/to times sit behind a
+   * "part day" toggle rather than being two more required fields.
+   *
+   * Managers may pass `userOptions` to register leave for someone else (e.g. a sick call), and
+   * `canOverride` to set the hours by hand when the computation cannot express what was agreed.
    */
+  import { Clock } from "@lucide/svelte";
+
   import { enhance } from "$app/forms";
+  import { fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { getLocale } from "$lib/paraglide/runtime";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
+  import TimeInput from "$lib/core/ui/TimeInput.svelte";
 
-  import { fmtHours, hoursToDays, suggestedHours, typeLabel, type LeaveTypeInfo } from "./format";
+  import {
+    dayReasonKey,
+    fmtHours,
+    typeLabel,
+    type LeaveDayHours,
+    type LeaveTypeInfo,
+  } from "./format";
 
   interface RequestValues {
     id: string;
     leave_type_id: string;
     start_date: string;
+    start_time: string | null;
     end_date: string;
+    end_time: string | null;
     hours: string | number;
+    hours_override: string | number | null;
     note: string | null;
   }
 
   let {
     types,
-    hoursPerWeek,
     request = null,
     balances = {},
     userOptions = null,
+    canOverride = false,
     action = "?/create",
     error = null,
     ondone,
   }: {
     types: LeaveTypeInfo[];
-    hoursPerWeek: number | string;
     /** Existing request → edit mode (posts its id). */
     request?: RequestValues | null;
     /** remaining_hours by leave_type_id, to show the balance next to the type. */
     balances?: Record<string, number>;
     /** Manager register-for-someone flow: member picker options. */
     userOptions?: { value: string; label: string }[] | null;
+    /** Holders of `leave.request.approve` may set the hours by hand, and are recorded doing it. */
+    canOverride?: boolean;
     action?: string;
     error?: string | null;
     ondone?: () => void;
@@ -51,12 +75,66 @@
   let typeId = $state(request?.leave_type_id ?? types[0]?.id ?? "");
   let startDate = $state(request?.start_date ?? "");
   let endDate = $state(request?.end_date ?? "");
-  let hours = $state(request ? String(Number(request.hours)) : "");
-  let hoursTouched = $state(Boolean(request));
+  let partDay = $state(Boolean(request?.start_time || request?.end_time));
+  let startTime = $state(request?.start_time ?? "");
+  let endTime = $state(request?.end_time ?? "");
+  let override = $state(request?.hours_override != null ? String(request.hours_override) : "");
+  let overriding = $state(request?.hours_override != null);
 
   const selectedType = $derived(types.find((lt) => lt.id === typeId));
   const remaining = $derived(selectedType?.tracks_balance ? balances[selectedType.id] : undefined);
-  const days = $derived(hours ? hoursToDays(Number(hours), hoursPerWeek) : 0);
+
+  // --- the preview -------------------------------------------------------------
+  let hours = $state(request ? Number(request.hours) : 0);
+  // The days-equivalent comes from the API too: it divides by *this employee's* average
+  // scheduled day, which is not the day of the manager registering leave on their behalf.
+  let days = $state(0);
+  let breakdown = $state<LeaveDayHours[]>([]);
+  let previewError = $state<string | null>(null);
+  let previewing = $state(false);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const effectiveHours = $derived(overriding && override ? Number(override) : hours);
+
+  /** One call per meaningful change, debounced — not one per keystroke. */
+  function schedulePreview() {
+    clearTimeout(timer);
+    timer = setTimeout(runPreview, 250);
+  }
+
+  async function runPreview() {
+    if (!startDate || !endDate) return;
+    previewing = true;
+    try {
+      const res = await fetch("/leave/preview", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          user_id: userId || null,
+          start_date: startDate,
+          start_time: partDay ? startTime || null : null,
+          end_date: endDate,
+          end_time: partDay ? endTime || null : null,
+        }),
+      });
+      const body = await res.json();
+      if (body.error) {
+        previewError = body.error;
+        hours = 0;
+        days = 0;
+        breakdown = [];
+      } else {
+        previewError = null;
+        hours = Number(body.preview.hours);
+        days = Number(body.preview.days);
+        breakdown = body.preview.breakdown as LeaveDayHours[];
+      }
+    } catch {
+      previewError = "errors.server";
+    } finally {
+      previewing = false;
+    }
+  }
 
   function syncDates(which: "start" | "end", iso: string) {
     if (which === "start") {
@@ -65,14 +143,17 @@
     } else {
       endDate = iso;
     }
-    if (!hoursTouched) {
-      const suggestion = suggestedHours(startDate, endDate, hoursPerWeek);
-      if (suggestion > 0) hours = String(suggestion);
-    }
+    // No preview call here: the `$effect` below tracks these, and firing both would double it.
   }
 
+  $effect(() => {
+    // A first preview for an edit surface, and one whenever the span or the employee changes.
+    void [startDate, endDate, partDay, startTime, endTime, userId];
+    schedulePreview();
+  });
+
   const inputClass =
-    "w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
+    "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
 
 <form
@@ -91,7 +172,7 @@
 
   {#if userOptions}
     <div>
-      <label class="mb-1 block text-xs font-medium text-neutral-500" for="leave-user">
+      <label class="mb-1 block text-xs font-medium text-text-muted" for="leave-user">
         {t("leave.form.employee")}
       </label>
       <Combobox
@@ -106,7 +187,7 @@
   {/if}
 
   <div>
-    <label class="mb-1 block text-xs font-medium text-neutral-500" for="leave-type">
+    <label class="mb-1 block text-xs font-medium text-text-muted" for="leave-type">
       {t("leave.form.type")}
     </label>
     <Combobox
@@ -118,7 +199,9 @@
       placeholder={t("leave.form.type")}
     />
     {#if remaining !== undefined}
-      <p class="mt-1 text-xs {remaining <= 0 ? 'text-red-600' : 'text-neutral-500'}">
+      <p
+        class="mt-1 text-xs {remaining <= 0 ? 'text-red-600 dark:text-red-400' : 'text-text-muted'}"
+      >
         {t("leave.form.remaining", { hours: fmtHours(remaining) })}
       </p>
     {/if}
@@ -126,7 +209,7 @@
 
   <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
     <div>
-      <label class="mb-1 block text-xs font-medium text-neutral-500" for="leave-start">
+      <label class="mb-1 block text-xs font-medium text-text-muted" for="leave-start">
         {t("leave.form.start")}
       </label>
       <DateInput
@@ -138,7 +221,7 @@
       />
     </div>
     <div>
-      <label class="mb-1 block text-xs font-medium text-neutral-500" for="leave-end">
+      <label class="mb-1 block text-xs font-medium text-text-muted" for="leave-end">
         {t("leave.form.end")}
       </label>
       <DateInput
@@ -151,30 +234,100 @@
     </div>
   </div>
 
+  <!-- Most requests are whole days: the times are an affordance, not two more fields. -->
   <div>
-    <label class="mb-1 block text-xs font-medium text-neutral-500" for="leave-hours">
-      {t("leave.form.hours")}
-    </label>
-    <input
-      id="leave-hours"
-      name="hours"
-      type="number"
-      min="0.5"
-      step="0.5"
-      required
-      bind:value={hours}
-      oninput={() => (hoursTouched = true)}
-      class={inputClass}
-    />
-    {#if days > 0}
-      <p class="mt-1 text-xs text-neutral-500">
-        {t("leave.form.days_equiv", { days: fmtHours(days) })}
-      </p>
+    <button
+      type="button"
+      class="flex items-center gap-1.5 text-xs {partDay
+        ? 'text-brand'
+        : 'text-text-muted hover:text-brand'}"
+      onclick={() => (partDay = !partDay)}
+    >
+      <Clock size={13} />
+      {partDay ? t("leave.form.whole_days") : t("leave.form.part_day")}
+    </button>
+
+    {#if partDay}
+      <div class="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <label class="mb-1 block text-xs font-medium text-text-muted" for="leave-start-time">
+            {t("leave.form.start_time")}
+          </label>
+          <TimeInput id="leave-start-time" name="start_time" bind:value={startTime} />
+        </div>
+        <div>
+          <label class="mb-1 block text-xs font-medium text-text-muted" for="leave-end-time">
+            {t("leave.form.end_time")}
+          </label>
+          <TimeInput id="leave-end-time" name="end_time" bind:value={endTime} />
+        </div>
+      </div>
     {/if}
   </div>
 
+  <!-- The hours are computed, not entered. The breakdown says where they went. -->
+  <div class="rounded-lg border border-border bg-surface px-3 py-2">
+    <div class="flex items-baseline justify-between">
+      <span class="text-xs font-medium text-text-muted">{t("leave.form.hours")}</span>
+      <span class="text-lg font-semibold tabular-nums text-text">
+        {previewing ? "…" : t("leave.form.hours_amount", { hours: fmtHours(effectiveHours) })}
+      </span>
+    </div>
+    {#if !overriding && days > 0}
+      <p class="mt-0.5 text-right text-xs text-text-muted">
+        {t("leave.form.days_equiv", { days: fmtHours(days) })}
+      </p>
+    {/if}
+    {#if previewError}
+      <p class="mt-1 text-xs text-red-600 dark:text-red-400">{t(previewError)}</p>
+    {/if}
+
+    {#if breakdown.length > 1 || breakdown.some((d) => d.reason)}
+      <ul class="mt-2 space-y-0.5 border-t border-border pt-2">
+        {#each breakdown as day (day.date)}
+          {@const reason = dayReasonKey(day.reason)}
+          <li class="flex justify-between text-xs {reason ? 'text-text-muted' : 'text-text'}">
+            <span>
+              <span class="capitalize">{fmtDayMonth(day.date)}</span>
+              <!-- `capitalize` uppercases every word, so the reason stays outside it: the day
+                   reads "5 Nov", the reason reads "geen werkdag", not "Geen Werkdag". -->
+              {#if reason}<span class="text-text-muted">· {t(reason)}</span>{/if}
+            </span>
+            <span class="tabular-nums">
+              {t("leave.form.hours_amount", { hours: fmtHours(day.hours) })}
+            </span>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+  </div>
+
+  {#if canOverride}
+    <div>
+      <!-- Marks the field as *offered*, so unticking the box clears a stored override rather
+           than silently leaving it. A member never posts this, and never posts `hours_override`. -->
+      <input type="hidden" name="override_offered" value="1" />
+      <label class="flex items-center gap-2 text-xs text-text-muted">
+        <input type="checkbox" bind:checked={overriding} class="h-3.5 w-3.5 rounded" />
+        {t("leave.form.override")}
+      </label>
+      {#if overriding}
+        <input
+          name="hours_override"
+          type="number"
+          min="0.25"
+          step="0.25"
+          required
+          bind:value={override}
+          class="{inputClass} mt-1"
+        />
+        <p class="mt-1 text-xs text-text-muted">{t("leave.form.override_hint")}</p>
+      {/if}
+    </div>
+  {/if}
+
   <div>
-    <label class="mb-1 block text-xs font-medium text-neutral-500" for="leave-note">
+    <label class="mb-1 block text-xs font-medium text-text-muted" for="leave-note">
       {t("leave.form.note")}
     </label>
     <textarea id="leave-note" name="note" rows="2" class={inputClass}
@@ -183,11 +336,14 @@
   </div>
 
   {#if error}
-    <p class="text-sm text-red-600">{t(error)}</p>
+    <p class="text-sm text-red-600 dark:text-red-400">{t(error)}</p>
   {/if}
 
   <div class="flex justify-end">
-    <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+    <button
+      disabled={effectiveHours <= 0}
+      class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+    >
       {request ? t("common.save") : t("leave.form.submit")}
     </button>
   </div>

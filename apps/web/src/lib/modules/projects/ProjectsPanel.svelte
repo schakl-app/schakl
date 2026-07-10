@@ -15,18 +15,15 @@
 </script>
 
 {#if projects.length === 0}
-  <p class="text-sm text-neutral-500">{t("projects.empty")}</p>
+  <p class="text-sm text-text-muted">{t("projects.empty")}</p>
 {:else}
-  <ul class="divide-y divide-neutral-100">
+  <ul class="divide-y divide-border">
     {#each projects as project (project.id)}
       <li class="flex items-center justify-between py-2">
-        <a
-          href="/projects/{project.id}"
-          class="text-sm font-medium text-neutral-900 hover:text-brand"
-        >
+        <a href="/projects/{project.id}" class="text-sm font-medium text-text hover:text-brand">
           {project.name}
         </a>
-        <span class="text-xs text-neutral-500">
+        <span class="text-xs text-text-muted">
           {#if project.budget_hours != null}{t("projects.budget_hours_short", {
               hours: project.budget_hours,
             })} ·

@@ -11,35 +11,48 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 
 from sqlalchemy import func, select
 
 from app.core.auth.models import User
+from app.core.events import emit
 from app.core.models import Membership
-from app.core.roles import Role
+from app.core.permissions.service import permission_holder_ids
+from app.core.sorting import apply_sort, user_sort_name
 from app.core.tenancy import RequestContext
 from app.errors import AppError
+from app.modules.leave import holidays
+from app.modules.leave import schedule as sched
 from app.modules.leave.models import (
     LeaveEntitlement,
+    LeaveHoliday,
     LeaveProfile,
     LeaveRequest,
     LeaveRequestStatus,
+    LeaveSettings,
     LeaveType,
 )
 from app.modules.leave.schemas import (
+    HolidayImport,
+    HolidayImportResult,
     LeaveBalance,
+    LeaveDayHours,
     LeaveEntitlementUpsert,
+    LeaveHolidayCreate,
+    LeaveHolidayUpdate,
+    LeavePreviewResult,
+    LeaveProfileUpdate,
     LeaveRequestCreate,
+    LeaveRequestPreview,
     LeaveRequestUpdate,
+    LeaveSettingsUpdate,
     LeaveSummary,
     LeaveTypeCreate,
     LeaveTypeUpdate,
     TeamLeaveItem,
 )
-
-_DEFAULT_HOURS_PER_WEEK = Decimal("40")
 
 # Seeded per org (also in the create-tables migration for existing orgs). Tenant-editable
 # config, not law: the Dutch defaults are 4 statutory weeks expiring 6 months into the next
@@ -104,9 +117,29 @@ DEFAULT_LEAVE_TYPES: list[dict] = [
 
 _OCCUPYING = (LeaveRequestStatus.PENDING.value, LeaveRequestStatus.APPROVED.value)
 
+#: "Not looked up yet", distinct from "looked up, and there is no row".
+_UNSET = object()
+
+#: Midnight-to-midnight, in minutes: the window a day with no requested time covers.
+_DAY = sched.MINUTES_PER_DAY
+
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+# Columns a client may sort by; anything else in ``?sort=`` is rejected (app/core/sorting.py).
+# ``employee`` orders by the requester's display name, never by their user id — a list sorted by
+# a person must order the way it reads. ``type`` cannot be a sort key: a leave type's label is
+# per-locale tenant data in a JSONB column, so ``key`` is the closest honest thing.
+SORTABLE = {
+    "employee": user_sort_name(LeaveRequest.user_id),
+    "start_date": LeaveRequest.start_date,
+    "end_date": LeaveRequest.end_date,
+    "hours": LeaveRequest.hours,
+    "status": LeaveRequest.status,
+    "created_at": LeaveRequest.created_at,
+}
 
 
 class LeaveService:
@@ -116,22 +149,32 @@ class LeaveService:
         self.types = ctx.repo(LeaveType)
         self.profiles = ctx.repo(LeaveProfile)
         self.entitlements = ctx.repo(LeaveEntitlement)
+        self.settings = ctx.repo(LeaveSettings)
+        self.holidays = ctx.repo(LeaveHoliday)
+        # One settings read per request, not one per profile resolved (docs/PERFORMANCE.md).
+        self._settings_row: LeaveSettings | None | object = _UNSET
 
     # --- access scoping ------------------------------------------------------ #
     def _effective_user_id(self, user_id: uuid.UUID | None) -> uuid.UUID:
-        """Resolve whose leave to act on: self, or another user if a manager asks."""
+        """Whose leave to act on: your own, or another's with ``leave.request.read:any``."""
         if user_id is None or user_id == self.ctx.user.id:
             return self.ctx.user.id
-        if not self.ctx.role.can_manage:
-            raise AppError("forbidden", "errors.forbidden", status_code=403)
+        self.ctx.require("leave.request.read", scope="any")
         return user_id
 
     async def _owned_or_404(self, request_id: uuid.UUID) -> LeaveRequest:
+        """404, not 403, on someone else's request — a 403 would confirm that it exists."""
         request = await self.requests.get_or_404(request_id)
-        if request.user_id != self.ctx.user.id and not self.ctx.role.can_manage:
-            # Don't reveal another user's request exists.
+        if request.user_id != self.ctx.user.id and not self.ctx.can(
+            "leave.request.read", scope="any"
+        ):
             raise AppError("not_found", "errors.not_found", status_code=404)
         return request
+
+    def _ensure_writable(self, request: LeaveRequest) -> None:
+        """``leave.request.write:own`` covers your own request; someone else's needs ``:any``."""
+        scope = None if request.user_id == self.ctx.user.id else "any"
+        self.ctx.require("leave.request.write", scope=scope)
 
     # --- leave types ---------------------------------------------------------- #
     async def list_types(self, *, include_inactive: bool = False) -> Sequence[LeaveType]:
@@ -143,7 +186,7 @@ class LeaveService:
 
     async def _ensure_default_types(self) -> None:
         """Seed the Dutch default types once per org (idempotent; skipped for read-only roles)."""
-        if not self.ctx.can_write:
+        if not self.ctx.can("leave.request.write"):
             return
         if await self.types.count() > 0:
             return
@@ -151,7 +194,7 @@ class LeaveService:
             await self.types.create(**spec)
 
     async def create_type(self, data: LeaveTypeCreate) -> LeaveType:
-        self.ctx.ensure_can_manage()
+        self.ctx.require("leave.type.write")
         existing = await self.ctx.session.scalar(
             self.types.scoped_select().where(LeaveType.key == data.key)
         )
@@ -160,41 +203,271 @@ class LeaveService:
         return await self.types.create(**data.model_dump())
 
     async def update_type(self, type_id: uuid.UUID, data: LeaveTypeUpdate) -> LeaveType:
-        self.ctx.ensure_can_manage()
+        self.ctx.require("leave.type.write")
         leave_type = await self.types.get_or_404(type_id)
         return await self.types.update(leave_type, **data.model_dump(exclude_unset=True))
 
     async def delete_type(self, type_id: uuid.UUID) -> None:
         """Hard-delete only unused types; ones with history should be deactivated instead."""
-        self.ctx.ensure_can_manage()
+        self.ctx.require("leave.type.write")
         leave_type = await self.types.get_or_404(type_id)
         if await self.requests.count(leave_type_id=type_id) > 0:
             raise AppError("conflict", "errors.leave_type_in_use", status_code=409)
         # Entitlements follow via the FK's ON DELETE CASCADE.
         await self.types.delete(leave_type)
 
-    # --- profiles (contract hours) --------------------------------------------- #
+    # --- org settings (the default work schedule) ------------------------------- #
+    async def settings_row(self) -> LeaveSettings | None:
+        """The org's settings row, if it has one. Memoized: several readers per request.
+
+        A missing row is not seeded here. Writing on a read would race two concurrent GETs into
+        a unique-violation, and the absent row already means exactly "the defaults".
+        """
+        if self._settings_row is _UNSET:
+            self._settings_row = await self.ctx.session.scalar(
+                self.settings.scoped_select().limit(1)
+            )
+        return self._settings_row
+
+    async def default_schedule(self) -> sched.WorkSchedule:
+        row = await self.settings_row()
+        return sched.parse(row.default_schedule) if row else sched.default_schedule()
+
+    async def update_settings(self, data: LeaveSettingsUpdate) -> LeaveSettings:
+        """Write only what the caller sent. See ``LeaveSettingsUpdate`` — two screens save here."""
+        self.ctx.require("leave.profile.manage")
+        values: dict = {
+            key: value
+            for key, value in data.model_dump(exclude_unset=True).items()
+            if key != "default_schedule"
+        }
+        if data.default_schedule is not None:
+            values["default_schedule"] = sched.dump(data.default_schedule)
+
+        row = await self.settings_row()
+        if row is None:
+            # A first save of holiday config must still give the row its NOT NULL schedule.
+            values.setdefault("default_schedule", sched.dump(await self.default_schedule()))
+            row = await self.settings.create(**values)
+        elif values:
+            row = await self.settings.update(row, **values)
+        self._settings_row = row
+        return row
+
+    # --- holidays (#47) --------------------------------------------------------- #
+    async def list_holidays(
+        self,
+        *,
+        year: int | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        include_inactive: bool = False,
+    ) -> Sequence[LeaveHoliday]:
+        """This org's calendar, by year (Settings) or by range (the agenda and the timesheet).
+
+        A range, not only a year, because a timesheet week and a calendar month both straddle
+        New Year's Eve and would otherwise need two calls to find one holiday.
+        """
+        await self._ensure_seeded_holidays()
+        if date_from is None or date_to is None:
+            target = year or _now().year
+            date_from, date_to = date(target, 1, 1), date(target, 12, 31)
+        stmt = self.holidays.scoped_select().where(
+            LeaveHoliday.date >= date_from, LeaveHoliday.date <= date_to
+        )
+        if not include_inactive:
+            stmt = stmt.where(LeaveHoliday.active.is_(True))
+        return (
+            (await self.ctx.session.execute(stmt.order_by(LeaveHoliday.date.asc())))
+            .scalars()
+            .all()
+        )
+
+    async def active_holidays_between(self, start: date, end: date) -> set[date]:
+        """The days in ``[start, end]`` that cost no leave hours (#48). One query, one set."""
+        stmt = select(LeaveHoliday.date).where(
+            LeaveHoliday.org_id == self.ctx.org.id,
+            LeaveHoliday.active.is_(True),
+            LeaveHoliday.date >= start,
+            LeaveHoliday.date <= end,
+        )
+        return set((await self.ctx.session.execute(stmt)).scalars().all())
+
+    async def _ensure_seeded_holidays(self) -> None:
+        """Seed this year + next once per org, the way ``_ensure_default_types`` seeds types."""
+        if not self.ctx.can("leave.request.write"):
+            return
+        if await self.holidays.count() > 0:
+            return
+        settings = await self.settings_row()
+        country = (settings.holiday_country if settings else None) or holidays.COUNTRY_NL
+        year = _now().year
+        for target in (year, year + 1):
+            await self._import_year(country, target)
+
+    async def create_holiday(self, data: LeaveHolidayCreate) -> LeaveHoliday:
+        self.ctx.require("leave.holiday.write")
+        if await self._on_date(data.date) is not None:
+            raise AppError("conflict", "errors.leave_holiday_exists", status_code=409)
+        return await self.holidays.create(
+            **data.model_dump(), source=holidays.SOURCE_MANUAL, key=None
+        )
+
+    async def update_holiday(self, holiday_id: uuid.UUID, data: LeaveHolidayUpdate) -> LeaveHoliday:
+        self.ctx.require("leave.holiday.write")
+        holiday = await self.holidays.get_or_404(holiday_id)
+        values = data.model_dump(exclude_unset=True)
+        moved = values.get("date")
+        if moved is not None and moved != holiday.date:
+            clash = await self._on_date(moved)
+            if clash is not None and clash.id != holiday.id:
+                raise AppError("conflict", "errors.leave_holiday_exists", status_code=409)
+        return await self.holidays.update(holiday, **values)
+
+    async def delete_holiday(self, holiday_id: uuid.UUID) -> None:
+        self.ctx.require("leave.holiday.write")
+        await self.holidays.delete(await self.holidays.get_or_404(holiday_id))
+
+    async def _on_date(self, day: date) -> LeaveHoliday | None:
+        return await self.ctx.session.scalar(
+            self.holidays.scoped_select().where(LeaveHoliday.date == day)
+        )
+
+    async def import_holidays(self, data: HolidayImport) -> HolidayImportResult:
+        self.ctx.require("leave.holiday.write")
+        settings = await self.settings_row()
+        country = data.country or (settings.holiday_country if settings else None)
+        return await self._import_year(country or holidays.COUNTRY_NL, data.year)
+
+    async def _import_year(self, country: str, year: int) -> HolidayImportResult:
+        """Replace this year's **generated** rows; never touch manual or deactivated ones.
+
+        Matching is by ``key``, not by date, so Koningsdag moving from the 27th to the 26th
+        *moves* the row instead of leaving two. A generated row the tenant deactivated keeps its
+        ``active = false`` — re-importing must not quietly reinstate a day they work.
+        """
+        generated = holidays.generate(country, year)
+        if not generated:
+            return HolidayImportResult(created=0, updated=0, skipped=0)
+
+        existing = (
+            (
+                await self.ctx.session.execute(
+                    self.holidays.scoped_select().where(
+                        LeaveHoliday.date >= date(year, 1, 1),
+                        LeaveHoliday.date < date(year + 1, 1, 1),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        by_key = {row.key: row for row in existing if row.key is not None}
+        by_date = {row.date: row for row in existing}
+
+        created = updated = skipped = 0
+        for holiday in generated:
+            current = by_key.get(holiday.key)
+            if current is not None:
+                if current.date == holiday.day:
+                    skipped += 1
+                    continue
+                # The date moved. Refuse to trample whatever now sits on the new one.
+                clash = by_date.get(holiday.day)
+                if clash is not None and clash.id != current.id:
+                    skipped += 1
+                    continue
+                by_date.pop(current.date, None)
+                await self.holidays.update(current, date=holiday.day)
+                by_date[holiday.day] = current
+                updated += 1
+                continue
+            if holiday.day in by_date:
+                # A manual row already owns the day; the tenant's own entry wins.
+                skipped += 1
+                continue
+            row = await self.holidays.create(
+                date=holiday.day,
+                name_i18n=holiday.name_i18n,
+                active=True,
+                source=country,
+                key=holiday.key,
+            )
+            by_date[holiday.day] = row
+            by_key[holiday.key] = row
+            created += 1
+        return HolidayImportResult(created=created, updated=updated, skipped=skipped)
+
+    # --- profiles (work schedule + contract hours) ------------------------------ #
+    async def _profile(self, user_id: uuid.UUID) -> LeaveProfile | None:
+        return await self.ctx.session.scalar(
+            self.profiles.scoped_select().where(LeaveProfile.user_id == user_id)
+        )
+
+    def _effective(
+        self, profile: LeaveProfile | None, default: sched.WorkSchedule
+    ) -> tuple[sched.WorkSchedule, Decimal, bool]:
+        """``(schedule, hours_per_week, inherited)`` for one profile.
+
+        ``hours_per_week`` follows the schedule when there is one. When there isn't, the
+        **stored** number wins: a pre-#46 part-timer on 32 h inherits the 40 h default
+        schedule for day-shape purposes, and regranting them 8 hours a week because of it
+        would be a data-integrity incident, not a migration.
+        """
+        own = sched.parse(profile.schedule) if profile else None
+        if own is not None:
+            return own, sched.week_hours(own), False
+        stored = profile.hours_per_week if profile else sched.week_hours(default)
+        return default, stored, True
+
+    async def profile_for(self, user_id: uuid.UUID) -> tuple[sched.WorkSchedule, Decimal, bool]:
+        """``(effective schedule, contract hours, inherited)`` for one employee."""
+        return self._effective(await self._profile(user_id), await self.default_schedule())
+
+    async def effective_schedule(self, user_id: uuid.UUID) -> sched.WorkSchedule:
+        """The week ``compute_hours`` measures against: this employee's own, else the org's."""
+        schedule, _, _ = await self.profile_for(user_id)
+        return schedule
+
     async def hours_per_week(self, user_id: uuid.UUID) -> Decimal:
-        profile = await self.ctx.session.scalar(
-            self.profiles.scoped_select().where(LeaveProfile.user_id == user_id)
-        )
-        return profile.hours_per_week if profile else _DEFAULT_HOURS_PER_WEEK
+        _, hours, _ = await self.profile_for(user_id)
+        return hours
 
-    async def list_profiles(self) -> dict[uuid.UUID, Decimal]:
-        """Contract hours per user for every org member (managers)."""
-        self.ctx.ensure_can_manage()
+    async def list_profiles(self) -> list[tuple[uuid.UUID, Decimal, sched.WorkSchedule | None]]:
+        """Every profile row for the managers' roster (``leave.profile.manage``).
+
+        Returns each employee's **own** schedule (``None`` = follows the org default) rather
+        than the merged one: the settings screen already holds the default and rendering
+        "inherited" is the whole point of the distinction.
+        """
+        self.ctx.require("leave.profile.manage")
         rows = (await self.ctx.session.execute(self.profiles.scoped_select())).scalars().all()
-        return {p.user_id: p.hours_per_week for p in rows}
+        return [(p.user_id, p.hours_per_week, sched.parse(p.schedule)) for p in rows]
 
-    async def set_profile(self, user_id: uuid.UUID, hours: Decimal) -> LeaveProfile:
-        self.ctx.ensure_can_manage()
+    async def set_profile(self, user_id: uuid.UUID, data: LeaveProfileUpdate) -> LeaveProfile:
+        """Save a schedule (and derive ``hours_per_week`` from it) or, legacy, bare hours."""
+        self.ctx.require("leave.profile.manage")
         await self._member_or_404(user_id)
-        profile = await self.ctx.session.scalar(
-            self.profiles.scoped_select().where(LeaveProfile.user_id == user_id)
-        )
+        profile = await self._profile(user_id)
+
+        values: dict = {}
+        if "schedule" in data.model_fields_set:
+            values["schedule"] = sched.dump(data.schedule) if data.schedule else None
+            # Derived, never entered — including on a clear, which falls back to the org default.
+            values["hours_per_week"] = sched.week_hours(
+                data.schedule or await self.default_schedule()
+            )
+        elif data.hours_per_week is not None and (profile is None or profile.schedule is None):
+            # Release-N compatibility: an older `web` posts only hours_per_week. Honour it while
+            # the employee has no schedule; once they do, the schedule is the source of truth.
+            values["hours_per_week"] = data.hours_per_week
+
         if profile is None:
-            return await self.profiles.create(user_id=user_id, hours_per_week=hours)
-        return await self.profiles.update(profile, hours_per_week=hours)
+            values.setdefault("hours_per_week", await self.hours_per_week(user_id))
+            return await self.profiles.create(user_id=user_id, **values)
+        if not values:
+            return profile
+        return await self.profiles.update(profile, **values)
 
     async def _member_or_404(self, user_id: uuid.UUID) -> None:
         membership = await self.ctx.session.scalar(
@@ -211,12 +484,12 @@ class LeaveService:
     ) -> Sequence[LeaveEntitlement]:
         uid = self._effective_user_id(user_id)
         stmt = self.entitlements.scoped_select().where(LeaveEntitlement.year == year)
-        if not (self.ctx.role.can_manage and user_id is None):
+        if not (self.ctx.can("leave.entitlement.read", scope="any") and user_id is None):
             stmt = stmt.where(LeaveEntitlement.user_id == uid)
         return (await self.ctx.session.execute(stmt)).scalars().all()
 
     async def upsert_entitlement(self, data: LeaveEntitlementUpsert) -> LeaveEntitlement:
-        self.ctx.ensure_can_manage()
+        self.ctx.require("leave.entitlement.write")
         await self.types.get_or_404(data.leave_type_id)
         await self._member_or_404(data.user_id)
         existing = await self.ctx.session.scalar(
@@ -232,19 +505,18 @@ class LeaveService:
 
     async def generate_entitlements(self, year: int) -> int:
         """Create missing entitlements: default_weeks × contract hours, per staff member."""
-        self.ctx.ensure_can_manage()
+        self.ctx.require("leave.entitlement.write")
         types = [
             t
             for t in await self.list_types()
             if t.tracks_balance and t.default_weeks is not None
         ]
+        # Who accrues leave: the people who log hours here (issue #19). One indexed, DISTINCT
+        # query — a user holding two granting roles must not be entitled twice.
         staff = (
             (
                 await self.ctx.session.execute(
-                    select(Membership.user_id).where(
-                        Membership.org_id == self.ctx.org.id,
-                        Membership.role != Role.CLIENT.value,
-                    )
+                    permission_holder_ids(self.ctx.org.id, "time.entry.write")
                 )
             )
             .scalars()
@@ -254,9 +526,14 @@ class LeaveService:
             (e.user_id, e.leave_type_id)
             for e in await self.list_entitlements(year=year)
         }
+        # Contract hours for everyone in one read, not one per employee — the profile table is
+        # one row per member and this loop used to grow a query per person (docs/PERFORMANCE.md).
+        default = await self.default_schedule()
+        rows = (await self.ctx.session.execute(self.profiles.scoped_select())).scalars().all()
+        by_user = {p.user_id: p for p in rows}
         created = 0
         for user_id in staff:
-            hours_week = await self.hours_per_week(user_id)
+            _, hours_week, _ = self._effective(by_user.get(user_id), default)
             for leave_type in types:
                 if (user_id, leave_type.id) in existing:
                     continue
@@ -311,6 +588,134 @@ class LeaveService:
             )
         return result
 
+    # --- the hour calculation (#48) --------------------------------------------------- #
+    def _breakdown(
+        self,
+        *,
+        schedule: sched.WorkSchedule,
+        holidays_off: set[date],
+        start_date: date,
+        start_time: time | None,
+        end_date: date,
+        end_time: time | None,
+    ) -> list[tuple[date, int, str | None]]:
+        """Per-day worked minutes, and why a day is worth nothing when it is.
+
+        For each date: not a scheduled working day → 0; an active holiday → 0; otherwise the
+        day's scheduled window intersected with the requested one, minus every break it overlaps.
+        The intersection *is* the clamp — "from 08:00" on an 08:30 day means "from the start".
+        """
+        rows: list[tuple[date, int, str | None]] = []
+        day = start_date
+        while day <= end_date:
+            work_day = schedule.day(day.weekday())
+            if work_day is None or sched.day_minutes(work_day) == 0:
+                rows.append((day, 0, "not_scheduled"))
+            elif day in holidays_off:
+                rows.append((day, 0, "holiday"))
+            else:
+                low = sched.to_minutes(start_time) if (day == start_date and start_time) else 0
+                high = sched.to_minutes(end_time) if (day == end_date and end_time) else _DAY
+                minutes = sched.day_minutes(work_day, (low, high))
+                rows.append((day, minutes, None if minutes else "outside_hours"))
+            day += timedelta(days=1)
+        return rows
+
+    async def compute_hours(
+        self,
+        user_id: uuid.UUID,
+        start_date: date,
+        start_time: time | None,
+        end_date: date,
+        end_time: time | None,
+    ) -> tuple[Decimal, list[LeaveDayHours]]:
+        """``(total hours, per-day breakdown)`` — the one place a leave hour is decided.
+
+        Rounds to two decimals **once**, on the summed minutes: rounding each day and adding the
+        results is how a 40-hour week becomes 39,99.
+        """
+        schedule = await self.effective_schedule(user_id)
+        holidays_off = await self.active_holidays_between(start_date, end_date)
+        rows = self._breakdown(
+            schedule=schedule,
+            holidays_off=holidays_off,
+            start_date=start_date,
+            start_time=start_time,
+            end_date=end_date,
+            end_time=end_time,
+        )
+        total = sched.to_hours(sum(minutes for _, minutes, _ in rows))
+        breakdown = [
+            LeaveDayHours(date=day, hours=sched.to_hours(minutes), reason=reason)
+            for day, minutes, reason in rows
+        ]
+        return total, breakdown
+
+    async def preview(self, data: LeaveRequestPreview) -> LeavePreviewResult:
+        """What the form shows before submitting — the number the server will store."""
+        uid = self._effective_user_id(data.user_id)
+        if uid != self.ctx.user.id:
+            # 404, not "the org default schedule", when the id belongs to another tenant.
+            await self._member_or_404(uid)
+        self._validate_span(data.start_date, data.start_time, data.end_date, data.end_time)
+        hours, breakdown = await self.compute_hours(
+            uid, data.start_date, data.start_time, data.end_date, data.end_time
+        )
+        per_day = sched.average_day_hours(await self.effective_schedule(uid))
+        days = (hours / per_day).quantize(Decimal("0.01")) if per_day else Decimal("0")
+        return LeavePreviewResult(hours=hours, days=days, breakdown=breakdown)
+
+    def _validate_span(
+        self,
+        start_date: date,
+        start_time: time | None,
+        end_date: date,
+        end_time: time | None,
+    ) -> None:
+        if end_date < start_date:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"end_date": "errors.leave_end_before_start"},
+            )
+        # Only on a *same-day* request: `Thu 15:00 → Fri 14:00` is an ordinary overnight span.
+        if start_date == end_date and start_time and end_time and end_time <= start_time:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"end_time": "errors.leave_end_time_before_start"},
+            )
+
+    async def _resolve_hours(
+        self,
+        *,
+        user_id: uuid.UUID,
+        start_date: date,
+        start_time: time | None,
+        end_date: date,
+        end_time: time | None,
+        override: Decimal | None,
+    ) -> Decimal:
+        """The stored ``hours``: the manager's number when there is one, else the computed one.
+
+        Whether the caller is *allowed* to set an override is checked where the intent is
+        visible — at the call site. Re-checking it here would 403 a member who merely edits the
+        note on a request a manager overrode last week.
+        """
+        self._validate_span(start_date, start_time, end_date, end_time)
+        if override is not None:
+            return override
+        hours, _ = await self.compute_hours(user_id, start_date, start_time, end_date, end_time)
+        if hours <= 0:
+            # A Saturday, a holiday, or half an hour that lands entirely inside lunch. Say so
+            # rather than storing a zero-hour request nobody will ever notice.
+            raise AppError(
+                "no_working_hours", "errors.leave_no_working_hours", status_code=422
+            )
+        return hours
+
     # --- requests ------------------------------------------------------------------- #
     async def _validate_request(
         self,
@@ -322,13 +727,6 @@ class LeaveService:
         hours: Decimal,
         exclude_id: uuid.UUID | None = None,
     ) -> None:
-        if end_date < start_date:
-            raise AppError(
-                "validation",
-                "errors.validation",
-                status_code=422,
-                fields={"end_date": "errors.leave_end_before_start"},
-            )
         # No two occupying (pending/approved) requests may overlap for the same user.
         stmt = self.requests.scoped_select().where(
             LeaveRequest.user_id == user_id,
@@ -360,17 +758,31 @@ class LeaveService:
                 )
 
     async def create(self, data: LeaveRequestCreate) -> LeaveRequest:
-        self.ctx.ensure_can_write()
+        self.ctx.require(
+            "leave.request.write",
+            scope=None if data.user_id in (None, self.ctx.user.id) else "any",
+        )
         uid = self._effective_user_id(data.user_id)
         leave_type = await self.types.get_or_404(data.leave_type_id)
         if not leave_type.active:
             raise AppError("validation", "errors.validation", status_code=422)
+        # Setting `hours` by hand is an approver's act, and it is recorded as one.
+        if data.hours_override is not None:
+            self.ctx.require("leave.request.approve")
+        hours = await self._resolve_hours(
+            user_id=uid,
+            start_date=data.start_date,
+            start_time=data.start_time,
+            end_date=data.end_date,
+            end_time=data.end_time,
+            override=data.hours_override,
+        )
         await self._validate_request(
             user_id=uid,
             leave_type=leave_type,
             start_date=data.start_date,
             end_date=data.end_date,
-            hours=data.hours,
+            hours=hours,
         )
         # Types without approval (sick) are registrations: they go straight to approved.
         status = (
@@ -378,22 +790,59 @@ class LeaveService:
             if leave_type.requires_approval
             else LeaveRequestStatus.APPROVED.value
         )
-        return await self.requests.create(
+        request = await self.requests.create(
             user_id=uid,
             leave_type_id=data.leave_type_id,
             start_date=data.start_date,
+            start_time=data.start_time,
             end_date=data.end_date,
-            hours=data.hours,
+            end_time=data.end_time,
+            hours=hours,
+            hours_override=data.hours_override,
+            hours_override_by_user_id=self.ctx.user.id if data.hours_override else None,
             note=data.note,
             status=status,
         )
+        # Only a request that actually waits on somebody is worth interrupting them for; a
+        # registration (sick leave) is already decided (issue #16).
+        if request.status == LeaveRequestStatus.PENDING.value:
+            await self._emit_leave("leave.requested", request, await self._managers())
+        return request
+
+    async def _managers(self) -> list[uuid.UUID]:
+        """Who may approve leave here: the holders of ``leave.request.approve`` (issue #19)."""
+        return list(
+            (
+                await self.ctx.session.execute(
+                    permission_holder_ids(self.ctx.org.id, "leave.request.approve")
+                )
+            ).scalars()
+        )
+
+    async def _emit_leave(
+        self, event: str, request: LeaveRequest, recipients: Sequence[uuid.UUID]
+    ) -> None:
+        """Announce a leave decision on the bus (CLAUDE.md §6 — no cross-module imports)."""
+        await emit(
+            event,
+            self.ctx,
+            {
+                "leave_request_id": request.id,
+                "start_date": request.start_date,
+                "end_date": request.end_date,
+                "hours": request.hours,
+                "_recipients": list(recipients),
+            },
+        )
 
     async def update(self, request_id: uuid.UUID, data: LeaveRequestUpdate) -> LeaveRequest:
-        self.ctx.ensure_can_write()
         request = await self._owned_or_404(request_id)
-        # Members may only reshape their own *pending* request; managers may also fix
-        # approved ones (mirrors the approved-lock rule on time entries).
-        if request.status != LeaveRequestStatus.PENDING.value and not self.ctx.role.can_manage:
+        self._ensure_writable(request)
+        # Members may only reshape their own *pending* request; whoever may approve leave may
+        # also fix an approved one (mirrors the approved-lock rule on time entries).
+        if request.status != LeaveRequestStatus.PENDING.value and not self.ctx.can(
+            "leave.request.approve"
+        ):
             raise AppError("approved_locked", "errors.approved_locked", status_code=403)
         if request.status not in _OCCUPYING:
             raise AppError("conflict", "errors.leave_decided", status_code=409)
@@ -401,12 +850,36 @@ class LeaveService:
         leave_type = await self.types.get_or_404(
             values.get("leave_type_id", request.leave_type_id)
         )
+        start_date = values.get("start_date", request.start_date)
+        start_time = values.get("start_time", request.start_time)
+        end_date = values.get("end_date", request.end_date)
+        end_time = values.get("end_time", request.end_time)
+        override = values.get("hours_override", request.hours_override)
+        # Setting or clearing the override is an approver's act; leaving a stored one alone isn't.
+        if "hours_override" in data.model_fields_set:
+            self.ctx.require("leave.request.approve")
+
+        # Recomputed on every edit, so a request moved into Kerst week gets cheaper (#48).
+        values["hours"] = await self._resolve_hours(
+            user_id=request.user_id,
+            start_date=start_date,
+            start_time=start_time,
+            end_date=end_date,
+            end_time=end_time,
+            override=override,
+        )
+        if "hours_override" in data.model_fields_set:
+            values["hours_override"] = data.hours_override
+            values["hours_override_by_user_id"] = (
+                self.ctx.user.id if data.hours_override is not None else None
+            )
+
         await self._validate_request(
             user_id=request.user_id,
             leave_type=leave_type,
-            start_date=values.get("start_date", request.start_date),
-            end_date=values.get("end_date", request.end_date),
-            hours=Decimal(values.get("hours", request.hours)),
+            start_date=start_date,
+            end_date=end_date,
+            hours=values["hours"],
             exclude_id=request.id,
         )
         return await self.requests.update(request, **values)
@@ -414,11 +887,11 @@ class LeaveService:
     async def decide(
         self, request_id: uuid.UUID, *, approved: bool, note: str | None = None
     ) -> LeaveRequest:
-        self.ctx.ensure_can_manage()
+        self.ctx.require("leave.request.approve")
         request = await self.requests.get_or_404(request_id)
         if request.status != LeaveRequestStatus.PENDING.value:
             raise AppError("conflict", "errors.leave_decided", status_code=409)
-        return await self.requests.update(
+        request = await self.requests.update(
             request,
             status=(
                 LeaveRequestStatus.APPROVED.value
@@ -429,13 +902,18 @@ class LeaveService:
             decided_at=_now(),
             decision_note=note,
         )
+        # The person who asked is the person who needs the answer.
+        await self._emit_leave(
+            "leave.approved" if approved else "leave.rejected", request, [request.user_id]
+        )
+        return request
 
     async def cancel(self, request_id: uuid.UUID) -> LeaveRequest:
-        """Requester may cancel while pending; approved leave needs a manager."""
-        self.ctx.ensure_can_write()
+        """Requester may cancel while pending; cancelling approved leave needs an approver."""
         request = await self._owned_or_404(request_id)
+        self._ensure_writable(request)
         if request.status == LeaveRequestStatus.APPROVED.value:
-            if not self.ctx.role.can_manage:
+            if not self.ctx.can("leave.request.approve"):
                 raise AppError("approved_locked", "errors.approved_locked", status_code=403)
         elif request.status != LeaveRequestStatus.PENDING.value:
             raise AppError("conflict", "errors.leave_decided", status_code=409)
@@ -455,10 +933,11 @@ class LeaveService:
         all_users: bool = False,
         year: int | None = None,
         status: LeaveRequestStatus | None = None,
+        sort: str | None = None,
     ) -> tuple[Sequence[LeaveRequest], int]:
         conditions = []
         if all_users:
-            self.ctx.ensure_can_manage()
+            self.ctx.require("leave.request.read", scope="any")
         else:
             conditions.append(LeaveRequest.user_id == self._effective_user_id(user_id))
         if year is not None:
@@ -466,13 +945,12 @@ class LeaveService:
             conditions.append(LeaveRequest.start_date < date(year + 1, 1, 1))
         if status is not None:
             conditions.append(LeaveRequest.status == status.value)
-        stmt = (
-            self.requests.scoped_select()
-            .where(*conditions)
-            .order_by(LeaveRequest.start_date.desc())
-            .limit(limit)
-            .offset(offset)
-        )
+        stmt = apply_sort(
+            self.requests.scoped_select().where(*conditions),
+            sort,
+            SORTABLE,
+            default=LeaveRequest.start_date.desc(),
+        ).limit(limit).offset(offset)
         items = (await self.ctx.session.execute(stmt)).scalars().all()
         count_stmt = (
             select(func.count())
@@ -483,16 +961,71 @@ class LeaveService:
         return items, total
 
     # --- team calendar feed ------------------------------------------------------------ #
+    def _shaped_days(
+        self,
+        request: LeaveRequest,
+        schedule: sched.WorkSchedule,
+        holidays_off: set[date],
+    ) -> list[LeaveDayHours]:
+        """The request's stored hours, laid out over its days in the shape the schedule gives.
+
+        Two rules that fight, and how they're reconciled: the **stored total** is what the
+        employee and their manager agreed to, and approved requests are never retroactively
+        recalculated (#47, #48). But the **shape** — 2 h Thursday, 5 h Friday — has to come from
+        the schedule, because spreading the total evenly is exactly the bug this replaces.
+
+        So: compute the shape, then distribute the stored total in proportion to it. For a
+        request created after this landed the factor is 1 and the days *are* the computation.
+        Only a request whose schedule or holidays changed underneath it gets scaled, and there
+        the total still reads as what was agreed. A request with a manager override, or one whose
+        every day has since become a holiday, has no shape at all — it lands on the start date.
+        """
+        rows = self._breakdown(
+            schedule=schedule,
+            holidays_off=holidays_off,
+            start_date=request.start_date,
+            start_time=request.start_time,
+            end_date=request.end_date,
+            end_time=request.end_time,
+        )
+        total_minutes = sum(minutes for _, minutes, _ in rows)
+        stored = Decimal(request.hours)
+        if total_minutes == 0:
+            return [
+                LeaveDayHours(
+                    date=day,
+                    hours=stored if day == request.start_date else Decimal("0.00"),
+                    reason=reason,
+                )
+                for day, _, reason in rows
+            ]
+
+        days = [
+            LeaveDayHours(
+                date=day,
+                hours=(stored * minutes / total_minutes).quantize(Decimal("0.01")),
+                reason=reason,
+            )
+            for day, minutes, reason in rows
+        ]
+        # Push the rounding residue onto the biggest day, so the row still sums to `hours`.
+        residue = stored - sum((d.hours for d in days), Decimal("0"))
+        if residue:
+            biggest = max(days, key=lambda d: d.hours)
+            biggest.hours += residue
+        return days
+
     async def team(
         self, *, date_from: date, date_to: date, user_id: uuid.UUID | None = None
     ) -> list[TeamLeaveItem]:
         """Occupying absences overlapping the range, with names — the calendar/timesheet feed.
 
-        Open to all staff (who's off is normal team-visible information in an agency), but
-        not to external ``client`` users.
+        Open to all staff (who's off is normal team-visible information in an agency). A
+        ``client`` role holds no ``leave.request.read`` at all, so the route already refused it.
+
+        Three extra reads, not three per row: every profile, the org default and the holidays in
+        range are fetched once and the per-day shapes computed in Python (docs/PERFORMANCE.md).
         """
-        if self.ctx.role == Role.CLIENT:
-            raise AppError("forbidden", "errors.forbidden", status_code=403)
         stmt = (
             select(LeaveRequest, User)
             .join(User, User.id == LeaveRequest.user_id)
@@ -507,6 +1040,17 @@ class LeaveService:
         if user_id is not None:
             stmt = stmt.where(LeaveRequest.user_id == user_id)
         rows = (await self.ctx.session.execute(stmt)).all()
+        if not rows:
+            return []
+
+        default = await self.default_schedule()
+        profiles = (await self.ctx.session.execute(self.profiles.scoped_select())).scalars().all()
+        by_user = {p.user_id: p for p in profiles}
+        # A request may start before `date_from` and end after `date_to`; shape the whole of it.
+        span_from = min(req.start_date for req, _ in rows)
+        span_to = max(req.end_date for req, _ in rows)
+        holidays_off = await self.active_holidays_between(span_from, span_to)
+
         return [
             TeamLeaveItem(
                 id=req.id,
@@ -514,9 +1058,14 @@ class LeaveService:
                 user_name=user.full_name or user.email,
                 leave_type_id=req.leave_type_id,
                 start_date=req.start_date,
+                start_time=req.start_time,
                 end_date=req.end_date,
+                end_time=req.end_time,
                 hours=req.hours,
                 status=LeaveRequestStatus(req.status),
+                days=self._shaped_days(
+                    req, self._effective(by_user.get(req.user_id), default)[0], holidays_off
+                ),
             )
             for req, user in rows
         ]
@@ -525,6 +1074,7 @@ class LeaveService:
     async def summary(self) -> LeaveSummary:
         today = _now().date()
         year = today.year
+        schedule, hours_week, _ = await self.profile_for(self.ctx.user.id)
         balances = await self.balances(year=year)
         remaining = sum((b.remaining_hours for b in balances), Decimal(0))
         pending = await self.ctx.session.scalar(
@@ -551,7 +1101,8 @@ class LeaveService:
         return LeaveSummary(
             year=year,
             remaining_hours=remaining,
-            hours_per_week=await self.hours_per_week(self.ctx.user.id),
+            hours_per_week=hours_week,
+            hours_per_day=sched.average_day_hours(schedule),
             pending_count=int(pending or 0),
             next_leave_start=next_leave.start_date if next_leave else None,
             next_leave_end=next_leave.end_date if next_leave else None,

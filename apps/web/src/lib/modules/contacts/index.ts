@@ -19,6 +19,7 @@ registerWebModule({
       group: "relations",
       icon: Users,
       position: 20,
+      requiresPermission: "contacts.contact.read",
     },
   ],
   companyPanels: [

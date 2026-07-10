@@ -9,6 +9,7 @@ from sqlalchemy import select
 
 from app.config import settings
 from app.core.models import OrgSettings
+from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
 from app.modules.companies.schemas import CompanyCreate, CompanyRead, CompanyUpdate
 from app.modules.companies.service import CompanyService
@@ -26,15 +27,26 @@ async def _enabled_modules(ctx: RequestContext) -> list[str]:
     return list(settings.enabled_modules)
 
 
-@router.get("", response_model=Page[CompanyRead])
+@router.get(
+    "",
+    response_model=Page[CompanyRead],
+    dependencies=[require_permission("companies.company.read")],
+)
 async def list_companies(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     q: str | None = Query(None, max_length=200),
+    mine: bool = Query(False, description="Only clients I'm assigned to (primary or not)"),
+    sort: str | None = Query(None, description="name | status | created_at | updated_at, '-' desc"),
+    hours: bool = Query(
+        False, description="Include the budget roll-up; costs three grouped queries"
+    ),
     count: bool = Query(True, description="Compute total; set false for name-only lookups"),
     ctx: RequestContext = Depends(require_context),
 ) -> Page[CompanyRead]:
-    items, total = await CompanyService(ctx).list(limit=limit, offset=offset, q=q, count=count)
+    items, total = await CompanyService(ctx).list(
+        limit=limit, offset=offset, q=q, mine=mine, sort=sort, hours=hours, count=count
+    )
     return Page(
         items=[CompanyRead.model_validate(c) for c in items],
         total=total,
@@ -43,7 +55,12 @@ async def list_companies(
     )
 
 
-@router.post("", response_model=CompanyRead, status_code=201)
+@router.post(
+    "",
+    response_model=CompanyRead,
+    status_code=201,
+    dependencies=[require_permission("companies.company.write")],
+)
 async def create_company(
     payload: CompanyCreate,
     ctx: RequestContext = Depends(require_context),
@@ -52,7 +69,11 @@ async def create_company(
     return CompanyRead.model_validate(company)
 
 
-@router.get("/{company_id}", response_model=CompanyRead)
+@router.get(
+    "/{company_id}",
+    response_model=CompanyRead,
+    dependencies=[require_permission("companies.company.read")],
+)
 async def get_company(
     company_id: uuid.UUID,
     ctx: RequestContext = Depends(require_context),
@@ -61,7 +82,11 @@ async def get_company(
     return CompanyRead.model_validate(company)
 
 
-@router.patch("/{company_id}", response_model=CompanyRead)
+@router.patch(
+    "/{company_id}",
+    response_model=CompanyRead,
+    dependencies=[require_permission("companies.company.write")],
+)
 async def update_company(
     company_id: uuid.UUID,
     payload: CompanyUpdate,
@@ -71,7 +96,11 @@ async def update_company(
     return CompanyRead.model_validate(company)
 
 
-@router.delete("/{company_id}", status_code=204)
+@router.delete(
+    "/{company_id}",
+    status_code=204,
+    dependencies=[require_permission("companies.company.delete")],
+)
 async def delete_company(
     company_id: uuid.UUID,
     ctx: RequestContext = Depends(require_context),
@@ -79,7 +108,11 @@ async def delete_company(
     await CompanyService(ctx).delete(company_id)
 
 
-@router.get("/{company_id}/panels", response_model=list[PanelData])
+@router.get(
+    "/{company_id}/panels",
+    response_model=list[PanelData],
+    dependencies=[require_permission("companies.company.read")],
+)
 async def company_panels(
     company_id: uuid.UUID,
     ctx: RequestContext = Depends(require_context),

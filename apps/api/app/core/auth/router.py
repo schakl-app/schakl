@@ -15,6 +15,7 @@ from app.core.auth.backend import auth_backend
 from app.core.auth.oidc import build_oidc_router
 from app.core.auth.schemas import UserCreate, UserRead, UserUpdate
 from app.core.auth.users import fastapi_users
+from app.core.permissions.deps import exempt_routes
 from app.errors import AppError
 
 
@@ -53,4 +54,8 @@ def build_auth_router() -> APIRouter:
     if oidc_router is not None:
         router.include_router(oidc_router, prefix="/auth/oidc", tags=["auth"])
 
+    # Authentication, not authorization: these run before a tenant membership is resolved, and
+    # ``/users/*`` is the caller's own account (or ``is_superuser``, a different axis). Deny-by-
+    # default (issue #19) still demands the exemption be stated, not merely implied.
+    exempt_routes(router, "authentication and own-account routes; no membership resolved yet")
     return router

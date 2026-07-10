@@ -37,6 +37,33 @@ work is discarded**:
 
 Don't fetch heavy aggregates to render a label. Don't request 200 rows to show 5.
 
+## Permissions resolve once per request, and are not cached
+
+`require_context` resolves the caller's effective permissions on the **same statement** as the
+membership lookup — an `outerjoin` through `membership_roles` into `role_permissions` with
+`array_agg(...).filter(...)` (issue #19). Same query count as before RBAC existed, whatever the
+number of roles a person holds. `tests/test_rbac_model.py` asserts it with `count_queries`.
+
+Two rules follow, and both are load-bearing:
+
+- **Never re-query a permission.** `ctx.can(...)` / `ctx.require(...)` read an in-memory
+  `frozenset` on `RequestContext`. A service that hits the database to answer "may they?" is a
+  bug, however small it looks.
+- **There is no Redis cache for permissions, on purpose.** One indexed join beats cross-process
+  invalidation, and a stale permission cache is a security bug rather than a slow page. Revisit
+  only with a measurement.
+
+Anything that renders *who may do what* is a grouped query too, never one per row:
+`GET /roles` gets its permissions and member counts in two grouped statements; `GET /members`
+carries each membership's `role_ids` in one, so the Gebruikers screen derives every user's
+effective set client-side instead of asking the API per member; `permission_holder_ids` builds
+every people-picker as a single `DISTINCT` query (a user holding two granting roles would
+otherwise appear twice).
+
+The roles and the permission catalog are shared by two Instellingen screens, so they load in
+`settings/+layout.server.ts` — a layout load does not rerun on tab navigation — and only for a
+user who can actually manage roles.
+
 ## Case study: the My Day dashboard
 
 The dashboard composes widgets contributed by modules (`(app)/+page.server.ts`). Fixes applied

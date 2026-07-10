@@ -122,6 +122,49 @@ async def test_meta_modules(client_for) -> None:
         assert data["local_login_enabled"] is True
 
 
+async def test_invoice_email_validation_and_roundtrip(client_for) -> None:
+    t = await make_tenant("invemail")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        # Blank normalises to NULL (not every client has one yet).
+        blank = await c.post(
+            "/api/v1/companies",
+            json={"name": "Blank Co", "invoice_email": "  "},
+            headers=headers,
+        )
+        assert blank.status_code == 201
+        assert blank.json()["invoice_email"] is None
+
+        # Round-trips through create, get and update.
+        created = await c.post(
+            "/api/v1/companies",
+            json={"name": "Acme", "invoice_email": "facturen@example.com"},
+            headers=headers,
+        )
+        assert created.status_code == 201
+        company = created.json()
+        assert company["invoice_email"] == "facturen@example.com"
+
+        fetched = await c.get(f"/api/v1/companies/{company['id']}", headers=headers)
+        assert fetched.json()["invoice_email"] == "facturen@example.com"
+
+        updated = await c.patch(
+            f"/api/v1/companies/{company['id']}",
+            json={"invoice_email": "administratie@example.com"},
+            headers=headers,
+        )
+        assert updated.json()["invoice_email"] == "administratie@example.com"
+
+        # Rejected as invalid, not silently dropped.
+        invalid = await c.post(
+            "/api/v1/companies",
+            json={"name": "Bad Co", "invoice_email": "not-an-email"},
+            headers=headers,
+        )
+        assert invalid.status_code == 422
+        assert invalid.json()["error"]["fields"]["invoice_email"] == "errors.invalid_email"
+
+
 async def test_company_status_default_and_roundtrip(client_for) -> None:
     t = await make_tenant("status")
     headers = await auth_cookie(t.user)

@@ -1,6 +1,7 @@
 import { fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
+import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -9,7 +10,7 @@ const SELECT_TYPES = new Set(["select", "multi_select"]);
 
 export const load: PageServerLoad = async (event) => {
   // Manager-only screen (the API also enforces this on writes).
-  if (!event.locals.user?.canManage) throw redirect(303, "/");
+  if (!can(event.locals.user, "settings.customfields.write")) throw redirect(303, "/");
 
   const api = apiFor(event);
   const entityTypesRes = await api.GET("/api/v1/custom-fields/entity-types");

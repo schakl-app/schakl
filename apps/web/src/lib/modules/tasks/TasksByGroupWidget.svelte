@@ -60,33 +60,31 @@
   });
 </script>
 
-<div class="rounded-xl border border-neutral-200 bg-white p-5">
+<div class="rounded-xl border border-border bg-surface-raised p-5">
   <div class="mb-3 flex items-center justify-between">
-    <h2 class="text-sm font-semibold text-neutral-900">{t("dashboard.open_by_group.title")}</h2>
+    <h2 class="text-sm font-semibold text-text">{t("dashboard.open_by_group.title")}</h2>
     <a href="/tasks" class="text-xs text-brand hover:underline">{t("common.actions")}</a>
   </div>
   {#if groups.length === 0}
-    <p class="text-sm text-neutral-500">{t("dashboard.open_by_group.empty")}</p>
+    <p class="text-sm text-text-muted">{t("dashboard.open_by_group.empty")}</p>
   {:else}
-    <ul class="divide-y divide-neutral-100">
+    <ul class="divide-y divide-border">
       {#each groups as group (group.key)}
         <li>
           <a
             href={group.href}
             class="flex items-center justify-between gap-2 py-2 hover:text-brand"
           >
-            <span class="min-w-0 flex-1 truncate text-sm font-medium text-neutral-900"
-              >{group.label}</span
-            >
+            <span class="min-w-0 flex-1 truncate text-sm font-medium text-text">{group.label}</span>
             {#if group.overdue > 0}
               <span
-                class="shrink-0 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-red-700"
+                class="shrink-0 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-red-700 dark:bg-red-950 dark:text-red-300"
               >
                 {t("tasks.overdue_count", { count: group.overdue })}
               </span>
             {/if}
             <span
-              class="shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-semibold tabular-nums text-neutral-600"
+              class="shrink-0 rounded-full bg-surface px-2 py-0.5 text-xs font-semibold tabular-nums text-text-muted"
             >
               {group.count}
             </span>

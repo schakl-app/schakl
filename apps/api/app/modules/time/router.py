@@ -11,6 +11,7 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, Query
 
+from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
 from app.modules.time.schemas import (
     BulkResult,
@@ -36,7 +37,11 @@ router = APIRouter(prefix="/time", tags=["time"])
 
 
 # --- approval / invoicing overview (managers) -------------------------------- #
-@router.get("/report", response_model=TimeReport)
+@router.get(
+    "/report",
+    response_model=TimeReport,
+    dependencies=[require_permission("time.report.read")],
+)
 async def time_report(
     limit: int = Query(200, ge=1, le=1000),
     offset: int = Query(0, ge=0),
@@ -48,6 +53,9 @@ async def time_report(
     billable: bool | None = Query(None),
     approved: bool | None = Query(None),
     invoiced: bool | None = Query(None),
+    sort: str | None = Query(
+        None, description="date | employee | company | project | task | minutes | …, '-' desc"
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> TimeReport:
     """Org-wide entries with filter + sign-off totals, for the hours overview."""
@@ -62,6 +70,7 @@ async def time_report(
         billable=billable,
         approved=approved,
         invoiced=invoiced,
+        sort=sort,
     )
     return TimeReport(
         items=[TimeEntryRead.model_validate(e) for e in items],
@@ -72,7 +81,11 @@ async def time_report(
     )
 
 
-@router.get("/stats/productivity", response_model=ProductivityStats)
+@router.get(
+    "/stats/productivity",
+    response_model=ProductivityStats,
+    dependencies=[require_permission("time.report.read")],
+)
 async def productivity_stats(
     date_from: date = Query(...),
     date_to: date = Query(...),
@@ -87,7 +100,11 @@ async def productivity_stats(
     )
 
 
-@router.get("/stats/revenue", response_model=RevenueStats)
+@router.get(
+    "/stats/revenue",
+    response_model=RevenueStats,
+    dependencies=[require_permission("time.report.read")],
+)
 async def revenue_stats(
     year: int = Query(..., ge=2000, le=2100),
     ctx: RequestContext = Depends(require_context),
@@ -96,7 +113,11 @@ async def revenue_stats(
     return RevenueStats.model_validate(await TimeService(ctx).revenue(year=year))
 
 
-@router.post("/entries/approve", response_model=BulkResult)
+@router.post(
+    "/entries/approve",
+    response_model=BulkResult,
+    dependencies=[require_permission("time.entry.approve")],
+)
 async def approve_entries(
     payload: EntryApproval,
     ctx: RequestContext = Depends(require_context),
@@ -105,7 +126,11 @@ async def approve_entries(
     return BulkResult(updated=updated)
 
 
-@router.post("/entries/invoice", response_model=BulkResult)
+@router.post(
+    "/entries/invoice",
+    response_model=BulkResult,
+    dependencies=[require_permission("time.entry.invoice")],
+)
 async def invoice_entries(
     payload: EntryInvoiced,
     ctx: RequestContext = Depends(require_context),
@@ -115,7 +140,11 @@ async def invoice_entries(
 
 
 # --- timer ----------------------------------------------------------------- #
-@router.get("/timer", response_model=TimeEntryRead | None)
+@router.get(
+    "/timer",
+    response_model=TimeEntryRead | None,
+    dependencies=[require_permission("time.entry.read")],
+)
 async def current_timer(
     ctx: RequestContext = Depends(require_context),
 ) -> TimeEntryRead | None:
@@ -123,7 +152,12 @@ async def current_timer(
     return TimeEntryRead.model_validate(entry) if entry else None
 
 
-@router.post("/timer/start", response_model=TimeEntryRead, status_code=201)
+@router.post(
+    "/timer/start",
+    response_model=TimeEntryRead,
+    status_code=201,
+    dependencies=[require_permission("time.entry.write")],
+)
 async def start_timer(
     payload: TimerStart,
     ctx: RequestContext = Depends(require_context),
@@ -132,7 +166,11 @@ async def start_timer(
     return TimeEntryRead.model_validate(entry)
 
 
-@router.post("/timer/stop", response_model=TimeEntryRead)
+@router.post(
+    "/timer/stop",
+    response_model=TimeEntryRead,
+    dependencies=[require_permission("time.entry.write")],
+)
 async def stop_timer(
     ctx: RequestContext = Depends(require_context),
 ) -> TimeEntryRead:
@@ -141,7 +179,11 @@ async def stop_timer(
 
 
 # --- summary + timesheet --------------------------------------------------- #
-@router.get("/summary", response_model=TimeSummary)
+@router.get(
+    "/summary",
+    response_model=TimeSummary,
+    dependencies=[require_permission("time.entry.read")],
+)
 async def summary(
     day: date | None = Query(None, alias="date"),
     user_id: uuid.UUID | None = Query(None),
@@ -150,7 +192,11 @@ async def summary(
     return await TimeService(ctx).summary(day=day, user_id=user_id)
 
 
-@router.get("/timesheet", response_model=Timesheet)
+@router.get(
+    "/timesheet",
+    response_model=Timesheet,
+    dependencies=[require_permission("time.entry.read")],
+)
 async def timesheet(
     week_start: date = Query(...),
     user_id: uuid.UUID | None = Query(None),
@@ -159,7 +205,11 @@ async def timesheet(
     return await TimeService(ctx).timesheet(week_start=week_start, user_id=user_id)
 
 
-@router.get("/day", response_model=DayView)
+@router.get(
+    "/day",
+    response_model=DayView,
+    dependencies=[require_permission("time.entry.read")],
+)
 async def day_view(
     day: date = Query(..., alias="date"),
     user_id: uuid.UUID | None = Query(None),
@@ -175,7 +225,13 @@ async def day_view(
     )
 
 
-@router.get("/logged", response_model=LoggedSummary)
+# Declared with **no scope** on purpose: a project's logged hours are team-visible, and this
+# is what draws every budget bar. Narrowing it to ``:any`` removes them for every member (#19).
+@router.get(
+    "/logged",
+    response_model=LoggedSummary,
+    dependencies=[require_permission("time.entry.read")],
+)
 async def logged(
     company_id: uuid.UUID | None = Query(None),
     project_id: uuid.UUID | None = Query(None),
@@ -196,16 +252,48 @@ async def logged(
 
 
 # --- manual entries -------------------------------------------------------- #
-@router.get("/entries", response_model=Page[TimeEntryRead])
+# Also unscoped: ``all_users`` is free when the query names a company/project/task, and the
+# service escalates to ``scope="any"`` only for the unscoped, org-wide report.
+@router.get(
+    "/entries",
+    response_model=Page[TimeEntryRead],
+    dependencies=[require_permission("time.entry.read")],
+)
 async def list_entries(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     user_id: uuid.UUID | None = Query(None),
     company_id: uuid.UUID | None = Query(None),
+    project_id: uuid.UUID | None = Query(None),
+    task_id: uuid.UUID | None = Query(None),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
+    running: bool | None = Query(None, description="Filter running timers in/out; unset = both"),
+    all_users: bool = Query(
+        False,
+        description=(
+            "The whole team's entries, not just mine. Free to anyone when the query names a "
+            "company/project/task — those hours already show as a budget bar; managers only "
+            "when it doesn't."
+        ),
+    ),
+    sort: str | None = Query(
+        None, description="date | employee | company | project | task | minutes | …, '-' desc"
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> Page[TimeEntryRead]:
     items, total = await TimeService(ctx).list(
-        limit=limit, offset=offset, user_id=user_id, company_id=company_id
+        limit=limit,
+        offset=offset,
+        user_id=user_id,
+        company_id=company_id,
+        project_id=project_id,
+        task_id=task_id,
+        date_from=date_from,
+        date_to=date_to,
+        running=running,
+        all_users=all_users,
+        sort=sort,
     )
     return Page(
         items=[TimeEntryRead.model_validate(e) for e in items],
@@ -215,7 +303,12 @@ async def list_entries(
     )
 
 
-@router.post("/entries", response_model=TimeEntryRead, status_code=201)
+@router.post(
+    "/entries",
+    response_model=TimeEntryRead,
+    status_code=201,
+    dependencies=[require_permission("time.entry.write")],
+)
 async def create_entry(
     payload: TimeEntryCreate,
     ctx: RequestContext = Depends(require_context),
@@ -224,7 +317,11 @@ async def create_entry(
     return TimeEntryRead.model_validate(entry)
 
 
-@router.get("/entries/{entry_id}", response_model=TimeEntryRead)
+@router.get(
+    "/entries/{entry_id}",
+    response_model=TimeEntryRead,
+    dependencies=[require_permission("time.entry.read")],
+)
 async def get_entry(
     entry_id: uuid.UUID,
     ctx: RequestContext = Depends(require_context),
@@ -233,7 +330,11 @@ async def get_entry(
     return TimeEntryRead.model_validate(entry)
 
 
-@router.patch("/entries/{entry_id}", response_model=TimeEntryRead)
+@router.patch(
+    "/entries/{entry_id}",
+    response_model=TimeEntryRead,
+    dependencies=[require_permission("time.entry.write")],
+)
 async def update_entry(
     entry_id: uuid.UUID,
     payload: TimeEntryUpdate,
@@ -243,7 +344,11 @@ async def update_entry(
     return TimeEntryRead.model_validate(entry)
 
 
-@router.delete("/entries/{entry_id}", status_code=204)
+@router.delete(
+    "/entries/{entry_id}",
+    status_code=204,
+    dependencies=[require_permission("time.entry.write")],
+)
 async def delete_entry(
     entry_id: uuid.UUID,
     ctx: RequestContext = Depends(require_context),

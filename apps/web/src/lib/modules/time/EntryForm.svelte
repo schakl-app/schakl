@@ -9,6 +9,7 @@
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
+  import TimeInput from "$lib/core/ui/TimeInput.svelte";
   import {
     endFromDuration,
     formatDurationInput,
@@ -133,7 +134,7 @@
   }
 
   const inputClass =
-    "w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
+    "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
 
 <form
@@ -150,35 +151,31 @@
 
   <div class="grid grid-cols-3 gap-2">
     <div>
-      <label for="start-{action}" class="mb-1 block text-xs font-medium text-neutral-500"
+      <label for="start-{action}" class="mb-1 block text-xs font-medium text-text-muted"
         >{t("time.field.start")}</label
       >
-      <input
+      <TimeInput
         id="start-{action}"
         name="start"
-        type="time"
         required
         bind:value={fStart}
-        oninput={syncDurationFromTimes}
-        class={inputClass}
+        onchange={syncDurationFromTimes}
       />
     </div>
     <div>
-      <label for="end-{action}" class="mb-1 block text-xs font-medium text-neutral-500"
+      <label for="end-{action}" class="mb-1 block text-xs font-medium text-text-muted"
         >{t("time.field.end")}</label
       >
-      <input
+      <TimeInput
         id="end-{action}"
         name="end"
-        type="time"
         required
         bind:value={fEnd}
-        oninput={syncDurationFromTimes}
-        class={inputClass}
+        onchange={syncDurationFromTimes}
       />
     </div>
     <div>
-      <label for="break-{action}" class="mb-1 block text-xs font-medium text-neutral-500"
+      <label for="break-{action}" class="mb-1 block text-xs font-medium text-text-muted"
         >{t("time.field.break")}</label
       >
       <input
@@ -196,7 +193,7 @@
 
   <div class="flex items-center gap-3">
     <div class="flex-1">
-      <label for="duration-{action}" class="mb-1 block text-xs font-medium text-neutral-500"
+      <label for="duration-{action}" class="mb-1 block text-xs font-medium text-text-muted"
         >{t("time.field.duration")}</label
       >
       <input
@@ -210,7 +207,7 @@
     <div
       class="pt-5 text-sm font-semibold tabular-nums {workedMinutes
         ? 'text-brand'
-        : 'text-neutral-300'}"
+        : 'text-text-muted'}"
     >
       {workedMinutes != null ? t("time.worked", { duration: formatMinutes(workedMinutes) }) : "—"}
     </div>
@@ -223,7 +220,7 @@
       onclick={() => (fBillable = false)}
       class="rounded-lg border px-3 py-2 text-sm font-medium {!fBillable
         ? 'border-brand bg-brand text-white'
-        : 'border-neutral-300 text-neutral-600'}"
+        : 'border-border text-text-muted'}"
     >
       {t("time.not_billable")}
     </button>
@@ -232,20 +229,20 @@
       onclick={() => (fBillable = true)}
       class="rounded-lg border px-3 py-2 text-sm font-medium {fBillable
         ? 'border-brand bg-brand text-white'
-        : 'border-neutral-300 text-neutral-600'}"
+        : 'border-border text-text-muted'}"
     >
       {t("time.billable")}
     </button>
   </div>
 
   <div>
-    <label for="date-{action}" class="mb-1 block text-xs font-medium text-neutral-500"
+    <label for="date-{action}" class="mb-1 block text-xs font-medium text-text-muted"
       >{t("time.field.date")}</label
     >
     <DateInput id="date-{action}" name="date" bind:value={fDate} required />
   </div>
   <div>
-    <label for="company-{action}" class="mb-1 block text-xs font-medium text-neutral-500"
+    <label for="company-{action}" class="mb-1 block text-xs font-medium text-text-muted"
       >{t("time.field.company")}</label
     >
     <Combobox
@@ -258,7 +255,7 @@
     />
   </div>
   <div>
-    <label for="project-{action}" class="mb-1 block text-xs font-medium text-neutral-500"
+    <label for="project-{action}" class="mb-1 block text-xs font-medium text-text-muted"
       >{t("time.field.project")}</label
     >
     <Combobox
@@ -272,7 +269,7 @@
     />
   </div>
   <div>
-    <label for="task-{action}" class="mb-1 block text-xs font-medium text-neutral-500"
+    <label for="task-{action}" class="mb-1 block text-xs font-medium text-text-muted"
       >{t("time.field.task")}</label
     >
     <Combobox
@@ -284,7 +281,7 @@
     />
   </div>
   <div>
-    <label for="description-{action}" class="mb-1 block text-xs font-medium text-neutral-500"
+    <label for="description-{action}" class="mb-1 block text-xs font-medium text-text-muted"
       >{t("time.field.description")}</label
     >
     <textarea id="description-{action}" name="description" rows="2" class={inputClass}
@@ -302,7 +299,7 @@
     {#if oncancel}
       <button
         type="button"
-        class="rounded-lg border border-neutral-300 px-4 py-2 text-sm"
+        class="rounded-lg border border-border px-4 py-2 text-sm"
         onclick={oncancel}
       >
         {t("common.cancel")}
@@ -313,7 +310,7 @@
     <button
       type="button"
       onclick={() => (confirmDelete = true)}
-      class="w-full rounded-lg border border-neutral-300 px-4 py-2 text-sm text-neutral-500 hover:border-red-300 hover:text-red-600"
+      class="w-full rounded-lg border border-border px-4 py-2 text-sm text-text-muted hover:border-red-300 hover:text-red-600 dark:hover:border-red-800 dark:hover:text-red-400"
     >
       {t("common.delete")}
     </button>

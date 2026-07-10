@@ -10,11 +10,16 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
+from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import DateTime, column, func, select, table, values
 from sqlalchemy import text as sql_text
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 
+from app.core.events import emit
+from app.core.sorting import apply_sort, user_sort_name
 from app.core.tenancy import RequestContext
 from app.errors import AppError
 from app.modules.time.models import TimeEntry
@@ -28,12 +33,75 @@ from app.modules.time.schemas import (
 )
 
 
+@dataclass(frozen=True)
+class LoggedMinutes:
+    """A budget burn-down bucket. ``total`` includes non-billable work — it eats the budget too.
+
+    ``total``/``billable``/``unapproved`` are all scoped to the budget's current period;
+    ``unapproved`` is a *subset* of ``total``, not another axis, so the UI can say when an
+    over-budget number is driven by hours nobody has signed off yet.
+
+    ``all_time`` ignores the period. It exists for one reason: a client's "unbudgeted hours" is
+    *its* total minus what its budgeted projects absorbed, and for a monthly project the period
+    figure would wrongly re-classify every earlier month as unbudgeted. Equals ``total`` when the
+    period is ``total``.
+    """
+
+    total: int = 0
+    billable: int = 0
+    unapproved: int = 0
+    all_time: int = 0
+
+
 def _now() -> datetime:
     return datetime.now(UTC)
 
 
 def _duration_minutes(started_at: datetime, ended_at: datetime) -> int:
     return max(0, round((ended_at - started_at).total_seconds() / 60))
+
+
+# The three tables an entry points at, named rather than imported. A module never imports another
+# module's internals (CLAUDE.md §6) — the same rule `revenue()` already follows by joining
+# `projects` in raw SQL. These stand-ins carry only the columns we order by.
+_companies = table("companies", column("id"), column("org_id"), column("name"))
+_projects = table("projects", column("id"), column("org_id"), column("name"))
+_tasks = table("tasks", column("id"), column("org_id"), column("title"))
+
+
+def _related_name(source: Any, fk: Any, name_column: Any) -> Any:
+    """Order by the *name* the report prints, not by the foreign key behind it.
+
+    Correlated, so it joins nothing and can never multiply an entry into two rows. Both sides
+    carry the org filter (Golden Rule 1); RLS backs it up. An entry with no client/project/task
+    yields NULL, which ``apply_sort`` files last in both directions.
+    """
+    return (
+        select(func.lower(name_column))
+        .select_from(source)
+        .where(source.c.id == fk, source.c.org_id == TimeEntry.org_id)
+        .correlate(TimeEntry)
+        .scalar_subquery()
+    )
+
+
+# Columns a client may sort by; anything else in ``?sort=`` is rejected (app/core/sorting.py).
+# There is deliberately no ``status`` key: the report's status pill is derived from three
+# columns (billable × approved × invoiced), so no single ``ORDER BY`` reproduces it, and a header
+# that claims to sort and doesn't is worse than a quiet one (docs/UX.md).
+SORTABLE = {
+    "date": TimeEntry.started_at,
+    "employee": user_sort_name(TimeEntry.user_id),
+    "company": _related_name(_companies, TimeEntry.company_id, _companies.c.name),
+    "project": _related_name(_projects, TimeEntry.project_id, _projects.c.name),
+    "task": _related_name(_tasks, TimeEntry.task_id, _tasks.c.title),
+    "description": func.lower(TimeEntry.description),
+    "minutes": TimeEntry.minutes,
+    "billable": TimeEntry.billable,
+    "approver": user_sort_name(TimeEntry.approved_by_user_id),
+    "approved_at": TimeEntry.approved_at,
+    "invoiced_at": TimeEntry.invoiced_at,
+}
 
 
 class TimeService:
@@ -43,24 +111,37 @@ class TimeService:
 
     # --- access scoping ------------------------------------------------------ #
     def _effective_user_id(self, user_id: uuid.UUID | None) -> uuid.UUID:
-        """Resolve whose entries to act on: self, or another user if a manager asks."""
+        """Resolve whose entries to act on: self, or another user's with ``time.entry.read:any``."""
         if user_id is None or user_id == self.ctx.user.id:
             return self.ctx.user.id
-        if not self.ctx.role.can_manage:
-            raise AppError("forbidden", "errors.forbidden", status_code=403)
+        self.ctx.require("time.entry.read", scope="any")
         return user_id
 
     async def _owned_or_404(self, entry_id: uuid.UUID) -> TimeEntry:
+        """Load an entry, hiding *someone else's* behind a 404 rather than a 403.
+
+        A generic ``require_for(permission, owner_id)`` helper would raise 403 here and thereby
+        confirm, to anyone who guesses an id, that the entry exists. Scope-aware loading, not a
+        scope-aware assertion, is what keeps that from leaking (issue #19).
+        """
         entry = await self.repo.get_or_404(entry_id)
-        if entry.user_id != self.ctx.user.id and not self.ctx.role.can_manage:
-            # Don't reveal another user's entry exists.
+        if entry.user_id != self.ctx.user.id and not self.ctx.can("time.entry.read", scope="any"):
             raise AppError("not_found", "errors.not_found", status_code=404)
         return entry
 
     def _ensure_not_locked(self, entry: TimeEntry) -> None:
-        """Approved hours are signed off; only managers may still change them."""
-        if entry.approved_at is not None and not self.ctx.role.can_manage:
+        """Approved hours are signed off; only whoever may approve them may still change them.
+
+        This is a **capability**, not a scope: it is not about whose entry it is — the owner is
+        locked out of their own approved hours too. So 403, not 404, and no ``:own``/``:any``.
+        """
+        if entry.approved_at is not None and not self.ctx.can("time.entry.approve"):
             raise AppError("approved_locked", "errors.approved_locked", status_code=403)
+
+    def _ensure_writable(self, entry: TimeEntry) -> None:
+        """``time.entry.write:own`` covers your own hours; someone else's needs ``:any``."""
+        scope = None if entry.user_id == self.ctx.user.id else "any"
+        self.ctx.require("time.entry.write", scope=scope)
 
     # --- timer --------------------------------------------------------------- #
     async def running(self, user_id: uuid.UUID | None = None) -> TimeEntry | None:
@@ -75,7 +156,7 @@ class TimeService:
         return (await self.ctx.session.execute(stmt)).scalars().first()
 
     async def start_timer(self, data: TimerStart) -> TimeEntry:
-        self.ctx.ensure_can_write()
+        self.ctx.require("time.entry.write")
         # Starting a new timer stops the current one (common time-tracker behaviour).
         current = await self.running()
         if current is not None:
@@ -89,7 +170,7 @@ class TimeService:
         )
 
     async def stop_timer(self) -> TimeEntry:
-        self.ctx.ensure_can_write()
+        self.ctx.require("time.entry.write")
         current = await self.running()
         if current is None:
             raise AppError("not_found", "errors.not_found", status_code=404)
@@ -103,7 +184,7 @@ class TimeService:
 
     # --- manual entries ------------------------------------------------------ #
     async def create(self, data: TimeEntryCreate) -> TimeEntry:
-        self.ctx.ensure_can_write()
+        self.ctx.require("time.entry.write")
         values = data.model_dump()
         started_at = values["started_at"]
         ended_at = values.get("ended_at")
@@ -128,8 +209,8 @@ class TimeService:
         return await self.repo.create(user_id=self.ctx.user.id, **values)
 
     async def update(self, entry_id: uuid.UUID, data: TimeEntryUpdate) -> TimeEntry:
-        self.ctx.ensure_can_write()
         entry = await self._owned_or_404(entry_id)
+        self._ensure_writable(entry)
         self._ensure_not_locked(entry)
         values = data.model_dump(exclude_unset=True)
         entry = await self.repo.update(entry, **values)
@@ -192,9 +273,99 @@ class TimeService:
         billable = sum(e.minutes for e in entries if e.billable)
         return minutes, billable
 
+    # --- budget burn-down aggregates ----------------------------------------- #
+    # Published for the projects/companies list columns (#25). Grouped in SQL, one query for a
+    # whole page of rows — a per-row `logged()` call would be the N+1 that makes a list crawl
+    # (docs/PERFORMANCE.md). Running timers (`ended_at IS NULL`) never count: their `minutes` is
+    # 0 anyway, but the filter says so out loud. Approved leave cannot leak in here — it lives in
+    # `leave_requests` and is never written as a time entry (CLAUDE.md §14).
+
+    @staticmethod
+    def _sum(*conditions: Any) -> Any:
+        summed = func.sum(TimeEntry.minutes)
+        if conditions:
+            summed = summed.filter(*conditions)
+        return func.coalesce(summed, 0)
+
+    async def minutes_by_project(
+        self, periods: dict[uuid.UUID, datetime]
+    ) -> dict[uuid.UUID, LoggedMinutes]:
+        """Logged minutes per project, each counted from **its own** period start.
+
+        Projects on one page can carry different budget periods (monthly, weekly, daily, total),
+        so a single ``WHERE started_at >= x`` cannot serve them all. The period starts ride along
+        as a ``VALUES`` join, keeping this to one grouped query however many distinct periods the
+        page contains.
+
+        The period bound is a ``FILTER``, not a ``WHERE``: the same scan then yields both the
+        in-period figures and the untruncated ``all_time`` total that the client roll-up needs.
+        """
+        if not periods:
+            return {}
+        bounds = values(
+            column("project_id", PGUUID(as_uuid=True)),
+            column("period_start", DateTime(timezone=True)),
+            name="period_bounds",
+        ).data(list(periods.items()))
+
+        in_period = TimeEntry.started_at >= bounds.c.period_start
+        stmt = (
+            select(
+                TimeEntry.project_id,
+                self._sum(in_period),
+                self._sum(in_period, TimeEntry.billable.is_(True)),
+                self._sum(in_period, TimeEntry.approved_at.is_(None)),
+                self._sum(),
+            )
+            .select_from(TimeEntry)
+            .join(bounds, bounds.c.project_id == TimeEntry.project_id)
+            .where(
+                TimeEntry.org_id == self.ctx.org.id,
+                TimeEntry.ended_at.is_not(None),
+            )
+            .group_by(TimeEntry.project_id)
+        )
+        rows = (await self.ctx.session.execute(stmt)).all()
+        return {
+            r[0]: LoggedMinutes(int(r[1]), int(r[2]), int(r[3]), int(r[4])) for r in rows
+        }
+
+    async def minutes_by_company(
+        self, company_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, LoggedMinutes]:
+        """All-time logged minutes per company, however the entry was attributed.
+
+        Feeds the client's *unbudgeted* hours — work with no project budget to burn against. Not
+        period-scoped: a client's projects may each reset on a different schedule, so there is no
+        single period this figure could honestly belong to.
+        """
+        if not company_ids:
+            return {}
+        total = self._sum()
+        stmt = (
+            select(
+                TimeEntry.company_id,
+                total,
+                self._sum(TimeEntry.billable.is_(True)),
+                self._sum(TimeEntry.approved_at.is_(None)),
+                total,
+            )
+            .select_from(TimeEntry)
+            .where(
+                TimeEntry.org_id == self.ctx.org.id,
+                TimeEntry.ended_at.is_not(None),
+                TimeEntry.company_id.in_(company_ids),
+            )
+            .group_by(TimeEntry.company_id)
+        )
+        rows = (await self.ctx.session.execute(stmt)).all()
+        return {
+            r[0]: LoggedMinutes(int(r[1]), int(r[2]), int(r[3]), int(r[4])) for r in rows
+        }
+
     async def delete(self, entry_id: uuid.UUID) -> None:
-        self.ctx.ensure_can_write()
         entry = await self._owned_or_404(entry_id)
+        self._ensure_writable(entry)
         self._ensure_not_locked(entry)
         await self.repo.delete(entry)
 
@@ -209,15 +380,75 @@ class TimeService:
         offset: int,
         user_id: uuid.UUID | None = None,
         company_id: uuid.UUID | None = None,
+        project_id: uuid.UUID | None = None,
+        task_id: uuid.UUID | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        running: bool | None = None,
+        all_users: bool = False,
+        sort: str | None = None,
     ) -> tuple[Sequence[TimeEntry], int]:
-        uid = self._effective_user_id(user_id)
-        filters: dict = {"user_id": uid}
+        """Entries, by default the caller's own.
+
+        ``all_users`` drops the per-user filter, and it is **not** a manager-only switch when the
+        query names an entity. A project's logged hours are already team-visible — ``/time/logged``
+        is what draws every budget bar, for members and managers alike — so the entries that add up
+        to that number are too, and the "where did the budget go" panel (#43) must answer in place
+        rather than bounce a member to the manager-only report.
+
+        Unscoped, though, ``all_users`` *is* the manager report: the whole org's hours, whoever
+        logged them, and it needs ``time.entry.read:any``. A ``client`` role holds no
+        ``time.entry.read`` at all, so the route's own gate already turned them away.
+
+        Do not "simplify" the route to declare ``scope="any"``: that would silently remove the
+        budget bars from every member's project page (issue #19).
+        """
+        conditions = []
+        if all_users:
+            if company_id is None and project_id is None and task_id is None:
+                self.ctx.require("time.entry.read", scope="any")
+        else:
+            conditions.append(TimeEntry.user_id == self._effective_user_id(user_id))
         if company_id is not None:
-            filters["company_id"] = company_id
-        items = await self.repo.list(
-            limit=limit, offset=offset, order_by=TimeEntry.started_at.desc(), **filters
+            conditions.append(TimeEntry.company_id == company_id)
+        if project_id is not None:
+            conditions.append(TimeEntry.project_id == project_id)
+        if task_id is not None:
+            conditions.append(TimeEntry.task_id == task_id)
+        if date_from is not None:
+            conditions.append(
+                TimeEntry.started_at >= datetime.combine(date_from, time.min, tzinfo=UTC)
+            )
+        if date_to is not None:
+            conditions.append(
+                TimeEntry.started_at
+                < datetime.combine(date_to, time.min, tzinfo=UTC) + timedelta(days=1)
+            )
+        if running is not None:
+            # A running timer is not a logged entry: its `minutes` is 0 and it burns no budget.
+            conditions.append(
+                TimeEntry.ended_at.is_(None) if running else TimeEntry.ended_at.is_not(None)
+            )
+
+        stmt = (
+            apply_sort(
+                self.repo.scoped_select().where(*conditions),
+                sort,
+                SORTABLE,
+                default=TimeEntry.started_at.desc(),
+            )
+            .limit(limit)
+            .offset(offset)
         )
-        total = await self.repo.count(**filters)
+        items = (await self.ctx.session.execute(stmt)).scalars().all()
+        total = int(
+            await self.ctx.session.scalar(
+                select(func.count())
+                .select_from(TimeEntry)
+                .where(TimeEntry.org_id == self.ctx.org.id, *conditions)
+            )
+            or 0
+        )
         return items, total
 
     # --- approval / invoicing (manager surface) -------------------------------- #
@@ -274,9 +505,10 @@ class TimeService:
         billable: bool | None = None,
         approved: bool | None = None,
         invoiced: bool | None = None,
+        sort: str | None = None,
     ) -> tuple[Sequence[TimeEntry], int, dict[str, int]]:
-        """Org-wide entries for the approval/invoicing overview. Managers only."""
-        self.ctx.ensure_can_manage()
+        """Org-wide entries for the approval/invoicing overview (``time.report.read``)."""
+        self.ctx.require("time.report.read")
         conditions = self._report_conditions(
             user_id=user_id,
             company_id=company_id,
@@ -288,9 +520,12 @@ class TimeService:
             invoiced=invoiced,
         )
         stmt = (
-            self.repo.scoped_select()
-            .where(*conditions)
-            .order_by(TimeEntry.started_at.desc())
+            apply_sort(
+                self.repo.scoped_select().where(*conditions),
+                sort,
+                SORTABLE,
+                default=TimeEntry.started_at.desc(),
+            )
             .limit(limit)
             .offset(offset)
         )
@@ -340,8 +575,8 @@ class TimeService:
     async def productivity(
         self, *, date_from: date, date_to: date
     ) -> list[dict[str, object]]:
-        """Per-employee totals for the productivity report. Managers only."""
-        self.ctx.ensure_can_manage()
+        """Per-employee totals for the productivity report (``time.report.read``)."""
+        self.ctx.require("time.report.read")
         start = datetime.combine(date_from, time.min, tzinfo=UTC)
         end = datetime.combine(date_to, time.min, tzinfo=UTC) + timedelta(days=1)
         stmt = (
@@ -386,7 +621,7 @@ class TimeService:
         Joins ``projects`` by table name only (mirroring the FK convention — no import of
         the projects module); both sides carry the explicit org filter and RLS backs it up.
         """
-        self.ctx.ensure_can_manage()
+        self.ctx.require("time.report.read")
         params = {
             "org_id": str(self.ctx.org.id),
             "start": datetime(year - 1, 1, 1, tzinfo=UTC),
@@ -463,7 +698,7 @@ class TimeService:
 
     async def set_approval(self, entry_ids: list[uuid.UUID], approved: bool) -> int:
         """(Un)approve entries — the sign-off a manager gives before invoicing."""
-        self.ctx.ensure_can_manage()
+        self.ctx.require("time.entry.approve")
         entries = await self._entries_by_ids(entry_ids)
         for entry in entries:
             entry.approved_at = _now() if approved else None
@@ -471,10 +706,33 @@ class TimeService:
             if not approved:
                 entry.invoiced_at = None  # unapproving also clears the invoiced mark
         await self.ctx.session.flush()
+        if approved:
+            await self._emit_approved(entries)
         return len(entries)
 
+    async def _emit_approved(self, entries: Sequence[TimeEntry]) -> None:
+        """One notification per owner, not per entry: a batch sign-off is one piece of news.
+
+        A timesheet has no row of its own, so the *person* is the subject of the event and the
+        week is in the payload (CLAUDE.md §6 — announced on the bus, never a direct import).
+        """
+        per_owner: dict[uuid.UUID, list[TimeEntry]] = {}
+        for entry in entries:
+            per_owner.setdefault(entry.user_id, []).append(entry)
+        for user_id, owned in per_owner.items():
+            await emit(
+                "time.entry_approved",
+                self.ctx,
+                {
+                    "user_id": user_id,
+                    "count": len(owned),
+                    "minutes": sum(entry.minutes for entry in owned),
+                    "_recipients": [user_id],
+                },
+            )
+
     async def set_invoiced(self, entry_ids: list[uuid.UUID], invoiced: bool) -> int:
-        self.ctx.ensure_can_manage()
+        self.ctx.require("time.entry.invoice")
         entries = await self._entries_by_ids(entry_ids)
         for entry in entries:
             entry.invoiced_at = _now() if invoiced else None

@@ -7,6 +7,10 @@ contributes no company panels; the calendar and timesheet read it via its REST f
 
 from __future__ import annotations
 
+from arq import cron
+
+from app.modules.leave.jobs import import_next_year_holidays
+from app.modules.leave.permissions import LEAVE_PERMISSIONS
 from app.modules.leave.router import router
 from app.registry import ModuleDescriptor, registry
 
@@ -14,6 +18,10 @@ module = ModuleDescriptor(
     name="leave",
     router=router,
     i18n_namespace="leave",
+    permissions=LEAVE_PERMISSIONS,
+    # Next year's holidays, imported in December while there is still time to correct them
+    # (#47). Idempotent and per-org; a tenant can switch it off with `holiday_auto_import`.
+    cron_jobs=[cron(import_next_year_holidays, month=12, day=1, hour=3, minute=0)],
 )
 
 registry.register(module)

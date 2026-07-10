@@ -40,23 +40,37 @@ async def test_invite_creates_member(client_for) -> None:
         assert again.status_code == 409
 
 
-async def test_change_role_and_last_owner_guard(client_for) -> None:
+async def test_change_role_and_last_role_manager_guard(client_for) -> None:
+    """The guard counts *role managers*, not owners (issue #19).
+
+    An org whose last owner becomes an admin has lost nothing — ``admin`` still holds
+    ``settings.roles.manage``. An org whose last one becomes a ``member`` has locked itself out,
+    and that is what 409s.
+    """
     t = await make_tenant("mem-roles")  # seeded user is OWNER
     async with client_for(t.host) as c:
         headers = await auth_cookie(t.user)
         members = (await c.get("/api/v1/members", headers=headers)).json()
         owner = next(m for m in members if m["is_self"])
 
-        # Can't demote the only owner.
         demote = await c.patch(
             f"/api/v1/members/{owner['membership_id']}",
             json={"role": "member"},
             headers=headers,
         )
-        assert demote.status_code == 400
-        assert demote.json()["error"]["message"] == "errors.last_owner"
+        assert demote.status_code == 409
+        assert demote.json()["error"]["message"] == "errors.last_role_manager"
 
-        # Invite a second person and promote them — now demoting the original owner is allowed.
+        # Demoting to admin is fine: admin still administers roles.
+        to_admin = await c.patch(
+            f"/api/v1/members/{owner['membership_id']}",
+            json={"role": "admin"},
+            headers=headers,
+        )
+        assert to_admin.status_code == 200
+        assert to_admin.json()["role"] == "admin"
+
+        # Invite a second person and promote them to owner.
         other = (
             await c.post(
                 "/api/v1/members/invite",
@@ -71,6 +85,44 @@ async def test_change_role_and_last_owner_guard(client_for) -> None:
         )
         assert promote.status_code == 200
         assert promote.json()["role"] == "owner"
+
+
+async def test_cannot_revoke_the_last_role_manager(client_for) -> None:
+    t = await make_tenant("mem-last-mgr")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        # A second owner may revoke the first; the first may not then be left alone as a member.
+        second = (
+            await c.post(
+                "/api/v1/members/invite",
+                json={"email": "co-owner@example.com", "role": "owner"},
+                headers=headers,
+            )
+        ).json()
+        assert (
+            await c.delete(f"/api/v1/members/{second['membership_id']}", headers=headers)
+        ).status_code == 204
+
+        plain = (
+            await c.post(
+                "/api/v1/members/invite",
+                json={"email": "plain@example.com", "role": "member"},
+                headers=headers,
+            )
+        ).json()
+        # Demoting the sole remaining manager is refused, and the transaction rolls back.
+        me = next(
+            m for m in (await c.get("/api/v1/members", headers=headers)).json() if m["is_self"]
+        )
+        refused = await c.patch(
+            f"/api/v1/members/{me['membership_id']}", json={"role": "member"}, headers=headers
+        )
+        assert refused.status_code == 409
+        still_owner = next(
+            m for m in (await c.get("/api/v1/members", headers=headers)).json() if m["is_self"]
+        )
+        assert still_owner["role"] == "owner"
+        assert plain["role"] == "member"
 
 
 async def test_cannot_revoke_self(client_for) -> None:

@@ -1,5 +1,6 @@
 import { error, fail, redirect } from "@sveltejs/kit";
 
+import { parseAssignees } from "$lib/core/assignees";
 import { apiErrorKey } from "$lib/core/errors";
 import { apiFor } from "$lib/core/session";
 
@@ -13,6 +14,31 @@ function parseCustom(raw: FormDataEntryValue | null): Record<string, unknown> {
   }
 }
 
+/** One picked contact person on the client form: an existing contact, or a draft to create. */
+interface ContactSelection {
+  contact_id?: string;
+  draft?: {
+    first_name?: string;
+    last_name?: string;
+    email?: string;
+    phone?: string;
+    job_title?: string;
+    custom?: Record<string, unknown>;
+  };
+  is_primary?: boolean;
+}
+
+/** `undefined` when the field wasn't rendered — "I didn't say", not "no contacts". */
+function parseContacts(raw: FormDataEntryValue | null): ContactSelection[] | undefined {
+  if (raw == null) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(String(raw));
+    return Array.isArray(parsed) ? (parsed as ContactSelection[]) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const company_id = event.params.id;
@@ -22,14 +48,24 @@ export const load: PageServerLoad = async (event) => {
   });
   if (!company) throw error(404, { code: "not_found", message: "errors.not_found" });
 
-  const [panels, definitions, templates, members] = await Promise.all([
-    api.GET("/api/v1/companies/{company_id}/panels", { params: { path: { company_id } } }),
-    api.GET("/api/v1/custom-fields/definitions", {
-      params: { query: { entity_type: "company" } },
-    }),
-    api.GET("/api/v1/tasks/templates"),
-    api.GET("/api/v1/members/lookup"),
-  ]);
+  // The edit modal shows every editable field, contact persons included, so it needs the org's
+  // contacts to pick from. One call covers both jobs: each `ContactRead` carries the companies it
+  // is linked to with the per-company `is_primary`, so the client's current contacts are a filter
+  // over this list rather than a second request (docs/PERFORMANCE.md).
+  const [panels, definitions, templates, members, contacts, contactDefinitions] = await Promise.all(
+    [
+      api.GET("/api/v1/companies/{company_id}/panels", { params: { path: { company_id } } }),
+      api.GET("/api/v1/custom-fields/definitions", {
+        params: { query: { entity_type: "company" } },
+      }),
+      api.GET("/api/v1/tasks/templates"),
+      api.GET("/api/v1/members/lookup"),
+      api.GET("/api/v1/contacts", { params: { query: { limit: 200, offset: 0 } } }),
+      api.GET("/api/v1/custom-fields/definitions", {
+        params: { query: { entity_type: "contact" } },
+      }),
+    ],
+  );
 
   return {
     company,
@@ -37,6 +73,8 @@ export const load: PageServerLoad = async (event) => {
     definitions: definitions.data ?? [],
     templates: templates.data ?? [],
     members: members.data ?? [],
+    contacts: contacts.data?.items ?? [],
+    contactDefinitions: contactDefinitions.data ?? [],
     locale: event.locals.locale,
   };
 };
@@ -47,18 +85,91 @@ export const actions: Actions = {
     const name = String(form.get("name") ?? "").trim();
     if (!name) return fail(400, { error: "errors.required" });
 
-    const { error: apiError } = await apiFor(event).PATCH("/api/v1/companies/{company_id}", {
-      params: { path: { company_id: event.params.id } },
+    const api = apiFor(event);
+    const company_id = event.params.id;
+    const { error: apiError } = await api.PATCH("/api/v1/companies/{company_id}", {
+      params: { path: { company_id } },
       body: {
         name,
         website: String(form.get("website") ?? "").trim() || null,
+        invoice_email: String(form.get("invoice_email") ?? "").trim() || null,
         notes: String(form.get("notes") ?? "").trim() || null,
         status: String(form.get("status") ?? "active") as "active",
-        responsible_user_id: String(form.get("responsible_user_id") ?? "") || null,
+        assignees: parseAssignees(form.get("assignees")),
         custom: parseCustom(form.get("custom")),
       },
     });
     if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
+
+    const selections = parseContacts(form.get("contacts"));
+    if (selections === undefined) return { updated: true };
+
+    // Turn drafts into real contacts, unlinked — the links are all made below, in one place, so
+    // the primary is decided the same way whichever route a contact arrived by.
+    const created = await Promise.all(
+      selections.map(async (selection) => {
+        const draft = selection.draft;
+        if (!draft?.first_name?.trim()) return { id: null, error: null };
+        const { data, error: draftError } = await api.POST("/api/v1/contacts", {
+          body: {
+            first_name: draft.first_name.trim(),
+            last_name: draft.last_name?.trim() || null,
+            email: draft.email?.trim() || null,
+            phone: draft.phone?.trim() || null,
+            job_title: draft.job_title?.trim() || null,
+            company_ids: [],
+            custom: draft.custom ?? {},
+          },
+        });
+        return { id: data?.id ?? null, error: draftError ?? null };
+      }),
+    );
+    const draftError = created.find((c) => c.error)?.error;
+    if (draftError) return fail(400, { error: apiErrorKey(draftError).key });
+
+    const desired = selections
+      .map((selection, i) => ({
+        contact_id: selection.contact_id ?? created[i].id,
+        is_primary: Boolean(selection.is_primary),
+      }))
+      .filter((c): c is { contact_id: string; is_primary: boolean } => Boolean(c.contact_id));
+
+    // Reconcile against what the client already has rather than trusting the browser's idea of it:
+    // the panel on this page can attach a contact between the modal opening and its save.
+    const { data: linked } = await api.GET("/api/v1/contacts", {
+      params: { query: { company_id, limit: 200, offset: 0 } },
+    });
+    const current = (linked?.items ?? []).map((c) => c.id);
+    const wanted = new Set(desired.map((c) => c.contact_id));
+
+    for (const contact_id of current.filter((id) => !wanted.has(id))) {
+      await api.DELETE("/api/v1/contacts/{contact_id}/links/{company_id}", {
+        params: { path: { contact_id, company_id } },
+      });
+    }
+    // One at a time, not in parallel: the API reads `is_primary: false` as "decide for me" and
+    // promotes the contact if the company has no primary yet, so concurrent links would race to
+    // become primary and trip the one-primary-per-company unique index.
+    for (const { contact_id } of desired.filter((c) => !current.includes(c.contact_id))) {
+      const { error: linkError } = await api.POST("/api/v1/contacts/{contact_id}/links", {
+        params: { path: { contact_id } },
+        body: { company_id, is_primary: false },
+      });
+      if (linkError) return fail(400, { error: apiErrorKey(linkError).key });
+    }
+    // Naming the chosen one last is what makes the user's star stick, over any auto-promote above.
+    const primary = desired.find((c) => c.is_primary) ?? desired[0];
+    if (primary) {
+      const { error: primaryError } = await api.PATCH(
+        "/api/v1/contacts/{contact_id}/links/{company_id}",
+        {
+          params: { path: { contact_id: primary.contact_id, company_id } },
+          body: { is_primary: true },
+        },
+      );
+      if (primaryError) return fail(400, { error: apiErrorKey(primaryError).key });
+    }
+
     return { updated: true };
   },
 

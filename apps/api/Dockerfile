@@ -35,3 +35,22 @@ ENV PATH="/app/.venv/bin:${PATH}" \
 EXPOSE 8000
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["api"]
+
+# --- Build stamp -------------------------------------------------------------------------
+# Last, so changing it never invalidates the layers above. Read back by the app as
+# VLOTR_VERSION / VLOTR_GIT_SHA / VLOTR_BUILT_AT (app/config.py) and surfaced on
+# Settings → System. The defaults mark an unstamped build so the update check stays quiet.
+# CI passes these from .github/workflows/release.yml; the OCI labels there override ours.
+ARG VLOTR_VERSION=0.0.0+dev
+ARG VLOTR_GIT_SHA=unknown
+ARG VLOTR_BUILT_AT=""
+
+ENV VLOTR_VERSION=${VLOTR_VERSION} \
+    VLOTR_GIT_SHA=${VLOTR_GIT_SHA} \
+    VLOTR_BUILT_AT=${VLOTR_BUILT_AT}
+
+LABEL org.opencontainers.image.title="vlotr-api" \
+      org.opencontainers.image.source="https://github.com/vlotr-crm/vlotr" \
+      org.opencontainers.image.version="${VLOTR_VERSION}" \
+      org.opencontainers.image.revision="${VLOTR_GIT_SHA}" \
+      org.opencontainers.image.created="${VLOTR_BUILT_AT}"

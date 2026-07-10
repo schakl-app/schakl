@@ -35,9 +35,19 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U vlotr -d vlotr"
           --health-interval 5s --health-timeout 3s --health-retries 20
+      # The readiness probe and system-info screen depend on Redis; without a live one here
+      # their real client code path would never execute in CI.
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 20
     env:
       # App connects as a NON-superuser so RLS is enforced (superusers bypass it).
       VLOTR_DATABASE_URL: postgresql+asyncpg://vlotr_app:vlotr_app@localhost:5432/vlotr
+      VLOTR_REDIS_URL: redis://localhost:6379/0
     steps:
       - uses: actions/checkout@v4
       - name: Create non-superuser app role
@@ -78,6 +88,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Type check
         run: pnpm --filter @vlotr/web check
+      - name: Unit tests
+        run: pnpm --filter @vlotr/web test:unit
       - name: Build
         run: pnpm --filter @vlotr/web build
 

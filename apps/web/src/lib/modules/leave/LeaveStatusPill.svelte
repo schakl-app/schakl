@@ -5,16 +5,16 @@
   let { status }: { status: string } = $props();
 
   const CLASSES: Record<string, string> = {
-    pending: "bg-amber-100 text-amber-800",
-    approved: "bg-green-100 text-green-700",
-    rejected: "bg-red-100 text-red-700",
-    cancelled: "bg-neutral-100 text-neutral-500",
+    pending: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+    approved: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300",
+    rejected: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
+    cancelled: "bg-surface text-text-muted",
   };
 </script>
 
 <span
   class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium {CLASSES[status] ??
-    'bg-neutral-100 text-neutral-600'}"
+    'bg-surface text-text-muted'}"
 >
   {t(`leave.status.${status}`)}
 </span>

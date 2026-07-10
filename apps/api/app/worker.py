@@ -1,8 +1,7 @@
 """ARQ worker (CLAUDE.md §3).
 
 Loads the enabled modules (same discovery as ``main.py``) and collects the cron jobs each
-module contributes via its :class:`ModuleDescriptor`. Runs with:
-    arq app.worker.WorkerSettings
+module contributes via its :class:`ModuleDescriptor`, plus the core jobs below.
 
 Note: ARQ cron schedules fire in UTC; jobs that reason about "today" must compute the date
 in the tenant-relevant timezone (``Europe/Amsterdam``) themselves.
@@ -12,10 +11,14 @@ from __future__ import annotations
 
 import importlib
 import logging
+from datetime import UTC, datetime
 
+from arq import cron
 from arq.connections import RedisSettings
 
 from app.config import settings
+from app.core.cache import WORKER_HEARTBEAT_KEY, WORKER_HEARTBEAT_TTL, get_redis
+from app.core.update_check import check_for_update
 from app.registry import registry
 
 logger = logging.getLogger("vlotr.worker")
@@ -31,16 +34,34 @@ def _collect_cron_jobs() -> list:
 
 
 async def heartbeat(ctx: dict) -> str:
-    logger.info("worker heartbeat")
-    return "ok"
+    """Record that this worker is alive (issue #18).
+
+    Without it a dead worker is invisible — the API keeps serving and jobs silently pile up.
+    The key carries a TTL, so ``system/info`` reads liveness from its presence rather than
+    from parsing arq's internal health string.
+    """
+    now = datetime.now(UTC).isoformat()
+    await get_redis().set(WORKER_HEARTBEAT_KEY, now, ex=WORKER_HEARTBEAT_TTL)
+    return now
 
 
 async def startup(ctx: dict) -> None:
-    logger.info("vlotr worker started")
+    logger.info("vlotr worker started (version %s)", settings.version)
+    # Don't wait up to a minute for the first cron tick to declare ourselves alive.
+    await heartbeat(ctx)
+
+
+#: Core cron jobs, contributed by the platform rather than by a domain module.
+_CORE_CRON_JOBS = [
+    # Every minute, on the minute.
+    cron(heartbeat, second=0, run_at_startup=False),
+    # Daily. Off-peak, and offset from the tasks module's 04:00 recurrence spawn.
+    cron(check_for_update, hour=5, minute=0),
+]
 
 
 class WorkerSettings:
     functions = [heartbeat]
-    cron_jobs = _collect_cron_jobs()
+    cron_jobs = _CORE_CRON_JOBS + _collect_cron_jobs()
     on_startup = startup
     redis_settings = RedisSettings.from_dsn(settings.redis_url)

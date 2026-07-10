@@ -10,7 +10,7 @@ seeded with sensible Dutch defaults.
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from enum import StrEnum
 
@@ -23,6 +23,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    Time,
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -69,8 +70,59 @@ class LeaveType(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
+class LeaveSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """Org-wide leave configuration: the schedule new employees inherit (#46), holidays (#47).
+
+    One row per org. ``default_schedule`` is a :class:`~app.modules.leave.schedule.WorkSchedule`
+    blob; an employee whose ``LeaveProfile.schedule`` is ``NULL`` follows it.
+    """
+
+    __tablename__ = "leave_settings"
+    __table_args__ = (UniqueConstraint("org_id"),)
+
+    default_schedule: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    #: Which generator seeds this tenant's calendar (``nl``), or ``NULL`` to seed nothing.
+    holiday_country: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    #: Import next year's holidays each December, unattended (ARQ cron, per org).
+    holiday_auto_import: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class LeaveHoliday(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """A day nobody works. Tenant data, seeded from a generator — never law hardcoded (§14).
+
+    Per-org rows rather than a shared country table: RLS then applies uniformly and a tenant
+    edits their own calendar without forking a global one (Golden Rule 1 stays trivially true).
+
+    ``active`` is not decoration. Goede Vrijdag is worked at many Dutch employers and
+    Bevrijdingsdag is a day off only every fifth year under a lot of CAOs, so the generator
+    emits every holiday and the tenant switches off the ones they work. A re-import never
+    resurrects what they turned off.
+
+    ``key`` names the holiday across years (``koningsdag``), which is what lets a generated date
+    that *moves* — Koningsdag when 27 April is a Sunday — move rather than duplicate. It is
+    ``NULL`` for hand-added rows, whose ``source`` is ``manual`` and which imports never touch.
+    """
+
+    __tablename__ = "leave_holidays"
+    __table_args__ = (UniqueConstraint("org_id", "date"),)
+
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    # Per-locale names ({"nl": "Tweede Kerstdag", "en": "Boxing Day"}) — tenant data, not keys.
+    name_i18n: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    #: ``manual`` or the country code of the generator that produced it (``nl``).
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="manual")
+    key: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+
 class LeaveProfile(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
-    """Per-employee contract hours — the hours↔days conversion and entitlement base."""
+    """Per-employee work schedule and the contract hours derived from it.
+
+    ``hours_per_week`` is **maintained, not entered**: every schedule save recomputes it, and
+    entitlements, balances and the days-equivalent keep reading it. It stays authoritative for
+    a profile with no ``schedule`` — a pre-#46 part-timer on 32 h must not silently be granted
+    the 40 h org default (see ``LeaveService.hours_per_week``).
+    """
 
     __tablename__ = "leave_profiles"
     __table_args__ = (UniqueConstraint("org_id", "user_id"),)
@@ -84,6 +136,8 @@ class LeaveProfile(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     hours_per_week: Mapped[Decimal] = mapped_column(
         Numeric(5, 2), nullable=False, default=Decimal("40")
     )
+    #: This employee's own week, or ``NULL`` to follow ``LeaveSettings.default_schedule``.
+    schedule: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
 
 class LeaveEntitlement(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
@@ -112,9 +166,11 @@ class LeaveEntitlement(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base
 class LeaveRequest(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     """A leave request: members request, managers (owner/admin) decide.
 
-    ``hours`` is the total across the date range (part days welcome). A request counts
-    against the balance of ``start_date``'s year. Approved leave surfaces on the timesheet
-    without ever becoming a time entry (§14 — never double-counted).
+    ``hours`` is a **materialized result**, not a client input (#48): the service computes it
+    from the employee's schedule minus weekends, holidays and breaks, and recomputes it on every
+    edit. Balances, ``summary()``, ``generate_entitlements()`` and the timesheet all read it, so
+    the column stays. A request counts against the balance of ``start_date``'s year. Approved
+    leave surfaces on the timesheet without ever becoming a time entry (§14).
     """
 
     __tablename__ = "leave_requests"
@@ -133,7 +189,22 @@ class LeaveRequest(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     )
     start_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     end_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    #: ``NULL`` means "from the start of the scheduled day" / "until the end of it" — which is
+    #: exactly what every pre-#48 row is, hence no backfill. Local wall-clock ``TIME``, not
+    #: ``TIMESTAMPTZ``: "I'm off from 15:00" means 15:00 where the employee works, whether or
+    #: not the clocks changed that weekend, and a whole day would have to invent a time.
+    start_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    end_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     hours: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
+    #: A manager's deliberate departure from the computed hours (e.g. four hours agreed for a
+    #: day the employee was not scheduled). Attributed, so "the number is wrong" has an answer.
+    #: ``NULL`` — the ordinary case — means ``hours`` is exactly what ``compute_hours`` returned.
+    hours_override: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
+    hours_override_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default=LeaveRequestStatus.PENDING.value, index=True

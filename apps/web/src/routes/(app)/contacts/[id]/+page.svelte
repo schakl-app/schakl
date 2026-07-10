@@ -10,7 +10,7 @@
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
   import LinkField from "$lib/core/ui/LinkField.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
-  import { COMPANY_STATUSES } from "$lib/modules/companies/status";
+  import CompanyForm from "$lib/modules/companies/CompanyForm.svelte";
 
   let { data, form } = $props();
 
@@ -42,9 +42,6 @@
     draftCompanyName = query.trim();
     showCreateCompany = true;
   }
-
-  const inputClass =
-    "w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
 
 <svelte:head>
@@ -53,10 +50,8 @@
 
 <div class="mb-6 flex items-center justify-between">
   <div>
-    <a href="/contacts" class="text-sm text-neutral-500 hover:text-neutral-900"
-      >← {t("contacts.title")}</a
-    >
-    <h1 class="mt-2 text-xl font-semibold text-neutral-900">{fullName}</h1>
+    <a href="/contacts" class="text-sm text-text-muted hover:text-text">← {t("contacts.title")}</a>
+    <h1 class="mt-2 text-xl font-semibold text-text">{fullName}</h1>
   </div>
   <ActionsMenu
     items={[
@@ -75,11 +70,13 @@
   />
 </div>
 
-<!-- Linked clients: chips + type-ahead, immediate actions (docs/UX.md use-mode). -->
-<section class="mb-4 rounded-xl border border-neutral-200 bg-white p-5">
-  <h2 class="mb-4 text-sm font-semibold text-neutral-900">{t("contacts.companies")}</h2>
+<!-- Linked clients: chips navigate in use mode; attaching, detaching and promoting appear only
+     under the header's ⋯ → Bewerken, like every other definition change (docs/UX.md §3). -->
+<section class="mb-4 rounded-xl border border-border bg-surface-raised p-5">
+  <h2 class="mb-4 text-sm font-semibold text-text">{t("contacts.companies")}</h2>
   <LinkField
     {links}
+    {editing}
     candidates={candidateCompanies}
     idField="company_id"
     linkAction="?/linkCompany"
@@ -105,11 +102,11 @@
       ({ update }) => {
         void update().then(() => (editing = false));
       }}
-    class="rounded-xl border border-neutral-200 bg-white p-5"
+    class="rounded-xl border border-border bg-surface-raised p-5"
   >
     <div class="grid gap-3 sm:grid-cols-2">
       <div>
-        <label for="first_name" class="mb-1 block text-sm font-medium text-neutral-700"
+        <label for="first_name" class="mb-1 block text-sm font-medium text-text"
           >{t("contacts.first_name")}</label
         >
         <input
@@ -117,22 +114,22 @@
           name="first_name"
           required
           value={contact.first_name}
-          class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+          class="w-full rounded-lg border border-border px-3 py-2 text-sm"
         />
       </div>
       <div>
-        <label for="last_name" class="mb-1 block text-sm font-medium text-neutral-700"
+        <label for="last_name" class="mb-1 block text-sm font-medium text-text"
           >{t("contacts.last_name")}</label
         >
         <input
           id="last_name"
           name="last_name"
           value={contact.last_name ?? ""}
-          class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+          class="w-full rounded-lg border border-border px-3 py-2 text-sm"
         />
       </div>
       <div>
-        <label for="email" class="mb-1 block text-sm font-medium text-neutral-700"
+        <label for="email" class="mb-1 block text-sm font-medium text-text"
           >{t("contacts.email")}</label
         >
         <input
@@ -140,79 +137,79 @@
           name="email"
           type="email"
           value={contact.email ?? ""}
-          class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+          class="w-full rounded-lg border border-border px-3 py-2 text-sm"
         />
       </div>
       <div>
-        <label for="phone" class="mb-1 block text-sm font-medium text-neutral-700"
+        <label for="phone" class="mb-1 block text-sm font-medium text-text"
           >{t("contacts.phone")}</label
         >
         <input
           id="phone"
           name="phone"
           value={contact.phone ?? ""}
-          class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+          class="w-full rounded-lg border border-border px-3 py-2 text-sm"
         />
       </div>
       <div class="sm:col-span-2">
-        <label for="job_title" class="mb-1 block text-sm font-medium text-neutral-700"
+        <label for="job_title" class="mb-1 block text-sm font-medium text-text"
           >{t("contacts.job_title")}</label
         >
         <input
           id="job_title"
           name="job_title"
           value={contact.job_title ?? ""}
-          class="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+          class="w-full rounded-lg border border-border px-3 py-2 text-sm"
         />
       </div>
     </div>
 
     {#if data.definitions.length > 0}
-      <div class="mt-4 border-t border-neutral-100 pt-4">
+      <div class="mt-4 border-t border-border pt-4">
         <CustomFieldsForm definitions={data.definitions} values={custom} locale={data.locale} />
       </div>
     {/if}
 
-    {#if form?.error}<p class="mt-2 text-sm text-red-600">{t(form.error)}</p>{/if}
+    {#if form?.error}<p class="mt-2 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
     <div class="mt-4 flex gap-2">
       <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
         >{t("common.save")}</button
       >
       <button
         type="button"
-        class="rounded-lg border border-neutral-300 px-4 py-2 text-sm"
+        class="rounded-lg border border-border px-4 py-2 text-sm"
         onclick={() => (editing = false)}>{t("common.cancel")}</button
       >
     </div>
   </form>
 {:else}
   <div class="grid gap-4">
-    <section class="rounded-xl border border-neutral-200 bg-white p-5">
+    <section class="rounded-xl border border-border bg-surface-raised p-5">
       <dl class="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
-          <dt class="text-xs font-medium uppercase tracking-wide text-neutral-500">
+          <dt class="text-xs font-medium uppercase tracking-wide text-text-muted">
             {t("contacts.email")}
           </dt>
-          <dd class="mt-1 text-sm text-neutral-900">{contact.email ?? "—"}</dd>
+          <dd class="mt-1 text-sm text-text">{contact.email ?? "—"}</dd>
         </div>
         <div>
-          <dt class="text-xs font-medium uppercase tracking-wide text-neutral-500">
+          <dt class="text-xs font-medium uppercase tracking-wide text-text-muted">
             {t("contacts.phone")}
           </dt>
-          <dd class="mt-1 text-sm text-neutral-900">{contact.phone ?? "—"}</dd>
+          <dd class="mt-1 text-sm text-text">{contact.phone ?? "—"}</dd>
         </div>
         <div>
-          <dt class="text-xs font-medium uppercase tracking-wide text-neutral-500">
+          <dt class="text-xs font-medium uppercase tracking-wide text-text-muted">
             {t("contacts.job_title")}
           </dt>
-          <dd class="mt-1 text-sm text-neutral-900">{contact.job_title ?? "—"}</dd>
+          <dd class="mt-1 text-sm text-text">{contact.job_title ?? "—"}</dd>
         </div>
       </dl>
     </section>
 
     {#if data.definitions.length > 0}
-      <section class="rounded-xl border border-neutral-200 bg-white p-5">
-        <h2 class="mb-4 text-sm font-semibold text-neutral-900">{t("contacts.panel.custom")}</h2>
+      <section class="rounded-xl border border-border bg-surface-raised p-5">
+        <h2 class="mb-4 text-sm font-semibold text-text">{t("contacts.panel.custom")}</h2>
         <CustomFieldsView definitions={data.definitions} values={custom} locale={data.locale} />
       </section>
     {/if}
@@ -239,42 +236,19 @@
         }}
       class="space-y-3"
     >
-      <div class="grid gap-3 sm:grid-cols-2">
-        <div>
-          <label for="cc-name" class="mb-1 block text-sm font-medium text-neutral-700"
-            >{t("companies.name")}</label
-          >
-          <input id="cc-name" name="name" value={draftCompanyName} required class={inputClass} />
-        </div>
-        <div>
-          <label for="cc-status" class="mb-1 block text-sm font-medium text-neutral-700"
-            >{t("companies.field.status")}</label
-          >
-          <select id="cc-status" name="status" class={inputClass}>
-            {#each COMPANY_STATUSES as status (status)}
-              <option value={status} selected={status === "active"}
-                >{t(`companies.status.${status}`)}</option
-              >
-            {/each}
-          </select>
-        </div>
-        <div class="sm:col-span-2">
-          <label for="cc-website" class="mb-1 block text-sm font-medium text-neutral-700"
-            >{t("companies.website")}</label
-          >
-          <input id="cc-website" name="website" placeholder="https://…" class={inputClass} />
-        </div>
-      </div>
-      {#if companyDefinitions.length > 0}
-        <CustomFieldsForm definitions={companyDefinitions} locale={data.locale} />
-      {:else}
-        <input type="hidden" name="custom" value={"{}"} />
-      {/if}
-      {#if form?.error}<p class="text-sm text-red-600">{t(form.error)}</p>{/if}
+      <!-- The full client form, prefilled with what was typed — never a name-only stub. -->
+      <CompanyForm
+        company={{ name: draftCompanyName }}
+        members={data.members}
+        definitions={companyDefinitions}
+        locale={data.locale}
+        idPrefix="quick-company"
+      />
+      {#if form?.error}<p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
       <div class="flex justify-end gap-2 pt-1">
         <button
           type="button"
-          class="rounded-lg border border-neutral-300 px-4 py-2 text-sm"
+          class="rounded-lg border border-border px-4 py-2 text-sm"
           onclick={() => (showCreateCompany = false)}>{t("common.cancel")}</button
         >
         <button

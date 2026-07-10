@@ -3,6 +3,9 @@
    * Generic custom-fields form (CLAUDE.md §13). Renders one input per tenant definition and
    * serialises all values into a single hidden `custom` field (JSON) so a SvelteKit form action
    * can forward it to the API as one object. Every module inherits this — no per-module code.
+   *
+   * Outside a form (a draft held in client state), pass `name={null}` and read the values back
+   * through `onchange`.
    */
   import { t } from "$lib/core/i18n";
   import type { CustomFieldDefinition } from "./types";
@@ -12,10 +15,15 @@
     definitions,
     values = {},
     locale,
+    name = "custom",
+    onchange,
   }: {
     definitions: CustomFieldDefinition[];
     values?: Record<string, unknown>;
     locale: string;
+    /** Name of the hidden input; `null` renders none, for use outside a form (report via `onchange`). */
+    name?: string | null;
+    onchange?: (values: Record<string, unknown>) => void;
   } = $props();
 
   // Reactive working copy; serialised to the hidden input below. Built once from the props
@@ -29,25 +37,28 @@
     }
     return out;
   }
-  let state = $state(buildInitial());
-  const json = $derived(JSON.stringify(state));
+  let fieldValues = $state(buildInitial());
+  const json = $derived(JSON.stringify(fieldValues));
 
   function setValue(key: string, value: unknown) {
-    state[key] = value;
+    fieldValues[key] = value;
+    onchange?.($state.snapshot(fieldValues));
   }
 
   function toggleMulti(key: string, value: string, checked: boolean) {
-    const current = new Set((state[key] as string[]) ?? []);
+    const current = new Set((fieldValues[key] as string[]) ?? []);
     if (checked) current.add(value);
     else current.delete(value);
-    state[key] = [...current];
+    setValue(key, [...current]);
   }
 
   const inputClass =
     "w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
 
-<input type="hidden" name="custom" value={json} />
+{#if name}
+  <input type="hidden" {name} value={json} />
+{/if}
 
 {#if definitions.length > 0}
   <div class="grid gap-3 sm:grid-cols-2">
@@ -63,21 +74,21 @@
             id={`cf-${def.key}`}
             rows="3"
             class={inputClass}
-            value={String(state[def.key] ?? "")}
+            value={String(fieldValues[def.key] ?? "")}
             oninput={(e) => setValue(def.key, e.currentTarget.value)}></textarea>
         {:else if def.data_type === "boolean"}
           <input
             id={`cf-${def.key}`}
             type="checkbox"
             class="h-4 w-4 rounded border-neutral-300"
-            checked={Boolean(state[def.key])}
+            checked={Boolean(fieldValues[def.key])}
             onchange={(e) => setValue(def.key, e.currentTarget.checked)}
           />
         {:else if def.data_type === "select"}
           <select
             id={`cf-${def.key}`}
             class={inputClass}
-            value={String(state[def.key] ?? "")}
+            value={String(fieldValues[def.key] ?? "")}
             onchange={(e) => setValue(def.key, e.currentTarget.value)}
           >
             <option value="">{t("common.none")}</option>
@@ -92,7 +103,7 @@
                 <input
                   type="checkbox"
                   class="h-4 w-4 rounded border-neutral-300"
-                  checked={((state[def.key] as string[]) ?? []).includes(opt.value)}
+                  checked={((fieldValues[def.key] as string[]) ?? []).includes(opt.value)}
                   onchange={(e) => toggleMulti(def.key, opt.value, e.currentTarget.checked)}
                 />
                 {optionLabel(opt, locale)}
@@ -116,7 +127,7 @@
                         ? "tel"
                         : "text"}
             class={inputClass}
-            value={String(state[def.key] ?? "")}
+            value={String(fieldValues[def.key] ?? "")}
             oninput={(e) => setValue(def.key, e.currentTarget.value)}
           />
         {/if}

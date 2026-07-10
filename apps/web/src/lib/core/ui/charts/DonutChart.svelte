@@ -5,6 +5,7 @@
    * 2px surface gaps between slices; the trailing "other" bucket is neutral.
    */
   import { fmtMoney } from "$lib/core/format";
+  import { resolvedTheme } from "$lib/core/theme-mode.svelte";
 
   interface Slice {
     label: string;
@@ -23,14 +24,19 @@
     centerLabel: string;
   } = $props();
 
-  // Sequential blue ramp, dark→light with rank (monotonic lightness).
-  const RAMP_DARK = [30, 64, 175]; // #1e40af
-  const RAMP_LIGHT = [147, 197, 253]; // #93c5fd
+  // Sequential blue ramp, dark→light with rank (monotonic lightness). Two variants — the light
+  // one's dark end (#1e40af) is validated for a white card but reads as near-invisible on a
+  // dark surface, so dark mode gets its own brighter range, re-validated against the dark
+  // surface with dataviz's ordinal checks rather than just lightened by eye (issue #14).
+  const RAMP_LIGHT_MODE = { dark: [30, 64, 175], light: [147, 197, 253] }; // #1e40af -> #93c5fd
+  const RAMP_DARK_MODE = { dark: [59, 130, 246], light: [191, 219, 254] }; // #3b82f6 -> #bfdbfe
+  // Neutral "other" bucket: validated as >=3:1 against both the light and dark surface as-is.
   const OTHER_COLOR = "#a8a29e";
 
   function rampColor(index: number, count: number): string {
+    const ramp = resolvedTheme.current === "dark" ? RAMP_DARK_MODE : RAMP_LIGHT_MODE;
     const f = count <= 1 ? 0 : index / (count - 1);
-    const channel = (i: number) => Math.round(RAMP_DARK[i] + (RAMP_LIGHT[i] - RAMP_DARK[i]) * f);
+    const channel = (i: number) => Math.round(ramp.dark[i] + (ramp.light[i] - ramp.dark[i]) * f);
     return `rgb(${channel(0)},${channel(1)},${channel(2)})`;
   }
 
@@ -84,7 +90,7 @@
       <path
         d={arc.path}
         fill={arc.color}
-        stroke="#ffffff"
+        class="stroke-surface-raised"
         stroke-width="2"
         opacity={hovered === null || hovered === i ? 1 : 0.4}
         onmouseenter={() => (hovered = i)}
@@ -96,11 +102,11 @@
       x={CX}
       y={CY - 4}
       text-anchor="middle"
-      class="fill-neutral-900 text-[15px] font-semibold tabular-nums"
+      class="fill-text text-[15px] font-semibold tabular-nums"
     >
       {fmtMoney(hovered !== null ? arcs[hovered].value : total)}
     </text>
-    <text x={CX} y={CY + 13} text-anchor="middle" class="fill-neutral-400 text-[9px]">
+    <text x={CX} y={CY + 13} text-anchor="middle" class="fill-text-muted text-[9px]">
       {hovered !== null ? arcs[hovered].label.slice(0, 22) : centerLabel}
     </text>
   </svg>
@@ -110,15 +116,15 @@
     {#each arcs as arc, i (arc.label)}
       <li
         class="flex items-center gap-2 rounded px-1.5 py-0.5 text-sm {hovered === i
-          ? 'bg-neutral-50'
+          ? 'bg-surface'
           : ''}"
         onmouseenter={() => (hovered = i)}
         onmouseleave={() => (hovered = null)}
       >
         <span class="h-2.5 w-2.5 shrink-0 rounded-sm" style="background:{arc.color}"></span>
-        <span class="min-w-0 flex-1 truncate text-neutral-800">{arc.label}</span>
-        <span class="shrink-0 tabular-nums text-neutral-600">{fmtMoney(arc.value)}</span>
-        <span class="w-11 shrink-0 text-right text-xs tabular-nums text-neutral-400">
+        <span class="min-w-0 flex-1 truncate text-text">{arc.label}</span>
+        <span class="shrink-0 tabular-nums text-text-muted">{fmtMoney(arc.value)}</span>
+        <span class="w-11 shrink-0 text-right text-xs tabular-nums text-text-muted">
           {(arc.share * 100).toFixed(1)}%
         </span>
       </li>

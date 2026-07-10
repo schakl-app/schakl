@@ -1,17 +1,23 @@
 <script lang="ts">
-  import { CircleCheck, Pencil, Receipt, Trash2 } from "@lucide/svelte";
+  import { Check, Pencil, Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import DataTable from "$lib/core/ui/DataTable.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
+  import { TIME_REPORT_COLUMNS } from "$lib/modules/time/columns";
   import EntryForm from "$lib/modules/time/EntryForm.svelte";
+  import EntryStatusPill from "$lib/modules/time/EntryStatusPill.svelte";
+  import TimeEntryRow from "$lib/modules/time/TimeEntryRow.svelte";
   import { formatMinutes, formatTime } from "$lib/modules/time/format";
 
   let { data, form } = $props();
@@ -33,7 +39,7 @@
 
   const memberName = (id?: string | null) => {
     const m = data.members.find((mm) => mm.user_id === id);
-    return m ? m.full_name || m.email : "—";
+    return m ? m.full_name || m.email : "";
   };
   const companyName = (id?: string | null) => data.companies.find((c) => c.id === id)?.name ?? "";
   const projectName = (id?: string | null) => data.projects.find((p) => p.id === id)?.name ?? "";
@@ -51,6 +57,36 @@
     return parts.length ? parts.join(" · ") : t("time.general");
   }
 
+  // --- the table ---------------------------------------------------------------
+  const table = createTableLayout<Entry>({
+    all: () => TIME_REPORT_COLUMNS,
+    pref: () => data.table.pref,
+    sort: () => data.table.sort,
+    cells: () => ({
+      date: dateCell,
+      employee: employeeCell,
+      company: companyCell,
+      project: projectCell,
+      task: taskCell,
+      description: descriptionCell,
+      minutes: minutesCell,
+      billable: billableCell,
+      status: statusCell,
+      approver: approverCell,
+      invoiced_at: invoicedAtCell,
+    }),
+    // The footer's figures are the API's, over the whole filtered set. Summing `entries` would
+    // silently print the total *of the page*, which looks exactly like the right answer (#37).
+    totals: () => ({
+      minutes: minutesTotal,
+      billable: billableTotal,
+      status: statusTotal,
+    }),
+  });
+
+  /** Bound to the table's checkbox column. Reset by `DataTable` whenever the row set changes. */
+  let selected = $state<string[]>([]);
+
   // --- filters (query params → SSR reload) ------------------------------------
   const statuses = ["open", "approved", "to_invoice", "invoiced"] as const;
   function setFilter(key: string, value: string) {
@@ -60,23 +96,8 @@
     void goto(url, { keepFocus: true, noScroll: true });
   }
 
-  // --- selection ---------------------------------------------------------------
-  let selected = $state<Record<string, boolean>>({});
-  const selectedIds = $derived(entries.filter((e) => selected[e.id]).map((e) => e.id));
-  const allSelected = $derived(entries.length > 0 && selectedIds.length === entries.length);
-  function toggleAll() {
-    const next: Record<string, boolean> = {};
-    if (!allSelected) for (const e of entries) next[e.id] = true;
-    selected = next;
-  }
-  // Reset the selection when the filtered set changes.
-  $effect(() => {
-    void entries;
-    selected = {};
-  });
-
   const bulkClass =
-    "rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:border-brand hover:text-brand disabled:cursor-not-allowed disabled:opacity-40";
+    "rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-text-muted hover:border-brand hover:text-brand";
 </script>
 
 <svelte:head>
@@ -84,23 +105,9 @@
 </svelte:head>
 
 <div class="mb-4">
-  <h1 class="text-xl font-semibold text-neutral-900">{t("time.overview.title")}</h1>
-  <p class="mt-1 text-sm text-neutral-500">{t("time.overview.subtitle")}</p>
+  <h1 class="text-xl font-semibold text-text">{t("time.overview.title")}</h1>
+  <p class="mt-1 text-sm text-text-muted">{t("time.overview.subtitle")}</p>
 </div>
-
-<!-- Totals -->
-{#if totals}
-  <div class="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
-    {#each [{ key: "minutes", value: totals.minutes, accent: "" }, { key: "billable", value: totals.billable_minutes, accent: "" }, { key: "open", value: totals.open_minutes, accent: totals.open_minutes ? "text-amber-600" : "" }, { key: "to_invoice", value: totals.to_invoice_minutes, accent: totals.to_invoice_minutes ? "text-brand" : "" }, { key: "invoiced", value: totals.invoiced_minutes, accent: "text-green-600" }] as card (card.key)}
-      <div class="rounded-xl border border-neutral-200 bg-white p-4">
-        <p class="text-xs text-neutral-500">{t(`time.overview.total.${card.key}`)}</p>
-        <p class="mt-1 text-lg font-semibold tabular-nums {card.accent || 'text-neutral-900'}">
-          {formatMinutes(card.value)}
-        </p>
-      </div>
-    {/each}
-  </div>
-{/if}
 
 <!-- Filters -->
 <div class="mb-4 flex flex-wrap items-center gap-2">
@@ -142,7 +149,7 @@
       onchange={(v) => setFilter("date_from", v)}
     />
   </div>
-  <span class="text-xs text-neutral-400">–</span>
+  <span class="text-xs text-text-muted">–</span>
   <div class="w-36">
     <DateInput
       name="_f_to"
@@ -156,121 +163,193 @@
       class="rounded-full px-3 py-1 text-xs font-medium
         {data.filters.status === status
         ? 'bg-brand text-white'
-        : 'border border-neutral-300 text-neutral-600 hover:border-brand hover:text-brand'}"
+        : 'border border-border text-text-muted hover:border-brand hover:text-brand'}"
       onclick={() => setFilter("status", data.filters.status === status ? "" : status)}
       >{t(`time.overview.status.${status}`)}</button
     >
   {/each}
+  <div class="ml-auto">
+    <ColumnPicker
+      all={table.pickerColumns}
+      visible={table.visibleKeys}
+      sort={table.sort}
+      onchange={table.onColumnsChange}
+      onsort={table.onSort}
+    />
+  </div>
 </div>
 
-<!-- Bulk actions -->
-<div class="mb-3 flex flex-wrap items-center gap-2">
-  <span class="text-xs text-neutral-500">
-    {t("time.overview.selected", { count: selectedIds.length })}
+{#if form?.error}
+  <p class="mb-3 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
+{/if}
+
+<!-- Cells ------------------------------------------------------------------- -->
+{#snippet dateCell(e: Entry)}
+  <span class="whitespace-nowrap tabular-nums text-text">
+    {fmtNumericDate(e.started_at.slice(0, 10))}
+    <span class="text-xs text-text-muted">{formatTime(e.started_at)}</span>
   </span>
-  {#each [{ action: "approve", label: t("time.overview.approve") }, { action: "unapprove", label: t("time.overview.unapprove") }, { action: "invoice", label: t("time.overview.mark_invoiced") }, { action: "uninvoice", label: t("time.overview.unmark_invoiced") }] as bulkAction (bulkAction.action)}
-    <form method="POST" action={`?/${bulkAction.action}`} use:enhance>
-      <input type="hidden" name="entry_ids" value={selectedIds.join(",")} />
-      <button class={bulkClass} disabled={selectedIds.length === 0}>{bulkAction.label}</button>
-    </form>
-  {/each}
-  {#if form?.error}<span class="text-xs text-red-600">{t(form.error)}</span>{/if}
-</div>
+{/snippet}
 
-<!-- Entries table -->
-<section class="overflow-hidden rounded-xl border border-neutral-200 bg-white">
-  {#if entries.length === 0}
-    <p class="p-8 text-center text-sm text-neutral-500">{t("time.overview.empty")}</p>
+{#snippet employeeCell(e: Entry)}
+  <span class="whitespace-nowrap font-medium text-text">{memberName(e.user_id) || "—"}</span>
+{/snippet}
+
+{#snippet companyCell(e: Entry)}
+  {@const name = companyName(e.company_id)}
+  {#if name}
+    <a href="/companies/{e.company_id}" class="truncate text-text hover:text-brand">{name}</a>
   {:else}
-    <div class="overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead>
-          <tr class="border-b border-neutral-100 text-left text-xs text-neutral-400">
-            <th class="w-8 px-3 py-2">
-              <input
-                type="checkbox"
-                checked={allSelected}
-                onchange={toggleAll}
-                class="h-4 w-4 rounded border-neutral-300 text-brand focus:ring-brand"
-                aria-label={t("time.overview.select_all")}
-              />
-            </th>
-            <th class="px-2 py-2 font-medium">{t("time.field.date")}</th>
-            <th class="px-2 py-2 font-medium">{t("time.overview.employee")}</th>
-            <th class="px-2 py-2 font-medium">{t("time.timesheet.row")}</th>
-            <th class="px-2 py-2 font-medium">{t("time.field.description")}</th>
-            <th class="px-2 py-2 text-right font-medium">{t("time.field.duration")}</th>
-            <th class="px-2 py-2 font-medium"></th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-neutral-50">
-          {#each entries as e (e.id)}
-            <tr class="hover:bg-neutral-50/60 {selected[e.id] ? 'bg-brand/5' : ''}">
-              <td class="px-3 py-2">
-                <input
-                  type="checkbox"
-                  bind:checked={selected[e.id]}
-                  class="h-4 w-4 rounded border-neutral-300 text-brand focus:ring-brand"
-                  aria-label={t("time.overview.select_row")}
-                />
-              </td>
-              <td class="whitespace-nowrap px-2 py-2 tabular-nums text-neutral-600">
-                {fmtNumericDate(e.started_at.slice(0, 10))}
-                <span class="text-xs text-neutral-400">{formatTime(e.started_at)}</span>
-              </td>
-              <td class="whitespace-nowrap px-2 py-2 font-medium text-neutral-800"
-                >{memberName(e.user_id)}</td
-              >
-              <td class="max-w-[16rem] truncate px-2 py-2 text-neutral-700">{entryLabel(e)}</td>
-              <td class="max-w-[14rem] truncate px-2 py-2 text-neutral-500"
-                >{e.description ?? ""}</td
-              >
-              <td class="px-2 py-2 text-right font-semibold tabular-nums text-neutral-900">
-                {formatMinutes(e.minutes)}
-                {#if !e.billable}
-                  <span
-                    class="ml-1 rounded-full bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-500"
-                  >
-                    {t("time.not_billable")}
-                  </span>
-                {/if}
-              </td>
-              <td class="whitespace-nowrap px-2 py-2">
-                <div class="flex items-center justify-end gap-1.5">
-                  {#if e.approved_at}
-                    <span title={t("time.approved")} class="text-green-600"
-                      ><CircleCheck size={16} /></span
-                    >
-                  {/if}
-                  {#if e.invoiced_at}
-                    <span title={t("time.overview.invoiced")} class="text-brand"
-                      ><Receipt size={16} /></span
-                    >
-                  {/if}
-                  <ActionsMenu
-                    compact
-                    items={[
-                      { label: t("common.edit"), icon: Pencil, onclick: () => openEdit(e) },
-                      {
-                        label: t("common.delete"),
-                        icon: Trash2,
-                        danger: true,
-                        onclick: () => {
-                          deleteId = e.id;
-                          confirmDelete = true;
-                        },
-                      },
-                    ]}
-                  />
-                </div>
-              </td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
+    <span class="text-text-muted">—</span>
   {/if}
-</section>
+{/snippet}
+
+{#snippet projectCell(e: Entry)}
+  {@const name = projectName(e.project_id)}
+  {#if name}
+    <a href="/projects/{e.project_id}" class="truncate text-text hover:text-brand">{name}</a>
+  {:else}
+    <span class="text-text-muted">—</span>
+  {/if}
+{/snippet}
+
+{#snippet taskCell(e: Entry)}
+  {@const title = taskTitle(e.task_id)}
+  {#if title}
+    <a href="/tasks/{e.task_id}" class="truncate text-text hover:text-brand">{title}</a>
+  {:else}
+    <span class="text-text-muted">—</span>
+  {/if}
+{/snippet}
+
+{#snippet descriptionCell(e: Entry)}
+  <span class="block truncate text-text-muted">{e.description || "—"}</span>
+{/snippet}
+
+{#snippet minutesCell(e: Entry)}
+  <span class="font-semibold text-text">{formatMinutes(e.minutes)}</span>
+{/snippet}
+
+{#snippet billableCell(e: Entry)}
+  {#if e.billable}
+    <span class="inline-flex text-green-600 dark:text-green-400" title={t("time.billable")}>
+      <Check size={16} />
+      <span class="sr-only">{t("time.billable")}</span>
+    </span>
+  {:else}
+    <span class="text-text-muted" title={t("time.not_billable")}>
+      —<span class="sr-only">{t("time.not_billable")}</span>
+    </span>
+  {/if}
+{/snippet}
+
+{#snippet statusCell(e: Entry)}
+  <EntryStatusPill entry={e} />
+{/snippet}
+
+{#snippet approverCell(e: Entry)}
+  <span class="truncate text-text-muted">{memberName(e.approved_by_user_id) || "—"}</span>
+{/snippet}
+
+{#snippet invoicedAtCell(e: Entry)}
+  <span class="tabular-nums text-text-muted">
+    {e.invoiced_at ? fmtNumericDate(e.invoiced_at.slice(0, 10)) : "—"}
+  </span>
+{/snippet}
+
+<!-- Footer: every figure the totals cards used to carry, now aligned under the column it
+     describes. All seven come from the API's `totals`, over the whole filtered set. -->
+{#snippet minutesTotal()}
+  <span class="text-text">{formatMinutes(totals?.minutes ?? 0)}</span>
+{/snippet}
+
+{#snippet billableTotal()}
+  <span class="text-text">{formatMinutes(totals?.billable_minutes ?? 0)}</span>
+{/snippet}
+
+{#snippet statusTotal()}
+  <span class="flex flex-col gap-0.5 text-xs font-normal">
+    <span class={totals?.open_minutes ? "text-amber-600 dark:text-amber-400" : "text-text-muted"}>
+      {t("time.overview.total.open")}: {formatMinutes(totals?.open_minutes ?? 0)}
+    </span>
+    <span class={totals?.to_invoice_minutes ? "text-brand" : "text-text-muted"}>
+      {t("time.overview.total.to_invoice")}: {formatMinutes(totals?.to_invoice_minutes ?? 0)}
+    </span>
+    <span
+      class={totals?.invoiced_minutes ? "text-green-600 dark:text-green-400" : "text-text-muted"}
+    >
+      {t("time.overview.total.invoiced")}: {formatMinutes(totals?.invoiced_minutes ?? 0)}
+    </span>
+  </span>
+{/snippet}
+
+<!-- A list of records is never read-only because it is a "report" (docs/UX.md). -->
+{#snippet rowActions(e: Entry)}
+  <ActionsMenu
+    compact
+    items={[
+      { label: t("common.edit"), icon: Pencil, onclick: () => openEdit(e) },
+      {
+        label: t("common.delete"),
+        icon: Trash2,
+        danger: true,
+        onclick: () => {
+          deleteId = e.id;
+          confirmDelete = true;
+        },
+      },
+    ]}
+  />
+{/snippet}
+
+{#snippet mobileRow(e: Entry)}
+  <div class="flex items-center gap-2">
+    <div class="min-w-0 flex-1">
+      <TimeEntryRow entry={e} label={entryLabel(e)} employee={memberName(e.user_id)} />
+    </div>
+    {@render rowActions(e)}
+  </div>
+{/snippet}
+
+<!-- Bulk bar. Selection is per page, and says so: "select all" can only ever mean the rows that
+     were fetched, and a bulk approve must not reach records the user never saw. -->
+{#snippet selection(ids: string[])}
+  <div
+    class="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-brand/30 bg-brand/5 px-3 py-2"
+  >
+    <span class="text-xs font-medium text-text">{t("table.selected", { count: ids.length })}</span>
+    <span class="text-xs text-text-muted">{t("table.selection_page_only")}</span>
+    {#each [{ action: "approve", label: t("time.overview.approve") }, { action: "unapprove", label: t("time.overview.unapprove") }, { action: "invoice", label: t("time.overview.mark_invoiced") }, { action: "uninvoice", label: t("time.overview.unmark_invoiced") }] as bulkAction (bulkAction.action)}
+      <form method="POST" action={`?/${bulkAction.action}`} use:enhance>
+        <input type="hidden" name="entry_ids" value={ids.join(",")} />
+        <button class={bulkClass}>{bulkAction.label}</button>
+      </form>
+    {/each}
+  </div>
+{/snippet}
+
+{#snippet empty()}
+  <p
+    class="rounded-xl border border-border bg-surface-raised p-8 text-center text-sm text-text-muted"
+  >
+    {t("time.overview.empty")}
+  </p>
+{/snippet}
+
+<DataTable
+  rows={entries}
+  columns={table.columns}
+  sort={table.sort}
+  widths={table.widths}
+  selectable
+  bind:selected
+  {selection}
+  actions={rowActions}
+  {mobileRow}
+  {empty}
+  onsort={table.onSort}
+  onresize={table.onResize}
+/>
 
 <!-- Edit a single entry (UX §3: definition edits behind the ⋯ menu, in a modal). -->
 <Modal bind:open={showEdit} title={t("time.edit_entry")}>

@@ -3,37 +3,35 @@
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
-  import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import { t } from "$lib/core/i18n";
   import { companyPanelComponent } from "$lib/core/registry";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
-  import Combobox from "$lib/core/ui/Combobox.svelte";
+  import AvatarStack from "$lib/core/ui/AvatarStack.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
-  import { COMPANY_STATUSES, statusPillClass } from "$lib/modules/companies/status";
+  import CompanyForm from "$lib/modules/companies/CompanyForm.svelte";
+  import { statusPillClass } from "$lib/modules/companies/status";
+  import ContactDraftField from "$lib/modules/contacts/ContactDraftField.svelte";
 
   let { data, form } = $props();
 
   // Panels are contributed by enabled modules and composed here — the "attach to company" hub.
   const enabled = $derived(page.data.theme?.enabledModules ?? []);
   const company = $derived(data.company);
+  const assignees = $derived(company.assignees ?? []);
 
-  const memberItems = $derived(
-    data.members.map((m) => ({ value: m.user_id, label: m.full_name || m.email })),
-  );
-  const responsibleName = $derived(
-    company.responsible_user_id
-      ? (data.members.find((m) => m.user_id === company.responsible_user_id)?.full_name ??
-          data.members.find((m) => m.user_id === company.responsible_user_id)?.email ??
-          null)
-      : null,
+  // The contact persons currently on this client, primary first — derived from the org's contacts
+  // rather than fetched again, since each one carries the companies it is linked to.
+  const companyContacts = $derived(
+    data.contacts
+      .map((c) => ({ id: c.id, link: c.companies?.find((l) => l.company_id === company.id) }))
+      .filter((c) => c.link !== undefined)
+      .map((c) => ({ contact_id: c.id, is_primary: Boolean(c.link?.is_primary) }))
+      .sort((a, b) => Number(b.is_primary) - Number(a.is_primary)),
   );
 
   let showEdit = $state(false);
   let confirmDelete = $state(false);
-
-  const inputClass =
-    "w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
 
 <svelte:head>
@@ -41,13 +39,13 @@
 </svelte:head>
 
 <div class="mb-6">
-  <a href="/companies" class="text-sm text-neutral-500 hover:text-neutral-900">
+  <a href="/companies" class="text-sm text-text-muted hover:text-text">
     ← {t("companies.title")}
   </a>
   <div class="mt-2 flex flex-wrap items-start justify-between gap-3">
     <div>
       <div class="flex items-center gap-3">
-        <h1 class="text-xl font-semibold text-neutral-900">{company.name}</h1>
+        <h1 class="text-xl font-semibold text-text">{company.name}</h1>
         <span
           class="rounded-full px-2.5 py-0.5 text-xs font-medium {statusPillClass(company.status)}"
         >
@@ -59,26 +57,26 @@
           href={company.website.startsWith("http") ? company.website : `https://${company.website}`}
           target="_blank"
           rel="noopener noreferrer"
-          class="mt-1 inline-block text-sm text-neutral-500 hover:text-brand">{company.website} ↗</a
+          class="mt-1 inline-block text-sm text-text-muted hover:text-brand">{company.website} ↗</a
         >
       {/if}
-      {#if responsibleName}
-        <p class="mt-1 text-sm text-neutral-500">
-          {t("companies.field.responsible")}:
-          <span class="text-neutral-700">{responsibleName}</span>
+      {#if assignees.length > 0}
+        <p class="mt-1 flex flex-wrap items-center gap-2 text-sm text-text-muted">
+          <span>{t("companies.field.responsible")}:</span>
+          <AvatarStack {assignees} members={data.members} />
         </p>
       {/if}
     </div>
     <div class="flex flex-wrap items-center gap-2">
       <a
         href={`/tasks?company_id=${company.id}`}
-        class="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600 hover:border-brand hover:text-brand"
+        class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"
       >
         {t("companies.actions.new_task")}
       </a>
       <a
         href="/time"
-        class="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600 hover:border-brand hover:text-brand"
+        class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"
       >
         {t("companies.actions.log_time")}
       </a>
@@ -99,7 +97,7 @@
     <form method="POST" action="?/applyTemplate" use:enhance class="mt-3 flex items-center gap-2">
       <select
         name="template_id"
-        class="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+        class="rounded-lg border border-border px-2 py-1.5 text-sm"
         required
       >
         {#each data.templates as template (template.id)}
@@ -107,12 +105,14 @@
         {/each}
       </select>
       <button
-        class="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600 hover:border-brand hover:text-brand"
+        class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"
       >
         {t("companies.actions.apply_template")}
       </button>
       {#if form?.templateApplied}
-        <span class="text-xs text-green-600">{t("companies.template_applied")}</span>
+        <span class="text-xs text-green-600 dark:text-green-400"
+          >{t("companies.template_applied")}</span
+        >
       {/if}
     </form>
   {/if}
@@ -121,13 +121,13 @@
 <div class="grid gap-4">
   {#each data.panels as panel (panel.key)}
     {@const spec = companyPanelComponent(enabled, panel.key)}
-    <section class="rounded-xl border border-neutral-200 bg-white p-5">
-      <h2 class="mb-4 text-sm font-semibold text-neutral-900">{t(panel.title_key)}</h2>
+    <section class="rounded-xl border border-border bg-surface-raised p-5">
+      <h2 class="mb-4 text-sm font-semibold text-text">{t(panel.title_key)}</h2>
       {#if spec}
         {@const PanelComponent = spec.component}
         <PanelComponent companyId={company.id} data={panel.data} />
       {:else}
-        <pre class="overflow-x-auto text-xs text-neutral-500">{JSON.stringify(
+        <pre class="overflow-x-auto text-xs text-text-muted">{JSON.stringify(
             panel.data,
             null,
             2,
@@ -148,67 +148,29 @@
       }}
     class="space-y-3"
   >
-    <div>
-      <label for="edit-name" class="mb-1 block text-sm font-medium text-neutral-700"
-        >{t("companies.name")}</label
-      >
-      <input id="edit-name" name="name" value={company.name} required class={inputClass} />
-    </div>
-    <div class="grid grid-cols-2 gap-3">
-      <div>
-        <label for="edit-website" class="mb-1 block text-sm font-medium text-neutral-700"
-          >{t("companies.website")}</label
-        >
-        <input id="edit-website" name="website" value={company.website ?? ""} class={inputClass} />
-      </div>
-      <div>
-        <label for="edit-status" class="mb-1 block text-sm font-medium text-neutral-700"
-          >{t("companies.field.status")}</label
-        >
-        <select id="edit-status" name="status" class={inputClass}>
-          {#each COMPANY_STATUSES as status (status)}
-            <option value={status} selected={company.status === status}
-              >{t(`companies.status.${status}`)}</option
-            >
-          {/each}
-        </select>
-      </div>
-    </div>
-    <div>
-      <label for="edit-responsible" class="mb-1 block text-sm font-medium text-neutral-700"
-        >{t("companies.field.responsible")}</label
-      >
-      <Combobox
-        items={memberItems}
-        name="responsible_user_id"
-        id="edit-responsible"
-        value={company.responsible_user_id ?? ""}
-        placeholder={t("common.unassigned")}
-      />
-    </div>
-    <div>
-      <label for="edit-notes" class="mb-1 block text-sm font-medium text-neutral-700"
-        >{t("companies.notes")}</label
-      >
-      <textarea id="edit-notes" name="notes" rows="3" class={inputClass}
-        >{company.notes ?? ""}</textarea
-      >
-    </div>
-    {#if data.definitions.length > 0}
-      <CustomFieldsForm
-        definitions={data.definitions}
-        values={company.custom ?? {}}
+    <!-- Same component the create form uses: one definition of a client's fields. Every editable
+         field is here, contact persons included — an edit surface that hides a field the view
+         shows sends you hunting for it (docs/UX.md). -->
+    <CompanyForm
+      {company}
+      members={data.members}
+      definitions={data.definitions}
+      locale={data.locale}
+      idPrefix="edit-company"
+    >
+      <ContactDraftField
+        contacts={data.contacts}
+        definitions={data.contactDefinitions}
         locale={data.locale}
+        value={companyContacts}
+        id="edit-company-contacts"
       />
-    {:else}
-      <input type="hidden" name="custom" value={JSON.stringify(company.custom ?? {})} />
-    {/if}
-    <p class="text-xs text-neutral-400">{t("companies.status_hint")}</p>
+    </CompanyForm>
     {#if form?.error}<p class="text-sm text-red-600">{t(form.error)}</p>{/if}
     <div class="flex justify-end gap-2 pt-1">
       <button
         type="button"
-        class="rounded-lg border border-neutral-300 px-4 py-2 text-sm"
+        class="rounded-lg border border-border px-4 py-2 text-sm"
         onclick={() => (showEdit = false)}
       >
         {t("common.cancel")}

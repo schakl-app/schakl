@@ -1,7 +1,9 @@
 <script lang="ts">
   /**
    * Grouped monthly bars: the selected year vs the previous year on one € axis.
-   * Palette validated (dataviz six checks): current #2563eb, previous #d97706.
+   * Palette validated (dataviz six checks): current #2563eb, previous #d97706 — re-validated
+   * against the dark surface (#171717) for issue #14 and left unchanged, both clear 3:1+
+   * contrast and CVD separation there too. Gridlines/tooltip/labels use semantic tokens.
    */
   import { fmtMoney, monthLabels } from "$lib/core/format";
 
@@ -64,14 +66,14 @@
         x2={W - PAD.right}
         y1={y(tick)}
         y2={y(tick)}
-        stroke="#f5f5f5"
+        class="stroke-border"
         stroke-width="1"
       />
       <text
         x={PAD.left - 8}
         y={y(tick) + 3}
         text-anchor="end"
-        class="fill-neutral-400 text-[10px] tabular-nums">{fmtMoney(tick)}</text
+        class="fill-text-muted text-[10px] tabular-nums">{fmtMoney(tick)}</text
       >
     {/each}
 
@@ -110,29 +112,29 @@
         x={PAD.left + i * groupW + groupW / 2}
         y={H - 8}
         text-anchor="middle"
-        class="fill-neutral-400 text-[10px]">{month}</text
+        class="fill-text-muted text-[10px]">{month}</text
       >
     {/each}
   </svg>
 
   {#if tooltip}
     <div
-      class="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs shadow-lg"
+      class="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full rounded-lg border border-border bg-surface-raised px-3 py-2 text-xs shadow-lg"
       style="left: {tooltip.x}px; top: {tooltip.y}px"
     >
-      <p class="mb-1 font-semibold capitalize text-neutral-900">{tooltip.month}</p>
-      <p class="flex items-center gap-1.5 tabular-nums text-neutral-700">
+      <p class="mb-1 font-semibold capitalize text-text">{tooltip.month}</p>
+      <p class="flex items-center gap-1.5 tabular-nums text-text-muted">
         <span class="h-2 w-2 rounded-full" style="background:{CURRENT_COLOR}"></span>
         {currentLabel}: {fmtMoney(tooltip.cur)}
       </p>
-      <p class="flex items-center gap-1.5 tabular-nums text-neutral-700">
+      <p class="flex items-center gap-1.5 tabular-nums text-text-muted">
         <span class="h-2 w-2 rounded-full" style="background:{PREVIOUS_COLOR}"></span>
         {previousLabel}: {fmtMoney(tooltip.prev)}
       </p>
     </div>
   {/if}
 
-  <figcaption class="mt-2 flex items-center gap-4 text-xs text-neutral-600">
+  <figcaption class="mt-2 flex items-center gap-4 text-xs text-text-muted">
     <span class="flex items-center gap-1.5">
       <span class="h-2.5 w-2.5 rounded-sm" style="background:{CURRENT_COLOR}"></span>
       {currentLabel}

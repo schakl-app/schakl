@@ -2,6 +2,9 @@ import { fail } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
 import { apiFor } from "$lib/core/session";
+import { readTablePref, resolveColumns } from "$lib/core/table/columns";
+import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
+import { TIME_REPORT_COLUMNS, TIME_REPORT_TABLE_ID } from "$lib/modules/time/columns";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -42,6 +45,14 @@ export const load: PageServerLoad = async (event) => {
     status: q.get("status") ?? "",
   };
 
+  // The saved layout comes from the /overview layout load, which does not rerun on filter or sort
+  // navigation. The *server* sorts: this page holds 500 rows of a possibly much longer set, and
+  // the totals below it describe the whole set, not the page.
+  const { prefs } = await event.parent();
+  const pref = readTablePref(prefs, TIME_REPORT_TABLE_ID);
+  const resolved = resolveColumns(TIME_REPORT_COLUMNS, pref);
+  const sort = q.get("sort") ?? resolved.sort ?? undefined;
+
   const { data: report } = await api.GET("/api/v1/time/report", {
     params: {
       query: {
@@ -52,6 +63,7 @@ export const load: PageServerLoad = async (event) => {
         project_id: filters.project_id || undefined,
         date_from: filters.date_from || undefined,
         date_to: filters.date_to || undefined,
+        sort,
         ...statusFlags(filters.status),
       },
     },
@@ -60,6 +72,7 @@ export const load: PageServerLoad = async (event) => {
   return {
     report: report ?? null,
     filters,
+    table: { pref, sort: sort ?? null, widths: resolved.widths },
   };
 };
 
@@ -83,6 +96,13 @@ async function bulk(
 }
 
 export const actions: Actions = {
+  /** Persist this manager's column layout. Personal, in-view (docs/UX.md §6). */
+  saveTable: async (event) => {
+    const form = await event.request.formData();
+    await saveTablePref(event, TIME_REPORT_TABLE_ID, parseTablePref(form));
+    return { tableSaved: true };
+  },
+
   approve: (event) => bulk(event, "/api/v1/time/entries/approve", "approved", true),
   unapprove: (event) => bulk(event, "/api/v1/time/entries/approve", "approved", false),
   invoice: (event) => bulk(event, "/api/v1/time/entries/invoice", "invoiced", true),

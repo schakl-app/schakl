@@ -4,7 +4,14 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: [".svelte-kit/**", "build/**", "src/lib/paraglide/**", "src/lib/core/api/schema.d.ts"],
+    ignores: [
+      ".svelte-kit/**",
+      "build/**",
+      "src/lib/paraglide/**",
+      "src/lib/core/api/schema.d.ts",
+      "playwright-report/**",
+      "test-results/**",
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -21,6 +28,17 @@ export default tseslint.config(
       parserOptions: {
         parser: tseslint.parser,
         extraFileExtensions: [".svelte"],
+      },
+    },
+  },
+  {
+    // Svelte 5 `.svelte.ts` modules (runes usable outside components) are picked up by
+    // eslint-plugin-svelte's recommended config, but without the inner TS parser it needs
+    // to read type annotations — same fix as the plain `**/*.svelte` block above.
+    files: ["**/*.svelte.ts"],
+    languageOptions: {
+      parserOptions: {
+        parser: tseslint.parser,
       },
     },
   },

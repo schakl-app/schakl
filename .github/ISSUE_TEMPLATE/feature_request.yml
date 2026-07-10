@@ -1,7 +1,8 @@
 name: Feature or improvement
 description: Propose new functionality or an improvement to something that already exists
 title: "feat: "
-labels: ["enhancement"]
+# Type is a native org-level field, not a label (docs/WORKFLOW.md). Priority is set at triage.
+type: Feature
 body:
   - type: textarea
     id: problem

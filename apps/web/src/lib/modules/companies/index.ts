@@ -21,6 +21,7 @@ registerWebModule({
       group: "relations",
       icon: Building2,
       position: 10,
+      requiresPermission: "companies.company.read",
     },
   ],
   companyPanels: [

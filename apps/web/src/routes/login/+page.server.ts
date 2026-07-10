@@ -2,7 +2,7 @@ import { fail, redirect } from "@sveltejs/kit";
 
 import { apiLogin, AUTH_COOKIE_NAME } from "$lib/core/auth.server";
 import { createApiClient } from "$lib/core/api/client";
-import { LOCALE_COOKIE, LOCALES } from "$lib/core/i18n";
+import { asLocale, LOCALE_COOKIE, LOCALE_COOKIE_OPTIONS } from "$lib/core/i18n";
 import { apiFor } from "$lib/core/session";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -48,13 +48,8 @@ export const actions: Actions = {
       host: event.request.headers.get("host"),
     });
     const { data: me } = await authed.GET("/api/v1/meta/me");
-    if (me?.locale && (LOCALES as readonly string[]).includes(me.locale)) {
-      event.cookies.set(LOCALE_COOKIE, me.locale, {
-        path: "/",
-        maxAge: 60 * 60 * 24 * 365,
-        sameSite: "lax",
-      });
-    }
+    const locale = asLocale(me?.locale);
+    if (locale) event.cookies.set(LOCALE_COOKIE, locale, LOCALE_COOKIE_OPTIONS);
     throw redirect(303, "/");
   },
 };

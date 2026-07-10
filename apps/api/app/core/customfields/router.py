@@ -19,19 +19,28 @@ from app.core.customfields.schemas import (
     CustomFieldDefinitionUpdate,
 )
 from app.core.customfields.service import CustomFieldsService
+from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
 
 router = APIRouter(prefix="/custom-fields", tags=["custom-fields"])
 
 
-@router.get("/entity-types", response_model=list[str])
+@router.get(
+    "/entity-types",
+    response_model=list[str],
+    dependencies=[require_permission("settings.customfields.read")],
+)
 async def list_entity_types(
     _: RequestContext = Depends(require_context),
 ) -> list[str]:
     return customizable_entity_types()
 
 
-@router.get("/definitions", response_model=list[CustomFieldDefinitionRead])
+@router.get(
+    "/definitions",
+    response_model=list[CustomFieldDefinitionRead],
+    dependencies=[require_permission("settings.customfields.read")],
+)
 async def list_definitions(
     entity_type: str = Query(..., min_length=1),
     include_inactive: bool = Query(False),
@@ -43,7 +52,12 @@ async def list_definitions(
     return [CustomFieldDefinitionRead.model_validate(d) for d in defs]
 
 
-@router.post("/definitions", response_model=CustomFieldDefinitionRead, status_code=201)
+@router.post(
+    "/definitions",
+    response_model=CustomFieldDefinitionRead,
+    status_code=201,
+    dependencies=[require_permission("settings.customfields.write")],
+)
 async def create_definition(
     payload: CustomFieldDefinitionCreate,
     ctx: RequestContext = Depends(require_context),
@@ -52,7 +66,11 @@ async def create_definition(
     return CustomFieldDefinitionRead.model_validate(definition)
 
 
-@router.patch("/definitions/{definition_id}", response_model=CustomFieldDefinitionRead)
+@router.patch(
+    "/definitions/{definition_id}",
+    response_model=CustomFieldDefinitionRead,
+    dependencies=[require_permission("settings.customfields.write")],
+)
 async def update_definition(
     definition_id: uuid.UUID,
     payload: CustomFieldDefinitionUpdate,
@@ -62,7 +80,11 @@ async def update_definition(
     return CustomFieldDefinitionRead.model_validate(definition)
 
 
-@router.delete("/definitions/{definition_id}", status_code=204)
+@router.delete(
+    "/definitions/{definition_id}",
+    status_code=204,
+    dependencies=[require_permission("settings.customfields.write")],
+)
 async def delete_definition(
     definition_id: uuid.UUID,
     ctx: RequestContext = Depends(require_context),

@@ -3,18 +3,33 @@
   import { dndzone } from "svelte-dnd-action";
 
   import { enhance } from "$app/forms";
+  import { page } from "$app/state";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import CustomFieldsView from "$lib/core/customfields/CustomFieldsView.svelte";
+  import { burnBarClass, burnBarWidth, burnPct } from "$lib/core/burn";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { entityPanelsFor } from "$lib/core/registry";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
-  import Combobox from "$lib/core/ui/Combobox.svelte";
+  import AssigneePicker from "$lib/core/ui/AssigneePicker.svelte";
+  import AvatarStack from "$lib/core/ui/AvatarStack.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import TaskRow from "$lib/modules/tasks/TaskRow.svelte";
-  import { hoursFromMinutes } from "$lib/modules/time/format";
 
   let { data, form } = $props();
+
+  // Panels are contributed by enabled modules and composed here — this page never names `time`.
+  const enabled = $derived(page.data.theme?.enabledModules ?? []);
+  const panelSpecs = $derived(entityPanelsFor(enabled, "project"));
+  const panelComponent = (key: string) => panelSpecs.find((spec) => spec.key === key)?.component;
+  // The lookups this page already holds, handed down so a panel never refetches them.
+  const panelLookups = $derived({
+    members: data.members,
+    companies: data.companies,
+    projects: data.projects,
+    tasks: data.tasks,
+  });
 
   // Use mode vs edit mode (UX §3): the definition is edited behind the ⋯ → Bewerken toggle.
   let editing = $state(false);
@@ -22,22 +37,13 @@
 
   const STATUSES = ["active", "on_hold", "completed", "archived"] as const;
   const inputClass =
-    "w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
+    "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 
   const project = $derived(data.project);
   const tasks = $derived(data.tasks);
   const doneCount = $derived(tasks.filter((t) => t.status === "done").length);
 
-  const memberItems = $derived(
-    data.members.map((m) => ({ value: m.user_id, label: m.full_name || m.email })),
-  );
-  const responsibleName = $derived(
-    project.responsible_user_id
-      ? (data.members.find((m) => m.user_id === project.responsible_user_id)?.full_name ??
-          data.members.find((m) => m.user_id === project.responsible_user_id)?.email ??
-          null)
-      : null,
-  );
+  const assignees = $derived(project.assignees ?? []);
 
   // Drag-to-reorder: local mirror of the task list for the dnd zone; a drop PATCHes the
   // moved task's position to the fractional midpoint of its new neighbours.
@@ -80,16 +86,16 @@
       : (project.budget_amount ?? null),
   );
 
-  // Actuals from logged time (team-wide) against the budget.
-  const loggedHours = $derived(hoursFromMinutes(data.logged.minutes));
+  // Actuals from logged time (team-wide) against the budget, computed by the API over the budget's
+  // current period — the same figures the projects list column shows, and the same period the Uren
+  // panel below lists the entries for.
+  const loggedHours = $derived(project.hours?.spent_hours ?? 0);
   const billableValue = $derived(
-    project.hourly_rate != null ? (data.logged.billable_minutes / 60) * project.hourly_rate : null,
+    project.hourly_rate != null ? (project.hours?.billable_hours ?? 0) * project.hourly_rate : null,
   );
-  const budgetPct = $derived(
-    project.budget_hours
-      ? Math.min(100, Math.round((loggedHours / project.budget_hours) * 100))
-      : null,
-  );
+  // The one burn scale (core/burn.ts, docs/UX.md). Unclamped: this used to `Math.min(100, …)`,
+  // so a project 40 % over budget drew exactly like one that had just landed on it.
+  const budgetPct = $derived(burnPct(loggedHours, project.budget_hours));
 
   const money = (n: number) =>
     new Intl.NumberFormat("nl-NL", {
@@ -104,15 +110,14 @@
 
 <div class="mb-6 flex items-start justify-between">
   <div>
-    <a href="/projects" class="text-sm text-neutral-500 hover:text-neutral-900"
-      >← {t("projects.title")}</a
-    >
-    <h1 class="mt-1 text-xl font-semibold text-neutral-900">{project.name}</h1>
-    <p class="mt-1 text-sm text-neutral-500">
+    <a href="/projects" class="text-sm text-text-muted hover:text-text">← {t("projects.title")}</a>
+    <h1 class="mt-1 text-xl font-semibold text-text">{project.name}</h1>
+    <p class="mt-1 text-sm text-text-muted">
       {#if companyName}{companyName} ·
       {/if}{t(`projects.status.${project.status}`)}
-      {#if responsibleName}
-        · {t("projects.field.responsible")}: {responsibleName}
+      {#if assignees.length > 0}
+        · {t("projects.field.responsible")}:
+        <AvatarStack {assignees} members={data.members} />
       {/if}
     </p>
   </div>
@@ -135,71 +140,72 @@
 
 <div class="grid gap-4 lg:grid-cols-2">
   <!-- Budget overview -->
-  <section class="rounded-xl border border-neutral-200 bg-white p-5">
-    <h2 class="mb-4 text-sm font-semibold text-neutral-900">{t("projects.budget")}</h2>
+  <section class="rounded-xl border border-border bg-surface-raised p-5">
+    <h2 class="mb-4 text-sm font-semibold text-text">{t("projects.budget")}</h2>
     <dl class="grid grid-cols-2 gap-4 text-sm">
       <div>
-        <dt class="text-neutral-500">{t("projects.field.budget_hours")}</dt>
-        <dd class="mt-0.5 font-medium text-neutral-900">
+        <dt class="text-text-muted">{t("projects.field.budget_hours")}</dt>
+        <dd class="mt-0.5 font-medium text-text">
           {project.budget_hours != null
             ? `${project.budget_hours} ${t("projects.hours_unit")}`
             : "—"}
         </dd>
       </div>
       <div>
-        <dt class="text-neutral-500">{t("projects.field.hourly_rate")}</dt>
-        <dd class="mt-0.5 font-medium text-neutral-900">
+        <dt class="text-text-muted">{t("projects.field.hourly_rate")}</dt>
+        <dd class="mt-0.5 font-medium text-text">
           {project.hourly_rate != null ? money(project.hourly_rate) : "—"}
         </dd>
       </div>
       <div>
-        <dt class="text-neutral-500">{t("projects.planned_value")}</dt>
-        <dd class="mt-0.5 font-medium text-neutral-900">
+        <dt class="text-text-muted">{t("projects.planned_value")}</dt>
+        <dd class="mt-0.5 font-medium text-text">
           {plannedValue != null ? money(plannedValue) : "—"}
         </dd>
       </div>
       <div>
-        <dt class="text-neutral-500">{t("projects.field.billable_default")}</dt>
-        <dd class="mt-0.5 font-medium text-neutral-900">
+        <dt class="text-text-muted">{t("projects.field.billable_default")}</dt>
+        <dd class="mt-0.5 font-medium text-text">
           {project.billable_default ? t("common.yes") : t("common.no")}
         </dd>
       </div>
     </dl>
-    <div class="mt-4 border-t border-neutral-100 pt-4">
+    <div class="mt-4 border-t border-border pt-4">
       <div class="flex items-end justify-between text-sm">
-        <span class="text-neutral-500"
+        <span class="text-text-muted"
           >{t(`projects.logged_period.${project.budget_period ?? "total"}`)}</span
         >
-        <span class="font-medium text-neutral-900">
+        <span class="font-medium text-text">
           {loggedHours}
           {t("projects.hours_unit")}{#if project.budget_hours != null}
-            <span class="text-neutral-400">
+            <span class="text-text-muted">
               / {project.budget_hours} {t("projects.hours_unit")}</span
             >
           {/if}
         </span>
       </div>
       {#if budgetPct != null}
-        <div class="mt-1.5 h-2 overflow-hidden rounded-full bg-neutral-100">
+        <div class="mt-1.5 h-2 overflow-hidden rounded-full bg-surface">
+          <!-- The number may exceed 100 %; the bar it draws cannot. -->
           <div
-            class="h-full rounded-full {budgetPct >= 100 ? 'bg-red-500' : 'bg-brand'}"
-            style="width: {budgetPct}%"
+            class="h-full rounded-full {burnBarClass(budgetPct)}"
+            style="width: {burnBarWidth(budgetPct)}%"
           ></div>
         </div>
       {/if}
       {#if billableValue != null}
         <div class="mt-3 flex items-center justify-between text-sm">
-          <span class="text-neutral-500">{t("projects.billable_value")}</span>
-          <span class="font-medium text-neutral-900">{money(billableValue)}</span>
+          <span class="text-text-muted">{t("projects.billable_value")}</span>
+          <span class="font-medium text-text">{money(billableValue)}</span>
         </div>
       {/if}
     </div>
   </section>
 
   <!-- Details (use mode) / Edit (edit mode) -->
-  <section class="rounded-xl border border-neutral-200 bg-white p-5">
+  <section class="rounded-xl border border-border bg-surface-raised p-5">
     {#if editing}
-      <h2 class="mb-4 text-sm font-semibold text-neutral-900">{t("common.edit")}</h2>
+      <h2 class="mb-4 text-sm font-semibold text-text">{t("common.edit")}</h2>
       <form
         method="POST"
         action="?/update"
@@ -211,26 +217,25 @@
         class="space-y-3"
       >
         <div>
-          <label for="edit-name" class="mb-1 block text-sm font-medium text-neutral-700"
+          <label for="edit-name" class="mb-1 block text-sm font-medium text-text"
             >{t("projects.field.name")}</label
           >
           <input id="edit-name" name="name" value={project.name} required class={inputClass} />
         </div>
         <div>
-          <label for="edit-responsible" class="mb-1 block text-sm font-medium text-neutral-700"
-            >{t("projects.field.responsible")}</label
+          <span class="mb-1 block text-sm font-medium text-text"
+            >{t("projects.field.assignees")}</span
           >
-          <Combobox
-            items={memberItems}
-            name="responsible_user_id"
-            id="edit-responsible"
-            value={project.responsible_user_id ?? ""}
-            placeholder={t("common.unassigned")}
+          <AssigneePicker
+            members={data.members}
+            value={assignees}
+            id="edit-project-assignees"
+            placeholder={t("assignees.add")}
           />
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label for="status" class="mb-1 block text-sm font-medium text-neutral-700"
+            <label for="status" class="mb-1 block text-sm font-medium text-text"
               >{t("projects.field.status")}</label
             >
             <select id="status" name="status" class={inputClass}>
@@ -247,14 +252,14 @@
               name="billable_default"
               type="checkbox"
               checked={project.billable_default}
-              class="h-4 w-4 rounded border-neutral-300 text-brand focus:ring-brand"
+              class="h-4 w-4 rounded border-border text-brand focus:ring-brand"
             />
-            <label for="billable_default" class="text-sm font-medium text-neutral-700"
+            <label for="billable_default" class="text-sm font-medium text-text"
               >{t("projects.field.billable_default")}</label
             >
           </div>
           <div>
-            <label for="budget_hours" class="mb-1 block text-sm font-medium text-neutral-700"
+            <label for="budget_hours" class="mb-1 block text-sm font-medium text-text"
               >{t("projects.field.budget_hours")}</label
             >
             <input
@@ -268,7 +273,7 @@
             />
           </div>
           <div>
-            <label for="budget_period" class="mb-1 block text-sm font-medium text-neutral-700"
+            <label for="budget_period" class="mb-1 block text-sm font-medium text-text"
               >{t("projects.field.budget_period")}</label
             >
             <select id="budget_period" name="budget_period" class={inputClass}>
@@ -280,7 +285,7 @@
             </select>
           </div>
           <div>
-            <label for="hourly_rate" class="mb-1 block text-sm font-medium text-neutral-700"
+            <label for="hourly_rate" class="mb-1 block text-sm font-medium text-text"
               >{t("projects.field.hourly_rate")}</label
             >
             <input
@@ -294,7 +299,7 @@
             />
           </div>
           <div>
-            <label for="budget_amount" class="mb-1 block text-sm font-medium text-neutral-700"
+            <label for="budget_amount" class="mb-1 block text-sm font-medium text-text"
               >{t("projects.field.budget_amount")}</label
             >
             <input
@@ -308,20 +313,20 @@
             />
           </div>
           <div>
-            <label for="start_date" class="mb-1 block text-sm font-medium text-neutral-700"
+            <label for="start_date" class="mb-1 block text-sm font-medium text-text"
               >{t("projects.field.start_date")}</label
             >
             <DateInput name="start_date" value={project.start_date ?? ""} />
           </div>
           <div>
-            <label for="end_date" class="mb-1 block text-sm font-medium text-neutral-700"
+            <label for="end_date" class="mb-1 block text-sm font-medium text-text"
               >{t("projects.field.end_date")}</label
             >
             <DateInput name="end_date" value={project.end_date ?? ""} />
           </div>
         </div>
         <div>
-          <label for="edit-description" class="mb-1 block text-sm font-medium text-neutral-700"
+          <label for="edit-description" class="mb-1 block text-sm font-medium text-text"
             >{t("projects.field.description")}</label
           >
           <textarea id="edit-description" name="description" rows="3" class={inputClass}
@@ -337,11 +342,11 @@
         {:else}
           <input type="hidden" name="custom" value={JSON.stringify(project.custom ?? {})} />
         {/if}
-        {#if form?.error}<p class="text-sm text-red-600">{t(form.error)}</p>{/if}
+        {#if form?.error}<p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
         <div class="flex justify-end gap-2 pt-1">
           <button
             type="button"
-            class="rounded-lg border border-neutral-300 px-4 py-2 text-sm"
+            class="rounded-lg border border-border px-4 py-2 text-sm"
             onclick={() => (editing = false)}
           >
             {t("common.cancel")}
@@ -353,37 +358,43 @@
         </div>
       </form>
     {:else}
-      <h2 class="mb-4 text-sm font-semibold text-neutral-900">{t("projects.details")}</h2>
+      <h2 class="mb-4 text-sm font-semibold text-text">{t("projects.details")}</h2>
       <dl class="grid grid-cols-2 gap-4 text-sm">
         <div>
-          <dt class="text-neutral-500">{t("projects.field.company")}</dt>
-          <dd class="mt-0.5 font-medium text-neutral-900">{companyName || "—"}</dd>
+          <dt class="text-text-muted">{t("projects.field.company")}</dt>
+          <dd class="mt-0.5 font-medium text-text">{companyName || "—"}</dd>
         </div>
         <div>
-          <dt class="text-neutral-500">{t("projects.field.responsible")}</dt>
-          <dd class="mt-0.5 font-medium text-neutral-900">{responsibleName ?? "—"}</dd>
+          <dt class="text-text-muted">{t("projects.field.responsible")}</dt>
+          <dd class="mt-0.5 font-medium text-text">
+            {#if assignees.length > 0}
+              <AvatarStack {assignees} members={data.members} />
+            {:else}
+              —
+            {/if}
+          </dd>
         </div>
         <div>
-          <dt class="text-neutral-500">{t("projects.field.start_date")}</dt>
-          <dd class="mt-0.5 font-medium text-neutral-900">
+          <dt class="text-text-muted">{t("projects.field.start_date")}</dt>
+          <dd class="mt-0.5 font-medium text-text">
             {project.start_date ? fmtNumericDate(project.start_date) : "—"}
           </dd>
         </div>
         <div>
-          <dt class="text-neutral-500">{t("projects.field.end_date")}</dt>
-          <dd class="mt-0.5 font-medium text-neutral-900">
+          <dt class="text-text-muted">{t("projects.field.end_date")}</dt>
+          <dd class="mt-0.5 font-medium text-text">
             {project.end_date ? fmtNumericDate(project.end_date) : "—"}
           </dd>
         </div>
         {#if project.description}
           <div class="col-span-2">
-            <dt class="text-neutral-500">{t("projects.field.description")}</dt>
-            <dd class="mt-0.5 whitespace-pre-line text-neutral-900">{project.description}</dd>
+            <dt class="text-text-muted">{t("projects.field.description")}</dt>
+            <dd class="mt-0.5 whitespace-pre-line text-text">{project.description}</dd>
           </div>
         {/if}
       </dl>
       {#if data.definitions.length > 0}
-        <div class="mt-4 border-t border-neutral-100 pt-4">
+        <div class="mt-4 border-t border-border pt-4">
           <CustomFieldsView
             definitions={data.definitions}
             values={project.custom ?? {}}
@@ -395,11 +406,23 @@
   </section>
 </div>
 
+<!-- Panels contributed by enabled modules — the Uren panel answers the budget bar above it.
+     Every number opens (docs/UX.md principle 7). -->
+{#each data.panels as panel (panel.key)}
+  {@const PanelComponent = panelComponent(panel.key)}
+  {#if PanelComponent}
+    <section class="mt-4 rounded-xl border border-border bg-surface-raised p-5">
+      <h2 class="mb-3 text-sm font-semibold text-text">{t(panel.titleKey)}</h2>
+      <PanelComponent data={panel.data} context={data.context} lookups={panelLookups} />
+    </section>
+  {/if}
+{/each}
+
 <!-- To-dos -->
-<section class="mt-4 rounded-xl border border-neutral-200 bg-white p-5">
+<section class="mt-4 rounded-xl border border-border bg-surface-raised p-5">
   <div class="mb-4 flex items-center justify-between">
-    <h2 class="text-sm font-semibold text-neutral-900">{t("projects.todos")}</h2>
-    <span class="text-xs text-neutral-500"
+    <h2 class="text-sm font-semibold text-text">{t("projects.todos")}</h2>
+    <span class="text-xs text-text-muted"
       >{t("projects.todos_progress", { done: doneCount, total: tasks.length })}</span
     >
   </div>
@@ -414,21 +437,21 @@
   </form>
 
   {#if tasks.length === 0}
-    <p class="text-sm text-neutral-500">{t("tasks.empty")}</p>
+    <p class="text-sm text-text-muted">{t("tasks.empty")}</p>
   {:else}
     <form method="POST" action="?/reorderTask" use:enhance bind:this={reorderForm} class="hidden">
       <input type="hidden" name="id" value={reorderId} />
       <input type="hidden" name="position" value={reorderPosition} />
     </form>
     <div
-      class="divide-y divide-neutral-100"
+      class="divide-y divide-border"
       use:dndzone={{ items: dndItems, flipDurationMs: 150, dropTargetStyle: {} }}
       onconsider={handleDndConsider}
       onfinalize={handleDndFinalize}
     >
       {#each dndItems as task (task.id)}
-        <div class="flex items-center bg-white">
-          <span class="cursor-grab pl-1 text-neutral-300 hover:text-neutral-500" aria-hidden="true"
+        <div class="flex items-center bg-surface-raised">
+          <span class="cursor-grab pl-1 text-text-muted hover:text-text-muted" aria-hidden="true"
             >⋮⋮</span
           >
           <div class="flex-1">

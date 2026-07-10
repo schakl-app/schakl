@@ -7,6 +7,8 @@ its settings through the RLS GUC (no membership required for public branding).
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -14,7 +16,8 @@ from sqlalchemy import select
 from app.config import settings
 from app.core.auth.models import User
 from app.core.customfields import customizable_entity_types
-from app.core.models import OrgSettings
+from app.core.models import OrgSettings, OrgStatus
+from app.core.permissions.deps import no_permission_required, require_permission
 from app.core.tenancy import RequestContext, request_hostname, require_context, resolve_org
 from app.db import async_session_maker, set_current_org
 from app.errors import AppError
@@ -33,6 +36,9 @@ class TenantBranding(BaseModel):
     accent_color: str
     default_locale: str
     enabled_modules: list[str]
+    # Suspended orgs still expose branding (the login screen needs it) but every
+    # authenticated request is blocked with errors.org_suspended.
+    suspended: bool = False
 
 
 _HEX_COLOR = r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
@@ -59,18 +65,35 @@ class ModulesMeta(BaseModel):
     default_locale: str
     supported_locales: list[str]
     local_login_enabled: bool
+    # True iff the OIDC routes are actually mounted (settings.oidc_configured, issue #6) —
+    # the login page renders its SSO button from this, so it must never say "enabled" while
+    # /auth/oidc/login would 404.
     oidc_enabled: bool
+    # Instance config, not a secret (it is in every tenant URL): lets the instance-admin UI
+    # compute an org's address as <slug>.<base_domain> when no custom domain is set.
+    base_domain: str
 
 
 class MeInfo(BaseModel):
-    """The current user *within the resolved tenant* — includes their membership role."""
+    """The current user *within the resolved tenant* — including what they may do."""
 
     id: str
     email: str
     full_name: str | None
+    # DEPRECATED (issue #19, expand/contract): ``role`` and ``can_manage`` are the coarse
+    # pre-RBAC axis. They stay one release so the API and the web can land independently;
+    # the web reads ``permissions`` and only falls back to ``can_manage`` when it is absent.
     role: str
     can_manage: bool
+    #: Effective permissions — the union over every role this membership holds. ``["*"]`` for an
+    #: owner. This is UX input, never the boundary: the API is the boundary (issue #19).
+    permissions: list[str]
     locale: str | None
+    # Instance administration (issue #26). ``is_instance_admin`` reflects the *effective*
+    # user, so it goes false while impersonating; the banner comes from the two fields below.
+    is_instance_admin: bool = False
+    impersonated_by: str | None = None
+    impersonation_expires_at: datetime | None = None
 
 
 class MeUpdate(BaseModel):
@@ -87,16 +110,32 @@ def _me_info(ctx: RequestContext, user: User) -> MeInfo:
         full_name=user.full_name,
         role=ctx.role.value,
         can_manage=ctx.role.can_manage,
+        permissions=ctx.permissions.keys(),
         locale=user.locale,
+        is_instance_admin=(
+            settings.instance_admin_enabled
+            and user.is_superuser
+            and ctx.impersonated_by is None
+        ),
+        impersonated_by=ctx.impersonated_by.email if ctx.impersonated_by else None,
+        impersonation_expires_at=ctx.impersonation_expires_at,
     )
 
 
-@router.get("/me", response_model=MeInfo)
+@router.get(
+    "/me",
+    response_model=MeInfo,
+    dependencies=[no_permission_required("who am I in this tenant; every member needs it")],
+)
 async def me(ctx: RequestContext = Depends(require_context)) -> MeInfo:
     return _me_info(ctx, ctx.user)
 
 
-@router.patch("/me", response_model=MeInfo)
+@router.patch(
+    "/me",
+    response_model=MeInfo,
+    dependencies=[no_permission_required("a user's own name and display language")],
+)
 async def update_me(
     payload: MeUpdate, ctx: RequestContext = Depends(require_context)
 ) -> MeInfo:
@@ -124,12 +163,16 @@ async def update_me(
     return _me_info(ctx, user)
 
 
-@router.get("/tenant", response_model=TenantBranding)
+@router.get(
+    "/tenant",
+    response_model=TenantBranding,
+    dependencies=[no_permission_required("public tenant branding; the login screen needs it")],
+)
 async def tenant_branding(request: Request) -> TenantBranding:
     async with async_session_maker() as session:
         org = await resolve_org(session, request_hostname(request))
         if org is None:
-            raise AppError("not_found", "errors.not_found", status_code=404)
+            raise AppError("unknown_host", "errors.unknown_host", status_code=404)
         await set_current_org(session, org.id)
         s = await session.scalar(select(OrgSettings).where(OrgSettings.org_id == org.id))
         return TenantBranding(
@@ -144,15 +187,19 @@ async def tenant_branding(request: Request) -> TenantBranding:
             enabled_modules=list(s.enabled_modules)
             if s and s.enabled_modules
             else list(settings.enabled_modules),
+            suspended=org.status == OrgStatus.SUSPENDED.value,
         )
 
 
-@router.patch("/tenant", response_model=TenantBranding)
+@router.patch(
+    "/tenant",
+    response_model=TenantBranding,
+    dependencies=[require_permission("settings.branding.write")],
+)
 async def update_tenant_branding(
     payload: TenantBrandingUpdate, ctx: RequestContext = Depends(require_context)
 ) -> TenantBranding:
-    """Update the org's white-label settings (managers only). Applied on next render."""
-    ctx.ensure_can_manage()
+    """Update the org's white-label settings. Applied on next render."""
     data = payload.model_dump(exclude_unset=True)
     if "default_locale" in data and data["default_locale"] not in settings.supported_locales:
         raise AppError(
@@ -198,7 +245,13 @@ async def update_tenant_branding(
     )
 
 
-@router.get("/modules", response_model=ModulesMeta)
+@router.get(
+    "/modules",
+    response_model=ModulesMeta,
+    dependencies=[
+        no_permission_required("instance capabilities; the login screen renders from it")
+    ],
+)
 async def modules() -> ModulesMeta:
     return ModulesMeta(
         enabled_modules=[m.name for m in registry.enabled(settings.enabled_modules)],
@@ -206,5 +259,6 @@ async def modules() -> ModulesMeta:
         default_locale=settings.default_locale,
         supported_locales=settings.supported_locales,
         local_login_enabled=settings.local_login_enabled,
-        oidc_enabled=settings.oidc_enabled,
+        oidc_enabled=settings.oidc_configured,
+        base_domain=settings.base_domain,
     )

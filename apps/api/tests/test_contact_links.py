@@ -132,3 +132,77 @@ async def test_link_tenant_isolation(client_for) -> None:
             headers=b_headers,
         )
         assert cross_company.status_code == 404
+
+
+async def test_create_path_attaches_contacts_with_chosen_primary(client_for) -> None:
+    """The client-create flow: create the company, attach its contacts, then set the primary.
+
+    The web create form picks contact persons before the company exists, so the action replays
+    exactly this sequence. Attaching auto-promotes the *first* contact, which is why the chosen
+    primary is set explicitly at the end — assert that choice wins.
+    """
+    t = await make_tenant("create-contacts")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        co = (
+            await c.post("/api/v1/companies", json={"name": "Fresh"}, headers=headers)
+        ).json()
+        first = (
+            await c.post("/api/v1/contacts", json={"first_name": "First"}, headers=headers)
+        ).json()
+        chosen = (
+            await c.post("/api/v1/contacts", json={"first_name": "Chosen"}, headers=headers)
+        ).json()
+
+        for contact in (first, chosen):
+            linked = await c.post(
+                f"/api/v1/contacts/{contact['id']}/links",
+                json={"company_id": co["id"], "is_primary": False},
+                headers=headers,
+            )
+            assert linked.status_code == 201
+        promoted = await c.patch(
+            f"/api/v1/contacts/{chosen['id']}/links/{co['id']}",
+            json={"is_primary": True},
+            headers=headers,
+        )
+        assert promoted.status_code == 200
+
+        contacts = _panel_contacts(
+            (await c.get(f"/api/v1/companies/{co['id']}/panels", headers=headers)).json()
+        )
+        assert [(x["first_name"], x["is_primary"]) for x in contacts] == [
+            ("Chosen", True),
+            ("First", False),
+        ]
+
+
+async def test_create_path_cannot_attach_another_tenants_contact(client_for) -> None:
+    """Tenant isolation on the create path: a foreign contact id never lands on a new company."""
+    a = await make_tenant("create-iso-a")
+    b = await make_tenant("create-iso-b")
+    a_headers = await auth_cookie(a.user)
+    b_headers = await auth_cookie(b.user)
+
+    async with client_for(b.host) as cb:
+        b_contact = (
+            await cb.post("/api/v1/contacts", json={"first_name": "Foreign"}, headers=b_headers)
+        ).json()
+
+    async with client_for(a.host) as ca:
+        a_company = (
+            await ca.post("/api/v1/companies", json={"name": "A Co"}, headers=a_headers)
+        ).json()
+
+        rejected = await ca.post(
+            f"/api/v1/contacts/{b_contact['id']}/links",
+            json={"company_id": a_company["id"], "is_primary": False},
+            headers=a_headers,
+        )
+        assert rejected.status_code == 404
+
+        # The new company is left with no contacts at all — nothing leaked across the tenant line.
+        panels = (
+            await ca.get(f"/api/v1/companies/{a_company['id']}/panels", headers=a_headers)
+        ).json()
+        assert _panel_contacts(panels) == []

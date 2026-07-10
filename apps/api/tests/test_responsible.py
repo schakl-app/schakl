@@ -11,9 +11,8 @@ import uuid
 from pwdlib import PasswordHash
 
 from app.core.auth.models import User
-from app.core.models import Membership
 from app.db import async_session_maker, set_current_org
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import add_membership, auth_cookie, make_tenant
 
 _ph = PasswordHash.recommended()
 
@@ -31,7 +30,7 @@ async def _add_member(org_id: uuid.UUID, email: str, role: str = "member") -> uu
         session.add(user)
         await session.flush()
         await set_current_org(session, org_id)
-        session.add(Membership(org_id=org_id, user_id=user.id, role=role))
+        await add_membership(session, org_id, user.id, role)
         await session.commit()
         return user.id
 

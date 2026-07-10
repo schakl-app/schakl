@@ -13,16 +13,66 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
+from typing import Any
 
-from sqlalchemy import bindparam, func, or_, select, text, update
+from sqlalchemy import bindparam, column, func, or_, select, table, text, update
 
 from app.core.customfields import CustomFieldsService
+from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
 from app.errors import AppError
 from app.modules.contacts.models import CompanyContact, Contact
 from app.modules.contacts.schemas import ContactCompanyLink, ContactCreate, ContactUpdate
 
 ENTITY_TYPE = "contact"
+
+
+# ``companies`` belongs to another module. Reference it as a bare table by name rather than
+# importing its model — the same FK-name convention ``time.revenue()`` uses to reach `projects`
+# (CLAUDE.md §6: modules never import each other's internals).
+_companies = table("companies", column("id"), column("name"), column("org_id"))
+
+
+def _company_sort_name() -> Any:
+    """Sort key for "client": the alphabetically first company this contact is linked to.
+
+    Note what this *cannot* be. ``is_primary`` on ``company_contacts`` means "the primary contact
+    **for that company**" — it is unique per company, not per contact — so the same person can be
+    primary at three clients at once. "Their primary company" is not a thing that exists, and a
+    subquery selecting it raises a cardinality violation the moment someone is. ``MIN`` picks the
+    same client every time, which is what a sorted list needs.
+
+    Correlated, not joined: a contact links to many companies and a join would multiply the row,
+    changing which contacts land on the page. A contact linked to nobody yields NULL, filed last.
+    """
+    return (
+        select(func.min(func.lower(_companies.c.name)))
+        .select_from(CompanyContact)
+        .join(
+            _companies,
+            (_companies.c.id == CompanyContact.company_id)
+            & (_companies.c.org_id == CompanyContact.org_id),
+        )
+        .where(
+            CompanyContact.contact_id == Contact.id,
+            CompanyContact.org_id == Contact.org_id,
+        )
+        .correlate(Contact)
+        .scalar_subquery()
+    )
+
+
+# Columns a client may sort by; anything else in ``?sort=`` is rejected (app/core/sorting.py).
+# Names sort case-insensitively — Postgres' default collation files lowercase after uppercase.
+SORTABLE = {
+    "first_name": func.lower(Contact.first_name),
+    "last_name": func.lower(Contact.last_name),
+    "email": func.lower(Contact.email),
+    "job_title": func.lower(Contact.job_title),
+    "company": _company_sort_name(),
+    "created_at": Contact.created_at,
+    "updated_at": Contact.updated_at,
+}
 
 
 class ContactService:
@@ -44,6 +94,7 @@ class ContactService:
         offset: int,
         company_id: uuid.UUID | None = None,
         q: str | None = None,
+        sort: str | None = None,
     ) -> tuple[Sequence[Contact], int]:
         conditions = []
         if q:
@@ -71,7 +122,8 @@ class ContactService:
             stmt = stmt.join(CompanyContact, join_on).where(*link_where)
             count_stmt = count_stmt.join(CompanyContact, join_on).where(*link_where)
 
-        stmt = stmt.order_by(Contact.created_at.desc()).limit(limit).offset(offset)
+        stmt = apply_sort(stmt, sort, SORTABLE, default=Contact.created_at.desc())
+        stmt = stmt.limit(limit).offset(offset)
         items = list((await self.ctx.session.execute(stmt)).scalars().all())
         total = int(await self.ctx.session.scalar(count_stmt) or 0)
         await self._attach_companies(items)
@@ -118,7 +170,7 @@ class ContactService:
 
     # --- writes -------------------------------------------------------------- #
     async def create(self, data: ContactCreate) -> Contact:
-        self.ctx.ensure_can_write()
+        self.ctx.require("contacts.contact.write")
         values = data.model_dump()
         company_ids = values.pop("company_ids", None) or []
         values["custom"] = await self.custom_fields.validate(
@@ -131,7 +183,7 @@ class ContactService:
         return contact
 
     async def update(self, contact_id: uuid.UUID, data: ContactUpdate) -> Contact:
-        self.ctx.ensure_can_write()
+        self.ctx.require("contacts.contact.write")
         contact = await self.repo.get_or_404(contact_id)
         values = data.model_dump(exclude_unset=True)
         if "custom" in values:
@@ -143,7 +195,7 @@ class ContactService:
         return contact
 
     async def delete(self, contact_id: uuid.UUID) -> None:
-        self.ctx.ensure_can_write()
+        self.ctx.require("contacts.contact.delete")
         contact = await self.repo.get_or_404(contact_id)
         await self.repo.delete(contact)
 
@@ -160,7 +212,7 @@ class ContactService:
         ``is_primary``: ``True`` forces primary (unsets any other), ``False`` forces non-primary,
         ``None`` auto-promotes to primary only when the company has no primary yet.
         """
-        self.ctx.ensure_can_write()
+        self.ctx.require("contacts.link.write")
         await self.repo.get_or_404(contact_id)  # tenant-scoped existence check
         await self._ensure_company_in_tenant(company_id)
 
@@ -181,14 +233,14 @@ class ContactService:
         return link
 
     async def set_primary(self, contact_id: uuid.UUID, company_id: uuid.UUID) -> None:
-        self.ctx.ensure_can_write()
+        self.ctx.require("contacts.link.write")
         link = await self._get_link(company_id, contact_id)
         if link is None:
             raise AppError("not_found", "errors.not_found", status_code=404)
         await self._set_company_primary(company_id, contact_id)
 
     async def unlink(self, contact_id: uuid.UUID, company_id: uuid.UUID) -> None:
-        self.ctx.ensure_can_write()
+        self.ctx.require("contacts.link.write")
         link = await self._get_link(company_id, contact_id)
         if link is not None:
             await self.links.delete(link)

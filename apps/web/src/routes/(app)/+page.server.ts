@@ -12,8 +12,8 @@ import type { Actions, PageServerLoad } from "./$types";
 // The user's saved layout (or the org template) decides which widgets show, in which order.
 export const load: PageServerLoad = async (event) => {
   const enabled = event.locals.theme?.enabledModules ?? [];
-  const canManage = event.locals.user?.canManage ?? false;
-  const available = dashboardWidgetsFor(enabled).filter((w) => !w.requiresManage || canManage);
+  // A widget whose loader calls an endpoint the user cannot reach is not "empty", it is a 403.
+  const available = dashboardWidgetsFor(enabled, event.locals.user);
   const api = apiFor(event);
 
   // Prefs only order/filter the (already-known) available widgets, so fetch them alongside the

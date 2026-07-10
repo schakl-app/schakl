@@ -88,11 +88,19 @@ scripts/           # i18n:check, i18n:sync, gen:client
 - **Never** expose a raw `id` lookup that isn't tenant-scoped.
 
 **Deployment model: build multi-tenant, deploy single-tenant.** Each agency **self-hosts**
-its own instance, seeded with **one org** at install — so day-to-day it runs as a single
-tenant, and the agency's clients are `companies` (data), not tenants. Keep `org_id` + RLS
-on every table anyway: it's near-free now and is the only thing that lets the *same code*
-run a future multi-org **cloud** version with the tenant resolved by hostname. Don't take
-shortcuts that assume one org.
+its own instance and creates **one org** via the first-run wizard (`/setup`) — so day-to-day
+it runs as a single tenant, and the agency's clients are `companies` (data), not tenants.
+Keep `org_id` + RLS on every table anyway: it's near-free now and is the only thing that
+lets the *same code* run a future multi-org **cloud** version with the tenant resolved by
+hostname. Don't take shortcuts that assume one org.
+
+- **Hostname resolution is strict**: a verified custom domain (`orgs.custom_domain`) or
+  `<slug>.<base_domain>` — an unknown host is an explicit error, never "the only org".
+- **Org lifecycle & instance administration** (issue #26) live in `app/core/instance/`:
+  the one sanctioned unscoped crossing (`repo.py`, for global slug/domain uniqueness), the
+  audit trail, org lifecycle, export/import, and time-boxed impersonation. The surface is
+  gated on `users.is_superuser` (the *instance owner*, distinct from an org `owner`) and
+  disabled by default (`VLOTR_INSTANCE_ADMIN_ENABLED`).
 
 ## 6. Module pattern (how to add a domain)
 
@@ -101,6 +109,8 @@ An **API module** is a package under `apps/api/app/modules/<name>/` exposing:
 - `schemas.py` — Pydantic request/response models.
 - `service.py` — business logic (no DB access outside the tenant-scoped repository).
 - `router.py` — REST endpoints under `/api/v1/<name>`, mounted by `main.py`.
+- `permissions.py` — the `PermissionSpec`s this module introduces, declared on its
+  `ModuleDescriptor` (see §15). Core holds no module permission list.
 - `panels.py` — optional: declares what this module attaches to a **company** (title +
   data provider) so the company detail view can compose it. This is the modular hub.
 - `mcp.py` — optional: the MCP tools/resources this module contributes (e.g.
@@ -110,8 +120,12 @@ An **API module** is a package under `apps/api/app/modules/<name>/` exposing:
   `CustomizableMixin` (adds a `custom` JSONB column and registers the `entity_type` with the
   custom-fields core — see §13).
 - `migrations/` — Alembic revisions owned by the module.
-- registers itself into the **module registry** (name, router, models, panels, mcp tools,
-  cron jobs, i18n namespace).
+- registers itself into the **module registry** (name, router, models, panels, permissions,
+  mcp tools, cron jobs, i18n namespace).
+- **authorization is deny-by-default** (§15): every route declares a permission with
+  `require_permission(...)`, or an explicit `no_permission_required("reason")`. A route that
+  declares neither is a build break — `tests/test_rbac_deny_by_default.py` calls every
+  `/api/v1` operation as a member holding nothing and demands a `403`.
 - **cross-module reactions** go through the tiny in-process event bus
   (`app/core/events.py`), never via imports of another module's internals: the owning
   module's service `emit`s (today only `company.created` / `company.status_changed`) and
@@ -139,10 +153,12 @@ table.
 
 Per-org settings drive branding at runtime — no rebuild:
 `org_settings(org_id, brand_name, logo_url, favicon_url, primary_color, accent_color,
-custom_domain, default_locale, enabled_modules[])`.
+default_locale, enabled_modules[])`.
 The web app loads the tenant theme on first render and applies it via CSS custom properties.
-Emails and generated PDFs use the same tenant branding. Tenant resolution: `custom_domain`
-or `<slug>.PLATFORM_BASE_DOMAIN` → org.
+Emails and generated PDFs use the same tenant branding. Tenant resolution: **verified**
+`orgs.custom_domain` or `<slug>.PLATFORM_BASE_DOMAIN` → org. The custom domain lives on
+`orgs`, not `org_settings`: resolution runs *before* RLS is bound, so it may only read
+tables without RLS — and a claimed domain routes traffic only after DNS TXT verification.
 
 ## 8. Internationalization (first-class)
 
@@ -173,7 +189,9 @@ or `<slug>.PLATFORM_BASE_DOMAIN` → org.
 - Migrations: one per change, named `<module>_<verb>_<noun>`.
 - Commits: small, scoped, conventional (`feat(time): add weekly timesheet grid`).
 - **Definition of done** for a feature: migration written, endpoints + tenant scoping,
-  web UI, `nl.json` + `en.json` keys, test for tenant isolation, docs/OpenAPI updated.
+  **every route declaring a permission** (§15) and its `PermissionSpec`s on the module
+  descriptor with `en`+`nl` labels, web UI, `nl.json` + `en.json` keys, test for tenant
+  isolation, docs/OpenAPI updated.
 
 ## 10. Phased plan (build gates)
 
@@ -204,6 +222,13 @@ or `<slug>.PLATFORM_BASE_DOMAIN` → org.
   pickers, no redundant API calls or queries), prefer fixing the data path over adding
   libraries, and when a page feels slow, count its API calls/queries before writing code.
   **Read `docs/PERFORMANCE.md`** — the data-path rules and the per-screen checklist.
+- **Read `docs/WORKFLOW.md` before your first commit in a session** — branches (agents commit
+  and push straight to `dev`), the label set, what to write on the issue, and the rules for
+  working a tree that **other agents are editing at the same time**: stage explicit paths,
+  never `git add -A`, and push your own commit by SHA so you don't publish someone else's.
+  It also holds the rule for **breaking database changes**: existing self-hosted releases
+  migrate themselves unattended on upgrade, so destructive schema changes go out over two
+  releases (expand/contract) and the upgrade path is written down before the migration is.
 - Keep this file updated when architecture decisions change.
 - Never leave a hardcoded user-facing string or an unscoped query — treat both as build breaks.
 - After each module: register it, add its panels, add its i18n keys, run `i18n:check` + tests.
@@ -275,15 +300,89 @@ apply as everywhere.
   tenant can model, for example, Dutch statutory vs extra-statutory (*bovenwettelijk*) days
   and their differing carry-over/expiry. Sick leave is a separate type, not deducted from
   vacation balance.
-- **Requests + approval:** `leave_requests(org_id, user_id, leave_type_id, start, end,
-  amount, status[pending/approved/rejected/cancelled], approver_id, note, decided_at)`.
-  Members request; admins/managers approve. Tenant-scoped + role checks like every module.
+- **Work schedules, not a weekly total** (#46). `leave_profiles.schedule` is a JSONB week: per
+  weekday a working block and **any number of break windows** inside it. Breaks are *windows*,
+  not durations — you cannot subtract "30 minutes" from `15:00–17:00`, there is no break in it.
+  A day is `(end − start) − Σ overlap(window, break_i)`. `NULL` follows
+  `leave_settings.default_schedule` (`08:30–17:00` with one `12:30–13:00` break → 8.0 h/day,
+  40 h/week). `hours_per_week` is **derived** from the schedule and rewritten on every save, never
+  entered — but it stays authoritative while a profile has no schedule, so a pre-#46 part-timer on
+  32 h is not silently regranted the default's 40. A schedule is employment data: it lives on the
+  person (Instellingen → Gebruikers), not buried in leave settings.
+- **A holiday costs no leave hours** (#47). `leave_holidays(org_id, date, name_i18n, active,
+  source, key)` is tenant data seeded from a generator — the Dutch holidays *derived from Easter*,
+  so 2028 needs no code change — and never law written in Python: Goede Vrijdag is worked at many
+  Dutch employers, so the tenant deactivates what they work and a re-import never resurrects it.
+  A December ARQ cron tops up next year, per org, via `run_per_org`.
+- **Requests + approval:** `leave_requests(org_id, user_id, leave_type_id, start_date, start_time,
+  end_date, end_time, hours, hours_override, status[pending/approved/rejected/cancelled],
+  decided_by_user_id, note, decided_at)`. Members request; managers approve. Tenant-scoped, with a
+  declared permission on every route (§15), like every module.
+- **The API — not the browser — is the authority on `hours`** (#48). `LeaveService.compute_hours`
+  walks the span day by day: not a scheduled working day → 0; an active holiday → 0; otherwise the
+  day's scheduled window intersected with the requested one, minus every break it overlaps. It
+  rounds **once**, on the summed minutes. `start_time`/`end_time` are nullable `TIME` — leave is a
+  local-calendar concept, and a `TIMESTAMPTZ` would drag DST into a balance calculation for no
+  benefit. `hours` is not accepted from a client and is recomputed on every edit, so a request
+  moved into Kerst week gets cheaper. A span worth zero hours is rejected, never stored.
+  `POST /leave/requests/preview` returns `{hours, days, breakdown}` so the form shows the number
+  that will be stored, and *why*. A manager may set `hours_override` for what a schedule cannot
+  express (four hours agreed on a day they were not scheduled); it is recorded against their name.
+  **Approved requests are never retroactively recalculated** — new holidays do not rewrite last
+  year's balance.
 - **Balances:** entitlement + carry-over − used − pending, per user / type / year. Show the
   employee their remaining balance; block/warn on over-request.
-- **Unit:** track in **hours** (matches time tracking and part-time contracts); display as
-  days using the employee's contract hours.
-- **Ties to time tracking:** approved leave shows on the timesheet and is excluded from
-  billable capacity — never entered/counted twice as a time entry.
+- **Unit:** track in **hours** (matches time tracking and part-time contracts); display as days
+  using the employee's **average scheduled working day** — never `hours_per_week / 5`, which tells
+  a three-day part-timer their working day is 4,8 hours long.
+- **Ties to time tracking:** approved leave shows on the timesheet and is excluded from billable
+  capacity — never entered/counted twice as a time entry. Its per-day hours come from the API's
+  breakdown (2 h Thursday, 5 h Friday), not from spreading the total evenly over the range.
 - **Ties to calendar & reporting:** an in-app team leave calendar; approved leave syncs to
   Google Calendar (P3); feeds capacity / availability / utilization reporting.
 - **Phase:** P2.
+
+## 15. Roles & permissions (RBAC)
+
+Authorization is **tenant-defined roles carrying explicitly granted permissions** (issue #19).
+It is a **core, cross-cutting capability**, like custom fields (§13) — not per-module code.
+
+- **Tables:** `roles(org_id, key, name_i18n, description_i18n, is_system, position)`,
+  `role_permissions(org_id, role_id, permission)`, `membership_roles(org_id, membership_id,
+  role_id)`. All org-scoped and RLS-forced. A membership may hold several roles; its effective
+  permissions are the **union**. Plus an org-scoped `role_audit_log`.
+- **RLS ≠ RBAC.** RLS enforces *tenant isolation* (Golden Rule 1); permissions enforce
+  *capability within* a tenant, in the app layer. Never express a permission in an RLS policy.
+- **Registry, not free text.** Each module declares its `PermissionSpec`s on its
+  `ModuleDescriptor`; core declares core's in `app/core/permissions/catalog.py`. Naming is
+  `<module>.<resource>.<action>`. `role_permissions` only ever stores a catalog key.
+- **Scopes.** A spec may carry `scopes=("own", "any")` where the distinction is real. A scoped
+  permission is **only ever stored suffixed** (`time.entry.write:own`), so a check with no scope
+  means *"holds this at some scope"* and `:any` satisfies `:own`. A naive `key in granted` would
+  403 every member on every scoped endpoint. `own` means *the row is theirs* — for a task, the
+  **assignee**.
+- **Two layers.** The **route declares** the base key (`require_permission("time.entry.read")`),
+  which is what makes deny-by-default enumerable; the **service refines** with `:own` / `:any`
+  where the rule depends on the row. Neither alone is enough — a decorator cannot see the row,
+  and a service check cannot be enumerated.
+- **404 vs 403.** Where an endpoint must not reveal that another user's row exists, load with a
+  scope-aware fetch that raises 404 (`_owned_or_404`). A generic `require_for(key, owner_id)`
+  raising 403 leaks existence on every get/update/delete-by-id.
+- **Resolved once per request** in `require_context`, on the same statement as the membership
+  lookup, and cached on `RequestContext` (`ctx.can` / `ctx.require`). No Redis cache — see
+  `docs/PERFORMANCE.md`.
+- **Deny-by-default.** An `/api/v1` route with neither `require_permission(...)` nor an explicit
+  `no_permission_required("reason")` is a build break. Two tests enforce it: an introspection
+  lint and a behavioural sweep that calls every operation as a member holding nothing.
+- **System roles.** `owner` / `admin` / `member` / `client` are seeded per org. `owner` holds
+  exactly `["*"]`, immutable and undeletable — that is what keeps a mistake made anywhere else
+  fixable. The other three are undeletable and key-immutable but freely permission-editable and
+  duplicable. `admin` holds an explicit full list, never a wildcard, so a tenant can restrict it.
+- **Never lock the tenant out.** Every mutation that could remove the last membership holding
+  `*` or `settings.roles.manage` is applied, flushed, re-counted, and rolled back with
+  `409 errors.last_role_manager`.
+- **The frontend guard is UX, not security.** `can()` in the web mirrors the API's
+  `PermissionSet.has` exactly and decides what to *render*. The API is the boundary.
+- **A module that ships later** brings its own permissions; a startup reconciler grants them to
+  each org's system roles exactly once, tracked in `org_settings.applied_permission_defaults`.
+  A migration must never import the catalog (`docs/WORKFLOW.md`).

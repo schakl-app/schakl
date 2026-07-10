@@ -8,15 +8,24 @@ from tests.test_task_subresources import add_member
 _TEMPLATE = {"title": "Website launch", "items": ["DNS", "SSL", "Analytics"]}
 
 
-async def test_checklist_template_crud_staff_writable(client_for) -> None:
+async def test_checklist_template_crud_needs_the_write_permission(client_for) -> None:
+    """The shared repository is org configuration: readable by all, written by
+    ``tasks.checklist_template.write`` (issue #19). The seeded ``member`` role does not hold it;
+    an agency that wants it back ticks one box in Instellingen → Rollen."""
     t = await make_tenant("cltpl-crud")
+    owner_headers = await auth_cookie(t.user)
     member = await add_member(t)
     member_headers = await auth_cookie(member)
 
     async with client_for(t.host) as c:
-        # Plain staff members may manage the shared repository.
+        assert (
+            await c.post(
+                "/api/v1/tasks/checklist-templates", json=_TEMPLATE, headers=member_headers
+            )
+        ).status_code == 403
+
         created = await c.post(
-            "/api/v1/tasks/checklist-templates", json=_TEMPLATE, headers=member_headers
+            "/api/v1/tasks/checklist-templates", json=_TEMPLATE, headers=owner_headers
         )
         assert created.status_code == 201
         template = created.json()
@@ -25,17 +34,18 @@ async def test_checklist_template_crud_staff_writable(client_for) -> None:
         updated = await c.patch(
             f"/api/v1/tasks/checklist-templates/{template['id']}",
             json={"items": ["DNS", "SSL"]},
-            headers=member_headers,
+            headers=owner_headers,
         )
         assert updated.json()["items"] == ["DNS", "SSL"]
 
+        # Everyone reads them — a member applies a template to a task they are on.
         assert (
             len((await c.get("/api/v1/tasks/checklist-templates", headers=member_headers)).json())
             == 1
         )
         assert (
             await c.delete(
-                f"/api/v1/tasks/checklist-templates/{template['id']}", headers=member_headers
+                f"/api/v1/tasks/checklist-templates/{template['id']}", headers=owner_headers
             )
         ).status_code == 204
 

@@ -1,0 +1,37 @@
+# Build context for this Dockerfile is the REPO ROOT (compose.yaml, release.yml), so the
+# ignore file must live next to the Dockerfile as `<dockerfile>.dockerignore` — BuildKit only
+# looks there or at the context root. A plain `apps/web/.dockerignore` is never read, and the
+# patterns below are relative to the repo root, not to apps/web/. Hence `**/node_modules`:
+# a bare `node_modules/` would match only the root one and let apps/web/node_modules through,
+# overlaying the symlink tree `pnpm install` builds inside the image.
+.git
+
+# Never ship, and never invalidate a layer over: installed deps and build output.
+**/node_modules
+**/.svelte-kit
+**/build
+**/.vite
+**/*.tsbuildinfo
+
+# Generated during the image build by `machine:messages` (Paraglide) — a stale host copy
+# would be overwritten anyway, but copying it in costs a cache bust for nothing.
+apps/web/src/lib/paraglide
+
+# Playwright is a devDependency: its browsers, reports and traces have no business in a
+# build context. `pnpm install` in the builder installs the package but not the browsers
+# (pnpm gates postinstall scripts; see allowBuilds in pnpm-workspace.yaml).
+**/test-results
+**/playwright-report
+**/blob-report
+**/.playwright
+
+# The API's local venv and caches sit in this context too, and are pure weight for a web build.
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+
+**/.env
+**/.env.*
+!**/.env.example

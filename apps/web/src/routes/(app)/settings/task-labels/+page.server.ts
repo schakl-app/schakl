@@ -1,13 +1,14 @@
 import { fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
+import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 
 import type { Actions, PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async (event) => {
   // Manager-only screen (label writes themselves only need staff access).
-  if (!event.locals.user?.canManage) throw redirect(303, "/");
+  if (!can(event.locals.user, "tasks.label.write")) throw redirect(303, "/");
   const { data } = await apiFor(event).GET("/api/v1/tasks/labels");
   return { labels: data ?? [] };
 };

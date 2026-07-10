@@ -6,16 +6,18 @@ tenant-bound session, and is the *only* sanctioned way domain routers touch data
 1. authenticates the (global) user;
 2. resolves ``current_org`` from the request hostname (``orgs`` has no RLS);
 3. binds the RLS GUC to that org, then verifies the user's membership *through* RLS;
-4. hands work a ``TenantScopedRepository`` that auto-injects ``org_id`` on every operation.
+4. resolves that membership's **effective permissions** in the same round-trip (issue #19);
+5. hands work a ``TenantScopedRepository`` that auto-injects ``org_id`` on every operation.
 
-App-layer filtering and Postgres RLS thus enforce the same boundary from both sides.
+App-layer filtering and Postgres RLS thus enforce the same boundary from both sides. RLS answers
+"which tenant?"; the permission set answers "may they?" — the two never mix.
 """
 
 from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncGenerator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Generic, TypeVar
 
 from fastapi import Depends, Request
@@ -25,7 +27,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.core.auth.models import User
 from app.core.auth.users import current_active_user
-from app.core.models import Membership, Org
+from app.core.models import Membership, Org, OrgStatus
+from app.core.permissions.models import MembershipRole, RolePermission
+from app.core.permissions.permset import PermissionSet
 from app.core.roles import Role
 from app.db import async_session_maker, set_current_org
 from app.errors import AppError
@@ -48,35 +52,31 @@ def request_hostname(request: Request) -> str:
 
 
 async def resolve_org(session: AsyncSession, host: str) -> Org | None:
-    """Resolve the tenant from a request hostname (custom domain or ``<slug>.base_domain``).
+    """Resolve the tenant strictly from the request hostname.
 
-    Falls back to the single seeded org for self-hosted, single-tenant installs where the
-    hostname (e.g. ``api.localhost``) doesn't encode a slug — never a shortcut that assumes
-    one org, just a sensible default when resolution is ambiguous.
+    Exactly two ways a host maps to an org — a **verified** custom domain, or
+    ``<slug>.<base_domain>``. Anything else resolves to nothing and the caller must fail
+    explicitly (issue #26): guessing "the only org" would serve tenant data on any typo'd
+    or hijacked hostname. Soft-deleted orgs no longer resolve at all; suspended orgs do
+    resolve (the login screen still needs their branding) and ``require_context`` blocks them.
     """
-    if host:
-        # custom_domain lives on org_settings; match there first.
-        from app.core.models import OrgSettings
+    if not host:
+        return None
 
-        settings_hit = await session.scalar(
-            select(OrgSettings).where(OrgSettings.custom_domain == host)
+    org = await session.scalar(
+        select(Org).where(
+            Org.custom_domain == host,
+            Org.custom_domain_verified_at.is_not(None),
         )
-        if settings_hit is not None:
-            return await session.get(Org, settings_hit.org_id)
-
+    )
+    if org is None:
         base = settings.base_domain.lower()
         if host.endswith("." + base):
             slug = host[: -(len(base) + 1)]
             org = await session.scalar(select(Org).where(Org.slug == slug))
-            if org is not None:
-                return org
-
-    # Fallback: the configured seed slug, else the only org if exactly one exists.
-    org = await session.scalar(select(Org).where(Org.slug == settings.seed_org_slug))
-    if org is not None:
-        return org
-    orgs = (await session.execute(select(Org).limit(2))).scalars().all()
-    return orgs[0] if len(orgs) == 1 else None
+    if org is None or org.status == OrgStatus.DELETED.value:
+        return None
+    return org
 
 
 # --------------------------------------------------------------------------- #
@@ -90,10 +90,28 @@ class RequestContext:
     org: Org
     role: Role
     session: AsyncSession
+    membership_id: uuid.UUID | None = None
+    #: Effective permissions of this membership — the union over every role it holds, resolved
+    #: once in ``require_context``. Never re-query per check (docs/PERFORMANCE.md).
+    permissions: PermissionSet = field(default_factory=PermissionSet)
+    # Set only during an instance-admin impersonation (issue #26): ``user`` is then the
+    # impersonated member and ``impersonated_by`` the real, authenticated instance owner.
+    impersonated_by: User | None = None
+    impersonation_expires_at: Any | None = None
 
     def repo(self, model: type[ModelT]) -> TenantScopedRepository[ModelT]:
         return TenantScopedRepository(self.session, self.org.id, model)
 
+    # --- authorization (issue #19) ----------------------------------------- #
+    def can(self, permission: str, scope: str | None = None) -> bool:
+        """Does the caller hold ``permission``? ``scope=None`` means "at some scope"."""
+        return self.permissions.has(permission, scope)
+
+    def require(self, permission: str, scope: str | None = None) -> None:
+        if not self.can(permission, scope):
+            raise AppError("forbidden", "errors.forbidden", status_code=403)
+
+    # --- DEPRECATED coarse helpers (dropped with ``memberships.role``, issue #56) --------- #
     @property
     def can_write(self) -> bool:
         # Clients are read-only; staff (owner/admin/member) may mutate.
@@ -115,20 +133,62 @@ async def require_context(
     async with async_session_maker() as session:
         org = await resolve_org(session, request_hostname(request))
         if org is None:
-            raise AppError("not_found", "errors.not_found", status_code=404)
+            raise AppError("unknown_host", "errors.unknown_host", status_code=404)
+        if org.status == OrgStatus.SUSPENDED.value:
+            raise AppError("org_suspended", "errors.org_suspended", status_code=403)
 
-        # Bind RLS to this org, then verify membership *through* RLS.
+        # Instance-admin impersonation (issue #26): a valid, time-boxed grant swaps the
+        # effective user; authentication above stays the real (superuser) principal.
+        from app.core.instance.impersonation import read_impersonation
+
+        impersonator: User | None = None
+        expires_at = None
+        claims = read_impersonation(request, user)
+        if claims is not None and claims.org_id == org.id:
+            target = await session.get(User, claims.target_user_id)
+            if target is not None and target.is_active:
+                impersonator, user = user, target
+                expires_at = claims.expires_at
+
+        # Bind RLS to this org, then verify membership *through* RLS. The permission fetch rides
+        # along on the same statement — one round-trip, whatever the role count. It must stay
+        # *below* the impersonation swap above: permissions resolve for the impersonated member,
+        # never for the instance owner, and ``is_superuser`` never implies ``*``.
+        #
+        # ``array_agg(...).filter(...)`` is load-bearing: a bare ``array_agg`` over the LEFT JOIN
+        # of a role-less membership yields ``{NULL}``, not an empty array.
         await set_current_org(session, org.id)
-        membership = await session.scalar(
-            select(Membership).where(
-                Membership.user_id == user.id,
-                Membership.org_id == org.id,
+        row = (
+            await session.execute(
+                select(
+                    Membership,
+                    func.array_agg(RolePermission.permission).filter(
+                        RolePermission.permission.is_not(None)
+                    ),
+                )
+                .outerjoin(MembershipRole, MembershipRole.membership_id == Membership.id)
+                .outerjoin(RolePermission, RolePermission.role_id == MembershipRole.role_id)
+                .where(
+                    Membership.user_id == user.id,
+                    Membership.org_id == org.id,
+                )
+                .group_by(Membership.id)
             )
-        )
-        if membership is None:
+        ).first()
+        if row is None:
             raise AppError("forbidden", "errors.forbidden", status_code=403)
+        membership, granted = row
 
-        ctx = RequestContext(user=user, org=org, role=Role(membership.role), session=session)
+        ctx = RequestContext(
+            user=user,
+            org=org,
+            role=Role(membership.role),
+            session=session,
+            membership_id=membership.id,
+            permissions=PermissionSet.of(granted),
+            impersonated_by=impersonator,
+            impersonation_expires_at=expires_at,
+        )
         try:
             yield ctx
             await session.commit()

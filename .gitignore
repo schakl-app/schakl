@@ -24,6 +24,13 @@ apps/web/src/lib/paraglide/
 # client schema.d.ts IS committed.
 apps/web/openapi.json
 
+# --- Playwright ---
+# Browsers live in ~/.cache/ms-playwright, not here. These are per-run artifacts.
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
 # --- Env / secrets ---
 .env
 .env.*

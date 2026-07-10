@@ -6,6 +6,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, Query
 
+from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
 from app.modules.projects.models import ProjectStatus
 from app.modules.projects.schemas import ProjectCreate, ProjectRead, ProjectUpdate
@@ -15,18 +16,37 @@ from app.schemas import Page
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 
-@router.get("", response_model=Page[ProjectRead])
+@router.get(
+    "",
+    response_model=Page[ProjectRead],
+    dependencies=[require_permission("projects.project.read")],
+)
 async def list_projects(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     company_id: uuid.UUID | None = Query(None),
     status: ProjectStatus | None = Query(None),
     q: str | None = Query(None, max_length=200),
+    mine: bool = Query(False, description="Only projects I'm assigned to (primary or not)"),
+    sort: str | None = Query(
+        None, description="name | status | start_date | end_date | budget_hours | …, '-' desc"
+    ),
+    hours: bool = Query(
+        False, description="Include the budget burn-down; costs one grouped query"
+    ),
     count: bool = Query(True, description="Compute total; set false for name-only lookups"),
     ctx: RequestContext = Depends(require_context),
 ) -> Page[ProjectRead]:
     items, total = await ProjectService(ctx).list(
-        limit=limit, offset=offset, company_id=company_id, status=status, q=q, count=count
+        limit=limit,
+        offset=offset,
+        company_id=company_id,
+        status=status,
+        q=q,
+        mine=mine,
+        sort=sort,
+        hours=hours,
+        count=count,
     )
     return Page(
         items=[ProjectRead.model_validate(p) for p in items],
@@ -36,7 +56,12 @@ async def list_projects(
     )
 
 
-@router.post("", response_model=ProjectRead, status_code=201)
+@router.post(
+    "",
+    response_model=ProjectRead,
+    status_code=201,
+    dependencies=[require_permission("projects.project.write")],
+)
 async def create_project(
     payload: ProjectCreate,
     ctx: RequestContext = Depends(require_context),
@@ -45,16 +70,27 @@ async def create_project(
     return ProjectRead.model_validate(project)
 
 
-@router.get("/{project_id}", response_model=ProjectRead)
+@router.get(
+    "/{project_id}",
+    response_model=ProjectRead,
+    dependencies=[require_permission("projects.project.read")],
+)
 async def get_project(
     project_id: uuid.UUID,
+    hours: bool = Query(
+        False, description="Include the budget burn-down for the current period; one extra query"
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> ProjectRead:
-    project = await ProjectService(ctx).get(project_id)
+    project = await ProjectService(ctx).get(project_id, hours=hours)
     return ProjectRead.model_validate(project)
 
 
-@router.patch("/{project_id}", response_model=ProjectRead)
+@router.patch(
+    "/{project_id}",
+    response_model=ProjectRead,
+    dependencies=[require_permission("projects.project.write")],
+)
 async def update_project(
     project_id: uuid.UUID,
     payload: ProjectUpdate,
@@ -64,7 +100,11 @@ async def update_project(
     return ProjectRead.model_validate(project)
 
 
-@router.delete("/{project_id}", status_code=204)
+@router.delete(
+    "/{project_id}",
+    status_code=204,
+    dependencies=[require_permission("projects.project.delete")],
+)
 async def delete_project(
     project_id: uuid.UUID,
     ctx: RequestContext = Depends(require_context),

@@ -1,32 +1,95 @@
 <script lang="ts">
+  import { Trash2 } from "@lucide/svelte";
+
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
+  import { fmtDayMonth, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { createTableLayout } from "$lib/core/table/layout.svelte";
+  import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
+  import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import DataTable from "$lib/core/ui/DataTable.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
+  import {
+    TASK_COLUMNS,
+    TASK_GROUPS,
+    TASK_GROUPS_COLLAPSED_BY_DEFAULT,
+  } from "$lib/modules/tasks/columns";
   import { labelChipClass } from "$lib/modules/tasks/labels";
   import TaskRow from "$lib/modules/tasks/TaskRow.svelte";
   import TasksNav from "$lib/modules/tasks/TasksNav.svelte";
+  import { formatMinutes } from "$lib/modules/time/format";
 
   let { data, form } = $props();
 
+  type Task = (typeof data.tasks)[number];
+
   let showCreate = $state(false);
-  let showDone = $state(false);
+  let deleteId = $state("");
+  let confirmDelete = $state(false);
   const userId = $derived(page.data.user?.id ?? "");
 
   const priorities = ["low", "normal", "high"] as const;
   const dueOptions = ["overdue", "today", "week"] as const;
 
   const today = new Date().toISOString().slice(0, 10);
-  const open = $derived(data.tasks.filter((task) => task.status === "open"));
-  const inProgress = $derived(data.tasks.filter((task) => task.status === "in_progress"));
-  const done = $derived(data.tasks.filter((task) => task.status === "done"));
   const overdueCount = $derived(
     data.tasks.filter((task) => task.status !== "done" && task.due_date && task.due_date < today)
       .length,
   );
+
+  const table = createTableLayout<Task>({
+    all: () => TASK_COLUMNS,
+    // A first visit folds "Klaar" away, exactly as the old board did. Once the user has saved a
+    // layout their own collapsed set wins — including an empty one, which is why this checks for
+    // the key's absence rather than for a falsy value.
+    pref: () => ({
+      ...data.table.pref,
+      collapsed: data.table.pref.collapsed ?? TASK_GROUPS_COLLAPSED_BY_DEFAULT,
+    }),
+    sort: () => data.table.sort,
+    cells: () => ({
+      title: titleCell,
+      labels: labelsCell,
+      assignee: assigneeCell,
+      priority: priorityCell,
+      due_date: dueDateCell,
+      checklist: checklistCell,
+      comments: commentsCell,
+      allocated: allocatedCell,
+      project: projectCell,
+      company: companyCell,
+      created_at: createdAtCell,
+    }),
+  });
+
+  // Sections are declared in workflow order and the table never reorders them — a sort orders
+  // rows *within* a section (#38). An empty section is dropped rather than drawn as "Klaar (0)".
+  const groups = $derived(
+    TASK_GROUPS.filter((key) => data.tasks.some((task) => task.status === key)).map((key) => ({
+      key,
+      label: t(`tasks.group.${key}`),
+      collapsible: true,
+    })),
+  );
+
+  const memberName = (id?: string | null) => {
+    const member = data.members.find((m) => m.user_id === id);
+    return member ? member.full_name || member.email : "";
+  };
+  const projectName = (id?: string | null) => data.projects.find((p) => p.id === id)?.name ?? "";
+  const companyName = (id?: string | null) => data.companies.find((c) => c.id === id)?.name ?? "";
+  const isOverdue = (task: Task) =>
+    task.status !== "done" && !!task.due_date && task.due_date < today;
+
+  function initials(source: string): string {
+    const parts = source.split(/[\s@._-]+/).filter(Boolean);
+    return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
+  }
 
   const companyItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
   const projectItems = $derived(data.projects.map((p) => ({ value: p.id, label: p.name })));
@@ -56,7 +119,7 @@
   const hasFilters = $derived(Object.values(data.filters).some(Boolean));
 
   const inputClass =
-    "w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
+    "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
 
 <svelte:head>
@@ -67,11 +130,11 @@
 
 <div class="mb-6 flex items-center justify-between">
   <div>
-    <h1 class="text-xl font-semibold text-neutral-900">{t("tasks.title")}</h1>
-    <p class="mt-1 text-sm text-neutral-500">
+    <h1 class="text-xl font-semibold text-text">{t("tasks.title")}</h1>
+    <p class="mt-1 text-sm text-text-muted">
       {t("tasks.count", { count: data.total })}
       {#if overdueCount > 0}
-        · <span class="font-medium text-red-600"
+        · <span class="font-medium text-red-600 dark:text-red-400"
           >{t("tasks.overdue_count", { count: overdueCount })}</span
         >
       {/if}
@@ -123,7 +186,7 @@
       class="rounded-full px-3 py-1 text-xs font-medium
         {data.filters.due === option
         ? 'bg-brand text-white'
-        : 'border border-neutral-300 text-neutral-600 hover:border-brand hover:text-brand'}"
+        : 'border border-border text-text-muted hover:border-brand hover:text-brand'}"
       onclick={() => setFilter("due", data.filters.due === option ? "" : option)}
       >{t(`tasks.due.${option}`)}</button
     >
@@ -139,7 +202,7 @@
     >
   {/each}
   {#if hasFilters}
-    <a href="/tasks" class="text-xs text-neutral-500 underline hover:text-neutral-900"
+    <a href="/tasks" class="text-xs text-text-muted underline hover:text-text"
       >{t("tasks.filter.clear")}</a
     >
   {/if}
@@ -153,23 +216,23 @@
       ({ update }) => {
         void update().then(() => (showCreate = false));
       }}
-    class="mb-6 rounded-xl border border-neutral-200 bg-white p-4"
+    class="mb-6 rounded-xl border border-border bg-surface-raised p-4"
   >
     <div class="grid gap-3 sm:grid-cols-2">
       <div class="sm:col-span-2">
-        <label for="title" class="mb-1 block text-sm font-medium text-neutral-700"
+        <label for="title" class="mb-1 block text-sm font-medium text-text"
           >{t("tasks.field.title")}</label
         >
         <input id="title" name="title" required class={inputClass} />
       </div>
       <div class="sm:col-span-2">
-        <label for="description" class="mb-1 block text-sm font-medium text-neutral-700"
+        <label for="description" class="mb-1 block text-sm font-medium text-text"
           >{t("tasks.field.description")}</label
         >
         <textarea id="description" name="description" rows="2" class={inputClass}></textarea>
       </div>
       <div>
-        <label for="create-project" class="mb-1 block text-sm font-medium text-neutral-700"
+        <label for="create-project" class="mb-1 block text-sm font-medium text-text"
           >{t("tasks.field.project")}</label
         >
         <Combobox
@@ -181,7 +244,7 @@
         />
       </div>
       <div>
-        <label for="create-company" class="mb-1 block text-sm font-medium text-neutral-700"
+        <label for="create-company" class="mb-1 block text-sm font-medium text-text"
           >{t("tasks.field.company")}</label
         >
         <Combobox
@@ -192,14 +255,14 @@
         />
       </div>
       <div>
-        <label for="create-assignee" class="mb-1 block text-sm font-medium text-neutral-700"
+        <label for="create-assignee" class="mb-1 block text-sm font-medium text-text"
           >{t("tasks.field.assignee")}</label
         >
         <Combobox items={memberItems} name="assignee_user_id" value={userId} id="create-assignee" />
       </div>
       <div class="grid grid-cols-2 gap-3">
         <div>
-          <label for="priority" class="mb-1 block text-sm font-medium text-neutral-700"
+          <label for="priority" class="mb-1 block text-sm font-medium text-text"
             >{t("tasks.field.priority")}</label
           >
           <select id="priority" name="priority" class={inputClass}>
@@ -209,68 +272,213 @@
           </select>
         </div>
         <div>
-          <label for="due_date" class="mb-1 block text-sm font-medium text-neutral-700"
+          <label for="due_date" class="mb-1 block text-sm font-medium text-text"
             >{t("tasks.field.due_date")}</label
           >
           <DateInput id="due_date" name="due_date" />
         </div>
       </div>
     </div>
-    {#if form?.error}<p class="mt-2 text-sm text-red-600">{t(form.error)}</p>{/if}
+    {#if form?.error}<p class="mt-2 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
     <div class="mt-4 flex gap-2">
       <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
         >{t("common.save")}</button
       >
       <button
         type="button"
-        class="rounded-lg border border-neutral-300 px-4 py-2 text-sm"
+        class="rounded-lg border border-border px-4 py-2 text-sm"
         onclick={() => (showCreate = false)}>{t("common.cancel")}</button
       >
     </div>
   </form>
 {/if}
 
-{#if data.tasks.length === 0}
-  <div class="rounded-xl border border-dashed border-neutral-300 bg-white p-10 text-center">
-    <p class="font-medium text-neutral-900">{t("tasks.empty")}</p>
-    <p class="mt-1 text-sm text-neutral-500">{t("tasks.empty_hint")}</p>
+<!-- Cells. The complete toggle stays a real <form> inside its <td>: it works with no JS, and
+     `use:enhance` only upgrades it. Everything else that used to be a badge on `TaskRow` is now
+     a column the user can turn off (#41). -->
+{#snippet titleCell(task: Task)}
+  {@const done = task.status === "done"}
+  <div class="flex items-center gap-2.5">
+    <form method="POST" action="?/toggle" use:enhance>
+      <input type="hidden" name="id" value={task.id} />
+      <input type="hidden" name="status" value={done ? "open" : "done"} />
+      <button
+        class="flex h-5 w-5 items-center justify-center rounded border text-xs
+          {done
+          ? 'border-brand bg-brand text-white'
+          : 'border-border text-transparent hover:border-brand'}"
+        aria-label={t("tasks.toggle_done")}>✓</button
+      >
+    </form>
+    <a
+      href="/tasks/{task.id}"
+      class="truncate font-medium {done
+        ? 'text-text-muted line-through'
+        : 'text-text hover:text-brand'}">{task.title}</a
+    >
   </div>
-{:else}
-  <div class="space-y-4">
-    {#each [{ key: "open", rows: open }, { key: "in_progress", rows: inProgress }] as group (group.key)}
-      {#if group.rows.length > 0}
-        <section class="overflow-hidden rounded-xl border border-neutral-200 bg-white">
-          <h2
-            class="border-b border-neutral-100 bg-neutral-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-neutral-500"
-          >
-            {t(`tasks.group.${group.key}`)} · {group.rows.length}
-          </h2>
-          <div class="divide-y divide-neutral-100">
-            {#each group.rows as task (task.id)}
-              <TaskRow {task} members={data.members} {today} />
-            {/each}
-          </div>
-        </section>
-      {/if}
-    {/each}
+{/snippet}
 
-    {#if done.length > 0}
-      <section class="overflow-hidden rounded-xl border border-neutral-200 bg-white">
-        <button
-          class="flex w-full items-center justify-between border-b border-neutral-100 bg-neutral-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-neutral-500 hover:text-neutral-800"
-          onclick={() => (showDone = !showDone)}
-        >
-          <span>{t("tasks.group.done")} · {done.length}</span>
-          <span>{showDone ? "▾" : "▸"}</span>
-        </button>
-        {#if showDone}
-          <div class="divide-y divide-neutral-100">
-            {#each done as task (task.id)}
-              <TaskRow {task} members={data.members} {today} />
-            {/each}
-          </div>
-        {/if}
-      </section>
-    {/if}
+{#snippet labelsCell(task: Task)}
+  <span class="flex flex-wrap gap-1">
+    {#each task.labels ?? [] as label (label.id)}
+      <span class="rounded-full px-2 py-0.5 text-[11px] font-medium {labelChipClass(label.color)}"
+        >{label.name}</span
+      >
+    {:else}
+      <span class="text-text-muted">—</span>
+    {/each}
+  </span>
+{/snippet}
+
+{#snippet assigneeCell(task: Task)}
+  {@const name = memberName(task.assignee_user_id)}
+  {#if name}
+    <span class="flex items-center gap-2">
+      <span
+        class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand/10 text-[10px] font-semibold text-brand"
+        aria-hidden="true">{initials(name)}</span
+      >
+      <span class="truncate text-text">{name}</span>
+    </span>
+  {:else}
+    <span class="text-text-muted">—</span>
+  {/if}
+{/snippet}
+
+{#snippet priorityCell(task: Task)}
+  {#if task.priority === "high" && task.status !== "done"}
+    <span class="text-xs font-semibold uppercase text-red-600 dark:text-red-400"
+      >{t("tasks.priority.high")}</span
+    >
+  {:else}
+    <span class="text-text-muted">{t(`tasks.priority.${task.priority}`)}</span>
+  {/if}
+{/snippet}
+
+{#snippet dueDateCell(task: Task)}
+  {#if task.due_date}
+    <!-- Overdue work is loudly red everywhere (docs/UX.md, principle 4). -->
+    <span class={isOverdue(task) ? "font-semibold text-red-600 dark:text-red-400" : "text-text"}>
+      {fmtDayMonth(task.due_date)}
+    </span>
+  {:else}
+    <span class="text-text-muted">—</span>
+  {/if}
+{/snippet}
+
+{#snippet checklistCell(task: Task)}
+  {#if (task.checklist_total ?? 0) > 0}
+    <span
+      class={task.checklist_done === task.checklist_total
+        ? "font-medium text-green-700 dark:text-green-300"
+        : "text-text"}>{task.checklist_done}/{task.checklist_total}</span
+    >
+  {:else}
+    <span class="text-text-muted">—</span>
+  {/if}
+{/snippet}
+
+{#snippet commentsCell(task: Task)}
+  <span class={task.comment_count ? "text-text" : "text-text-muted"}
+    >{task.comment_count || "—"}</span
+  >
+{/snippet}
+
+{#snippet allocatedCell(task: Task)}
+  <span class={task.allocated_minutes ? "text-text" : "text-text-muted"}>
+    {task.allocated_minutes ? formatMinutes(task.allocated_minutes) : "—"}
+  </span>
+{/snippet}
+
+{#snippet projectCell(task: Task)}
+  {@const name = projectName(task.project_id)}
+  {#if name}
+    <a href="/projects/{task.project_id}" class="truncate text-text hover:text-brand">{name}</a>
+  {:else}
+    <span class="text-text-muted">—</span>
+  {/if}
+{/snippet}
+
+{#snippet companyCell(task: Task)}
+  {@const name = companyName(task.company_id)}
+  {#if name}
+    <a href="/companies/{task.company_id}" class="truncate text-text hover:text-brand">{name}</a>
+  {:else}
+    <span class="text-text-muted">—</span>
+  {/if}
+{/snippet}
+
+{#snippet createdAtCell(task: Task)}
+  <span class="text-text-muted">{fmtNumericDate(task.created_at.slice(0, 10))}</span>
+{/snippet}
+
+<!-- A row that represents an editable record carries a ⋯ menu; the title link is how you open
+     the card, and Delete confirms (docs/UX.md). -->
+{#snippet rowActions(task: Task)}
+  <ActionsMenu
+    compact
+    items={[
+      {
+        label: t("common.delete"),
+        icon: Trash2,
+        danger: true,
+        onclick: () => {
+          deleteId = task.id;
+          confirmDelete = true;
+        },
+      },
+    ]}
+  />
+{/snippet}
+
+<!-- A grid is not a mobile UI: below `sm` the board falls back to the concept's shared row. -->
+{#snippet mobileRow(task: Task)}
+  <div class="flex items-center">
+    <div class="min-w-0 flex-1"><TaskRow {task} members={data.members} {today} /></div>
+    {@render rowActions(task)}
   </div>
-{/if}
+{/snippet}
+
+{#snippet empty()}
+  <div class="rounded-xl border border-dashed border-border bg-surface-raised p-10 text-center">
+    <p class="font-medium text-text">{t("tasks.empty")}</p>
+    <p class="mt-1 text-sm text-text-muted">{t("tasks.empty_hint")}</p>
+  </div>
+{/snippet}
+
+<!-- The picker stays reachable even when a filter empties the board — the sort that emptied it
+     is cycled off from here. -->
+<div class="mb-2 flex justify-end">
+  <ColumnPicker
+    all={table.pickerColumns}
+    visible={table.visibleKeys}
+    sort={table.sort}
+    onchange={table.onColumnsChange}
+    onsort={table.onSort}
+  />
+</div>
+
+<DataTable
+  rows={data.tasks}
+  columns={table.columns}
+  sort={table.sort}
+  widths={table.widths}
+  {groups}
+  groupBy={(task) => task.status}
+  collapsed={table.collapsed}
+  actions={rowActions}
+  {mobileRow}
+  {empty}
+  oncollapse={table.onCollapse}
+  onsort={table.onSort}
+  onresize={table.onResize}
+/>
+
+<ConfirmDialog
+  bind:open={confirmDelete}
+  title={t("common.delete")}
+  message={t("tasks.delete_confirm")}
+  action="?/delete"
+  fields={{ id: deleteId }}
+/>

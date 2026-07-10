@@ -33,6 +33,7 @@ from app.modules.tasks.schemas import (
     TemplateRead,
     TemplateUpdate,
 )
+from app.modules.tasks.service import _display_name
 
 
 class TemplateService:
@@ -69,7 +70,7 @@ class TemplateService:
             await self.item_repo.create(template_id=template.id, **values)
 
     async def create(self, data: TemplateCreate) -> TemplateRead:
-        self.ctx.ensure_can_manage()
+        self.ctx.require("tasks.template.write")
         values = data.model_dump(exclude={"items"})
         values["trigger"] = data.trigger.value
         template = await self.repo.create(**values)
@@ -77,7 +78,7 @@ class TemplateService:
         return await self._read(template)
 
     async def update(self, template_id: uuid.UUID, data: TemplateUpdate) -> TemplateRead:
-        self.ctx.ensure_can_manage()
+        self.ctx.require("tasks.template.write")
         template = await self.repo.get_or_404(template_id)
         values = data.model_dump(exclude_unset=True, exclude={"items"})
         if values.get("trigger") is not None:
@@ -88,7 +89,7 @@ class TemplateService:
         return await self._read(template)
 
     async def delete(self, template_id: uuid.UUID) -> None:
-        self.ctx.ensure_can_manage()
+        self.ctx.require("tasks.template.write")
         template = await self.repo.get_or_404(template_id)
         await self.repo.delete(template)
 
@@ -96,12 +97,24 @@ class TemplateService:
     # Instantiation
     # ------------------------------------------------------------------ #
     async def apply(self, template_id: uuid.UUID, company_id: uuid.UUID) -> list[Task]:
-        self.ctx.ensure_can_write()
+        self.ctx.require("tasks.template.apply")
         template = await self.repo.get_or_404(template_id)
-        return await self._instantiate(template, company_id, actor_id=self.ctx.user.id)
+        return await self._instantiate(
+            template,
+            company_id,
+            actor_id=self.ctx.user.id,
+            actor_name=_display_name(self.ctx.user),
+        )
 
     async def _instantiate(
-        self, template: TaskTemplate, company_id: uuid.UUID, *, actor_id: uuid.UUID | None
+        self,
+        template: TaskTemplate,
+        company_id: uuid.UUID,
+        *,
+        actor_id: uuid.UUID | None,
+        # Snapshotted beside the id: the FK is SET NULL, so without this the applier's name is
+        # gone the day their account is (issue #64).
+        actor_name: str | None = None,
     ) -> list[Task]:
         items = await self.item_repo.list(
             limit=200, order_by=TaskTemplateItem.position.asc(), template_id=template.id
@@ -160,6 +173,7 @@ class TemplateService:
                     org_id=org_id,
                     task_id=task.id,
                     actor_user_id=actor_id,
+                    actor_name=actor_name,
                     action="template_applied",
                     payload={"template_id": str(template.id), "template_name": template.name},
                 )
@@ -178,7 +192,12 @@ class TemplateService:
         )
         templates = (await self.ctx.session.execute(stmt)).scalars().all()
         for template in templates:
-            await self._instantiate(template, company_id, actor_id=self.ctx.user.id)
+            await self._instantiate(
+                template,
+                company_id,
+                actor_id=self.ctx.user.id,
+                actor_name=_display_name(self.ctx.user),
+            )
 
 
 async def on_company_status(ctx: RequestContext, payload: dict[str, Any]) -> None:

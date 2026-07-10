@@ -215,6 +215,12 @@ class TaskComment(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # The author's display name at the time of writing (issue #64). The FK is SET NULL, so a
+    # live join is the one thing that cannot survive the account it joins to: it hands back
+    # ``None`` and the thread reads "—", as if nobody ever wrote the words. Snapshotting the
+    # name is what keeps the comment attributable. The live join still wins while the account
+    # exists — a rename should show through — so this is a fallback, not the display value.
+    author_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -231,11 +237,18 @@ class TaskActivity(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
         nullable=False,
     )
     # NULL actor = the system (recurrence cron, automation).
+    #
+    # …which is exactly why ``actor_name`` exists (issue #64). The FK is SET NULL, so deleting a
+    # user rewrites their history into the system's: "Jane closed this" becomes "System closed
+    # this", and no query can tell the two apart afterwards. The snapshot disambiguates them —
+    # a name with no ``actor_user_id`` is a departed human, no name at all is genuinely the
+    # system. Written on every ``_record``; the live join still wins while the account exists.
     actor_user_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
+    actor_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     action: Mapped[str] = mapped_column(String(50), nullable=False)
     payload: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default="{}"
