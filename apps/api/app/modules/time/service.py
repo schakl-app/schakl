@@ -18,6 +18,7 @@ from sqlalchemy import DateTime, column, func, select, table, values
 from sqlalchemy import text as sql_text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 
+from app.core.events import emit
 from app.core.roles import Role
 from app.core.sorting import apply_sort, user_sort_name
 from app.core.tenancy import RequestContext
@@ -692,7 +693,30 @@ class TimeService:
             if not approved:
                 entry.invoiced_at = None  # unapproving also clears the invoiced mark
         await self.ctx.session.flush()
+        if approved:
+            await self._emit_approved(entries)
         return len(entries)
+
+    async def _emit_approved(self, entries: Sequence[TimeEntry]) -> None:
+        """One notification per owner, not per entry: a batch sign-off is one piece of news.
+
+        A timesheet has no row of its own, so the *person* is the subject of the event and the
+        week is in the payload (CLAUDE.md §6 — announced on the bus, never a direct import).
+        """
+        per_owner: dict[uuid.UUID, list[TimeEntry]] = {}
+        for entry in entries:
+            per_owner.setdefault(entry.user_id, []).append(entry)
+        for user_id, owned in per_owner.items():
+            await emit(
+                "time.entry_approved",
+                self.ctx,
+                {
+                    "user_id": user_id,
+                    "count": len(owned),
+                    "minutes": sum(entry.minutes for entry in owned),
+                    "_recipients": [user_id],
+                },
+            )
 
     async def set_invoiced(self, entry_ids: list[uuid.UUID], invoiced: bool) -> int:
         self.ctx.ensure_can_manage()

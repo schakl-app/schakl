@@ -16,6 +16,7 @@ from sqlalchemy import case, func, select
 from sqlalchemy import text as sql_text
 
 from app.core.auth.models import User
+from app.core.events import emit
 from app.core.sorting import apply_sort, user_sort_name
 from app.core.tenancy import RequestContext
 from app.errors import AppError
@@ -109,6 +110,12 @@ def _display_name(user: User | None) -> str | None:
     return user.full_name or user.email
 
 
+def _excerpt(body: str, limit: int = 140) -> str:
+    """A comment's first line, short enough to read in a notification list."""
+    text = " ".join(body.split())
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
 class TaskService:
     def __init__(self, ctx: RequestContext) -> None:
         self.ctx = ctx
@@ -130,6 +137,27 @@ class TaskService:
             )
         )
         await self.ctx.session.flush()
+
+    async def _emit_task(
+        self,
+        event: str,
+        task: Task,
+        recipients: Sequence[uuid.UUID | None],
+        params: dict[str, Any] | None = None,
+    ) -> None:
+        """Announce something that happened to a task (CLAUDE.md §6 — the bus, not an import).
+
+        This module resolves its *own* audience; the notifications module adds the task's
+        watchers, drops the actor and anyone who muted it, and applies each recipient's
+        delivery preference. ``title`` is snapshotted so the line still reads after a rename.
+        """
+        payload: dict[str, Any] = {
+            "task_id": task.id,
+            "title": task.title,
+            "_recipients": [r for r in recipients if r is not None],
+        }
+        payload.update(params or {})
+        await emit(event, self.ctx, payload)
 
     # ------------------------------------------------------------------ #
     # List / aggregates
@@ -413,6 +441,9 @@ class TaskService:
         values["position"] = await self._next_position()
         task = await self.repo.create(**values)
         await self._record(task.id, "created")
+        if task.assignee_user_id is not None:
+            # Assigning yourself is silent — the fan-out drops the actor (issue #16).
+            await self._emit_task("task.assigned", task, [task.assignee_user_id])
         return task
 
     async def _default_assignee(
@@ -488,6 +519,11 @@ class TaskService:
         ]
         status_changed = "status" in values and old_status != new_status
         old_due = task.due_date
+        # Read the old assignee before the write; the diff drives who is told (issue #16).
+        old_assignee = task.assignee_user_id
+        assignee_changed = (
+            "assignee_user_id" in values and old_assignee != values["assignee_user_id"]
+        )
 
         task = await self.repo.update(task, **values)
 
@@ -495,6 +531,17 @@ class TaskService:
             await self._record(
                 task.id, "status_changed", {"from": old_status, "to": new_status}
             )
+            await self._emit_task(
+                "task.status_changed",
+                task,
+                [task.assignee_user_id],
+                {"from": old_status, "to": new_status},
+            )
+        if assignee_changed:
+            if task.assignee_user_id is not None:
+                await self._emit_task("task.assigned", task, [task.assignee_user_id])
+            if old_assignee is not None:
+                await self._emit_task("task.unassigned", task, [old_assignee])
         if due_extended:
             await self._record(
                 task.id,
@@ -715,14 +762,41 @@ class TaskService:
     # ------------------------------------------------------------------ #
     async def add_comment(self, task_id: uuid.UUID, data: CommentCreate) -> CommentRead:
         self.ctx.ensure_can_write()
-        await self.repo.get_or_404(task_id)
+        task = await self.repo.get_or_404(task_id)
         comment = await self.ctx.repo(TaskComment).create(
             task_id=task_id, author_user_id=self.ctx.user.id, body=data.body
         )
         await self._record(task_id, "commented")
+        # Everyone already in the conversation hears the reply; commenting also subscribes
+        # the author to the task, so the fan-out keeps reaching them (issue #16).
+        await self._emit_task(
+            "task.commented",
+            task,
+            await self._comment_audience(task),
+            {"excerpt": _excerpt(data.body)},
+        )
         return CommentRead.model_validate(comment).model_copy(
             update={"author_name": _display_name(self.ctx.user)}
         )
+
+    async def _comment_audience(self, task: Task) -> list[uuid.UUID]:
+        """Who is in this conversation: the assignee and everyone who commented before."""
+        authors = set(
+            (
+                await self.ctx.session.execute(
+                    select(TaskComment.author_user_id)
+                    .where(
+                        TaskComment.org_id == self.ctx.org.id,
+                        TaskComment.task_id == task.id,
+                        TaskComment.author_user_id.is_not(None),
+                    )
+                    .distinct()
+                )
+            ).scalars()
+        )
+        if task.assignee_user_id is not None:
+            authors.add(task.assignee_user_id)
+        return list(authors)
 
     async def _comment_or_404(self, task_id: uuid.UUID, comment_id: uuid.UUID) -> TaskComment:
         comment = await self.ctx.repo(TaskComment).get_or_404(comment_id)

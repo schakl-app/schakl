@@ -17,6 +17,7 @@ from decimal import Decimal
 from sqlalchemy import func, select
 
 from app.core.auth.models import User
+from app.core.events import emit
 from app.core.models import Membership
 from app.core.roles import Role
 from app.core.sorting import apply_sort, user_sort_name
@@ -393,7 +394,7 @@ class LeaveService:
             if leave_type.requires_approval
             else LeaveRequestStatus.APPROVED.value
         )
-        return await self.requests.create(
+        request = await self.requests.create(
             user_id=uid,
             leave_type_id=data.leave_type_id,
             start_date=data.start_date,
@@ -401,6 +402,42 @@ class LeaveService:
             hours=data.hours,
             note=data.note,
             status=status,
+        )
+        # Only a request that actually waits on somebody is worth interrupting them for; a
+        # registration (sick leave) is already decided (issue #16).
+        if request.status == LeaveRequestStatus.PENDING.value:
+            await self._emit_leave("leave.requested", request, await self._managers())
+        return request
+
+    async def _managers(self) -> list[uuid.UUID]:
+        """Who may approve leave here — owners and admins (``Role.can_manage``)."""
+        return list(
+            (
+                await self.ctx.session.execute(
+                    select(Membership.user_id).where(
+                        Membership.org_id == self.ctx.org.id,
+                        Membership.role.in_(
+                            [role.value for role in Role if role.can_manage]
+                        ),
+                    )
+                )
+            ).scalars()
+        )
+
+    async def _emit_leave(
+        self, event: str, request: LeaveRequest, recipients: Sequence[uuid.UUID]
+    ) -> None:
+        """Announce a leave decision on the bus (CLAUDE.md §6 — no cross-module imports)."""
+        await emit(
+            event,
+            self.ctx,
+            {
+                "leave_request_id": request.id,
+                "start_date": request.start_date,
+                "end_date": request.end_date,
+                "hours": request.hours,
+                "_recipients": list(recipients),
+            },
         )
 
     async def update(self, request_id: uuid.UUID, data: LeaveRequestUpdate) -> LeaveRequest:
@@ -433,7 +470,7 @@ class LeaveService:
         request = await self.requests.get_or_404(request_id)
         if request.status != LeaveRequestStatus.PENDING.value:
             raise AppError("conflict", "errors.leave_decided", status_code=409)
-        return await self.requests.update(
+        request = await self.requests.update(
             request,
             status=(
                 LeaveRequestStatus.APPROVED.value
@@ -444,6 +481,11 @@ class LeaveService:
             decided_at=_now(),
             decision_note=note,
         )
+        # The person who asked is the person who needs the answer.
+        await self._emit_leave(
+            "leave.approved" if approved else "leave.rejected", request, [request.user_id]
+        )
+        return request
 
     async def cancel(self, request_id: uuid.UUID) -> LeaveRequest:
         """Requester may cancel while pending; approved leave needs a manager."""

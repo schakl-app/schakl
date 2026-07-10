@@ -217,10 +217,18 @@ class CompanyService:
         company = await self.repo.create(**values)
         await self.assignees.replace(company.id, links)
         company.assignees = await self.assignees.for_entity(company.id)
+        # ``company_id``/``status`` are the tasks module's onboarding-template contract; the
+        # rest is what notifications needs (issue #16). No ``company.assigned`` here — the
+        # roster hears about the client through ``company.created`` and shouldn't be told twice.
         await emit(
             "company.created",
             self.ctx,
-            {"company_id": company.id, "status": company.status},
+            {
+                "company_id": company.id,
+                "status": company.status,
+                "title": company.name,
+                "_recipients": [a.user_id for a in company.assignees],
+            },
         )
         return company
 
@@ -229,6 +237,13 @@ class CompanyService:
         company = await self.repo.get_or_404(company_id)
         previous_status = company.status
         values = data.model_dump(exclude_unset=True)
+        # ``replace`` is delete-then-insert, so who is *new* has to be read before the write.
+        roster_touched = "assignees" in values or "responsible_user_id" in values
+        before: set[uuid.UUID] = (
+            {a.user_id for a in await self.assignees.for_entity(company_id)}
+            if roster_touched
+            else set()
+        )
         if values.get("status") is not None:
             values["status"] = values["status"].value
         if "custom" in values:
@@ -252,6 +267,7 @@ class CompanyService:
         elif "responsible_user_id" in values:
             await self.assignees.set_primary(company.id, values["responsible_user_id"])
         company.assignees = await self.assignees.for_entity(company.id)
+        after = {a.user_id for a in company.assignees}
 
         if company.status != previous_status:
             await emit(
@@ -261,7 +277,21 @@ class CompanyService:
                     "company_id": company.id,
                     "status": company.status,
                     "previous_status": previous_status,
+                    # ``from``/``to`` are the vocabulary every status event on the bus speaks,
+                    # so one notification renderer serves tasks, projects and companies.
+                    "from": previous_status,
+                    "to": company.status,
+                    "title": company.name,
+                    "_recipients": sorted(after),
                 },
+            )
+        # Only a request that touched the roster can add anyone; ``before`` is deliberately
+        # empty otherwise, so the diff would otherwise re-announce the whole roster.
+        if roster_touched and (added := after - before):
+            await emit(
+                "company.assigned",
+                self.ctx,
+                {"company_id": company.id, "title": company.name, "_recipients": sorted(added)},
             )
         return company
 

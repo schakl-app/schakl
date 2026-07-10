@@ -20,6 +20,7 @@ from sqlalchemy import func, select
 from app.core.assignees import AssigneeService
 from app.core.auth.models import User
 from app.core.customfields import CustomFieldsService
+from app.core.events import emit
 from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
 from app.modules.projects.budget import period_bound, period_start_date
@@ -241,7 +242,32 @@ class ProjectService:
         project = await self.repo.create(**values)
         await self.assignees.replace(project.id, links)
         project.assignees = await self.assignees.for_entity(project.id)
+        # Projects have no "created" event, so this is the roster's only signal (issue #16).
+        if project.assignees:
+            await self._emit_project(
+                "project.assigned", project, [a.user_id for a in project.assignees]
+            )
         return project
+
+    async def _emit_project(
+        self,
+        event: str,
+        project: Project,
+        recipients: Sequence[uuid.UUID],
+        params: dict | None = None,
+    ) -> None:
+        """Announce a project change on the bus (CLAUDE.md §6 — never a cross-module import).
+
+        We name our own audience; notifications adds watchers, drops the actor and the muted,
+        and applies each recipient's preference. ``title`` is snapshotted for the feed.
+        """
+        payload: dict = {
+            "project_id": project.id,
+            "title": project.name,
+            "_recipients": list(recipients),
+        }
+        payload.update(params or {})
+        await emit(event, self.ctx, payload)
 
     async def _company_primary(self, company_id: uuid.UUID) -> uuid.UUID | None:
         """The primary assignee of a company, via its published service (§6 — no model
@@ -253,7 +279,15 @@ class ProjectService:
     async def update(self, project_id: uuid.UUID, data: ProjectUpdate) -> Project:
         self.ctx.ensure_can_write()
         project = await self.repo.get_or_404(project_id)
+        previous_status = project.status
         values = data.model_dump(exclude_unset=True)
+        # ``replace`` is delete-then-insert, so who is *new* has to be read before the write.
+        roster_touched = "assignees" in values or "responsible_user_id" in values
+        before: set[uuid.UUID] = (
+            {a.user_id for a in await self.assignees.for_entity(project_id)}
+            if roster_touched
+            else set()
+        )
         if "custom" in values:
             values["custom"] = await self.custom_fields.validate(
                 ENTITY_TYPE, values.get("custom") or {}
@@ -275,6 +309,19 @@ class ProjectService:
         elif "responsible_user_id" in values:
             await self.assignees.set_primary(project.id, values["responsible_user_id"])
         project.assignees = await self.assignees.for_entity(project.id)
+        after = {a.user_id for a in project.assignees}
+
+        if project.status != previous_status:
+            await self._emit_project(
+                "project.status_changed",
+                project,
+                sorted(after),
+                {"from": previous_status, "to": project.status},
+            )
+        # Only a request that touched the roster can add anyone; ``before`` is deliberately
+        # empty otherwise, so the diff would otherwise re-announce the whole roster.
+        if roster_touched and (added := after - before):
+            await self._emit_project("project.assigned", project, sorted(added))
         return project
 
     async def delete(self, project_id: uuid.UUID) -> None:
