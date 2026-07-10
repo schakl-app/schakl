@@ -1,7 +1,0 @@
-node_modules/
-.svelte-kit/
-build/
-.vite/
-src/lib/paraglide/
-.env
-.env.*
