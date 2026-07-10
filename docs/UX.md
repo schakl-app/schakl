@@ -138,6 +138,14 @@
   - **A grid is not a mobile UI.** Below `sm` the table gives way to the concept's shared row, never
     a twelve-column sideways scroll. Rows keep their ⋯ `ActionsMenu`, and since a `<tr>` cannot be
     wrapped in an `<a>`, the primary cell carries the link and the row highlights.
+    The same rule kills a grid before it is drawn: the **permission matrix** (Instellingen → Rollen,
+    issue #19) is a `<details>` accordion per module of `label … control` rows, with a *select all*
+    / *clear* pair in each module's header and **one** save button at the end. Nothing about it asks
+    a phone to scroll sideways, so nothing does. A permission carrying a scope (`:own` / `:any`)
+    gets a three-way control, not a checkbox — "may edit their own hours" and "may edit anyone's"
+    are different grants and a tick cannot say which. Its selection is component state
+    (`bind:group`), never a one-way `checked={…}`: a radio rendered one-way loses its mark on
+    hydration, and the next save then silently strips what the user never touched.
   - **A column sorts by what it prints.** A person sorts by display name, a client/project/task by
     its name — never by the foreign key behind it (the API resolves each with a correlated
     subquery, which a join would turn into duplicated rows). A small closed vocabulary sorts by

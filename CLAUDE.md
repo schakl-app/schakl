@@ -109,6 +109,8 @@ An **API module** is a package under `apps/api/app/modules/<name>/` exposing:
 - `schemas.py` — Pydantic request/response models.
 - `service.py` — business logic (no DB access outside the tenant-scoped repository).
 - `router.py` — REST endpoints under `/api/v1/<name>`, mounted by `main.py`.
+- `permissions.py` — the `PermissionSpec`s this module introduces, declared on its
+  `ModuleDescriptor` (see §15). Core holds no module permission list.
 - `panels.py` — optional: declares what this module attaches to a **company** (title +
   data provider) so the company detail view can compose it. This is the modular hub.
 - `mcp.py` — optional: the MCP tools/resources this module contributes (e.g.
@@ -118,8 +120,12 @@ An **API module** is a package under `apps/api/app/modules/<name>/` exposing:
   `CustomizableMixin` (adds a `custom` JSONB column and registers the `entity_type` with the
   custom-fields core — see §13).
 - `migrations/` — Alembic revisions owned by the module.
-- registers itself into the **module registry** (name, router, models, panels, mcp tools,
-  cron jobs, i18n namespace).
+- registers itself into the **module registry** (name, router, models, panels, permissions,
+  mcp tools, cron jobs, i18n namespace).
+- **authorization is deny-by-default** (§15): every route declares a permission with
+  `require_permission(...)`, or an explicit `no_permission_required("reason")`. A route that
+  declares neither is a build break — `tests/test_rbac_deny_by_default.py` calls every
+  `/api/v1` operation as a member holding nothing and demands a `403`.
 - **cross-module reactions** go through the tiny in-process event bus
   (`app/core/events.py`), never via imports of another module's internals: the owning
   module's service `emit`s (today only `company.created` / `company.status_changed`) and
@@ -183,7 +189,9 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
 - Migrations: one per change, named `<module>_<verb>_<noun>`.
 - Commits: small, scoped, conventional (`feat(time): add weekly timesheet grid`).
 - **Definition of done** for a feature: migration written, endpoints + tenant scoping,
-  web UI, `nl.json` + `en.json` keys, test for tenant isolation, docs/OpenAPI updated.
+  **every route declaring a permission** (§15) and its `PermissionSpec`s on the module
+  descriptor with `en`+`nl` labels, web UI, `nl.json` + `en.json` keys, test for tenant
+  isolation, docs/OpenAPI updated.
 
 ## 10. Phased plan (build gates)
 
@@ -304,3 +312,48 @@ apply as everywhere.
 - **Ties to calendar & reporting:** an in-app team leave calendar; approved leave syncs to
   Google Calendar (P3); feeds capacity / availability / utilization reporting.
 - **Phase:** P2.
+
+## 15. Roles & permissions (RBAC)
+
+Authorization is **tenant-defined roles carrying explicitly granted permissions** (issue #19).
+It is a **core, cross-cutting capability**, like custom fields (§13) — not per-module code.
+
+- **Tables:** `roles(org_id, key, name_i18n, description_i18n, is_system, position)`,
+  `role_permissions(org_id, role_id, permission)`, `membership_roles(org_id, membership_id,
+  role_id)`. All org-scoped and RLS-forced. A membership may hold several roles; its effective
+  permissions are the **union**. Plus an org-scoped `role_audit_log`.
+- **RLS ≠ RBAC.** RLS enforces *tenant isolation* (Golden Rule 1); permissions enforce
+  *capability within* a tenant, in the app layer. Never express a permission in an RLS policy.
+- **Registry, not free text.** Each module declares its `PermissionSpec`s on its
+  `ModuleDescriptor`; core declares core's in `app/core/permissions/catalog.py`. Naming is
+  `<module>.<resource>.<action>`. `role_permissions` only ever stores a catalog key.
+- **Scopes.** A spec may carry `scopes=("own", "any")` where the distinction is real. A scoped
+  permission is **only ever stored suffixed** (`time.entry.write:own`), so a check with no scope
+  means *"holds this at some scope"* and `:any` satisfies `:own`. A naive `key in granted` would
+  403 every member on every scoped endpoint. `own` means *the row is theirs* — for a task, the
+  **assignee**.
+- **Two layers.** The **route declares** the base key (`require_permission("time.entry.read")`),
+  which is what makes deny-by-default enumerable; the **service refines** with `:own` / `:any`
+  where the rule depends on the row. Neither alone is enough — a decorator cannot see the row,
+  and a service check cannot be enumerated.
+- **404 vs 403.** Where an endpoint must not reveal that another user's row exists, load with a
+  scope-aware fetch that raises 404 (`_owned_or_404`). A generic `require_for(key, owner_id)`
+  raising 403 leaks existence on every get/update/delete-by-id.
+- **Resolved once per request** in `require_context`, on the same statement as the membership
+  lookup, and cached on `RequestContext` (`ctx.can` / `ctx.require`). No Redis cache — see
+  `docs/PERFORMANCE.md`.
+- **Deny-by-default.** An `/api/v1` route with neither `require_permission(...)` nor an explicit
+  `no_permission_required("reason")` is a build break. Two tests enforce it: an introspection
+  lint and a behavioural sweep that calls every operation as a member holding nothing.
+- **System roles.** `owner` / `admin` / `member` / `client` are seeded per org. `owner` holds
+  exactly `["*"]`, immutable and undeletable — that is what keeps a mistake made anywhere else
+  fixable. The other three are undeletable and key-immutable but freely permission-editable and
+  duplicable. `admin` holds an explicit full list, never a wildcard, so a tenant can restrict it.
+- **Never lock the tenant out.** Every mutation that could remove the last membership holding
+  `*` or `settings.roles.manage` is applied, flushed, re-counted, and rolled back with
+  `409 errors.last_role_manager`.
+- **The frontend guard is UX, not security.** `can()` in the web mirrors the API's
+  `PermissionSet.has` exactly and decides what to *render*. The API is the boundary.
+- **A module that ships later** brings its own permissions; a startup reconciler grants them to
+  each org's system roles exactly once, tracked in `org_settings.applied_permission_defaults`.
+  A migration must never import the catalog (`docs/WORKFLOW.md`).
