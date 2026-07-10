@@ -15,7 +15,7 @@ from fastapi_users import BaseUserManager, UUIDIDMixin
 from app.config import settings
 from app.core.auth.models import User
 
-logger = logging.getLogger("vlotr.auth")
+logger = logging.getLogger("schakl.auth")
 
 
 class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):

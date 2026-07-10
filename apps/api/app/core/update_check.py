@@ -5,7 +5,7 @@ to tell them a release exists. Design constraints:
 
 * **Instance-level, not tenant-level.** One box makes one outbound call and the answer (a
   version number) is the same for every org on it. So the opt-out is the operator's env var
-  ``VLOTR_UPDATE_CHECK_ENABLED``, not a row in ``org_settings``.
+  ``SCHAKL_UPDATE_CHECK_ENABLED``, not a row in ``org_settings``.
 * **No telemetry.** An unauthenticated ``GET`` to the public GitHub Releases API. Nothing
   about this instance is transmitted — not the version, not the org, not a ping.
 * **Never auto-updates.** The result is cached and displayed; acting on it is a human's job.
@@ -26,7 +26,7 @@ import httpx
 from app.config import settings
 from app.core.cache import UPDATE_CHECK_KEY, get_redis
 
-logger = logging.getLogger("vlotr.update_check")
+logger = logging.getLogger("schakl.update_check")
 
 #: Keep the last answer well past a day so a few failed checks don't blank the UI.
 _CACHE_TTL = 60 * 60 * 24 * 7
@@ -91,7 +91,7 @@ async def _fetch_latest_release() -> dict[str, str] | None:
     url = f"https://api.github.com/repos/{settings.update_check_repo}/releases/latest"
     headers = {
         "Accept": "application/vnd.github+json",
-        "User-Agent": "vlotr-update-check",
+        "User-Agent": "schakl-update-check",
         "X-GitHub-Api-Version": "2022-11-28",
     }
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
@@ -116,7 +116,7 @@ async def check_for_update(_ctx: dict | None = None) -> str:
     logged and swallowed — a self-hosted box with no egress must not accumulate crashed jobs.
     """
     if not settings.update_check_enabled:
-        logger.debug("update check disabled by VLOTR_UPDATE_CHECK_ENABLED")
+        logger.debug("update check disabled by SCHAKL_UPDATE_CHECK_ENABLED")
         return "disabled"
     try:
         release = await _fetch_latest_release()

@@ -1,4 +1,4 @@
-# vlotr
+# schakl.
 
 A **multi-tenant, modular, white-label agency operations platform**. One codebase runs many
 agencies (tenants); each tenant manages **companies** (their clients) and attaches people,
@@ -6,7 +6,9 @@ websites, hosting, projects, retainers, deals and time to them. SSR web app, ins
 PWA. Primary language **Dutch** (`nl`, default UI), fully internationalized (`en` = source).
 
 > `CLAUDE.md` is the project constitution and source of truth. Read it before contributing.
-> Internal codename: **vlotr**. The brand shown to users is **per-tenant** and never hardcoded.
+> Internal codename: **schakl.** (written `schakl` in code, urls and identifiers — the dot is
+> only for the product name shown to people). The brand shown to users is **per-tenant** and
+> never hardcoded.
 
 ## Stack
 
@@ -18,7 +20,7 @@ PWA. Primary language **Dutch** (`nl`, default UI), fully internationalized (`en
 | Database     | PostgreSQL (Row-Level Security) |
 | Jobs & cache | Redis + ARQ |
 | Auth         | FastAPI Users (local) + Authlib (optional OIDC) |
-| Infra        | Compose · Traefik · images on **GHCR** (`ghcr.io/vlotr-crm/vlotr-*`) |
+| Infra        | Compose · Traefik · images on **GHCR** (`ghcr.io/schakl-app/schakl-*`) |
 
 ## Layout
 

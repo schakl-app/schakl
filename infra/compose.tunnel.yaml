@@ -1,4 +1,4 @@
-# vlotr — PRODUCTION stack for Portainer, behind YOUR existing Cloudflare Tunnel.
+# schakl — PRODUCTION stack for Portainer, behind YOUR existing Cloudflare Tunnel.
 #
 # Self-contained (no overlays). Differences vs infra/compose.yaml:
 #   • no Traefik, no published ports — your host cloudflared is the only ingress
@@ -7,49 +7,49 @@
 #
 # Portainer: create a Stack from this file. Set CF_TUNNEL_NETWORK (+ the secrets below) in the
 # stack's Environment variables. The external network must already exist (docker network ls).
-name: vlotr
+name: schakl
 
 x-api-env: &api-env
-  VLOTR_DATABASE_URL: postgresql+asyncpg://${APP_DB_USER:-vlotr_app}:${APP_DB_PASSWORD}@db:5432/${POSTGRES_DB:-vlotr}
-  VLOTR_REDIS_URL: redis://redis:6379/0
-  VLOTR_SECRET_KEY: ${VLOTR_SECRET_KEY}
-  VLOTR_BASE_DOMAIN: ${VLOTR_BASE_DOMAIN}
-  VLOTR_ENVIRONMENT: ${VLOTR_ENVIRONMENT:-production}
+  SCHAKL_DATABASE_URL: postgresql+asyncpg://${APP_DB_USER:-schakl_app}:${APP_DB_PASSWORD}@db:5432/${POSTGRES_DB:-schakl}
+  SCHAKL_REDIS_URL: redis://redis:6379/0
+  SCHAKL_SECRET_KEY: ${SCHAKL_SECRET_KEY}
+  SCHAKL_BASE_DOMAIN: ${SCHAKL_BASE_DOMAIN}
+  SCHAKL_ENVIRONMENT: ${SCHAKL_ENVIRONMENT:-production}
   # Cross-tenant admin surface (issue #26): off by default; instance owners only.
-  VLOTR_INSTANCE_ADMIN_ENABLED: ${VLOTR_INSTANCE_ADMIN_ENABLED:-false}
+  SCHAKL_INSTANCE_ADMIN_ENABLED: ${SCHAKL_INSTANCE_ADMIN_ENABLED:-false}
   # Daily, unauthenticated GET to the GitHub Releases API; sends nothing about this instance.
   # Set false to disable all outbound update traffic (docs/DEPLOY.md).
-  VLOTR_UPDATE_CHECK_ENABLED: ${VLOTR_UPDATE_CHECK_ENABLED:-true}
+  SCHAKL_UPDATE_CHECK_ENABLED: ${SCHAKL_UPDATE_CHECK_ENABLED:-true}
   # --- OIDC single sign-on (optional; CLAUDE.md §3) ---
-  VLOTR_OIDC_ENABLED: ${VLOTR_OIDC_ENABLED:-false}
-  VLOTR_OIDC_ENFORCED: ${VLOTR_OIDC_ENFORCED:-false}
-  VLOTR_OIDC_NAME: ${VLOTR_OIDC_NAME:-sso}
-  VLOTR_OIDC_DISCOVERY_URL: ${VLOTR_OIDC_DISCOVERY_URL:-}
-  VLOTR_OIDC_CLIENT_ID: ${VLOTR_OIDC_CLIENT_ID:-}
-  VLOTR_OIDC_CLIENT_SECRET: ${VLOTR_OIDC_CLIENT_SECRET:-}
-  VLOTR_OIDC_AUTO_PROVISION_MEMBERSHIP: ${VLOTR_OIDC_AUTO_PROVISION_MEMBERSHIP:-true}
-  VLOTR_OIDC_DEFAULT_ROLE: ${VLOTR_OIDC_DEFAULT_ROLE:-member}
+  SCHAKL_OIDC_ENABLED: ${SCHAKL_OIDC_ENABLED:-false}
+  SCHAKL_OIDC_ENFORCED: ${SCHAKL_OIDC_ENFORCED:-false}
+  SCHAKL_OIDC_NAME: ${SCHAKL_OIDC_NAME:-sso}
+  SCHAKL_OIDC_DISCOVERY_URL: ${SCHAKL_OIDC_DISCOVERY_URL:-}
+  SCHAKL_OIDC_CLIENT_ID: ${SCHAKL_OIDC_CLIENT_ID:-}
+  SCHAKL_OIDC_CLIENT_SECRET: ${SCHAKL_OIDC_CLIENT_SECRET:-}
+  SCHAKL_OIDC_AUTO_PROVISION_MEMBERSHIP: ${SCHAKL_OIDC_AUTO_PROVISION_MEMBERSHIP:-true}
+  SCHAKL_OIDC_DEFAULT_ROLE: ${SCHAKL_OIDC_DEFAULT_ROLE:-member}
 
 services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: ${POSTGRES_ADMIN_USER:-vlotr}
+      POSTGRES_USER: ${POSTGRES_ADMIN_USER:-schakl}
       POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB:-vlotr}
-      APP_DB_USER: ${APP_DB_USER:-vlotr_app}
+      POSTGRES_DB: ${POSTGRES_DB:-schakl}
+      APP_DB_USER: ${APP_DB_USER:-schakl_app}
       APP_DB_PASSWORD: ${APP_DB_PASSWORD}
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_ADMIN_USER:-vlotr} -d ${POSTGRES_DB:-vlotr}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_ADMIN_USER:-schakl} -d ${POSTGRES_DB:-schakl}"]
       interval: 5s
       timeout: 3s
       retries: 20
     restart: unless-stopped
     # Declaring `networks:` on ANY service means services that omit it land on `default`
-    # instead — a separate network from `vlotr`, so `db` would not resolve from `api`.
-    networks: [vlotr]
+    # instead — a separate network from `schakl`, so `db` would not resolve from `api`.
+    networks: [schakl]
 
   # Creates the NON-superuser application role the API/worker connect as, so Postgres RLS is
   # enforced (superusers bypass it). It owns the public schema so alembic can create tables
@@ -65,10 +65,10 @@ services:
         condition: service_healthy
     environment:
       PGHOST: db
-      PGUSER: ${POSTGRES_ADMIN_USER:-vlotr}
+      PGUSER: ${POSTGRES_ADMIN_USER:-schakl}
       PGPASSWORD: ${POSTGRES_ADMIN_PASSWORD}
-      PGDATABASE: ${POSTGRES_DB:-vlotr}
-      APP_DB_USER: ${APP_DB_USER:-vlotr_app}
+      PGDATABASE: ${POSTGRES_DB:-schakl}
+      APP_DB_USER: ${APP_DB_USER:-schakl_app}
       APP_DB_PASSWORD: ${APP_DB_PASSWORD}
     # `$$` escapes Compose interpolation so the shell expands these, not Compose.
     entrypoint:
@@ -87,7 +87,7 @@ services:
         SQL
         echo "→ app role '$$APP_DB_USER' present and in sync"
     restart: "no"
-    networks: [vlotr]
+    networks: [schakl]
 
   redis:
     image: redis:7-alpine
@@ -97,10 +97,10 @@ services:
       timeout: 3s
       retries: 20
     restart: unless-stopped
-    networks: [vlotr]
+    networks: [schakl]
 
   api:
-    image: ghcr.io/vlotr-crm/vlotr-api:${VLOTR_TAG:-latest}
+    image: ghcr.io/schakl-app/schakl-api:${SCHAKL_TAG:-latest}
     environment: *api-env
     depends_on:
       # Not `db: service_healthy` — the app role must exist before `alembic upgrade head`
@@ -118,10 +118,10 @@ services:
     # Joins the tunnel network ONLY so cloudflared can route /api/* + /mcp/* to it.
     # Publishes no host ports. Remove from `tunnel` (and drop the /api rule in cloudflared)
     # if you don't expose the API on the tunnel.
-    networks: [vlotr, tunnel]
+    networks: [schakl, tunnel]
 
   worker:
-    image: ghcr.io/vlotr-crm/vlotr-api:${VLOTR_TAG:-latest}
+    image: ghcr.io/schakl-app/schakl-api:${SCHAKL_TAG:-latest}
     command: ["worker"]
     environment: *api-env
     depends_on:
@@ -131,24 +131,24 @@ services:
         condition: service_healthy
     restart: unless-stopped
     # Reaches db + redis only; never addressed by cloudflared, so not on `tunnel`.
-    networks: [vlotr]
+    networks: [schakl]
 
   web:
-    image: ghcr.io/vlotr-crm/vlotr-web:${VLOTR_TAG:-latest}
+    image: ghcr.io/schakl-app/schakl-web:${SCHAKL_TAG:-latest}
     environment:
-      VLOTR_API_URL: http://api:8000
+      SCHAKL_API_URL: http://api:8000
     depends_on:
       api:
         condition: service_healthy
     restart: unless-stopped
     # Internal network (to reach the API) + the tunnel network (cloudflared → http://web:3000).
-    networks: [vlotr, tunnel]
+    networks: [schakl, tunnel]
 
 volumes:
   db-data:
 
 networks:
-  vlotr:
+  schakl:
   # The network your cloudflared stack already created. Set CF_TUNNEL_NETWORK to its real
   # name (docker network ls — usually "<cloudflared-project>_default").
   tunnel:

@@ -46,7 +46,7 @@ export function localeLabel(locale: string): string {
  * Read a valid locale out of a raw `Cookie:` header (server) or `document.cookie` (client).
  * Returns `null` when the cookie is absent or holds an unsupported locale — the caller then
  * falls back to the org default. This is the single source of truth for the explicit choice,
- * used by the Paraglide `custom-vlotrDefault` strategy so switching actually sticks.
+ * used by the Paraglide `custom-schaklDefault` strategy so switching actually sticks.
  */
 export function parseLocaleCookie(cookieHeader: string | null | undefined): string | null {
   if (!cookieHeader) return null;

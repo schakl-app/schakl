@@ -1,7 +1,7 @@
 /**
- * Server half of the `custom-vlotrDefault` Paraglide strategy (CLAUDE.md §8).
+ * Server half of the `custom-schaklDefault` Paraglide strategy (CLAUDE.md §8).
  *
- * The compiled strategy order is `cookie → custom-vlotrDefault → baseLocale`. The intent:
+ * The compiled strategy order is `cookie → custom-schaklDefault → baseLocale`. The intent:
  *   1. the user's saved preference (`users.locale`) wins — it follows them across devices;
  *   2. otherwise this browser's `PARAGLIDE_LOCALE` cookie (e.g. a signed-out visitor's choice);
  *   3. otherwise the **tenant's** default locale (`org_settings.default_locale`) — the app
@@ -24,7 +24,7 @@ import { parseLocaleCookie } from "./i18n";
 import { getRequestLocale } from "./locale-context.server";
 import { defineCustomServerStrategy } from "$lib/paraglide/runtime";
 
-defineCustomServerStrategy("custom-vlotrDefault", {
+defineCustomServerStrategy("custom-schaklDefault", {
   getLocale: async (request?: Request): Promise<string | undefined> => {
     const resolved = getRequestLocale();
     if (resolved) return resolved;

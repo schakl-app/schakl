@@ -1,45 +1,45 @@
-# vlotr — full stack (CLAUDE.md §3). Runs with Docker Compose or `podman compose`.
+# schakl — full stack (CLAUDE.md §3). Runs with Docker Compose or `podman compose`.
 #   web · api · worker · db · redis · traefik
 #
 #   cp infra/.env.example infra/.env   # then edit secrets
 #   docker compose -f infra/compose.yaml up --build
 #
 # Web:  http://app.localhost   ·   API/docs: http://api.localhost/docs   ·   Traefik: :8080
-name: vlotr
+name: schakl
 
 # Shared API/worker environment (DRY via YAML anchor).
 x-api-env: &api-env
-  VLOTR_DATABASE_URL: postgresql+asyncpg://${APP_DB_USER:-vlotr_app}:${APP_DB_PASSWORD:-vlotr_app}@db:5432/${POSTGRES_DB:-vlotr}
-  VLOTR_REDIS_URL: redis://redis:6379/0
-  VLOTR_SECRET_KEY: ${VLOTR_SECRET_KEY:-dev-secret-change-me-in-production}
-  VLOTR_BASE_DOMAIN: ${VLOTR_BASE_DOMAIN:-localhost}
-  VLOTR_ENVIRONMENT: ${VLOTR_ENVIRONMENT:-development}
+  SCHAKL_DATABASE_URL: postgresql+asyncpg://${APP_DB_USER:-schakl_app}:${APP_DB_PASSWORD:-schakl_app}@db:5432/${POSTGRES_DB:-schakl}
+  SCHAKL_REDIS_URL: redis://redis:6379/0
+  SCHAKL_SECRET_KEY: ${SCHAKL_SECRET_KEY:-dev-secret-change-me-in-production}
+  SCHAKL_BASE_DOMAIN: ${SCHAKL_BASE_DOMAIN:-localhost}
+  SCHAKL_ENVIRONMENT: ${SCHAKL_ENVIRONMENT:-development}
   # Cross-tenant admin surface (issue #26): off by default; instance owners only.
-  VLOTR_INSTANCE_ADMIN_ENABLED: ${VLOTR_INSTANCE_ADMIN_ENABLED:-false}
+  SCHAKL_INSTANCE_ADMIN_ENABLED: ${SCHAKL_INSTANCE_ADMIN_ENABLED:-false}
   # --- OIDC single sign-on (optional; CLAUDE.md §3). Set _ENABLED to turn the button on;
   # set _ENFORCED to true to disable local password login entirely. ---
-  VLOTR_OIDC_ENABLED: ${VLOTR_OIDC_ENABLED:-false}
-  VLOTR_OIDC_ENFORCED: ${VLOTR_OIDC_ENFORCED:-false}
-  VLOTR_OIDC_NAME: ${VLOTR_OIDC_NAME:-sso}
-  VLOTR_OIDC_DISCOVERY_URL: ${VLOTR_OIDC_DISCOVERY_URL:-}
-  VLOTR_OIDC_CLIENT_ID: ${VLOTR_OIDC_CLIENT_ID:-}
-  VLOTR_OIDC_CLIENT_SECRET: ${VLOTR_OIDC_CLIENT_SECRET:-}
-  VLOTR_OIDC_AUTO_PROVISION_MEMBERSHIP: ${VLOTR_OIDC_AUTO_PROVISION_MEMBERSHIP:-true}
-  VLOTR_OIDC_DEFAULT_ROLE: ${VLOTR_OIDC_DEFAULT_ROLE:-member}
+  SCHAKL_OIDC_ENABLED: ${SCHAKL_OIDC_ENABLED:-false}
+  SCHAKL_OIDC_ENFORCED: ${SCHAKL_OIDC_ENFORCED:-false}
+  SCHAKL_OIDC_NAME: ${SCHAKL_OIDC_NAME:-sso}
+  SCHAKL_OIDC_DISCOVERY_URL: ${SCHAKL_OIDC_DISCOVERY_URL:-}
+  SCHAKL_OIDC_CLIENT_ID: ${SCHAKL_OIDC_CLIENT_ID:-}
+  SCHAKL_OIDC_CLIENT_SECRET: ${SCHAKL_OIDC_CLIENT_SECRET:-}
+  SCHAKL_OIDC_AUTO_PROVISION_MEMBERSHIP: ${SCHAKL_OIDC_AUTO_PROVISION_MEMBERSHIP:-true}
+  SCHAKL_OIDC_DEFAULT_ROLE: ${SCHAKL_OIDC_DEFAULT_ROLE:-member}
 
 services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: ${POSTGRES_ADMIN_USER:-vlotr}
-      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:-vlotr}
-      POSTGRES_DB: ${POSTGRES_DB:-vlotr}
-      APP_DB_USER: ${APP_DB_USER:-vlotr_app}
-      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-vlotr_app}
+      POSTGRES_USER: ${POSTGRES_ADMIN_USER:-schakl}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:-schakl}
+      POSTGRES_DB: ${POSTGRES_DB:-schakl}
+      APP_DB_USER: ${APP_DB_USER:-schakl_app}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-schakl_app}
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_ADMIN_USER:-vlotr} -d ${POSTGRES_DB:-vlotr}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_ADMIN_USER:-schakl} -d ${POSTGRES_DB:-schakl}"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -59,11 +59,11 @@ services:
         condition: service_healthy
     environment:
       PGHOST: db
-      PGUSER: ${POSTGRES_ADMIN_USER:-vlotr}
-      PGPASSWORD: ${POSTGRES_ADMIN_PASSWORD:-vlotr}
-      PGDATABASE: ${POSTGRES_DB:-vlotr}
-      APP_DB_USER: ${APP_DB_USER:-vlotr_app}
-      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-vlotr_app}
+      PGUSER: ${POSTGRES_ADMIN_USER:-schakl}
+      PGPASSWORD: ${POSTGRES_ADMIN_PASSWORD:-schakl}
+      PGDATABASE: ${POSTGRES_DB:-schakl}
+      APP_DB_USER: ${APP_DB_USER:-schakl_app}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-schakl_app}
     # `$$` escapes Compose interpolation so the shell expands these, not Compose.
     entrypoint:
       - sh
@@ -92,7 +92,7 @@ services:
     restart: unless-stopped
 
   api:
-    image: ghcr.io/vlotr-crm/vlotr-api:${VLOTR_TAG:-latest}
+    image: ghcr.io/schakl-app/schakl-api:${SCHAKL_TAG:-latest}
     build:
       context: ..
       dockerfile: apps/api/Dockerfile
@@ -112,7 +112,7 @@ services:
     restart: unless-stopped
 
   worker:
-    image: ghcr.io/vlotr-crm/vlotr-api:${VLOTR_TAG:-latest}
+    image: ghcr.io/schakl-app/schakl-api:${SCHAKL_TAG:-latest}
     build:
       context: ..
       dockerfile: apps/api/Dockerfile
@@ -126,12 +126,12 @@ services:
     restart: unless-stopped
 
   web:
-    image: ghcr.io/vlotr-crm/vlotr-web:${VLOTR_TAG:-latest}
+    image: ghcr.io/schakl-app/schakl-web:${SCHAKL_TAG:-latest}
     build:
       context: ..
       dockerfile: apps/web/Dockerfile
     environment:
-      VLOTR_API_URL: http://api:8000
+      SCHAKL_API_URL: http://api:8000
     depends_on:
       api:
         condition: service_healthy

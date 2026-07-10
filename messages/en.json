@@ -746,7 +746,7 @@
   "settings.system.up_to_date": "You are running the latest release.",
   "settings.system.update_unknown": "No update information yet.",
   "settings.system.update_disabled": "The update check is switched off.",
-  "settings.system.update_disabled_help": "Set VLOTR_UPDATE_CHECK_ENABLED=true to switch it back on.",
+  "settings.system.update_disabled_help": "Set SCHAKL_UPDATE_CHECK_ENABLED=true to switch it back on.",
   "settings.system.update_dev_build": "Update checks are skipped on a development build.",
   "settings.system.checked_at": "Last checked {time}",
   "settings.system.diagnostics": "Diagnostics",

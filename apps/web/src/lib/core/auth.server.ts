@@ -8,7 +8,7 @@
 import type { ApiEvent } from "./session";
 import { apiBaseUrl } from "./api/client";
 
-export const AUTH_COOKIE_NAME = "vlotr_auth";
+export const AUTH_COOKIE_NAME = "schakl_auth";
 
 export async function apiLogin(
   event: ApiEvent,

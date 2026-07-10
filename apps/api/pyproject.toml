@@ -1,7 +1,7 @@
 [project]
-name = "vlotr-api"
+name = "schakl-api"
 version = "0.0.0"
-description = "vlotr API — multi-tenant, modular agency operations platform"
+description = "schakl API — multi-tenant, modular agency operations platform"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [

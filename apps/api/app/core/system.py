@@ -43,7 +43,7 @@ from app.core.update_check import cached_update_status
 from app.db import async_session_maker
 from app.registry import registry
 
-logger = logging.getLogger("vlotr.system")
+logger = logging.getLogger("schakl.system")
 
 router = APIRouter(prefix="/system", tags=["system"])
 

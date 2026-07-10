@@ -13,7 +13,7 @@ import { defineConfig, devices } from "@playwright/test";
  * The default target matches the README's `http://app.localhost`. If you set
  * `TRAEFIK_HTTP_PORT` (rootless podman can't bind :80), pass the port through:
  *
- *   PLAYWRIGHT_BASE_URL=http://app.localhost:8080 pnpm --filter @vlotr/web test:e2e
+ *   PLAYWRIGHT_BASE_URL=http://app.localhost:8080 pnpm --filter @schakl/web test:e2e
  */
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://app.localhost";
 

@@ -1,6 +1,6 @@
-# vlotr web (SvelteKit SSR via adapter-node). Build context is the REPO ROOT
+# schakl web (SvelteKit SSR via adapter-node). Build context is the REPO ROOT
 # (needs project.inlang + shared messages/ for the Paraglide compile).
-# Published to ghcr.io/vlotr-crm/vlotr-web.
+# Published to ghcr.io/schakl-app/schakl-web.
 FROM node:22-slim AS builder
 
 RUN corepack enable
@@ -15,7 +15,7 @@ RUN pnpm install --frozen-lockfile
 COPY project.inlang/ ./project.inlang/
 COPY messages/ ./messages/
 COPY apps/web/ ./apps/web/
-RUN pnpm --filter @vlotr/web build
+RUN pnpm --filter @schakl/web build
 
 FROM node:22-slim AS runtime
 WORKDIR /app
@@ -37,12 +37,12 @@ CMD ["node", "build"]
 # Last, so changing it never invalidates the layers above. The web app displays the *API's*
 # version (one source of truth, and the two images are always released together), so these
 # exist for `docker inspect` parity rather than to be read at runtime.
-ARG VLOTR_VERSION=0.0.0+dev
-ARG VLOTR_GIT_SHA=unknown
-ARG VLOTR_BUILT_AT=""
+ARG SCHAKL_VERSION=0.0.0+dev
+ARG SCHAKL_GIT_SHA=unknown
+ARG SCHAKL_BUILT_AT=""
 
-LABEL org.opencontainers.image.title="vlotr-web" \
-      org.opencontainers.image.source="https://github.com/vlotr-crm/vlotr" \
-      org.opencontainers.image.version="${VLOTR_VERSION}" \
-      org.opencontainers.image.revision="${VLOTR_GIT_SHA}" \
-      org.opencontainers.image.created="${VLOTR_BUILT_AT}"
+LABEL org.opencontainers.image.title="schakl-web" \
+      org.opencontainers.image.source="https://github.com/schakl-app/schakl" \
+      org.opencontainers.image.version="${SCHAKL_VERSION}" \
+      org.opencontainers.image.revision="${SCHAKL_GIT_SHA}" \
+      org.opencontainers.image.created="${SCHAKL_BUILT_AT}"

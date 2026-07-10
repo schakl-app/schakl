@@ -27,7 +27,7 @@ from app.core.permissions.catalog import ROLE_OWNER, all_permissions
 from app.core.permissions.models import Role
 from app.core.permissions.service import grant, mark_defaults_applied
 
-logger = logging.getLogger("vlotr.permissions")
+logger = logging.getLogger("schakl.permissions")
 
 
 async def reconcile_org(org: Org, session: AsyncSession) -> int:

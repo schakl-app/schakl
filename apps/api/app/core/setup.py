@@ -91,7 +91,7 @@ async def run_setup(payload: SetupRequest, request: Request) -> SetupResult:
 
     async with async_session_maker() as session:
         # Two racing first requests must not both pass the zero-orgs check.
-        await session.execute(text("SELECT pg_advisory_xact_lock(hashtext('vlotr_setup'))"))
+        await session.execute(text("SELECT pg_advisory_xact_lock(hashtext('schakl_setup'))"))
         if await repo.org_count(session) > 0:
             raise AppError("setup_already_done", "errors.setup_already_done", status_code=409)
 

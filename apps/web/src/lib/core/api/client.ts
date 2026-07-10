@@ -13,7 +13,7 @@ import type { paths } from "./schema";
 export type ApiClient = Client<paths>;
 
 export function apiBaseUrl(): string {
-  return env.VLOTR_API_URL ?? "http://localhost:8000";
+  return env.SCHAKL_API_URL ?? "http://localhost:8000";
 }
 
 export interface ApiClientOptions {

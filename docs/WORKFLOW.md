@@ -119,12 +119,12 @@ silently changes nothing — the field stays empty and you will believe you set 
 ids up once:
 
 ```bash
-gh api /orgs/vlotr-crm/issue-fields -q '.[] | "\(.id)\t\(.name)"'   # 43901503 = Priority
-gh api /orgs/vlotr-crm/issue-fields \
+gh api /orgs/schakl-app/issue-fields -q '.[] | "\(.id)\t\(.name)"'   # 43901503 = Priority
+gh api /orgs/schakl-app/issue-fields \
   | jq -r '.[] | select(.name=="Priority") | .options[] | "\(.id)\t\(.name)"'
 # 76831411 Urgent · 76831412 High · 76831413 Medium · 76831414 Low
 
-gh api -X PATCH /repos/vlotr-crm/vlotr/issues/<N> \
+gh api -X PATCH /repos/schakl-app/schakl/issues/<N> \
   -f 'type=Bug' \
   -F 'issue_field_values[][field_id]=43901503' \
   -F 'issue_field_values[][value]=76831412'
@@ -153,8 +153,8 @@ hoping. An epic's children are **sub-issues**; work that cannot start until anot
 ```bash
 gh issue edit 21 --parent 22                    # sub-issue of the google epic
 
-id=$(gh api /repos/vlotr-crm/vlotr/issues/19 -q .id)          # note: .id, not the number
-gh api -X POST /repos/vlotr-crm/vlotr/issues/20/dependencies/blocked_by -F issue_id=$id
+id=$(gh api /repos/schakl-app/schakl/issues/19 -q .id)          # note: .id, not the number
+gh api -X POST /repos/schakl-app/schakl/issues/20/dependencies/blocked_by -F issue_id=$id
 ```
 
 ### Labels
@@ -230,7 +230,7 @@ expand/contract. Splitting or merging a table is expand/contract.
 
 - Backfills must be **idempotent** and must not assume they run once, or on a small table.
 - Data migrations that touch tenant rows are **per-org and `org_id`-scoped** like everything
-  else (Golden Rule 1); RLS is on, and the migration runs as `vlotr_app`, not a superuser.
+  else (Golden Rule 1); RLS is on, and the migration runs as `schakl_app`, not a superuser.
 - One migration per change, named `<module>_<verb>_<noun>` (CLAUDE.md §9).
 - Test the upgrade against a database with rows in it, not an empty one. An empty database
   will happily accept a migration that destroys a populated one.
@@ -249,7 +249,7 @@ SSR resolves the tenant from the hostname (CLAUDE.md §5), so a `vite preview` o
 
 ```bash
 docker compose -f infra/compose.yaml up -d          # the suite needs api + db + traefik
-pnpm --filter @vlotr/web exec playwright install chromium   # once, ~380 MB, not in the repo
+pnpm --filter @schakl/web exec playwright install chromium   # once, ~380 MB, not in the repo
 pnpm web test:e2e                                   # or test:e2e:ui for the runner
 ```
 

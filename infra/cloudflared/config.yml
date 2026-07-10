@@ -3,8 +3,8 @@
 #
 # ── One-time setup (on any machine logged in to your Cloudflare account) ───────────────
 #   cloudflared tunnel login
-#   cloudflared tunnel create vlotr                 # prints a <TUNNEL_ID>, writes <TUNNEL_ID>.json
-#   cloudflared tunnel route dns vlotr app.youragency.nl
+#   cloudflared tunnel create schakl                 # prints a <TUNNEL_ID>, writes <TUNNEL_ID>.json
+#   cloudflared tunnel route dns schakl app.youragency.nl
 #   cp ~/.cloudflared/<TUNNEL_ID>.json infra/cloudflared/
 # Then replace <TUNNEL_ID> and app.youragency.nl below with your real values.
 #

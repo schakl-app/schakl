@@ -1,5 +1,5 @@
 name: Bug report
-description: Something in vlotr doesn't work the way it should
+description: Something in schakl doesn't work the way it should
 title: "bug: "
 # Type is a native org-level field, not a label (docs/WORKFLOW.md). Priority is set at triage.
 type: Bug

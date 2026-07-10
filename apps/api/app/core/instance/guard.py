@@ -1,6 +1,6 @@
 """Gate for the instance-admin surface (issue #26).
 
-Two independent switches: the deployment flag (``VLOTR_INSTANCE_ADMIN_ENABLED``, off by
+Two independent switches: the deployment flag (``SCHAKL_INSTANCE_ADMIN_ENABLED``, off by
 default — a single-tenant box has no business exposing a cross-tenant surface) and the
 **instance owner** principal (``users.is_superuser``), deliberately distinct from an org's
 ``owner`` membership role. Disabled → 404, so the surface doesn't even advertise itself;

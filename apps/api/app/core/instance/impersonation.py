@@ -20,8 +20,8 @@ from fastapi_users.jwt import decode_jwt, generate_jwt
 from app.config import settings
 from app.core.auth.models import User
 
-IMPERSONATION_COOKIE = "vlotr_impersonate"
-_AUDIENCE = "vlotr:impersonate"
+IMPERSONATION_COOKIE = "schakl_impersonate"
+_AUDIENCE = "schakl:impersonate"
 
 
 @dataclass(frozen=True)

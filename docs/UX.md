@@ -1,4 +1,4 @@
-# UX conventions — vlotr
+# UX conventions — schakl
 
 > The design language of this CRM. Read this before building or changing any screen; it
 > encodes decisions the owner has already made (often by correcting earlier versions).

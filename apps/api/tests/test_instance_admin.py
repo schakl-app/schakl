@@ -285,7 +285,7 @@ async def test_impersonation_is_time_boxed_audited_and_visible(
     max_allowed = timedelta(minutes=settings.impersonation_max_minutes + 1)
     assert expires_at <= datetime.now(UTC) + max_allowed
 
-    both_cookies = {"Cookie": f"{admin_headers['Cookie']}; vlotr_impersonate={token}"}
+    both_cookies = {"Cookie": f"{admin_headers['Cookie']}; schakl_impersonate={token}"}
 
     # On the target org's host the admin now *is* the member — visibly.
     async with client_for(target.host) as client:
@@ -304,7 +304,7 @@ async def test_impersonation_is_time_boxed_audited_and_visible(
     # A non-superuser session cannot activate the grant.
     other = await make_tenant("imp-bystander")
     other_cookie = await auth_cookie(other.user)
-    hijack = {"Cookie": f"{other_cookie['Cookie']}; vlotr_impersonate={token}"}
+    hijack = {"Cookie": f"{other_cookie['Cookie']}; schakl_impersonate={token}"}
     async with client_for(target.host) as client:
         assert (await client.get("/api/v1/meta/me", headers=hijack)).status_code == 403
 
@@ -449,7 +449,7 @@ async def test_domain_claim_verify_and_uniqueness(client_for, monkeypatch) -> No
         )
         assert claimed.status_code == 200
         challenge = claimed.json()
-        assert challenge["txt_record_name"] == "_vlotr-challenge.crm.agency.test"
+        assert challenge["txt_record_name"] == "_schakl-challenge.crm.agency.test"
         token = challenge["txt_record_value"]
 
         # Verification fails until the TXT record exists…
@@ -457,7 +457,7 @@ async def test_domain_claim_verify_and_uniqueness(client_for, monkeypatch) -> No
         assert failed.status_code == 400
         assert failed.json()["error"]["message"] == "errors.domain_verification_failed"
 
-        published["_vlotr-challenge.crm.agency.test"] = ["something-else", token]
+        published["_schakl-challenge.crm.agency.test"] = ["something-else", token]
         verified = await client.post("/api/v1/meta/tenant/domain/verify", headers=a_headers)
         assert verified.status_code == 200
         assert verified.json()["custom_domain"] == "crm.agency.test"

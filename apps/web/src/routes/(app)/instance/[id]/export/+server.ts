@@ -20,7 +20,7 @@ export const GET = async (event: RequestEvent) => {
   return new Response(JSON.stringify(data, null, 2), {
     headers: {
       "content-type": "application/json",
-      "content-disposition": `attachment; filename="vlotr-export-${org?.slug ?? event.params.id}.json"`,
+      "content-disposition": `attachment; filename="schakl-export-${org?.slug ?? event.params.id}.json"`,
     },
   });
 };

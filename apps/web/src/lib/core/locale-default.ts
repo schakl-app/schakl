@@ -1,7 +1,7 @@
 /**
  * Server-only: resolve a tenant's **default** display locale (CLAUDE.md §7, §8).
  *
- * Used by the Paraglide `custom-vlotrDefault` server strategy when the visitor has made no
+ * Used by the Paraglide `custom-schaklDefault` server strategy when the visitor has made no
  * explicit choice (no `PARAGLIDE_LOCALE` cookie). It reads `org_settings.default_locale` via
  * the public `/meta/tenant` endpoint, resolving the tenant from the request's forwarded host.
  *
