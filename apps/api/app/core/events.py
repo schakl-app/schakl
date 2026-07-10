@@ -50,11 +50,20 @@ class SystemContext:
     ``run_per_org`` hands a job ``(org, session)`` with the RLS GUC already bound to that org;
     wrapping them here lets a cron ``emit`` through the same bus as a request, with
     ``user=None`` marking the actor as the system (never a person to exclude from fan-out).
+
+    It also exposes ``repo`` so a job can call another module's **read-only** published service
+    the same way a request does. Anything that reads ``ctx.user`` or ``ctx.role`` is a request
+    concern and will rightly fail here: a cron has no one to authorize.
     """
 
     org: Org
     session: AsyncSession
     user: User | None = None
+
+    def repo(self, model: type[Any]) -> Any:
+        from app.core.tenancy import TenantScopedRepository
+
+        return TenantScopedRepository(self.session, self.org.id, model)
 
 
 EventHandler = Callable[["EmitContext", dict[str, Any]], Awaitable[None]]
