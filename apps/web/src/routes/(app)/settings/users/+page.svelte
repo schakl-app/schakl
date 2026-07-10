@@ -3,6 +3,8 @@
 
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
+  import { localeName } from "$lib/core/roles/name";
+  import { effectivePermissions, WILDCARD } from "$lib/core/roles/permissions";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
 
@@ -11,6 +13,15 @@
   let showInvite = $state(false);
   let revokeId = $state("");
   let confirmRevoke = $state(false);
+  let expanded = $state("");
+
+  // The tenant's own roles, fetched once by `settings/+layout.server.ts`. There is no hard-coded
+  // list of four any more: an agency defines its own (issue #19).
+  const roles = $derived(data.roles);
+  const systemRoles = $derived(roles.filter((r) => r.is_system));
+  const locale = $derived(data.locale ?? "nl");
+
+  const effectiveFor = (roleIds: string[]) => effectivePermissions(roles, roleIds);
 
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
@@ -62,8 +73,9 @@
           >{t("settings.users.role")}</label
         >
         <select id="role" name="role" class={inputClass}>
-          {#each data.roles as r (r)}<option value={r} selected={r === "member"}
-              >{t(`roles.${r}`)}</option
+          {#each systemRoles as role (role.id)}<option
+              value={role.key}
+              selected={role.key === "member"}>{localeName(role, locale)}</option
             >{/each}
         </select>
       </div>
@@ -95,6 +107,7 @@
 {:else}
   <ul class="divide-y divide-border rounded-xl border border-border bg-surface-raised">
     {#each data.members as member (member.membership_id)}
+      {@const effective = effectiveFor(member.role_ids)}
       <li class="flex items-center gap-3 px-4 py-3 first:rounded-t-xl last:rounded-b-xl">
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">
@@ -114,18 +127,15 @@
           {#if member.full_name}<p class="truncate text-sm text-text-muted">{member.email}</p>{/if}
         </div>
 
-        <form method="POST" action="?/changeRole" use:enhance>
-          <input type="hidden" name="membership_id" value={member.membership_id} />
-          <select
-            name="role"
-            onchange={(e) => e.currentTarget.form?.requestSubmit()}
-            class="rounded-lg border border-border px-2 py-1.5 text-sm"
-          >
-            {#each data.roles as r (r)}<option value={r} selected={member.role === r}
-                >{t(`roles.${r}`)}</option
-              >{/each}
-          </select>
-        </form>
+        <button
+          type="button"
+          class="shrink-0 rounded-lg border border-border px-2.5 py-1.5 text-xs text-text-muted hover:text-text"
+          onclick={() => (expanded = expanded === member.membership_id ? "" : member.membership_id)}
+        >
+          {effective.includes(WILDCARD)
+            ? t("settings.users.effective_all")
+            : t("settings.users.effective_count", { count: effective.length })}
+        </button>
 
         {#if !member.is_self}
           <ActionsMenu
@@ -143,6 +153,71 @@
           />
         {/if}
       </li>
+
+      {#if expanded === member.membership_id}
+        <li class="bg-surface px-4 py-4">
+          <!-- The whole role set, one save (docs/UX.md). A user may hold several roles; their
+               permissions are the union. -->
+          <form method="POST" action="?/saveRoles" use:enhance class="space-y-3">
+            <input type="hidden" name="membership_id" value={member.membership_id} />
+            <p class="text-xs font-semibold uppercase tracking-wide text-text-muted">
+              {t("settings.users.roles")}
+            </p>
+            <ul class="grid gap-2 sm:grid-cols-2">
+              {#each roles as role (role.id)}
+                <li>
+                  <label
+                    class="flex items-center gap-3 rounded-lg border border-border bg-surface-raised px-3 py-2"
+                  >
+                    <input
+                      type="checkbox"
+                      name="role_ids"
+                      value={role.id}
+                      checked={member.role_ids.includes(role.id)}
+                      class="h-4 w-4 rounded border-border"
+                    />
+                    <span class="flex-1 text-sm text-text">{localeName(role, locale)}</span>
+                    {#if role.is_system}
+                      <span class="rounded-full bg-surface px-2 py-0.5 text-[11px] text-text-muted">
+                        {t("settings.roles.system")}
+                      </span>
+                    {/if}
+                  </label>
+                </li>
+              {/each}
+            </ul>
+            <p class="text-xs text-text-muted">{t("settings.users.system_role_hint")}</p>
+
+            {#if !effective.includes(WILDCARD)}
+              <details class="rounded-lg border border-border bg-surface-raised px-3 py-2">
+                <summary class="cursor-pointer text-xs font-medium text-text-muted">
+                  {t("settings.users.effective")}
+                </summary>
+                <ul class="mt-2 space-y-1">
+                  {#each effective as permission (permission)}
+                    <li class="text-xs text-text-muted">
+                      {t(`permissions.${permission.split(":")[0]}`)}
+                      {#if permission.includes(":")}
+                        <span class="text-text-muted/70"
+                          >({permission.endsWith(":any")
+                            ? t("settings.roles.scope_any")
+                            : t("settings.roles.scope_own")})</span
+                        >
+                      {/if}
+                    </li>
+                  {/each}
+                </ul>
+              </details>
+            {/if}
+
+            <button
+              class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+            >
+              {t("settings.users.save_roles")}
+            </button>
+          </form>
+        </li>
+      {/if}
     {/each}
   </ul>
 {/if}

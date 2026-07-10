@@ -15,6 +15,7 @@ import uuid
 
 from sqlalchemy import text
 
+from app.config import settings
 from app.core.permissions import PermissionSet
 from app.core.permissions.catalog import default_permissions_for, permission_keys
 from app.core.permissions.models import MembershipRole, Role, RolePermission
@@ -62,6 +63,33 @@ def test_collapse_picks_the_highest_privilege_system_role() -> None:
     assert collapse_to_legacy_role(["member", "owner", "client"]) == "owner"
     assert collapse_to_legacy_role(["client", "member"]) == "member"
     assert collapse_to_legacy_role([]) == "client"
+
+
+def test_the_catalog_imports_the_modules_it_needs() -> None:
+    """The catalog must not quietly degrade to core-only.
+
+    ``seed_system_roles`` also runs from the worker, from the first-run wizard and from scripts —
+    places where nothing has imported ``app.modules.*``. A core-only catalog would seed an
+    ``admin`` role that cannot touch a single module, and nothing would say so. Asserted in a
+    fresh interpreter, because this test session has already imported ``app.main``.
+    """
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from app.core.permissions.catalog import permission_keys;"
+            "print(' '.join(permission_keys()))",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    keys = result.stdout.split()
+    for name in settings.enabled_modules:
+        assert any(key.startswith(f"{name}.") for key in keys), f"{name} permissions missing"
 
 
 def test_seeded_defaults_match_the_documented_posture() -> None:

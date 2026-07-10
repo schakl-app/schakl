@@ -6,13 +6,13 @@ import { apiFor } from "$lib/core/session";
 
 import type { Actions, PageServerLoad } from "./$types";
 
-const ROLES = ["owner", "admin", "member", "client"] as const;
-
 export const load: PageServerLoad = async (event) => {
-  // Manager-only screen (the API enforces this too).
   if (!can(event.locals.user, "members.member.read")) throw redirect(303, "/");
+  // The tenant's roles come from `settings/+layout.server.ts` — shared with the Rollen screen and
+  // not refetched on tab navigation (docs/PERFORMANCE.md). `/members` carries each membership's
+  // `role_ids`, so the effective set is derived here rather than requested per member.
   const { data } = await apiFor(event).GET("/api/v1/members");
-  return { members: data ?? [], roles: ROLES };
+  return { members: data ?? [] };
 };
 
 export const actions: Actions = {
@@ -31,17 +31,21 @@ export const actions: Actions = {
     return { invited: true };
   },
 
-  changeRole: async (event) => {
+  /**
+   * The whole role set, in one save. A membership may hold several roles and its permissions are
+   * their union; release *N* additionally requires at least one system role, which the API
+   * enforces and the form's `required` marker mirrors.
+   */
+  saveRoles: async (event) => {
     const form = await event.request.formData();
     const id = String(form.get("membership_id") ?? "");
-    const role = String(form.get("role") ?? "member") as "member";
-    if (id) {
-      const { error } = await apiFor(event).PATCH("/api/v1/members/{membership_id}", {
-        params: { path: { membership_id: id } },
-        body: { role },
-      });
-      if (error) return fail(400, { error: apiErrorKey(error).key });
-    }
+    if (!id) return fail(400, { error: "errors.required" });
+    const roleIds = form.getAll("role_ids").map(String).filter(Boolean);
+    const { error } = await apiFor(event).PUT("/api/v1/members/{membership_id}/roles", {
+      params: { path: { membership_id: id } },
+      body: { role_ids: roleIds },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
     return { changed: true };
   },
 

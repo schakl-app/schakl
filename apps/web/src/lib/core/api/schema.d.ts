@@ -3396,6 +3396,11 @@ export interface components {
             membership_id: string;
             /** Role */
             role: string;
+            /**
+             * Role Ids
+             * @default []
+             */
+            role_ids: string[];
             /** User Id */
             user_id: string;
         };

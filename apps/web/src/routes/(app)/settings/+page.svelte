@@ -43,6 +43,13 @@
       <p class="mt-1 text-sm text-text-muted">{t("settings.users.subtitle")}</p>
     </a>
     <a
+      href="/settings/roles"
+      class="rounded-xl border border-border bg-surface-raised p-5 hover:border-brand"
+    >
+      <h3 class="text-sm font-semibold text-text">{t("settings.roles.title")}</h3>
+      <p class="mt-1 text-sm text-text-muted">{t("settings.roles.subtitle")}</p>
+    </a>
+    <a
       href="/settings/custom-fields"
       class="rounded-xl border border-border bg-surface-raised p-5 hover:border-brand"
     >

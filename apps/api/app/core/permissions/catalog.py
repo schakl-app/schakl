@@ -11,6 +11,7 @@ gets an *explicit* full list rather than a wildcard, so a tenant can still restr
 
 from __future__ import annotations
 
+import importlib
 from dataclasses import dataclass
 
 from app.config import settings
@@ -107,11 +108,26 @@ CORE_PERMISSIONS: tuple[PermissionSpec, ...] = (
 # --------------------------------------------------------------------------- #
 # Aggregation
 # --------------------------------------------------------------------------- #
+def _ensure_modules_registered() -> None:
+    """Import the enabled modules so their permissions are in the registry.
+
+    ``main.py`` already does this for a serving process, but ``seed_system_roles`` also runs from
+    the worker, from the first-run wizard's import path and from scripts. A catalog that silently
+    degraded to core-only would seed an ``admin`` role unable to touch a single module — and
+    nothing would say so. Module import is idempotent (``importlib`` caches).
+    """
+    if all(registry.get(name) is not None for name in settings.enabled_modules):
+        return
+    for name in settings.enabled_modules:
+        importlib.import_module(f"app.modules.{name}")
+
+
 def all_permissions() -> list[PermissionSpec]:
     """Core's catalog plus the catalogs of every module mounted in this deployment.
 
     Ordered by ``(group, position, key)`` — the order the permission matrix renders in.
     """
+    _ensure_modules_registered()
     specs: list[PermissionSpec] = list(CORE_PERMISSIONS)
     for module in registry.enabled(settings.enabled_modules):
         specs.extend(module.permissions)

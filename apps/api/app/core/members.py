@@ -53,7 +53,11 @@ class MemberRead(BaseModel):
     user_id: str
     email: str
     full_name: str | None
+    # DEPRECATED (issue #19): the collapsed legacy role. ``role_ids`` is the real answer.
     role: str
+    #: Every role this membership holds. The Users screen derives the effective permission set
+    #: from these plus ``GET /roles`` — one grouped query here, never one per member.
+    role_ids: list[str] = []
     is_active: bool
     is_self: bool
 
@@ -76,13 +80,19 @@ class MemberRoleUpdate(BaseModel):
     role: Role
 
 
-def _member_read(ctx: RequestContext, membership: Membership, user: User) -> MemberRead:
+def _member_read(
+    ctx: RequestContext,
+    membership: Membership,
+    user: User,
+    role_ids: list[uuid.UUID] | None = None,
+) -> MemberRead:
     return MemberRead(
         membership_id=str(membership.id),
         user_id=str(user.id),
         email=user.email,
         full_name=user.full_name,
         role=membership.role,
+        role_ids=[str(role_id) for role_id in role_ids or []],
         is_active=user.is_active,
         is_self=user.id == ctx.user.id,
     )
@@ -119,7 +129,15 @@ async def list_members(ctx: RequestContext = Depends(require_context)) -> list[M
             .order_by(User.email.asc())
         )
     ).all()
-    return [_member_read(ctx, m, u) for m, u in rows]
+    # One grouped query for the whole team, not one per member (docs/PERFORMANCE.md).
+    held: dict[uuid.UUID, list[uuid.UUID]] = {}
+    for membership_id, role_id in await ctx.session.execute(
+        select(MembershipRole.membership_id, MembershipRole.role_id).where(
+            MembershipRole.org_id == ctx.org.id
+        )
+    ):
+        held.setdefault(membership_id, []).append(role_id)
+    return [_member_read(ctx, m, u, held.get(m.id, [])) for m, u in rows]
 
 
 @router.get(
