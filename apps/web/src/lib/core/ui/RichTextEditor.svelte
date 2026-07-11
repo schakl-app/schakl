@@ -8,9 +8,14 @@
    * Progressive enhancement: with JS off it degrades to exactly the textarea it replaces (the
    * toolbar and preview are inert), and the `name`/`form` attributes still submit the value. So it
    * drops into the existing form-action pages unchanged.
+   *
+   * Mentions (issue #103): the textarea shows `@Name`, never the `@[Name](mention:<uuid>)` marker.
+   * The marker form is what's stored and submitted — via the hidden input (JS on) or the textarea
+   * itself (JS off, which then shows raw source) — and what `onchange` reports.
    */
   import { Bold, Eye, Italic, Link as LinkIcon, Pencil } from "@lucide/svelte";
 
+  import { browser } from "$app/environment";
   import { t } from "$lib/core/i18n";
   import Markdown from "$lib/core/ui/Markdown.svelte";
 
@@ -40,13 +45,54 @@
     onchange?: (value: string) => void;
   } = $props();
 
-  let content = $state(value);
+  // --- mention display ↔ source mapping (issue #103) --------------------------
+  // The textarea shows *display text* where a mention reads `@Name`; the stored/submitted value is
+  // markdown *source* holding `@[Name](mention:<uuid>)`. `known` maps a display name back to its
+  // id — filled from markers in the initial value (so a departed member's mention survives an
+  // edit round-trip) and from picks. A hand-typed `@Name` that exactly matches a known member
+  // serializes into a real mention; two members sharing one display name resolve to one of them —
+  // the price of showing names instead of ids.
+  const UUID_RE = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
+  const known = new Map<string, string>();
+
+  function toDisplay(source: string): string {
+    return source.replace(
+      new RegExp(`@\\[([^\\]]+)\\]\\(mention:(${UUID_RE})\\)`, "g"),
+      (_all, mentionName: string, id: string) => {
+        known.set(mentionName, id);
+        return `@${mentionName}`;
+      },
+    );
+  }
+
+  function toSource(display: string): string {
+    const ids = new Map(mentions.map((m) => [m.name, m.id]));
+    for (const [n, id] of known) ids.set(n, id);
+    if (ids.size === 0) return display;
+    // Longest name first so "Jan van Dam" beats "Jan"; same word-boundary rules as detectMention.
+    const alternation = [...ids.keys()]
+      .sort((a, b) => b.length - a.length)
+      .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join("|");
+    return display.replace(
+      new RegExp(`(^|\\s)@(${alternation})(?!\\w)`, "g"),
+      (_all, pre: string, mentionName: string) =>
+        `${pre}@[${mentionName}](mention:${ids.get(mentionName)})`,
+    );
+  }
+
+  // SSR keeps raw source in the textarea so a JS-less form still submits the markers verbatim;
+  // in the browser the textarea shows display text and a hidden input carries the source.
+  const initialText = (v: string) => (browser ? toDisplay(v) : v);
+  let content = $state(initialText(value));
   let textarea: HTMLTextAreaElement | undefined = $state();
   let preview = $state(false);
 
+  const serialized = $derived(toSource(content));
+
   function change(next: string) {
     content = next;
-    onchange?.(next);
+    onchange?.(toSource(next));
   }
 
   // --- @mention autocomplete (issue #63) -------------------------------------
@@ -96,7 +142,8 @@
     const el = textarea;
     if (!el) return;
     const caret = el.selectionStart;
-    const token = `@[${member.name}](mention:${member.id}) `;
+    known.set(member.name, member.id);
+    const token = `@${member.name} `;
     change(content.slice(0, mentionStart) + token + content.slice(caret));
     mentionOpen = false;
     queueMicrotask(() => {
@@ -211,23 +258,28 @@
   {#if preview}
     <div class="min-h-[4rem] px-3 py-2">
       {#if content.trim()}
-        <Markdown value={content} />
+        <Markdown value={serialized} />
       {:else}
         <p class="text-sm text-text-muted">{t("richtext.preview_empty")}</p>
       {/if}
     </div>
   {/if}
   <!-- The textarea stays mounted (just hidden) in preview so its value is always submitted. -->
+  <!-- With JS the source travels in the hidden input; without, the textarea (holding raw
+       source straight from SSR) keeps its name and submits as before. -->
+  {#if browser && name}
+    <input type="hidden" {name} {form} value={serialized} />
+  {/if}
   <textarea
     bind:this={textarea}
     bind:value={content}
     oninput={(e) => {
-      onchange?.(e.currentTarget.value);
+      onchange?.(toSource(e.currentTarget.value));
       detectMention();
     }}
     onkeydown={onMentionKeydown}
     onblur={() => queueMicrotask(() => (mentionOpen = false))}
-    {name}
+    name={browser ? null : name}
     {id}
     {form}
     {rows}
