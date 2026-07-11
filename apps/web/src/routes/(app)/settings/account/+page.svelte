@@ -119,4 +119,124 @@
       </button>
     </form>
   </section>
+
+  <!-- Personal API keys (#20). Scoped, expiring, capped by what this member holds. -->
+  {#if data.canManageKeys}
+    <section class="rounded-xl border border-border bg-surface-raised p-6">
+      <h2 class="mb-1 text-sm font-semibold text-text">{t("settings.account.api_keys")}</h2>
+      <p class="mb-4 text-sm text-text-muted">{t("settings.account.api_keys_hint")}</p>
+
+      {#if form?.createdSecret}
+        <div
+          class="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950"
+        >
+          <p class="text-xs font-medium text-amber-800 dark:text-amber-200">
+            {t("settings.account.api_key_created", { name: form.createdName ?? "" })}
+          </p>
+          <code
+            class="mt-2 block overflow-x-auto rounded bg-surface px-2 py-1 font-mono text-xs text-text"
+            >{form.createdSecret}</code
+          >
+          <p class="mt-1 text-xs text-amber-700 dark:text-amber-300">
+            {t("settings.account.api_key_once")}
+          </p>
+        </div>
+      {/if}
+
+      {#if data.apiKeys.length > 0}
+        <ul class="mb-4 divide-y divide-border rounded-lg border border-border">
+          {#each data.apiKeys as key (key.id)}
+            <li class="flex items-center gap-3 px-3 py-2 text-sm">
+              <div class="min-w-0 flex-1">
+                <span class="font-medium text-text">{key.name}</span>
+                {#if key.revoked_at}
+                  <span
+                    class="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-[11px] text-red-700 dark:bg-red-950 dark:text-red-300"
+                    >{t("settings.account.api_key_revoked")}</span
+                  >
+                {/if}
+                <span class="block truncate font-mono text-xs text-text-muted">{key.redacted}</span>
+                <span class="block text-xs text-text-muted">
+                  {t("settings.account.api_key_scopes", { count: key.scopes.length })} ·
+                  {t("settings.account.api_key_expires", { date: key.expires_at.slice(0, 10) })}
+                </span>
+              </div>
+              {#if !key.revoked_at}
+                <form method="POST" action="?/revokeKey" use:enhance>
+                  <input type="hidden" name="key_id" value={key.id} />
+                  <button
+                    class="rounded-lg border border-border px-2.5 py-1.5 text-xs text-text-muted hover:text-red-600 dark:hover:text-red-400"
+                  >
+                    {t("settings.account.api_key_revoke")}
+                  </button>
+                </form>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      {/if}
+
+      <form
+        method="POST"
+        action="?/createKey"
+        class="space-y-3"
+        use:enhance={() =>
+          ({ result, update }) => {
+            void update({ reset: result.type === "success" });
+          }}
+      >
+        <div>
+          <label for="key-name" class="mb-1 block text-sm font-medium text-text"
+            >{t("settings.account.api_key_name")}</label
+          >
+          <input
+            id="key-name"
+            name="name"
+            required
+            placeholder={t("settings.account.api_key_name_placeholder")}
+            class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand"
+          />
+        </div>
+        <div>
+          <label for="key-expiry" class="mb-1 block text-sm font-medium text-text"
+            >{t("settings.account.api_key_expiry")}</label
+          >
+          <input
+            id="key-expiry"
+            name="expires_at"
+            type="date"
+            required
+            class="rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand"
+          />
+        </div>
+        <div>
+          <span class="mb-1 block text-sm font-medium text-text"
+            >{t("settings.account.api_key_scopes_label")}</span
+          >
+          <div class="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-border p-2">
+            {#each data.scopeOptions as scope (scope.value)}
+              <label class="flex items-center gap-2 text-xs text-text">
+                <input
+                  type="checkbox"
+                  name="scopes"
+                  value={scope.value}
+                  class="h-3.5 w-3.5 rounded border-border"
+                />
+                <span>{t(scope.label_key)}</span>
+                {#if scope.value.includes(":")}
+                  <span class="text-text-muted/70">({scope.value.split(":")[1]})</span>
+                {/if}
+              </label>
+            {/each}
+          </div>
+        </div>
+        {#if form?.error}<p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
+        <button
+          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        >
+          {t("settings.account.api_key_create")}
+        </button>
+      </form>
+    </section>
+  {/if}
 </div>

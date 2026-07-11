@@ -17,6 +17,7 @@ from arq import cron
 from arq.connections import RedisSettings
 
 from app.config import settings
+from app.core.apikeys.jobs import flush_api_key_last_used
 from app.core.cache import WORKER_HEARTBEAT_KEY, WORKER_HEARTBEAT_TTL, get_redis
 from app.core.update_check import check_for_update
 from app.registry import registry
@@ -57,6 +58,8 @@ _CORE_CRON_JOBS = [
     cron(heartbeat, second=0, run_at_startup=False),
     # Daily. Off-peak, and offset from the tasks module's 04:00 recurrence spawn.
     cron(check_for_update, hour=5, minute=0),
+    # Drain the API-key last-use buffer to the DB every few minutes (#20) — off the hot path.
+    cron(flush_api_key_last_used, minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55}),
 ]
 
 

@@ -107,6 +107,16 @@ CORE_PERMISSIONS: tuple[PermissionSpec, ...] = (
     # org-scoped (RLS), so this never crosses a tenant. Recording is not a permission — it is a
     # side effect of a write the caller was already allowed to make.
     PermissionSpec("activity.read", group="activity", position=10, default_roles=_ALL),
+    # --- API keys & service accounts (issue #20) -------------------------- #
+    # Any member may mint personal keys for themselves (capped by their own live permissions);
+    # only an admin manages service accounts, which are shared, employee-outliving principals.
+    PermissionSpec(
+        "apikeys.personal.manage",
+        group="apikeys",
+        position=10,
+        default_roles=(ROLE_ADMIN, ROLE_MEMBER),
+    ),
+    PermissionSpec("apikeys.service_account.manage", group="apikeys", position=20),
 )
 
 

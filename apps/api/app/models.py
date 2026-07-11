@@ -10,6 +10,7 @@ import importlib
 
 from app.config import settings
 from app.core.activity.models import ActivityLog  # noqa: F401
+from app.core.apikeys.models import ApiKey, ServiceAccount  # noqa: F401
 from app.core.auth.models import User  # noqa: F401
 from app.core.customfields.models import CustomFieldDefinition  # noqa: F401
 from app.core.models import InstanceAuditLog, Membership, Org, OrgSettings  # noqa: F401

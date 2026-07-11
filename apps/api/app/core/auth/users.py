@@ -32,3 +32,6 @@ fastapi_users = FastAPIUsers[User, uuid.UUID](get_user_manager, [auth_backend])
 
 # Shared dependency used across the app (see core/tenancy.require_context).
 current_active_user = fastapi_users.current_user(active=True)
+# Optional variant: yields ``None`` instead of 401 when there is no session, so ``require_context``
+# can fall through to API-key authentication (#20) rather than rejecting the request outright.
+current_active_user_optional = fastapi_users.current_user(active=True, optional=True)
