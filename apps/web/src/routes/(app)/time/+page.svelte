@@ -258,9 +258,9 @@
   </div>
 {/if}
 
-<div class="grid gap-4 lg:grid-cols-[1fr_360px]">
+<div class="grid min-w-0 gap-4 lg:grid-cols-[1fr_360px]">
   <!-- Selected day: entries -->
-  <main class="rounded-xl border border-border bg-surface-raised p-5">
+  <main class="min-w-0 rounded-xl border border-border bg-surface-raised p-5">
     <div class="mb-4 flex items-center justify-between">
       <div>
         <h2 class="text-base font-semibold capitalize text-text">
@@ -299,9 +299,13 @@
         {#each entries as e (e.id)}
           {@const locked = Boolean(e.approved_at) && !canApprove}
           <li>
+            <!-- On a phone the row can't fit time + label + billable pill + total on one line
+                 (issue #84): it `flex-wrap`s, and the meta cluster (approved/break/billable/
+                 total) drops to its own full-width line via `w-full sm:w-auto` instead of
+                 overflowing the page. Desktop keeps everything inline, order unchanged. -->
             <button
               type="button"
-              class="flex w-full items-center gap-3 rounded-lg border p-3 text-left
+              class="flex w-full flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border p-3 text-left
                 {editingId === e.id ? 'border-brand ring-1 ring-brand' : 'border-border'}
                 {locked || e.is_running
                 ? 'cursor-default'
@@ -324,30 +328,34 @@
                     {e.description}
                   </p>{/if}
               </div>
-              {#if e.approved_at}
+              <div
+                class="flex w-full flex-wrap items-center justify-end gap-x-3 gap-y-1 sm:w-auto sm:flex-nowrap"
+              >
+                {#if e.approved_at}
+                  <span
+                    title={t("time.approved")}
+                    class="shrink-0 text-green-600 dark:text-green-400"
+                  >
+                    <CircleCheck size={16} />
+                  </span>
+                {/if}
+                {#if e.break_minutes > 0}
+                  <span class="shrink-0 text-xs text-text-muted"
+                    >{t("time.break_short", { minutes: e.break_minutes })}</span
+                  >
+                {/if}
                 <span
-                  title={t("time.approved")}
-                  class="shrink-0 text-green-600 dark:text-green-400"
+                  class="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium
+                  {e.billable
+                    ? 'bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300'
+                    : 'bg-surface text-text-muted'}"
                 >
-                  <CircleCheck size={16} />
+                  {e.billable ? t("time.billable") : t("time.not_billable")}
                 </span>
-              {/if}
-              {#if e.break_minutes > 0}
-                <span class="shrink-0 text-xs text-text-muted"
-                  >{t("time.break_short", { minutes: e.break_minutes })}</span
+                <span class="w-16 shrink-0 text-right text-sm font-semibold tabular-nums text-text"
+                  >{formatMinutes(e.minutes)}</span
                 >
-              {/if}
-              <span
-                class="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium
-                {e.billable
-                  ? 'bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300'
-                  : 'bg-surface text-text-muted'}"
-              >
-                {e.billable ? t("time.billable") : t("time.not_billable")}
-              </span>
-              <span class="w-16 shrink-0 text-right text-sm font-semibold tabular-nums text-text"
-                >{formatMinutes(e.minutes)}</span
-              >
+              </div>
             </button>
           </li>
         {/each}
