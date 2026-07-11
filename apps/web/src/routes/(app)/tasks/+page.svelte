@@ -15,12 +15,14 @@
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
-  import {
-    TASK_COLUMNS,
-    TASK_GROUPS,
-    TASK_GROUPS_COLLAPSED_BY_DEFAULT,
-  } from "$lib/modules/tasks/columns";
+  import { TASK_COLUMNS } from "$lib/modules/tasks/columns";
   import { labelChipClass } from "$lib/modules/tasks/labels";
+  import {
+    defaultStatusKey,
+    statusGroups,
+    terminalKeys,
+    terminalStatusKey,
+  } from "$lib/modules/tasks/statuses";
   import TaskRow from "$lib/modules/tasks/TaskRow.svelte";
   import TasksNav from "$lib/modules/tasks/TasksNav.svelte";
   import { formatMinutes } from "$lib/modules/time/format";
@@ -38,9 +40,16 @@
   const dueOptions = ["overdue", "today", "week"] as const;
 
   const today = new Date().toISOString().slice(0, 10);
+
+  // The status vocabulary is per-org (issue #62): "finished" is a terminal status, not the literal
+  // "done", and the complete toggle moves between the default and the first terminal status.
+  const terminalSet = $derived(new Set(terminalKeys(data.statuses)));
+  const isDone = (task: Task) => terminalSet.has(task.status);
+  const toggleTarget = (task: Task) =>
+    isDone(task) ? defaultStatusKey(data.statuses) : terminalStatusKey(data.statuses);
+
   const overdueCount = $derived(
-    data.tasks.filter((task) => task.status !== "done" && task.due_date && task.due_date < today)
-      .length,
+    data.tasks.filter((task) => !isDone(task) && task.due_date && task.due_date < today).length,
   );
 
   const table = createTableLayout<Task>({
@@ -50,7 +59,8 @@
     // the key's absence rather than for a falsy value.
     pref: () => ({
       ...data.table.pref,
-      collapsed: data.table.pref.collapsed ?? TASK_GROUPS_COLLAPSED_BY_DEFAULT,
+      // A first visit folds the finished sections away; a saved layout (even an empty one) wins.
+      collapsed: data.table.pref.collapsed ?? terminalKeys(data.statuses),
     }),
     sort: () => data.table.sort,
     cells: () => ({
@@ -71,11 +81,9 @@
   // Sections are declared in workflow order and the table never reorders them — a sort orders
   // rows *within* a section (#38). An empty section is dropped rather than drawn as "Klaar (0)".
   const groups = $derived(
-    TASK_GROUPS.filter((key) => data.tasks.some((task) => task.status === key)).map((key) => ({
-      key,
-      label: t(`tasks.group.${key}`),
-      collapsible: true,
-    })),
+    statusGroups(data.statuses).filter((group) =>
+      data.tasks.some((task) => task.status === group.key),
+    ),
   );
 
   const memberName = (id?: string | null) => {
@@ -84,8 +92,7 @@
   };
   const projectName = (id?: string | null) => data.projects.find((p) => p.id === id)?.name ?? "";
   const companyName = (id?: string | null) => data.companies.find((c) => c.id === id)?.name ?? "";
-  const isOverdue = (task: Task) =>
-    task.status !== "done" && !!task.due_date && task.due_date < today;
+  const isOverdue = (task: Task) => !isDone(task) && !!task.due_date && task.due_date < today;
 
   function initials(source: string): string {
     const parts = source.split(/[\s@._-]+/).filter(Boolean);
@@ -298,11 +305,11 @@
      `use:enhance` only upgrades it. Everything else that used to be a badge on `TaskRow` is now
      a column the user can turn off (#41). -->
 {#snippet titleCell(task: Task)}
-  {@const done = task.status === "done"}
+  {@const done = isDone(task)}
   <div class="flex items-center gap-2.5">
     <form method="POST" action="?/toggle" use:enhance>
       <input type="hidden" name="id" value={task.id} />
-      <input type="hidden" name="status" value={done ? "open" : "done"} />
+      <input type="hidden" name="status" value={toggleTarget(task)} />
       <button
         class="flex h-5 w-5 items-center justify-center rounded border text-xs
           {done
@@ -348,7 +355,7 @@
 {/snippet}
 
 {#snippet priorityCell(task: Task)}
-  {#if task.priority === "high" && task.status !== "done"}
+  {#if task.priority === "high" && !isDone(task)}
     <span class="text-xs font-semibold uppercase text-red-600 dark:text-red-400"
       >{t("tasks.priority.high")}</span
     >
@@ -436,7 +443,9 @@
 <!-- A grid is not a mobile UI: below `sm` the board falls back to the concept's shared row. -->
 {#snippet mobileRow(task: Task)}
   <div class="flex items-center">
-    <div class="min-w-0 flex-1"><TaskRow {task} members={data.members} {today} /></div>
+    <div class="min-w-0 flex-1">
+      <TaskRow {task} members={data.members} statuses={data.statuses} {today} />
+    </div>
     {@render rowActions(task)}
   </div>
 {/snippet}

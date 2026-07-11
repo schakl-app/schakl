@@ -21,11 +21,10 @@ import type { ColumnMeta } from "$lib/core/table/columns";
 
 export const TASKS_TABLE_ID = "tasks";
 
-/** The board's sections, in workflow order — not alphabetical, and no sort may disturb them. */
-export const TASK_GROUPS = ["open", "in_progress", "done"] as const;
-
-/** Done starts folded away, as it did before the migration. A saved layout overrides this. */
-export const TASK_GROUPS_COLLAPSED_BY_DEFAULT = ["done"];
+// The board's sections are the tenant's configured statuses (issue #62), in their `position`
+// order, built at render time from the loaded vocabulary (see `lib/modules/tasks/statuses.ts`).
+// The terminal sections start folded, as "done" always did. No hardcoded group list lives here
+// any more.
 
 export const TASK_COLUMNS: ColumnMeta[] = [
   { key: "title", labelKey: "tasks.field.title", sortKey: "title", primary: true, width: 360 },

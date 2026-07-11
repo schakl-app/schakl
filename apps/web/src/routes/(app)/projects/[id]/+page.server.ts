@@ -47,16 +47,19 @@ export const load: PageServerLoad = async (event) => {
 
   // Every call in one flight. `projects` is a name-only lookup: the panel's edit modal needs the
   // picker, and `count=false` skips the COUNT(*) it would throw away.
-  const [tasks, companies, projects, members, definitions, ...panelData] = await Promise.all([
-    api.GET("/api/v1/tasks", { params: { query: { project_id, limit: 200, offset: 0 } } }),
-    api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
-    api.GET("/api/v1/projects", { params: { query: { limit: 200, offset: 0, count: false } } }),
-    api.GET("/api/v1/members/lookup"),
-    api.GET("/api/v1/custom-fields/definitions", {
-      params: { query: { entity_type: "project" } },
-    }),
-    ...panels.map((panel) => panel.load(api, context)),
-  ]);
+  const [tasks, companies, projects, members, statuses, definitions, ...panelData] =
+    await Promise.all([
+      api.GET("/api/v1/tasks", { params: { query: { project_id, limit: 200, offset: 0 } } }),
+      api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
+      api.GET("/api/v1/projects", { params: { query: { limit: 200, offset: 0, count: false } } }),
+      api.GET("/api/v1/members/lookup"),
+      // The tenant's task statuses (issue #62) so the to-do list groups/toggles by the real ones.
+      api.GET("/api/v1/tasks/statuses"),
+      api.GET("/api/v1/custom-fields/definitions", {
+        params: { query: { entity_type: "project" } },
+      }),
+      ...panels.map((panel) => panel.load(api, context)),
+    ]);
 
   return {
     project,
@@ -64,6 +67,7 @@ export const load: PageServerLoad = async (event) => {
     companies: companies.data?.items ?? [],
     projects: projects.data?.items ?? [],
     members: members.data ?? [],
+    statuses: statuses.data ?? [],
     definitions: definitions.data ?? [],
     context,
     // Keyed so the page can pair each payload with the spec that produced it, without the page
@@ -109,7 +113,7 @@ export const actions: Actions = {
     const { error: apiError } = await apiFor(event).POST("/api/v1/tasks", {
       body: {
         title,
-        status: "open",
+        // Status omitted → the API assigns the org's default status (issue #62).
         priority: "normal",
         project_id: event.params.id,
         company_id: company_id || null,
@@ -135,8 +139,9 @@ export const actions: Actions = {
   toggleTask: async (event) => {
     const form = await event.request.formData();
     const id = String(form.get("id") ?? "");
-    const status = String(form.get("status") ?? "done") as "open" | "in_progress" | "done";
-    if (id) {
+    // A configured status key (issue #62); the row computes which from the org's vocabulary.
+    const status = String(form.get("status") ?? "").trim();
+    if (id && status) {
       await apiFor(event).PATCH("/api/v1/tasks/{task_id}", {
         params: { path: { task_id: id } },
         body: { status },

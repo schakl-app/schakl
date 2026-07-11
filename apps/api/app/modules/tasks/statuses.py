@@ -33,10 +33,12 @@ class _StatusSeed:
 # so a fresh install behaves exactly as before. Dutch names (the default UI language); a tenant
 # renames, reorders, recolours or extends them under Settings. ``done`` is the terminal state and
 # ``open`` is where new tasks land.
+# Colors are shared palette *tokens* (app/core/ui/colors.ts — sky/amber/green…), not hex, so the
+# web renders a status chip with the same classes it uses for labels and leave types.
 DEFAULT_STATUSES: tuple[_StatusSeed, ...] = (
-    _StatusSeed("open", "Open", "#64748b", 0, is_terminal=False, is_default=True),
-    _StatusSeed("in_progress", "In behandeling", "#3b82f6", 1, is_terminal=False, is_default=False),
-    _StatusSeed("done", "Klaar", "#22c55e", 2, is_terminal=True, is_default=False),
+    _StatusSeed("open", "Open", "sky", 0, is_terminal=False, is_default=True),
+    _StatusSeed("in_progress", "In behandeling", "amber", 1, is_terminal=False, is_default=False),
+    _StatusSeed("done", "Klaar", "green", 2, is_terminal=True, is_default=False),
 )
 
 

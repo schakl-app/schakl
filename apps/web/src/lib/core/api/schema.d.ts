@@ -1568,6 +1568,42 @@ export interface paths {
         patch: operations["update_label_api_v1_tasks_labels__label_id__patch"];
         trace?: never;
     };
+    "/api/v1/tasks/statuses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Statuses */
+        get: operations["list_statuses_api_v1_tasks_statuses_get"];
+        put?: never;
+        /** Create Status */
+        post: operations["create_status_api_v1_tasks_statuses_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/statuses/{status_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Status */
+        delete: operations["delete_status_api_v1_tasks_statuses__status_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Status */
+        patch: operations["update_status_api_v1_tasks_statuses__status_id__patch"];
+        trace?: never;
+    };
     "/api/v1/tasks/mine": {
         parameters: {
             query?: never;
@@ -3121,6 +3157,72 @@ export interface components {
             /** Position */
             position?: number | null;
         };
+        /** StatusCreate */
+        StatusCreate: {
+            /** Name */
+            name: string;
+            /** Color */
+            color: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /**
+             * Is Terminal
+             * @default false
+             */
+            is_terminal: boolean;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /** Key */
+            key: string;
+        };
+        /** StatusRead */
+        StatusRead: {
+            /** Name */
+            name: string;
+            /** Color */
+            color: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /**
+             * Is Terminal
+             * @default false
+             */
+            is_terminal: boolean;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Key */
+            key: string;
+        };
+        /** StatusUpdate */
+        StatusUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Color */
+            color?: string | null;
+            /** Position */
+            position?: number | null;
+            /** Is Terminal */
+            is_terminal?: boolean | null;
+            /** Is Default */
+            is_default?: boolean | null;
+        };
         /**
          * LeaveBalance
          * @description Balance per tracks_balance type: entitled + carried − approved − pending.
@@ -4501,8 +4603,8 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence?: components["schemas"]["Recurrence"] | null;
-            /** @default open */
-            status: components["schemas"]["TaskStatus"];
+            /** Status */
+            status?: components["schemas"]["TaskStatus"] | null;
             /** Title */
             title: string;
         };
@@ -4699,7 +4801,7 @@ export interface components {
          * TaskStatus
          * @enum {string}
          */
-        TaskStatus: "open" | "in_progress" | "done";
+        TaskStatus: string;
         /** TaskUpdate */
         TaskUpdate: {
             /** Allocated Minutes */
@@ -9215,6 +9317,123 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LabelRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_statuses_api_v1_tasks_statuses_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusRead"][];
+                };
+            };
+        };
+    };
+    create_status_api_v1_tasks_statuses_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StatusCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_status_api_v1_tasks_statuses__status_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                status_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_status_api_v1_tasks_statuses__status_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                status_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StatusUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusRead"];
                 };
             };
             /** @description Validation Error */
