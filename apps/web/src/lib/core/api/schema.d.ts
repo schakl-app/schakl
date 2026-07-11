@@ -4251,6 +4251,8 @@ export interface components {
             days: string;
             /** Hours */
             hours: string;
+            /** Remaining Hours */
+            remaining_hours?: string | null;
             /**
              * Requires Approval
              * @default false
@@ -4386,6 +4388,8 @@ export interface components {
             end_time?: string | null;
             /** Leave Type Id */
             leave_type_id?: string | null;
+            /** Request Id */
+            request_id?: string | null;
             /**
              * Start Date
              * Format: date

@@ -138,15 +138,16 @@ async def test_request_approval_flow_and_balance(client_for) -> None:
         assert [item["user_name"] for item in res.json()] == ["Member"]
 
 
-async def test_overlap_and_balance_guards(client_for) -> None:
+async def test_over_request_warns_but_submits_and_overlap_stays_hard(client_for) -> None:
+    """#109: more hours than the pot holds still submits — the balance reads negative and the
+    manager decides. Overlap keeps its hard 409."""
     t = await make_tenant("leave-guards")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
         types = (await c.get("/api/v1/leave/types", headers=headers)).json()
         statutory = next(lt for lt in types if lt["key"] == "vacation_statutory")
 
-        # An explicitly granted pot too small for the request → over-request is blocked.
-        # (An *absent* pot no longer blocks: the current/next year seeds on first touch, #108.)
+        # A deliberately too-small pot: one 8 h day against 4 granted hours.
         start, end = _span(1)
         granted = await c.put(
             "/api/v1/leave/entitlements",
@@ -159,6 +160,18 @@ async def test_overlap_and_balance_guards(client_for) -> None:
             headers=headers,
         )
         assert granted.status_code == 200, granted.text
+
+        # The preview tells the form what it is about to exceed…
+        res = await c.post(
+            "/api/v1/leave/requests/preview",
+            json={"leave_type_id": statutory["id"], "start_date": start, "end_date": end},
+            headers=headers,
+        )
+        assert res.status_code == 200
+        assert float(res.json()["hours"]) == 8.0
+        assert float(res.json()["remaining_hours"]) == 4.0
+
+        # …and the request still goes through, leaving the balance negative.
         res = await c.post(
             "/api/v1/leave/requests",
             json={
@@ -168,32 +181,16 @@ async def test_overlap_and_balance_guards(client_for) -> None:
             },
             headers=headers,
         )
-        assert res.status_code == 400
-        assert res.json()["error"]["message"] == "errors.leave_insufficient_balance"
+        assert res.status_code == 201, res.text
+        assert res.json()["status"] == "pending"
 
-        granted = await c.put(
-            "/api/v1/leave/entitlements",
-            json={
-                "user_id": str(t.user.id),
-                "leave_type_id": statutory["id"],
-                "year": _YEAR,
-                "hours": 40,
-            },
-            headers=headers,
-        )
-        assert granted.status_code == 200, granted.text
-        res = await c.post(
-            "/api/v1/leave/requests",
-            json={
-                "leave_type_id": statutory["id"],
-                "start_date": start,
-                "end_date": end,
-            },
-            headers=headers,
-        )
-        assert res.status_code == 201
+        balance = (
+            await c.get("/api/v1/leave/balance", params={"year": _YEAR}, headers=headers)
+        ).json()
+        row = next(b for b in balance if b["leave_type_id"] == statutory["id"])
+        assert float(row["remaining_hours"]) == -4.0
 
-        # Overlapping the same day is rejected.
+        # Overlapping the same day is still rejected.
         res = await c.post(
             "/api/v1/leave/requests",
             json={
@@ -205,6 +202,47 @@ async def test_overlap_and_balance_guards(client_for) -> None:
         )
         assert res.status_code == 409
         assert res.json()["error"]["message"] == "errors.leave_overlap"
+
+
+async def test_preview_hands_back_the_edited_requests_own_hours(client_for) -> None:
+    """Editing must not warn against a balance the request itself is occupying (#109)."""
+    t = await make_tenant("leave-preview-edit")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        types = (await c.get("/api/v1/leave/types", headers=headers)).json()
+        statutory = next(lt for lt in types if lt["key"] == "vacation_statutory")
+        await c.put(
+            "/api/v1/leave/entitlements",
+            json={
+                "user_id": str(t.user.id),
+                "leave_type_id": statutory["id"],
+                "year": _YEAR,
+                "hours": 8,
+            },
+            headers=headers,
+        )
+        start, end = _span(1)
+        created = await c.post(
+            "/api/v1/leave/requests",
+            json={"leave_type_id": statutory["id"], "start_date": start, "end_date": end},
+            headers=headers,
+        )
+        assert created.status_code == 201
+
+        # Same-length move: without the request_id the remaining would read 0 and warn.
+        new_start, new_end = _span(2)
+        res = await c.post(
+            "/api/v1/leave/requests/preview",
+            json={
+                "leave_type_id": statutory["id"],
+                "start_date": new_start,
+                "end_date": new_end,
+                "request_id": created.json()["id"],
+            },
+            headers=headers,
+        )
+        assert res.status_code == 200
+        assert float(res.json()["remaining_hours"]) == 8.0
 
 
 async def test_sick_leave_is_registered_not_requested(client_for) -> None:

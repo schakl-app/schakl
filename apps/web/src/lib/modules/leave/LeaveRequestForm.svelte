@@ -95,6 +95,10 @@
   let previewError = $state<string | null>(null);
   let previewing = $state(false);
   let requiresApproval = $state(false);
+  // Remaining balance for the chosen type/year, for the *target* employee — computed by the API,
+  // because the `balances` prop belongs to the viewer, who on the manager's register-for-someone
+  // flow is the wrong person (#109). Null = no type chosen, or the type tracks no balance.
+  let remaining = $state<number | null>(null);
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   // Warn only when editing an *already-approved* request that the save would push back to pending
@@ -102,6 +106,8 @@
   const reapprovalWarning = $derived(request?.status === "approved" && requiresApproval);
 
   const effectiveHours = $derived(overriding && override ? Number(override) : hours);
+  // Over-requests submit — a manager decides — but never silently (#109).
+  const overRequestedBy = $derived(remaining === null ? 0 : effectiveHours - remaining);
 
   /** One call per meaningful change, debounced — not one per keystroke. */
   function schedulePreview() {
@@ -123,6 +129,7 @@
           end_date: endDate,
           end_time: partDay ? endTime || null : null,
           leave_type_id: typeId || null,
+          request_id: request?.id ?? null,
         }),
       });
       const body = await res.json();
@@ -137,6 +144,8 @@
         days = Number(body.preview.days);
         breakdown = body.preview.breakdown as LeaveDayHours[];
         requiresApproval = Boolean(body.preview.requires_approval);
+        remaining =
+          body.preview.remaining_hours == null ? null : Number(body.preview.remaining_hours);
       }
     } catch {
       previewError = "errors.server";
@@ -344,6 +353,15 @@
       >{request?.note ?? ""}</textarea
     >
   </div>
+
+  {#if overRequestedBy > 0}
+    <!-- Not a block: the request still submits and the manager decides (#109). -->
+    <p
+      class="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+    >
+      {t("leave.form.over_request", { hours: fmtHours(overRequestedBy) })}
+    </p>
+  {/if}
 
   {#if reapprovalWarning}
     <p

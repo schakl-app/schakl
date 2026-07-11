@@ -348,6 +348,9 @@ class LeaveRequestPreview(LeaveRequestSpan):
     #: The selected type, so the preview can tell the form whether saving needs (re-)approval
     #: (#72). Optional: an older client that only wants the hours can omit it.
     leave_type_id: uuid.UUID | None = None
+    #: The request being edited, if any: its own hours still occupy the balance, so the
+    #: over-request warning (#109) gives them back before comparing against the new span.
+    request_id: uuid.UUID | None = None
 
 
 class LeavePreviewResult(BaseModel):
@@ -362,6 +365,11 @@ class LeavePreviewResult(BaseModel):
     #: Whether the span reaches before today (org-local). Surfaced so the form can explain *why*
     #: an otherwise self-service edit still needs approval.
     touches_past: bool = False
+    #: Remaining balance for the chosen type in the span's year, for *this* employee (the form's
+    #: own balance props belong to the viewer, which differs on the register-for-someone flow).
+    #: ``None`` when no type was given or the type tracks no balance. Over-requests submit; this
+    #: is what lets both sides see the shortfall before they do (#109).
+    remaining_hours: Decimal | None = None
 
 
 # --- balances -------------------------------------------------------------------- #

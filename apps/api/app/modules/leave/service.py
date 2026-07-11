@@ -3,8 +3,9 @@
 Members manage their **own** requests; managers (owner/admin) decide them and may act on
 another user's behalf. All reads/writes go through the tenant-scoped repository (Golden
 Rule 1). Balances are computed, never stored: entitled − approved − pending, per type/year
-(the year of ``start_date``). Over-requests on balance-tracked types are blocked with a
-clear error, as are overlapping requests.
+(the year of ``start_date``). Over-requests on balance-tracked types **warn but submit**
+(#109) — the balance just reads negative and the approver decides; overlapping requests
+stay a hard error.
 """
 
 from __future__ import annotations
@@ -1031,15 +1032,38 @@ class LeaveService:
         # current status, so it decides whether to warn "this moves it back to pending".
         touches_past = data.start_date < await self._org_today()
         requires_approval = touches_past
+        remaining: Decimal | None = None
         if data.leave_type_id is not None:
             leave_type = await self.types.get_or_404(data.leave_type_id)
             requires_approval = leave_type.requires_approval or touches_past
+            if leave_type.tracks_balance:
+                # The server computes the over-request warning's input, not the browser: the
+                # form's own balance props belong to the *viewer*, which on the manager's
+                # register-for-someone flow is the wrong employee (#109).
+                year = data.start_date.year
+                balances = {
+                    b.leave_type_id: b for b in await self.balances(year=year, user_id=uid)
+                }
+                balance = balances.get(leave_type.id)
+                remaining = balance.remaining_hours if balance else Decimal(0)
+                if data.request_id is not None:
+                    # Editing: the request's own current hours still occupy the balance, so
+                    # they are given back before the form compares against the new span.
+                    current = await self.requests.get_or_404(data.request_id)
+                    if (
+                        current.user_id == uid
+                        and current.leave_type_id == leave_type.id
+                        and current.start_date.year == year
+                        and current.status in _OCCUPYING
+                    ):
+                        remaining += Decimal(current.hours)
         return LeavePreviewResult(
             hours=hours,
             days=days,
             breakdown=breakdown,
             requires_approval=requires_approval,
             touches_past=touches_past,
+            remaining_hours=remaining,
         )
 
     def _validate_span(
@@ -1098,12 +1122,18 @@ class LeaveService:
         self,
         *,
         user_id: uuid.UUID,
-        leave_type: LeaveType,
         start_date: date,
         end_date: date,
-        hours: Decimal,
         exclude_id: uuid.UUID | None = None,
     ) -> None:
+        """Overlap is the one hard request-level error left here.
+
+        Over-requests on balance-tracked types used to 400 — that blocked advance/borrowed leave
+        and every next-year request over a not-yet-generated pot, and the manager never even saw
+        the ask. Now the request submits, the balance simply reads negative, and both sides are
+        *warned*: the form via ``preview.remaining_hours``, the approver on the pending list. The
+        decision belongs to the manager, not to a blanket block (#109, CLAUDE.md §14).
+        """
         # No two occupying (pending/approved) requests may overlap for the same user.
         stmt = self.requests.scoped_select().where(
             LeaveRequest.user_id == user_id,
@@ -1115,24 +1145,6 @@ class LeaveService:
             stmt = stmt.where(LeaveRequest.id != exclude_id)
         if (await self.ctx.session.execute(stmt.limit(1))).scalars().first() is not None:
             raise AppError("conflict", "errors.leave_overlap", status_code=409)
-        # Block over-requests on balance-tracked types (CLAUDE.md §14).
-        if leave_type.tracks_balance:
-            year = start_date.year
-            balances = {
-                b.leave_type_id: b
-                for b in await self.balances(year=year, user_id=user_id)
-            }
-            balance = balances.get(leave_type.id)
-            remaining = balance.remaining_hours if balance else Decimal(0)
-            if exclude_id is not None:
-                # Editing: the request's own current hours are still counted in the balance.
-                current = await self.requests.get_or_404(exclude_id)
-                if current.leave_type_id == leave_type.id and current.start_date.year == year:
-                    remaining += Decimal(current.hours)
-            if hours > remaining:
-                raise AppError(
-                    "insufficient_balance", "errors.leave_insufficient_balance", status_code=400
-                )
 
     async def create(self, data: LeaveRequestCreate) -> LeaveRequest:
         self.ctx.require(
@@ -1158,10 +1170,8 @@ class LeaveService:
         )
         await self._validate_request(
             user_id=uid,
-            leave_type=leave_type,
             start_date=data.start_date,
             end_date=data.end_date,
-            hours=hours,
         )
         # Types without approval (sick) are registrations: they go straight to approved.
         status = (
@@ -1257,10 +1267,8 @@ class LeaveService:
 
         await self._validate_request(
             user_id=request.user_id,
-            leave_type=leave_type,
             start_date=start_date,
             end_date=end_date,
-            hours=values["hours"],
             exclude_id=request.id,
         )
 

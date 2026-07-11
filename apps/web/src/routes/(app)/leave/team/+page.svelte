@@ -78,6 +78,27 @@
     });
   });
 
+  // Approving over-balance leave must be an informed choice (#109): pending already counts
+  // against the balance, so a negative remaining *is* "what approving leaves them at".
+  const cellByUserType = $derived.by(() => {
+    const map: Record<string, Cell> = {};
+    for (const row of balanceRows) {
+      for (const [typeId, cell] of Object.entries(row.cells)) {
+        map[`${row.member.user_id}|${typeId}`] = cell;
+      }
+    }
+    return map;
+  });
+
+  function overBalanceBy(request: Request): number {
+    const type = typeById[request.leave_type_id];
+    if (!type?.tracks_balance) return 0;
+    // The loaded entitlements are year-scoped; a request outside the viewed year has no cell.
+    if (Number(request.start_date.slice(0, 4)) !== data.year) return 0;
+    const cell = cellByUserType[`${request.user_id}|${request.leave_type_id}`];
+    return cell && cell.remaining < 0 ? -cell.remaining : 0;
+  }
+
   let registerOpen = $state(false);
   let rejectId = $state("");
   let rejectOpen = $state(false);
@@ -152,6 +173,11 @@
             </p>
             {#if request.note}
               <p class="mt-0.5 truncate text-xs text-text-muted">{request.note}</p>
+            {/if}
+            {#if overBalanceBy(request) > 0}
+              <p class="mt-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
+                {t("leave.team.over_balance", { hours: fmtHours(overBalanceBy(request)) })}
+              </p>
             {/if}
           </div>
           <div class="flex items-center gap-2">

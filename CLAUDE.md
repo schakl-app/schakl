@@ -341,7 +341,14 @@ apply as everywhere.
   **Approved requests are never retroactively recalculated** — new holidays do not rewrite last
   year's balance.
 - **Balances:** entitlement + carry-over − used − pending, per user / type / year. Show the
-  employee their remaining balance; block/warn on over-request.
+  employee their remaining balance. **Over-requests warn but submit** (#109): advance/borrowed
+  leave is the manager's call, so the form warns, the request goes through, the balance reads
+  negative, and the approver sees the shortfall again on the pending list. Overlapping requests
+  and zero-hour spans stay hard errors. Entitlement pots are **seeded automatically** (#105,
+  #108): a contract create/correct fills that user's missing entitlements for the years the
+  contract covers (same transaction, missing rows only), the first balance read of an
+  ungenerated current/next-year pot seeds it, and a December cron rolls next year forward for
+  the whole staff — the bulk "Genereer" stays for backfills.
 - **Unit:** track in **hours** (matches time tracking and part-time contracts); display as days
   using the employee's **average scheduled working day** — never `hours_per_week / 5`, which tells
   a three-day part-timer their working day is 4,8 hours long.

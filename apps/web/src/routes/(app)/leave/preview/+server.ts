@@ -26,6 +26,7 @@ interface Body {
   end_date: string;
   end_time?: string | null;
   leave_type_id?: string | null;
+  request_id?: string | null;
 }
 
 export const POST: RequestHandler = async (event) => {
@@ -43,6 +44,8 @@ export const POST: RequestHandler = async (event) => {
       end_time: body.end_time || null,
       // Lets the preview report whether saving needs (re-)approval (#72), for the edit warning.
       leave_type_id: body.leave_type_id || null,
+      // On an edit, the request's own hours are handed back before the over-request math (#109).
+      request_id: body.request_id || null,
     },
   });
   // A span that lands on a Saturday is a message to render, not a failure to swallow: the form
