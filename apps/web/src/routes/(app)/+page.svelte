@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SlidersHorizontal } from "@lucide/svelte";
+  import { Check, Pencil, X } from "@lucide/svelte";
   import { dndzone } from "svelte-dnd-action";
 
   import { enhance } from "$app/forms";
@@ -7,13 +7,15 @@
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
   import { dashboardWidgetsFor } from "$lib/core/registry";
+  import WidgetGallery from "$lib/core/ui/WidgetGallery.svelte";
 
   let { data, form } = $props();
 
   const user = $derived(page.data.user);
   const enabled = $derived(page.data.theme?.enabledModules ?? []);
+  const allWidgets = $derived(dashboardWidgetsFor(enabled, page.data.user));
 
-  // Tiles are draggable: mirror the loaded order locally; a drop persists the new order.
+  // Tiles are draggable in edit mode: mirror the loaded order locally; a change persists it.
   interface Tile {
     id: string;
   }
@@ -21,31 +23,36 @@
   $effect(() => {
     tiles = data.widgetKeys.map((key: string) => ({ id: key }));
   });
-  const widgetFor = (key: string) =>
-    dashboardWidgetsFor(enabled, page.data.user).find((w) => w.key === key);
+  const widgetFor = (key: string) => allWidgets.find((w) => w.key === key);
+  const activeKeys = $derived(tiles.map((tile) => tile.id));
+
+  // Use mode vs edit mode (UX §3): the board is static until an explicit edit affordance turns on
+  // dragging, the gallery and the per-tile remove; "Klaar" turns it back off.
+  let editMode = $state(false);
 
   let layoutForm: HTMLFormElement | undefined = $state();
   let layoutValue = $state("");
+  function persist() {
+    layoutValue = tiles.map((tile) => tile.id).join(",");
+    setTimeout(() => layoutForm?.requestSubmit(), 0);
+  }
   function handleDndConsider(e: CustomEvent<{ items: Tile[] }>) {
     tiles = e.detail.items;
   }
   function handleDndFinalize(e: CustomEvent<{ items: Tile[] }>) {
     tiles = e.detail.items;
-    layoutValue = tiles.map((tile) => tile.id).join(",");
-    setTimeout(() => layoutForm?.requestSubmit(), 0);
+    persist();
   }
-
-  // --- customization panel (which widgets are on) --------------------------------
-  let customizing = $state(false);
-  let draft = $state<string[]>([]);
-  function startCustomize() {
-    draft = [...data.widgetKeys];
-    customizing = true;
+  function addWidget(key: string) {
+    if (!activeKeys.includes(key)) {
+      tiles = [...tiles, { id: key }];
+      persist();
+    }
   }
-  function toggle(key: string) {
-    draft = draft.includes(key) ? draft.filter((k) => k !== key) : [...draft, key];
+  function removeWidget(key: string) {
+    tiles = tiles.filter((tile) => tile.id !== key);
+    persist();
   }
-  const offKeys = $derived(data.availableWidgetKeys.filter((k: string) => !draft.includes(k)));
 </script>
 
 <svelte:head>
@@ -60,11 +67,13 @@
     </p>
   </div>
   <button
-    class="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"
-    onclick={() => (customizing ? (customizing = false) : startCustomize())}
+    class="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm {editMode
+      ? 'border-brand text-brand'
+      : 'text-text-muted hover:border-brand hover:text-brand'}"
+    onclick={() => (editMode = !editMode)}
   >
-    <SlidersHorizontal size={15} />
-    {t("dashboard.customize.button")}
+    {#if editMode}<Check size={15} /> {t("dashboard.done")}{:else}<Pencil size={15} />
+      {t("dashboard.edit")}{/if}
   </button>
 </div>
 
@@ -72,88 +81,15 @@
   <input type="hidden" name="widgets" value={layoutValue} />
 </form>
 
-{#if customizing}
-  <div class="mb-6 rounded-xl border border-border bg-surface-raised p-5">
-    <h2 class="mb-1 text-sm font-semibold text-text">{t("dashboard.customize.title")}</h2>
-    <p class="mb-3 text-xs text-text-muted">{t("dashboard.customize.hint_dnd")}</p>
+{#if form?.error}<p class="mb-4 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
 
-    <ul class="space-y-1">
-      {#each draft as key (key)}
-        <li class="flex items-center gap-2 rounded-lg border border-border px-3 py-2">
-          <input
-            type="checkbox"
-            checked
-            onchange={() => toggle(key)}
-            class="h-4 w-4 rounded border-border text-brand focus:ring-brand"
-          />
-          <span class="flex-1 text-sm text-text">{t(`dashboard.widget.${key}`)}</span>
-        </li>
-      {/each}
-      {#each offKeys as key (key)}
-        <li
-          class="flex items-center gap-2 rounded-lg border border-dashed border-border px-3 py-2 opacity-60"
-        >
-          <input
-            type="checkbox"
-            onchange={() => toggle(key)}
-            class="h-4 w-4 rounded border-border text-brand focus:ring-brand"
-          />
-          <span class="flex-1 text-sm text-text-muted">{t(`dashboard.widget.${key}`)}</span>
-        </li>
-      {/each}
-    </ul>
-
-    {#if form?.error}<p class="mt-2 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
-    <div class="mt-4 flex flex-wrap items-center gap-2">
-      <form
-        method="POST"
-        action="?/saveLayout"
-        use:enhance={() =>
-          ({ update }) => {
-            customizing = false;
-            void update();
-          }}
-      >
-        <input type="hidden" name="widgets" value={draft.join(",")} />
-        <button
-          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
-          {t("dashboard.customize.save")}
-        </button>
-      </form>
-      {#if data.prefsSource === "user"}
-        <form
-          method="POST"
-          action="?/resetLayout"
-          use:enhance={() =>
-            ({ update }) => {
-              customizing = false;
-              void update();
-            }}
-        >
-          <button
-            class="rounded-lg border border-border px-4 py-2 text-sm text-text-muted hover:text-text"
-          >
-            {t("dashboard.customize.reset")}
-          </button>
-        </form>
-      {/if}
-      <button
-        type="button"
-        class="px-2 py-2 text-sm text-text-muted hover:text-text"
-        onclick={() => (customizing = false)}
-      >
-        {t("common.cancel")}
-      </button>
-    </div>
-  </div>
-{/if}
-
+<!-- The board. In use mode it is a plain grid — tiles are not draggable and a stray drag can't
+     disturb the layout (UX §3). Edit mode turns on the drag zone and the per-tile remove. -->
 {#if tiles.length === 0}
   <div class="rounded-xl border border-dashed border-border bg-surface-raised p-10 text-center">
     <p class="text-sm text-text-muted">{t("dashboard.my_day.empty")}</p>
   </div>
-{:else}
+{:else if editMode}
   <div
     class="grid gap-4 sm:grid-cols-2"
     use:dndzone={{ items: tiles, flipDurationMs: 150, dropTargetStyle: {} }}
@@ -162,7 +98,15 @@
   >
     {#each tiles as tile (tile.id)}
       {@const widget = widgetFor(tile.id)}
-      <div class="cursor-grab active:cursor-grabbing">
+      <div class="relative cursor-grab rounded-xl ring-1 ring-border active:cursor-grabbing">
+        <button
+          type="button"
+          onclick={() => removeWidget(tile.id)}
+          class="absolute -right-2 -top-2 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-surface-raised text-text-muted shadow hover:border-red-400 hover:text-red-500"
+          aria-label={t("dashboard.remove_widget")}
+        >
+          <X size={13} />
+        </button>
         {#if widget}
           {@const WidgetComponent = widget.component}
           <WidgetComponent data={data.widgetData[tile.id]} />
@@ -170,4 +114,38 @@
       </div>
     {/each}
   </div>
+{:else}
+  <div class="grid gap-4 sm:grid-cols-2">
+    {#each tiles as tile (tile.id)}
+      {@const widget = widgetFor(tile.id)}
+      {#if widget}
+        {@const WidgetComponent = widget.component}
+        <div><WidgetComponent data={data.widgetData[tile.id]} /></div>
+      {/if}
+    {/each}
+  </div>
+{/if}
+
+{#if editMode}
+  <section class="mt-6 rounded-xl border border-border bg-surface-raised p-5">
+    <div class="mb-3 flex items-center justify-between">
+      <div>
+        <h2 class="text-sm font-semibold text-text">{t("dashboard.gallery.title")}</h2>
+        <p class="mt-0.5 text-xs text-text-muted">{t("dashboard.gallery.hint")}</p>
+      </div>
+      {#if data.prefsSource === "user"}
+        <form
+          method="POST"
+          action="?/resetLayout"
+          use:enhance={() =>
+            ({ update }) => void update()}
+        >
+          <button class="text-xs text-text-muted hover:text-text">
+            {t("dashboard.customize.reset")}
+          </button>
+        </form>
+      {/if}
+    </div>
+    <WidgetGallery widgets={allWidgets} {activeKeys} onadd={addWidget} />
+  </section>
 {/if}

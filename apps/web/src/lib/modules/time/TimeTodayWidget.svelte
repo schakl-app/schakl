@@ -18,7 +18,10 @@
     <h2 class="text-sm font-semibold text-text">{t("dashboard.my_day.time")}</h2>
     <a href="/time" class="text-xs text-brand hover:underline">{t("nav.time")}</a>
   </div>
-  <p class="text-2xl font-semibold text-text">{formatMinutes(summary.minutes)}</p>
+  <!-- The figure links to the time list it totals (issue #15 — aggregates link to their list). -->
+  <a href="/time" class="block text-2xl font-semibold text-text hover:text-brand"
+    >{formatMinutes(summary.minutes)}</a
+  >
   <p class="mt-1 text-sm text-text-muted">
     {#if summary.running}
       <span class="inline-flex items-center gap-1.5">
