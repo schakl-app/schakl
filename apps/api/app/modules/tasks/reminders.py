@@ -25,8 +25,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events import SystemContext, emit
 from app.core.models import Org
-from app.modules.tasks.models import Task, TaskStatus
+from app.modules.tasks.models import Task
 from app.modules.tasks.recurrence import today_local
+from app.modules.tasks.statuses import load_statuses, terminal_keys
 
 
 async def _emit(ctx: SystemContext, event: str, task: Task, dedup: str, params: dict) -> None:
@@ -55,12 +56,15 @@ async def remind_for_org(org: Org, session: AsyncSession, *, today: date | None 
     thresholds = await due_soon_thresholds(session, org.id)
     horizon = today + timedelta(days=max(thresholds.values()))
 
+    # "Not finished" is every non-terminal configured status (issue #62), not just "not done".
+    terminal = terminal_keys(await load_statuses(session, org.id))
+
     tasks = (
         await session.execute(
             select(Task).where(
                 Task.org_id == org.id,
                 Task.assignee_user_id.is_not(None),
-                Task.status != TaskStatus.DONE.value,
+                Task.status.notin_(terminal) if terminal else True,
                 Task.due_date.is_not(None),
                 # Everything already late, plus everything anyone could call "soon".
                 Task.due_date <= horizon,

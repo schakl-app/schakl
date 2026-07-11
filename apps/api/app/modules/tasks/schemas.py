@@ -12,7 +12,6 @@ from app.modules.tasks.models import (
     RecurrenceFreq,
     RecurrenceMode,
     TaskPriority,
-    TaskStatus,
     TemplateTrigger,
 )
 
@@ -29,7 +28,9 @@ class TaskBase(BaseModel):
     assignee_user_id: uuid.UUID | None = None
     title: str = Field(min_length=1, max_length=512)
     description: str | None = None
-    status: TaskStatus = TaskStatus.OPEN
+    # A tenant-configured status key (issue #62); ``None`` on create means the org's default
+    # status. Validated against the org's ``task_statuses`` in the service.
+    status: str | None = Field(default=None, max_length=50)
     priority: TaskPriority = TaskPriority.NORMAL
     due_date: date | None = None
     allocated_minutes: int | None = Field(default=None, ge=0, le=100000)
@@ -45,7 +46,7 @@ class TaskUpdate(BaseModel):
     assignee_user_id: uuid.UUID | None = None
     title: str | None = Field(default=None, min_length=1, max_length=512)
     description: str | None = None
-    status: TaskStatus | None = None
+    status: str | None = Field(default=None, max_length=50)
     priority: TaskPriority | None = None
     due_date: date | None = None
     allocated_minutes: int | None = Field(default=None, ge=0, le=100000)
@@ -60,6 +61,8 @@ class TaskRead(TaskBase):
 
     id: uuid.UUID
     org_id: uuid.UUID
+    # Always present on a stored task (the create default has been resolved to a real key).
+    status: str
     position: float
     completed_at: datetime | None
     recurrence: Recurrence | None
@@ -96,6 +99,40 @@ class TaskLabelsSet(BaseModel):
     """PUT semantics: the task's label set becomes exactly these ids."""
 
     label_ids: list[uuid.UUID]
+
+
+# --------------------------------------------------------------------------- #
+# Statuses (org-level, tenant-configurable — issue #62)
+# --------------------------------------------------------------------------- #
+class StatusBase(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    color: str = Field(min_length=1, max_length=20)
+    position: int = 0
+    # Finished states stamp ``completed_at`` and can spawn an after-completion recurrence.
+    is_terminal: bool = False
+    # The status a new task starts in. At most one per org (the service enforces exactly one).
+    is_default: bool = False
+
+
+class StatusCreate(StatusBase):
+    # An immutable slug ``Task.status`` stores; only settable on create.
+    key: str = Field(min_length=1, max_length=50, pattern=r"^[a-z0-9_]+$")
+
+
+class StatusUpdate(BaseModel):
+    # ``key`` is immutable (tasks reference it), so it is not updatable.
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    color: str | None = Field(default=None, min_length=1, max_length=20)
+    position: int | None = None
+    is_terminal: bool | None = None
+    is_default: bool | None = None
+
+
+class StatusRead(StatusBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    key: str
 
 
 # --------------------------------------------------------------------------- #

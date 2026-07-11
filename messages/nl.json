@@ -817,6 +817,8 @@
   "errors.unauthorized": "Log in om verder te gaan.",
   "errors.forbidden": "Je hebt hier geen toegang toe.",
   "errors.conflict": "Dit conflicteert met bestaande gegevens.",
+  "errors.status_in_use": "Deze status bevat nog taken — verplaats of verwijder ze eerst.",
+  "errors.status_last": "Dit is de laatste status — een taak heeft er minstens één nodig.",
   "errors.approved_locked": "Deze uren zijn goedgekeurd en vergrendeld. Een beheerder kan ze aanpassen of de goedkeuring ongedaan maken.",
   "errors.due_reason_required": "Geef een reden op voor het verschuiven van de deadline.",
   "errors.last_owner": "Je kunt de laatste eigenaar niet verwijderen of degraderen.",

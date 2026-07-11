@@ -817,6 +817,8 @@
   "errors.unauthorized": "Please sign in.",
   "errors.forbidden": "You don't have access to this.",
   "errors.conflict": "This conflicts with existing data.",
+  "errors.status_in_use": "This status still has tasks in it — move or delete them first.",
+  "errors.status_last": "This is the last status — a task needs at least one to be in.",
   "errors.approved_locked": "These hours are approved and locked. A manager can change or unapprove them.",
   "errors.due_reason_required": "Give a reason for moving the deadline.",
   "errors.last_owner": "You can't remove or demote the last owner.",

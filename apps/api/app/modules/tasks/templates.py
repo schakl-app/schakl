@@ -21,7 +21,6 @@ from app.modules.tasks.models import (
     TaskActivity,
     TaskChecklist,
     TaskChecklistItem,
-    TaskStatus,
     TaskTemplate,
     TaskTemplateItem,
     TemplateTrigger,
@@ -36,6 +35,7 @@ from app.modules.tasks.schemas import (
     TemplateUpdate,
 )
 from app.modules.tasks.service import _display_name, _rich_items
+from app.modules.tasks.statuses import default_key, load_statuses
 
 
 class TemplateService:
@@ -155,6 +155,8 @@ class TemplateService:
         )
         session = self.ctx.session
         org_id = self.ctx.org.id
+        # New tasks land in the org's default status (issue #62), not a hardcoded "open".
+        default_status = default_key(await load_statuses(session, org_id))
         max_position = float(
             await session.scalar(
                 select(func.max(Task.position)).where(Task.org_id == org_id)
@@ -174,7 +176,7 @@ class TemplateService:
                 assignee_user_id=item.assignee_user_id,
                 title=item.title,
                 description=item.description,
-                status=TaskStatus.OPEN.value,
+                status=default_status,
                 priority=item.priority,
                 due_date=due,
                 allocated_minutes=item.allocated_minutes,
