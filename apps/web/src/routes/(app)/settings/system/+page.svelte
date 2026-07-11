@@ -87,27 +87,27 @@
   <section class="rounded-xl border border-border bg-surface-raised p-5">
     <h2 class="text-sm font-semibold text-text">{t("settings.system.build")}</h2>
 
-    <p class="mt-3 font-mono text-2xl font-semibold text-text">{info.build.version}</p>
+    <p class="mt-3 break-words font-mono text-2xl font-semibold text-text">{info.build.version}</p>
     {#if isDevBuild}
       <p class="mt-1 text-xs text-text-muted">{t("settings.system.dev_build")}</p>
     {/if}
 
     <dl class="mt-4 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
-      <div class="flex justify-between gap-4 sm:block">
+      <div class="flex min-w-0 justify-between gap-4 sm:block">
         <dt class="text-text-muted">{t("settings.system.git_sha")}</dt>
-        <dd class="truncate font-mono text-text">{info.build.git_sha}</dd>
+        <dd class="min-w-0 truncate font-mono text-text">{info.build.git_sha}</dd>
       </div>
-      <div class="flex justify-between gap-4 sm:block">
+      <div class="flex min-w-0 justify-between gap-4 sm:block">
         <dt class="text-text-muted">{t("settings.system.built_at")}</dt>
         <dd class="text-text">{fmtStamp(info.build.built_at)}</dd>
       </div>
-      <div class="flex justify-between gap-4 sm:block">
+      <div class="flex min-w-0 justify-between gap-4 sm:block">
         <dt class="text-text-muted">{t("settings.system.environment")}</dt>
         <dd class="text-text">{info.build.environment}</dd>
       </div>
-      <div class="flex justify-between gap-4 sm:block">
+      <div class="flex min-w-0 justify-between gap-4 sm:block">
         <dt class="text-text-muted">{t("settings.system.python")}</dt>
-        <dd class="font-mono text-text">{info.build.python_version}</dd>
+        <dd class="min-w-0 truncate font-mono text-text">{info.build.python_version}</dd>
       </div>
     </dl>
 
@@ -198,13 +198,13 @@
       </p>
     {/if}
     <dl class="mt-3 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
-      <div class="flex justify-between gap-4 sm:block">
+      <div class="flex min-w-0 justify-between gap-4 sm:block">
         <dt class="text-text-muted">{t("settings.system.migration_current")}</dt>
-        <dd class="font-mono text-text">{info.migrations.current.join(", ") || "—"}</dd>
+        <dd class="min-w-0 break-all font-mono text-text">{info.migrations.current.join(", ") || "—"}</dd>
       </div>
-      <div class="flex justify-between gap-4 sm:block">
+      <div class="flex min-w-0 justify-between gap-4 sm:block">
         <dt class="text-text-muted">{t("settings.system.migration_head")}</dt>
-        <dd class="font-mono text-text">{info.migrations.head.join(", ") || "—"}</dd>
+        <dd class="min-w-0 break-all font-mono text-text">{info.migrations.head.join(", ") || "—"}</dd>
       </div>
     </dl>
   </section>
