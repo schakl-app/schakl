@@ -80,6 +80,9 @@ registerWebModule({
       module: "time",
       position: 10,
       requiresPermission: "time.entry.read",
+      descriptionKey: "dashboard.widget_desc.time.today",
+      category: "dashboard.category.time",
+      size: "sm",
       load: (api) => api.GET("/api/v1/time/summary").then((r) => r.data ?? null),
       component: TimeTodayWidget,
     },
@@ -88,6 +91,9 @@ registerWebModule({
       module: "time",
       position: 15,
       requiresPermission: "time.report.read",
+      descriptionKey: "dashboard.widget_desc.time.team_month",
+      category: "dashboard.category.time",
+      size: "md",
       load: async (api) => {
         const today = new Date().toISOString().slice(0, 10);
         const monthStart = today.slice(0, 8) + "01";

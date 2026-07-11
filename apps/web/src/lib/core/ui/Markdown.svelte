@@ -52,6 +52,14 @@
     color: var(--color-brand);
     text-decoration: underline;
   }
+  /* @mention chip (issue #63). */
+  .markdown-body :global(.mention) {
+    border-radius: 0.25rem;
+    background: color-mix(in srgb, var(--color-brand) 12%, transparent);
+    padding: 0 0.2rem;
+    font-weight: 500;
+    color: var(--color-brand);
+  }
   .markdown-body :global(ul) {
     list-style: disc;
     padding-left: 1.25rem;

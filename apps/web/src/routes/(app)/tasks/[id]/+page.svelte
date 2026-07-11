@@ -35,7 +35,15 @@
   // `tasks.comment.write:any` lets a manager clean up anyone's comment; the author always can.
   const canDeleteAnyComment = $derived(can(page.data.user, "tasks.comment.write", "any"));
 
-  const statuses = ["open", "in_progress", "done"] as const;
+  // The org's configured status vocabulary (issue #62), from the /tasks layout load.
+  const statuses = $derived(data.statuses);
+  const statusName = (key: string) =>
+    statuses.find((s) => s.key === key)?.name ?? key;
+  const isDone = $derived(statuses.find((s) => s.key === task.status)?.is_terminal ?? false);
+  // @mention candidates for the comment composer (issue #63): the org members already loaded.
+  const mentionCandidates = $derived(
+    data.members.map((m) => ({ id: m.user_id, name: m.full_name || m.email })),
+  );
   const priorities = ["low", "normal", "high"] as const;
   const freqs = ["daily", "weekly", "monthly", "quarterly", "yearly"] as const;
 
@@ -92,7 +100,7 @@
   }
 
   const today = new Date().toISOString().slice(0, 10);
-  const overdue = $derived(task.status !== "done" && !!task.due_date && task.due_date < today);
+  const overdue = $derived(!isDone && !!task.due_date && task.due_date < today);
   const currentLabelIds = $derived((task.labels ?? []).map((l) => l.id));
 
   // Time budget: logged vs allocated drives the colour (green → amber → red).
@@ -138,9 +146,11 @@
 
   function activityText(a: { action: string; payload: Record<string, unknown> }): string {
     if (a.action === "status_changed") {
+      // Statuses are tenant data now (issue #62): name them from the configured list, not an i18n
+      // key. A status deleted since the change falls back to the stored key.
       return t("tasks.activity.status_changed", {
-        from: t(`tasks.status.${a.payload.from}`),
-        to: t(`tasks.status.${a.payload.to}`),
+        from: statusName(String(a.payload.from)),
+        to: statusName(String(a.payload.to)),
       });
     }
     if (a.action === "due_extended") {
@@ -215,7 +225,7 @@
           />
         {:else}
           <h1
-            class="flex-1 text-lg font-semibold {task.status === 'done'
+            class="flex-1 text-lg font-semibold {isDone
               ? 'text-text-muted line-through'
               : 'text-text'}"
           >
@@ -612,6 +622,7 @@
             rows={2}
             required
             placeholder={t("tasks.comments.placeholder")}
+            mentions={mentionCandidates}
           />
         {/key}
         <div class="mt-2 flex justify-end">
@@ -677,7 +688,13 @@
                     }}
                 >
                   <input type="hidden" name="comment_id" value={comment.id} />
-                  <RichTextEditor name="body" rows={2} required value={comment.body} />
+                  <RichTextEditor
+                    name="body"
+                    rows={2}
+                    required
+                    value={comment.body}
+                    mentions={mentionCandidates}
+                  />
                   <div class="mt-1 flex gap-2">
                     <button class="rounded-lg bg-brand px-2 py-1 text-xs font-medium text-white"
                       >{t("common.save")}</button
@@ -755,8 +772,8 @@
               class={inputClass}
               onchange={(e) => e.currentTarget.form?.requestSubmit()}
             >
-              {#each statuses as s (s)}
-                <option value={s} selected={task.status === s}>{t(`tasks.status.${s}`)}</option>
+              {#each statuses as s (s.key)}
+                <option value={s.key} selected={task.status === s.key}>{s.name}</option>
               {/each}
             </select>
           </form>

@@ -8,7 +8,6 @@ import { TASK_COLUMNS, TASKS_TABLE_ID } from "$lib/modules/tasks/columns";
 
 import type { Actions, PageServerLoad } from "./$types";
 
-type TaskStatus = "open" | "in_progress" | "done";
 
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
@@ -61,7 +60,7 @@ export const actions: Actions = {
       body: {
         title,
         description: String(form.get("description") ?? "").trim() || null,
-        status: "open",
+        // Status is omitted so the API assigns the org's default status (issue #62).
         priority: String(form.get("priority") ?? "normal") as "low" | "normal" | "high",
         company_id: String(form.get("company_id") ?? "").trim() || null,
         project_id: String(form.get("project_id") ?? "").trim() || null,
@@ -76,8 +75,9 @@ export const actions: Actions = {
   toggle: async (event) => {
     const form = await event.request.formData();
     const id = String(form.get("id") ?? "");
-    const status = String(form.get("status") ?? "done") as TaskStatus;
-    if (id) {
+    // A configured status key (issue #62); the row computes which one from the org's vocabulary.
+    const status = String(form.get("status") ?? "").trim();
+    if (id && status) {
       await apiFor(event).PATCH("/api/v1/tasks/{task_id}", {
         params: { path: { task_id: id } },
         body: { status },

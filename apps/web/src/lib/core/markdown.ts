@@ -12,7 +12,7 @@
  * the server is harmless — nothing runs until `renderMarkdown` is called.
  */
 import DOMPurify from "dompurify";
-import { marked } from "marked";
+import { marked, type Tokens } from "marked";
 
 // A deliberately small allow-list: the tags markdown itself produces, and nothing else. No
 // `<img>` (no remote content / tracking pixels in a note), no `<h1>`/`<h2>` (headings in a task
@@ -37,8 +37,22 @@ const ALLOWED_TAGS = [
   "h5",
   "h6",
   "hr",
+  // The @mention chip (issue #63): a fixed-class span this module's own extension emits.
+  "span",
 ];
-const ALLOWED_ATTR = ["href", "title"];
+const ALLOWED_ATTR = ["href", "title", "class", "data-user-id"];
+
+const _UUID = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
+const _MENTION_RE = new RegExp(`^@\\[([^\\]]+)\\]\\(mention:(${_UUID})\\)`);
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 
 let configured = false;
 
@@ -51,6 +65,29 @@ function ensureConfigured(): void {
       node.setAttribute("target", "_blank");
       node.setAttribute("rel", "noopener noreferrer nofollow");
     }
+  });
+  // Render `@[Name](mention:<uuid>)` markers as a distinguishable chip (issue #63). A marked
+  // extension (not raw-HTML injection) keeps the "markdown source only" rule; the output is a
+  // fixed-class span with an escaped display name and a UUID-shaped id, so it survives DOMPurify.
+  marked.use({
+    extensions: [
+      {
+        name: "mention",
+        level: "inline",
+        start(src: string) {
+          const i = src.indexOf("@[");
+          return i < 0 ? undefined : i;
+        },
+        tokenizer(src: string) {
+          const m = _MENTION_RE.exec(src);
+          if (m) return { type: "mention", raw: m[0], name: m[1], id: m[2] };
+        },
+        renderer(token: Tokens.Generic) {
+          const name = escapeHtml(String(token.name ?? ""));
+          return `<span class="mention" data-user-id="${String(token.id ?? "")}">@${name}</span>`;
+        },
+      },
+    ],
   });
   configured = true;
 }

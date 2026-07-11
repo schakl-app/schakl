@@ -1,5 +1,17 @@
 import { fail } from "@sveltejs/kit";
 
+import {
+  asClock,
+  asDateFormat,
+  CLOCKS,
+  DATE_FORMATS,
+  DEFAULT_CLOCK,
+  DEFAULT_DATE_FORMAT,
+  FORMAT_COOKIE,
+  FORMAT_COOKIE_OPTIONS,
+  parseFormatCookie,
+  serializeFormatCookie,
+} from "$lib/core/dateformat";
 import { apiErrorKey } from "$lib/core/errors";
 import { LOCALES } from "$lib/core/i18n";
 import { can } from "$lib/core/permissions";
@@ -28,6 +40,25 @@ export const load: PageServerLoad = async (event) => {
     event.cookies.set(THEME_COOKIE, persistedTheme, THEME_COOKIE_OPTIONS);
   }
 
+  // Same reconcile for the personal date/time formatting choice (issue #13): prefs are the
+  // cross-device truth, the cookie is this browser's SSR cache (see dateformat.ts).
+  const format = prefs.data?.prefs?.format as { clock?: string; date?: string } | undefined;
+  const persistedFormat = {
+    clock: asClock(format?.clock) ?? DEFAULT_CLOCK,
+    date: asDateFormat(format?.date) ?? DEFAULT_DATE_FORMAT,
+  };
+  const cookieFormat = parseFormatCookie(event.request.headers.get("cookie"));
+  if (
+    persistedFormat.clock !== cookieFormat.clock ||
+    persistedFormat.date !== cookieFormat.date
+  ) {
+    event.cookies.set(
+      FORMAT_COOKIE,
+      serializeFormatCookie(persistedFormat),
+      FORMAT_COOKIE_OPTIONS,
+    );
+  }
+
   // Personal API keys (#20). A member may hold apikeys.personal.manage; the offerable scopes are
   // the ones they actually hold (a key can never grant more than its owner), built from the
   // code-defined catalog. The catalog ships in the open-source repo — no tenant data.
@@ -54,6 +85,9 @@ export const load: PageServerLoad = async (event) => {
     locales: LOCALES,
     currentLocale: event.locals.locale,
     currentTheme: persistedTheme,
+    currentFormat: persistedFormat,
+    clocks: CLOCKS,
+    dateFormats: DATE_FORMATS,
     canManageKeys,
     apiKeys: keys.data ?? [],
     scopeOptions,

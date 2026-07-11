@@ -40,6 +40,20 @@
 
   let open = $state(false);
   let root: HTMLElement | undefined = $state();
+  // The panel is hand-positioned (not a Bits UI popover), so it needs its own collision check: a
+  // trigger near the bottom of the viewport would otherwise open the menu below the fold (#60).
+  let flipUp = $state(false);
+
+  function toggle() {
+    if (!open && root) {
+      const rect = root.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      // The panel height is dynamic; approximate from the item count (~36px each) plus padding.
+      const estimated = Math.min(items.length * 36 + 16, 320);
+      flipUp = spaceBelow < estimated && rect.top > spaceBelow;
+    }
+    open = !open;
+  }
 
   const iconSize = $derived(size ?? (compact ? 15 : 16));
   const triggerClass = $derived(
@@ -69,7 +83,7 @@
   <button
     type="button"
     class={triggerClass}
-    onclick={() => (open = !open)}
+    onclick={toggle}
     aria-haspopup="menu"
     aria-expanded={open}
     aria-label={label ?? t("common.actions")}
@@ -80,7 +94,8 @@
   {#if open}
     <div
       role="menu"
-      class="absolute z-30 mt-1 w-48 rounded-xl border border-border bg-surface-raised py-1 shadow-lg
+      class="absolute z-30 w-48 rounded-xl border border-border bg-surface-raised py-1 shadow-lg
+        {flipUp ? 'bottom-full mb-1' : 'mt-1'}
         {align === 'right' ? 'right-0' : 'left-0'}"
     >
       {#each items as item (item.label)}

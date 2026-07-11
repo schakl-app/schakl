@@ -8,6 +8,11 @@
   import { fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { labelChipClass } from "$lib/modules/tasks/labels";
+  import {
+    defaultStatusKey,
+    type TaskStatusDef,
+    terminalStatusKey,
+  } from "$lib/modules/tasks/statuses";
   import { formatMinutes } from "$lib/modules/time/format";
 
   interface Label {
@@ -40,15 +45,34 @@
     task,
     toggleAction = "?/toggle",
     members = [],
+    statuses = [],
     today = new Date().toISOString().slice(0, 10),
   }: {
     task: TaskLike;
     toggleAction?: string;
     members?: Member[];
+    /** The org's configured statuses (issue #62). Empty falls back to open/done behaviour. */
+    statuses?: TaskStatusDef[];
     today?: string;
   } = $props();
 
-  const done = $derived(task.status === "done");
+  // The current status's definition, when the caller supplied the vocabulary. "Finished" is its
+  // `is_terminal` flag; without a vocabulary we fall back to the literal "done" so callers that
+  // don't load statuses (project detail, dashboard widgets) keep working.
+  const statusDef = $derived(statuses.find((s) => s.key === task.status));
+  const done = $derived(statusDef ? statusDef.is_terminal : task.status === "done");
+  // The complete toggle moves to a terminal status and back to the default one.
+  const toggleTo = $derived(
+    statuses.length
+      ? done
+        ? defaultStatusKey(statuses)
+        : terminalStatusKey(statuses)
+      : done
+        ? "open"
+        : "done",
+  );
+  // A pill for a status that is neither the resting default nor a finished one (was: in_progress).
+  const pill = $derived(statusDef && !statusDef.is_terminal && !statusDef.is_default ? statusDef : null);
   const overdue = $derived(!done && !!task.due_date && task.due_date < today);
   const assignee = $derived(members.find((m) => m.user_id === task.assignee_user_id));
 
@@ -62,7 +86,7 @@
 <div class="flex items-center gap-3 px-4 py-2.5 hover:bg-surface">
   <form method="POST" action={toggleAction} use:enhance>
     <input type="hidden" name="id" value={task.id} />
-    <input type="hidden" name="status" value={done ? "open" : "done"} />
+    <input type="hidden" name="status" value={toggleTo} />
     <button
       class="flex h-5 w-5 items-center justify-center rounded border text-xs
         {done
@@ -85,7 +109,11 @@
           >{label.name}</span
         >
       {/each}
-      {#if task.status === "in_progress"}
+      {#if pill}
+        <span class="rounded-full px-2 py-0.5 text-[11px] font-medium {labelChipClass(pill.color)}"
+          >{pill.name}</span
+        >
+      {:else if !statuses.length && task.status === "in_progress"}
         <span class="rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand"
           >{t("tasks.status.in_progress")}</span
         >

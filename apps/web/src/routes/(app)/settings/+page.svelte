@@ -100,6 +100,13 @@
       <p class="mt-1 text-sm text-text-muted">{t("settings.task_labels.subtitle")}</p>
     </a>
     <a
+      href="/settings/task-statuses"
+      class="rounded-xl border border-border bg-surface-raised p-5 hover:border-brand"
+    >
+      <h3 class="text-sm font-semibold text-text">{t("settings.task_statuses.title")}</h3>
+      <p class="mt-1 text-sm text-text-muted">{t("settings.task_statuses.subtitle")}</p>
+    </a>
+    <a
       href="/settings/leave"
       class="rounded-xl border border-border bg-surface-raised p-5 hover:border-brand"
     >

@@ -172,7 +172,9 @@
 {/snippet}
 
 {#snippet readToggle(item: Item)}
-  <form method="POST" action="?/markRead" use:enhance>
+  <!-- `relative z-10` keeps mark-read tappable above the mobile row's stretched-link overlay (#59);
+       harmless in the desktop actions cell where there is no overlay. -->
+  <form method="POST" action="?/markRead" use:enhance class="relative z-10">
     <input type="hidden" name="id" value={item.id} />
     <input type="hidden" name="read" value={item.read_at === null ? "true" : "false"} />
     <button
