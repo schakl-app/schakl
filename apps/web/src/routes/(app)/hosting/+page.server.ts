@@ -1,0 +1,85 @@
+import { fail } from "@sveltejs/kit";
+
+import { apiErrorKey } from "$lib/core/errors";
+import { parseParty } from "$lib/core/party";
+import { apiFor } from "$lib/core/session";
+
+import type { Actions, PageServerLoad } from "./$types";
+
+function parseCustom(raw: FormDataEntryValue | null): Record<string, unknown> {
+  try {
+    return JSON.parse(String(raw ?? "{}"));
+  } catch {
+    return {};
+  }
+}
+
+export const load: PageServerLoad = async (event) => {
+  const api = apiFor(event);
+  const [hosting, companies, providers, members, contacts, definitions] = await Promise.all([
+    api.GET("/api/v1/hosting", { params: { query: { limit: 200, offset: 0 } } }),
+    api.GET("/api/v1/companies", { params: { query: { limit: 500, offset: 0, count: false } } }),
+    api.GET("/api/v1/providers"),
+    api.GET("/api/v1/members/lookup"),
+    api.GET("/api/v1/contacts", { params: { query: { limit: 500, offset: 0 } } }),
+    api.GET("/api/v1/custom-fields/definitions", { params: { query: { entity_type: "hosting" } } }),
+  ]);
+
+  return {
+    hosting: hosting.data?.items ?? [],
+    total: hosting.data?.total ?? 0,
+    companies: (companies.data?.items ?? []).map((c) => ({ id: c.id, name: c.name })),
+    providers: providers.data ?? [],
+    employees: members.data ?? [],
+    contacts: (contacts.data?.items ?? []).map((c) => ({
+      id: c.id,
+      name: [c.first_name, c.last_name].filter(Boolean).join(" "),
+    })),
+    definitions: definitions.data ?? [],
+    agencyLabel: event.locals.theme?.brandName ?? "",
+    locale: event.locals.locale,
+  };
+};
+
+function hostingBody(form: FormData) {
+  return {
+    name: String(form.get("name") ?? "").trim(),
+    company_id: String(form.get("company_id") ?? "") || null,
+    provider_id: String(form.get("provider_id") ?? "") || null,
+    ip_address: String(form.get("ip_address") ?? "").trim() || null,
+    contact: parseParty(form.get("contact")),
+    custom: parseCustom(form.get("custom")),
+  };
+}
+
+export const actions: Actions = {
+  save: async (event) => {
+    const form = await event.request.formData();
+    const hosting_id = String(form.get("id") ?? "");
+    const body = hostingBody(form);
+    if (!body.name) return fail(400, { error: "errors.required" });
+
+    if (hosting_id) {
+      const { error } = await apiFor(event).PATCH("/api/v1/hosting/{hosting_id}", {
+        params: { path: { hosting_id } },
+        body,
+      });
+      if (error) return fail(400, { error: apiErrorKey(error).key });
+    } else {
+      const { error } = await apiFor(event).POST("/api/v1/hosting", { body });
+      if (error) return fail(400, { error: apiErrorKey(error).key });
+    }
+    return { saved: true };
+  },
+
+  delete: async (event) => {
+    const form = await event.request.formData();
+    const hosting_id = String(form.get("id") ?? "");
+    if (hosting_id) {
+      await apiFor(event).DELETE("/api/v1/hosting/{hosting_id}", {
+        params: { path: { hosting_id } },
+      });
+    }
+    return { deleted: true };
+  },
+};

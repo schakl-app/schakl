@@ -10,3 +10,5 @@ import "./projects";
 import "./time";
 import "./leave";
 import "./notifications";
+import "./domains";
+import "./hosting";

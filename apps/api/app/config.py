@@ -63,7 +63,8 @@ class Settings(BaseSettings):
     # Config-level modules mounted by main.py; per-tenant enablement lives in org_settings.
     enabled_modules: list[str] = Field(
         default_factory=lambda: [
-            "companies", "contacts", "tasks", "projects", "time", "leave", "notifications"
+            "companies", "contacts", "tasks", "projects", "time", "leave", "notifications",
+            "domains", "hosting", "websites",
         ]
     )
     default_locale: str = "nl"

@@ -60,6 +60,8 @@ export const SETTINGS_SCREEN_PERMISSIONS = [
   "tasks.label.write",
   "leave.type.write",
   "notifications.defaults.manage",
+  "settings.providers.manage",
+  "contacts.type.manage",
 ] as const;
 
 export function canAccessSettings(granted: readonly string[] | undefined): boolean {

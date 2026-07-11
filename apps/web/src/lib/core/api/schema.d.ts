@@ -254,6 +254,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/contacts/types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Contact Types */
+        get: operations["list_contact_types_api_v1_contacts_types_get"];
+        put?: never;
+        /** Create Contact Type */
+        post: operations["create_contact_type_api_v1_contacts_types_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/contacts/types/{type_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Contact Type */
+        delete: operations["delete_contact_type_api_v1_contacts_types__type_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Contact Type */
+        patch: operations["update_contact_type_api_v1_contacts_types__type_id__patch"];
+        trace?: never;
+    };
     "/api/v1/contacts/{contact_id}": {
         parameters: {
             query?: never;
@@ -404,6 +440,100 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/domains": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Domains */
+        get: operations["list_domains_api_v1_domains_get"];
+        put?: never;
+        /** Create Domain */
+        post: operations["create_domain_api_v1_domains_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/domains/{domain_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Domain */
+        get: operations["get_domain_api_v1_domains__domain_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Domain */
+        delete: operations["delete_domain_api_v1_domains__domain_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Domain */
+        patch: operations["update_domain_api_v1_domains__domain_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/domains/{domain_id}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Domain Dns
+         * @description Re-query public DNS for this domain's nameservers + DNSSEC now (#92).
+         */
+        post: operations["refresh_domain_dns_api_v1_domains__domain_id__refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hosting": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Hosting */
+        get: operations["list_hosting_api_v1_hosting_get"];
+        put?: never;
+        /** Create Hosting */
+        post: operations["create_hosting_api_v1_hosting_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hosting/{hosting_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Hosting */
+        get: operations["get_hosting_api_v1_hosting__hosting_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Hosting */
+        delete: operations["delete_hosting_api_v1_hosting__hosting_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Hosting */
+        patch: operations["update_hosting_api_v1_hosting__hosting_id__patch"];
         trace?: never;
     };
     "/api/v1/instance/audit": {
@@ -1567,6 +1697,43 @@ export interface paths {
         patch: operations["update_project_api_v1_projects__project_id__patch"];
         trace?: never;
     };
+    "/api/v1/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Providers */
+        get: operations["list_providers_api_v1_providers_get"];
+        put?: never;
+        /** Create Provider */
+        post: operations["create_provider_api_v1_providers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/providers/{provider_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Provider */
+        get: operations["get_provider_api_v1_providers__provider_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Provider */
+        delete: operations["delete_provider_api_v1_providers__provider_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Provider */
+        patch: operations["update_provider_api_v1_providers__provider_id__patch"];
+        trace?: never;
+    };
     "/api/v1/roles": {
         parameters: {
             query?: never;
@@ -2365,6 +2532,43 @@ export interface paths {
         patch: operations["users_patch_user_api_v1_users__id__patch"];
         trace?: never;
     };
+    "/api/v1/websites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Websites */
+        get: operations["list_websites_api_v1_websites_get"];
+        put?: never;
+        /** Create Website */
+        post: operations["create_website_api_v1_websites_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/websites/{website_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Website */
+        get: operations["get_website_api_v1_websites__website_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Website */
+        delete: operations["delete_website_api_v1_websites__website_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Website */
+        patch: operations["update_website_api_v1_websites__website_id__patch"];
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -3057,7 +3261,7 @@ export interface components {
         };
         /**
          * ContactCompanyLink
-         * @description A company a contact is attached to, with the per-company primary flag.
+         * @description A company a contact is attached to, with the per-company primary flag and contact type.
          */
         ContactCompanyLink: {
             /**
@@ -3065,6 +3269,8 @@ export interface components {
              * Format: uuid
              */
             company_id: string;
+            /** Contact Type Id */
+            contact_type_id?: string | null;
             /** Is Primary */
             is_primary: boolean;
             /** Name */
@@ -3093,7 +3299,7 @@ export interface components {
         };
         /**
          * ContactLinkCreate
-         * @description Attach a contact to a company; optionally make it that company's primary.
+         * @description Attach a contact to a company; optionally make it that company's primary and type it.
          */
         ContactLinkCreate: {
             /**
@@ -3101,6 +3307,8 @@ export interface components {
              * Format: uuid
              */
             company_id: string;
+            /** Contact Type Id */
+            contact_type_id?: string | null;
             /**
              * Is Primary
              * @default false
@@ -3109,10 +3317,15 @@ export interface components {
         };
         /**
          * ContactLinkUpdate
-         * @description Update a company↔contact link (only the primary flag is mutable).
+         * @description Update a company↔contact link (the primary flag and/or the contact type).
          */
         ContactLinkUpdate: {
-            /** Is Primary */
+            /** Contact Type Id */
+            contact_type_id?: string | null;
+            /**
+             * Is Primary
+             * @default false
+             */
             is_primary: boolean;
         };
         /** ContactRead */
@@ -3155,6 +3368,75 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** ContactTypeCreate */
+        ContactTypeCreate: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Key */
+            key: string;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            };
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+        };
+        /** ContactTypeRead */
+        ContactTypeRead: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Key */
+            key: string;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            };
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** ContactTypeUpdate */
+        ContactTypeUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            } | null;
+            /** Position */
+            position?: number | null;
         };
         /** ContactUpdate */
         ContactUpdate: {
@@ -3339,20 +3621,127 @@ export interface components {
             /** Domain */
             domain: string;
         };
-        /** DomainStatus */
-        DomainStatus: {
-            /** Custom Domain */
-            custom_domain: string | null;
-            /** Custom Domain Verified At */
-            custom_domain_verified_at: string | null;
-            /** Pending Domain */
-            pending_domain: string | null;
-            /** Txt Record Name */
-            txt_record_name: string | null;
-            /** Txt Record Value */
-            txt_record_value: string | null;
-            /** Verification Token */
-            verification_token: string | null;
+        /** DomainCreate */
+        DomainCreate: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Custom */
+            custom?: {
+                [key: string]: unknown;
+            };
+            /** Dns Provider Id */
+            dns_provider_id?: string | null;
+            email_contact?: components["schemas"]["PartyRef"] | null;
+            /**
+             * Email Enabled
+             * @default false
+             */
+            email_enabled: boolean;
+            /** Email Provider Id */
+            email_provider_id?: string | null;
+            /** Name */
+            name: string;
+            /** Registrar Provider Id */
+            registrar_provider_id?: string | null;
+            registry_contact?: components["schemas"]["PartyRef"] | null;
+            /** @default active */
+            status: components["schemas"]["DomainStatus-Input"];
+        };
+        /** DomainRead */
+        DomainRead: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /**
+             * Company Name
+             * @default
+             */
+            company_name: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Custom */
+            custom?: {
+                [key: string]: unknown;
+            };
+            /** Dns Checked At */
+            dns_checked_at?: string | null;
+            /** Dns Provider Id */
+            dns_provider_id?: string | null;
+            /** Dns Provider Name */
+            dns_provider_name?: string | null;
+            /** Dnssec */
+            dnssec?: boolean | null;
+            email_contact?: components["schemas"]["PartyReadRef"] | null;
+            /**
+             * Email Enabled
+             * @default false
+             */
+            email_enabled: boolean;
+            /** Email Provider Id */
+            email_provider_id?: string | null;
+            /** Email Provider Name */
+            email_provider_name?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Nameservers */
+            nameservers?: string[] | null;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /** Registrar Provider Id */
+            registrar_provider_id?: string | null;
+            /** Registrar Provider Name */
+            registrar_provider_name?: string | null;
+            registry_contact?: components["schemas"]["PartyReadRef"] | null;
+            status: components["schemas"]["app__modules__domains__models__DomainStatus"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * DomainStatus
+         * @description Operational state of a domain. ``redirect``'s uptime/redirect webhook is a later slice.
+         * @enum {string}
+         */
+        "DomainStatus-Input": "active" | "redirect" | "parked" | "expired" | "inactive";
+        /** DomainUpdate */
+        DomainUpdate: {
+            /** Company Id */
+            company_id?: string | null;
+            /** Custom */
+            custom?: {
+                [key: string]: unknown;
+            } | null;
+            /** Dns Provider Id */
+            dns_provider_id?: string | null;
+            email_contact?: components["schemas"]["PartyRef"] | null;
+            /** Email Enabled */
+            email_enabled?: boolean | null;
+            /** Email Provider Id */
+            email_provider_id?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Registrar Provider Id */
+            registrar_provider_id?: string | null;
+            registry_contact?: components["schemas"]["PartyRef"] | null;
+            status?: components["schemas"]["DomainStatus-Input"] | null;
         };
         /** EffectivePermissions */
         EffectivePermissions: {
@@ -3531,6 +3920,78 @@ export interface components {
             skipped: number;
             /** Updated */
             updated: number;
+        };
+        /** HostingCreate */
+        HostingCreate: {
+            /** Company Id */
+            company_id?: string | null;
+            contact?: components["schemas"]["PartyRef"] | null;
+            /** Custom */
+            custom?: {
+                [key: string]: unknown;
+            };
+            /** Ip Address */
+            ip_address?: string | null;
+            /** Name */
+            name: string;
+            /** Provider Id */
+            provider_id?: string | null;
+        };
+        /** HostingRead */
+        HostingRead: {
+            /** Company Id */
+            company_id?: string | null;
+            /** Company Name */
+            company_name?: string | null;
+            contact?: components["schemas"]["PartyReadRef"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Custom */
+            custom?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Ip Address */
+            ip_address?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /** Provider Id */
+            provider_id?: string | null;
+            /** Provider Name */
+            provider_name?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** HostingUpdate */
+        HostingUpdate: {
+            /** Company Id */
+            company_id?: string | null;
+            contact?: components["schemas"]["PartyRef"] | null;
+            /** Custom */
+            custom?: {
+                [key: string]: unknown;
+            } | null;
+            /** Ip Address */
+            ip_address?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Provider Id */
+            provider_id?: string | null;
         };
         /** ImpersonateRequest */
         ImpersonateRequest: {
@@ -4482,6 +4943,28 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** Page[DomainRead] */
+        Page_DomainRead_: {
+            /** Items */
+            items: components["schemas"]["DomainRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[HostingRead] */
+        Page_HostingRead_: {
+            /** Items */
+            items: components["schemas"]["HostingRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
         /** Page[LeaveRequestRead] */
         Page_LeaveRequestRead_: {
             /** Items */
@@ -4537,6 +5020,17 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** Page[WebsiteRead] */
+        Page_WebsiteRead_: {
+            /** Items */
+            items: components["schemas"]["WebsiteRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
         /**
          * PanelData
          * @description One composed panel on a host entity's detail view (the "attach to company" hub).
@@ -4553,6 +5047,38 @@ export interface components {
             /** Title Key */
             title_key: string;
         };
+        /**
+         * PartyReadRef
+         * @description A responsible party as returned to a client, with its resolved display label.
+         */
+        PartyReadRef: {
+            /** Id */
+            id?: string | null;
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+            type: components["schemas"]["PartyType"];
+        };
+        /**
+         * PartyRef
+         * @description A responsible party as submitted by a client.
+         *
+         *     ``id`` is optional: ``agency`` ignores it, ``company`` treats NULL as *the record's own
+         *     company*, and ``employee`` / ``contact`` require it (validated in the service).
+         */
+        PartyRef: {
+            /** Id */
+            id?: string | null;
+            type: components["schemas"]["PartyType"];
+        };
+        /**
+         * PartyType
+         * @description What a party reference resolves to. ``AGENCY`` is the default and needs no id.
+         * @enum {string}
+         */
+        PartyType: "agency" | "company" | "employee" | "contact";
         /** PermissionCatalog */
         PermissionCatalog: {
             /** Groups */
@@ -4827,6 +5353,85 @@ export interface components {
             /** Start Date */
             start_date?: string | null;
             status?: components["schemas"]["ProjectStatus"] | null;
+        };
+        /** ProviderCreate */
+        ProviderCreate: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Config */
+            config?: {
+                [key: string]: unknown;
+            };
+            kind: components["schemas"]["ProviderKind"];
+            /** Name */
+            name: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+        };
+        /**
+         * ProviderKind
+         * @description The four services a provider can be. A single row is exactly one kind.
+         * @enum {string}
+         */
+        ProviderKind: "email" | "dns" | "registrar" | "hosting";
+        /** ProviderRead */
+        ProviderRead: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Config */
+            config?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["ProviderKind"];
+            /** Name */
+            name: string;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** ProviderUpdate */
+        ProviderUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Config */
+            config?: {
+                [key: string]: unknown;
+            } | null;
+            /** Name */
+            name?: string | null;
+            /** Position */
+            position?: number | null;
         };
         /** PurgeRequest */
         PurgeRequest: {
@@ -5851,6 +6456,94 @@ export interface components {
             /** Watching */
             watching?: boolean | null;
         };
+        /** WebsiteCreate */
+        WebsiteCreate: {
+            /** Custom */
+            custom?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Domain Id
+             * Format: uuid
+             */
+            domain_id: string;
+            /** Hosting Id */
+            hosting_id?: string | null;
+            /**
+             * Root
+             * @default true
+             */
+            root: boolean;
+            technical_owner?: components["schemas"]["PartyRef"] | null;
+            /**
+             * Uptime Enabled
+             * @default false
+             */
+            uptime_enabled: boolean;
+        };
+        /** WebsiteRead */
+        WebsiteRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Custom */
+            custom?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Domain Id
+             * Format: uuid
+             */
+            domain_id: string;
+            /**
+             * Domain Name
+             * @default
+             */
+            domain_name: string;
+            /** Hosting Id */
+            hosting_id?: string | null;
+            /** Hosting Name */
+            hosting_name?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /** Root */
+            root: boolean;
+            technical_owner?: components["schemas"]["PartyReadRef"] | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Uptime Enabled
+             * @default false
+             */
+            uptime_enabled: boolean;
+        };
+        /** WebsiteUpdate */
+        WebsiteUpdate: {
+            /** Custom */
+            custom?: {
+                [key: string]: unknown;
+            } | null;
+            /** Hosting Id */
+            hosting_id?: string | null;
+            /** Root */
+            root?: boolean | null;
+            technical_owner?: components["schemas"]["PartyRef"] | null;
+            /** Uptime Enabled */
+            uptime_enabled?: boolean | null;
+        };
         /**
          * WorkDay
          * @description One working block plus its breaks. ``breaks: []`` is an uninterrupted day.
@@ -5952,6 +6645,27 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** DomainStatus */
+        app__core__domains__DomainStatus: {
+            /** Custom Domain */
+            custom_domain: string | null;
+            /** Custom Domain Verified At */
+            custom_domain_verified_at: string | null;
+            /** Pending Domain */
+            pending_domain: string | null;
+            /** Txt Record Name */
+            txt_record_name: string | null;
+            /** Txt Record Value */
+            txt_record_value: string | null;
+            /** Verification Token */
+            verification_token: string | null;
+        };
+        /**
+         * DomainStatus
+         * @description Operational state of a domain. ``redirect``'s uptime/redirect webhook is a later slice.
+         * @enum {string}
+         */
+        app__modules__domains__models__DomainStatus: "active" | "redirect" | "parked" | "expired" | "inactive";
         /**
          * ActivityItem
          * @description One line of a record's activity feed — recipient-independent.
@@ -6590,6 +7304,7 @@ export interface operations {
                 limit?: number;
                 offset?: number;
                 company_id?: string | null;
+                contact_type_id?: string | null;
                 q?: string | null;
                 /** @description first_name | last_name | email | job_title | company | …, '-' desc */
                 sort?: string | null;
@@ -6640,6 +7355,134 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ContactRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_contact_types_api_v1_contacts_types_get: {
+        parameters: {
+            query?: {
+                include_inactive?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactTypeRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_contact_type_api_v1_contacts_types_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContactTypeCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactTypeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_contact_type_api_v1_contacts_types__type_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                type_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_contact_type_api_v1_contacts_types__type_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                type_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContactTypeUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactTypeRead"];
                 };
             };
             /** @description Validation Error */
@@ -7089,6 +7932,365 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DashboardPrefs"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_domains_api_v1_domains_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                company_id?: string | null;
+                q?: string | null;
+                /** @description name | status | created_at | updated_at, '-' desc */
+                sort?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_DomainRead_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_domain_api_v1_domains_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DomainCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_domain_api_v1_domains__domain_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_domain_api_v1_domains__domain_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_domain_api_v1_domains__domain_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DomainUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_domain_dns_api_v1_domains__domain_id__refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_hosting_api_v1_hosting_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                company_id?: string | null;
+                q?: string | null;
+                /** @description name | ip_address | created_at | updated_at, '-' desc */
+                sort?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_HostingRead_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_hosting_api_v1_hosting_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HostingCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostingRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_hosting_api_v1_hosting__hosting_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                hosting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostingRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_hosting_api_v1_hosting__hosting_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                hosting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_hosting_api_v1_hosting__hosting_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                hosting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HostingUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostingRead"];
                 };
             };
             /** @description Validation Error */
@@ -8963,7 +10165,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DomainStatus"];
+                    "application/json": components["schemas"]["app__core__domains__DomainStatus"];
                 };
             };
         };
@@ -8987,7 +10189,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DomainStatus"];
+                    "application/json": components["schemas"]["app__core__domains__DomainStatus"];
                 };
             };
             /** @description Validation Error */
@@ -9016,7 +10218,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DomainStatus"];
+                    "application/json": components["schemas"]["app__core__domains__DomainStatus"];
                 };
             };
         };
@@ -9036,7 +10238,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DomainStatus"];
+                    "application/json": components["schemas"]["app__core__domains__DomainStatus"];
                 };
             };
         };
@@ -9741,6 +10943,166 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_providers_api_v1_providers_get: {
+        parameters: {
+            query?: {
+                kind?: components["schemas"]["ProviderKind"] | null;
+                include_inactive?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_provider_api_v1_providers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_provider_api_v1_providers__provider_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_provider_api_v1_providers__provider_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_provider_api_v1_providers__provider_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderRead"];
                 };
             };
             /** @description Validation Error */
@@ -11900,6 +13262,167 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_websites_api_v1_websites_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                domain_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_WebsiteRead_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_website_api_v1_websites_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebsiteCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebsiteRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_website_api_v1_websites__website_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                website_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebsiteRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_website_api_v1_websites__website_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                website_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_website_api_v1_websites__website_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                website_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebsiteUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebsiteRead"];
+                };
             };
             /** @description Validation Error */
             422: {

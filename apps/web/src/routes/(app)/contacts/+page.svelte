@@ -15,7 +15,17 @@
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
+  import { page } from "$app/state";
   import { CONTACT_COLUMNS } from "$lib/modules/contacts/columns";
+  import { contactTypeLabel } from "$lib/modules/contacts/types";
+
+  function typeHref(typeId: string): string {
+    const params = new URLSearchParams(page.url.searchParams);
+    if (typeId) params.set("type", typeId);
+    else params.delete("type");
+    const qs = params.toString();
+    return qs ? `/contacts?${qs}` : "/contacts";
+  }
 
   let { data, form } = $props();
 
@@ -188,6 +198,27 @@
     onsort={table.onSort}
   />
 </div>
+
+{#if data.types.length > 0}
+  <div class="mb-4 flex flex-wrap gap-1.5">
+    <a
+      href={typeHref("")}
+      class="rounded-full border px-3 py-1 text-xs
+        {data.typeFilter === ''
+        ? 'border-brand bg-brand/10 font-medium text-brand'
+        : 'border-border text-text-muted hover:text-text'}">{t("contacts.all_types")}</a
+    >
+    {#each data.types as ct (ct.id)}
+      <a
+        href={typeHref(ct.id)}
+        class="rounded-full border px-3 py-1 text-xs
+          {data.typeFilter === ct.id
+          ? 'border-brand bg-brand/10 font-medium text-brand'
+          : 'border-border text-text-muted hover:text-text'}">{contactTypeLabel(ct, data.locale)}</a
+      >
+    {/each}
+  </div>
+{/if}
 
 {#if showCreate}
   <form

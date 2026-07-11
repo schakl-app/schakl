@@ -27,6 +27,7 @@ from app.core.members import router as members_router
 from app.core.meta import router as meta_router
 from app.core.permissions.reconcile import reconcile_permission_defaults
 from app.core.permissions.router import permissions_router, roles_router
+from app.core.providers.router import router as providers_router
 from app.core.setup import router as setup_router
 from app.core.system import readiness
 from app.core.system import router as system_router
@@ -77,6 +78,7 @@ def create_app() -> FastAPI:
     api.include_router(permissions_router)
     api.include_router(customfields_router)
     api.include_router(activity_router)
+    api.include_router(providers_router)
     api.include_router(dashboard_router)
     api.include_router(userprefs_router)
     api.include_router(system_router)
