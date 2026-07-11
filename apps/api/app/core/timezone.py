@@ -26,7 +26,10 @@ DEFAULT_TIMEZONE = settings.default_timezone
 
 @lru_cache(maxsize=1)
 def _known() -> frozenset[str]:
-    """The IANA zone names this platform's tzdata knows — cached; the set never changes at runtime."""
+    """The IANA zone names this platform's tzdata knows.
+
+    Cached; the set never changes at runtime.
+    """
     return frozenset(available_timezones())
 
 

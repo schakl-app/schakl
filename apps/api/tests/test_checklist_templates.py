@@ -8,7 +8,11 @@ from tests.test_task_subresources import add_member
 # Items are `{title, description}` since issue #66 (a bare title list is no longer accepted).
 _TEMPLATE = {
     "title": "Website launch",
-    "items": [{"title": "DNS"}, {"title": "SSL"}, {"title": "Analytics", "description": "GA4 + GTM"}],
+    "items": [
+        {"title": "DNS"},
+        {"title": "SSL"},
+        {"title": "Analytics", "description": "GA4 + GTM"},
+    ],
 }
 
 
