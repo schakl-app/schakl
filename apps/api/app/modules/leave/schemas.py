@@ -68,6 +68,9 @@ class LeaveSettingsRead(BaseModel):
     #: May approvers decide/edit/backdate their own leave (#110)? Off = separation of duties;
     #: the org's sole approver may always self-manage regardless.
     self_approval: bool = False
+    #: Look-ahead for the rostered-free-day generator (#107), for open-ended contracts; a
+    #: fixed-term contract is always filled to its end date instead.
+    recurring_horizon_months: int = 12
 
 
 class LeaveSettingsUpdate(BaseModel):
@@ -81,6 +84,8 @@ class LeaveSettingsUpdate(BaseModel):
     holiday_country: str | None = Field(default=None, max_length=2)
     holiday_auto_import: bool | None = None
     self_approval: bool | None = None
+    #: Bounded: below a month the monthly cron outruns it; past two years is planning fiction.
+    recurring_horizon_months: int | None = Field(default=None, ge=1, le=24)
 
 
 # --- holidays (#47) ------------------------------------------------------------ #

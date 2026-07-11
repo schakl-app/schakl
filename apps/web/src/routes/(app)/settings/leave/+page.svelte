@@ -288,6 +288,48 @@
   </div>
 </section>
 
+<!-- Roostervrije dagen (#107): how far ahead the generator plans -->
+<section class="mb-8">
+  <div class="mb-3">
+    <h2 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
+      {t("settings.leave.recurring_heading")}
+    </h2>
+  </div>
+  <div class="rounded-xl border border-border bg-surface p-4">
+    <form
+      method="POST"
+      action="?/saveHorizon"
+      use:enhance={() =>
+        ({ update }) =>
+          update({ reset: false })}
+    >
+      <label for="recurring-horizon" class="mb-1 block text-sm font-medium text-text">
+        {t("settings.leave.recurring_horizon")}
+      </label>
+      <input
+        id="recurring-horizon"
+        name="recurring_horizon_months"
+        type="number"
+        min="1"
+        max="24"
+        value={data.recurringHorizonMonths}
+        class="w-28 rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+      />
+      <p class="mt-1 text-xs text-text-muted">{t("settings.leave.recurring_horizon_hint")}</p>
+      {#if form?.horizonSaved}
+        <p class="mt-3 text-sm text-green-600">{t("settings.leave.recurring_horizon_saved")}</p>
+      {/if}
+      <div class="mt-3 flex justify-end">
+        <button
+          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        >
+          {t("common.save")}
+        </button>
+      </div>
+    </form>
+  </div>
+</section>
+
 <!-- Feestdagen (#47): a holiday on a scheduled working day costs no leave hours -->
 <section class="mb-8">
   <div class="mb-3 flex flex-wrap items-center justify-between gap-3">

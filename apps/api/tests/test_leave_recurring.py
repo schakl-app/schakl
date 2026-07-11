@@ -41,12 +41,14 @@ def _next_weekday(base: date, weekday: int) -> date:
     return base + timedelta(days=days)
 
 
-def _horizon(today: date) -> date:
-    """Mirror of LeaveService._recurring_horizon: end of the month after next."""
-    month = today.month + 3
-    year = today.year + (month - 1) // 12
-    month = (month - 1) % 12 + 1
-    return date(year, month, 1) - timedelta(days=1)
+def _add_months(day: date, months: int) -> date:
+    """Mirror of LeaveService._add_months (day-of-month clamped)."""
+    from calendar import monthrange
+
+    month = day.month - 1 + months
+    year = day.year + month // 12
+    month = month % 12 + 1
+    return date(year, month, min(day.day, monthrange(year, month)[1]))
 
 
 async def _generated(client, headers, user_id) -> list[dict]:
@@ -98,7 +100,8 @@ async def test_pattern_places_days_to_the_horizon(client_for) -> None:
 
         rows = await _generated(c, headers, member.id)
         assert len(rows) == created.json()["generated"]
-        horizon = _horizon(date.today())
+        # Open-ended contract → the rolling look-ahead (default 12 months), not a fixed window.
+        horizon = _add_months(date.today(), 12)
         holidays = set()
         for year in (_YEAR, _YEAR + 1):
             holidays |= {
@@ -224,6 +227,119 @@ async def test_generation_stops_at_the_balance(client_for) -> None:
                 float(r["hours"]) for r in rows if r["start_date"].startswith(str(year))
             )
             assert booked <= 16.0
+
+
+async def test_fixed_term_contract_is_filled_to_its_end_date(client_for) -> None:
+    """The horizon *is* the contract term when an end date is entered — the whole term, and
+    never a day past it: a free day after employment ends is meaningless."""
+    t = await make_tenant("recurring-term")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        member = await _member(c, headers, "e@example.com")
+        types = await _types(c, headers)
+        anchor = _next_weekday(date.today() + timedelta(days=7), 4)
+        end = anchor + timedelta(weeks=5)  # room for the anchor + two biweekly repeats
+        res = await c.post(
+            "/api/v1/leave/contracts",
+            json={
+                "user_id": str(member.id),
+                "start_date": f"{_YEAR}-01-01",
+                "end_date": end.isoformat(),
+                "contract_hours_per_week": "36",
+            },
+            headers=headers,
+        )
+        assert res.status_code == 201, res.text
+
+        created = await c.post(
+            "/api/v1/leave/recurring",
+            json={
+                "user_id": str(member.id),
+                "leave_type_id": types["roostervrij"]["id"],
+                "anchor_date": anchor.isoformat(),
+                "interval_weeks": 2,
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        rows = await _generated(c, headers, member.id)
+        assert len(rows) > 0
+        assert all(date.fromisoformat(r["start_date"]) <= end for r in rows)
+
+
+async def test_ended_contract_generates_nothing(client_for) -> None:
+    """A departed employee's pattern is inert: the horizon lies behind today."""
+    t = await make_tenant("recurring-departed")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        member = await _member(c, headers, "e@example.com")
+        types = await _types(c, headers)
+        res = await c.post(
+            "/api/v1/leave/contracts",
+            json={
+                "user_id": str(member.id),
+                "start_date": f"{_YEAR - 1}-01-01",
+                "end_date": (date.today() - timedelta(days=30)).isoformat(),
+                "contract_hours_per_week": "36",
+            },
+            headers=headers,
+        )
+        assert res.status_code == 201, res.text
+        created = await c.post(
+            "/api/v1/leave/recurring",
+            json={
+                "user_id": str(member.id),
+                "leave_type_id": types["roostervrij"]["id"],
+                "anchor_date": f"{_YEAR - 1}-01-08",
+                "interval_weeks": 1,
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        assert created.json()["generated"] == 0
+        assert await _generated(c, headers, member.id) == []
+
+
+async def test_horizon_setting_bounds_open_ended_generation(client_for) -> None:
+    """`leave_settings.recurring_horizon_months` governs the open-ended look-ahead."""
+    t = await make_tenant("recurring-setting")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        member = await _member(c, headers, "e@example.com")
+        types = await _types(c, headers)
+        await c.post(
+            "/api/v1/leave/contracts",
+            json={
+                "user_id": str(member.id),
+                "start_date": f"{_YEAR}-01-01",
+                "end_date": None,
+                "contract_hours_per_week": "36",
+            },
+            headers=headers,
+        )
+        res = await c.put(
+            "/api/v1/leave/settings", json={"recurring_horizon_months": 1}, headers=headers
+        )
+        assert res.status_code == 200, res.text
+        assert res.json()["recurring_horizon_months"] == 1
+
+        anchor = _next_weekday(date.today() + timedelta(days=7), 2)
+        created = await c.post(
+            "/api/v1/leave/recurring",
+            json={
+                "user_id": str(member.id),
+                "leave_type_id": types["roostervrij"]["id"],
+                "anchor_date": anchor.isoformat(),
+                "interval_weeks": 1,
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        rows = await _generated(c, headers, member.id)
+        assert len(rows) > 0
+        assert all(
+            date.fromisoformat(r["start_date"]) <= _add_months(date.today(), 1) for r in rows
+        )
 
 
 async def test_recurring_requires_profile_manage_and_is_tenant_isolated(client_for) -> None:

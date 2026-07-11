@@ -11,6 +11,7 @@ stay a hard error.
 from __future__ import annotations
 
 import uuid
+from calendar import monthrange
 from collections.abc import Sequence
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import ROUND_HALF_UP, Decimal
@@ -735,13 +736,30 @@ class LeaveService:
         await self.recurring.delete(await self.recurring.get_or_404(recurring_id))
 
     @staticmethod
-    def _recurring_horizon(today: date) -> date:
-        """Generate through the end of the month after next: far enough to plan around, close
-        enough that a schedule change doesn't strand a quarter of pre-booked days."""
-        month = today.month + 3
-        year = today.year + (month - 1) // 12
-        month = (month - 1) % 12 + 1
-        return date(year, month, 1) - timedelta(days=1)
+    def _add_months(day: date, months: int) -> date:
+        month = day.month - 1 + months
+        year = day.year + month // 12
+        month = month % 12 + 1
+        last_day = monthrange(year, month)[1]
+        return date(year, month, min(day.day, last_day))
+
+    async def _recurring_horizon(self, user_id: uuid.UUID, today: date) -> date:
+        """How far this employee's free days are generated ahead (#107).
+
+        A **fixed-term** contract is filled to its end date — the whole term the tenant
+        entered, and never a day past it: a free day after employment ends is meaningless,
+        and one before the end is exactly what the pattern promises. An open-ended contract
+        (or none) gets a rolling look-ahead of ``leave_settings.recurring_horizon_months``
+        (default 12), extended by the monthly cron. Balance caps still bound either horizon:
+        a year whose pot doesn't exist yet simply generates nothing until it is seeded.
+        """
+        row = await self.settings_row()
+        months = row.recurring_horizon_months if row else 12
+        rolling = self._add_months(today, months)
+        contracts = await self._user_contracts(user_id)
+        if not contracts or any(c.end_date is None for c in contracts):
+            return rolling
+        return max(c.end_date for c in contracts if c.end_date is not None)
 
     async def generate_recurring_days(self, *, pattern_id: uuid.UUID | None = None) -> int:
         """Lay every active pattern's upcoming occurrences onto the calendar (#107).
@@ -752,7 +770,9 @@ class LeaveService:
         (never queued elsewhere) when the day is worth no hours (holiday, not scheduled), when
         another occupying request already covers it, or when a balance-tracked type's pot has
         less than the day costs — the pattern must not generate more free hours than the
-        scheduled−contract gap earned (§14). Runs from pattern saves and the monthly cron.
+        scheduled−contract gap earned (§14). A skipped-for-balance occurrence is retried on
+        the next run, so a far-out day materializes the moment its year's pot is seeded.
+        Runs from pattern saves and the monthly cron.
         """
         stmt = self.recurring.scoped_select().where(LeaveRecurringDay.active.is_(True))
         if pattern_id is not None:
@@ -760,11 +780,15 @@ class LeaveService:
         patterns = (await self.ctx.session.execute(stmt)).scalars().all()
         if not patterns:
             return 0
+        # Holidays seed lazily on first *listing* — but in a fresh org this generator can run
+        # before anything ever listed them, and an unseeded calendar would happily place a
+        # free day on Eerste Kerstdag. Seed first; `compute_hours` then knows what to skip.
+        await self._ensure_seeded_holidays()
 
         today = await self._org_today()
-        horizon = self._recurring_horizon(today)
         created = 0
         for pattern in patterns:
+            horizon = await self._recurring_horizon(pattern.user_id, today)
             leave_type = await self.types.get_or_404(pattern.leave_type_id)
             step = timedelta(weeks=pattern.interval_weeks)
             occurrence = pattern.anchor_date

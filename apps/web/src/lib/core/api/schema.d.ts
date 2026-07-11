@@ -4680,6 +4680,11 @@ export interface components {
             /** Holiday Country */
             holiday_country?: string | null;
             /**
+             * Recurring Horizon Months
+             * @default 12
+             */
+            recurring_horizon_months: number;
+            /**
              * Self Approval
              * @default false
              */
@@ -4698,6 +4703,8 @@ export interface components {
             holiday_auto_import?: boolean | null;
             /** Holiday Country */
             holiday_country?: string | null;
+            /** Recurring Horizon Months */
+            recurring_horizon_months?: number | null;
             /** Self Approval */
             self_approval?: boolean | null;
         };

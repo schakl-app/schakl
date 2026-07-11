@@ -129,6 +129,7 @@ async def get_settings(ctx: RequestContext = Depends(require_context)) -> LeaveS
         holiday_country=row.holiday_country,
         holiday_auto_import=row.holiday_auto_import,
         self_approval=row.self_approval,
+        recurring_horizon_months=row.recurring_horizon_months,
     )
 
 
@@ -147,6 +148,7 @@ async def update_settings(
         holiday_country=row.holiday_country,
         holiday_auto_import=row.holiday_auto_import,
         self_approval=row.self_approval,
+        recurring_horizon_months=row.recurring_horizon_months,
     )
 
 

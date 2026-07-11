@@ -97,6 +97,10 @@ class LeaveSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     #: exception either way: an org's *sole* approver may always self-manage, or a one-person
     #: agency could never approve anything at all.
     self_approval: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    #: How many months ahead the rostered-free-day generator places days (#107) for someone on
+    #: an open-ended contract (or none). A fixed-term contract ignores this and is filled to
+    #: its end date — a free day after employment ends is meaningless either way.
+    recurring_horizon_months: Mapped[int] = mapped_column(Integer, nullable=False, default=12)
 
 
 class LeaveHoliday(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):

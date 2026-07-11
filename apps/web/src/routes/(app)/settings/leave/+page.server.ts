@@ -49,6 +49,7 @@ export const load: PageServerLoad = async (event) => {
     entitlements: entitlements.data ?? [],
     defaultSchedule: settings.data?.default_schedule ?? defaultSchedule(),
     selfApproval: settings.data?.self_approval ?? false,
+    recurringHorizonMonths: settings.data?.recurring_horizon_months ?? 12,
     holidays: holidays.data ?? [],
     locale: event.locals.locale,
   };
@@ -143,6 +144,21 @@ export const actions: Actions = {
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { policySaved: true };
+  },
+
+  /** How far ahead recurring free days are placed (#107) — open-ended contracts only; a
+   *  fixed-term contract is always filled to its end date. */
+  saveHorizon: async (event) => {
+    const form = await event.request.formData();
+    const months = Number(String(form.get("recurring_horizon_months") ?? "").trim());
+    if (!Number.isInteger(months) || months < 1 || months > 24) {
+      return fail(400, { error: "errors.validation" });
+    }
+    const { error } = await apiFor(event).PUT("/api/v1/leave/settings", {
+      body: { recurring_horizon_months: months },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { horizonSaved: true };
   },
 
   // One save per member row: this year's entitlement per tracked type. Contract hours are no
