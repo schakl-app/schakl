@@ -137,8 +137,8 @@ async def test_a_member_sorting_still_only_sees_their_own_requests(client_for) -
     async with client_for(t.host) as c:
         owner_headers = await auth_cookie(t.user)
         type_id = await _leave_type(c, owner_headers)
-        await _request(c, owner_headers, type_id, date.today())
-        await _request(c, await auth_cookie(other), type_id, date.today())
+        await _request(c, owner_headers, type_id, leave_workday())
+        await _request(c, await auth_cookie(other), type_id, leave_workday())
 
         other_headers = await auth_cookie(other)
         mine = (await c.get("/api/v1/leave/requests?sort=employee", headers=other_headers)).json()
@@ -150,7 +150,7 @@ async def test_leave_sort_never_crosses_tenants(client_for) -> None:
     b = await make_tenant("lv-iso-b")
     async with client_for(a.host) as c:
         headers = await auth_cookie(a.user)
-        await _request(c, headers, await _leave_type(c, headers), date.today())
+        await _request(c, headers, await _leave_type(c, headers), leave_workday())
     async with client_for(b.host) as c:
         headers = await auth_cookie(b.user)
         page = (
