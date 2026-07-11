@@ -314,6 +314,52 @@ async def test_team_feed_resolves_omitted_time_bounds(client_for) -> None:
         assert by_date[whole]["resolved_start_time"] is None
         assert by_date[whole]["resolved_end_time"] is None
 
+        # The window is a write-time snapshot (#64's principle): a schedule change afterwards
+        # must never rewrite how past leave displays — the past stays accurate with past data.
+        day = {"start": "09:00", "end": "17:00", "breaks": []}
+        res = await c.put(
+            f"/api/v1/leave/profiles/{t.user.id}",
+            json={
+                "schedule": {
+                    "mon": day, "tue": day, "wed": day, "thu": day, "fri": day,
+                    "sat": None, "sun": None,
+                }
+            },
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+        team = (
+            await c.get(
+                "/api/v1/leave/team",
+                params={"date_from": until, "date_to": whole},
+                headers=headers,
+            )
+        ).json()
+        by_date = {item["start_date"]: item for item in team}
+        assert by_date[until]["resolved_start_time"] == "08:30"  # frozen, not 09:00
+
+        # ...while a *new* registration prices and snapshots against the changed schedule.
+        fresh = _span(4)[0]
+        res = await c.post(
+            "/api/v1/leave/requests",
+            json={
+                "leave_type_id": sick["id"],
+                "start_date": fresh,
+                "end_date": fresh,
+                "end_time": "14:00",
+            },
+            headers=headers,
+        )
+        assert res.status_code == 201, res.text
+        team = (
+            await c.get(
+                "/api/v1/leave/team",
+                params={"date_from": fresh, "date_to": fresh},
+                headers=headers,
+            )
+        ).json()
+        assert team[0]["resolved_start_time"] == "09:00"
+
 
 async def test_sick_leave_is_registered_not_requested(client_for) -> None:
     t = await make_tenant("leave-sick")

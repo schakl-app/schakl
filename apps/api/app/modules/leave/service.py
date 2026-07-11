@@ -838,6 +838,15 @@ class LeaveService:
         for pattern in patterns:
             horizon = await self._recurring_horizon(pattern.user_id, today)
             leave_type = await self.types.get_or_404(pattern.leave_type_id)
+            # Every occurrence shares the anchor's weekday, so the window snapshot is one
+            # resolution per pattern, not one per day.
+            resolved_start, resolved_end = self._resolve_bounds(
+                await self.effective_schedule(pattern.user_id),
+                pattern.anchor_date,
+                pattern.start_time,
+                pattern.anchor_date,
+                pattern.end_time,
+            )
             step = timedelta(weeks=pattern.interval_weeks)
             occurrence = pattern.anchor_date
             # Never backfill: the first generated day is the first occurrence from today on.
@@ -909,6 +918,8 @@ class LeaveService:
                     start_time=pattern.start_time,
                     end_date=day,
                     end_time=pattern.end_time,
+                    resolved_start_time=resolved_start,
+                    resolved_end_time=resolved_end,
                     hours=hours,
                     note=pattern.note,
                     status=LeaveRequestStatus.APPROVED.value,
@@ -1449,6 +1460,15 @@ class LeaveService:
             if leave_type.requires_approval
             else LeaveRequestStatus.APPROVED.value
         )
+        # Snapshotted alongside the priced hours, so the displayed window is forever the one
+        # this schedule gave — a later schedule change must not rewrite past leave (#64).
+        resolved_start, resolved_end = self._resolve_bounds(
+            await self.effective_schedule(uid),
+            data.start_date,
+            data.start_time,
+            data.end_date,
+            data.end_time,
+        )
         request = await self.requests.create(
             user_id=uid,
             leave_type_id=data.leave_type_id,
@@ -1456,6 +1476,8 @@ class LeaveService:
             start_time=data.start_time,
             end_date=data.end_date,
             end_time=data.end_time,
+            resolved_start_time=resolved_start,
+            resolved_end_time=resolved_end,
             hours=hours,
             hours_override=data.hours_override,
             hours_override_by_user_id=self.ctx.user.id if data.hours_override else None,
@@ -1587,6 +1609,19 @@ class LeaveService:
         if span_changed:
             await self._ensure_may_backdate(
                 touches_past, own=request.user_id == self.ctx.user.id
+            )
+            # A moved span is repriced, so its window snapshot refreshes with it; an untouched
+            # span keeps the window it was written with — a note edit (or a schedule change in
+            # between) must never rewrite how existing leave displays (#64).
+            (
+                values["resolved_start_time"],
+                values["resolved_end_time"],
+            ) = self._resolve_bounds(
+                await self.effective_schedule(request.user_id),
+                start_date,
+                start_time,
+                end_date,
+                end_time,
             )
 
         bounce = (
@@ -1821,30 +1856,54 @@ class LeaveService:
         return items
 
     @staticmethod
-    def _resolved_window(
-        request: LeaveRequest, schedule: sched.WorkSchedule
+    def _resolve_bounds(
+        schedule: sched.WorkSchedule,
+        start_date: date,
+        start_time: time | None,
+        end_date: date,
+        end_time: time | None,
     ) -> tuple[time | None, time | None]:
-        """The concrete clock window a *timed* request covers, for display feeds (#107).
+        """The concrete clock window a *timed* span covers (#107).
 
-        A stored ``NULL`` time means "the scheduled day's own bound" (#48) — right for
-        pricing, but a calendar chip cannot print a NULL: "until 14:00" resolves its start
-        from the first day's schedule, "from 15:00" its end from the last day's. A request
-        with no times at all is a whole-day absence and resolves to nothing — stamping
-        08:30–17:00 on every ordinary vacation chip would be noise, not information. An
-        unscheduled day (a manager-override case) yields ``None`` and the display falls back
-        to the open-ended form.
+        A ``NULL`` time means "the scheduled day's own bound" (#48) — right for pricing, but
+        a calendar chip cannot print a NULL: "until 14:00" resolves its start from the first
+        day's schedule, "from 15:00" its end from the last day's. A span with no times at all
+        is a whole-day absence and resolves to nothing — stamping 08:30–17:00 on every
+        ordinary vacation chip would be noise, not information. An unscheduled day (a
+        manager-override case) yields ``None`` for that bound and the display falls back to
+        the open-ended form.
+
+        Called at **write time** to snapshot the window onto the request (create/edit and the
+        pattern generator — the same moments ``hours`` is priced), so a later schedule change
+        never rewrites how past leave displays; the read path only re-resolves rows that
+        predate the snapshot columns.
         """
-        if request.start_time is None and request.end_time is None:
+        if start_time is None and end_time is None:
             return None, None
-        start = request.start_time
+        start = start_time
         if start is None:
-            work_day = schedule.day(request.start_date.weekday())
+            work_day = schedule.day(start_date.weekday())
             start = work_day.start if work_day else None
-        end = request.end_time
+        end = end_time
         if end is None:
-            work_day = schedule.day(request.end_date.weekday())
+            work_day = schedule.day(end_date.weekday())
             end = work_day.end if work_day else None
         return start, end
+
+    def _resolved_window(
+        self, request: LeaveRequest, schedule: sched.WorkSchedule
+    ) -> tuple[time | None, time | None]:
+        """The request's display window: the write-time snapshot where one exists, else a
+        best-effort resolution against the current schedule for rows that predate it."""
+        if request.resolved_start_time is not None or request.resolved_end_time is not None:
+            return request.resolved_start_time, request.resolved_end_time
+        return self._resolve_bounds(
+            schedule,
+            request.start_date,
+            request.start_time,
+            request.end_date,
+            request.end_time,
+        )
 
     # --- dashboard widget ---------------------------------------------------------------- #
     async def summary(self) -> LeaveSummary:

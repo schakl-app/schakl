@@ -217,6 +217,14 @@ class LeaveRequest(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     #: not the clocks changed that weekend, and a whole day would have to invent a time.
     start_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     end_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    #: The window a *timed* request covers with omitted bounds resolved from the schedule —
+    #: snapshotted when the span is written (create/edit), the same moment ``hours`` is
+    #: priced, so label and number can never disagree and a later schedule change never
+    #: rewrites how past leave displays (#64's snapshot principle, applied to time). ``NULL``
+    #: on whole-day requests and on rows predating the column (the feed then falls back to
+    #: resolving against the current schedule).
+    resolved_start_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    resolved_end_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     hours: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
     #: A manager's deliberate departure from the computed hours (e.g. four hours agreed for a
     #: day the employee was not scheduled). Attributed, so "the number is wrong" has an answer.
