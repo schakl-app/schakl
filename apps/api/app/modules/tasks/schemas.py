@@ -249,6 +249,8 @@ class CommentRead(BaseModel):
     author_name: str | None = None
     author_deleted: bool = False
     body: str
+    # Users @mentioned in the body (issue #63), extracted from the markers on write.
+    mentioned_user_ids: list[uuid.UUID] = Field(default_factory=list)
     edited_at: datetime | None
     created_at: datetime
 

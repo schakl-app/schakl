@@ -269,6 +269,12 @@ class TaskComment(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     # exists — a rename should show through — so this is a fallback, not the display value.
     author_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     body: Mapped[str] = mapped_column(Text, nullable=False)
+    # Users @mentioned in the body (issue #63), captured structurally rather than re-parsed on every
+    # render. Extracted from the `@[Name](mention:<uuid>)` markers by the service and validated
+    # against org membership, so a mention notifies even a non-assignee who never commented before.
+    mentioned_user_ids: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
     edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 

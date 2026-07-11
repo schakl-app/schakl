@@ -7,6 +7,7 @@ a Trello-style history.
 
 from __future__ import annotations
 
+import re
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
@@ -17,6 +18,7 @@ from sqlalchemy import text as sql_text
 
 from app.core.auth.models import User
 from app.core.events import emit
+from app.core.models import Membership
 from app.core.richtext import markdown_to_plaintext, sanitize_markdown
 from app.core.sorting import apply_sort, user_sort_name
 from app.core.tenancy import RequestContext
@@ -118,6 +120,25 @@ def _display_name(user: User | None) -> str | None:
     if user is None:
         return None
     return user.full_name or user.email
+
+
+# `@[Display Name](mention:<uuid>)` — the marker the composer writes and this extracts (issue #63).
+# The name is display-only; the id is the truth, so a rename never breaks who was mentioned.
+_MENTION_RE = re.compile(
+    r"@\[[^\]]+\]\(mention:([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\)"
+)
+
+
+def _extract_mentions(body: str) -> list[uuid.UUID]:
+    """The distinct user ids mentioned in a comment body, in first-seen order."""
+    seen: dict[uuid.UUID, None] = {}
+    for match in _MENTION_RE.finditer(body):
+        try:
+            seen.setdefault(uuid.UUID(match.group(1)), None)
+        except ValueError:
+            continue
+    return list(seen)
 
 
 def _attribution(live: User | None, snapshot: str | None) -> tuple[str | None, bool]:
@@ -999,30 +1020,52 @@ class TaskService:
     # ------------------------------------------------------------------ #
     # Comments
     # ------------------------------------------------------------------ #
+    async def _valid_mentions(self, ids: list[uuid.UUID]) -> list[uuid.UUID]:
+        """Keep only the mentioned ids that are members of this org (issue #63)."""
+        if not ids:
+            return []
+        members = set(
+            (
+                await self.ctx.session.execute(
+                    select(Membership.user_id).where(
+                        Membership.org_id == self.ctx.org.id, Membership.user_id.in_(ids)
+                    )
+                )
+            ).scalars()
+        )
+        return [uid for uid in ids if uid in members]
+
     async def add_comment(self, task_id: uuid.UUID, data: CommentCreate) -> CommentRead:
         self.ctx.require("tasks.comment.write")
         task = await self.repo.get_or_404(task_id)
         body = sanitize_markdown(data.body) or ""
         excerpt = _excerpt(body)
+        # Mentions are captured structurally from the `@[Name](mention:<uuid>)` markers, validated
+        # against org membership so a stray id can't notify someone in another tenant (issue #63).
+        mentioned = await self._valid_mentions(_extract_mentions(body))
         comment = await self.ctx.repo(TaskComment).create(
             task_id=task_id,
             author_user_id=self.ctx.user.id,
             author_name=_display_name(self.ctx.user),
             body=body,
+            mentioned_user_ids=[str(uid) for uid in mentioned],
         )
         # The excerpt the notification has always carried belongs in the trail too, with the id
         # to reach the comment by — "commented", on its own, sends you hunting for what (#61).
         await self._record(
             task_id, "commented", {"comment_id": str(comment.id), "excerpt": excerpt}
         )
-        # Everyone already in the conversation hears the reply; commenting also subscribes
-        # the author to the task, so the fan-out keeps reaching them (issue #16).
-        await self._emit_task(
-            "task.commented",
-            task,
-            await self._comment_audience(task),
-            {"excerpt": excerpt},
-        )
+        # A mention reads as its own sentence ("X mentioned you"), so a mentioned person gets
+        # `task.mentioned` even when they are neither the assignee nor a prior commenter — and is
+        # dropped from the generic `task.commented` fan-out so they aren't told twice (issue #63).
+        mentioned_set = set(mentioned)
+        commented = [
+            uid for uid in await self._comment_audience(task) if uid not in mentioned_set
+        ]
+        if commented:
+            await self._emit_task("task.commented", task, commented, {"excerpt": excerpt})
+        if mentioned:
+            await self._emit_task("task.mentioned", task, mentioned, {"excerpt": excerpt})
         return CommentRead.model_validate(comment).model_copy(
             update={"author_name": _display_name(self.ctx.user)}
         )
@@ -1060,8 +1103,15 @@ class TaskService:
         if comment.author_user_id != self.ctx.user.id:
             raise AppError("forbidden", "errors.forbidden", status_code=403)
         self.ctx.require("tasks.comment.write")
+        body = sanitize_markdown(data.body) or ""
+        # Keep the stored mention set in step with the edited body (issue #63). Editing does not
+        # re-notify — a mention notifies once, when it is first written, like the comment itself.
+        mentioned = await self._valid_mentions(_extract_mentions(body))
         comment = await self.ctx.repo(TaskComment).update(
-            comment, body=sanitize_markdown(data.body) or "", edited_at=datetime.now(UTC)
+            comment,
+            body=body,
+            mentioned_user_ids=[str(uid) for uid in mentioned],
+            edited_at=datetime.now(UTC),
         )
         await self._record(
             task_id,

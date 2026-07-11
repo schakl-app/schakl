@@ -40,6 +40,10 @@
   const statusName = (key: string) =>
     statuses.find((s) => s.key === key)?.name ?? key;
   const isDone = $derived(statuses.find((s) => s.key === task.status)?.is_terminal ?? false);
+  // @mention candidates for the comment composer (issue #63): the org members already loaded.
+  const mentionCandidates = $derived(
+    data.members.map((m) => ({ id: m.user_id, name: m.full_name || m.email })),
+  );
   const priorities = ["low", "normal", "high"] as const;
   const freqs = ["daily", "weekly", "monthly", "quarterly", "yearly"] as const;
 
@@ -618,6 +622,7 @@
             rows={2}
             required
             placeholder={t("tasks.comments.placeholder")}
+            mentions={mentionCandidates}
           />
         {/key}
         <div class="mt-2 flex justify-end">
@@ -683,7 +688,13 @@
                     }}
                 >
                   <input type="hidden" name="comment_id" value={comment.id} />
-                  <RichTextEditor name="body" rows={2} required value={comment.body} />
+                  <RichTextEditor
+                    name="body"
+                    rows={2}
+                    required
+                    value={comment.body}
+                    mentions={mentionCandidates}
+                  />
                   <div class="mt-1 flex gap-2">
                     <button class="rounded-lg bg-brand px-2 py-1 text-xs font-medium text-white"
                       >{t("common.save")}</button
