@@ -326,6 +326,8 @@
           <TimeInput id="leave-end-time" name="end_time" bind:value={endTime} />
         </div>
       </div>
+      <!-- The default was always "the scheduled day's own bounds" — it just never said so. -->
+      <p class="mt-1 text-xs text-text-muted">{t("leave.form.times_hint")}</p>
     {/if}
   </div>
 

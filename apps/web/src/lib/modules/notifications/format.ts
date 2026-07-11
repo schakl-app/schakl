@@ -104,7 +104,12 @@ export function notificationHref(item: NotificationLike): string | null {
     case "company":
       return `/companies/${item.entity_id}`;
     case "leave_request":
-      return "/leave";
+      // The event decides whose surface answers it: a request waiting on *you* opens the
+      // team review (deep-linked, so approve/deny is one click away), a decision about
+      // *your* request opens it on your own list — never just "the leave page".
+      return item.event_type === "leave.requested"
+        ? `/leave/team?request=${item.entity_id}`
+        : `/leave?request=${item.entity_id}`;
     case "timesheet":
       return "/time";
     default:

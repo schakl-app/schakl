@@ -403,6 +403,21 @@ async def test_member_plans_their_own_self_service_pattern(client_for) -> None:
         assert res.status_code == 403
         assert "leave_recurring_needs_manager" in res.text
 
+        # And a trackless type ("sick") has no pot to bound it — a recurring sick day is not
+        # a plan. Manager-only as well.
+        res = await c.post(
+            "/api/v1/leave/recurring",
+            json={
+                "user_id": str(member.id),
+                "leave_type_id": types["sick"]["id"],
+                "anchor_date": anchor.isoformat(),
+                "interval_weeks": 2,
+            },
+            headers=mh,
+        )
+        assert res.status_code == 403
+        assert "leave_recurring_needs_manager" in res.text
+
         # Someone else's roster is not theirs to shape, or to list.
         res = await c.post(
             "/api/v1/leave/recurring",

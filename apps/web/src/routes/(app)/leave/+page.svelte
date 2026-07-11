@@ -43,10 +43,23 @@
   );
 
   let createOpen = $state(false);
-  // Recurring free days, self-service (#107): only for auto-approve types — generated days
-  // are pre-approved, so approval-requiring types stay a manager's act (the API enforces it).
-  const selfServiceTypes = $derived(types.filter((lt) => lt.active && !lt.requires_approval));
+  // Recurring free days, self-service (#107): balance-tracked auto-approve types only. The
+  // approval requirement keeps vacation a manager's act (generated days are pre-approved);
+  // the balance requirement keeps "sick" out — a *recurring sick day* is not a plan, and a
+  // pot is what bounds how much a pattern may hand out. The API enforces both.
+  const selfServiceTypes = $derived(
+    types.filter((lt) => lt.active && !lt.requires_approval && lt.tracks_balance),
+  );
   let recurringOpen = $state(false);
+
+  // Bulk cancel: the one bulk act your own list has — everything else is per-request.
+  let bulkSelected = $state<string[]>([]);
+  const bulkCancellableIds = $derived(
+    data.requests
+      .filter((r: Request) => bulkSelected.includes(r.id) && canCancel(r))
+      .map((r: Request) => r.id),
+  );
+  let bulkCancelOpen = $state(false);
   // Deep link from a calendar chip (#106): `?request=<id>` opens that request's edit modal on
   // arrival. Resolved once, into state initializers, not a derived — the surface opens on
   // load and the user can then close it (the same pattern as core/edit-intent.ts).
@@ -255,6 +268,12 @@
   </p>
 {/snippet}
 
+{#if form?.bulkDone !== undefined}
+  <p class="mb-4 text-sm text-green-600">
+    {t("leave.bulk.result", { count: form.bulkDone ?? 0, skipped: form.bulkSkipped ?? 0 })}
+  </p>
+{/if}
+
 <!-- My requests -->
 <div class="mb-2 flex items-center justify-between">
   <h2 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
@@ -269,6 +288,19 @@
   />
 </div>
 
+{#snippet bulkBar(ids: string[])}
+  <span class="text-xs font-medium text-text">{t("table.selected", { count: ids.length })}</span>
+  <button
+    type="button"
+    disabled={bulkCancellableIds.length === 0}
+    class="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-text hover:border-red-400 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:border-red-500 dark:hover:text-red-400"
+    onclick={() => (bulkCancelOpen = true)}
+  >
+    <Ban size={13} />
+    {t("leave.requests.cancel")}
+  </button>
+{/snippet}
+
 <DataTable
   rows={data.requests}
   columns={table.columns}
@@ -278,8 +310,20 @@
   actions={rowActions}
   {mobileRow}
   empty={emptyState}
+  selectable
+  bind:selected={bulkSelected}
+  selection={bulkBar}
   onsort={table.onSort}
   onresize={table.onResize}
+/>
+
+<ConfirmDialog
+  bind:open={bulkCancelOpen}
+  title={t("leave.requests.cancel")}
+  message={t("leave.bulk.cancel_confirm")}
+  action="?/bulkCancel"
+  fields={{ ids: bulkCancellableIds.join(",") }}
+  confirmLabel={t("leave.requests.cancel")}
 />
 
 <Modal bind:open={createOpen} title={t("leave.request_button")}>

@@ -706,16 +706,18 @@ class LeaveService:
 
         ``leave.profile.manage`` may plan any active type for anyone — their act is the
         approval, as everywhere. An employee may plan their **own** pattern, but only for a
-        **self-service type** (``requires_approval = false``, e.g. ADV): generated days are
-        auto-approved, so a member pattern for an approval-requiring type would be a batch
-        bypass of the approval flow. The balance cap bounds what self-service can grant.
+        **balance-tracked self-service type** (``requires_approval = false`` and
+        ``tracks_balance``, i.e. ADV): generated days are auto-approved, so an
+        approval-requiring type would be a batch bypass of the approval flow — and a
+        trackless one ("sick") has no pot to bound it, besides a *recurring sick day* not
+        being a thing anyone plans. The balance cap bounds what self-service can grant.
         """
         if self.ctx.can("leave.profile.manage"):
             return
         if user_id != self.ctx.user.id:
             raise AppError("forbidden", "errors.forbidden", status_code=403)
         self.ctx.require("leave.request.write")
-        if leave_type.requires_approval:
+        if leave_type.requires_approval or not leave_type.tracks_balance:
             raise AppError(
                 "forbidden", "errors.leave_recurring_needs_manager", status_code=403
             )

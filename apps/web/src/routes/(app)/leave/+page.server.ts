@@ -88,6 +88,26 @@ export const actions: Actions = {
     return { cancelled: true };
   },
 
+  /** Bulk cancel of own requests. Per-id, skipping what the API refuses (a decided row, a
+   *  past-locked one) — partial success is reported, never silent. */
+  bulkCancel: async (event) => {
+    const form = await event.request.formData();
+    const ids = String(form.get("ids") ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (ids.length === 0) return fail(400, { error: "errors.required" });
+    const api = apiFor(event);
+    let done = 0;
+    for (const id of ids) {
+      const { error } = await api.POST("/api/v1/leave/requests/{request_id}/cancel", {
+        params: { path: { request_id: id } },
+      });
+      if (!error) done += 1;
+    }
+    return { bulkDone: done, bulkSkipped: ids.length - done };
+  },
+
   /** Own recurring free days (#107): the API restricts a member to self-service types. */
   saveRecurring: async (event) => {
     const form = await event.request.formData();

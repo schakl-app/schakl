@@ -217,6 +217,7 @@
               <TimeInput id="r-end-time" name="end_time" bind:value={endTime} />
             </div>
           </div>
+          <p class="mt-1 text-xs text-text-muted">{t("leave.form.times_hint")}</p>
         {/if}
       </div>
 

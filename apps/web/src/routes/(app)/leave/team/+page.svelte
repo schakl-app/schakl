@@ -110,19 +110,44 @@
   // Editing a member's request from here (#106): the shared form in a modal, like every other
   // reporting row (docs/UX.md). Gated on `write:any` — approving and editing are separate grants.
   const canEditAny = $derived(can(page.data.user, "leave.request.write", "any"));
-  // Deep link from a calendar chip: resolved once into state initializers (core/edit-intent.ts).
-  function deepLinkedRequest(): Request | null {
+  // Deep link from a calendar chip or a "requests leave" notification: resolved once into
+  // state initializers (core/edit-intent.ts). A *pending* request opens the review modal —
+  // approve/deny one click away, which is what the notification promised — an approved one
+  // opens the edit modal. The pending list is cross-year, so a next-year request still lands.
+  function deepLinked(): { review: Request | null; edit: Request | null } {
     const id = page.url.searchParams.get("request");
-    if (!id) return null;
-    return (
+    if (!id) return { review: null, edit: null };
+    const review = data.pending.find((r: Request) => r.id === id) ?? null;
+    if (review) return { review, edit: null };
+    const edit =
       data.yearRequests.find(
         (r: Request) => r.id === id && (r.status === "pending" || r.status === "approved"),
-      ) ?? null
-    );
+      ) ?? null;
+    return { review: null, edit };
   }
-  const initialEdit = deepLinkedRequest();
-  let editRequest = $state<Request | null>(initialEdit);
-  let editOpen = $state(initialEdit !== null);
+  const initial = deepLinked();
+  let reviewRequest = $state<Request | null>(initial.review);
+  let reviewOpen = $state(initial.review !== null);
+  let editRequest = $state<Request | null>(initial.edit);
+  let editOpen = $state(initial.edit !== null);
+
+  // --- bulk actions ---------------------------------------------------------------
+  // Selection is per page and resets with the rows (DataTable's rule); the eligible subsets
+  // are derived from status so a mixed selection simply skips what an action can't touch.
+  let bulkSelected = $state<string[]>([]);
+  const selectedRows = $derived(
+    data.yearRequests.filter((r: Request) => bulkSelected.includes(r.id)),
+  );
+  const bulkPendingIds = $derived(
+    selectedRows.filter((r: Request) => r.status === "pending").map((r: Request) => r.id),
+  );
+  const bulkCancellableIds = $derived(
+    selectedRows
+      .filter((r: Request) => r.status === "pending" || r.status === "approved")
+      .map((r: Request) => r.id),
+  );
+  let bulkRejectOpen = $state(false);
+  let bulkCancelOpen = $state(false);
   const editTitle = $derived(
     editRequest
       ? `${t("leave.requests.edit")} · ${memberName[editRequest.user_id] ?? ""}`
@@ -170,6 +195,11 @@
 
 {#if form?.error}
   <p class="mb-4 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
+{/if}
+{#if form?.bulkDone !== undefined}
+  <p class="mb-4 text-sm text-green-600">
+    {t("leave.bulk.result", { count: form.bulkDone ?? 0, skipped: form.bulkSkipped ?? 0 })}
+  </p>
 {/if}
 
 <!-- Pending approvals -->
@@ -364,6 +394,41 @@
   />
 </div>
 
+{#snippet bulkBar(ids: string[])}
+  <span class="text-xs font-medium text-text">{t("table.selected", { count: ids.length })}</span>
+  <form method="POST" action="?/bulkDecide" use:enhance>
+    {#each bulkPendingIds as id (id)}
+      <input type="hidden" name="ids" value={id} />
+    {/each}
+    <input type="hidden" name="approved" value="true" />
+    <button
+      disabled={bulkPendingIds.length === 0}
+      class="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+    >
+      <Check size={13} />
+      {t("leave.team.approve")}
+    </button>
+  </form>
+  <button
+    type="button"
+    disabled={bulkPendingIds.length === 0}
+    class="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-text hover:border-red-400 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:border-red-500 dark:hover:text-red-400"
+    onclick={() => (bulkRejectOpen = true)}
+  >
+    <X size={13} />
+    {t("leave.team.reject")}
+  </button>
+  <button
+    type="button"
+    disabled={bulkCancellableIds.length === 0}
+    class="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+    onclick={() => (bulkCancelOpen = true)}
+  >
+    <Ban size={13} />
+    {t("leave.requests.cancel")}
+  </button>
+{/snippet}
+
 <DataTable
   rows={data.yearRequests}
   columns={table.columns}
@@ -373,8 +438,29 @@
   actions={teamRowActions}
   mobileRow={teamMobileRow}
   empty={teamEmpty}
+  selectable
+  bind:selected={bulkSelected}
+  selection={bulkBar}
   onsort={table.onSort}
   onresize={table.onResize}
+/>
+
+<ConfirmDialog
+  bind:open={bulkRejectOpen}
+  title={t("leave.team.reject")}
+  message={t("leave.bulk.reject_confirm")}
+  action="?/bulkDecide"
+  fields={{ ids: bulkPendingIds.join(","), approved: "false" }}
+  confirmLabel={t("leave.team.reject")}
+/>
+
+<ConfirmDialog
+  bind:open={bulkCancelOpen}
+  title={t("leave.requests.cancel")}
+  message={t("leave.bulk.cancel_confirm")}
+  action="?/bulkCancel"
+  fields={{ ids: bulkCancellableIds.join(",") }}
+  confirmLabel={t("leave.requests.cancel")}
 />
 
 <!-- Register leave for a team member (sick call, phoned-in request) -->
@@ -390,6 +476,69 @@
     error={form?.error ?? null}
     ondone={() => (registerOpen = false)}
   />
+</Modal>
+
+<!-- Review a pending request (notification deep-link): the details and the decision on one
+     surface, instead of dumping the approver on a page to go hunting for the row. -->
+<Modal bind:open={reviewOpen} title={t("leave.review.title")}>
+  {#if reviewRequest}
+    {@const leaveType = typeById[reviewRequest.leave_type_id]}
+    <div class="space-y-4">
+      <div>
+        <p class="text-sm font-medium text-text">{memberName[reviewRequest.user_id] ?? "—"}</p>
+        <p class="mt-1 flex flex-wrap items-center gap-x-2 text-sm text-text-muted">
+          <span class="inline-flex items-center gap-1.5">
+            <span class="h-2 w-2 rounded-full {labelDotClass(leaveType?.color ?? '')}"></span>
+            {typeLabel(leaveType, data.locale)}
+          </span>
+          <span>{period(reviewRequest)}</span>
+          <span class="tabular-nums">
+            {t("leave.team.hours_amount", { hours: fmtHours(reviewRequest.hours) })}
+          </span>
+        </p>
+        {#if reviewRequest.note}
+          <p class="mt-1 text-sm text-text-muted">{reviewRequest.note}</p>
+        {/if}
+        {#if overBalanceBy(reviewRequest) > 0}
+          <p class="mt-1 text-xs font-medium text-amber-600 dark:text-amber-400">
+            {t("leave.team.over_balance", { hours: fmtHours(overBalanceBy(reviewRequest)) })}
+          </p>
+        {/if}
+      </div>
+      <div class="flex justify-end gap-2">
+        <button
+          type="button"
+          class="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-text hover:border-red-400 hover:text-red-600 dark:hover:border-red-500 dark:hover:text-red-400"
+          onclick={() => {
+            rejectId = reviewRequest?.id ?? "";
+            reviewOpen = false;
+            rejectOpen = true;
+          }}
+        >
+          <X size={14} />
+          {t("leave.team.reject")}
+        </button>
+        <form
+          method="POST"
+          action="?/decide"
+          use:enhance={() =>
+            ({ result, update }) => {
+              if (result.type === "success") reviewOpen = false;
+              void update();
+            }}
+        >
+          <input type="hidden" name="id" value={reviewRequest.id} />
+          <input type="hidden" name="approved" value="true" />
+          <button
+            class="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
+          >
+            <Check size={14} />
+            {t("leave.team.approve")}
+          </button>
+        </form>
+      </div>
+    </div>
+  {/if}
 </Modal>
 
 <!-- Edit a member's request (#106): same shared form; the API decides re-approval (#72). -->
