@@ -51,7 +51,7 @@ _DOMAIN_TABLES = (
     "leave_requests, leave_entitlements, leave_profiles, leave_types, "
     "leave_holidays, leave_settings, "
     "time_entries, tasks, projects, contacts, custom_field_definitions, "
-    "dashboard_prefs, user_prefs, companies, "
+    "activity_log, dashboard_prefs, user_prefs, companies, "
     "role_audit_log, membership_roles, role_permissions, roles, memberships, org_settings, "
     "instance_audit_log, users, orgs"
 )

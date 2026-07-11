@@ -30,6 +30,7 @@ from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.assignees import AssigneeLinkMixin
+from app.core.activity import AuditableMixin
 from app.core.customfields import CustomizableMixin
 from app.core.mixins import OrgScopedMixin, TimestampMixin, UUIDPrimaryKeyMixin
 from app.db import Base
@@ -47,10 +48,11 @@ class Project(
     OrgScopedMixin,
     TimestampMixin,
     CustomizableMixin,
+    AuditableMixin,
     Base,
 ):
     __tablename__ = "projects"
-    __entity_type__ = "project"  # registers as customizable
+    __entity_type__ = "project"  # registers as customizable + auditable (issue #67)
 
     __table_args__ = (
         Index("ix_projects_custom", "custom", postgresql_using="gin"),

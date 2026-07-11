@@ -193,7 +193,8 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
 - **Definition of done** for a feature: migration written, endpoints + tenant scoping,
   **every route declaring a permission** (§15) and its `PermissionSpec`s on the module
   descriptor with `en`+`nl` labels, web UI, `nl.json` + `en.json` keys, test for tenant
-  isolation, docs/OpenAPI updated.
+  isolation, **a mutable entity records its changes to the activity log and its detail view
+  renders the trail** (§16), docs/OpenAPI updated.
 
 ## 10. Phased plan (build gates)
 
@@ -388,3 +389,28 @@ It is a **core, cross-cutting capability**, like custom fields (§13) — not pe
 - **A module that ships later** brings its own permissions; a startup reconciler grants them to
   each org's system roles exactly once, tracked in `org_settings.applied_permission_defaults`.
   A migration must never import the catalog (`docs/WORKFLOW.md`).
+
+## 16. Activity trail / audit log (core capability)
+
+Every record that can be changed carries a visible paper trail of *what changed, by whom, when*.
+This is a **core, cross-cutting capability** (issue #67), like custom fields (§13) and permissions
+(§15) — not per-module code, and not the notification log (`NotificationEvent` is about
+*delivery*; its vocabulary is the notifiable subset, and it records no field edits).
+
+- **One table.** `activity_log(org_id, entity_type, entity_id, actor_user_id, actor_name, action,
+  payload)` in `app/core/activity/`, org-scoped and RLS-forced like every domain table. `entity_id`
+  carries **no FK** — the trail outlives the record it describes. `TaskActivity` predates this and
+  still stands; folding it in is a later step.
+- **Opt in like custom fields.** An entity adds `AuditableMixin` and sets `__entity_type__` (the same
+  attribute `CustomizableMixin` reads); that registers it as auditable. A core-contributed panel then
+  renders the trail on its detail page — the company hub via an API `PanelSpec`, a project/contact via
+  a typed `EntityPanelSpec`, both reading `GET /api/v1/activity`.
+- **The actor is snapshotted, never joined live** (§14's #64 rule, generalised). `actor_name` is
+  written at record time; the live account wins while it exists, a departed one reads
+  "Naam (verwijderd)", and a genuinely absent actor is the system. An audit trail whose actor
+  evaporates is not an audit trail.
+- **A service records; a write is not a permission.** `ActivityService.record` runs in the writing
+  request's transaction, so the change and its trail entry commit atomically. Reading the trail is
+  gated on `activity.read`; *recording* is a side effect of a write the caller was already allowed to
+  make, never its own grant. `payload` for an edit is `{changes: {field: {from, to}}}` — the record's
+  own definition fields, not its freeform notes or custom JSONB.

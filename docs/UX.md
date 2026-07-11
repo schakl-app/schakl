@@ -23,6 +23,13 @@
    counts). Extending a deadline requires a reason, and every meaningful change lands in the
    record's activity feed with actor + timestamp. Approval locks records for non-managers.
    Invoiced implies approved — states never contradict each other.
+   **The activity trail is a core capability, not a per-screen nicety** (issue #67, CLAUDE.md §16):
+   a mutable record opts into it with `AuditableMixin`, its service records field edits (`created`,
+   `updated {changes}`) through `ActivityService` in the writing transaction, and a core-contributed
+   panel renders the trail on its detail page. So "every meaningful change lands in the feed" is a
+   platform guarantee that every auditable entity inherits, not a sentence each new screen has to
+   remember to make true. The actor is named from a snapshot, so a deleted user's work never becomes
+   "the system" (#64). The panel hangs last — history sits under the working surfaces, not above them.
 5. **Everything reusable is a template, org-wide.** Task templates, checklist templates,
    dashboard layout templates: define once for the whole instance, apply anywhere. Templates
    are both *manageable* in a dedicated place and *creatable from where you work* ("save as

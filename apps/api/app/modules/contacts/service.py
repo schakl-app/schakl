@@ -17,6 +17,8 @@ from typing import Any
 
 from sqlalchemy import bindparam, column, func, or_, select, table, text, update
 
+from app.core.activity import ActivityService
+from app.core.activity.service import snapshot
 from app.core.customfields import CustomFieldsService
 from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
@@ -25,6 +27,10 @@ from app.modules.contacts.models import CompanyContact, Contact
 from app.modules.contacts.schemas import ContactCompanyLink, ContactCreate, ContactUpdate
 
 ENTITY_TYPE = "contact"
+
+# Definition fields whose before/after values the activity trail records (issue #67); notes and
+# custom are left out of the diff, as on every auditable entity.
+_AUDITED_FIELDS = ("first_name", "last_name", "email", "phone", "job_title")
 
 
 # ``companies`` belongs to another module. Reference it as a bare table by name rather than
@@ -177,6 +183,7 @@ class ContactService:
             ENTITY_TYPE, values.get("custom") or {}
         )
         contact = await self.repo.create(**values)
+        await ActivityService(self.ctx).record_created(ENTITY_TYPE, contact.id)
         for company_id in company_ids:
             await self.link(contact.id, company_id, is_primary=None)
         await self._attach_companies([contact])
@@ -185,12 +192,16 @@ class ContactService:
     async def update(self, contact_id: uuid.UUID, data: ContactUpdate) -> Contact:
         self.ctx.require("contacts.contact.write")
         contact = await self.repo.get_or_404(contact_id)
+        before = snapshot(contact, _AUDITED_FIELDS)
         values = data.model_dump(exclude_unset=True)
         if "custom" in values:
             values["custom"] = await self.custom_fields.validate(
                 ENTITY_TYPE, values.get("custom") or {}
             )
         contact = await self.repo.update(contact, **values)
+        await ActivityService(self.ctx).record_update(
+            ENTITY_TYPE, contact.id, before, snapshot(contact, _AUDITED_FIELDS)
+        )
         await self._attach_companies([contact])
         return contact
 

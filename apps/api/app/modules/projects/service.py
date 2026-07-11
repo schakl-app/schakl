@@ -17,6 +17,8 @@ from typing import Any
 
 from sqlalchemy import func, select
 
+from app.core.activity import ActivityService
+from app.core.activity.service import snapshot
 from app.core.assignees import AssigneeService
 from app.core.auth.models import User
 from app.core.customfields import CustomFieldsService
@@ -29,6 +31,21 @@ from app.modules.projects.schemas import ProjectCreate, ProjectUpdate
 from app.schemas import BudgetHours
 
 ENTITY_TYPE = "project"
+
+# Definition fields whose before/after values the activity trail records (issue #67); the
+# freeform description and the custom JSONB are left out of the diff.
+_AUDITED_FIELDS = (
+    "name",
+    "status",
+    "company_id",
+    "responsible_user_id",
+    "budget_hours",
+    "budget_amount",
+    "hourly_rate",
+    "budget_period",
+    "start_date",
+    "end_date",
+)
 
 
 def _primary_assignee_name() -> Any:
@@ -242,6 +259,7 @@ class ProjectService:
         project = await self.repo.create(**values)
         await self.assignees.replace(project.id, links)
         project.assignees = await self.assignees.for_entity(project.id)
+        await ActivityService(self.ctx).record_created(ENTITY_TYPE, project.id)
         # Projects have no "created" event, so this is the roster's only signal (issue #16).
         if project.assignees:
             await self._emit_project(
@@ -280,6 +298,7 @@ class ProjectService:
         self.ctx.require("projects.project.write")
         project = await self.repo.get_or_404(project_id)
         previous_status = project.status
+        before_fields = snapshot(project, _AUDITED_FIELDS)
         values = data.model_dump(exclude_unset=True)
         # ``replace`` is delete-then-insert, so who is *new* has to be read before the write.
         roster_touched = "assignees" in values or "responsible_user_id" in values
@@ -310,6 +329,9 @@ class ProjectService:
             await self.assignees.set_primary(project.id, values["responsible_user_id"])
         project.assignees = await self.assignees.for_entity(project.id)
         after = {a.user_id for a in project.assignees}
+        await ActivityService(self.ctx).record_update(
+            ENTITY_TYPE, project.id, before_fields, snapshot(project, _AUDITED_FIELDS)
+        )
 
         if project.status != previous_status:
             await self._emit_project(

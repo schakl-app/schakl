@@ -56,6 +56,12 @@ class ModuleDescriptor:
 class ModuleRegistry:
     def __init__(self) -> None:
         self._modules: dict[str, ModuleDescriptor] = {}
+        # Panels core contributes to *every* host entity, regardless of which modules are
+        # enabled — the activity trail is a core capability (issue #67), not a module.
+        self._core_panels: list[PanelSpec] = []
+
+    def register_core_panel(self, panel: PanelSpec) -> None:
+        self._core_panels.append(panel)
 
     def register(self, module: ModuleDescriptor) -> ModuleDescriptor:
         if module.name in self._modules:
@@ -75,8 +81,8 @@ class ModuleRegistry:
         return [m for m in self._modules.values() if m.name in allowed]
 
     def panels_for(self, entity_type: str, names: list[str]) -> list[PanelSpec]:
-        """All panels attached to ``entity_type`` by the given enabled modules, ordered."""
-        panels: list[PanelSpec] = []
+        """All panels attached to ``entity_type``, ordered — core's plus the enabled modules'."""
+        panels: list[PanelSpec] = [p for p in self._core_panels if p.entity_type == entity_type]
         for module in self.enabled(names):
             panels.extend(p for p in module.panels if p.entity_type == entity_type)
         return sorted(panels, key=lambda p: (p.position, p.key))

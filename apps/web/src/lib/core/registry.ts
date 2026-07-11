@@ -187,6 +187,19 @@ export interface WebModule {
 
 const _modules = new Map<string, WebModule>();
 
+// Panels core hangs off *every* host entity, independent of which modules are enabled — the
+// activity trail is a core capability (issue #67), mirroring the API registry's core panels.
+const _coreCompanyPanels: CompanyPanelSpec[] = [];
+const _coreEntityPanels: EntityPanelSpec[] = [];
+
+export function registerCoreCompanyPanel(spec: CompanyPanelSpec): void {
+  _coreCompanyPanels.push(spec);
+}
+
+export function registerCoreEntityPanel(spec: EntityPanelSpec): void {
+  _coreEntityPanels.push(spec);
+}
+
 export function registerWebModule(mod: WebModule): void {
   _modules.set(mod.name, mod);
 }
@@ -206,15 +219,15 @@ export function companyPanelComponent(
   enabled: string[],
   key: string,
 ): CompanyPanelSpec | undefined {
-  return enabledWebModules(enabled)
-    .flatMap((m) => m.companyPanels ?? [])
-    .find((p) => p.key === key);
+  return [
+    ..._coreCompanyPanels,
+    ...enabledWebModules(enabled).flatMap((m) => m.companyPanels ?? []),
+  ].find((p) => p.key === key);
 }
 
-/** The panels enabled modules attach to `entityType`, in display order. */
+/** The panels attached to `entityType`, in display order — core's plus the enabled modules'. */
 export function entityPanelsFor(enabled: string[], entityType: string): EntityPanelSpec[] {
-  return enabledWebModules(enabled)
-    .flatMap((m) => m.entityPanels ?? [])
+  return [..._coreEntityPanels, ...enabledWebModules(enabled).flatMap((m) => m.entityPanels ?? [])]
     .filter((p) => p.entityType === entityType)
     .sort((a, b) => (a.position ?? 100) - (b.position ?? 100));
 }

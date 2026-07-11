@@ -16,6 +16,7 @@ from sqlalchemy import Boolean, ForeignKey, Index, String, Text, UniqueConstrain
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.activity import AuditableMixin
 from app.core.customfields import CustomizableMixin
 from app.core.mixins import OrgScopedMixin, TimestampMixin, UUIDPrimaryKeyMixin
 from app.db import Base
@@ -26,10 +27,11 @@ class Contact(
     OrgScopedMixin,
     TimestampMixin,
     CustomizableMixin,
+    AuditableMixin,
     Base,
 ):
     __tablename__ = "contacts"
-    __entity_type__ = "contact"  # registers as customizable
+    __entity_type__ = "contact"  # registers as customizable + auditable (issue #67)
 
     __table_args__ = (
         Index("ix_contacts_custom", "custom", postgresql_using="gin"),

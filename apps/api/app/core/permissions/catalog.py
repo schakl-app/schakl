@@ -102,6 +102,11 @@ CORE_PERMISSIONS: tuple[PermissionSpec, ...] = (
     # --- dashboard (personal My Day layout) ------------------------------- #
     PermissionSpec("dashboard.prefs.read", group="dashboard", position=10, default_roles=_ALL),
     PermissionSpec("dashboard.prefs.write", group="dashboard", position=20, default_roles=_ALL),
+    # --- activity trail (issue #67) --------------------------------------- #
+    # Every role that can reach a record's detail page may read its paper trail; the rows are
+    # org-scoped (RLS), so this never crosses a tenant. Recording is not a permission — it is a
+    # side effect of a write the caller was already allowed to make.
+    PermissionSpec("activity.read", group="activity", position=10, default_roles=_ALL),
 )
 
 

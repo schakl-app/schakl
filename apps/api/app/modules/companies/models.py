@@ -15,6 +15,7 @@ from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.assignees import AssigneeLinkMixin
+from app.core.activity import AuditableMixin
 from app.core.customfields import CustomizableMixin
 from app.core.mixins import OrgScopedMixin, TimestampMixin, UUIDPrimaryKeyMixin
 from app.db import Base
@@ -35,10 +36,11 @@ class Company(
     OrgScopedMixin,
     TimestampMixin,
     CustomizableMixin,
+    AuditableMixin,
     Base,
 ):
     __tablename__ = "companies"
-    __entity_type__ = "company"  # registers as customizable
+    __entity_type__ = "company"  # registers as customizable + auditable (issue #67)
 
     # GIN index on the JSONB custom-fields column (CLAUDE.md §13).
     __table_args__ = (

@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+    "/api/v1/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Entity Activity */
+        get: operations["entity_activity_api_v1_activity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/forgot-password": {
         parameters: {
             query?: never;
@@ -2146,37 +2163,6 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /**
-         * ActivityItem
-         * @description One line of a record's activity feed — recipient-independent.
-         */
-        ActivityItem: {
-            /** Actor Name */
-            actor_name?: string | null;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Entity Id
-             * Format: uuid
-             */
-            entity_id: string;
-            /** Entity Type */
-            entity_type: string;
-            /** Event Type */
-            event_type: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Payload */
-            payload?: {
-                [key: string]: unknown;
-            };
-        };
         /** ActivityRead */
         ActivityRead: {
             /** Action */
@@ -5360,6 +5346,73 @@ export interface components {
             /** Status */
             status: string;
         };
+        /**
+         * ActivityItem
+         * @description One line of a record's paper trail.
+         */
+        app__core__activity__schemas__ActivityItem: {
+            /** Action */
+            action: string;
+            /**
+             * Actor Deleted
+             * @default false
+             */
+            actor_deleted: boolean;
+            /** Actor Name */
+            actor_name?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * ActivityItem
+         * @description One line of a record's activity feed — recipient-independent.
+         */
+        app__modules__notifications__schemas__ActivityItem: {
+            /** Actor Name */
+            actor_name?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Event Type */
+            event_type: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            };
+        };
     };
     responses: never;
     parameters: never;
@@ -5369,6 +5422,39 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    entity_activity_api_v1_activity_get: {
+        parameters: {
+            query: {
+                entity_type: string;
+                entity_id: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app__core__activity__schemas__ActivityItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     reset_forgot_password_api_v1_auth_forgot_password_post: {
         parameters: {
             query?: never;
@@ -8124,7 +8210,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ActivityItem"][];
+                    "application/json": components["schemas"]["app__modules__notifications__schemas__ActivityItem"][];
                 };
             };
             /** @description Validation Error */
