@@ -260,6 +260,7 @@
   <LeaveRequestForm
     types={types.filter((lt) => lt.active)}
     balances={remainingByType}
+    canBackdate={can(page.data.user, "leave.request.write", "any")}
     error={form?.error ?? null}
     ondone={() => (createOpen = false)}
   />
@@ -272,6 +273,7 @@
         types={types.filter((lt) => lt.active)}
         balances={remainingByType}
         request={editRequest}
+        canBackdate={can(page.data.user, "leave.request.write", "any")}
         action="?/update"
         error={form?.error ?? null}
         ondone={() => (editOpen = false)}

@@ -24,6 +24,7 @@
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import TimeInput from "$lib/core/ui/TimeInput.svelte";
 
+  import LeaveStatusPill from "./LeaveStatusPill.svelte";
   import {
     dayReasonKey,
     fmtHours,
@@ -52,6 +53,7 @@
     balances = {},
     userOptions = null,
     canOverride = false,
+    canBackdate = false,
     action = "?/create",
     error = null,
     ondone,
@@ -65,6 +67,13 @@
     userOptions?: { value: string; label: string }[] | null;
     /** Holders of `leave.request.approve` may set the hours by hand, and are recorded doing it. */
     canOverride?: boolean;
+    /**
+     * Whether the caller may reach into the past (`leave.request.write:any`, #65 §6). Drives
+     * the upfront past indicator (#114): a member is told before submit instead of at a 403,
+     * a manager sees their save framed as a backdated registration. UX only — the API is the
+     * boundary and re-checks (incl. the own-leave lock of #110).
+     */
+    canBackdate?: boolean;
     action?: string;
     error?: string | null;
     ondone?: () => void;
@@ -95,10 +104,12 @@
   let previewError = $state<string | null>(null);
   let previewing = $state(false);
   let requiresApproval = $state(false);
+  // Whether the chosen span reaches before today (org-local) — the API computes it (#114).
+  let touchesPast = $state(false);
   // Remaining balance for the chosen type/year, for the *target* employee — computed by the API,
   // because the `balances` prop belongs to the viewer, who on the manager's register-for-someone
   // flow is the wrong person (#109). Null = no type chosen, or the type tracks no balance.
-  let remaining = $state<number | null>(null);
+  let previewRemaining = $state<number | null>(null);
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   // Warn only when editing an *already-approved* request that the save would push back to pending
@@ -107,7 +118,26 @@
 
   const effectiveHours = $derived(overriding && override ? Number(override) : hours);
   // Over-requests submit — a manager decides — but never silently (#109).
-  const overRequestedBy = $derived(remaining === null ? 0 : effectiveHours - remaining);
+  const overRequestedBy = $derived(
+    previewRemaining === null ? 0 : effectiveHours - previewRemaining,
+  );
+
+  // Did this edit move the span? A note-only edit of a past request is allowed for anyone, so
+  // the past lock only bites when the dates/times themselves change (or on a create).
+  const spanChanged = $derived(
+    !request ||
+      startDate !== request.start_date ||
+      endDate !== request.end_date ||
+      (partDay ? startTime || null : null) !== (request.start_time || null) ||
+      (partDay ? endTime || null : null) !== (request.end_time || null),
+  );
+  // Someone who can't backdate is told up front, and submit is disabled — a dead-end 403 on
+  // submit is exactly what this replaces (#114).
+  const pastBlocked = $derived(touchesPast && !canBackdate && spanChanged);
+
+  function fmtPeriod(start: string, end: string): string {
+    return start === end ? fmtDayMonth(start) : `${fmtDayMonth(start)} – ${fmtDayMonth(end)}`;
+  }
 
   /** One call per meaningful change, debounced — not one per keystroke. */
   function schedulePreview() {
@@ -144,7 +174,8 @@
         days = Number(body.preview.days);
         breakdown = body.preview.breakdown as LeaveDayHours[];
         requiresApproval = Boolean(body.preview.requires_approval);
-        remaining =
+        touchesPast = Boolean(body.preview.touches_past);
+        previewRemaining =
           body.preview.remaining_hours == null ? null : Number(body.preview.remaining_hours);
       }
     } catch {
@@ -187,6 +218,20 @@
 >
   {#if request}
     <input type="hidden" name="id" value={request.id} />
+    <!-- An edit reads as an edit (#114): what you are changing — its status and original
+         shape — sits above the fields, so this can never pass for a new request. -->
+    <div
+      class="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-border bg-surface px-3 py-2 text-xs text-text-muted"
+    >
+      <span class="font-medium text-text">{t("leave.form.editing_label")}</span>
+      {#if request.status}
+        <LeaveStatusPill status={request.status} />
+      {/if}
+      <span>{fmtPeriod(request.start_date, request.end_date)}</span>
+      <span class="tabular-nums">
+        {t("leave.form.hours_amount", { hours: fmtHours(request.hours) })}
+      </span>
+    </div>
   {/if}
 
   {#if userOptions}
@@ -354,6 +399,27 @@
     >
   </div>
 
+  {#if touchesPast}
+    <!-- The past is flagged *before* submit (#114): a member used to discover it as a 403. -->
+    {#if pastBlocked}
+      <p
+        class="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950 dark:text-red-300"
+      >
+        {t("leave.form.past_locked")}
+      </p>
+    {:else if canBackdate && spanChanged}
+      <p
+        class="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+      >
+        {t("leave.form.past_backdate")}
+      </p>
+    {:else}
+      <p class="rounded-lg bg-surface px-3 py-2 text-xs text-text-muted">
+        {t("leave.form.past_span")}
+      </p>
+    {/if}
+  {/if}
+
   {#if overRequestedBy > 0}
     <!-- Not a block: the request still submits and the manager decides (#109). -->
     <p
@@ -377,7 +443,7 @@
 
   <div class="flex justify-end">
     <button
-      disabled={effectiveHours <= 0}
+      disabled={effectiveHours <= 0 || pastBlocked}
       class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
     >
       {request ? t("common.save") : t("leave.form.submit")}

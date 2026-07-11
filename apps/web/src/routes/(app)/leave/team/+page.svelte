@@ -2,7 +2,9 @@
   import { enhance } from "$app/forms";
   import { Ban, Check, Plus, X } from "@lucide/svelte";
 
+  import { page } from "$app/state";
   import { fmtDayMonth } from "$lib/core/format";
+  import { can } from "$lib/core/permissions";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
@@ -353,6 +355,7 @@
     types={types.filter((lt) => lt.active)}
     userOptions={memberOptions}
     canOverride
+    canBackdate={can(page.data.user, "leave.request.write", "any")}
     action="?/register"
     error={form?.error ?? null}
     ondone={() => (registerOpen = false)}
