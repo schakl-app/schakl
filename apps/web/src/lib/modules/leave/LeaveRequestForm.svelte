@@ -42,6 +42,8 @@
     hours: string | number;
     hours_override: string | number | null;
     note: string | null;
+    /** Present when editing — an approved request may bounce back to pending on save (#72). */
+    status?: string;
   }
 
   let {
@@ -90,11 +92,22 @@
   // scheduled day, which is not the day of the manager registering leave on their behalf.
   let days = $state(0);
   let breakdown = $state<LeaveDayHours[]>([]);
+  let touchesPast = $state(false);
   let previewError = $state<string | null>(null);
   let previewing = $state(false);
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   const effectiveHours = $derived(overriding && override ? Number(override) : hours);
+
+  // Editing an approved request re-triggers approval when its type needs approval, or when the
+  // edit touches the past — either the new span (from the preview) or the original one. The API
+  // is the authority; this only decides whether to warn first (docs/UX.md, CLAUDE.md §15). The
+  // ISO date compares lexically, which is why no timezone maths is needed for a hint.
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const willReapprove = $derived(
+    request?.status === "approved" &&
+      Boolean(selectedType?.requires_approval || touchesPast || request.start_date < todayIso),
+  );
 
   /** One call per meaningful change, debounced — not one per keystroke. */
   function schedulePreview() {
@@ -123,11 +136,13 @@
         hours = 0;
         days = 0;
         breakdown = [];
+        touchesPast = false;
       } else {
         previewError = null;
         hours = Number(body.preview.hours);
         days = Number(body.preview.days);
         breakdown = body.preview.breakdown as LeaveDayHours[];
+        touchesPast = Boolean(body.preview.touches_past);
       }
     } catch {
       previewError = "errors.server";
@@ -334,6 +349,14 @@
       >{request?.note ?? ""}</textarea
     >
   </div>
+
+  {#if willReapprove}
+    <p
+      class="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300"
+    >
+      {t("leave.form.reapproval_warning")}
+    </p>
+  {/if}
 
   {#if error}
     <p class="text-sm text-red-600 dark:text-red-400">{t(error)}</p>

@@ -50,6 +50,21 @@
     editOpen = true;
   }
 
+  // Approved leave is now editable by its owner (#72): a future free day edits in place, a
+  // request needing approval bounces back to pending (the form warns first). Cancelling is
+  // offered for pending, and for one's own *future* approved leave — the past stays a manager's
+  // call, so the API would refuse it and we don't dangle the action. ISO dates compare lexically.
+  const todayIso = new Date().toISOString().slice(0, 10);
+  function canEdit(request: Request): boolean {
+    return request.status === "pending" || request.status === "approved";
+  }
+  function canCancel(request: Request): boolean {
+    return (
+      request.status === "pending" ||
+      (request.status === "approved" && request.start_date >= todayIso)
+    );
+  }
+
   function period(request: { start_date: string; end_date: string }): string {
     return request.start_date === request.end_date
       ? fmtDayMonth(request.start_date)
@@ -165,20 +180,26 @@
 {/snippet}
 
 {#snippet rowActions(request: Request)}
-  {#if request.status === "pending"}
+  {#if canEdit(request) || canCancel(request)}
     <ActionsMenu
       compact
       items={[
-        { label: t("common.edit"), icon: Pencil, onclick: () => openEdit(request) },
-        {
-          label: t("leave.requests.cancel"),
-          icon: Ban,
-          danger: true,
-          onclick: () => {
-            cancelId = request.id;
-            cancelOpen = true;
-          },
-        },
+        ...(canEdit(request)
+          ? [{ label: t("common.edit"), icon: Pencil, onclick: () => openEdit(request) }]
+          : []),
+        ...(canCancel(request)
+          ? [
+              {
+                label: t("leave.requests.cancel"),
+                icon: Ban,
+                danger: true,
+                onclick: () => {
+                  cancelId = request.id;
+                  cancelOpen = true;
+                },
+              },
+            ]
+          : []),
       ]}
     />
   {/if}

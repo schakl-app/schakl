@@ -13,6 +13,7 @@ import uuid
 from collections.abc import Sequence
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 
@@ -123,9 +124,19 @@ _UNSET = object()
 #: Midnight-to-midnight, in minutes: the window a day with no requested time covers.
 _DAY = sched.MINUTES_PER_DAY
 
+#: The past/future boundary the re-approval rule (#72) is measured against is a *calendar*
+#: day, so it is read in the tenant timezone (CLAUDE.md §8), not UTC — a UTC date flips a day
+#: too early or too late for anyone west or east of Greenwich at the edges of the day.
+_AMSTERDAM = ZoneInfo("Europe/Amsterdam")
+
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+def _today() -> date:
+    """Org-local today — the day an edit must reach or clear to count as touching the past."""
+    return datetime.now(_AMSTERDAM).date()
 
 
 # Columns a client may sort by; anything else in ``?sort=`` is rejected (app/core/sorting.py).
@@ -663,7 +674,14 @@ class LeaveService:
         )
         per_day = sched.average_day_hours(await self.effective_schedule(uid))
         days = (hours / per_day).quantize(Decimal("0.01")) if per_day else Decimal("0")
-        return LeavePreviewResult(hours=hours, days=days, breakdown=breakdown)
+        # An edit into (or already in) the past re-triggers approval regardless of type (#72);
+        # the form warns on it, so the number it shows is the flow it will get.
+        return LeavePreviewResult(
+            hours=hours,
+            days=days,
+            breakdown=breakdown,
+            touches_past=data.start_date < _today(),
+        )
 
     def _validate_span(
         self,
@@ -835,21 +853,51 @@ class LeaveService:
             },
         )
 
+    def _touches_past(self, *starts: date) -> bool:
+        """A request "touches the past" when it begins before org-local today — in *either* its
+        original or its edited form (#72). The earliest touched day is the start date, so that
+        is what is compared; ``end_date`` can only be later.
+        """
+        today = _today()
+        return any(start < today for start in starts)
+
+    @staticmethod
+    def _reshaped(
+        request: LeaveRequest,
+        *,
+        leave_type_id: uuid.UUID,
+        start_date: date,
+        start_time: time | None,
+        end_date: date,
+        end_time: time | None,
+    ) -> bool:
+        """Did an edit change anything approval-relevant — the type or the span — as opposed to
+        only the note? A note-only edit never re-triggers approval, and never unapproves (#72).
+        """
+        return (
+            leave_type_id != request.leave_type_id
+            or start_date != request.start_date
+            or start_time != request.start_time
+            or end_date != request.end_date
+            or end_time != request.end_time
+        )
+
     async def update(self, request_id: uuid.UUID, data: LeaveRequestUpdate) -> LeaveRequest:
+        """Edit a request. Editing an **approved** one is allowed (#72) — the requester may
+        reshape their own leave, and whoever may approve leave may fix anyone's — but an edit
+        re-triggers approval when the leave type requires it or the edit touches the past. The
+        one exception, the whole point of the relaxation, is a request-owner nudging their own
+        *future* auto-approve leave (a "free day"): that stays approved and needs nobody.
+        """
         request = await self._owned_or_404(request_id)
         self._ensure_writable(request)
-        # Members may only reshape their own *pending* request; whoever may approve leave may
-        # also fix an approved one (mirrors the approved-lock rule on time entries).
-        if request.status != LeaveRequestStatus.PENDING.value and not self.ctx.can(
-            "leave.request.approve"
-        ):
-            raise AppError("approved_locked", "errors.approved_locked", status_code=403)
+        # rejected/cancelled are terminal — there is nothing to reshape (#72 relaxes only the
+        # approved lock, never these).
         if request.status not in _OCCUPYING:
             raise AppError("conflict", "errors.leave_decided", status_code=409)
         values = data.model_dump(exclude_unset=True)
-        leave_type = await self.types.get_or_404(
-            values.get("leave_type_id", request.leave_type_id)
-        )
+        leave_type_id = values.get("leave_type_id", request.leave_type_id)
+        leave_type = await self.types.get_or_404(leave_type_id)
         start_date = values.get("start_date", request.start_date)
         start_time = values.get("start_time", request.start_time)
         end_date = values.get("end_date", request.end_date)
@@ -882,7 +930,34 @@ class LeaveService:
             hours=values["hours"],
             exclude_id=request.id,
         )
-        return await self.requests.update(request, **values)
+
+        # Re-approval gate (#72). Only a substantive change to an approved request can matter,
+        # and only when the editor is not themselves an approver — an approver's edit stands, as
+        # it always has. Everything the decision cleared is cleared too, and the managers who
+        # would have to look at a fresh request are told about this one.
+        bounce = (
+            request.status == LeaveRequestStatus.APPROVED.value
+            and self._reshaped(
+                request,
+                leave_type_id=leave_type_id,
+                start_date=start_date,
+                start_time=start_time,
+                end_date=end_date,
+                end_time=end_time,
+            )
+            and (leave_type.requires_approval or self._touches_past(request.start_date, start_date))
+            and not self.ctx.can("leave.request.approve")
+        )
+        if bounce:
+            values["status"] = LeaveRequestStatus.PENDING.value
+            values["decided_by_user_id"] = None
+            values["decided_at"] = None
+            values["decision_note"] = None
+
+        updated = await self.requests.update(request, **values)
+        if bounce:
+            await self._emit_leave("leave.requested", updated, await self._managers())
+        return updated
 
     async def decide(
         self, request_id: uuid.UUID, *, approved: bool, note: str | None = None
@@ -909,11 +984,19 @@ class LeaveService:
         return request
 
     async def cancel(self, request_id: uuid.UUID) -> LeaveRequest:
-        """Requester may cancel while pending; cancelling approved leave needs an approver."""
+        """Retract a request. The requester may always cancel their own *pending* one, and now
+        their own *future approved* one too (#72) — future leave is a plan they may drop. Their
+        own *past* approved leave is a record, not a plan, so unwinding it stays an approver's
+        call, as does cancelling anyone else's.
+        """
         request = await self._owned_or_404(request_id)
         self._ensure_writable(request)
         if request.status == LeaveRequestStatus.APPROVED.value:
-            if not self.ctx.can("leave.request.approve"):
+            own_future = (
+                request.user_id == self.ctx.user.id
+                and not self._touches_past(request.start_date)
+            )
+            if not own_future and not self.ctx.can("leave.request.approve"):
                 raise AppError("approved_locked", "errors.approved_locked", status_code=403)
         elif request.status != LeaveRequestStatus.PENDING.value:
             raise AppError("conflict", "errors.leave_decided", status_code=409)

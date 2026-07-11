@@ -289,6 +289,9 @@ class LeavePreviewResult(BaseModel):
     #: ``hours`` in average scheduled working days — the "≈ 2 dagen" hint.
     days: Decimal
     breakdown: list[LeaveDayHours]
+    #: The span begins before org-local today. Editing an approved request that touches the past
+    #: re-triggers approval whatever its type (#72); the form warns before saving.
+    touches_past: bool = False
 
 
 # --- balances -------------------------------------------------------------------- #

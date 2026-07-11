@@ -320,6 +320,15 @@ apply as everywhere.
   end_date, end_time, hours, hours_override, status[pending/approved/rejected/cancelled],
   decided_by_user_id, note, decided_at)`. Members request; managers approve. Tenant-scoped, with a
   declared permission on every route (§15), like every module.
+- **Editing an approved request re-triggers approval when it matters** (#72). The owner may edit
+  their own approved leave — but a substantive edit (type or span, never a note) bounces it back to
+  `pending` and re-notifies the managers when the **leave type requires approval** or the edit
+  **touches the past** (begins before org-local today, in either its original or its new form). The
+  one relaxation is the owner nudging their own *future auto-approve* leave — a free day — which
+  stays approved and needs nobody. An approver's own edit always stands. This is not hardcoded per
+  type: it reads each type's `requires_approval` plus the past/future boundary, so it is universal.
+  The rule mirrors into cancel — the owner may drop their own *future* approved leave, but the past
+  stays an approver's call. The API is the authority; the form only warns first (§15).
 - **The API — not the browser — is the authority on `hours`** (#48). `LeaveService.compute_hours`
   walks the span day by day: not a scheduled working day → 0; an active holiday → 0; otherwise the
   day's scheduled window intersected with the requested one, minus every break it overlaps. It

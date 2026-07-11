@@ -3261,6 +3261,11 @@ export interface components {
             days: string;
             /** Hours */
             hours: string;
+            /**
+             * Touches Past
+             * @default false
+             */
+            touches_past: boolean;
         };
         /**
          * LeaveProfileRead

@@ -121,13 +121,6 @@ async def test_request_approval_flow_and_balance(client_for) -> None:
         assert float(statutory_balance["approved_hours"]) == 16.0
         assert float(statutory_balance["remaining_hours"]) == 112.0
 
-        # Approved leave is locked for the member; a pending one could still be cancelled.
-        res = await c.post(
-            f"/api/v1/leave/requests/{request['id']}/cancel", headers=member_headers
-        )
-        assert res.status_code == 403
-        assert res.json()["error"]["message"] == "errors.approved_locked"
-
         # The team feed exposes the approved absence with the member's name.
         res = await c.get(
             "/api/v1/leave/team",
@@ -136,6 +129,21 @@ async def test_request_approval_flow_and_balance(client_for) -> None:
         )
         assert res.status_code == 200
         assert [item["user_name"] for item in res.json()] == ["Member"]
+
+        # The member may retract their own *future* approved leave (#72); it frees the balance.
+        res = await c.post(
+            f"/api/v1/leave/requests/{request['id']}/cancel", headers=member_headers
+        )
+        assert res.status_code == 200
+        assert res.json()["status"] == "cancelled"
+        balance = (
+            await c.get(
+                "/api/v1/leave/balance", params={"year": _YEAR}, headers=member_headers
+            )
+        ).json()
+        statutory_balance = next(b for b in balance if b["leave_type_id"] == statutory["id"])
+        assert float(statutory_balance["approved_hours"]) == 0.0
+        assert float(statutory_balance["remaining_hours"]) == 128.0
 
 
 async def test_overlap_and_balance_guards(client_for) -> None:

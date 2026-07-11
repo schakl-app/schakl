@@ -142,6 +142,7 @@
   "leave.form.hours_amount": "{hours} h",
   "leave.form.override": "Set the hours by hand",
   "leave.form.override_hint": "Recorded against your name. Use it only when the schedule cannot express what was agreed.",
+  "leave.form.reapproval_warning": "This change needs approval again, so saving sends the request back for review.",
   "leave.reason.holiday": "public holiday",
   "leave.reason.not_scheduled": "not a working day",
   "leave.reason.outside_hours": "outside working hours",

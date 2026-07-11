@@ -142,6 +142,7 @@
   "leave.form.hours_amount": "{hours} u",
   "leave.form.override": "Uren handmatig instellen",
   "leave.form.override_hint": "Wordt op jouw naam vastgelegd. Gebruik dit alleen als het rooster niet uitdrukt wat is afgesproken.",
+  "leave.form.reapproval_warning": "Deze wijziging moet opnieuw worden goedgekeurd; bij opslaan gaat de aanvraag terug ter beoordeling.",
   "leave.reason.holiday": "feestdag",
   "leave.reason.not_scheduled": "geen werkdag",
   "leave.reason.outside_hours": "buiten werktijd",
