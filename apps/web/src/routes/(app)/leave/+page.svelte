@@ -42,8 +42,17 @@
   );
 
   let createOpen = $state(false);
-  let editOpen = $state(false);
-  let editRequest = $state<(typeof data.requests)[number] | null>(null);
+  // Deep link from a calendar chip (#106): `?request=<id>` opens that request's edit modal on
+  // arrival. Resolved once, into state initializers, not a derived — the surface opens on
+  // load and the user can then close it (the same pattern as core/edit-intent.ts).
+  function deepLinkedRequest(): Request | null {
+    const id = page.url.searchParams.get("request");
+    if (!id) return null;
+    return data.requests.find((r: Request) => r.id === id && canEdit(r)) ?? null;
+  }
+  const initialEdit = deepLinkedRequest();
+  let editRequest = $state<Request | null>(initialEdit);
+  let editOpen = $state(initialEdit !== null);
   let cancelId = $state("");
   let cancelOpen = $state(false);
 

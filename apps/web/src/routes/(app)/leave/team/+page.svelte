@@ -1,6 +1,6 @@
 <script lang="ts">
   import { enhance } from "$app/forms";
-  import { Ban, Check, Plus, X } from "@lucide/svelte";
+  import { Ban, Check, Pencil, Plus, X } from "@lucide/svelte";
 
   import { page } from "$app/state";
   import { fmtDayMonth } from "$lib/core/format";
@@ -106,6 +106,33 @@
   let rejectOpen = $state(false);
   let cancelId = $state("");
   let cancelOpen = $state(false);
+
+  // Editing a member's request from here (#106): the shared form in a modal, like every other
+  // reporting row (docs/UX.md). Gated on `write:any` — approving and editing are separate grants.
+  const canEditAny = $derived(can(page.data.user, "leave.request.write", "any"));
+  // Deep link from a calendar chip: resolved once into state initializers (core/edit-intent.ts).
+  function deepLinkedRequest(): Request | null {
+    const id = page.url.searchParams.get("request");
+    if (!id) return null;
+    return (
+      data.yearRequests.find(
+        (r: Request) => r.id === id && (r.status === "pending" || r.status === "approved"),
+      ) ?? null
+    );
+  }
+  const initialEdit = deepLinkedRequest();
+  let editRequest = $state<Request | null>(initialEdit);
+  let editOpen = $state(initialEdit !== null);
+  const editTitle = $derived(
+    editRequest
+      ? `${t("leave.requests.edit")} · ${memberName[editRequest.user_id] ?? ""}`
+      : t("leave.requests.edit"),
+  );
+
+  function openEdit(request: Request) {
+    editRequest = request;
+    editOpen = true;
+  }
 
   function period(request: { start_date: string; end_date: string }): string {
     return request.start_date === request.end_date
@@ -288,6 +315,9 @@
     <ActionsMenu
       compact
       items={[
+        ...(canEditAny
+          ? [{ label: t("common.edit"), icon: Pencil, onclick: () => openEdit(request) }]
+          : []),
         {
           label: t("leave.requests.cancel"),
           icon: Ban,
@@ -360,6 +390,23 @@
     error={form?.error ?? null}
     ondone={() => (registerOpen = false)}
   />
+</Modal>
+
+<!-- Edit a member's request (#106): same shared form; the API decides re-approval (#72). -->
+<Modal bind:open={editOpen} title={editTitle}>
+  {#if editRequest}
+    {#key editRequest.id}
+      <LeaveRequestForm
+        types={types.filter((lt) => lt.active)}
+        request={editRequest}
+        canOverride
+        canBackdate={canEditAny}
+        action="?/update"
+        error={form?.error ?? null}
+        ondone={() => (editOpen = false)}
+      />
+    {/key}
+  {/if}
 </Modal>
 
 <!-- Reject with an optional reason -->

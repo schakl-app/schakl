@@ -7,17 +7,33 @@
   import { dateLocale, fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
+  import type { CalendarEvent } from "$lib/core/registry";
   import DayCalendar from "$lib/core/ui/DayCalendar.svelte";
   import MonthCalendar from "$lib/core/ui/MonthCalendar.svelte";
   import WeekCalendar from "$lib/core/ui/WeekCalendar.svelte";
   import YearCalendar from "$lib/core/ui/YearCalendar.svelte";
 
-  let { data } = $props();
+  let { data, form } = $props();
 
   const SHORTCUT_KEY: Record<CalendarView, string> = { day: "d", week: "w", month: "m", year: "y" };
 
   let saveForm: HTMLFormElement | undefined = $state();
   let saveViewInput: HTMLInputElement | undefined = $state();
+
+  // Drag-to-reschedule (#106): the drop fills this hidden form and submits it to ?/moveEvent;
+  // the enhance round-trip reloads the feeds, so the chip lands where the API says it landed.
+  let moveForm: HTMLFormElement | undefined = $state();
+  let moveSource: HTMLInputElement | undefined = $state();
+  let moveId: HTMLInputElement | undefined = $state();
+  let moveDelta: HTMLInputElement | undefined = $state();
+
+  function onEventMove(event: CalendarEvent, deltaDays: number) {
+    if (!moveForm || !moveSource || !moveId || !moveDelta || !event.sourceKey) return;
+    moveSource.value = event.sourceKey;
+    moveId.value = event.id;
+    moveDelta.value = String(deltaDays);
+    moveForm.requestSubmit();
+  }
 
   function hrefFor(view: CalendarView, date: string = data.date): string {
     return `?view=${view}&date=${date}`;
@@ -107,6 +123,14 @@
   <input type="hidden" name="view" bind:this={saveViewInput} />
 </form>
 
+<!-- The drop side of drag-to-reschedule (#106). Default enhance: success reloads the feeds,
+     failure surfaces below as an ordinary form error. -->
+<form method="POST" action="?/moveEvent" bind:this={moveForm} use:enhance class="hidden">
+  <input type="hidden" name="source" bind:this={moveSource} />
+  <input type="hidden" name="id" bind:this={moveId} />
+  <input type="hidden" name="delta" bind:this={moveDelta} />
+</form>
+
 <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
   <h1 class="text-xl font-semibold text-text">{t("calendar.title")}</h1>
   <div class="flex flex-wrap items-center gap-2" data-sveltekit-preload-data="hover">
@@ -157,12 +181,30 @@
   </div>
 </div>
 
+{#if form?.error}
+  <p
+    class="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600 dark:bg-red-950 dark:text-red-400"
+  >
+    {t(form.error)}
+  </p>
+{/if}
+
 {#if data.view === "day"}
   <DayCalendar date={data.date} events={data.events} today={data.today} />
 {:else if data.view === "week"}
-  <WeekCalendar days={weekGrid(data.date)} events={data.events} today={data.today} />
+  <WeekCalendar
+    days={weekGrid(data.date)}
+    events={data.events}
+    today={data.today}
+    onmove={onEventMove}
+  />
 {:else if data.view === "month"}
-  <MonthCalendar month={data.date.slice(0, 7)} events={data.events} today={data.today} />
+  <MonthCalendar
+    month={data.date.slice(0, 7)}
+    events={data.events}
+    today={data.today}
+    onmove={onEventMove}
+  />
 {:else}
   <YearCalendar
     year={data.date.slice(0, 4)}

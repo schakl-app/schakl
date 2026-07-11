@@ -89,6 +89,20 @@ export const actions: Actions = {
     return { cancelled: true };
   },
 
+  // Edit a member's request from the team table (#106). The API recomputes hours (#48) and
+  // decides whether the change re-enters approval (#72).
+  update: async (event) => {
+    const form = await event.request.formData();
+    const id = String(form.get("id") ?? "");
+    if (!id) return fail(400, { error: "errors.required" });
+    const { error } = await apiFor(event).PATCH("/api/v1/leave/requests/{request_id}", {
+      params: { path: { request_id: id } },
+      body: requestBody(form),
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { updated: true };
+  },
+
   // Register leave on someone's behalf (e.g. a sick call) — API enforces manager role.
   // `hours` is not posted: the server computes it from that employee's schedule (#48).
   register: async (event) => {

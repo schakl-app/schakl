@@ -1,3 +1,5 @@
+import { fail } from "@sveltejs/kit";
+
 import {
   aggregateEventsByDay,
   isCalendarView,
@@ -37,7 +39,13 @@ export const load: PageServerLoad = async (event) => {
   const rawView = event.url.searchParams.get("view");
   const view: CalendarView = isCalendarView(rawView) ? rawView : defaultView;
 
-  const range = { ...rangeFor(view, date), locale: event.locals.locale };
+  // The viewer rides along so a source can mark its events as own/draggable (#106) — UX
+  // hints only; every move is re-checked by the API.
+  const range = {
+    ...rangeFor(view, date),
+    locale: event.locals.locale,
+    user: event.locals.user,
+  };
   const sources = calendarSourcesFor(event.locals.theme?.enabledModules ?? []);
   const results = await Promise.all(
     sources.map((source) => source.load(api, range).catch(() => [] as CalendarEvent[])),
@@ -59,5 +67,28 @@ export const actions: Actions = {
       await apiFor(event).PUT("/api/v1/prefs", { body: { prefs: { calendar: { view } } } });
     }
     return { viewSaved: true };
+  },
+
+  /**
+   * Drag-to-reschedule (#106): dispatch a dropped chip back to the module that owns it. The
+   * core calendar knows no module's API — the source registered a `move` alongside its `load`,
+   * and the API behind it recomputes hours and re-triggers approval (CLAUDE.md §14, #72).
+   */
+  moveEvent: async (event) => {
+    const form = await event.request.formData();
+    const sourceKey = String(form.get("source") ?? "");
+    const id = String(form.get("id") ?? "");
+    const deltaDays = Number(form.get("delta") ?? 0);
+    if (!sourceKey || !id || !Number.isInteger(deltaDays)) {
+      return fail(400, { error: "errors.required" });
+    }
+    if (deltaDays === 0) return { moved: false };
+    const source = calendarSourcesFor(event.locals.theme?.enabledModules ?? []).find(
+      (s) => s.key === sourceKey,
+    );
+    if (!source?.move) return fail(400, { error: "errors.not_found" });
+    const error = await source.move(apiFor(event), { id, deltaDays });
+    if (error) return fail(400, { error });
+    return { moved: true };
   },
 };

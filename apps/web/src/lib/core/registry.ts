@@ -184,6 +184,21 @@ export interface CalendarEvent {
    * pill next to three people's leave says the opposite.
    */
   kind?: "event" | "holiday";
+  /** The contributing source's `key` — required for drag-to-reschedule, so the page's
+   *  `moveEvent` action can dispatch the drop back to the module that owns the event (#106). */
+  sourceKey?: string;
+  /** Whether the *viewer* may drag this event to another day. The source decides from the
+   *  user it was handed (own event, or a `:any` grant); the API re-checks either way. */
+  draggable?: boolean;
+}
+
+/** What a calendar source's `load` gets to work with. `user` carries the viewer's id +
+ *  effective permissions so a source can mark events as its own / draggable (#106). */
+export interface CalendarRange {
+  from: string;
+  to: string;
+  locale: string;
+  user?: { id: string; permissions: string[] } | null;
 }
 
 export interface CalendarSourceSpec {
@@ -191,10 +206,14 @@ export interface CalendarSourceSpec {
   key: string;
   module: string;
   /** Server-side loader (runs in the calendar's +page.server.ts, API-only). */
-  load: (
-    api: ApiClient,
-    range: { from: string; to: string; locale: string },
-  ) => Promise<CalendarEvent[]>;
+  load: (api: ApiClient, range: CalendarRange) => Promise<CalendarEvent[]>;
+  /**
+   * Reschedule one of this source's events by whole days (#106) — the drop side of
+   * drag-to-move. Runs server-side in the calendar's `moveEvent` action; must go through the
+   * API, which recomputes hours and re-triggers approval (CLAUDE.md §14, #72). Returns an
+   * error i18n key, or null on success.
+   */
+  move?: (api: ApiClient, args: { id: string; deltaDays: number }) => Promise<string | null>;
 }
 
 export interface WebModule {
