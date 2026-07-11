@@ -2,12 +2,14 @@
   import { BadgeEuro, CalendarClock, FileText, Trash2, UserMinus } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
+  import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
   import { localeName } from "$lib/core/roles/name";
   import { effectivePermissions, WILDCARD } from "$lib/core/roles/permissions";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import DateInput from "$lib/core/ui/DateInput.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import { fmtHours } from "$lib/modules/leave/format";
   import WorkScheduleEditor from "$lib/modules/leave/WorkScheduleEditor.svelte";
@@ -411,7 +413,11 @@
                     })}
                   </span>
                   <span class="block text-xs text-text-muted">
-                    {contract.start_date} → {contract.end_date ?? t("settings.users.contract_open")}
+                    <!-- Through the shared formatter, so the period honors the personal
+                         date-format preference like the rest of the app (#104). -->
+                    {fmtNumericDate(contract.start_date)} → {contract.end_date
+                      ? fmtNumericDate(contract.end_date)
+                      : t("settings.users.contract_open")}
                     · {t("settings.users.contract_scheduled", {
                       hours: fmtHours(contract.scheduled_hours_per_week),
                     })}
@@ -448,57 +454,65 @@
           </p>
         {/if}
 
-        <form
-          method="POST"
-          action="?/saveContract"
-          class="space-y-3 border-t border-border pt-4"
-          use:enhance={() =>
-            ({ result, update }) => {
-              if (result.type === "success") void update({ reset: true });
-              else void update({ reset: false });
-            }}
-        >
-          <input type="hidden" name="user_id" value={contractsFor.user_id} />
-          <p class="text-xs font-semibold uppercase tracking-wide text-text-muted">
-            {t("settings.users.contract_add")}
-          </p>
-          <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div>
-              <label for="c-start" class="mb-1 block text-xs text-text-muted"
-                >{t("settings.users.contract_start")}</label
-              >
-              <input id="c-start" name="start_date" type="date" required class={inputClass} />
-            </div>
-            <div>
-              <label for="c-end" class="mb-1 block text-xs text-text-muted"
-                >{t("settings.users.contract_end")}</label
-              >
-              <input id="c-end" name="end_date" type="date" class={inputClass} />
-            </div>
-            <div>
-              <label for="c-hours" class="mb-1 block text-xs text-text-muted"
-                >{t("settings.users.contract_hours")}</label
-              >
-              <input
-                id="c-hours"
-                name="contract_hours_per_week"
-                inputmode="decimal"
-                required
-                placeholder="38"
-                class={inputClass}
-              />
-            </div>
-          </div>
-          <p class="text-xs text-text-muted">{t("settings.users.contract_hint")}</p>
-          {#if form?.error}<p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
-          <div class="flex justify-end">
-            <button
-              class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-            >
+        <!-- Keyed on the row count: a successful add re-mounts the form, which is what clears
+             the DateInputs — their display text is component state a form reset cannot reach. -->
+        {#key rows.length}
+          <form
+            method="POST"
+            action="?/saveContract"
+            class="space-y-3 border-t border-border pt-4"
+            use:enhance={() =>
+              ({ result, update }) => {
+                if (result.type === "success") void update({ reset: true });
+                else void update({ reset: false });
+              }}
+          >
+            <input type="hidden" name="user_id" value={contractsFor.user_id} />
+            <p class="text-xs font-semibold uppercase tracking-wide text-text-muted">
               {t("settings.users.contract_add")}
-            </button>
-          </div>
-        </form>
+            </p>
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <!-- Shared DateInput, never a native type="date": browsers render those after the
+                 browser locale, ignoring the personal date-format preference (#104, docs/UX.md). -->
+              <div>
+                <label for="c-start" class="mb-1 block text-xs text-text-muted"
+                  >{t("settings.users.contract_start")}</label
+                >
+                <DateInput id="c-start" name="start_date" required />
+              </div>
+              <div>
+                <label for="c-end" class="mb-1 block text-xs text-text-muted"
+                  >{t("settings.users.contract_end")}</label
+                >
+                <DateInput id="c-end" name="end_date" />
+              </div>
+              <div>
+                <label for="c-hours" class="mb-1 block text-xs text-text-muted"
+                  >{t("settings.users.contract_hours")}</label
+                >
+                <input
+                  id="c-hours"
+                  name="contract_hours_per_week"
+                  inputmode="decimal"
+                  required
+                  placeholder="38"
+                  class={inputClass}
+                />
+              </div>
+            </div>
+            <p class="text-xs text-text-muted">{t("settings.users.contract_hint")}</p>
+            {#if form?.error}<p class="text-sm text-red-600 dark:text-red-400">
+                {t(form.error)}
+              </p>{/if}
+            <div class="flex justify-end">
+              <button
+                class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+              >
+                {t("settings.users.contract_add")}
+              </button>
+            </div>
+          </form>
+        {/key}
       </div>
     {/key}
   {/if}
