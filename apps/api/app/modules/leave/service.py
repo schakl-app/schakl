@@ -1797,24 +1797,54 @@ class LeaveService:
         span_to = max(req.end_date for req, _ in rows)
         holidays_off = await self.active_holidays_between(span_from, span_to)
 
-        return [
-            TeamLeaveItem(
-                id=req.id,
-                user_id=req.user_id,
-                user_name=user.full_name or user.email,
-                leave_type_id=req.leave_type_id,
-                start_date=req.start_date,
-                start_time=req.start_time,
-                end_date=req.end_date,
-                end_time=req.end_time,
-                hours=req.hours,
-                status=LeaveRequestStatus(req.status),
-                days=self._shaped_days(
-                    req, self._effective(by_user.get(req.user_id), default)[0], holidays_off
-                ),
+        items: list[TeamLeaveItem] = []
+        for req, user in rows:
+            schedule = self._effective(by_user.get(req.user_id), default)[0]
+            resolved_start, resolved_end = self._resolved_window(req, schedule)
+            items.append(
+                TeamLeaveItem(
+                    id=req.id,
+                    user_id=req.user_id,
+                    user_name=user.full_name or user.email,
+                    leave_type_id=req.leave_type_id,
+                    start_date=req.start_date,
+                    start_time=req.start_time,
+                    end_date=req.end_date,
+                    end_time=req.end_time,
+                    resolved_start_time=resolved_start,
+                    resolved_end_time=resolved_end,
+                    hours=req.hours,
+                    status=LeaveRequestStatus(req.status),
+                    days=self._shaped_days(req, schedule, holidays_off),
+                )
             )
-            for req, user in rows
-        ]
+        return items
+
+    @staticmethod
+    def _resolved_window(
+        request: LeaveRequest, schedule: sched.WorkSchedule
+    ) -> tuple[time | None, time | None]:
+        """The concrete clock window a *timed* request covers, for display feeds (#107).
+
+        A stored ``NULL`` time means "the scheduled day's own bound" (#48) — right for
+        pricing, but a calendar chip cannot print a NULL: "until 14:00" resolves its start
+        from the first day's schedule, "from 15:00" its end from the last day's. A request
+        with no times at all is a whole-day absence and resolves to nothing — stamping
+        08:30–17:00 on every ordinary vacation chip would be noise, not information. An
+        unscheduled day (a manager-override case) yields ``None`` and the display falls back
+        to the open-ended form.
+        """
+        if request.start_time is None and request.end_time is None:
+            return None, None
+        start = request.start_time
+        if start is None:
+            work_day = schedule.day(request.start_date.weekday())
+            start = work_day.start if work_day else None
+        end = request.end_time
+        if end is None:
+            work_day = schedule.day(request.end_date.weekday())
+            end = work_day.end if work_day else None
+        return start, end
 
     # --- dashboard widget ---------------------------------------------------------------- #
     async def summary(self) -> LeaveSummary:

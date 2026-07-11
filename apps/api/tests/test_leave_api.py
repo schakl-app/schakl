@@ -273,6 +273,48 @@ async def test_edit_can_set_a_part_day_window(client_for) -> None:
         assert float(edited.json()["hours"]) == 2.0
 
 
+async def test_team_feed_resolves_omitted_time_bounds(client_for) -> None:
+    """A NULL bound means the scheduled day's own start/end (#48); the display feed says so
+    out loud (#107): "until 14:00" reads 08:30–14:00 on the calendar, never a dangling dash."""
+    t = await make_tenant("leave-team-window")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        types = (await c.get("/api/v1/leave/types", headers=headers)).json()
+        sick = next(lt for lt in types if lt["key"] == "sick")
+
+        until = _span(1)[0]
+        frm = _span(2)[0]
+        whole = _span(3)[0]
+        for body in (
+            {"start_date": until, "end_date": until, "end_time": "14:00"},
+            {"start_date": frm, "end_date": frm, "start_time": "15:00"},
+            {"start_date": whole, "end_date": whole},
+        ):
+            res = await c.post(
+                "/api/v1/leave/requests",
+                json={"leave_type_id": sick["id"], **body},
+                headers=headers,
+            )
+            assert res.status_code == 201, res.text
+
+        team = (
+            await c.get(
+                "/api/v1/leave/team",
+                params={"date_from": until, "date_to": whole},
+                headers=headers,
+            )
+        ).json()
+        by_date = {item["start_date"]: item for item in team}
+        # Default schedule runs 08:30–17:00: each omitted bound resolves to the day's own.
+        assert by_date[until]["resolved_start_time"] == "08:30"
+        assert by_date[until]["resolved_end_time"] == "14:00"
+        assert by_date[frm]["resolved_start_time"] == "15:00"
+        assert by_date[frm]["resolved_end_time"] == "17:00"
+        # A whole-day absence resolves to nothing — 08:30–17:00 on every chip would be noise.
+        assert by_date[whole]["resolved_start_time"] is None
+        assert by_date[whole]["resolved_end_time"] is None
+
+
 async def test_sick_leave_is_registered_not_requested(client_for) -> None:
     t = await make_tenant("leave-sick")
     headers = await auth_cookie(t.user)

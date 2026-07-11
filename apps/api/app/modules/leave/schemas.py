@@ -466,6 +466,11 @@ class TeamLeaveItem(BaseModel):
     start_time: Clock | None
     end_date: date
     end_time: Clock | None
+    #: The stored times with omitted bounds resolved from the schedule (#107): "until 14:00"
+    #: displays as "08:30–14:00" because a NULL start *means* the day's own start (#48).
+    #: ``None`` for whole-day absences, and for a bound on an unscheduled day.
+    resolved_start_time: Clock | None = None
+    resolved_end_time: Clock | None = None
     hours: Decimal
     status: LeaveRequestStatus
     #: Hours per day, from the schedule (#48). The timesheet renders these rather than spreading

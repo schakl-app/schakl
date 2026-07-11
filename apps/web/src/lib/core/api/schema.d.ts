@@ -6242,6 +6242,10 @@ export interface components {
              * Format: uuid
              */
             leave_type_id: string;
+            /** Resolved End Time */
+            resolved_end_time?: string | null;
+            /** Resolved Start Time */
+            resolved_start_time?: string | null;
             /**
              * Start Date
              * Format: date
