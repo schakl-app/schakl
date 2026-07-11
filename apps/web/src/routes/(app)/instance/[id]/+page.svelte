@@ -2,6 +2,7 @@
   import { enhance } from "$app/forms";
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import { moduleLabel } from "$lib/core/registry";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
 
@@ -27,7 +28,7 @@
 </script>
 
 <svelte:head>
-  <title>{org.name} · {t("instance.title")}</title>
+  <title>{pageTitle(`${org.name} · ${t("instance.title")}`)}</title>
 </svelte:head>
 
 <div class="mx-auto max-w-3xl space-y-6">

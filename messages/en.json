@@ -55,6 +55,7 @@
   "common.no_results": "No results",
   "common.show_all": "Show all {count}",
   "common.show_less": "Show less",
+  "common.page_title": "{brand} · {segment}",
   "common.apply": "Apply",
   "common.create_named": "Add “{name}”",
   "common.deleted_user": "{name} (deleted)",

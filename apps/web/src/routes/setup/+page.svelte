@@ -1,6 +1,7 @@
 <script lang="ts">
   import { enhance } from "$app/forms";
   import { localeLabel, t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import { moduleLabel } from "$lib/core/registry";
 
   let { data, form } = $props();
@@ -30,7 +31,7 @@
 </script>
 
 <svelte:head>
-  <title>{t("setup.title")}</title>
+  <title>{pageTitle(t("setup.title"))}</title>
 </svelte:head>
 
 <div class="flex min-h-screen items-center justify-center px-4 py-10">

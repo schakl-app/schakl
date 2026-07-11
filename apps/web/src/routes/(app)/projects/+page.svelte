@@ -6,6 +6,7 @@
   import { page } from "$app/state";
   import { fmtNumber, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import { customFieldColumns } from "$lib/core/table/columns";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
@@ -182,7 +183,7 @@
 {/snippet}
 
 <svelte:head>
-  <title>{t("projects.title")}</title>
+  <title>{pageTitle(t("projects.title"))}</title>
 </svelte:head>
 
 <div class="mb-6 flex flex-wrap items-center justify-between gap-3">

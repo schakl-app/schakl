@@ -4,6 +4,7 @@
 
   import { fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
@@ -91,7 +92,7 @@
 </script>
 
 <svelte:head>
-  <title>{t("leave.team.title")}</title>
+  <title>{pageTitle(t("leave.team.title"))}</title>
 </svelte:head>
 
 <div class="mb-4 flex flex-wrap items-center justify-between gap-3">

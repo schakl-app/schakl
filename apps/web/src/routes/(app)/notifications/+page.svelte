@@ -17,6 +17,7 @@
 
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
@@ -84,7 +85,7 @@
 </script>
 
 <svelte:head>
-  <title>{t("notifications.title")}</title>
+  <title>{pageTitle(t("notifications.title"))}</title>
 </svelte:head>
 
 <div class="mb-4 flex flex-wrap items-center justify-between gap-3">

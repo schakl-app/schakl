@@ -6,6 +6,7 @@
   import { CALENDAR_VIEWS, shiftDate, weekGrid, type CalendarView } from "$lib/core/calendar";
   import { dateLocale, fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import DayCalendar from "$lib/core/ui/DayCalendar.svelte";
   import MonthCalendar from "$lib/core/ui/MonthCalendar.svelte";
   import WeekCalendar from "$lib/core/ui/WeekCalendar.svelte";
@@ -90,7 +91,7 @@
 <svelte:window {onkeydown} />
 
 <svelte:head>
-  <title>{t("calendar.title")}</title>
+  <title>{pageTitle(t("calendar.title"))}</title>
 </svelte:head>
 
 <!-- The sibling nav link/keyboard shortcut already triggers the authoritative navigation to

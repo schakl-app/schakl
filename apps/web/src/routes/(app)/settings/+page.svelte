@@ -1,9 +1,10 @@
 <script lang="ts">
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
 </script>
 
 <svelte:head>
-  <title>{t("settings.title")}</title>
+  <title>{pageTitle(t("settings.title"))}</title>
 </svelte:head>
 
 <h1 class="mb-6 text-xl font-semibold text-text">{t("settings.title")}</h1>

@@ -3,6 +3,7 @@
 
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import { localeName } from "$lib/core/roles/name";
   import { effectivePermissions, WILDCARD } from "$lib/core/roles/permissions";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
@@ -91,7 +92,7 @@
 </script>
 
 <svelte:head>
-  <title>{t("settings.users.title")}</title>
+  <title>{pageTitle(t("settings.users.title"))}</title>
 </svelte:head>
 
 <div class="mb-6 flex items-start justify-between">

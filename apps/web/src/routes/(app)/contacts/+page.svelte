@@ -4,6 +4,7 @@
   import { enhance } from "$app/forms";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import { customFieldColumns } from "$lib/core/table/columns";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
@@ -154,7 +155,7 @@
 {/snippet}
 
 <svelte:head>
-  <title>{t("contacts.title")}</title>
+  <title>{pageTitle(t("contacts.title"))}</title>
 </svelte:head>
 
 <!-- Wraps: "Nieuwe contactpersoon" is a 192px button, and a phone has ~312px of content width

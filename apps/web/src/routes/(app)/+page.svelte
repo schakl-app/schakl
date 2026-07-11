@@ -5,6 +5,7 @@
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import { dashboardWidgetsFor } from "$lib/core/registry";
 
   let { data, form } = $props();
@@ -48,7 +49,7 @@
 </script>
 
 <svelte:head>
-  <title>{t("dashboard.my_day.title")}</title>
+  <title>{pageTitle(t("dashboard.my_day.title"))}</title>
 </svelte:head>
 
 <div class="mb-6 flex items-start justify-between">

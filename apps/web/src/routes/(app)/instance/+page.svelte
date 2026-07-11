@@ -2,6 +2,7 @@
   import { enhance } from "$app/forms";
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import Modal from "$lib/core/ui/Modal.svelte";
 
   let { data, form } = $props();
@@ -19,7 +20,7 @@
 </script>
 
 <svelte:head>
-  <title>{t("instance.title")}</title>
+  <title>{pageTitle(t("instance.title"))}</title>
 </svelte:head>
 
 <div class="mx-auto max-w-5xl">

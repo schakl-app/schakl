@@ -1,6 +1,7 @@
 <script lang="ts">
   import { dateLocale } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import { moduleLabel } from "$lib/core/registry";
 
   let { data } = $props();
@@ -73,7 +74,7 @@
 </script>
 
 <svelte:head>
-  <title>{t("settings.system.title")}</title>
+  <title>{pageTitle(t("settings.system.title"))}</title>
 </svelte:head>
 
 <div class="mb-6">

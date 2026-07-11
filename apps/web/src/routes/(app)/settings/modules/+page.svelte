@@ -1,13 +1,14 @@
 <script lang="ts">
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import { moduleLabel } from "$lib/core/registry";
 
   let { data, form } = $props();
 </script>
 
 <svelte:head>
-  <title>{t("settings.modules.title")}</title>
+  <title>{pageTitle(t("settings.modules.title"))}</title>
 </svelte:head>
 
 <div class="mb-6">

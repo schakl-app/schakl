@@ -5,6 +5,7 @@
   import { page } from "$app/state";
   import { fmtDateTime, fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import { can } from "$lib/core/permissions";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
@@ -182,7 +183,7 @@
 </script>
 
 <svelte:head>
-  <title>{task.title}</title>
+  <title>{pageTitle(task.title)}</title>
 </svelte:head>
 
 <div class="mb-4">

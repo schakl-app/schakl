@@ -1,6 +1,7 @@
 <script lang="ts">
   import { enhance } from "$app/forms";
   import { localeLabel, t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
 
   let { data, form } = $props();
 
@@ -13,7 +14,7 @@
 </script>
 
 <svelte:head>
-  <title>{t("settings.branding.title")}</title>
+  <title>{pageTitle(t("settings.branding.title"))}</title>
 </svelte:head>
 
 <div class="mb-6">

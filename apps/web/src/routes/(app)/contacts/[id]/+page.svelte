@@ -3,6 +3,7 @@
 
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
@@ -45,7 +46,7 @@
 </script>
 
 <svelte:head>
-  <title>{fullName}</title>
+  <title>{pageTitle(fullName)}</title>
 </svelte:head>
 
 <div class="mb-6 flex items-center justify-between">

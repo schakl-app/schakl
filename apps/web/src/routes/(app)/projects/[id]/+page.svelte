@@ -9,6 +9,7 @@
   import { burnBarClass, burnBarWidth, burnPct } from "$lib/core/burn";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import { entityPanelsFor } from "$lib/core/registry";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import AssigneePicker from "$lib/core/ui/AssigneePicker.svelte";
@@ -105,7 +106,7 @@
 </script>
 
 <svelte:head>
-  <title>{project.name}</title>
+  <title>{pageTitle(project.name)}</title>
 </svelte:head>
 
 <div class="mb-6 flex items-start justify-between">

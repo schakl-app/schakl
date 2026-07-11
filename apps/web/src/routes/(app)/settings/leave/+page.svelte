@@ -5,6 +5,7 @@
   import { enhance } from "$app/forms";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
@@ -105,7 +106,7 @@
 </script>
 
 <svelte:head>
-  <title>{t("settings.leave.title")}</title>
+  <title>{pageTitle(t("settings.leave.title"))}</title>
 </svelte:head>
 
 <div class="mb-6">

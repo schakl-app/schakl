@@ -6,6 +6,7 @@
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import { fmtDayMonth, fmtLongDay, fmtWeekdayShort } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import { can } from "$lib/core/permissions";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
@@ -128,7 +129,7 @@
 </script>
 
 <svelte:head>
-  <title>{t("time.title")}</title>
+  <title>{pageTitle(t("time.title"))}</title>
 </svelte:head>
 
 <!-- Top bar: week navigation + running timer -->

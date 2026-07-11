@@ -6,6 +6,7 @@
   import { page } from "$app/state";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
@@ -101,7 +102,7 @@
 </script>
 
 <svelte:head>
-  <title>{t("time.overview.title")}</title>
+  <title>{pageTitle(t("time.overview.title"))}</title>
 </svelte:head>
 
 <div class="mb-4">

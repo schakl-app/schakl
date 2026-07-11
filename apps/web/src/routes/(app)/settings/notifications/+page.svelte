@@ -1,12 +1,13 @@
 <script lang="ts">
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import PreferenceMatrixForm from "$lib/modules/notifications/PreferenceMatrixForm.svelte";
 
   let { data, form } = $props();
 </script>
 
 <svelte:head>
-  <title>{t("settings.notifications.title")}</title>
+  <title>{pageTitle(t("settings.notifications.title"))}</title>
 </svelte:head>
 
 <div class="mb-6">

@@ -4,6 +4,7 @@
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import { companyPanelComponent } from "$lib/core/registry";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import AvatarStack from "$lib/core/ui/AvatarStack.svelte";
@@ -35,7 +36,7 @@
 </script>
 
 <svelte:head>
-  <title>{company.name}</title>
+  <title>{pageTitle(company.name)}</title>
 </svelte:head>
 
 <div class="mb-6">
