@@ -1,6 +1,6 @@
 import { error, fail, redirect } from "@sveltejs/kit";
 
-import { apiErrorKey } from "$lib/core/errors";
+import { apiErrorKey, lookupItems } from "$lib/core/errors";
 import { parseParty } from "$lib/core/party";
 import { apiFor } from "$lib/core/session";
 
@@ -21,10 +21,10 @@ export const load: PageServerLoad = async (event) => {
   const [domain, companies, providers, members, contacts, defs, websiteDefs, websites, hosting] =
     await Promise.all([
       api.GET("/api/v1/domains/{domain_id}", { params: { path: { domain_id } } }),
-      api.GET("/api/v1/companies", { params: { query: { limit: 500, offset: 0, count: false } } }),
+      api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
       api.GET("/api/v1/providers"),
       api.GET("/api/v1/members/lookup"),
-      api.GET("/api/v1/contacts", { params: { query: { limit: 500, offset: 0 } } }),
+      api.GET("/api/v1/contacts", { params: { query: { limit: 200, offset: 0 } } }),
       api.GET("/api/v1/custom-fields/definitions", {
         params: { query: { entity_type: "domain" } },
       }),
@@ -32,24 +32,24 @@ export const load: PageServerLoad = async (event) => {
         params: { query: { entity_type: "website" } },
       }),
       api.GET("/api/v1/websites", { params: { query: { domain_id, limit: 1, offset: 0 } } }),
-      api.GET("/api/v1/hosting", { params: { query: { limit: 500, offset: 0 } } }),
+      api.GET("/api/v1/hosting", { params: { query: { limit: 200, offset: 0 } } }),
     ]);
 
   if (!domain.data) throw error(404, { code: "not_found", message: "errors.not_found" });
 
   return {
     domain: domain.data,
-    companies: (companies.data?.items ?? []).map((c) => ({ id: c.id, name: c.name })),
+    companies: lookupItems(companies, "companies").map((c) => ({ id: c.id, name: c.name })),
     providers: providers.data ?? [],
     employees: members.data ?? [],
-    contacts: (contacts.data?.items ?? []).map((c) => ({
+    contacts: lookupItems(contacts, "contacts").map((c) => ({
       id: c.id,
       name: [c.first_name, c.last_name].filter(Boolean).join(" "),
     })),
     definitions: defs.data ?? [],
     websiteDefinitions: websiteDefs.data ?? [],
     website: websites.data?.items?.[0] ?? null,
-    hosting: (hosting.data?.items ?? []).map((h) => ({ id: h.id, name: h.name })),
+    hosting: lookupItems(hosting, "hosting").map((h) => ({ id: h.id, name: h.name })),
     agencyLabel: event.locals.theme?.brandName ?? "",
     locale: event.locals.locale,
   };

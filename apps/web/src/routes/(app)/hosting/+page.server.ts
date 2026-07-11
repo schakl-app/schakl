@@ -1,6 +1,6 @@
 import { fail } from "@sveltejs/kit";
 
-import { apiErrorKey } from "$lib/core/errors";
+import { apiErrorKey, lookupItems } from "$lib/core/errors";
 import { parseParty } from "$lib/core/party";
 import { apiFor } from "$lib/core/session";
 
@@ -18,20 +18,20 @@ export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const [hosting, companies, providers, members, contacts, definitions] = await Promise.all([
     api.GET("/api/v1/hosting", { params: { query: { limit: 200, offset: 0 } } }),
-    api.GET("/api/v1/companies", { params: { query: { limit: 500, offset: 0, count: false } } }),
+    api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
     api.GET("/api/v1/providers"),
     api.GET("/api/v1/members/lookup"),
-    api.GET("/api/v1/contacts", { params: { query: { limit: 500, offset: 0 } } }),
+    api.GET("/api/v1/contacts", { params: { query: { limit: 200, offset: 0 } } }),
     api.GET("/api/v1/custom-fields/definitions", { params: { query: { entity_type: "hosting" } } }),
   ]);
 
   return {
     hosting: hosting.data?.items ?? [],
     total: hosting.data?.total ?? 0,
-    companies: (companies.data?.items ?? []).map((c) => ({ id: c.id, name: c.name })),
+    companies: lookupItems(companies, "companies").map((c) => ({ id: c.id, name: c.name })),
     providers: providers.data ?? [],
     employees: members.data ?? [],
-    contacts: (contacts.data?.items ?? []).map((c) => ({
+    contacts: lookupItems(contacts, "contacts").map((c) => ({
       id: c.id,
       name: [c.first_name, c.last_name].filter(Boolean).join(" "),
     })),
