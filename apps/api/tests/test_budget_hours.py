@@ -15,7 +15,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from app.modules.projects.budget import period_start, period_start_date
-from tests.conftest import add_membership, auth_cookie, make_tenant
+from tests.conftest import add_membership, auth_cookie, leave_workday, make_tenant
 
 
 def _iso(dt: datetime) -> str:
@@ -404,14 +404,15 @@ async def test_approved_leave_never_counts_against_a_budget(client_for) -> None:
             headers=headers,
         )
         assert leave_type.status_code == 201, leave_type.text
-        today = datetime.now(UTC).date()
+        # A guaranteed working day: the server computes the hours from the schedule (§14), so a
+        # weekend or holiday would be worth zero hours and refused.
+        workday = leave_workday()
         request = await c.post(
             "/api/v1/leave/requests",
             json={
                 "leave_type_id": leave_type.json()["id"],
-                "start_date": today.isoformat(),
-                "end_date": today.isoformat(),
-                "hours": 8,
+                "start_date": workday.isoformat(),
+                "end_date": workday.isoformat(),
             },
             headers=headers,
         )
