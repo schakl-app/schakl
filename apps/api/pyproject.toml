@@ -25,6 +25,8 @@ dependencies = [
     # Strips raw HTML from stored markdown on write (issue #66); the render-side sanitizer is the
     # other half. Rust-backed (ammonia), so it adds no meaningful startup or per-write cost.
     "nh3>=0.2.18",
+    "apprise>=1.12.0",
+    "cryptography>=49.0.0",
 ]
 
 [dependency-groups]

@@ -75,6 +75,13 @@ class Settings(BaseSettings):
 
     # --- Auth ---
     secret_key: str = "change-me-in-production-please-32bytes-min"
+    #: Key material for encrypting secrets at rest (notification channel URLs #17, Google refresh
+    #: tokens). Falls back to ``secret_key`` when unset, so a single-secret install still works;
+    #: set ``SCHAKL_ENCRYPTION_KEY`` to rotate it independently of the auth secret.
+    encryption_key: str | None = None
+    #: Allow notification webhook URLs pointing at private/link-local addresses (#17). Off by
+    #: default (SSRF guard); a self-hosted admin may enable it for an in-network endpoint.
+    allow_private_notification_targets: bool = False
     # Cookie transport is used by the SSR web app.
     auth_cookie_name: str = "schakl_auth"
     auth_cookie_secure: bool = False  # True behind HTTPS in production

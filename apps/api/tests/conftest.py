@@ -43,7 +43,7 @@ _password_hash = PasswordHash.recommended()
 # `memberships`/`roles`, so they precede both (CASCADE would take them anyway, but the explicit
 # order is what documents the dependency).
 _DOMAIN_TABLES = (
-    "notification_deliveries, notifications, notification_watchers, "
+    "notification_deliveries, notification_channels, notifications, notification_watchers, "
     "notification_preferences, notification_events, "
     "task_checklist_items, task_checklists, task_checklist_templates, task_links, "
     "task_label_links, task_labels, "

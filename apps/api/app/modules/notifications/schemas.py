@@ -153,3 +153,65 @@ __all__ = [
     "WatchRead",
     "WatchUpdate",
 ]
+
+
+# --- external channels (#17) --------------------------------------------------- #
+CHANNEL_KINDS = Literal[
+    "slack", "msteams", "gchat", "discord", "telegram", "mailto", "webhook"
+]
+
+
+class ChannelCreate(BaseModel):
+    kind: CHANNEL_KINDS
+    name: str = Field(min_length=1, max_length=120)
+    #: The full Apprise URL. Write-only: encrypted at rest, never returned (#17).
+    url: str = Field(min_length=1)
+    enabled: bool = True
+    #: Event types routed here; empty = all. Validated against the known set.
+    event_filter: list[str] = Field(default_factory=list)
+    #: A personal channel (my DM) when set to a member; ``None`` = an org channel.
+    user_id: uuid.UUID | None = None
+
+    @field_validator("event_filter")
+    @classmethod
+    def _known_events(cls, value: list[str]) -> list[str]:
+        for event in value:
+            if event not in EVENT_TYPES:
+                raise ValueError("errors.validation")
+        return value
+
+
+class ChannelUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=120)
+    #: Rotate the URL by sending a new one; omit to leave it unchanged.
+    url: str | None = None
+    enabled: bool | None = None
+    event_filter: list[str] | None = None
+
+    @field_validator("event_filter")
+    @classmethod
+    def _known_events(cls, value: list[str] | None) -> list[str] | None:
+        if value is not None:
+            for event in value:
+                if event not in EVENT_TYPES:
+                    raise ValueError("errors.validation")
+        return value
+
+
+class ChannelRead(BaseModel):
+    id: uuid.UUID
+    org_id: uuid.UUID
+    kind: str
+    name: str
+    #: A redacted preview (``slack://xoxb-****``) — never the secret-bearing URL.
+    redacted: str
+    enabled: bool
+    event_filter: list[str]
+    user_id: uuid.UUID | None
+    created_at: datetime
+
+
+class ChannelTestResult(BaseModel):
+    ok: bool
+    #: The provider's own error, surfaced verbatim so a broken webhook is diagnosable (#17).
+    error: str | None = None
