@@ -6,7 +6,7 @@ The three rules the plan says must not regress, each named in its own test, plus
 
 from __future__ import annotations
 
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import auth_cookie, leave_workday, make_tenant
 from tests.test_task_subresources import add_member
 
 
@@ -232,17 +232,19 @@ async def test_leave_scopes(client_for) -> None:
         # Needs approval, tracks no balance — a pending request without seeding entitlements.
         special = next(t for t in types if t["key"] == "special")
 
+        # A future working day: a member holds `leave.request.write:own`, which may not backdate
+        # into the closed calendar (#65), and the server computes the hours from the schedule (§14).
+        workday = leave_workday()
         request = await client.post(
             "/api/v1/leave/requests",
             json={
                 "leave_type_id": special["id"],
-                "start_date": "2026-03-02",
-                "end_date": "2026-03-02",
-                "hours": "8",
+                "start_date": workday.isoformat(),
+                "end_date": workday.isoformat(),
             },
             headers=member_headers,
         )
-        assert request.status_code == 201
+        assert request.status_code == 201, request.text
         request_id = request.json()["id"]
 
         # A member may not approve their own request, nor pull the org-wide list.
@@ -259,7 +261,7 @@ async def test_leave_scopes(client_for) -> None:
         # …but the team calendar is staff-visible.
         assert (
             await client.get(
-                "/api/v1/leave/team?date_from=2026-03-01&date_to=2026-03-31",
+                f"/api/v1/leave/team?date_from={workday.isoformat()}&date_to={workday.isoformat()}",
                 headers=member_headers,
             )
         ).status_code == 200
