@@ -25,6 +25,7 @@
   "table.sorted_by": "Gesorteerd op {column}",
   "table.select_all": "Selecteer alle rijen op deze pagina",
   "table.select_row": "Selecteer rij",
+  "table.open_row": "Openen",
   "table.total": "Totaal",
   "table.ungrouped": "Overig",
   "table.selected": "{count} geselecteerd",

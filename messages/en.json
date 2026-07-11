@@ -25,6 +25,7 @@
   "table.sorted_by": "Sorted by {column}",
   "table.select_all": "Select all rows on this page",
   "table.select_row": "Select row",
+  "table.open_row": "Open",
   "table.total": "Total",
   "table.ungrouped": "Other",
   "table.selected": "{count} selected",
