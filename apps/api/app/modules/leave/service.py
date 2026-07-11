@@ -32,6 +32,7 @@ from app.modules.leave.models import (
     LeaveEntitlement,
     LeaveHoliday,
     LeaveProfile,
+    LeaveRecurringDay,
     LeaveRequest,
     LeaveRequestStatus,
     LeaveSettings,
@@ -49,6 +50,8 @@ from app.modules.leave.schemas import (
     LeaveHolidayUpdate,
     LeavePreviewResult,
     LeaveProfileUpdate,
+    LeaveRecurringDayCreate,
+    LeaveRecurringDayUpdate,
     LeaveRequestCreate,
     LeaveRequestPreview,
     LeaveRequestUpdate,
@@ -172,6 +175,7 @@ class LeaveService:
         self.settings = ctx.repo(LeaveSettings)
         self.holidays = ctx.repo(LeaveHoliday)
         self.contracts = ctx.repo(EmploymentContract)
+        self.recurring = ctx.repo(LeaveRecurringDay)
         # One settings read per request, not one per profile resolved (docs/PERFORMANCE.md).
         self._settings_row: LeaveSettings | None | object = _UNSET
         # Memoized per request: update() consults it for the bounce *and* the backdate gate.
@@ -679,6 +683,163 @@ class LeaveService:
             return hours.quantize(Decimal("0.01"))
         steps = (hours / half).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
         return (steps * half).quantize(Decimal("0.01"))
+
+    # --- recurring rostered free days / ADV (#107) --------------------------------- #
+    async def list_recurring(
+        self, *, user_id: uuid.UUID | None = None
+    ) -> Sequence[LeaveRecurringDay]:
+        """The org's patterns (managers' roster), optionally narrowed to one employee."""
+        self.ctx.require("leave.profile.manage")
+        stmt = self.recurring.scoped_select().order_by(
+            LeaveRecurringDay.user_id, LeaveRecurringDay.anchor_date
+        )
+        if user_id is not None:
+            stmt = stmt.where(LeaveRecurringDay.user_id == user_id)
+        return (await self.ctx.session.execute(stmt)).scalars().all()
+
+    async def create_recurring(self, data: LeaveRecurringDayCreate) -> tuple[LeaveRecurringDay, int]:
+        """Define a pattern and immediately lay its days onto the calendar.
+
+        A pattern is employment data, so it is managed with the schedules and contracts
+        (``leave.profile.manage``) — not a self-service member act.
+        """
+        self.ctx.require("leave.profile.manage")
+        await self._member_or_404(data.user_id)
+        leave_type = await self.types.get_or_404(data.leave_type_id)
+        if not leave_type.active:
+            raise AppError("validation", "errors.validation", status_code=422)
+        pattern = await self.recurring.create(**data.model_dump())
+        created = await self.generate_recurring_days(pattern_id=pattern.id)
+        return pattern, created
+
+    async def update_recurring(
+        self, recurring_id: uuid.UUID, data: LeaveRecurringDayUpdate
+    ) -> tuple[LeaveRecurringDay, int]:
+        self.ctx.require("leave.profile.manage")
+        pattern = await self.recurring.get_or_404(recurring_id)
+        values = data.model_dump(exclude_unset=True)
+        if "leave_type_id" in values:
+            leave_type = await self.types.get_or_404(values["leave_type_id"])
+            if not leave_type.active:
+                raise AppError("validation", "errors.validation", status_code=422)
+        pattern = await self.recurring.update(pattern, **values)
+        created = 0
+        if pattern.active:
+            created = await self.generate_recurring_days(pattern_id=pattern.id)
+        return pattern, created
+
+    async def delete_recurring(self, recurring_id: uuid.UUID) -> None:
+        """Delete the pattern; days already placed stay (FK is SET NULL) — they are real,
+        individually cancellable leave the employee may have planned around."""
+        self.ctx.require("leave.profile.manage")
+        await self.recurring.delete(await self.recurring.get_or_404(recurring_id))
+
+    @staticmethod
+    def _recurring_horizon(today: date) -> date:
+        """Generate through the end of the month after next: far enough to plan around, close
+        enough that a schedule change doesn't strand a quarter of pre-booked days."""
+        month = today.month + 3
+        year = today.year + (month - 1) // 12
+        month = (month - 1) % 12 + 1
+        return date(year, month, 1) - timedelta(days=1)
+
+    async def generate_recurring_days(self, *, pattern_id: uuid.UUID | None = None) -> int:
+        """Lay every active pattern's upcoming occurrences onto the calendar (#107).
+
+        Idempotent by construction: an occurrence is *spent* once any request row carries its
+        ``(recurring_day_id, recurring_date)`` — moved, cancelled or still standing — so a day
+        the employee shifted away never reappears on its pattern date. Occurrences are skipped
+        (never queued elsewhere) when the day is worth no hours (holiday, not scheduled), when
+        another occupying request already covers it, or when a balance-tracked type's pot has
+        less than the day costs — the pattern must not generate more free hours than the
+        scheduled−contract gap earned (§14). Runs from pattern saves and the monthly cron.
+        """
+        stmt = self.recurring.scoped_select().where(LeaveRecurringDay.active.is_(True))
+        if pattern_id is not None:
+            stmt = stmt.where(LeaveRecurringDay.id == pattern_id)
+        patterns = (await self.ctx.session.execute(stmt)).scalars().all()
+        if not patterns:
+            return 0
+
+        today = await self._org_today()
+        horizon = self._recurring_horizon(today)
+        created = 0
+        for pattern in patterns:
+            leave_type = await self.types.get_or_404(pattern.leave_type_id)
+            step = timedelta(weeks=pattern.interval_weeks)
+            occurrence = pattern.anchor_date
+            # Never backfill: the first generated day is the first occurrence from today on.
+            if occurrence < today:
+                behind = (today - occurrence).days
+                cycles = -(-behind // (pattern.interval_weeks * 7))  # ceil
+                occurrence += cycles * step
+
+            spent = set(
+                (
+                    await self.ctx.session.execute(
+                        select(LeaveRequest.recurring_date).where(
+                            LeaveRequest.org_id == self.ctx.org.id,
+                            LeaveRequest.recurring_day_id == pattern.id,
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            # One balance read per (year) the horizon touches, decremented locally as days
+            # land — not one query per occurrence (docs/PERFORMANCE.md).
+            remaining_by_year: dict[int, Decimal] = {}
+
+            while occurrence <= horizon:
+                day = occurrence
+                occurrence += step
+                if day in spent:
+                    continue
+                hours, _ = await self.compute_hours(pattern.user_id, day, None, day, None)
+                if hours <= 0:
+                    continue  # holiday or not a scheduled working day — meaningless free day
+                overlap = (
+                    await self.ctx.session.execute(
+                        self.requests.scoped_select()
+                        .where(
+                            LeaveRequest.user_id == pattern.user_id,
+                            LeaveRequest.status.in_(_OCCUPYING),
+                            LeaveRequest.start_date <= day,
+                            LeaveRequest.end_date >= day,
+                        )
+                        .limit(1)
+                    )
+                ).scalars().first()
+                if overlap is not None:
+                    continue
+                if leave_type.tracks_balance:
+                    if day.year not in remaining_by_year:
+                        balances = {
+                            b.leave_type_id: b
+                            for b in await self.balances(year=day.year, user_id=pattern.user_id)
+                        }
+                        balance = balances.get(leave_type.id)
+                        remaining_by_year[day.year] = (
+                            balance.remaining_hours if balance else Decimal(0)
+                        )
+                    if remaining_by_year[day.year] < hours:
+                        continue  # the gap earned no more free hours this year
+                    remaining_by_year[day.year] -= hours
+                # An auto-approved registration, like a sick report: the pattern was a
+                # manager's act, and the employee moves individual days within the rules.
+                await self.requests.create(
+                    user_id=pattern.user_id,
+                    leave_type_id=pattern.leave_type_id,
+                    start_date=day,
+                    end_date=day,
+                    hours=hours,
+                    note=pattern.note,
+                    status=LeaveRequestStatus.APPROVED.value,
+                    recurring_day_id=pattern.id,
+                    recurring_date=day,
+                )
+                created += 1
+        return created
 
     # --- entitlements ------------------------------------------------------------ #
     async def _seed_after_contract_change(self, user_id: uuid.UUID) -> None:

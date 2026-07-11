@@ -1004,6 +1004,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/leave/recurring": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Recurring
+         * @description The org's rostered-free-day patterns — employment data, managed with the schedules.
+         */
+        get: operations["list_recurring_api_v1_leave_recurring_get"];
+        put?: never;
+        /** Create Recurring */
+        post: operations["create_recurring_api_v1_leave_recurring_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/recurring/{recurring_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Recurring
+         * @description Deletes the pattern only; the days it already placed stay individually cancellable.
+         */
+        delete: operations["delete_recurring_api_v1_leave_recurring__recurring_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Recurring */
+        patch: operations["update_recurring_api_v1_leave_recurring__recurring_id__patch"];
+        trace?: never;
+    };
     "/api/v1/leave/requests": {
         parameters: {
             query?: never;
@@ -4333,6 +4375,147 @@ export interface components {
             /** Hourly Rate */
             hourly_rate?: number | string | null;
         };
+        /** LeaveRecurringDayCreate */
+        LeaveRecurringDayCreate: {
+            /**
+             * Anchor Date
+             * Format: date
+             */
+            anchor_date: string;
+            /**
+             * Interval Weeks
+             * @default 1
+             */
+            interval_weeks: number;
+            /**
+             * Leave Type Id
+             * Format: uuid
+             */
+            leave_type_id: string;
+            /** Note */
+            note?: string | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** LeaveRecurringDayRead */
+        LeaveRecurringDayRead: {
+            /** Active */
+            active: boolean;
+            /**
+             * Anchor Date
+             * Format: date
+             */
+            anchor_date: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Interval Weeks
+             * @default 1
+             */
+            interval_weeks: number;
+            /**
+             * Leave Type Id
+             * Format: uuid
+             */
+            leave_type_id: string;
+            /** Note */
+            note?: string | null;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /**
+         * LeaveRecurringDaySaved
+         * @description The saved pattern, plus how many free days the save just placed on the calendar —
+         *     surfaced so the settings screen can confirm something visible actually happened.
+         */
+        LeaveRecurringDaySaved: {
+            /** Active */
+            active: boolean;
+            /**
+             * Anchor Date
+             * Format: date
+             */
+            anchor_date: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Generated
+             * @default 0
+             */
+            generated: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Interval Weeks
+             * @default 1
+             */
+            interval_weeks: number;
+            /**
+             * Leave Type Id
+             * Format: uuid
+             */
+            leave_type_id: string;
+            /** Note */
+            note?: string | null;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** LeaveRecurringDayUpdate */
+        LeaveRecurringDayUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Anchor Date */
+            anchor_date?: string | null;
+            /** Interval Weeks */
+            interval_weeks?: number | null;
+            /** Leave Type Id */
+            leave_type_id?: string | null;
+            /** Note */
+            note?: string | null;
+        };
         /**
          * LeaveRequestCreate
          * @description ``hours`` is **not** accepted. The server computes it from the schedule (#48).
@@ -4443,6 +4626,8 @@ export interface components {
              * Format: uuid
              */
             org_id: string;
+            /** Recurring Day Id */
+            recurring_day_id?: string | null;
             /**
              * Start Date
              * Format: date
@@ -9446,6 +9631,134 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LeaveRateRead"][];
+                };
+            };
+        };
+    };
+    list_recurring_api_v1_leave_recurring_get: {
+        parameters: {
+            query?: {
+                user_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveRecurringDayRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_recurring_api_v1_leave_recurring_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveRecurringDayCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveRecurringDaySaved"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_recurring_api_v1_leave_recurring__recurring_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recurring_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_recurring_api_v1_leave_recurring__recurring_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recurring_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveRecurringDayUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveRecurringDaySaved"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

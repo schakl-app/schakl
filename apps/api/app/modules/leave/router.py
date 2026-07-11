@@ -37,6 +37,10 @@ from app.modules.leave.schemas import (
     LeaveProfileUpdate,
     LeaveRateRead,
     LeaveRateUpdate,
+    LeaveRecurringDayCreate,
+    LeaveRecurringDayRead,
+    LeaveRecurringDaySaved,
+    LeaveRecurringDayUpdate,
     LeaveRequestCreate,
     LeaveRequestDecision,
     LeaveRequestPreview,
@@ -360,6 +364,68 @@ async def delete_contract(
     ctx: RequestContext = Depends(require_context),
 ) -> None:
     await LeaveService(ctx).delete_contract(contract_id)
+
+
+# --- recurring rostered free days / ADV (#107) ---------------------------------- #
+def _recurring_saved(pattern, generated: int) -> LeaveRecurringDaySaved:
+    return LeaveRecurringDaySaved(
+        **LeaveRecurringDayRead.model_validate(pattern).model_dump(), generated=generated
+    )
+
+
+@router.get(
+    "/recurring",
+    response_model=list[LeaveRecurringDayRead],
+    dependencies=[require_permission("leave.profile.manage")],
+)
+async def list_recurring(
+    user_id: uuid.UUID | None = Query(None),
+    ctx: RequestContext = Depends(require_context),
+) -> list[LeaveRecurringDayRead]:
+    """The org's rostered-free-day patterns — employment data, managed with the schedules."""
+    items = await LeaveService(ctx).list_recurring(user_id=user_id)
+    return [LeaveRecurringDayRead.model_validate(p) for p in items]
+
+
+@router.post(
+    "/recurring",
+    response_model=LeaveRecurringDaySaved,
+    status_code=201,
+    dependencies=[require_permission("leave.profile.manage")],
+)
+async def create_recurring(
+    payload: LeaveRecurringDayCreate,
+    ctx: RequestContext = Depends(require_context),
+) -> LeaveRecurringDaySaved:
+    pattern, generated = await LeaveService(ctx).create_recurring(payload)
+    return _recurring_saved(pattern, generated)
+
+
+@router.patch(
+    "/recurring/{recurring_id}",
+    response_model=LeaveRecurringDaySaved,
+    dependencies=[require_permission("leave.profile.manage")],
+)
+async def update_recurring(
+    recurring_id: uuid.UUID,
+    payload: LeaveRecurringDayUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> LeaveRecurringDaySaved:
+    pattern, generated = await LeaveService(ctx).update_recurring(recurring_id, payload)
+    return _recurring_saved(pattern, generated)
+
+
+@router.delete(
+    "/recurring/{recurring_id}",
+    status_code=204,
+    dependencies=[require_permission("leave.profile.manage")],
+)
+async def delete_recurring(
+    recurring_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> None:
+    """Deletes the pattern only; the days it already placed stay individually cancellable."""
+    await LeaveService(ctx).delete_recurring(recurring_id)
 
 
 # --- hourly rate (#82) --------------------------------------------------------- #

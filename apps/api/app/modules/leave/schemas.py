@@ -218,6 +218,50 @@ class EmploymentContractRead(BaseModel):
     updated_at: datetime
 
 
+# --- recurring rostered free days / ADV (#107) ---------------------------------- #
+
+
+class LeaveRecurringDayBase(BaseModel):
+    #: The first free day; its weekday is the pattern's weekday.
+    anchor_date: date
+    #: Every week (1), every other week (2), … Bounded: a cadence past 8 weeks is a
+    #: hand-planned day, not a roster.
+    interval_weeks: int = Field(default=1, ge=1, le=8)
+    note: str | None = None
+
+
+class LeaveRecurringDayCreate(LeaveRecurringDayBase):
+    user_id: uuid.UUID
+    leave_type_id: uuid.UUID
+
+
+class LeaveRecurringDayUpdate(BaseModel):
+    anchor_date: date | None = None
+    interval_weeks: int | None = Field(default=None, ge=1, le=8)
+    leave_type_id: uuid.UUID | None = None
+    active: bool | None = None
+    note: str | None = None
+
+
+class LeaveRecurringDayRead(LeaveRecurringDayBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    org_id: uuid.UUID
+    user_id: uuid.UUID
+    leave_type_id: uuid.UUID
+    active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class LeaveRecurringDaySaved(LeaveRecurringDayRead):
+    """The saved pattern, plus how many free days the save just placed on the calendar —
+    surfaced so the settings screen can confirm something visible actually happened."""
+
+    generated: int = 0
+
+
 # --- hourly rate (#82) --------------------------------------------------------- #
 
 
@@ -329,6 +373,8 @@ class LeaveRequestRead(BaseModel):
     decided_by_user_id: uuid.UUID | None
     decided_at: datetime | None
     decision_note: str | None
+    #: Set when this row was generated from a recurring rostered-free-day pattern (#107).
+    recurring_day_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
 

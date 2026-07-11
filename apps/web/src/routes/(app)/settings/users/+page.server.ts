@@ -33,16 +33,20 @@ export const load: PageServerLoad = async (event) => {
   // `/members` carries each membership's `role_ids`, so the effective set is derived here rather
   // than requested per member. The tenant's roles come from `settings/+layout.server.ts` — shared
   // with the Rollen screen and not refetched on tab navigation (docs/PERFORMANCE.md).
-  const [members, profiles, settings, rateRows, contracts] = await Promise.all([
-    api.GET("/api/v1/members"),
-    schedules ? api.GET("/api/v1/leave/profiles") : Promise.resolve({ data: null }),
-    schedules ? api.GET("/api/v1/leave/settings") : Promise.resolve({ data: null }),
-    rates ? api.GET("/api/v1/leave/rates") : Promise.resolve({ data: null }),
-    // Employment contracts (#65) — the whole roster in one call, like schedules.
-    schedules
-      ? api.GET("/api/v1/leave/contracts", { params: { query: { all_users: true } } })
-      : Promise.resolve({ data: null }),
-  ]);
+  const [members, profiles, settings, rateRows, contracts, recurring, leaveTypes] =
+    await Promise.all([
+      api.GET("/api/v1/members"),
+      schedules ? api.GET("/api/v1/leave/profiles") : Promise.resolve({ data: null }),
+      schedules ? api.GET("/api/v1/leave/settings") : Promise.resolve({ data: null }),
+      rates ? api.GET("/api/v1/leave/rates") : Promise.resolve({ data: null }),
+      // Employment contracts (#65) — the whole roster in one call, like schedules.
+      schedules
+        ? api.GET("/api/v1/leave/contracts", { params: { query: { all_users: true } } })
+        : Promise.resolve({ data: null }),
+      // Recurring rostered-free-day patterns (#107) — employment data, same home.
+      schedules ? api.GET("/api/v1/leave/recurring") : Promise.resolve({ data: null }),
+      schedules ? api.GET("/api/v1/leave/types") : Promise.resolve({ data: null }),
+    ]);
 
   return {
     members: members.data ?? [],
@@ -52,6 +56,8 @@ export const load: PageServerLoad = async (event) => {
     profiles: profiles.data ?? [],
     rateRows: rateRows.data ?? [],
     contracts: contracts.data ?? [],
+    recurring: recurring.data ?? [],
+    leaveTypes: leaveTypes.data ?? [],
     defaultSchedule: settings.data?.default_schedule ?? defaultSchedule(),
   };
 };
@@ -118,7 +124,9 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const userId = String(form.get("user_id") ?? "");
     if (!userId) return fail(400, { error: "errors.required" });
-    const raw = String(form.get("hourly_rate") ?? "").trim().replace(",", ".");
+    const raw = String(form.get("hourly_rate") ?? "")
+      .trim()
+      .replace(",", ".");
     const hourly_rate = raw === "" ? null : raw;
     const { error } = await apiFor(event).PUT("/api/v1/leave/rate/{user_id}", {
       params: { path: { user_id: userId } },
@@ -133,7 +141,9 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const userId = String(form.get("user_id") ?? "");
     const start = String(form.get("start_date") ?? "");
-    const hoursRaw = String(form.get("contract_hours_per_week") ?? "").trim().replace(",", ".");
+    const hoursRaw = String(form.get("contract_hours_per_week") ?? "")
+      .trim()
+      .replace(",", ".");
     if (!userId || !start || !hoursRaw) return fail(400, { error: "errors.required" });
     const endRaw = String(form.get("end_date") ?? "").trim();
     const { error } = await apiFor(event).POST("/api/v1/leave/contracts", {
@@ -173,6 +183,53 @@ export const actions: Actions = {
       if (error) return fail(400, { error: apiErrorKey(error).key });
     }
     return { contractSaved: true };
+  },
+
+  /** A recurring rostered-free-day pattern (#107): saved, and its days placed right away. */
+  saveRecurring: async (event) => {
+    const form = await event.request.formData();
+    const userId = String(form.get("user_id") ?? "");
+    const typeId = String(form.get("leave_type_id") ?? "");
+    const anchor = String(form.get("anchor_date") ?? "");
+    const interval = Number(form.get("interval_weeks") ?? 0);
+    if (!userId || !typeId || !anchor || !interval) {
+      return fail(400, { error: "errors.required" });
+    }
+    const { data, error } = await apiFor(event).POST("/api/v1/leave/recurring", {
+      body: {
+        user_id: userId,
+        leave_type_id: typeId,
+        anchor_date: anchor,
+        interval_weeks: interval,
+      },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { recurringSaved: true, recurringGenerated: data?.generated ?? 0 };
+  },
+
+  /** Deactivating stops future generation; the days already placed stay. */
+  toggleRecurring: async (event) => {
+    const form = await event.request.formData();
+    const id = String(form.get("id") ?? "");
+    if (!id) return fail(400, { error: "errors.required" });
+    const { data, error } = await apiFor(event).PATCH("/api/v1/leave/recurring/{recurring_id}", {
+      params: { path: { recurring_id: id } },
+      body: { active: form.get("active") === "true" },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { recurringSaved: true, recurringGenerated: data?.generated ?? 0 };
+  },
+
+  deleteRecurring: async (event) => {
+    const form = await event.request.formData();
+    const id = String(form.get("id") ?? "");
+    if (id) {
+      const { error } = await apiFor(event).DELETE("/api/v1/leave/recurring/{recurring_id}", {
+        params: { path: { recurring_id: id } },
+      });
+      if (error) return fail(400, { error: apiErrorKey(error).key });
+    }
+    return { recurringSaved: true, recurringGenerated: 0 };
   },
 
   revoke: async (event) => {

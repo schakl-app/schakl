@@ -48,7 +48,7 @@ _DOMAIN_TABLES = (
     "task_checklist_items, task_checklists, task_checklist_templates, task_links, "
     "task_label_links, task_labels, "
     "task_comments, task_activities, task_template_items, task_templates, "
-    "leave_requests, leave_entitlements, leave_profiles, leave_types, "
+    "leave_requests, leave_recurring_days, leave_entitlements, leave_profiles, leave_types, "
     "leave_holidays, leave_settings, employment_contracts, "
     "websites, hosting, domains, providers, "
     "time_entries, tasks, projects, contacts, contact_types, custom_field_definitions, "

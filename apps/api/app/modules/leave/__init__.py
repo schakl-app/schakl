@@ -9,7 +9,11 @@ from __future__ import annotations
 
 from arq import cron
 
-from app.modules.leave.jobs import generate_next_year_entitlements, import_next_year_holidays
+from app.modules.leave.jobs import (
+    generate_next_year_entitlements,
+    generate_recurring_free_days,
+    import_next_year_holidays,
+)
 from app.modules.leave.permissions import LEAVE_PERMISSIONS
 from app.modules.leave.router import router
 from app.registry import ModuleDescriptor, registry
@@ -27,6 +31,9 @@ module = ModuleDescriptor(
     cron_jobs=[
         cron(import_next_year_holidays, month=12, day=1, hour=3, minute=0),
         cron(generate_next_year_entitlements, month=12, day=1, hour=4, minute=0),
+        # Rostered free days roll forward monthly (#107), *after* the December entitlement
+        # top-up above so a January occurrence finds its next-year ADV pot already seeded.
+        cron(generate_recurring_free_days, day=1, hour=4, minute=30),
     ],
 )
 

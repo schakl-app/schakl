@@ -224,6 +224,17 @@ class LeaveRequest(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
         nullable=True,
     )
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: Set when this request was generated from a recurring rostered-free-day pattern (#107):
+    #: the pattern, and the occurrence date it satisfies. ``recurring_date`` is the *generated*
+    #: date and never changes when the employee moves the day — the pair is what makes the
+    #: generator idempotent: an occurrence with any row (moved, cancelled, whatever) is spent,
+    #: so a free day the employee shifted or dropped is never silently regenerated.
+    recurring_day_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("leave_recurring_days.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    recurring_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default=LeaveRequestStatus.PENDING.value, index=True
     )
@@ -234,6 +245,39 @@ class LeaveRequest(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     )
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     decision_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class LeaveRecurringDay(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """A recurring rostered-free-day pattern (roostervrije tijd / ADV, #107).
+
+    "Every 2nd Friday off from 6 March": ``anchor_date`` is the first free day and defines the
+    weekday; ``interval_weeks`` the cadence. A generator lays the occurrences onto the calendar
+    as ordinary **approved** ``leave_requests`` (an auto-registration, like a sick report), each
+    stamped with the pattern id + occurrence date, and the employee moves individual days within
+    the normal rules (#72, #106). Deterministic data lives here; nothing about Dutch ADV law is
+    hardcoded — which type the days book against is the tenant's choice (§14).
+    """
+
+    __tablename__ = "leave_recurring_days"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    leave_type_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("leave_types.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    #: The first free day; its weekday *is* the pattern's weekday.
+    anchor_date: Mapped[date] = mapped_column(Date, nullable=False)
+    interval_weeks: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    #: Deactivating stops future generation; days already placed stay — they are real leave
+    #: the employee planned around, individually cancellable like any other request.
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class EmploymentContract(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):

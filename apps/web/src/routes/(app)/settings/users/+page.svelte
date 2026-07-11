@@ -1,9 +1,11 @@
 <script lang="ts">
-  import { BadgeEuro, CalendarClock, FileText, Trash2, UserMinus } from "@lucide/svelte";
+  import { BadgeEuro, CalendarClock, FileText, Repeat, Trash2, UserMinus } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
-  import { fmtNumericDate } from "$lib/core/format";
+  import { fmtNumericDate, fmtWeekdayShort } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { getLocale } from "$lib/paraglide/runtime";
+  import { typeLabel, type LeaveTypeInfo } from "$lib/modules/leave/format";
   import { pageTitle } from "$lib/core/title";
   import { localeName } from "$lib/core/roles/name";
   import { effectivePermissions, WILDCARD } from "$lib/core/roles/permissions";
@@ -97,6 +99,35 @@
     contractsOpen = true;
   }
 
+  // --- recurring rostered free days / ADV (#107) ----------------------------------
+  const uiLocale = getLocale();
+  const activeLeaveTypes = $derived(
+    ((data.leaveTypes ?? []) as LeaveTypeInfo[]).filter((lt) => lt.active),
+  );
+  const leaveTypeById = $derived(
+    Object.fromEntries(((data.leaveTypes ?? []) as LeaveTypeInfo[]).map((lt) => [lt.id, lt])),
+  );
+  const recurringByUser = $derived.by(() => {
+    const map: Record<string, typeof data.recurring> = {};
+    for (const p of data.recurring ?? []) (map[p.user_id] ??= []).push(p);
+    return map;
+  });
+  let recurringOpen = $state(false);
+  let recurringFor = $state<Member | null>(null);
+  let recurringDeleteId = $state("");
+  let recurringDeleteOpen = $state(false);
+
+  function openRecurring(member: Member) {
+    recurringFor = member;
+    recurringOpen = true;
+  }
+
+  function intervalText(weeks: number): string {
+    return weeks === 1
+      ? t("settings.users.recurring_every_week")
+      : t("settings.users.recurring_every_n", { n: weeks });
+  }
+
   function memberActions(member: Member) {
     const items = [];
     if (data.schedules) {
@@ -109,6 +140,11 @@
         label: t("settings.users.contracts"),
         icon: FileText,
         onclick: () => openContracts(member),
+      });
+      items.push({
+        label: t("settings.users.recurring"),
+        icon: Repeat,
+        onclick: () => openRecurring(member),
       });
     }
     if (data.rates) {
@@ -517,6 +553,144 @@
     {/key}
   {/if}
 </Modal>
+
+<!-- Recurring rostered free days / ADV (#107): a schedule-derived pattern the generator lays
+     onto the calendar as pre-approved, individually movable free days. -->
+<Modal bind:open={recurringOpen} title={t("settings.users.recurring")}>
+  {#if recurringFor}
+    {#key recurringFor.user_id}
+      {@const patterns = recurringByUser[recurringFor.user_id] ?? []}
+      <div class="space-y-4">
+        <p class="text-sm text-text-muted">{recurringFor.full_name || recurringFor.email}</p>
+
+        {#if patterns.length > 0}
+          <ul class="divide-y divide-border rounded-lg border border-border">
+            {#each patterns as pattern (pattern.id)}
+              <li class="flex items-center gap-3 px-3 py-2 text-sm">
+                <div class="min-w-0 flex-1">
+                  <span class="font-medium capitalize text-text">
+                    {fmtWeekdayShort(pattern.anchor_date)}
+                    <span class="font-normal normal-case text-text-muted">
+                      · {intervalText(pattern.interval_weeks)}
+                      · {t("settings.users.recurring_since", {
+                        date: fmtNumericDate(pattern.anchor_date),
+                      })}
+                    </span>
+                  </span>
+                  <span class="block text-xs text-text-muted">
+                    {typeLabel(leaveTypeById[pattern.leave_type_id], uiLocale)}
+                    {#if !pattern.active}
+                      · {t("settings.users.recurring_inactive")}
+                    {/if}
+                  </span>
+                </div>
+                <form method="POST" action="?/toggleRecurring" use:enhance>
+                  <input type="hidden" name="id" value={pattern.id} />
+                  <input type="hidden" name="active" value={String(!pattern.active)} />
+                  <button
+                    class="rounded-lg border border-border px-2 py-1 text-xs text-text-muted hover:text-text"
+                  >
+                    {pattern.active ? t("settings.leave.deactivate") : t("settings.leave.activate")}
+                  </button>
+                </form>
+                <button
+                  type="button"
+                  class="rounded-lg p-1 text-text-muted hover:text-red-600 dark:hover:text-red-400"
+                  title={t("common.delete")}
+                  aria-label={t("common.delete")}
+                  onclick={() => {
+                    recurringDeleteId = pattern.id;
+                    recurringDeleteOpen = true;
+                  }}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </li>
+            {/each}
+          </ul>
+        {:else}
+          <p class="rounded-lg bg-surface px-3 py-2 text-xs text-text-muted">
+            {t("settings.users.recurring_empty")}
+          </p>
+        {/if}
+
+        {#if form?.recurringSaved}
+          <p class="text-sm text-green-600">
+            {t("settings.users.recurring_generated", { count: form.recurringGenerated ?? 0 })}
+          </p>
+        {/if}
+
+        {#key patterns.length}
+          <form
+            method="POST"
+            action="?/saveRecurring"
+            class="space-y-3 border-t border-border pt-4"
+            use:enhance={() =>
+              ({ result, update }) => {
+                if (result.type === "success") void update({ reset: true });
+                else void update({ reset: false });
+              }}
+          >
+            <input type="hidden" name="user_id" value={recurringFor.user_id} />
+            <p class="text-xs font-semibold uppercase tracking-wide text-text-muted">
+              {t("settings.users.recurring_add")}
+            </p>
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div>
+                <label for="r-type" class="mb-1 block text-xs text-text-muted"
+                  >{t("settings.users.recurring_type")}</label
+                >
+                <select id="r-type" name="leave_type_id" required class={inputClass}>
+                  {#each activeLeaveTypes as lt (lt.id)}
+                    <option value={lt.id} selected={lt.key === "roostervrij"}>
+                      {typeLabel(lt, uiLocale)}
+                    </option>
+                  {/each}
+                </select>
+              </div>
+              <div>
+                <label for="r-anchor" class="mb-1 block text-xs text-text-muted"
+                  >{t("settings.users.recurring_first_day")}</label
+                >
+                <DateInput id="r-anchor" name="anchor_date" required />
+              </div>
+              <div>
+                <label for="r-interval" class="mb-1 block text-xs text-text-muted"
+                  >{t("settings.users.recurring_interval")}</label
+                >
+                <select id="r-interval" name="interval_weeks" class={inputClass}>
+                  {#each [1, 2, 3, 4] as weeks (weeks)}
+                    <option value={weeks} selected={weeks === 2}>{intervalText(weeks)}</option>
+                  {/each}
+                </select>
+              </div>
+            </div>
+            <p class="text-xs text-text-muted">{t("settings.users.recurring_hint")}</p>
+            {#if form?.error}
+              <p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
+            {/if}
+            <div class="flex justify-end">
+              <button
+                class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+              >
+                {t("settings.users.recurring_add")}
+              </button>
+            </div>
+          </form>
+        {/key}
+      </div>
+    {/key}
+  {/if}
+</Modal>
+
+<ConfirmDialog
+  bind:open={recurringDeleteOpen}
+  title={t("common.delete")}
+  message={t("settings.users.recurring_delete_confirm")}
+  action="?/deleteRecurring"
+  fields={{ id: recurringDeleteId }}
+  confirmLabel={t("common.delete")}
+/>
 
 <!-- This person's hourly rate (#82). Salary-adjacent — its own permission gates edit. -->
 <Modal bind:open={rateOpen} title={t("settings.users.rate")}>

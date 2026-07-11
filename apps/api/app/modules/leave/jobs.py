@@ -108,3 +108,21 @@ async def _generate_next_year(org: Org, session: AsyncSession) -> None:
 async def generate_next_year_entitlements(ctx: dict) -> None:
     """ARQ entrypoint: December, once, for every active org (issue #108)."""
     await run_per_org(_generate_next_year)
+
+
+async def _generate_recurring(org: Org, session: AsyncSession) -> None:
+    """Roll every active rostered-free-day pattern forward (#107).
+
+    Idempotent — an occurrence any request row already spent (standing, moved or cancelled)
+    is never re-placed — so running it monthly simply extends the horizon.
+    """
+    from app.modules.leave.service import LeaveService
+
+    created = await LeaveService(system_context(org, session)).generate_recurring_days()
+    if created:
+        logger.info("placed %s rostered free days in org %s", created, org.slug)
+
+
+async def generate_recurring_free_days(ctx: dict) -> None:
+    """ARQ entrypoint: monthly, for every active org (issue #107)."""
+    await run_per_org(_generate_recurring)
