@@ -16,7 +16,7 @@ from app.core.rls import disable_rls, enable_rls
 
 # revision identifiers, used by Alembic.
 revision: str = 'a4556bc04430'
-down_revision: str | None = '38f758f7afbe'
+down_revision: str | None = 'e2f3a4b5c6d7'
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
