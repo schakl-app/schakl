@@ -13,6 +13,7 @@ from typing import Any
 
 from sqlalchemy import func, select
 
+from app.core.richtext import sanitize_markdown
 from app.core.tenancy import RequestContext
 from app.errors import AppError
 from app.modules.tasks.models import (
@@ -27,13 +28,14 @@ from app.modules.tasks.models import (
 )
 from app.modules.tasks.recurrence import today_local
 from app.modules.tasks.schemas import (
+    TemplateChecklistItem,
     TemplateCreate,
     TemplateItemBase,
     TemplateItemRead,
     TemplateRead,
     TemplateUpdate,
 )
-from app.modules.tasks.service import _display_name
+from app.modules.tasks.service import _display_name, _rich_items
 
 
 class TemplateService:
@@ -42,12 +44,35 @@ class TemplateService:
         self.repo = ctx.repo(TaskTemplate)
         self.item_repo = ctx.repo(TaskTemplateItem)
 
+    @staticmethod
+    def _item_read(item: TaskTemplateItem) -> TemplateItemRead:
+        # Constructed by hand rather than ``model_validate`` because ``checklist_items`` is served
+        # from the authoritative ``checklist_items_rich`` column, not the model attribute of the
+        # same name (the legacy title-only array kept only for rollback — issue #66).
+        return TemplateItemRead(
+            id=item.id,
+            title=item.title,
+            description=item.description,
+            priority=item.priority,
+            relative_due_days=item.relative_due_days,
+            allocated_minutes=item.allocated_minutes,
+            assignee_user_id=item.assignee_user_id,
+            position=item.position,
+            checklist_title=item.checklist_title,
+            checklist_items=[
+                TemplateChecklistItem(
+                    title=str(entry.get("title") or ""), description=entry.get("description")
+                )
+                for entry in _rich_items(item.checklist_items_rich, item.checklist_items)
+            ],
+        )
+
     async def _read(self, template: TaskTemplate) -> TemplateRead:
         items = await self.item_repo.list(
             limit=200, order_by=TaskTemplateItem.position.asc(), template_id=template.id
         )
         read = TemplateRead.model_validate(template)
-        read.items = [TemplateItemRead.model_validate(i) for i in items]
+        read.items = [self._item_read(i) for i in items]
         return read
 
     async def list(self) -> list[TemplateRead]:
@@ -64,9 +89,18 @@ class TemplateService:
         for item in existing:
             await self.item_repo.delete(item)
         for index, item in enumerate(items):
-            values = item.model_dump()
+            values = item.model_dump(exclude={"checklist_items"})
             values["priority"] = item.priority.value
             values["position"] = index
+            # Markdown source, sanitized on write (issue #66).
+            values["description"] = sanitize_markdown(item.description)
+            # Dual-write the checklist items expand/contract: the authoritative rich objects and the
+            # legacy title-only array a rolled-back previous image still reads (docs/WORKFLOW.md).
+            values["checklist_items_rich"] = [
+                {"title": ci.title, "description": sanitize_markdown(ci.description)}
+                for ci in item.checklist_items
+            ]
+            values["checklist_items"] = [ci.title for ci in item.checklist_items]
             await self.item_repo.create(template_id=template.id, **values)
 
     async def create(self, data: TemplateCreate) -> TemplateRead:
@@ -149,7 +183,8 @@ class TemplateService:
             session.add(task)
             await session.flush()
 
-            if item.checklist_items:
+            checklist_items = _rich_items(item.checklist_items_rich, item.checklist_items)
+            if checklist_items:
                 checklist = TaskChecklist(
                     org_id=org_id,
                     task_id=task.id,
@@ -158,12 +193,14 @@ class TemplateService:
                 )
                 session.add(checklist)
                 await session.flush()
-                for index, title in enumerate(item.checklist_items):
+                for index, entry in enumerate(checklist_items):
                     session.add(
                         TaskChecklistItem(
                             org_id=org_id,
                             checklist_id=checklist.id,
-                            title=str(title)[:512],
+                            title=str(entry.get("title") or "")[:512],
+                            # Already sanitized at template-write time; copied verbatim (issue #66).
+                            description=entry.get("description"),
                             position=index,
                         )
                     )

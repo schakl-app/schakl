@@ -11,7 +11,9 @@
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
+  import Markdown from "$lib/core/ui/Markdown.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
+  import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import { LABEL_COLORS, labelChipClass, labelDotClass } from "$lib/modules/tasks/labels";
   import { formatMinutes } from "$lib/modules/time/format";
 
@@ -54,6 +56,11 @@
   let editMode = $state(false);
   let confirmDelete = $state(false);
   let editingCommentId = $state<string | null>(null);
+  // Inline description editing for a checklist / a checklist item (issue #66), one at a time.
+  let editingChecklistId = $state<string | null>(null);
+  let editingItemId = $state<string | null>(null);
+  // Bumped after a comment is posted to remount (and so clear) the markdown editor.
+  let newCommentKey = $state(0);
 
   // One shared confirm for every inline sub-item delete (comment, checklist, item, link):
   // the ⋯ Delete sets the action/fields/message, then opens the dialog which owns the form.
@@ -264,11 +271,14 @@
           {t("tasks.field.description")}
         </h3>
         {#if editMode}
-          <textarea name="description" rows="4" form="task-edit" class={inputClass}
-            >{task.description ?? ""}</textarea
-          >
+          <RichTextEditor
+            name="description"
+            form="task-edit"
+            rows={4}
+            value={task.description ?? ""}
+          />
         {:else if task.description}
-          <p class="whitespace-pre-wrap text-sm text-text">{task.description}</p>
+          <Markdown value={task.description} />
         {:else}
           <p class="text-sm text-text-muted">{t("tasks.detail.description_placeholder")}</p>
         {/if}
@@ -286,7 +296,7 @@
         {@const total = items.length}
         {@const doneCount = items.filter((i) => i.done).length}
         <div class="mb-4">
-          <div class="mb-1 flex items-center justify-between">
+          <div class="mb-1 flex items-center justify-between gap-2">
             <h4 class="text-sm font-semibold text-text">{checklist.title}</h4>
             <div class="flex items-center gap-2">
               <span class="text-xs tabular-nums text-text-muted"
@@ -295,7 +305,14 @@
               {#if items.length > 0}
                 <form method="POST" action="?/saveChecklistTemplate" use:enhance>
                   <input type="hidden" name="title" value={checklist.title} />
-                  <input type="hidden" name="items" value={items.map((i) => i.title).join("\n")} />
+                  <!-- Item titles *and* descriptions, so the saved template carries both (issue #66). -->
+                  <input
+                    type="hidden"
+                    name="items"
+                    value={JSON.stringify(
+                      items.map((i) => ({ title: i.title, description: i.description ?? null })),
+                    )}
+                  />
                   <button
                     class="text-xs text-text-muted hover:text-brand"
                     title={t("tasks.checklist.save_template_hint")}
@@ -307,6 +324,13 @@
               <ActionsMenu
                 compact
                 items={[
+                  {
+                    label: t("common.edit"),
+                    icon: Pencil,
+                    onclick: () =>
+                      (editingChecklistId =
+                        editingChecklistId === checklist.id ? null : checklist.id),
+                  },
                   {
                     label: t("common.delete"),
                     icon: Trash2,
@@ -322,6 +346,39 @@
               />
             </div>
           </div>
+          {#if editingChecklistId === checklist.id}
+            <form
+              method="POST"
+              action="?/editChecklist"
+              use:enhance={() =>
+                ({ update }) => {
+                  editingChecklistId = null;
+                  void update();
+                }}
+              class="mb-2 space-y-2"
+            >
+              <input type="hidden" name="checklist_id" value={checklist.id} />
+              <input name="title" value={checklist.title} required class={inputClass} />
+              <RichTextEditor
+                name="description"
+                rows={2}
+                value={checklist.description ?? ""}
+                placeholder={t("tasks.checklist.description_placeholder")}
+              />
+              <div class="flex gap-2">
+                <button class="rounded-lg bg-brand px-2 py-1 text-xs font-medium text-white"
+                  >{t("common.save")}</button
+                >
+                <button
+                  type="button"
+                  class="rounded-lg border border-border px-2 py-1 text-xs"
+                  onclick={() => (editingChecklistId = null)}>{t("common.cancel")}</button
+                >
+              </div>
+            </form>
+          {:else if checklist.description}
+            <div class="mb-2"><Markdown value={checklist.description} /></div>
+          {/if}
           {#if total > 0}
             <div class="mb-2 h-1.5 overflow-hidden rounded-full bg-surface">
               <div
@@ -332,39 +389,81 @@
           {/if}
           <ul class="space-y-1">
             {#each items as item (item.id)}
-              <li class="group flex items-center gap-2">
-                <form method="POST" action="?/toggleItem" use:enhance>
-                  <input type="hidden" name="checklist_id" value={checklist.id} />
-                  <input type="hidden" name="item_id" value={item.id} />
-                  <input type="hidden" name="done" value={String(!item.done)} />
-                  <button
-                    class="flex h-4 w-4 items-center justify-center rounded border text-[10px]
-                      {item.done
-                      ? 'border-brand bg-brand text-white'
-                      : 'border-border text-transparent hover:border-brand'}"
-                    aria-label={t("tasks.toggle_done")}>✓</button
+              <li class="group">
+                <div class="flex items-center gap-2">
+                  <form method="POST" action="?/toggleItem" use:enhance>
+                    <input type="hidden" name="checklist_id" value={checklist.id} />
+                    <input type="hidden" name="item_id" value={item.id} />
+                    <input type="hidden" name="done" value={String(!item.done)} />
+                    <button
+                      class="flex h-4 w-4 items-center justify-center rounded border text-[10px]
+                        {item.done
+                        ? 'border-brand bg-brand text-white'
+                        : 'border-border text-transparent hover:border-brand'}"
+                      aria-label={t("tasks.toggle_done")}>✓</button
+                    >
+                  </form>
+                  <span
+                    class="flex-1 text-sm {item.done
+                      ? 'text-text-muted line-through'
+                      : 'text-text'}">{item.title}</span
                   >
-                </form>
-                <span
-                  class="flex-1 text-sm {item.done ? 'text-text-muted line-through' : 'text-text'}"
-                  >{item.title}</span
-                >
-                <ActionsMenu
-                  compact
-                  items={[
-                    {
-                      label: t("common.delete"),
-                      icon: Trash2,
-                      danger: true,
-                      onclick: () =>
-                        askDelete(
-                          "?/deleteItem",
-                          { checklist_id: checklist.id, item_id: item.id },
-                          t("tasks.checklist.item_delete_confirm"),
-                        ),
-                    },
-                  ]}
-                />
+                  <ActionsMenu
+                    compact
+                    items={[
+                      {
+                        label: t("common.edit"),
+                        icon: Pencil,
+                        onclick: () => (editingItemId = editingItemId === item.id ? null : item.id),
+                      },
+                      {
+                        label: t("common.delete"),
+                        icon: Trash2,
+                        danger: true,
+                        onclick: () =>
+                          askDelete(
+                            "?/deleteItem",
+                            { checklist_id: checklist.id, item_id: item.id },
+                            t("tasks.checklist.item_delete_confirm"),
+                          ),
+                      },
+                    ]}
+                  />
+                </div>
+                {#if editingItemId === item.id}
+                  <form
+                    method="POST"
+                    action="?/editItem"
+                    use:enhance={() =>
+                      ({ update }) => {
+                        editingItemId = null;
+                        void update();
+                      }}
+                    class="mt-1 space-y-2 pl-6"
+                  >
+                    <input type="hidden" name="checklist_id" value={checklist.id} />
+                    <input type="hidden" name="item_id" value={item.id} />
+                    <input name="title" value={item.title} required class={inputClass} />
+                    <RichTextEditor
+                      name="description"
+                      rows={2}
+                      value={item.description ?? ""}
+                      placeholder={t("tasks.checklist.description_placeholder")}
+                    />
+                    <div class="flex gap-2">
+                      <button class="rounded-lg bg-brand px-2 py-1 text-xs font-medium text-white"
+                        >{t("common.save")}</button
+                      >
+                      <button
+                        type="button"
+                        class="rounded-lg border border-border px-2 py-1 text-xs"
+                        onclick={() => (editingItemId = null)}>{t("common.cancel")}</button
+                      >
+                    </div>
+                  </form>
+                {:else if item.description}
+                  <div class="mt-0.5 pl-6"><Markdown value={item.description} /></div>
+                {/if}
               </li>
             {/each}
           </ul>
@@ -500,16 +599,21 @@
         method="POST"
         action="?/addComment"
         use:enhance={() =>
-          ({ update }) =>
-            void update({ reset: true })}
+          ({ update, result }) => {
+            // Reset the editor by remounting it; its internal state survives a plain form reset.
+            if (result.type === "success") newCommentKey += 1;
+            void update({ reset: true });
+          }}
         class="mb-4"
       >
-        <textarea
-          name="body"
-          rows="2"
-          required
-          placeholder={t("tasks.comments.placeholder")}
-          class={inputClass}></textarea>
+        {#key newCommentKey}
+          <RichTextEditor
+            name="body"
+            rows={2}
+            required
+            placeholder={t("tasks.comments.placeholder")}
+          />
+        {/key}
         <div class="mt-2 flex justify-end">
           <button
             class="rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
@@ -573,9 +677,7 @@
                     }}
                 >
                   <input type="hidden" name="comment_id" value={comment.id} />
-                  <textarea name="body" rows="2" required class={inputClass}
-                    >{comment.body}</textarea
-                  >
+                  <RichTextEditor name="body" rows={2} required value={comment.body} />
                   <div class="mt-1 flex gap-2">
                     <button class="rounded-lg bg-brand px-2 py-1 text-xs font-medium text-white"
                       >{t("common.save")}</button
@@ -588,7 +690,7 @@
                   </div>
                 </form>
               {:else}
-                <p class="whitespace-pre-wrap text-sm text-text">{comment.body}</p>
+                <Markdown value={comment.body} />
               {/if}
             </li>
           {/each}

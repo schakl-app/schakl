@@ -115,10 +115,14 @@ class TaskListItem(TaskRead):
 # --------------------------------------------------------------------------- #
 class ChecklistItemCreate(BaseModel):
     title: str = Field(min_length=1, max_length=512)
+    # Markdown source, rendered sanitized by the web (issue #66); optional per item.
+    description: str | None = None
 
 
 class ChecklistItemUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=512)
+    # ``exclude_unset`` distinguishes "not touched" from an explicit ``null`` that clears it.
+    description: str | None = None
     done: bool | None = None
     position: int | None = None
 
@@ -128,6 +132,7 @@ class ChecklistItemRead(BaseModel):
 
     id: uuid.UUID
     title: str
+    description: str | None = None
     done: bool
     position: int
 
@@ -136,11 +141,13 @@ class ChecklistCreate(BaseModel):
     # Either a fresh checklist (title) or a copy of a template (template_id wins for content;
     # title still overrides the template's when given).
     title: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = None
     template_id: uuid.UUID | None = None
 
 
 class ChecklistUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = None
     position: int | None = None
 
 
@@ -149,13 +156,25 @@ class ChecklistRead(BaseModel):
 
     id: uuid.UUID
     title: str
+    description: str | None = None
     position: int
     items: list[ChecklistItemRead] = Field(default_factory=list)
 
 
+class TemplateChecklistItem(BaseModel):
+    """One item of a checklist template — a title and an optional markdown description (issue #66).
+
+    Reshaped from a bare ``str``; the API stores it in the ``*_rich`` columns and dual-writes the
+    legacy title-only arrays for rollback safety (expand/contract, docs/WORKFLOW.md).
+    """
+
+    title: str = Field(min_length=1, max_length=512)
+    description: str | None = None
+
+
 class ChecklistTemplateBase(BaseModel):
     title: str = Field(min_length=1, max_length=255)
-    items: list[str] = Field(default_factory=list, max_length=100)
+    items: list[TemplateChecklistItem] = Field(default_factory=list, max_length=100)
 
 
 class ChecklistTemplateCreate(ChecklistTemplateBase):
@@ -164,12 +183,10 @@ class ChecklistTemplateCreate(ChecklistTemplateBase):
 
 class ChecklistTemplateUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=255)
-    items: list[str] | None = Field(default=None, max_length=100)
+    items: list[TemplateChecklistItem] | None = Field(default=None, max_length=100)
 
 
 class ChecklistTemplateRead(ChecklistTemplateBase):
-    model_config = ConfigDict(from_attributes=True)
-
     id: uuid.UUID
 
 
@@ -250,12 +267,10 @@ class TemplateItemBase(BaseModel):
     assignee_user_id: uuid.UUID | None = None
     position: int = 0
     checklist_title: str | None = Field(default=None, max_length=255)
-    checklist_items: list[str] = Field(default_factory=list)
+    checklist_items: list[TemplateChecklistItem] = Field(default_factory=list)
 
 
 class TemplateItemRead(TemplateItemBase):
-    model_config = ConfigDict(from_attributes=True)
-
     id: uuid.UUID
 
 

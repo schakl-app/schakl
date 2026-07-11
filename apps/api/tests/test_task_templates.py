@@ -18,7 +18,7 @@ _TEMPLATE = {
             "priority": "high",
             "relative_due_days": 2,
             "checklist_title": "Prep",
-            "checklist_items": ["Agenda", "Slides"],
+            "checklist_items": [{"title": "Agenda"}, {"title": "Slides", "description": "10 max"}],
         },
         {"title": "Set up analytics", "relative_due_days": 7},
     ],

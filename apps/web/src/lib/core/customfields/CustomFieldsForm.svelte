@@ -8,6 +8,7 @@
    * through `onchange`.
    */
   import { t } from "$lib/core/i18n";
+  import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import type { CustomFieldDefinition } from "./types";
   import { fieldLabel, optionLabel } from "./types";
 
@@ -70,12 +71,16 @@
         </label>
 
         {#if def.data_type === "long_text"}
-          <textarea
+          <!-- LONG_TEXT is markdown, authored through the shared editor (issue #66). `name={null}`:
+               this form serialises every value into one hidden `custom` field, so the editor reports
+               changes via `onchange` rather than submitting its own field. -->
+          <RichTextEditor
             id={`cf-${def.key}`}
-            rows="3"
-            class={inputClass}
+            name={null}
+            rows={3}
             value={String(fieldValues[def.key] ?? "")}
-            oninput={(e) => setValue(def.key, e.currentTarget.value)}></textarea>
+            onchange={(v) => setValue(def.key, v)}
+          />
         {:else if def.data_type === "boolean"}
           <input
             id={`cf-${def.key}`}

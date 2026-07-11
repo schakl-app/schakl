@@ -17,6 +17,7 @@ from sqlalchemy import text as sql_text
 
 from app.core.auth.models import User
 from app.core.events import emit
+from app.core.richtext import markdown_to_plaintext, sanitize_markdown
 from app.core.sorting import apply_sort, user_sort_name
 from app.core.tenancy import RequestContext
 from app.errors import AppError
@@ -43,6 +44,7 @@ from app.modules.tasks.schemas import (
     ChecklistItemUpdate,
     ChecklistRead,
     ChecklistTemplateCreate,
+    ChecklistTemplateRead,
     ChecklistTemplateUpdate,
     ChecklistUpdate,
     CommentCreate,
@@ -57,6 +59,7 @@ from app.modules.tasks.schemas import (
     TaskDetail,
     TaskListItem,
     TaskUpdate,
+    TemplateChecklistItem,
 )
 
 _OPEN_STATUSES = (TaskStatus.OPEN.value, TaskStatus.IN_PROGRESS.value)
@@ -124,9 +127,27 @@ def _attribution(live: User | None, snapshot: str | None) -> tuple[str | None, b
 
 
 def _excerpt(body: str, limit: int = 140) -> str:
-    """A comment's first line, short enough to read in a notification list."""
-    text = " ".join(body.split())
+    """A comment's first line, short enough to read in a notification list.
+
+    The body is markdown now (issue #66), so flatten it to plain text *before* the length cap —
+    otherwise the bell dropdown shows literal ``**bold**`` / ``[label](url)`` syntax, and cutting
+    by character count could sever a link mid-``()``.
+    """
+    text = " ".join(markdown_to_plaintext(body).split())
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def _rich_items(
+    rich: list[dict[str, Any]] | None, legacy: list[str] | None
+) -> list[dict[str, Any]]:
+    """A checklist template's items in the reshaped ``{title, description}`` form (issue #66).
+
+    Reads the authoritative ``*_rich`` column, falling back to the legacy title-only array only for
+    the brief window between the schema add and the backfill — after which ``*_rich`` is always set.
+    """
+    if rich:
+        return rich
+    return [{"title": title, "description": None} for title in (legacy or [])]
 
 
 class TaskService:
@@ -469,6 +490,8 @@ class TaskService:
     async def create(self, data: TaskCreate) -> Task:
         self.ctx.require("tasks.task.create")
         values = data.model_dump()
+        # Markdown source is stored; strip any raw HTML on write (issue #66, app/core/richtext).
+        values["description"] = sanitize_markdown(values.get("description"))
         # Verantwoordelijke defaults down: project's responsible → else the company's,
         # when the task has no explicit assignee (overridable per task).
         if values.get("assignee_user_id") is None:
@@ -517,6 +540,8 @@ class TaskService:
         task = await self._writable_task_or_403(task_id)
         values = data.model_dump(exclude_unset=True)
         reason = values.pop("due_change_reason", None)
+        if "description" in values:
+            values["description"] = sanitize_markdown(values["description"])
 
         # Accountability: pushing an existing deadline back requires a reason, which lands
         # in the activity feed.
@@ -697,14 +722,21 @@ class TaskService:
 
         repo = self.ctx.repo(TaskChecklist)
         position = await repo.count(task_id=task_id)
-        checklist = await repo.create(task_id=task_id, title=title, position=position)
+        checklist = await repo.create(
+            task_id=task_id,
+            title=title,
+            description=sanitize_markdown(data.description),
+            position=position,
+        )
         if template is not None:
-            for index, item_title in enumerate(template.items):
+            # Copy each item's title *and* description from the template's rich shape (issue #66).
+            for index, entry in enumerate(_rich_items(template.items_rich, template.items)):
                 self.ctx.session.add(
                     TaskChecklistItem(
                         org_id=self.ctx.org.id,
                         checklist_id=checklist.id,
-                        title=str(item_title)[:512],
+                        title=str(entry.get("title") or "")[:512],
+                        description=sanitize_markdown(entry.get("description")),
                         position=index,
                     )
                 )
@@ -715,24 +747,60 @@ class TaskService:
     # ------------------------------------------------------------------ #
     # Checklist templates (org-wide repository)
     # ------------------------------------------------------------------ #
-    async def list_checklist_templates(self) -> Sequence[TaskChecklistTemplate]:
-        return await self.ctx.repo(TaskChecklistTemplate).list(
+    @staticmethod
+    def _checklist_template_read(template: TaskChecklistTemplate) -> ChecklistTemplateRead:
+        """Read shape — items come from the authoritative ``items_rich`` column (issue #66)."""
+        return ChecklistTemplateRead(
+            id=template.id,
+            title=template.title,
+            items=[
+                TemplateChecklistItem(
+                    title=str(entry.get("title") or ""), description=entry.get("description")
+                )
+                for entry in _rich_items(template.items_rich, template.items)
+            ],
+        )
+
+    @staticmethod
+    def _dual_write_items(items: list[TemplateChecklistItem]) -> dict[str, Any]:
+        """Expand/contract dual-write (docs/WORKFLOW.md): the sanitized ``{title, description}``
+        objects in ``items_rich`` (authoritative) plus the legacy title-only ``items`` a
+        rolled-back previous image still reads."""
+        return {
+            "items_rich": [
+                {"title": i.title, "description": sanitize_markdown(i.description)} for i in items
+            ],
+            "items": [i.title for i in items],
+        }
+
+    async def list_checklist_templates(self) -> list[ChecklistTemplateRead]:
+        rows = await self.ctx.repo(TaskChecklistTemplate).list(
             limit=200, order_by=TaskChecklistTemplate.title.asc()
         )
+        return [self._checklist_template_read(t) for t in rows]
 
     async def create_checklist_template(
         self, data: ChecklistTemplateCreate
-    ) -> TaskChecklistTemplate:
+    ) -> ChecklistTemplateRead:
         self.ctx.require("tasks.checklist_template.write")
-        return await self.ctx.repo(TaskChecklistTemplate).create(**data.model_dump())
+        template = await self.ctx.repo(TaskChecklistTemplate).create(
+            title=data.title, **self._dual_write_items(data.items)
+        )
+        return self._checklist_template_read(template)
 
     async def update_checklist_template(
         self, template_id: uuid.UUID, data: ChecklistTemplateUpdate
-    ) -> TaskChecklistTemplate:
+    ) -> ChecklistTemplateRead:
         self.ctx.require("tasks.checklist_template.write")
         repo = self.ctx.repo(TaskChecklistTemplate)
         template = await repo.get_or_404(template_id)
-        return await repo.update(template, **data.model_dump(exclude_unset=True))
+        values: dict[str, Any] = {}
+        if data.title is not None:
+            values["title"] = data.title
+        if data.items is not None:
+            values.update(self._dual_write_items(data.items))
+        template = await repo.update(template, **values)
+        return self._checklist_template_read(template)
 
     async def delete_checklist_template(self, template_id: uuid.UUID) -> None:
         self.ctx.require("tasks.checklist_template.write")
@@ -754,6 +822,8 @@ class TaskService:
         await self._writable_task_or_403(task_id)
         checklist = await self._checklist_or_404(task_id, checklist_id)
         values = data.model_dump(exclude_unset=True)
+        if "description" in values:
+            values["description"] = sanitize_markdown(values["description"])
         old_title = checklist.title
         checklist = await self.ctx.repo(TaskChecklist).update(checklist, **values)
         # A reorder is noise, the way `position` is excluded from `_TRACKED_FIELDS`; a rename
@@ -778,7 +848,10 @@ class TaskService:
         repo = self.ctx.repo(TaskChecklistItem)
         position = await repo.count(checklist_id=checklist_id)
         item = await repo.create(
-            checklist_id=checklist_id, title=data.title, position=position
+            checklist_id=checklist_id,
+            title=data.title,
+            description=sanitize_markdown(data.description),
+            position=position,
         )
         await self._record(task_id, "checklist_item_added", {"title": item.title})
         return item
@@ -802,6 +875,8 @@ class TaskService:
         await self._writable_task_or_403(task_id)
         item = await self._item_or_404(task_id, checklist_id, item_id)
         values = data.model_dump(exclude_unset=True)
+        if "description" in values:
+            values["description"] = sanitize_markdown(values["description"])
         was_done, old_title = item.done, item.title
         item = await self.ctx.repo(TaskChecklistItem).update(item, **values)
 
@@ -833,12 +908,13 @@ class TaskService:
     async def add_comment(self, task_id: uuid.UUID, data: CommentCreate) -> CommentRead:
         self.ctx.require("tasks.comment.write")
         task = await self.repo.get_or_404(task_id)
-        excerpt = _excerpt(data.body)
+        body = sanitize_markdown(data.body) or ""
+        excerpt = _excerpt(body)
         comment = await self.ctx.repo(TaskComment).create(
             task_id=task_id,
             author_user_id=self.ctx.user.id,
             author_name=_display_name(self.ctx.user),
-            body=data.body,
+            body=body,
         )
         # The excerpt the notification has always carried belongs in the trail too, with the id
         # to reach the comment by — "commented", on its own, sends you hunting for what (#61).
@@ -891,7 +967,7 @@ class TaskService:
             raise AppError("forbidden", "errors.forbidden", status_code=403)
         self.ctx.require("tasks.comment.write")
         comment = await self.ctx.repo(TaskComment).update(
-            comment, body=data.body, edited_at=datetime.now(UTC)
+            comment, body=sanitize_markdown(data.body) or "", edited_at=datetime.now(UTC)
         )
         await self._record(
             task_id,

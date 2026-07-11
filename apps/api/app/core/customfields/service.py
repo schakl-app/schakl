@@ -22,6 +22,7 @@ from app.core.customfields.schemas import (
     CustomFieldDefinitionUpdate,
 )
 from app.core.customfields.types import CustomFieldType
+from app.core.richtext import sanitize_markdown
 from app.core.tenancy import RequestContext
 from app.errors import AppError
 
@@ -119,6 +120,10 @@ class CustomFieldsService:
         if dt in (CustomFieldType.TEXT, CustomFieldType.LONG_TEXT, CustomFieldType.PHONE):
             value = str(raw)
             self._check_text_rules(value, config)
+            # LONG_TEXT is markdown, authored through the shared editor (issue #66); strip raw HTML
+            # on write like every other rich-text field. TEXT/PHONE stay single-line plain text.
+            if dt is CustomFieldType.LONG_TEXT:
+                value = sanitize_markdown(value) or ""
             return value
 
         if dt is CustomFieldType.EMAIL:

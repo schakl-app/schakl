@@ -46,7 +46,7 @@
       relative_due_days?: number | null;
       assignee_user_id?: string | null;
       checklist_title?: string | null;
-      checklist_items?: string[];
+      checklist_items?: { title: string; description?: string | null }[];
     }[];
   }
 
@@ -86,7 +86,7 @@
       allocated_minutes: item.allocated_minutes == null ? "" : String(item.allocated_minutes),
       assignee_user_id: item.assignee_user_id ?? "",
       checklist_title: item.checklist_title ?? "",
-      checklist_text: (item.checklist_items ?? []).join("\n"),
+      checklist_text: (item.checklist_items ?? []).map((c) => c.title).join("\n"),
     }));
     if (items.length === 0) items = [blankItem()];
   }

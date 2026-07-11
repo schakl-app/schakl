@@ -162,8 +162,7 @@ async def delete_label(
 async def list_checklist_templates(
     ctx: RequestContext = Depends(require_context),
 ) -> list[ChecklistTemplateRead]:
-    templates = await TaskService(ctx).list_checklist_templates()
-    return [ChecklistTemplateRead.model_validate(t) for t in templates]
+    return await TaskService(ctx).list_checklist_templates()
 
 
 @router.post(
@@ -175,9 +174,7 @@ async def list_checklist_templates(
 async def create_checklist_template(
     payload: ChecklistTemplateCreate, ctx: RequestContext = Depends(require_context)
 ) -> ChecklistTemplateRead:
-    return ChecklistTemplateRead.model_validate(
-        await TaskService(ctx).create_checklist_template(payload)
-    )
+    return await TaskService(ctx).create_checklist_template(payload)
 
 
 @router.patch(
@@ -190,9 +187,7 @@ async def update_checklist_template(
     payload: ChecklistTemplateUpdate,
     ctx: RequestContext = Depends(require_context),
 ) -> ChecklistTemplateRead:
-    return ChecklistTemplateRead.model_validate(
-        await TaskService(ctx).update_checklist_template(template_id, payload)
-    )
+    return await TaskService(ctx).update_checklist_template(template_id, payload)
 
 
 @router.delete(

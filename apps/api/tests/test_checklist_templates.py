@@ -5,7 +5,11 @@ from __future__ import annotations
 from tests.conftest import auth_cookie, make_tenant
 from tests.test_task_subresources import add_member
 
-_TEMPLATE = {"title": "Website launch", "items": ["DNS", "SSL", "Analytics"]}
+# Items are `{title, description}` since issue #66 (a bare title list is no longer accepted).
+_TEMPLATE = {
+    "title": "Website launch",
+    "items": [{"title": "DNS"}, {"title": "SSL"}, {"title": "Analytics", "description": "GA4 + GTM"}],
+}
 
 
 async def test_checklist_template_crud_needs_the_write_permission(client_for) -> None:
@@ -29,14 +33,15 @@ async def test_checklist_template_crud_needs_the_write_permission(client_for) ->
         )
         assert created.status_code == 201
         template = created.json()
-        assert template["items"] == ["DNS", "SSL", "Analytics"]
+        assert [i["title"] for i in template["items"]] == ["DNS", "SSL", "Analytics"]
+        assert template["items"][2]["description"] == "GA4 + GTM"
 
         updated = await c.patch(
             f"/api/v1/tasks/checklist-templates/{template['id']}",
-            json={"items": ["DNS", "SSL"]},
+            json={"items": [{"title": "DNS"}, {"title": "SSL"}]},
             headers=owner_headers,
         )
-        assert updated.json()["items"] == ["DNS", "SSL"]
+        assert [i["title"] for i in updated.json()["items"]] == ["DNS", "SSL"]
 
         # Everyone reads them — a member applies a template to a task they are on.
         assert (
@@ -71,6 +76,8 @@ async def test_add_checklist_from_template_copies_items(client_for) -> None:
         assert checklist["title"] == "Website launch"
         assert [i["title"] for i in checklist["items"]] == ["DNS", "SSL", "Analytics"]
         assert all(not i["done"] for i in checklist["items"])
+        # The item description is copied from the template, not just the title (issue #66).
+        assert checklist["items"][2]["description"] == "GA4 + GTM"
 
         # A custom title still overrides the template's.
         renamed = await c.post(

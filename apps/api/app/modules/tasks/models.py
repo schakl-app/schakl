@@ -156,6 +156,9 @@ class TaskChecklist(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
         index=True,
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Markdown source, rendered sanitized by the web (issue #66). Nullable — a checklist need not
+    # explain itself; the title usually carries the whole meaning.
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
@@ -169,17 +172,31 @@ class TaskChecklistItem(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Bas
         index=True,
     )
     title: Mapped[str] = mapped_column(String(512), nullable=False)
+    # Markdown source (issue #66): the "how" behind a one-line "what". Nullable by design.
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     done: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
 class TaskChecklistTemplate(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
-    """Org-wide reusable checklist (title + item titles) attachable to any task card."""
+    """Org-wide reusable checklist attachable to any task card.
+
+    Items reshaped from bare titles to ``{title, description}`` for issue #66. The reshape is a
+    type change on a populated JSONB column, so it ships expand/contract (docs/WORKFLOW.md):
+    ``items_rich`` is the new object shape, backfilled and written on every save, while ``items``
+    (title-only) stays dual-written so a rolled-back previous image still reads the checklist it
+    expects. ``items`` is dropped in the contract release once N is adopted.
+    """
 
     __tablename__ = "task_checklist_templates"
 
     title: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Legacy title-only shape — kept for rollback safety only; new code reads ``items_rich``.
     items: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    # Authoritative shape: a list of ``{"title": str, "description": str | None}``.
+    items_rich: Mapped[list[dict[str, Any]]] = mapped_column(
         JSONB, nullable=False, default=list, server_default="[]"
     )
 
@@ -291,7 +308,13 @@ class TaskTemplateItem(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base
     )
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     checklist_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    # Plain list of item titles; becomes a checklist on the instantiated task.
+    # Legacy title-only shape — kept for rollback only; new code reads ``checklist_items_rich``.
     checklist_items: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    # Authoritative shape (issue #66): ``{"title": str, "description": str | None}`` per item,
+    # which becomes a checklist — items and their descriptions — on the instantiated task. Reshaped
+    # expand/contract alongside ``TaskChecklistTemplate.items`` (see that model's note).
+    checklist_items_rich: Mapped[list[dict[str, Any]]] = mapped_column(
         JSONB, nullable=False, default=list, server_default="[]"
     )

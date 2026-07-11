@@ -253,6 +253,23 @@
   Instellingen → Verlof → Feestdagen seeds the whole list and lets the tenant **deactivate** the
   ones they work. Deactivate, never delete: a deleted holiday comes back on the next import, a
   deactivated one does not, and it renders and counts nowhere in the meantime.
+- **Long-form user text is markdown** (issue #66), authored through the shared `RichTextEditor`
+  and rendered through the shared `Markdown` component — never a bare `<textarea>`, and never
+  `{@html}` outside that one component. Store the markdown *source* in the existing `Text` column;
+  never store pre-rendered HTML, or a later sanitizer fix cannot protect the rows already written.
+  The editor is markdown-with-preview, not WYSIWYG — a small bold/italic/link toolbar so nobody
+  types syntax, and a Write ↔ Preview toggle — because a heavy editor bundle fights *"snappy over
+  clever"* on an SSR/PWA shell. This is the design-language rule; it is not a task feature.
+  **Which fields get it, and which stay plain:** the *long-form* ones — a task/checklist/checklist-
+  item description, a comment, project/company/contact notes, a custom-field `LONG_TEXT` — get the
+  editor. One-liners do **not**: a title, a `TimeEntry` description, a leave note. Rich text is for
+  text that has structure to gain from it, not for every string.
+  **Rendering is the security boundary.** `{@html}` lives only in `Markdown.svelte`, and everything
+  it prints has been through DOMPurify in `core/markdown.ts`; the API also strips raw HTML on write
+  (`core/richtext.py`) so a stored value is inert even for a consumer that renders it another way.
+  Any consumer that must show the words *without* the markup — a notification excerpt, an email, a
+  PDF, a `DataTable` cell — flattens to plain text first (the API's `markdown_to_plaintext`); it
+  never truncates raw markdown by character count, which severs a link mid-`()`.
 
 ## Navigation
 
@@ -318,3 +335,10 @@
   browser-default width (~228 px) as its min-content floor, so the row it sits in never fits a
   phone. This is not the same thing as an explicit `min-w-[12rem]`, and it is easy to clear the
   wrong suspect.
+- **A raw `{@html}`, anywhere but `Markdown.svelte`.** Before #66 the app had zero `{@html}` and so
+  zero XSS surface on user text — rich text deliberately took that on, in exactly one audited place
+  that sanitizes first. A second `{@html}` (or piping markdown into an email/PDF without the shared
+  render path) reopens the hole the one component exists to close. Route it through `Markdown`.
+- **Feeding raw markdown to something that shows plain text.** A notification excerpt, a truncated
+  cell, a `title=` attribute — given `**bold** [x](url)` it prints the syntax, and cutting it by
+  character count can sever a link mid-`()`. Flatten with `markdown_to_plaintext` *before* the cut.

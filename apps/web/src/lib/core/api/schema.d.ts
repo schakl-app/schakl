@@ -2386,6 +2386,8 @@ export interface components {
         };
         /** ChecklistCreate */
         ChecklistCreate: {
+            /** Description */
+            description?: string | null;
             /** Template Id */
             template_id?: string | null;
             /** Title */
@@ -2393,11 +2395,15 @@ export interface components {
         };
         /** ChecklistItemCreate */
         ChecklistItemCreate: {
+            /** Description */
+            description?: string | null;
             /** Title */
             title: string;
         };
         /** ChecklistItemRead */
         ChecklistItemRead: {
+            /** Description */
+            description?: string | null;
             /** Done */
             done: boolean;
             /**
@@ -2412,6 +2418,8 @@ export interface components {
         };
         /** ChecklistItemUpdate */
         ChecklistItemUpdate: {
+            /** Description */
+            description?: string | null;
             /** Done */
             done?: boolean | null;
             /** Position */
@@ -2421,6 +2429,8 @@ export interface components {
         };
         /** ChecklistRead */
         ChecklistRead: {
+            /** Description */
+            description?: string | null;
             /**
              * Id
              * Format: uuid
@@ -2436,7 +2446,7 @@ export interface components {
         /** ChecklistTemplateCreate */
         ChecklistTemplateCreate: {
             /** Items */
-            items?: string[];
+            items?: components["schemas"]["TemplateChecklistItem"][];
             /** Title */
             title: string;
         };
@@ -2448,19 +2458,21 @@ export interface components {
              */
             id: string;
             /** Items */
-            items?: string[];
+            items?: components["schemas"]["TemplateChecklistItem"][];
             /** Title */
             title: string;
         };
         /** ChecklistTemplateUpdate */
         ChecklistTemplateUpdate: {
             /** Items */
-            items?: string[] | null;
+            items?: components["schemas"]["TemplateChecklistItem"][] | null;
             /** Title */
             title?: string | null;
         };
         /** ChecklistUpdate */
         ChecklistUpdate: {
+            /** Description */
+            description?: string | null;
             /** Position */
             position?: number | null;
             /** Title */
@@ -4774,6 +4786,19 @@ export interface components {
              */
             company_id: string;
         };
+        /**
+         * TemplateChecklistItem
+         * @description One item of a checklist template — a title and an optional markdown description (issue #66).
+         *
+         *     Reshaped from a bare ``str``; the API stores it in the ``*_rich`` columns and dual-writes the
+         *     legacy title-only arrays for rollback safety (expand/contract, docs/WORKFLOW.md).
+         */
+        TemplateChecklistItem: {
+            /** Description */
+            description?: string | null;
+            /** Title */
+            title: string;
+        };
         /** TemplateCreate */
         TemplateCreate: {
             /**
@@ -4797,7 +4822,7 @@ export interface components {
             /** Assignee User Id */
             assignee_user_id?: string | null;
             /** Checklist Items */
-            checklist_items?: string[];
+            checklist_items?: components["schemas"]["TemplateChecklistItem"][];
             /** Checklist Title */
             checklist_title?: string | null;
             /** Description */
@@ -4821,7 +4846,7 @@ export interface components {
             /** Assignee User Id */
             assignee_user_id?: string | null;
             /** Checklist Items */
-            checklist_items?: string[];
+            checklist_items?: components["schemas"]["TemplateChecklistItem"][];
             /** Checklist Title */
             checklist_title?: string | null;
             /** Description */

@@ -158,11 +158,33 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const title = String(form.get("title") ?? "").trim();
     const template_id = String(form.get("template_id") ?? "").trim();
+    const description = String(form.get("description") ?? "").trim();
     if (!title && !template_id) return fail(400, { error: "errors.required" });
     const { error: apiError } = await apiFor(event).POST("/api/v1/tasks/{task_id}/checklists", {
       params: { path: { task_id: event.params.id } },
-      body: { title: title || null, template_id: template_id || null },
+      body: {
+        title: title || null,
+        description: description || null,
+        template_id: template_id || null,
+      },
     });
+    if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
+    return { checklist: true };
+  },
+
+  editChecklist: async (event) => {
+    const form = await event.request.formData();
+    const checklist_id = String(form.get("checklist_id") ?? "");
+    const title = String(form.get("title") ?? "").trim();
+    const description = String(form.get("description") ?? "").trim();
+    if (!checklist_id || !title) return fail(400, { error: "errors.required" });
+    const { error: apiError } = await apiFor(event).PATCH(
+      "/api/v1/tasks/{task_id}/checklists/{checklist_id}",
+      {
+        params: { path: { task_id: event.params.id, checklist_id } },
+        body: { title, description: description || null },
+      },
+    );
     if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
     return { checklist: true };
   },
@@ -193,10 +215,22 @@ export const actions: Actions = {
   saveChecklistTemplate: async (event) => {
     const form = await event.request.formData();
     const title = String(form.get("title") ?? "").trim();
-    const items = String(form.get("items") ?? "")
-      .split("\n")
-      .map((s) => s.trim())
-      .filter(Boolean);
+    // Items arrive as a JSON array of `{title, description}` (issue #66) so a checklist saved as a
+    // template keeps its item descriptions, not just the titles.
+    let items: { title: string; description: string | null }[] = [];
+    try {
+      const parsed = JSON.parse(String(form.get("items") ?? "[]")) as unknown;
+      if (Array.isArray(parsed)) {
+        items = parsed
+          .map((i) => ({
+            title: String((i as { title?: unknown }).title ?? "").trim(),
+            description: String((i as { description?: unknown }).description ?? "").trim() || null,
+          }))
+          .filter((i) => i.title);
+      }
+    } catch {
+      return fail(400, { error: "errors.validation" });
+    }
     if (!title) return fail(400, { error: "errors.required" });
     const { error: apiError } = await apiFor(event).POST("/api/v1/tasks/checklist-templates", {
       body: { title, items },
@@ -220,10 +254,32 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const checklist_id = String(form.get("checklist_id") ?? "");
     const title = String(form.get("title") ?? "").trim();
+    const description = String(form.get("description") ?? "").trim();
     if (!checklist_id || !title) return fail(400, { error: "errors.required" });
     const { error: apiError } = await apiFor(event).POST(
       "/api/v1/tasks/{task_id}/checklists/{checklist_id}/items",
-      { params: { path: { task_id: event.params.id, checklist_id } }, body: { title } },
+      {
+        params: { path: { task_id: event.params.id, checklist_id } },
+        body: { title, description: description || null },
+      },
+    );
+    if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
+    return { checklist: true };
+  },
+
+  editItem: async (event) => {
+    const form = await event.request.formData();
+    const checklist_id = String(form.get("checklist_id") ?? "");
+    const item_id = String(form.get("item_id") ?? "");
+    const title = String(form.get("title") ?? "").trim();
+    const description = String(form.get("description") ?? "").trim();
+    if (!checklist_id || !item_id || !title) return fail(400, { error: "errors.required" });
+    const { error: apiError } = await apiFor(event).PATCH(
+      "/api/v1/tasks/{task_id}/checklists/{checklist_id}/items/{item_id}",
+      {
+        params: { path: { task_id: event.params.id, checklist_id, item_id } },
+        body: { title, description: description || null },
+      },
     );
     if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
     return { checklist: true };
