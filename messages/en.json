@@ -277,6 +277,7 @@
   "contacts.phone": "Phone",
   "contacts.job_title": "Job title",
   "contacts.company": "Company",
+  "contacts.connected_companies": "Connected companies",
   "contacts.count": "Total: {count}",
   "contacts.empty": "No contacts yet",
   "contacts.empty_hint": "Add your first contact to get started.",

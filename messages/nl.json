@@ -277,6 +277,7 @@
   "contacts.phone": "Telefoon",
   "contacts.job_title": "Functie",
   "contacts.company": "Bedrijf",
+  "contacts.connected_companies": "Gekoppelde bedrijven",
   "contacts.count": "Totaal: {count}",
   "contacts.empty": "Nog geen contactpersonen",
   "contacts.empty_hint": "Voeg je eerste contactpersoon toe om te beginnen.",

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Trash2 } from "@lucide/svelte";
+  import { Trash2, X } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
   import { fmtNumericDate } from "$lib/core/format";
@@ -8,6 +8,7 @@
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
+  import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
@@ -22,6 +23,25 @@
   let deleteId = $state("");
   let deleteName = $state("");
   let confirmDelete = $state(false);
+
+  // #80: companies to link while creating the contact. `ContactCreate.company_ids` does the
+  // linking server-side (the first becomes that company's primary contact), so the picker only
+  // has to collect IDs and serialise them into one hidden field.
+  let linkedCompanyIds = $state<string[]>([]);
+  let companyPick = $state("");
+  const companyCandidates = $derived(
+    data.companies
+      .filter((c) => !linkedCompanyIds.includes(c.id))
+      .map((c) => ({ value: c.id, label: c.name })),
+  );
+  const companyLabel = (id: string) => data.companies.find((c) => c.id === id)?.name ?? id;
+  function addCompany(id: string) {
+    if (id && !linkedCompanyIds.includes(id)) linkedCompanyIds = [...linkedCompanyIds, id];
+    companyPick = "";
+  }
+  function removeCompany(id: string) {
+    linkedCompanyIds = linkedCompanyIds.filter((x) => x !== id);
+  }
 
   function fullName(c: { first_name: string; last_name?: string | null }) {
     return [c.first_name, c.last_name].filter(Boolean).join(" ");
@@ -172,7 +192,10 @@
     action="?/create"
     use:enhance={() =>
       ({ update }) => {
-        void update().then(() => (showCreate = false));
+        void update().then(() => {
+          showCreate = false;
+          linkedCompanyIds = [];
+        });
       }}
     class="mb-6 rounded-xl border border-border bg-surface-raised p-4"
   >
@@ -229,8 +252,43 @@
           class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
         />
       </div>
+
+      <!-- #80: link one or more clients at creation instead of a second step afterwards. The
+           first company linked becomes its primary contact (API behaviour). -->
+      <div class="sm:col-span-2">
+        <span class="mb-1 block text-sm font-medium text-text"
+          >{t("contacts.connected_companies")}</span
+        >
+        <input type="hidden" name="company_ids" value={JSON.stringify(linkedCompanyIds)} />
+        {#if linkedCompanyIds.length > 0}
+          <ul class="mb-2 flex flex-wrap gap-2">
+            {#each linkedCompanyIds as id (id)}
+              <li
+                class="inline-flex items-center gap-1.5 rounded-full bg-surface py-1 pl-2.5 pr-1.5 text-sm text-text"
+              >
+                <span class="font-medium">{companyLabel(id)}</span>
+                <button
+                  type="button"
+                  class="rounded-full p-0.5 opacity-60 hover:bg-black/5 hover:opacity-100 dark:hover:bg-white/10"
+                  title={t("contacts.unlink")}
+                  aria-label={t("contacts.unlink")}
+                  onclick={() => removeCompany(id)}><X size={14} /></button
+                >
+              </li>
+            {/each}
+          </ul>
+        {/if}
+        <Combobox
+          items={companyCandidates}
+          name="_company_pick"
+          bind:value={companyPick}
+          id="contact-companies"
+          placeholder={t("contacts.add_client")}
+          allowEmpty={false}
+          onselect={addCompany}
+        />
+      </div>
     </div>
-    <p class="mt-2 text-xs text-text-muted">{t("contacts.link_client_hint")}</p>
 
     {#if data.definitions.length > 0}
       <div class="mt-4 border-t border-border pt-4">
