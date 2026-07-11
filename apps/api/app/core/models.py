@@ -100,6 +100,15 @@ class OrgSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     default_locale: Mapped[str] = mapped_column(
         String(10), nullable=False, default=settings.default_locale
     )
+    # IANA timezone the org's local calendar runs in (CLAUDE.md §8): drives display of event
+    # timestamps and the local-date reasoning in per-org cron (timesheet nudges, holiday top-up).
+    # Validated against the zoneinfo database on write; falls back to the instance default.
+    timezone: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        default=settings.default_timezone,
+        server_default=settings.default_timezone,
+    )
     enabled_modules: Mapped[list[str]] = mapped_column(
         ARRAY(String), nullable=False, default=list
     )

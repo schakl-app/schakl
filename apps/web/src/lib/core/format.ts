@@ -4,6 +4,7 @@
  * day-month ordering and 24-hour clocks. Date-only ISO strings are wall-clock values and
  * are formatted in UTC so they never shift a day.
  */
+import { getTimeZone } from "$lib/core/timezone";
 import { getLocale } from "$lib/paraglide/runtime";
 
 const INTL_LOCALE: Record<string, string> = {
@@ -66,11 +67,21 @@ export function fmtNumericDate(isoDate: string): string {
   );
 }
 
-/** "7 jul, 14:32" — for timestamps (comments, activity). Full ISO datetime. */
+/**
+ * "7 jul, 14:32" — for timestamps (comments, activity). Full ISO datetime.
+ *
+ * An instant is rendered in the tenant's zone (CLAUDE.md §8), not the viewer's browser zone, so
+ * everyone in the workspace reads the same wall-clock for the same event. The `fmt()` cache keys
+ * on the options object, so a different zone gets its own formatter.
+ */
 export function fmtDateTime(isoDateTime: string): string {
-  return fmt({ day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(
-    new Date(isoDateTime),
-  );
+  return fmt({
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: getTimeZone(),
+  }).format(new Date(isoDateTime));
 }
 
 /** "€ 1.234" — whole-euro currency in the active locale. */

@@ -3,7 +3,13 @@
      locale code. They are not interchangeable — see hooks.server.ts. `data-theme` is the
      personal dark-mode preference: "light"/"dark" is stamped server-side from a cookie, and
      "system" (no stored preference) is resolved by the inline script below. -->
-<html lang="%lang%" data-locale="%locale%" style="%theme%" data-theme="%colorScheme%">
+<html
+  lang="%lang%"
+  data-locale="%locale%"
+  data-timezone="%timezone%"
+  style="%theme%"
+  data-theme="%colorScheme%"
+>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />

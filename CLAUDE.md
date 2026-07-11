@@ -179,8 +179,14 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   - `scripts/i18n:check` fails CI if keys are missing/extra across locales (`nl` must be full).
   - Keys are descriptive and grouped by module, so a whole file can be translated in one pass.
   - Rule: any change that adds a string updates **all** locale files (incl. `nl`) in the same commit.
-- **Formatting:** dates, numbers, currency via `Intl`, default timezone `Europe/Amsterdam`,
-  currency `EUR`.
+- **Formatting:** dates, numbers, currency via `Intl`, currency `EUR`. Timezone is
+  **per-tenant** (`org_settings.timezone`, an IANA name; instance fallback `Europe/Amsterdam`):
+  the web renders event timestamps in it (resolved via `getTimeZone()` — server AsyncLocalStorage
+  + `<html data-timezone>` on the client, mirroring the locale plumbing), and the per-org cron
+  (timesheet nudges, holiday top-up) reasons about the local calendar in it via
+  `app.core.timezone.org_zoneinfo`. Stored instants stay `TIMESTAMPTZ`/UTC; date-only values stay
+  wall-clock UTC; leave `TIME` stays naive (§14). No per-user override yet — the resolution seam
+  is in place for one.
 
 ## 9. Conventions
 

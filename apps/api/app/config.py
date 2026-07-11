@@ -68,6 +68,10 @@ class Settings(BaseSettings):
     )
     default_locale: str = "nl"
     supported_locales: list[str] = Field(default_factory=lambda: ["nl", "en"])
+    # Fallback display/scheduling timezone for an org that has not set its own (CLAUDE.md §8).
+    # Per-tenant value lives on org_settings.timezone; this is only the seed/fallback. An IANA
+    # zone name — validated on write against the platform's zoneinfo database.
+    default_timezone: str = "Europe/Amsterdam"
 
     # --- Auth ---
     secret_key: str = "change-me-in-production-please-32bytes-min"

@@ -14,6 +14,8 @@ export interface OrgTheme {
   primaryColor: string;
   accentColor: string;
   defaultLocale: string;
+  /** IANA zone the tenant's local calendar runs in (CLAUDE.md §8); drives timestamp display. */
+  timezone: string;
   enabledModules: string[];
   /** False when the hostname resolved to no org (unknown host, or a fresh install). */
   resolved: boolean;
@@ -30,6 +32,7 @@ export const DEFAULT_THEME: OrgTheme = {
   primaryColor: "#4f46e5",
   accentColor: "#0ea5e9",
   defaultLocale: "nl",
+  timezone: "Europe/Amsterdam",
   enabledModules: ["companies"],
   resolved: false,
   suspended: false,

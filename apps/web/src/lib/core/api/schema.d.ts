@@ -4456,6 +4456,8 @@ export interface components {
             primary_color?: string | null;
             /** Slug */
             slug: string;
+            /** Timezone */
+            timezone?: string | null;
         };
         /** SetupResult */
         SetupResult: {
@@ -4917,6 +4919,8 @@ export interface components {
              * @default false
              */
             suspended: boolean;
+            /** Timezone */
+            timezone: string;
         };
         /**
          * TenantBrandingUpdate
@@ -4939,6 +4943,8 @@ export interface components {
             primary_color?: string | null;
             /** Show Brand Name */
             show_brand_name?: boolean | null;
+            /** Timezone */
+            timezone?: string | null;
         };
         /**
          * TimeEntryCreate

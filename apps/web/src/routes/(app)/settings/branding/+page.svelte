@@ -71,6 +71,24 @@
           </select>
         </div>
         <div>
+          <label for="timezone" class="mb-1 block text-sm font-medium text-text"
+            >{t("settings.branding.timezone")}</label
+          >
+          <select id="timezone" name="timezone" class={inputClass}>
+            <optgroup label={t("settings.branding.timezone_common")}>
+              {#each data.commonTimezones as tz (tz)}
+                <option value={tz} selected={branding.timezone === tz}>{tz}</option>
+              {/each}
+            </optgroup>
+            <optgroup label={t("settings.branding.timezone_other")}>
+              {#each data.otherTimezones as tz (tz)}
+                <option value={tz} selected={branding.timezone === tz}>{tz}</option>
+              {/each}
+            </optgroup>
+          </select>
+          <p class="mt-1 text-xs text-text-muted">{t("settings.branding.timezone_help")}</p>
+        </div>
+        <div>
           <label for="logo_url" class="mb-1 block text-sm font-medium text-text"
             >{t("settings.branding.logo_url")}</label
           >

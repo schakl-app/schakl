@@ -11,6 +11,7 @@
  */
 import { fmtDayMonth, fmtLongDay, fmtNumber } from "$lib/core/format";
 import { t } from "$lib/core/i18n";
+import { getTimeZone } from "$lib/core/timezone";
 
 export interface NotificationLike {
   event_type: string;
@@ -31,21 +32,32 @@ const STATUS_NAMESPACE: Record<string, string> = {
 const DATE_KEYS = ["due_date", "start_date", "end_date", "week_start"] as const;
 
 /**
- * The local calendar day an instant falls on.
+ * The local calendar day an instant falls on, in the tenant's zone (CLAUDE.md §8).
  *
- * Deliberately `Intl` in `Europe/Amsterdam`, never `iso.slice(0, 10)`: Amsterdam's midnight is
+ * Deliberately `Intl` in the tenant zone, never `iso.slice(0, 10)`: a +02 zone's midnight is
  * 22:00 UTC the day *before* in summer, so slicing groups the evening under yesterday for half
- * the year (docs/UX.md, "Known mistakes").
+ * the year (docs/UX.md, "Known mistakes"). The formatter is cached per zone, since it is called
+ * once per notification.
  */
-const AMSTERDAM_DAY = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "Europe/Amsterdam",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-});
+const _dayFmt = new Map<string, Intl.DateTimeFormat>();
+
+function dayFormatter(): Intl.DateTimeFormat {
+  const tz = getTimeZone();
+  let formatter = _dayFmt.get(tz);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: tz,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    _dayFmt.set(tz, formatter);
+  }
+  return formatter;
+}
 
 export function localDay(isoDateTime: string): string {
-  return AMSTERDAM_DAY.format(new Date(isoDateTime));
+  return dayFormatter().format(new Date(isoDateTime));
 }
 
 /** Calendar arithmetic on a `yyyy-mm-dd`, so a 23-hour DST day cannot skip one. */

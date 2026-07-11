@@ -19,6 +19,7 @@ from app.core.customfields import customizable_entity_types
 from app.core.models import OrgSettings, OrgStatus
 from app.core.permissions.deps import no_permission_required, require_permission
 from app.core.tenancy import RequestContext, request_hostname, require_context, resolve_org
+from app.core.timezone import is_valid_timezone
 from app.db import async_session_maker, set_current_org
 from app.errors import AppError
 from app.registry import registry
@@ -35,6 +36,9 @@ class TenantBranding(BaseModel):
     primary_color: str
     accent_color: str
     default_locale: str
+    # IANA zone the tenant's local calendar runs in (CLAUDE.md §8); the web renders event
+    # timestamps in it. Public so the login screen and SSR have it before anyone signs in.
+    timezone: str
     enabled_modules: list[str]
     # Suspended orgs still expose branding (the login screen needs it) but every
     # authenticated request is blocked with errors.org_suspended.
@@ -54,6 +58,8 @@ class TenantBrandingUpdate(BaseModel):
     primary_color: str | None = Field(default=None, pattern=_HEX_COLOR)
     accent_color: str | None = Field(default=None, pattern=_HEX_COLOR)
     default_locale: str | None = None
+    # An IANA zone name; validated against the zoneinfo database in the handler, not by pattern.
+    timezone: str | None = Field(default=None, max_length=64)
     # Which modules this org runs; must stay a subset of the instance's mounted modules
     # and always include the hub module (companies).
     enabled_modules: list[str] | None = None
@@ -184,6 +190,7 @@ async def tenant_branding(request: Request) -> TenantBranding:
             primary_color=s.primary_color if s else "#4f46e5",
             accent_color=s.accent_color if s else "#0ea5e9",
             default_locale=s.default_locale if s else settings.default_locale,
+            timezone=s.timezone if s else settings.default_timezone,
             enabled_modules=list(s.enabled_modules)
             if s and s.enabled_modules
             else list(settings.enabled_modules),
@@ -207,6 +214,13 @@ async def update_tenant_branding(
             "errors.validation",
             status_code=422,
             fields={"default_locale": "errors.validation"},
+        )
+    if "timezone" in data and not is_valid_timezone(data["timezone"]):
+        raise AppError(
+            "validation",
+            "errors.validation",
+            status_code=422,
+            fields={"timezone": "errors.validation"},
         )
     if data.get("enabled_modules") is not None:
         modules = data["enabled_modules"]
@@ -241,6 +255,7 @@ async def update_tenant_branding(
         primary_color=s.primary_color,
         accent_color=s.accent_color,
         default_locale=s.default_locale,
+        timezone=s.timezone,
         enabled_modules=list(s.enabled_modules) if s.enabled_modules else [],
     )
 

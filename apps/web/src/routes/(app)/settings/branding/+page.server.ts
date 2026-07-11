@@ -3,6 +3,7 @@ import { fail, redirect } from "@sveltejs/kit";
 import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
+import { COMMON_EUROPEAN_TIMEZONES, otherTimeZones } from "$lib/core/timezones";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -13,7 +14,13 @@ export const load: PageServerLoad = async (event) => {
     api.GET("/api/v1/meta/tenant"),
     api.GET("/api/v1/meta/tenant/domain"),
   ]);
-  return { branding: data ?? null, domain: domain ?? null, locales: ["nl", "en"] };
+  return {
+    branding: data ?? null,
+    domain: domain ?? null,
+    locales: ["nl", "en"],
+    commonTimezones: [...COMMON_EUROPEAN_TIMEZONES],
+    otherTimezones: otherTimeZones(),
+  };
 };
 
 export const actions: Actions = {
@@ -30,6 +37,7 @@ export const actions: Actions = {
         primary_color: String(form.get("primary_color") ?? "").trim() || undefined,
         accent_color: String(form.get("accent_color") ?? "").trim() || undefined,
         default_locale: String(form.get("default_locale") ?? "").trim() || undefined,
+        timezone: String(form.get("timezone") ?? "").trim() || undefined,
       },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });

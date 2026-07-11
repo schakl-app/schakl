@@ -51,6 +51,7 @@ export async function fetchTenant(event: ApiEvent): Promise<OrgTheme> {
     primaryColor: data.primary_color,
     accentColor: data.accent_color,
     defaultLocale: data.default_locale,
+    timezone: data.timezone,
     enabledModules: data.enabled_modules,
     resolved: true,
     suspended: data.suspended,
