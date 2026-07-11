@@ -3,6 +3,7 @@
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
+  import { editIntent } from "$lib/core/edit-intent";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
   import { companyPanelComponent } from "$lib/core/registry";
@@ -31,7 +32,8 @@
       .sort((a, b) => Number(b.is_primary) - Number(a.is_primary)),
   );
 
-  let showEdit = $state(false);
+  // Opened straight into edit when reached from the overview's ⋯ → Bewerken (#78).
+  let showEdit = $state(editIntent());
   let confirmDelete = $state(false);
 </script>
 

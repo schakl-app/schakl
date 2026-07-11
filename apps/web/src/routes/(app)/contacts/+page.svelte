@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { Trash2, X } from "@lucide/svelte";
+  import { Pencil, Trash2, X } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
+  import { editHref } from "$lib/core/edit-intent";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
@@ -124,6 +125,7 @@
 {#snippet rowActions(contact: Contact)}
   <ActionsMenu
     items={[
+      { label: t("common.edit"), icon: Pencil, href: editHref(`/contacts/${contact.id}`) },
       {
         label: t("common.delete"),
         icon: Trash2,

@@ -106,6 +106,17 @@
   routine thing that happens on a task, was invisible (#61). And a row says *what* happened:
   a comment entry carries an excerpt and links to the comment, rather than reading "commented"
   and sending the reader hunting.
+- **Edit on a list row opens the record in edit mode** (#78). A list has no edit surface of its
+  own — the form lives on the detail page, and duplicating it onto the overview would be a second
+  copy to keep in sync. So the row ⋯ → Bewerken is a *link* to the detail page carrying `?edit=1`
+  (above the red Verwijderen), and the detail page reads that marker once, on mount, to open its
+  existing edit affordance — the client's edit `Modal`, the contact's / project's inline `editing`
+  toggle. The param name lives once in `core/edit-intent.ts` (`editHref` writes it, `editIntent`
+  reads it) so the two sides can't drift, and it seeds a `$state` initializer, not a `$derived`:
+  the surface opens on arrival, then the user can close it without the URL forcing it back open.
+  The underlying edit surface still differs per module (modal vs inline) — unifying *that* is a
+  separate follow-up; this issue makes the *entry point* consistent (Verwijderen was one click away
+  on every list while Bewerken was not there at all).
 - **A feed names a person from a snapshot, never from a live join** (#64). Every FK to
   `users.id` is `ON DELETE SET NULL`, so a joined-in display name is the one thing that cannot
   survive the account it joins to. Store the name when the row is written: a name with no live

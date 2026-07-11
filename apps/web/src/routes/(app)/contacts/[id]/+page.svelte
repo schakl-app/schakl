@@ -2,6 +2,7 @@
   import { Pencil, Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
+  import { editIntent } from "$lib/core/edit-intent";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
@@ -15,7 +16,8 @@
 
   let { data, form } = $props();
 
-  let editing = $state(false);
+  // Opened straight into edit when reached from the overview's ⋯ → Bewerken (#78).
+  let editing = $state(editIntent());
   let confirmDelete = $state(false);
   const contact = $derived(data.contact);
   const custom = $derived((contact.custom ?? {}) as Record<string, unknown>);

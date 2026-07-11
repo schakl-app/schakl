@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { Trash2 } from "@lucide/svelte";
+  import { Pencil, Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
+  import { editHref } from "$lib/core/edit-intent";
   import { fmtNumber, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
@@ -144,6 +145,7 @@
 {#snippet rowActions(project: Project)}
   <ActionsMenu
     items={[
+      { label: t("common.edit"), icon: Pencil, href: editHref(`/projects/${project.id}`) },
       {
         label: t("common.delete"),
         icon: Trash2,

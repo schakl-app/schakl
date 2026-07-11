@@ -7,6 +7,7 @@
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import CustomFieldsView from "$lib/core/customfields/CustomFieldsView.svelte";
   import { burnBarClass, burnBarWidth, burnPct } from "$lib/core/burn";
+  import { editIntent } from "$lib/core/edit-intent";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
@@ -32,8 +33,9 @@
     tasks: data.tasks,
   });
 
-  // Use mode vs edit mode (UX §3): the definition is edited behind the ⋯ → Bewerken toggle.
-  let editing = $state(false);
+  // Use mode vs edit mode (UX §3): the definition is edited behind the ⋯ → Bewerken toggle, or
+  // opened straight into edit when reached from the overview's ⋯ → Bewerken (#78).
+  let editing = $state(editIntent());
   let confirmDelete = $state(false);
 
   const STATUSES = ["active", "on_hold", "completed", "archived"] as const;
