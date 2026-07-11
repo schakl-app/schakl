@@ -1820,6 +1820,26 @@ export interface paths {
         patch: operations["update_label_api_v1_tasks_labels__label_id__patch"];
         trace?: never;
     };
+    "/api/v1/tasks/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My Open Tasks
+         * @description Open/in-progress tasks assigned to the current user (My Day).
+         */
+        get: operations["my_open_tasks_api_v1_tasks_mine_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tasks/statuses": {
         parameters: {
             query?: never;
@@ -1854,26 +1874,6 @@ export interface paths {
         head?: never;
         /** Update Status */
         patch: operations["update_status_api_v1_tasks_statuses__status_id__patch"];
-        trace?: never;
-    };
-    "/api/v1/tasks/mine": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * My Open Tasks
-         * @description Open/in-progress tasks assigned to the current user (My Day).
-         */
-        get: operations["my_open_tasks_api_v1_tasks_mine_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
     "/api/v1/tasks/templates": {
@@ -2953,6 +2953,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Mentioned User Ids */
+            mentioned_user_ids?: string[];
         };
         /** CommentUpdate */
         CommentUpdate: {
@@ -3649,72 +3651,6 @@ export interface components {
             name?: string | null;
             /** Position */
             position?: number | null;
-        };
-        /** StatusCreate */
-        StatusCreate: {
-            /** Name */
-            name: string;
-            /** Color */
-            color: string;
-            /**
-             * Position
-             * @default 0
-             */
-            position: number;
-            /**
-             * Is Terminal
-             * @default false
-             */
-            is_terminal: boolean;
-            /**
-             * Is Default
-             * @default false
-             */
-            is_default: boolean;
-            /** Key */
-            key: string;
-        };
-        /** StatusRead */
-        StatusRead: {
-            /** Name */
-            name: string;
-            /** Color */
-            color: string;
-            /**
-             * Position
-             * @default 0
-             */
-            position: number;
-            /**
-             * Is Terminal
-             * @default false
-             */
-            is_terminal: boolean;
-            /**
-             * Is Default
-             * @default false
-             */
-            is_default: boolean;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Key */
-            key: string;
-        };
-        /** StatusUpdate */
-        StatusUpdate: {
-            /** Name */
-            name?: string | null;
-            /** Color */
-            color?: string | null;
-            /** Position */
-            position?: number | null;
-            /** Is Terminal */
-            is_terminal?: boolean | null;
-            /** Is Default */
-            is_default?: boolean | null;
         };
         /**
          * LeaveBalance
@@ -5137,6 +5073,72 @@ export interface components {
             /** Needs Setup */
             needs_setup: boolean;
         };
+        /** StatusCreate */
+        StatusCreate: {
+            /** Color */
+            color: string;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /**
+             * Is Terminal
+             * @default false
+             */
+            is_terminal: boolean;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+        };
+        /** StatusRead */
+        StatusRead: {
+            /** Color */
+            color: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /**
+             * Is Terminal
+             * @default false
+             */
+            is_terminal: boolean;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+        };
+        /** StatusUpdate */
+        StatusUpdate: {
+            /** Color */
+            color?: string | null;
+            /** Is Default */
+            is_default?: boolean | null;
+            /** Is Terminal */
+            is_terminal?: boolean | null;
+            /** Name */
+            name?: string | null;
+            /** Position */
+            position?: number | null;
+        };
         /** SystemInfo */
         SystemInfo: {
             build: components["schemas"]["BuildInfo"];
@@ -5168,7 +5170,7 @@ export interface components {
             project_id?: string | null;
             recurrence?: components["schemas"]["Recurrence"] | null;
             /** Status */
-            status?: components["schemas"]["TaskStatus"] | null;
+            status?: string | null;
             /** Title */
             title: string;
         };
@@ -5226,8 +5228,8 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence: components["schemas"]["Recurrence"] | null;
-            /** @default open */
-            status: components["schemas"]["TaskStatus"];
+            /** Status */
+            status: string;
             /** Title */
             title: string;
             /**
@@ -5300,8 +5302,8 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence: components["schemas"]["Recurrence"] | null;
-            /** @default open */
-            status: components["schemas"]["TaskStatus"];
+            /** Status */
+            status: string;
             /** Title */
             title: string;
             /**
@@ -5351,8 +5353,8 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence: components["schemas"]["Recurrence"] | null;
-            /** @default open */
-            status: components["schemas"]["TaskStatus"];
+            /** Status */
+            status: string;
             /** Title */
             title: string;
             /**
@@ -5361,11 +5363,6 @@ export interface components {
              */
             updated_at: string;
         };
-        /**
-         * TaskStatus
-         * @enum {string}
-         */
-        TaskStatus: string;
         /** TaskUpdate */
         TaskUpdate: {
             /** Allocated Minutes */
@@ -5386,7 +5383,8 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence?: components["schemas"]["Recurrence"] | null;
-            status?: components["schemas"]["TaskStatus"] | null;
+            /** Status */
+            status?: string | null;
             /** Title */
             title?: string | null;
         };
@@ -10205,7 +10203,8 @@ export interface operations {
                 company_id?: string | null;
                 project_id?: string | null;
                 assignee_user_id?: string | null;
-                status?: components["schemas"]["TaskStatus"] | null;
+                /** @description A configured status key */
+                status?: string | null;
                 label_id?: string | null;
                 due?: ("overdue" | "today" | "week") | null;
                 q?: string | null;
@@ -10509,6 +10508,37 @@ export interface operations {
             };
         };
     };
+    my_open_tasks_api_v1_tasks_mine_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskListItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_statuses_api_v1_tasks_statuses_get: {
         parameters: {
             query?: never;
@@ -10613,37 +10643,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StatusRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    my_open_tasks_api_v1_tasks_mine_get: {
-        parameters: {
-            query?: {
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TaskListItem"][];
                 };
             };
             /** @description Validation Error */
