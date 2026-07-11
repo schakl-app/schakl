@@ -53,6 +53,8 @@
   "common.language": "Taal",
   "common.clear": "Wissen",
   "common.no_results": "Geen resultaten",
+  "common.show_all": "Alle {count} tonen",
+  "common.show_less": "Minder tonen",
   "common.apply": "Toepassen",
   "common.create_named": "“{name}” toevoegen",
   "common.deleted_user": "{name} (verwijderd)",

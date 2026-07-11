@@ -17,6 +17,17 @@
   let { data, form } = $props();
 
   const task = $derived(data.task);
+
+  // The activity log grows without bound on a busy task (issue #86): show the most recent few and
+  // expand the rest in place. Rows are newest-first, so the head is the newest.
+  const ACTIVITY_COLLAPSED = 3;
+  let activityExpanded = $state(false);
+  const activities = $derived(task.activities ?? []);
+  const visibleActivities = $derived(
+    activityExpanded || activities.length <= ACTIVITY_COLLAPSED
+      ? activities
+      : activities.slice(0, ACTIVITY_COLLAPSED),
+  );
   const userId = $derived(page.data.user?.id ?? "");
   // `tasks.comment.write:any` lets a manager clean up anyone's comment; the author always can.
   const canDeleteAnyComment = $derived(can(page.data.user, "tasks.comment.write", "any"));
@@ -589,11 +600,11 @@
       <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
         {t("tasks.activity.title")}
       </h3>
-      {#if (task.activities ?? []).length === 0}
+      {#if activities.length === 0}
         <p class="text-sm text-text-muted">—</p>
       {:else}
         <ul class="space-y-2">
-          {#each task.activities ?? [] as activity (activity.id)}
+          {#each visibleActivities as activity (activity.id)}
             {@const href = activityHref(activity)}
             <li class="flex items-baseline gap-2 text-sm">
               <span class="shrink-0 text-[11px] tabular-nums text-text-muted"
@@ -610,6 +621,17 @@
             </li>
           {/each}
         </ul>
+        {#if activities.length > ACTIVITY_COLLAPSED}
+          <button
+            type="button"
+            class="mt-3 text-xs font-medium text-brand hover:underline"
+            onclick={() => (activityExpanded = !activityExpanded)}
+          >
+            {activityExpanded
+              ? t("common.show_less")
+              : t("common.show_all", { count: activities.length })}
+          </button>
+        {/if}
       {/if}
     </section>
   </div>

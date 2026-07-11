@@ -22,13 +22,20 @@
   }
 
   let { items, limit }: { items: ActivityItem[]; limit: number } = $props();
+
+  // A busy record's feed grows without bound (issue #86): show only the most recent few and let
+  // the reader expand the rest in place. Items arrive newest-first, so the head is the newest.
+  const COLLAPSED = 3;
+  let expanded = $state(false);
+  const collapsible = $derived(items.length > COLLAPSED);
+  const shown = $derived(collapsible && !expanded ? items.slice(0, COLLAPSED) : items);
 </script>
 
 {#if items.length === 0}
   <p class="text-sm text-text-muted">{t("notifications.activity.empty")}</p>
 {:else}
   <ol class="space-y-3">
-    {#each items as item (item.id)}
+    {#each shown as item (item.id)}
       <li class="flex gap-3 text-sm">
         <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-border" aria-hidden="true"></span>
         <span class="min-w-0 flex-1">
@@ -46,7 +53,18 @@
       </li>
     {/each}
   </ol>
-  {#if items.length >= limit}
+  {#if collapsible}
+    <button
+      type="button"
+      class="mt-3 text-xs font-medium text-brand hover:underline"
+      onclick={() => (expanded = !expanded)}
+    >
+      {expanded ? t("common.show_less") : t("common.show_all", { count: items.length })}
+    </button>
+  {/if}
+  <!-- Only claim "these are all of them" once they are all on screen — silent truncation reads
+       as complete (docs/PERFORMANCE.md). -->
+  {#if (!collapsible || expanded) && items.length >= limit}
     <p class="mt-3 text-xs text-text-muted">
       {t("notifications.activity.truncated", { limit })}
     </p>
