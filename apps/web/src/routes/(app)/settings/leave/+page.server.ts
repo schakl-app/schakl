@@ -48,6 +48,7 @@ export const load: PageServerLoad = async (event) => {
     profiles: profiles.data ?? [],
     entitlements: entitlements.data ?? [],
     defaultSchedule: settings.data?.default_schedule ?? defaultSchedule(),
+    selfApproval: settings.data?.self_approval ?? false,
     holidays: holidays.data ?? [],
     locale: event.locals.locale,
   };
@@ -132,6 +133,16 @@ export const actions: Actions = {
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { scheduleSaved: true };
+  },
+
+  /** May approvers manage their own leave (#110)? Policy, so it lives here — not in code. */
+  savePolicy: async (event) => {
+    const form = await event.request.formData();
+    const { error } = await apiFor(event).PUT("/api/v1/leave/settings", {
+      body: { self_approval: form.get("self_approval") === "on" },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { policySaved: true };
   },
 
   // One save per member row: this year's entitlement per tracked type. Contract hours are no

@@ -115,8 +115,17 @@ async def delete_type(
     dependencies=[require_permission("leave.profile.manage")],
 )
 async def get_settings(ctx: RequestContext = Depends(require_context)) -> LeaveSettingsRead:
-    """The schedule a new employee inherits. An org that never saved one gets the default."""
-    return LeaveSettingsRead(default_schedule=await LeaveService(ctx).default_schedule())
+    """The org's leave settings. An org that never saved a row gets the defaults."""
+    service = LeaveService(ctx)
+    row = await service.settings_row()
+    if row is None:
+        return LeaveSettingsRead(default_schedule=await service.default_schedule())
+    return LeaveSettingsRead(
+        default_schedule=WorkSchedule.model_validate(row.default_schedule),
+        holiday_country=row.holiday_country,
+        holiday_auto_import=row.holiday_auto_import,
+        self_approval=row.self_approval,
+    )
 
 
 @router.put(
@@ -133,6 +142,7 @@ async def update_settings(
         default_schedule=WorkSchedule.model_validate(row.default_schedule),
         holiday_country=row.holiday_country,
         holiday_auto_import=row.holiday_auto_import,
+        self_approval=row.self_approval,
     )
 
 

@@ -245,6 +245,49 @@
   </div>
 </section>
 
+<!-- Goedkeuringsbeleid (#110): may approvers manage their own leave? -->
+<section class="mb-8">
+  <div class="mb-3">
+    <h2 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
+      {t("settings.leave.approval_heading")}
+    </h2>
+  </div>
+  <div class="rounded-xl border border-border bg-surface p-4">
+    <form
+      method="POST"
+      action="?/savePolicy"
+      use:enhance={() =>
+        ({ update }) =>
+          update({ reset: false })}
+    >
+      <label class="flex items-start gap-3 text-sm text-text">
+        <input
+          type="checkbox"
+          name="self_approval"
+          checked={data.selfApproval}
+          class="mt-0.5 h-4 w-4 rounded border-border"
+        />
+        <span>
+          {t("settings.leave.self_approval")}
+          <span class="mt-0.5 block text-xs text-text-muted">
+            {t("settings.leave.self_approval_hint")}
+          </span>
+        </span>
+      </label>
+      {#if form?.policySaved}
+        <p class="mt-3 text-sm text-green-600">{t("settings.leave.policy_saved")}</p>
+      {/if}
+      <div class="mt-3 flex justify-end">
+        <button
+          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        >
+          {t("common.save")}
+        </button>
+      </div>
+    </form>
+  </div>
+</section>
+
 <!-- Feestdagen (#47): a holiday on a scheduled working day costs no leave hours -->
 <section class="mb-8">
   <div class="mb-3 flex flex-wrap items-center justify-between gap-3">

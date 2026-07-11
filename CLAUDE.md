@@ -340,6 +340,14 @@ apply as everywhere.
   express (four hours agreed on a day they were not scheduled); it is recorded against their name.
   **Approved requests are never retroactively recalculated** — new holidays do not rewrite last
   year's balance.
+- **Self-approval is tenant policy, off by default** (#110). While off, a holder of
+  `leave.request.approve` is an ordinary owner on their *own* requests: deciding their own
+  pending request is refused (`errors.leave_self_approval`), an approval-relevant edit of their
+  own approved request bounces to pending for the *other* approvers, and their own past is
+  locked like anyone else's. Both the decide path and the edit path enforce it — one without the
+  other is trivially sidestepped. The org's **sole** approver may always self-manage (a
+  one-person agency must not deadlock). `leave_settings.self_approval` (Instellingen → Verlof)
+  restores the trusted-approver behaviour; a pending request never notifies its own requester.
 - **Balances:** entitlement + carry-over − used − pending, per user / type / year. Show the
   employee their remaining balance. **Over-requests warn but submit** (#109): advance/borrowed
   leave is the manager's call, so the form warns, the request goes through, the balance reads

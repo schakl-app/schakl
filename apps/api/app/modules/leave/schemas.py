@@ -65,6 +65,9 @@ class LeaveSettingsRead(BaseModel):
     default_schedule: WorkSchedule
     holiday_country: str | None = None
     holiday_auto_import: bool = True
+    #: May approvers decide/edit/backdate their own leave (#110)? Off = separation of duties;
+    #: the org's sole approver may always self-manage regardless.
+    self_approval: bool = False
 
 
 class LeaveSettingsUpdate(BaseModel):
@@ -77,6 +80,7 @@ class LeaveSettingsUpdate(BaseModel):
     default_schedule: WorkSchedule | None = None
     holiday_country: str | None = Field(default=None, max_length=2)
     holiday_auto_import: bool | None = None
+    self_approval: bool | None = None
 
 
 # --- holidays (#47) ------------------------------------------------------------ #

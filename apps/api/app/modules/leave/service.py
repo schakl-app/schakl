@@ -174,6 +174,8 @@ class LeaveService:
         self.contracts = ctx.repo(EmploymentContract)
         # One settings read per request, not one per profile resolved (docs/PERFORMANCE.md).
         self._settings_row: LeaveSettings | None | object = _UNSET
+        # Memoized per request: update() consults it for the bounce *and* the backdate gate.
+        self._self_approval: bool | None = None
 
     # --- access scoping ------------------------------------------------------ #
     def _effective_user_id(self, user_id: uuid.UUID | None) -> uuid.UUID:
@@ -1002,17 +1004,45 @@ class LeaveService:
         a request touches the past when it reaches before *this* date, not before UTC midnight."""
         return datetime.now(await org_zoneinfo(self.ctx.session, self.ctx.org.id)).date()
 
-    def _may_backdate(self) -> bool:
+    async def _self_approval_allowed(self) -> bool:
+        """May the caller act as the approver of their **own** leave (#110)?
+
+        Tenant policy, not code (§14): ``leave_settings.self_approval``, off by default —
+        an approver's own request should be another approver's call. One runtime exception
+        either way: when no *other* member holds ``leave.request.approve``, the sole approver
+        may self-manage — otherwise a one-person agency can never approve anything at all.
+        """
+        if self._self_approval is None:
+            row = await self.settings_row()
+            if row is not None and row.self_approval:
+                self._self_approval = True
+            else:
+                managers = await self._managers()
+                self._self_approval = not any(m != self.ctx.user.id for m in managers)
+        return self._self_approval
+
+    async def _acts_as_approver(self, owner_id: uuid.UUID) -> bool:
+        """Approver powers over a request: always on someone else's; on your own only when
+        the org's self-approval policy (or the sole-approver fallback) says so (#110)."""
+        if not self.ctx.can("leave.request.approve"):
+            return False
+        return owner_id != self.ctx.user.id or await self._self_approval_allowed()
+
+    async def _may_backdate(self, *, own: bool) -> bool:
         """Only a caller who may act on *anyone's* leave may reach into the past (#65 §6).
 
         Leave registered on someone's behalf (a retroactive ``ziekmelding``) is past-dated by
         nature, so ``leave.request.write:any`` may backdate; a member on ``:own`` may not create,
-        move or cancel leave that touches the past — the closed calendar is not theirs to rewrite.
+        move or cancel leave that touches the past — the closed calendar is not theirs to
+        rewrite. The same lock covers an approver's **own** leave while self-approval is off
+        (#110): rewriting your own history is precisely what the second pair of eyes is for.
         """
-        return self.ctx.can("leave.request.write", scope="any")
+        if not self.ctx.can("leave.request.write", scope="any"):
+            return False
+        return not own or await self._self_approval_allowed()
 
-    async def _ensure_may_backdate(self, touches_past: bool) -> None:
-        if touches_past and not self._may_backdate():
+    async def _ensure_may_backdate(self, touches_past: bool, *, own: bool) -> None:
+        if touches_past and not await self._may_backdate(own=own):
             raise AppError("past_locked", "errors.leave_past_locked", status_code=403)
 
     async def preview(self, data: LeaveRequestPreview) -> LeavePreviewResult:
@@ -1156,7 +1186,9 @@ class LeaveService:
         if not leave_type.active:
             raise AppError("validation", "errors.validation", status_code=422)
         # A member may not book leave in the past; a manager registering it (a sick call) may (#65).
-        await self._ensure_may_backdate(data.start_date < await self._org_today())
+        await self._ensure_may_backdate(
+            data.start_date < await self._org_today(), own=uid == self.ctx.user.id
+        )
         # Setting `hours` by hand is an approver's act, and it is recorded as one.
         if data.hours_override is not None:
             self.ctx.require("leave.request.approve")
@@ -1193,9 +1225,12 @@ class LeaveService:
             status=status,
         )
         # Only a request that actually waits on somebody is worth interrupting them for; a
-        # registration (sick leave) is already decided (issue #16).
+        # registration (sick leave) is already decided (issue #16). The requester is never
+        # among the recipients — an approver asking for leave doesn't need a note to self.
         if request.status == LeaveRequestStatus.PENDING.value:
-            await self._emit_leave("leave.requested", request, await self._managers())
+            await self._emit_leave(
+                "leave.requested", request, await self._approvers_for(request)
+            )
         return request
 
     async def _managers(self) -> list[uuid.UUID]:
@@ -1207,6 +1242,11 @@ class LeaveService:
                 )
             ).scalars()
         )
+
+    async def _approvers_for(self, request: LeaveRequest) -> list[uuid.UUID]:
+        """The approvers a pending request notifies: everyone who may decide it, minus its
+        own requester — whether they may self-approve or not, a note to self is noise."""
+        return [m for m in await self._managers() if m != request.user_id]
 
     async def _emit_leave(
         self, event: str, request: LeaveRequest, recipients: Sequence[uuid.UUID]
@@ -1236,7 +1276,9 @@ class LeaveService:
         self._ensure_writable(request)
         if request.status not in _OCCUPYING:
             raise AppError("conflict", "errors.leave_decided", status_code=409)
-        is_approver = self.ctx.can("leave.request.approve")
+        # An approver's edit stands as its own approval — except on their *own* request while
+        # self-approval is off (#110): there they are an ordinary owner and the edit bounces.
+        acts_as_approver = await self._acts_as_approver(request.user_id)
         values = data.model_dump(exclude_unset=True)
         leave_type = await self.types.get_or_404(
             values.get("leave_type_id", request.leave_type_id)
@@ -1299,13 +1341,15 @@ class LeaveService:
             or end_time != request.end_time
         )
         if span_changed:
-            await self._ensure_may_backdate(touches_past)
+            await self._ensure_may_backdate(
+                touches_past, own=request.user_id == self.ctx.user.id
+            )
 
         bounce = (
             request.status == LeaveRequestStatus.APPROVED.value
             and approval_relevant
             and needs_approval
-            and not is_approver
+            and not acts_as_approver
         )
         if bounce:
             # A resubmission, not a self-approval: the owner's edit sends an approved request back
@@ -1318,7 +1362,7 @@ class LeaveService:
 
         updated = await self.requests.update(request, **values)
         if bounce:
-            await self._emit_leave("leave.requested", updated, await self._managers())
+            await self._emit_leave("leave.requested", updated, await self._approvers_for(updated))
         return updated
 
     async def decide(
@@ -1328,6 +1372,11 @@ class LeaveService:
         request = await self.requests.get_or_404(request_id)
         if request.status != LeaveRequestStatus.PENDING.value:
             raise AppError("conflict", "errors.leave_decided", status_code=409)
+        # Deciding your own request is self-approval; while the org forbids it, another
+        # approver must take this one (#110). The edit path enforces the same policy, or the
+        # control would be trivially sidestepped by editing instead of deciding.
+        if request.user_id == self.ctx.user.id and not await self._self_approval_allowed():
+            raise AppError("self_approval", "errors.leave_self_approval", status_code=403)
         request = await self.requests.update(
             request,
             status=(
@@ -1357,10 +1406,14 @@ class LeaveService:
         """
         request = await self._owned_or_404(request_id)
         self._ensure_writable(request)
-        # Cancelling past-dated leave rewrites the closed calendar — a manager's act (#65 §6).
-        await self._ensure_may_backdate(request.start_date < await self._org_today())
+        own = request.user_id == self.ctx.user.id
+        # Cancelling past-dated leave rewrites the closed calendar — a manager's act (#65 §6),
+        # and not one an approver may perform on their *own* leave while self-approval is off.
+        await self._ensure_may_backdate(
+            request.start_date < await self._org_today(), own=own
+        )
         if request.status == LeaveRequestStatus.APPROVED.value:
-            if not self.ctx.can("leave.request.approve"):
+            if not await self._acts_as_approver(request.user_id):
                 leave_type = await self.types.get_or_404(request.leave_type_id)
                 if leave_type.requires_approval:
                     raise AppError("approved_locked", "errors.approved_locked", status_code=403)

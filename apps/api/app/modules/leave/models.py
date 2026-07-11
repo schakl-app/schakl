@@ -92,6 +92,11 @@ class LeaveSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     holiday_country: Mapped[str | None] = mapped_column(String(2), nullable=True)
     #: Import next year's holidays each December, unattended (ARQ cron, per org).
     holiday_auto_import: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    #: May an approver decide/edit/backdate their **own** leave (#110)? Off by default —
+    #: separation of duties — but tenant config, not law (§14). The service adds one runtime
+    #: exception either way: an org's *sole* approver may always self-manage, or a one-person
+    #: agency could never approve anything at all.
+    self_approval: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
 class LeaveHoliday(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):

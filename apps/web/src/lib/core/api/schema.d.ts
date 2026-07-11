@@ -1109,7 +1109,7 @@ export interface paths {
         };
         /**
          * Get Settings
-         * @description The schedule a new employee inherits. An org that never saved one gets the default.
+         * @description The org's leave settings. An org that never saved a row gets the defaults.
          */
         get: operations["get_settings_api_v1_leave_settings_get"];
         /** Update Settings */
@@ -4494,6 +4494,11 @@ export interface components {
             holiday_auto_import: boolean;
             /** Holiday Country */
             holiday_country?: string | null;
+            /**
+             * Self Approval
+             * @default false
+             */
+            self_approval: boolean;
         };
         /**
          * LeaveSettingsUpdate
@@ -4508,6 +4513,8 @@ export interface components {
             holiday_auto_import?: boolean | null;
             /** Holiday Country */
             holiday_country?: string | null;
+            /** Self Approval */
+            self_approval?: boolean | null;
         };
         /**
          * LeaveSummary
