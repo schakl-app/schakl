@@ -1,7 +1,9 @@
 <script lang="ts">
   import { Ban, Pencil, Plus } from "@lucide/svelte";
 
+  import { page } from "$app/state";
   import { fmtDayMonth } from "$lib/core/format";
+  import { can } from "$lib/core/permissions";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
@@ -48,6 +50,26 @@
   function openEdit(request: (typeof data.requests)[number]) {
     editRequest = request;
     editOpen = true;
+  }
+
+  // #72: editing and cancelling are no longer pending-only. Approved leave is editable — the API
+  // decides whether the save returns it to pending. Cancel is offered on an approved request only
+  // when it would not need approval to undo (an approver, or the owner's own future self-service
+  // leave); otherwise the API would 403 and offering it is a dead end.
+  const canApprove = $derived(can(page.data.user, "leave.request.approve"));
+  const todayIso = new Date().toISOString().slice(0, 10);
+
+  function canEdit(request: Request): boolean {
+    return request.status === "pending" || request.status === "approved";
+  }
+
+  function canCancel(request: Request): boolean {
+    if (request.status === "pending") return true;
+    if (request.status !== "approved") return false;
+    if (canApprove) return true;
+    const type = typeById[request.leave_type_id];
+    const selfServable = type ? !type.requires_approval : false;
+    return selfServable && request.start_date >= todayIso;
   }
 
   function period(request: { start_date: string; end_date: string }): string {
@@ -165,22 +187,26 @@
 {/snippet}
 
 {#snippet rowActions(request: Request)}
-  {#if request.status === "pending"}
-    <ActionsMenu
-      compact
-      items={[
-        { label: t("common.edit"), icon: Pencil, onclick: () => openEdit(request) },
-        {
-          label: t("leave.requests.cancel"),
-          icon: Ban,
-          danger: true,
-          onclick: () => {
-            cancelId = request.id;
-            cancelOpen = true;
+  {@const items = [
+    ...(canEdit(request)
+      ? [{ label: t("common.edit"), icon: Pencil, onclick: () => openEdit(request) }]
+      : []),
+    ...(canCancel(request)
+      ? [
+          {
+            label: t("leave.requests.cancel"),
+            icon: Ban,
+            danger: true,
+            onclick: () => {
+              cancelId = request.id;
+              cancelOpen = true;
+            },
           },
-        },
-      ]}
-    />
+        ]
+      : []),
+  ]}
+  {#if items.length > 0}
+    <ActionsMenu compact {items} />
   {/if}
 {/snippet}
 

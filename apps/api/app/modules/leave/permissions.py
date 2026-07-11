@@ -33,4 +33,15 @@ LEAVE_PERMISSIONS: list[PermissionSpec] = [
         default_own_roles=(ROLE_MEMBER,),
     ),
     PermissionSpec("leave.entitlement.write", position=70),
+    # Hourly rate (#82) — salary-adjacent, kept off ``leave.profile.manage`` so a tenant can let
+    # someone manage schedules without seeing pay. Read is own/any (a member sees their own rate,
+    # like their own entitlement); write is admin-only (setting pay is not a member's act).
+    PermissionSpec(
+        "leave.rate.read",
+        scopes=SCOPES,
+        position=80,
+        default_roles=(ROLE_ADMIN,),
+        default_own_roles=(ROLE_MEMBER,),
+    ),
+    PermissionSpec("leave.rate.write", position=90, default_roles=(ROLE_ADMIN,)),
 ]

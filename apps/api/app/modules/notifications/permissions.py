@@ -15,4 +15,7 @@ NOTIFICATION_PERMISSIONS: list[PermissionSpec] = [
     PermissionSpec("notifications.notification.read", position=10, default_roles=_EVERYONE),
     PermissionSpec("notifications.notification.write", position=20, default_roles=_EVERYONE),
     PermissionSpec("notifications.defaults.manage", position=30),
+    # External channels embed bot tokens and can be pointed at arbitrary webhooks (SSRF), so
+    # only an admin configures them (#17).
+    PermissionSpec("notifications.channels.manage", position=40),
 ]

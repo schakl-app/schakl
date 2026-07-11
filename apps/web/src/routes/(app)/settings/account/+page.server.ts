@@ -14,6 +14,7 @@ import {
 } from "$lib/core/dateformat";
 import { apiErrorKey } from "$lib/core/errors";
 import { LOCALES } from "$lib/core/i18n";
+import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 import {
   asThemeMode,
@@ -26,7 +27,8 @@ import type { Actions, PageServerLoad } from "./$types";
 
 // Personal account — reachable by every member (NOT manager-gated, unlike org settings).
 export const load: PageServerLoad = async (event) => {
-  const prefs = await apiFor(event).GET("/api/v1/prefs");
+  const api = apiFor(event);
+  const prefs = await api.GET("/api/v1/prefs");
   const appearance = prefs.data?.prefs?.appearance as { theme?: string } | undefined;
   const persistedTheme = asThemeMode(appearance?.theme) ?? "system";
 
@@ -57,6 +59,27 @@ export const load: PageServerLoad = async (event) => {
     );
   }
 
+  // Personal API keys (#20). A member may hold apikeys.personal.manage; the offerable scopes are
+  // the ones they actually hold (a key can never grant more than its owner), built from the
+  // code-defined catalog. The catalog ships in the open-source repo — no tenant data.
+  const canManageKeys = can(event.locals.user, "apikeys.personal.manage");
+  const [keys, catalog] = await Promise.all([
+    canManageKeys ? api.GET("/api/v1/api-keys") : Promise.resolve({ data: null }),
+    canManageKeys ? api.GET("/api/v1/permissions/catalog") : Promise.resolve({ data: null }),
+  ]);
+
+  const scopeOptions: { value: string; label_key: string }[] = [];
+  for (const perm of catalog.data?.permissions ?? []) {
+    const variants =
+      perm.scopes.length > 0 ? perm.scopes.map((s) => `${perm.key}:${s}`) : [perm.key];
+    for (const value of variants) {
+      const [base, suffix] = value.split(":");
+      if (can(event.locals.user, base, suffix as "own" | "any" | undefined)) {
+        scopeOptions.push({ value, label_key: perm.label_key });
+      }
+    }
+  }
+
   return {
     account: event.locals.user,
     locales: LOCALES,
@@ -65,6 +88,9 @@ export const load: PageServerLoad = async (event) => {
     currentFormat: persistedFormat,
     clocks: CLOCKS,
     dateFormats: DATE_FORMATS,
+    canManageKeys,
+    apiKeys: keys.data ?? [],
+    scopeOptions,
   };
 };
 
@@ -80,5 +106,33 @@ export const actions: Actions = {
       return fail(400, { error: e.key, fields: e.fields });
     }
     return { saved: true };
+  },
+
+  createKey: async (event) => {
+    const form = await event.request.formData();
+    const name = String(form.get("name") ?? "").trim();
+    const scopes = form.getAll("scopes").map(String).filter(Boolean);
+    const expires = String(form.get("expires_at") ?? "").trim();
+    if (!name || scopes.length === 0 || !expires) return fail(400, { error: "errors.required" });
+    // A date input gives a day; store it as end-of-day UTC so "expires 2026-08-01" lasts that day.
+    const expires_at = new Date(`${expires}T23:59:59Z`).toISOString();
+    const { data, error } = await apiFor(event).POST("/api/v1/api-keys", {
+      body: { name, scopes, expires_at },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    // The full secret is returned exactly once — hand it straight to the page to reveal.
+    return { createdSecret: data?.secret, createdName: data?.name };
+  },
+
+  revokeKey: async (event) => {
+    const form = await event.request.formData();
+    const id = String(form.get("key_id") ?? "");
+    if (id) {
+      const { error } = await apiFor(event).POST("/api/v1/api-keys/{key_id}/revoke", {
+        params: { path: { key_id: id } },
+      });
+      if (error) return fail(400, { error: apiErrorKey(error).key });
+    }
+    return { revoked: true };
   },
 };

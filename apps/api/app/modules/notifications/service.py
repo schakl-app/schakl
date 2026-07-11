@@ -38,9 +38,7 @@ from app.core.auth.models import User
 from app.core.events import EmitContext
 from app.core.models import Membership
 from app.errors import AppError
-from app.modules.notifications.channels import get_channel
 from app.modules.notifications.events import (
-    CHANNEL_IN_APP,
     DEDUP_KEY,
     ENTITY_FOR_EVENT,
     ENTITY_TYPES,
@@ -288,9 +286,11 @@ class NotificationService:
             fresh.append(row)
         await self.session.flush()
 
-        # The in-app channel is pull, so this is a no-op today; it is the seam #17 fills.
-        channel = get_channel(CHANNEL_IN_APP)
-        if channel is not None:
+        # Hand each fresh notification to every registered channel. The in-app channel is pull
+        # (a no-op); the external channel (#17) enqueues delivery rows for the worker to push.
+        from app.modules.notifications.channels import channels as all_channels
+
+        for channel in all_channels():
             for row in fresh:
                 await channel.deliver(
                     self.ctx,

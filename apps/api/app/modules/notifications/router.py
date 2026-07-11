@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, Query
 
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
+from app.modules.notifications.channel_admin import ChannelService
 from app.modules.notifications.defaults import ResolvedPref
 from app.modules.notifications.prefs import (
     GeneralWrite,
@@ -22,6 +23,10 @@ from app.modules.notifications.prefs import (
 )
 from app.modules.notifications.schemas import (
     ActivityItem,
+    ChannelCreate,
+    ChannelRead,
+    ChannelTestResult,
+    ChannelUpdate,
     EntityType,
     GeneralPreference,
     MarkAllResult,
@@ -229,6 +234,69 @@ async def set_default_preferences(
     events, general = _writes(payload)
     await replace_overrides(ctx.session, ctx.org.id, None, events, general)
     return _matrix(await effective_matrix(ctx.session, ctx.org.id, None))
+
+
+# --- external channels (#17): admin-only, declared before ``/{notification_id}`` ---------- #
+@router.get(
+    "/channels",
+    response_model=list[ChannelRead],
+    dependencies=[require_permission("notifications.channels.manage")],
+)
+async def list_channels(
+    ctx: RequestContext = Depends(require_context),
+) -> list[ChannelRead]:
+    return [ChannelRead(**c) for c in await ChannelService(ctx).list()]
+
+
+@router.post(
+    "/channels",
+    response_model=ChannelRead,
+    status_code=201,
+    dependencies=[require_permission("notifications.channels.manage")],
+)
+async def create_channel(
+    payload: ChannelCreate,
+    ctx: RequestContext = Depends(require_context),
+) -> ChannelRead:
+    return ChannelRead(**await ChannelService(ctx).create(payload))
+
+
+@router.patch(
+    "/channels/{channel_id}",
+    response_model=ChannelRead,
+    dependencies=[require_permission("notifications.channels.manage")],
+)
+async def update_channel(
+    channel_id: uuid.UUID,
+    payload: ChannelUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> ChannelRead:
+    return ChannelRead(**await ChannelService(ctx).update(channel_id, payload))
+
+
+@router.delete(
+    "/channels/{channel_id}",
+    status_code=204,
+    dependencies=[require_permission("notifications.channels.manage")],
+)
+async def delete_channel(
+    channel_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> None:
+    await ChannelService(ctx).delete(channel_id)
+
+
+@router.post(
+    "/channels/{channel_id}/test",
+    response_model=ChannelTestResult,
+    dependencies=[require_permission("notifications.channels.manage")],
+)
+async def test_channel(
+    channel_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> ChannelTestResult:
+    """Send a test message and report the provider's real error (#17)."""
+    return await ChannelService(ctx).test(channel_id)
 
 
 # --- single row (declared last: a static path must never be eaten by ``{id}``) ---------- #

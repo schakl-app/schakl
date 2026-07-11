@@ -14,8 +14,8 @@ from sqlalchemy import ForeignKey, Index, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.assignees import AssigneeLinkMixin
 from app.core.activity import AuditableMixin
+from app.core.assignees import AssigneeLinkMixin
 from app.core.customfields import CustomizableMixin
 from app.core.mixins import OrgScopedMixin, TimestampMixin, UUIDPrimaryKeyMixin
 from app.db import Base

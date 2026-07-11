@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.auth.models import User
-from app.core.auth.users import current_active_user
+from app.core.auth.users import current_active_user_optional
 from app.core.models import Membership, Org, OrgStatus
 from app.core.permissions.models import MembershipRole, RolePermission
 from app.core.permissions.permset import PermissionSet
@@ -128,7 +128,7 @@ class RequestContext:
 
 async def require_context(
     request: Request,
-    user: User = Depends(current_active_user),
+    user: User | None = Depends(current_active_user_optional),
 ) -> AsyncGenerator[RequestContext, None]:
     async with async_session_maker() as session:
         org = await resolve_org(session, request_hostname(request))
@@ -136,6 +136,30 @@ async def require_context(
             raise AppError("unknown_host", "errors.unknown_host", status_code=404)
         if org.status == OrgStatus.SUSPENDED.value:
             raise AppError("org_suspended", "errors.org_suspended", status_code=403)
+
+        # Bind RLS to this org up front: it must be set before the API-key lookup (which is
+        # tenant-scoped, so a key from another org is simply not found) and before the membership
+        # read below.
+        await set_current_org(session, org.id)
+
+        # API-key authentication (#20): if the request carries a key, it yields the same
+        # RequestContext a session would — resolved to the owner (personal) or a synthetic
+        # principal (service account), with permissions capped to the key's scopes.
+        from app.core.apikeys.auth import resolve_api_key_context
+
+        api_ctx = await resolve_api_key_context(request, session, org)
+        if api_ctx is not None:
+            try:
+                yield api_ctx
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+            return
+
+        # No key → a session is required.
+        if user is None:
+            raise AppError("unauthorized", "errors.unauthorized", status_code=401)
 
         # Instance-admin impersonation (issue #26): a valid, time-boxed grant swaps the
         # effective user; authentication above stays the real (superuser) principal.
@@ -150,14 +174,13 @@ async def require_context(
                 impersonator, user = user, target
                 expires_at = claims.expires_at
 
-        # Bind RLS to this org, then verify membership *through* RLS. The permission fetch rides
-        # along on the same statement — one round-trip, whatever the role count. It must stay
-        # *below* the impersonation swap above: permissions resolve for the impersonated member,
-        # never for the instance owner, and ``is_superuser`` never implies ``*``.
+        # Verify membership *through* RLS. The permission fetch rides along on the same statement
+        # — one round-trip, whatever the role count. It must stay *below* the impersonation swap
+        # above: permissions resolve for the impersonated member, never for the instance owner,
+        # and ``is_superuser`` never implies ``*``.
         #
         # ``array_agg(...).filter(...)`` is load-bearing: a bare ``array_agg`` over the LEFT JOIN
         # of a role-less membership yields ``{NULL}``, not an empty array.
-        await set_current_org(session, org.id)
         row = (
             await session.execute(
                 select(

@@ -245,6 +245,14 @@ class NotificationDelivery(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, 
         index=True,
     )
     channel: Mapped[str] = mapped_column(String(20), nullable=False)
+    #: Which configured external channel this attempt targets (#17). ``NULL`` for the in-app
+    #: channel, which writes no rows here anyway.
+    channel_config_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("notification_channels.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="pending", server_default="pending"
     )
@@ -253,3 +261,30 @@ class NotificationDelivery(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, 
     )
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class NotificationChannelConfig(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """A configured external transport (#17): an Apprise URL, encrypted at rest.
+
+    ``kind`` is the transport family (``slack``, ``msteams``, ``gchat``, ``mailto``, ``webhook``)
+    for display and SSRF policy; ``url_enc`` is the full Apprise URL — it embeds bot tokens and
+    webhook secrets, so it is **encrypted** (:mod:`app.core.crypto`) and never returned by the
+    API, only a redacted preview. ``event_filter`` is the event types this channel receives
+    (empty = all). ``user_id`` distinguishes a personal channel (my Slack DM) from an org channel
+    (the team's ``#crm`` room); ``NULL`` = org-wide.
+    """
+
+    __tablename__ = "notification_channels"
+
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    url_enc: Mapped[str] = mapped_column(Text, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    #: Event types routed to this channel; ``[]`` means every event.
+    event_filter: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )

@@ -21,6 +21,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/api-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Personal Keys */
+        get: operations["list_personal_keys_api_v1_api_keys_get"];
+        put?: never;
+        /** Create Personal Key */
+        post: operations["create_personal_key_api_v1_api_keys_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/api-keys/{key_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke Key
+         * @description Revoke a key. Own personal keys need ``apikeys.personal.manage``; the service refines to
+         *     ``apikeys.service_account.manage`` for a service-account key.
+         */
+        post: operations["revoke_key_api_v1_api_keys__key_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/forgot-password": {
         parameters: {
             query?: never;
@@ -574,6 +613,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/leave/contracts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Contracts
+         * @description A user's employment history. Own for a member; anyone's — or everyone's, with
+         *     ``all_users`` — for a manager (the Settings → Users roster).
+         */
+        get: operations["list_contracts_api_v1_leave_contracts_get"];
+        put?: never;
+        /** Create Contract */
+        post: operations["create_contract_api_v1_leave_contracts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/contracts/{contract_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Contract */
+        delete: operations["delete_contract_api_v1_leave_contracts__contract_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Contract */
+        patch: operations["update_contract_api_v1_leave_contracts__contract_id__patch"];
+        trace?: never;
+    };
     "/api/v1/leave/entitlements": {
         parameters: {
             query?: never;
@@ -724,6 +803,70 @@ export interface paths {
         get?: never;
         /** Set Profile */
         put: operations["set_profile_api_v1_leave_profiles__user_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/rate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My Rate
+         * @description The caller's own hourly rate (salary-adjacent — a member sees only their own).
+         */
+        get: operations["my_rate_api_v1_leave_rate_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/rate/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * User Rate
+         * @description One employee's rate. Own on ``:own``; anyone's on ``:any``.
+         */
+        get: operations["user_rate_api_v1_leave_rate__user_id__get"];
+        /**
+         * Set Rate
+         * @description Set or clear an employee's rate (admin). Attributed nowhere — the rate is current state.
+         */
+        put: operations["set_rate_api_v1_leave_rate__user_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/rates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Rates
+         * @description Every employee's rate for the managers' roster. Requires ``leave.rate.read:any``.
+         */
+        get: operations["list_rates_api_v1_leave_rates_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -1179,6 +1322,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/notifications/channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Channels */
+        get: operations["list_channels_api_v1_notifications_channels_get"];
+        put?: never;
+        /** Create Channel */
+        post: operations["create_channel_api_v1_notifications_channels_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/channels/{channel_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Channel */
+        delete: operations["delete_channel_api_v1_notifications_channels__channel_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Channel */
+        patch: operations["update_channel_api_v1_notifications_channels__channel_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/notifications/channels/{channel_id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Channel
+         * @description Send a test message and report the provider's real error (#17).
+         */
+        post: operations["test_channel_api_v1_notifications_channels__channel_id__test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/notifications/mark-all-read": {
         parameters: {
             query?: never;
@@ -1422,6 +1621,59 @@ export interface paths {
          *     editable — that is the sanctioned way to loosen the restrictive ``member`` default.
          */
         patch: operations["update_role_api_v1_roles__role_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/service-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Service Accounts */
+        get: operations["list_service_accounts_api_v1_service_accounts_get"];
+        put?: never;
+        /** Create Service Account */
+        post: operations["create_service_account_api_v1_service_accounts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/service-accounts/{account_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Service Account */
+        delete: operations["delete_service_account_api_v1_service_accounts__account_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/service-accounts/{account_id}/keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Service Account Keys */
+        get: operations["list_service_account_keys_api_v1_service_accounts__account_id__keys_get"];
+        put?: never;
+        /** Create Service Account Key */
+        post: operations["create_service_account_key_api_v1_service_accounts__account_id__keys_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/setup": {
@@ -2227,6 +2479,101 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** ApiKeyCreate */
+        ApiKeyCreate: {
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Name */
+            name: string;
+            /** Scopes */
+            scopes: string[];
+        };
+        /**
+         * ApiKeyCreated
+         * @description The one and only time the full secret is returned — at creation.
+         */
+        ApiKeyCreated: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /** Principal Type */
+            principal_type: string;
+            /** Redacted */
+            redacted: string;
+            /** Revoked At */
+            revoked_at: string | null;
+            /** Scopes */
+            scopes: string[];
+            /** Secret */
+            secret: string;
+            /** Service Account Id */
+            service_account_id: string | null;
+            /** User Id */
+            user_id: string | null;
+        };
+        /** ApiKeyRead */
+        ApiKeyRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /** Principal Type */
+            principal_type: string;
+            /** Redacted */
+            redacted: string;
+            /** Revoked At */
+            revoked_at: string | null;
+            /** Scopes */
+            scopes: string[];
+            /** Service Account Id */
+            service_account_id: string | null;
+            /** User Id */
+            user_id: string | null;
+        };
         /** AssigneeRead */
         AssigneeRead: {
             /** Is Primary */
@@ -2405,6 +2752,75 @@ export interface components {
         BulkResult: {
             /** Updated */
             updated: number;
+        };
+        /** ChannelCreate */
+        ChannelCreate: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Event Filter */
+            event_filter?: string[];
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "slack" | "msteams" | "gchat" | "discord" | "telegram" | "mailto" | "webhook";
+            /** Name */
+            name: string;
+            /** Url */
+            url: string;
+            /** User Id */
+            user_id?: string | null;
+        };
+        /** ChannelRead */
+        ChannelRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Event Filter */
+            event_filter: string[];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /** Redacted */
+            redacted: string;
+            /** User Id */
+            user_id: string | null;
+        };
+        /** ChannelTestResult */
+        ChannelTestResult: {
+            /** Error */
+            error?: string | null;
+            /** Ok */
+            ok: boolean;
+        };
+        /** ChannelUpdate */
+        ChannelUpdate: {
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Event Filter */
+            event_filter?: string[] | null;
+            /** Name */
+            name?: string | null;
+            /** Url */
+            url?: string | null;
         };
         /** ChecklistCreate */
         ChecklistCreate: {
@@ -2985,6 +3401,83 @@ export interface components {
             /** User Id */
             user_id: string;
         };
+        /** EmploymentContractCreate */
+        EmploymentContractCreate: {
+            /** Contract Hours Per Week */
+            contract_hours_per_week: number | string;
+            /** End Date */
+            end_date?: string | null;
+            /** Note */
+            note?: string | null;
+            schedule?: components["schemas"]["WorkSchedule-Input"] | null;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** EmploymentContractRead */
+        EmploymentContractRead: {
+            /** Contract Hours Per Week */
+            contract_hours_per_week: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** End Date */
+            end_date: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Note */
+            note: string | null;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            schedule: components["schemas"]["WorkSchedule-Output"] | null;
+            /** Scheduled Hours Per Week */
+            scheduled_hours_per_week: string;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /**
+         * EmploymentContractUpdate
+         * @description Correcting or terminating a contract. A *changed* contract is a new row, not an edit.
+         */
+        EmploymentContractUpdate: {
+            /** Contract Hours Per Week */
+            contract_hours_per_week?: number | string | null;
+            /** End Date */
+            end_date?: string | null;
+            /** Note */
+            note?: string | null;
+            schedule?: components["schemas"]["WorkSchedule-Input"] | null;
+            /** Start Date */
+            start_date?: string | null;
+        };
         /**
          * EntitlementGenerate
          * @description Fill missing entitlements for a year from each type's default_weeks × contract hours.
@@ -3361,6 +3854,16 @@ export interface components {
             days: string;
             /** Hours */
             hours: string;
+            /**
+             * Requires Approval
+             * @default false
+             */
+            requires_approval: boolean;
+            /**
+             * Touches Past
+             * @default false
+             */
+            touches_past: boolean;
         };
         /**
          * LeaveProfileRead
@@ -3412,6 +3915,24 @@ export interface components {
             /** Hours Per Week */
             hours_per_week?: number | string | null;
             schedule?: components["schemas"]["WorkSchedule-Input"] | null;
+        };
+        /**
+         * LeaveRateRead
+         * @description One employee's hourly rate. ``None`` = no rate recorded (salary-adjacent, gated read).
+         */
+        LeaveRateRead: {
+            /** Hourly Rate */
+            hourly_rate: string | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** LeaveRateUpdate */
+        LeaveRateUpdate: {
+            /** Hourly Rate */
+            hourly_rate?: number | string | null;
         };
         /**
          * LeaveRequestCreate
@@ -3466,6 +3987,8 @@ export interface components {
             end_date: string;
             /** End Time */
             end_time?: string | null;
+            /** Leave Type Id */
+            leave_type_id?: string | null;
             /**
              * Start Date
              * Format: date
@@ -3608,6 +4131,11 @@ export interface components {
         /** LeaveTypeCreate */
         LeaveTypeCreate: {
             /**
+             * Accrues Schedule Gap
+             * @default false
+             */
+            accrues_schedule_gap: boolean;
+            /**
              * Active
              * @default true
              */
@@ -3650,6 +4178,11 @@ export interface components {
         };
         /** LeaveTypeRead */
         LeaveTypeRead: {
+            /**
+             * Accrues Schedule Gap
+             * @default false
+             */
+            accrues_schedule_gap: boolean;
             /**
              * Active
              * @default true
@@ -3713,6 +4246,8 @@ export interface components {
         };
         /** LeaveTypeUpdate */
         LeaveTypeUpdate: {
+            /** Accrues Schedule Gap */
+            accrues_schedule_gap?: boolean | null;
             /** Active */
             active?: boolean | null;
             /** Carry Over Months */
@@ -4532,6 +5067,35 @@ export interface components {
             permissions?: string[] | null;
             /** Position */
             position?: number | null;
+        };
+        /** ServiceAccountCreate */
+        ServiceAccountCreate: {
+            /** Name */
+            name: string;
+        };
+        /** ServiceAccountRead */
+        ServiceAccountRead: {
+            /** Active */
+            active: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By User Id */
+            created_by_user_id: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
         };
         /** SetupRequest */
         SetupRequest: {
@@ -5550,6 +6114,90 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["app__core__activity__schemas__ActivityItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_personal_keys_api_v1_api_keys_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyRead"][];
+                };
+            };
+        };
+    };
+    create_personal_key_api_v1_api_keys_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApiKeyCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_key_api_v1_api_keys__key_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyRead"];
                 };
             };
             /** @description Validation Error */
@@ -7019,6 +7667,135 @@ export interface operations {
             };
         };
     };
+    list_contracts_api_v1_leave_contracts_get: {
+        parameters: {
+            query?: {
+                user_id?: string | null;
+                all_users?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmploymentContractRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_contract_api_v1_leave_contracts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmploymentContractCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmploymentContractRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_contract_api_v1_leave_contracts__contract_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contract_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_contract_api_v1_leave_contracts__contract_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contract_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmploymentContractUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmploymentContractRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_entitlements_api_v1_leave_entitlements_get: {
         parameters: {
             query: {
@@ -7352,6 +8129,112 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_rate_api_v1_leave_rate_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveRateRead"];
+                };
+            };
+        };
+    };
+    user_rate_api_v1_leave_rate__user_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveRateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_rate_api_v1_leave_rate__user_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveRateUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveRateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_rates_api_v1_leave_rates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveRateRead"][];
                 };
             };
         };
@@ -8332,6 +9215,154 @@ export interface operations {
             };
         };
     };
+    list_channels_api_v1_notifications_channels_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelRead"][];
+                };
+            };
+        };
+    };
+    create_channel_api_v1_notifications_channels_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChannelCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_channel_api_v1_notifications_channels__channel_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_channel_api_v1_notifications_channels__channel_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChannelUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_channel_api_v1_notifications_channels__channel_id__test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelTestResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     mark_all_read_api_v1_notifications_mark_all_read_post: {
         parameters: {
             query?: never;
@@ -8932,6 +9963,154 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RoleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_service_accounts_api_v1_service_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceAccountRead"][];
+                };
+            };
+        };
+    };
+    create_service_account_api_v1_service_accounts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServiceAccountCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceAccountRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_service_account_api_v1_service_accounts__account_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_service_account_keys_api_v1_service_accounts__account_id__keys_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_service_account_key_api_v1_service_accounts__account_id__keys_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApiKeyCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyCreated"];
                 };
             };
             /** @description Validation Error */

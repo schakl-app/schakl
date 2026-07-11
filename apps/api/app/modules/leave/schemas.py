@@ -26,6 +26,8 @@ class LeaveTypeBase(BaseModel):
     default_weeks: Decimal | None = Field(default=None, ge=0, le=52)
     # Months into the next year before carried-over hours expire (NL: 6 / 60). None = never.
     carry_over_months: int | None = Field(default=None, ge=0, le=120)
+    # Roostervrij/ADV (#65): entitlement is the scheduled−contract hours gap, not default_weeks.
+    accrues_schedule_gap: bool = False
     position: int = 0
     active: bool = True
 
@@ -42,6 +44,7 @@ class LeaveTypeUpdate(BaseModel):
     requires_approval: bool | None = None
     default_weeks: Decimal | None = Field(default=None, ge=0, le=52)
     carry_over_months: int | None = Field(default=None, ge=0, le=120)
+    accrues_schedule_gap: bool | None = None
     position: int | None = None
     active: bool | None = None
 
@@ -166,6 +169,66 @@ class LeaveProfileUpdate(BaseModel):
     schedule: WorkSchedule | None = None
 
 
+# --- employment contracts (#65) ------------------------------------------------ #
+
+
+class EmploymentContractBase(BaseModel):
+    start_date: date
+    #: ``null`` = open-ended (still employed). Termination = setting this later.
+    end_date: date | None = None
+    #: The legal contract hours — entered, never derived from the schedule.
+    contract_hours_per_week: Decimal = Field(gt=0, le=Decimal("80"))
+    #: An optional schedule on the contract itself; ``null`` follows the profile / org default.
+    schedule: WorkSchedule | None = None
+    note: str | None = None
+
+
+class EmploymentContractCreate(EmploymentContractBase):
+    user_id: uuid.UUID
+
+
+class EmploymentContractUpdate(BaseModel):
+    """Correcting or terminating a contract. A *changed* contract is a new row, not an edit."""
+
+    start_date: date | None = None
+    end_date: date | None = None
+    contract_hours_per_week: Decimal | None = Field(default=None, gt=0, le=Decimal("80"))
+    schedule: WorkSchedule | None = None
+    note: str | None = None
+
+
+class EmploymentContractRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    org_id: uuid.UUID
+    user_id: uuid.UUID
+    start_date: date
+    end_date: date | None
+    contract_hours_per_week: Decimal
+    #: Derived from the effective schedule — the number the ADV gap is measured against.
+    scheduled_hours_per_week: Decimal
+    schedule: WorkSchedule | None
+    note: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+# --- hourly rate (#82) --------------------------------------------------------- #
+
+
+class LeaveRateRead(BaseModel):
+    """One employee's hourly rate. ``None`` = no rate recorded (salary-adjacent, gated read)."""
+
+    user_id: uuid.UUID
+    hourly_rate: Decimal | None
+
+
+class LeaveRateUpdate(BaseModel):
+    #: Explicit ``null`` clears the rate. A rate is money, so it is bounded but never negative.
+    hourly_rate: Decimal | None = Field(default=None, ge=0, le=Decimal("100000"))
+
+
 # --- entitlements -------------------------------------------------------------- #
 
 
@@ -282,6 +345,9 @@ class LeaveRequestPreview(LeaveRequestSpan):
     """What the form asks before it submits, so the number shown is the number stored."""
 
     user_id: uuid.UUID | None = None
+    #: The selected type, so the preview can tell the form whether saving needs (re-)approval
+    #: (#72). Optional: an older client that only wants the hours can omit it.
+    leave_type_id: uuid.UUID | None = None
 
 
 class LeavePreviewResult(BaseModel):
@@ -289,6 +355,13 @@ class LeavePreviewResult(BaseModel):
     #: ``hours`` in average scheduled working days — the "≈ 2 dagen" hint.
     days: Decimal
     breakdown: list[LeaveDayHours]
+    #: Whether saving this span would require a manager's (re-)approval (#72): true when the
+    #: chosen type requires approval, or when the span touches the past. Lets the edit form warn
+    #: "saving this moves it back to pending approval" before submit. ``False`` when no type given.
+    requires_approval: bool = False
+    #: Whether the span reaches before today (org-local). Surfaced so the form can explain *why*
+    #: an otherwise self-service edit still needs approval.
+    touches_past: bool = False
 
 
 # --- balances -------------------------------------------------------------------- #
