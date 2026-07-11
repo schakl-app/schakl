@@ -40,9 +40,13 @@
 
   let open = $state(false);
   let root: HTMLElement | undefined = $state();
-  // The panel is hand-positioned (not a Bits UI popover), so it needs its own collision check: a
-  // trigger near the bottom of the viewport would otherwise open the menu below the fold (#60).
-  let flipUp = $state(false);
+  // The panel renders `position: fixed` at coordinates measured from the trigger, for two
+  // reasons at once: a trigger near the bottom of the *viewport* must flip upward instead of
+  // opening below the fold (#60), and a trigger inside an `overflow` container — every
+  // DataTable wraps its grid in `overflow-x-auto` — must escape it entirely, or the last
+  // row's menu is clipped into a scrollbar and invisible until you scroll the *table*.
+  // Absolute positioning can never do the second; no ancestor class can fix it per screen.
+  let panelStyle = $state("");
 
   function toggle() {
     if (!open && root) {
@@ -50,7 +54,15 @@
       const spaceBelow = window.innerHeight - rect.bottom;
       // The panel height is dynamic; approximate from the item count (~36px each) plus padding.
       const estimated = Math.min(items.length * 36 + 16, 320);
-      flipUp = spaceBelow < estimated && rect.top > spaceBelow;
+      const flipUp = spaceBelow < estimated && rect.top > spaceBelow;
+      const vertical = flipUp
+        ? `bottom: ${window.innerHeight - rect.top + 4}px;`
+        : `top: ${rect.bottom + 4}px;`;
+      const horizontal =
+        align === "right"
+          ? `right: ${Math.max(0, window.innerWidth - rect.right)}px;`
+          : `left: ${rect.left}px;`;
+      panelStyle = vertical + horizontal;
     }
     open = !open;
   }
@@ -77,6 +89,11 @@
   onkeydown={(e) => {
     if (e.key === "Escape") open = false;
   }}
+  onscrollcapture={() => {
+    // Fixed coordinates go stale the moment anything scrolls (page or an inner container);
+    // closing beats chasing the trigger around.
+    if (open) open = false;
+  }}
 />
 
 <div class="relative shrink-0" bind:this={root}>
@@ -94,9 +111,8 @@
   {#if open}
     <div
       role="menu"
-      class="absolute z-30 w-48 rounded-xl border border-border bg-surface-raised py-1 shadow-lg
-        {flipUp ? 'bottom-full mb-1' : 'mt-1'}
-        {align === 'right' ? 'right-0' : 'left-0'}"
+      style={panelStyle}
+      class="fixed z-30 w-48 rounded-xl border border-border bg-surface-raised py-1 shadow-lg"
     >
       {#each items as item (item.label)}
         {@const Icon = item.icon}
