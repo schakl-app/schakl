@@ -562,6 +562,7 @@
   "time.overview.selected": "{count} selected",
   "time.overview.approve": "Approve",
   "time.overview.unapprove": "Undo approval",
+  "time.overview.unapprove_cascade": "Undo approval (also undoes invoicing)",
   "time.overview.mark_invoiced": "Mark invoiced",
   "time.overview.unmark_invoiced": "Undo invoiced",
   "time.overview.invoiced": "Invoiced",

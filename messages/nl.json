@@ -562,6 +562,7 @@
   "time.overview.selected": "{count} geselecteerd",
   "time.overview.approve": "Goedkeuren",
   "time.overview.unapprove": "Goedkeuring ongedaan maken",
+  "time.overview.unapprove_cascade": "Goedkeuring ongedaan maken (maakt facturatie ook ongedaan)",
   "time.overview.mark_invoiced": "Markeren als gefactureerd",
   "time.overview.unmark_invoiced": "Facturatie ongedaan maken",
   "time.overview.invoiced": "Gefactureerd",
