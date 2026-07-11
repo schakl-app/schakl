@@ -198,7 +198,8 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
 - Commits: small, scoped, conventional (`feat(time): add weekly timesheet grid`).
 - **Definition of done** for a feature: migration written, endpoints + tenant scoping,
   **every route declaring a permission** (§15) and its `PermissionSpec`s on the module
-  descriptor with `en`+`nl` labels, web UI, `nl.json` + `en.json` keys, test for tenant
+  descriptor with `en`+`nl` labels, web UI (**every entity-reference picker offers inline-create →
+  full dialog → auto-select**, `docs/UX.md`), `nl.json` + `en.json` keys, test for tenant
   isolation, **a mutable entity records its changes to the activity log and its detail view
   renders the trail** (§16), docs/OpenAPI updated.
 

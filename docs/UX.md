@@ -56,10 +56,18 @@
   `DateInput` (never a bare `<input type="date">` — browsers render those US-style). Its
   calendar popup must anchor to the field. Formatting goes through `core/format.ts`
   (locale → nl-NL / en-GB).
-- **Pickers are type-ahead comboboxes** (`core/ui/Combobox`), never long native selects.
-  Typing an unknown name offers "＋ … toevoegen", opening a *full* create dialog — real
-  fields plus the tenant's custom-field definitions from the API, prefilled with what was
-  typed. Never a name-only stub form.
+- **Pickers are type-ahead comboboxes** (`core/ui/Combobox`), never long native selects, and
+  **every entity-reference picker offers inline-create — this is per-picker definition of done,
+  not an optional flourish.** Typing an unknown name offers "＋ … toevoegen", which opens the
+  entity's *full* create dialog — real fields plus the tenant's custom-field definitions from the
+  API, prefilled with what was typed (never a name-only stub form) — and on save **auto-selects**
+  the new record in the picker, so the user never leaves the surface they were on. The machinery
+  is built into `Combobox`: pass its `oncreate` and follow `contacts/ContactDraftField.svelte`
+  (draft-in-form, auto-selects the new chip) or the `time` page's quick-create (server create →
+  reselect). A picker that only lists preloaded options and sends the user *elsewhere* to create
+  the missing registrar / provider / client is a bug — that is precisely what the first domains and
+  hosting forms shipped as (#115). The one exception is an entity with no create path of its own —
+  an employee is *invited*, not created — so leave those select-only.
 - **Quick-add where the user is**: contacts on the client page, projects/clients from the
   time entry form, checklist items on the card. The full forms still exist on their own
   pages; quick-add is an accelerator, not a replacement.
