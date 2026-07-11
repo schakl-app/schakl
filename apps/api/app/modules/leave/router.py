@@ -18,6 +18,9 @@ from app.modules.leave.models import LeaveRequestStatus
 from app.modules.leave.schedule import WorkSchedule, average_day_hours
 from app.modules.leave.schedule import parse as parse_schedule
 from app.modules.leave.schemas import (
+    EmploymentContractCreate,
+    EmploymentContractRead,
+    EmploymentContractUpdate,
     EntitlementGenerate,
     GenerateResult,
     HolidayImport,
@@ -269,6 +272,84 @@ async def set_profile(
         hours_per_day=average_day_hours(own or await service.default_schedule()),
         schedule=own,
     )
+
+
+# --- employment contracts (#65) ------------------------------------------------ #
+def _contract_read(contract, scheduled_week) -> EmploymentContractRead:
+    return EmploymentContractRead(
+        id=contract.id,
+        org_id=contract.org_id,
+        user_id=contract.user_id,
+        start_date=contract.start_date,
+        end_date=contract.end_date,
+        contract_hours_per_week=contract.contract_hours_per_week,
+        scheduled_hours_per_week=scheduled_week,
+        schedule=parse_schedule(contract.schedule),
+        note=contract.note,
+        created_at=contract.created_at,
+        updated_at=contract.updated_at,
+    )
+
+
+@router.get(
+    "/contracts",
+    response_model=list[EmploymentContractRead],
+    dependencies=[require_permission("leave.request.read")],
+)
+async def list_contracts(
+    user_id: uuid.UUID | None = Query(None),
+    all_users: bool = Query(False),
+    ctx: RequestContext = Depends(require_context),
+) -> list[EmploymentContractRead]:
+    """A user's employment history. Own for a member; anyone's — or everyone's, with
+    ``all_users`` — for a manager (the Settings → Users roster)."""
+    service = LeaveService(ctx)
+    return [
+        _contract_read(contract, scheduled)
+        for contract, scheduled in await service.list_contracts(user_id, all_users=all_users)
+    ]
+
+
+@router.post(
+    "/contracts",
+    response_model=EmploymentContractRead,
+    status_code=201,
+    dependencies=[require_permission("leave.profile.manage")],
+)
+async def create_contract(
+    payload: EmploymentContractCreate,
+    ctx: RequestContext = Depends(require_context),
+) -> EmploymentContractRead:
+    service = LeaveService(ctx)
+    contract = await service.create_contract(payload)
+    return _contract_read(contract, await service.scheduled_week(contract.user_id, contract))
+
+
+@router.patch(
+    "/contracts/{contract_id}",
+    response_model=EmploymentContractRead,
+    dependencies=[require_permission("leave.profile.manage")],
+)
+async def update_contract(
+    contract_id: uuid.UUID,
+    payload: EmploymentContractUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> EmploymentContractRead:
+    service = LeaveService(ctx)
+    contract = await service.update_contract(contract_id, payload)
+    return _contract_read(contract, await service.scheduled_week(contract.user_id, contract))
+
+
+@router.delete(
+    "/contracts/{contract_id}",
+    status_code=204,
+    dependencies=[require_permission("leave.profile.manage")],
+)
+async def delete_contract(
+    contract_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> None:
+    await LeaveService(ctx).delete_contract(contract_id)
 
 
 # --- hourly rate (#82) --------------------------------------------------------- #

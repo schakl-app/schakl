@@ -820,6 +820,8 @@
   "errors.leave_type_in_use": "Dit verloftype is in gebruik en kan alleen gedeactiveerd worden.",
   "errors.leave_end_before_start": "De einddatum ligt vóór de begindatum.",
   "errors.leave_no_working_hours": "Deze periode bevat geen geroosterde werkuren.",
+  "errors.leave_past_locked": "Verlof in het verleden kan alleen door een beheerder worden geregistreerd of gewijzigd.",
+  "errors.leave_contract_overlap": "Deze contractperiode overlapt met een andere van dezelfde medewerker.",
   "errors.leave_end_time_before_start": "De eindtijd ligt niet na de begintijd.",
   "errors.leave_holiday_exists": "Er staat al een feestdag op die datum.",
   "errors.leave_schedule_day_invalid": "Het einde van de werkdag ligt niet na het begin.",
@@ -1086,5 +1088,16 @@
   "settings.users.rate_value": "€ {rate} / uur",
   "settings.users.rate_label": "Uurtarief (€)",
   "settings.users.rate_placeholder": "bijv. 85,00",
-  "settings.users.rate_hint": "Gebruikt om waarde en resterend budget per medewerker te berekenen. Laat leeg voor geen tarief."
+  "settings.users.rate_hint": "Gebruikt om waarde en resterend budget per medewerker te berekenen. Laat leeg voor geen tarief.",
+  "settings.users.contracts": "Contracten",
+  "settings.users.contract_hours_value": "{hours} u/week contract",
+  "settings.users.contract_scheduled": "{hours} u geroosterd",
+  "settings.users.contract_open": "doorlopend",
+  "settings.users.contract_terminate": "Beëindigen",
+  "settings.users.contract_empty": "Nog geen arbeidscontract — verlof valt terug op de geroosterde uren.",
+  "settings.users.contract_add": "Contract toevoegen",
+  "settings.users.contract_start": "Begin",
+  "settings.users.contract_end": "Einde (optioneel)",
+  "settings.users.contract_hours": "Contracturen/week",
+  "settings.users.contract_hint": "Contracturen zijn het juridische getal (bijv. 38), los van de geroosterde week. Het verschil bouwt op als roostervrije tijd (ADV). Een gewijzigd contract is een nieuwe regel, geen bewerking."
 }

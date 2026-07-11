@@ -26,6 +26,8 @@ class LeaveTypeBase(BaseModel):
     default_weeks: Decimal | None = Field(default=None, ge=0, le=52)
     # Months into the next year before carried-over hours expire (NL: 6 / 60). None = never.
     carry_over_months: int | None = Field(default=None, ge=0, le=120)
+    # Roostervrij/ADV (#65): entitlement is the scheduled−contract hours gap, not default_weeks.
+    accrues_schedule_gap: bool = False
     position: int = 0
     active: bool = True
 
@@ -42,6 +44,7 @@ class LeaveTypeUpdate(BaseModel):
     requires_approval: bool | None = None
     default_weeks: Decimal | None = Field(default=None, ge=0, le=52)
     carry_over_months: int | None = Field(default=None, ge=0, le=120)
+    accrues_schedule_gap: bool | None = None
     position: int | None = None
     active: bool | None = None
 
@@ -164,6 +167,51 @@ class LeaveProfileUpdate(BaseModel):
     hours_per_week: Decimal | None = Field(default=None, gt=0, le=Decimal("80"))
     #: Explicit ``null`` clears the employee's own schedule → back to the org default.
     schedule: WorkSchedule | None = None
+
+
+# --- employment contracts (#65) ------------------------------------------------ #
+
+
+class EmploymentContractBase(BaseModel):
+    start_date: date
+    #: ``null`` = open-ended (still employed). Termination = setting this later.
+    end_date: date | None = None
+    #: The legal contract hours — entered, never derived from the schedule.
+    contract_hours_per_week: Decimal = Field(gt=0, le=Decimal("80"))
+    #: An optional schedule on the contract itself; ``null`` follows the profile / org default.
+    schedule: WorkSchedule | None = None
+    note: str | None = None
+
+
+class EmploymentContractCreate(EmploymentContractBase):
+    user_id: uuid.UUID
+
+
+class EmploymentContractUpdate(BaseModel):
+    """Correcting or terminating a contract. A *changed* contract is a new row, not an edit."""
+
+    start_date: date | None = None
+    end_date: date | None = None
+    contract_hours_per_week: Decimal | None = Field(default=None, gt=0, le=Decimal("80"))
+    schedule: WorkSchedule | None = None
+    note: str | None = None
+
+
+class EmploymentContractRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    org_id: uuid.UUID
+    user_id: uuid.UUID
+    start_date: date
+    end_date: date | None
+    contract_hours_per_week: Decimal
+    #: Derived from the effective schedule — the number the ADV gap is measured against.
+    scheduled_hours_per_week: Decimal
+    schedule: WorkSchedule | None
+    note: str | None
+    created_at: datetime
+    updated_at: datetime
 
 
 # --- hourly rate (#82) --------------------------------------------------------- #

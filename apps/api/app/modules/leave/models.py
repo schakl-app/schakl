@@ -66,6 +66,13 @@ class LeaveType(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     requires_approval: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     default_weeks: Mapped[Decimal | None] = mapped_column(Numeric(4, 2), nullable=True)
     carry_over_months: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: Roostervrije tijd / ADV (#65): this type's yearly entitlement is not ``default_weeks``
+    #: but the *gap* between scheduled and contract hours — ``(scheduled − contract) × weeks``.
+    #: A flag, not the type ``key``, so a tenant may rename or re-seed it without breaking the
+    #: computation. Only meaningful when the employee has a contract whose hours are below their
+    #: scheduled week; otherwise the gap is zero and nothing is granted. Dutch CAO artifact, so
+    #: it ships switch-off-able (deactivate the type), never assumed.
+    accrues_schedule_gap: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
@@ -222,3 +229,46 @@ class LeaveRequest(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     )
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     decision_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class EmploymentContract(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """An employment period with its **contract** hours (#65) — a legal fact, distinct at last
+    from *scheduled* hours.
+
+    ``contract_hours_per_week`` is **entered** (a 38-hour contract is 38 whether or not the week
+    is worked as 40 scheduled hours). ``scheduled_hours_per_week`` stays **derived** from the
+    schedule (``LeaveProfile.schedule``); the two finally living apart is the whole point. The gap
+    between them accrues as roostervrije tijd / ADV.
+
+    A contract is a *period*: ``end_date`` NULL means open-ended (the "not ending" option). A new
+    contract (32 h → 38 h) is a **new row**, never an in-place edit — history is preserved.
+    Termination sets ``end_date`` on the current row. Contracts for one user must not overlap;
+    enforced in the service (a Postgres ``daterange`` exclusion constraint would need
+    ``btree_gist``, which the app role cannot create, so the check lives in the tenant-scoped
+    layer where RLS already holds).
+
+    Entitlement then prorates over the overlap of ``[start_date, end_date]`` with the year, and
+    "who is staff for year N" becomes "has a contract overlapping year N" — a departed employee
+    stops accruing when their contract ends, not when a permission is finally revoked.
+    """
+
+    __tablename__ = "employment_contracts"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    start_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    #: ``NULL`` = open-ended (still employed). Termination = setting this, not deleting the row.
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    #: The legal contract hours — entered, never derived. Statutory vacation and ADV both key off
+    #: this, not off the scheduled week.
+    contract_hours_per_week: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    #: An optional schedule captured on the contract itself (a schedule change usually *is* a
+    #: contract change). ``NULL`` = follow ``LeaveProfile.schedule`` / the org default. The
+    #: effective scheduled week is still resolved through the profile today; this column is the
+    #: seam for moving it onto the contract later without another migration.
+    schedule: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)

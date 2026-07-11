@@ -820,6 +820,8 @@
   "errors.leave_type_in_use": "This leave type is in use and can only be deactivated.",
   "errors.leave_end_before_start": "The end date is before the start date.",
   "errors.leave_no_working_hours": "This period contains no scheduled working hours.",
+  "errors.leave_past_locked": "Leave in the past can only be registered or changed by a manager.",
+  "errors.leave_contract_overlap": "This contract period overlaps another for the same employee.",
   "errors.leave_end_time_before_start": "The end time is not after the start time.",
   "errors.leave_holiday_exists": "There is already a holiday on that date.",
   "errors.leave_schedule_day_invalid": "The end of the working day is not after its start.",
@@ -1086,5 +1088,16 @@
   "settings.users.rate_value": "€ {rate} / hour",
   "settings.users.rate_label": "Hourly rate (€)",
   "settings.users.rate_placeholder": "e.g. 85.00",
-  "settings.users.rate_hint": "Used to compute value and remaining budget per employee. Leave empty for no rate."
+  "settings.users.rate_hint": "Used to compute value and remaining budget per employee. Leave empty for no rate.",
+  "settings.users.contracts": "Contracts",
+  "settings.users.contract_hours_value": "{hours} h/week contract",
+  "settings.users.contract_scheduled": "{hours} h scheduled",
+  "settings.users.contract_open": "open-ended",
+  "settings.users.contract_terminate": "Terminate",
+  "settings.users.contract_empty": "No employment contract yet — leave falls back to scheduled hours.",
+  "settings.users.contract_add": "Add contract",
+  "settings.users.contract_start": "Start",
+  "settings.users.contract_end": "End (optional)",
+  "settings.users.contract_hours": "Contract hours/week",
+  "settings.users.contract_hint": "Contract hours are the legal number (e.g. 38), distinct from the scheduled week. The gap accrues as rostered days off (ADV). A changed contract is a new row, not an edit."
 }

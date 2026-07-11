@@ -12,7 +12,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, date, datetime, time, timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import func, select
 
@@ -27,6 +27,7 @@ from app.errors import AppError
 from app.modules.leave import holidays
 from app.modules.leave import schedule as sched
 from app.modules.leave.models import (
+    EmploymentContract,
     LeaveEntitlement,
     LeaveHoliday,
     LeaveProfile,
@@ -36,6 +37,8 @@ from app.modules.leave.models import (
     LeaveType,
 )
 from app.modules.leave.schemas import (
+    EmploymentContractCreate,
+    EmploymentContractUpdate,
     HolidayImport,
     HolidayImportResult,
     LeaveBalance,
@@ -80,6 +83,21 @@ DEFAULT_LEAVE_TYPES: list[dict] = [
         "default_weeks": Decimal("1"),
         "carry_over_months": 60,
         "position": 20,
+    },
+    {
+        # Roostervrije tijd / ADV (#65): a movable free day drawn from the gap between the
+        # scheduled and the contract week. Auto-approve (the employee moves it themselves),
+        # balance-tracked, no carry-over by default (tenant-editable — never hardcoded law, §14).
+        "key": "roostervrij",
+        "label_i18n": {"nl": "Roostervrije tijd (ADV)", "en": "Rostered days off (ADV)"},
+        "color": "cyan",
+        "paid": True,
+        "tracks_balance": True,
+        "requires_approval": False,
+        "accrues_schedule_gap": True,
+        "default_weeks": None,
+        "carry_over_months": 0,
+        "position": 25,
     },
     {
         "key": "sick",
@@ -152,6 +170,7 @@ class LeaveService:
         self.entitlements = ctx.repo(LeaveEntitlement)
         self.settings = ctx.repo(LeaveSettings)
         self.holidays = ctx.repo(LeaveHoliday)
+        self.contracts = ctx.repo(EmploymentContract)
         # One settings read per request, not one per profile resolved (docs/PERFORMANCE.md).
         self._settings_row: LeaveSettings | None | object = _UNSET
 
@@ -517,6 +536,139 @@ class LeaveService:
             )
         return await self.profiles.update(profile, hourly_rate=rate)
 
+    # --- employment contracts (#65) ---------------------------------------------- #
+    @staticmethod
+    def _intervals_overlap(
+        a_start: date, a_end: date | None, b_start: date, b_end: date | None
+    ) -> bool:
+        """Do two employment periods overlap? ``None`` end = open-ended (runs to ``date.max``)."""
+        return a_start <= (b_end or date.max) and b_start <= (a_end or date.max)
+
+    async def _user_contracts(self, user_id: uuid.UUID) -> list[EmploymentContract]:
+        return list(
+            (
+                await self.ctx.session.execute(
+                    self.contracts.scoped_select()
+                    .where(EmploymentContract.user_id == user_id)
+                    .order_by(EmploymentContract.start_date.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    async def scheduled_week(self, user_id: uuid.UUID, contract: EmploymentContract) -> Decimal:
+        """Scheduled hours the ADV gap is measured against: the contract's own schedule if it
+        carries one, else the employee's profile schedule, else the org default."""
+        own = sched.parse(contract.schedule)
+        if own is not None:
+            return sched.week_hours(own)
+        return await self.hours_per_week(user_id)
+
+    async def list_contracts(
+        self, user_id: uuid.UUID | None = None, *, all_users: bool = False
+    ) -> list[tuple[EmploymentContract, Decimal]]:
+        """Contracts + their scheduled week. Managers see anyone's (or everyone's, for the
+        roster); a member only their own."""
+        if all_users:
+            self.ctx.require("leave.profile.manage")
+            contracts = (
+                (
+                    await self.ctx.session.execute(
+                        self.contracts.scoped_select().order_by(
+                            EmploymentContract.user_id,
+                            EmploymentContract.start_date.asc(),
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            return [(c, await self.scheduled_week(c.user_id, c)) for c in contracts]
+        uid = user_id or self.ctx.user.id
+        if uid != self.ctx.user.id:
+            self.ctx.require("leave.profile.manage")
+        contracts = await self._user_contracts(uid)
+        return [(c, await self.scheduled_week(uid, c)) for c in contracts]
+
+    async def create_contract(self, data: EmploymentContractCreate) -> EmploymentContract:
+        self.ctx.require("leave.profile.manage")
+        await self._member_or_404(data.user_id)
+        self._validate_contract_dates(data.start_date, data.end_date)
+        await self._ensure_no_contract_overlap(
+            data.user_id, data.start_date, data.end_date, exclude_id=None
+        )
+        values = data.model_dump(exclude={"schedule"})
+        values["schedule"] = sched.dump(data.schedule) if data.schedule else None
+        return await self.contracts.create(**values)
+
+    async def update_contract(
+        self, contract_id: uuid.UUID, data: EmploymentContractUpdate
+    ) -> EmploymentContract:
+        self.ctx.require("leave.profile.manage")
+        contract = await self.contracts.get_or_404(contract_id)
+        values = data.model_dump(exclude_unset=True, exclude={"schedule"})
+        if "schedule" in data.model_fields_set:
+            values["schedule"] = sched.dump(data.schedule) if data.schedule else None
+        start = values.get("start_date", contract.start_date)
+        end = values.get("end_date", contract.end_date)
+        self._validate_contract_dates(start, end)
+        await self._ensure_no_contract_overlap(
+            contract.user_id, start, end, exclude_id=contract.id
+        )
+        return await self.contracts.update(contract, **values)
+
+    async def delete_contract(self, contract_id: uuid.UUID) -> None:
+        self.ctx.require("leave.profile.manage")
+        await self.contracts.delete(await self.contracts.get_or_404(contract_id))
+
+    def _validate_contract_dates(self, start: date, end: date | None) -> None:
+        if end is not None and end < start:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"end_date": "errors.leave_end_before_start"},
+            )
+
+    async def _ensure_no_contract_overlap(
+        self, user_id: uuid.UUID, start: date, end: date | None, *, exclude_id: uuid.UUID | None
+    ) -> None:
+        """Contracts for one user must not overlap (enforced here — see the model docstring)."""
+        for other in await self._user_contracts(user_id):
+            if exclude_id is not None and other.id == exclude_id:
+                continue
+            if self._intervals_overlap(start, end, other.start_date, other.end_date):
+                raise AppError(
+                    "conflict", "errors.leave_contract_overlap", status_code=409
+                )
+
+    def _contracts_in_year(
+        self, contracts: Sequence[EmploymentContract], year: int
+    ) -> list[EmploymentContract]:
+        jan, dec = date(year, 1, 1), date(year, 12, 31)
+        return [
+            c
+            for c in contracts
+            if self._intervals_overlap(c.start_date, c.end_date, jan, dec)
+        ]
+
+    @staticmethod
+    def _year_overlap_days(contract: EmploymentContract, year: int) -> int:
+        """Days of ``year`` this contract covers (inclusive)."""
+        start = max(contract.start_date, date(year, 1, 1))
+        end = min(contract.end_date or date(year, 12, 31), date(year, 12, 31))
+        return (end - start).days + 1 if end >= start else 0
+
+    @staticmethod
+    def _round_half_day(hours: Decimal, avg_day_hours: Decimal) -> Decimal:
+        """ADV accrues in awkward totals (104,3 h); round to the nearest bookable half day."""
+        half = avg_day_hours / 2
+        if half <= 0:
+            return hours.quantize(Decimal("0.01"))
+        steps = (hours / half).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        return (steps * half).quantize(Decimal("0.01"))
+
     # --- entitlements ------------------------------------------------------------ #
     async def list_entitlements(
         self, *, year: int, user_id: uuid.UUID | None = None
@@ -543,16 +695,30 @@ class LeaveService:
         return await self.entitlements.update(existing, hours=data.hours, note=data.note)
 
     async def generate_entitlements(self, year: int) -> int:
-        """Create missing entitlements: default_weeks × contract hours, per staff member."""
+        """Create missing entitlements for a year (#65).
+
+        Two families of balance-tracked type:
+          * ``default_weeks`` types (statutory/extra vacation) → ``weeks × contract hours``,
+            **prorated** over the days each contract covers of the year;
+          * ``accrues_schedule_gap`` types (roostervrije tijd / ADV) → the scheduled-minus-contract
+            hours gap × the weeks the contract runs in the year, rounded to the nearest half day.
+
+        Contract hours are the legal number, not the scheduled week: a 38-hour contract worked as
+        40 scheduled hours gets ``4 × 38`` statutory hours and ``2 × weeks`` of ADV. An employee
+        with **no** contract falls back to the pre-#65 behaviour — a full year on their *scheduled*
+        hours — so upgrading moves nobody's balance and needs no contract backfill.
+
+        "Who is staff for year N" is anyone with a contract overlapping the year, unioned with the
+        legacy ``time.entry.write`` holders so a contract-less org still generates.
+        """
         self.ctx.require("leave.entitlement.write")
-        types = [
-            t
-            for t in await self.list_types()
-            if t.tracks_balance and t.default_weeks is not None
+        all_types = await self.list_types()
+        weeks_types = [
+            t for t in all_types if t.tracks_balance and t.default_weeks is not None
         ]
-        # Who accrues leave: the people who log hours here (issue #19). One indexed, DISTINCT
-        # query — a user holding two granting roles must not be entitled twice.
-        staff = (
+        gap_types = [t for t in all_types if t.tracks_balance and t.accrues_schedule_gap]
+
+        legacy_staff = set(
             (
                 await self.ctx.session.execute(
                     permission_holder_ids(self.ctx.org.id, "time.entry.write")
@@ -561,26 +727,70 @@ class LeaveService:
             .scalars()
             .all()
         )
-        existing = {
-            (e.user_id, e.leave_type_id)
-            for e in await self.list_entitlements(year=year)
+        contract_rows = (
+            (await self.ctx.session.execute(self.contracts.scoped_select())).scalars().all()
+        )
+        contracts_by_user: dict[uuid.UUID, list[EmploymentContract]] = {}
+        for contract in contract_rows:
+            contracts_by_user.setdefault(contract.user_id, []).append(contract)
+        contract_staff = {
+            uid
+            for uid, cs in contracts_by_user.items()
+            if self._contracts_in_year(cs, year)
         }
-        # Contract hours for everyone in one read, not one per employee — the profile table is
-        # one row per member and this loop used to grow a query per person (docs/PERFORMANCE.md).
+        staff = legacy_staff | contract_staff
+
+        existing = {
+            (e.user_id, e.leave_type_id) for e in await self.list_entitlements(year=year)
+        }
         default = await self.default_schedule()
         rows = (await self.ctx.session.execute(self.profiles.scoped_select())).scalars().all()
         by_user = {p.user_id: p for p in rows}
+        year_days = (date(year, 12, 31) - date(year, 1, 1)).days + 1
+
         created = 0
         for user_id in staff:
-            _, hours_week, _ = self._effective(by_user.get(user_id), default)
-            for leave_type in types:
+            contracts_year = self._contracts_in_year(contracts_by_user.get(user_id, []), year)
+            schedule, scheduled_week, _ = self._effective(by_user.get(user_id), default)
+            avg_day = sched.average_day_hours(schedule)
+
+            for leave_type in weeks_types:
                 if (user_id, leave_type.id) in existing:
                     continue
+                weeks = leave_type.default_weeks or Decimal(0)
+                if contracts_year:
+                    hours = sum(
+                        (
+                            weeks
+                            * c.contract_hours_per_week
+                            * Decimal(self._year_overlap_days(c, year))
+                            / Decimal(year_days)
+                            for c in contracts_year
+                        ),
+                        Decimal(0),
+                    ).quantize(Decimal("0.01"))
+                else:
+                    hours = (weeks * scheduled_week).quantize(Decimal("0.01"))
                 await self.entitlements.create(
-                    user_id=user_id,
-                    leave_type_id=leave_type.id,
-                    year=year,
-                    hours=(leave_type.default_weeks or 0) * hours_week,
+                    user_id=user_id, leave_type_id=leave_type.id, year=year, hours=hours
+                )
+                created += 1
+
+            for leave_type in gap_types:
+                if (user_id, leave_type.id) in existing:
+                    continue
+                total = Decimal(0)
+                for c in contracts_year:
+                    gap = (await self.scheduled_week(user_id, c)) - c.contract_hours_per_week
+                    if gap <= 0:
+                        continue
+                    total += gap * Decimal(self._year_overlap_days(c, year)) / Decimal(7)
+                hours = self._round_half_day(total, avg_day) if total > 0 else Decimal("0.00")
+                if hours <= 0:
+                    # No scheduling gap → no ADV. Don't clutter the balance with a zero row.
+                    continue
+                await self.entitlements.create(
+                    user_id=user_id, leave_type_id=leave_type.id, year=year, hours=hours
                 )
                 created += 1
         return created
@@ -694,6 +904,19 @@ class LeaveService:
         """Today in the org's own zone (CLAUDE.md §8). "The past" is a local-calendar concept:
         a request touches the past when it reaches before *this* date, not before UTC midnight."""
         return datetime.now(await org_zoneinfo(self.ctx.session, self.ctx.org.id)).date()
+
+    def _may_backdate(self) -> bool:
+        """Only a caller who may act on *anyone's* leave may reach into the past (#65 §6).
+
+        Leave registered on someone's behalf (a retroactive ``ziekmelding``) is past-dated by
+        nature, so ``leave.request.write:any`` may backdate; a member on ``:own`` may not create,
+        move or cancel leave that touches the past — the closed calendar is not theirs to rewrite.
+        """
+        return self.ctx.can("leave.request.write", scope="any")
+
+    async def _ensure_may_backdate(self, touches_past: bool) -> None:
+        if touches_past and not self._may_backdate():
+            raise AppError("past_locked", "errors.leave_past_locked", status_code=403)
 
     async def preview(self, data: LeaveRequestPreview) -> LeavePreviewResult:
         """What the form shows before submitting — the number the server will store."""
@@ -824,6 +1047,8 @@ class LeaveService:
         leave_type = await self.types.get_or_404(data.leave_type_id)
         if not leave_type.active:
             raise AppError("validation", "errors.validation", status_code=422)
+        # A member may not book leave in the past; a manager registering it (a sick call) may (#65).
+        await self._ensure_may_backdate(data.start_date < await self._org_today())
         # Setting `hours` by hand is an approver's act, and it is recorded as one.
         if data.hours_override is not None:
             self.ctx.require("leave.request.approve")
@@ -960,6 +1185,17 @@ class LeaveService:
         today = await self._org_today()
         touches_past = start_date < today or request.start_date < today
         needs_approval = leave_type.requires_approval or touches_past
+        # Moving a request into or within the past is a manager's act (#65 §6). A note-only edit
+        # leaves the span alone and is never blocked — that is why the guard keys off the span
+        # changing, not merely off the request already touching the past.
+        span_changed = (
+            start_date != request.start_date
+            or start_time != request.start_time
+            or end_date != request.end_date
+            or end_time != request.end_time
+        )
+        if span_changed:
+            await self._ensure_may_backdate(touches_past)
 
         bounce = (
             request.status == LeaveRequestStatus.APPROVED.value
@@ -1017,11 +1253,12 @@ class LeaveService:
         """
         request = await self._owned_or_404(request_id)
         self._ensure_writable(request)
+        # Cancelling past-dated leave rewrites the closed calendar — a manager's act (#65 §6).
+        await self._ensure_may_backdate(request.start_date < await self._org_today())
         if request.status == LeaveRequestStatus.APPROVED.value:
             if not self.ctx.can("leave.request.approve"):
                 leave_type = await self.types.get_or_404(request.leave_type_id)
-                touches_past = request.start_date < await self._org_today()
-                if leave_type.requires_approval or touches_past:
+                if leave_type.requires_approval:
                     raise AppError("approved_locked", "errors.approved_locked", status_code=403)
         elif request.status != LeaveRequestStatus.PENDING.value:
             raise AppError("conflict", "errors.leave_decided", status_code=409)

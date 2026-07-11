@@ -49,7 +49,7 @@ _DOMAIN_TABLES = (
     "task_label_links, task_labels, "
     "task_comments, task_activities, task_template_items, task_templates, "
     "leave_requests, leave_entitlements, leave_profiles, leave_types, "
-    "leave_holidays, leave_settings, "
+    "leave_holidays, leave_settings, employment_contracts, "
     "time_entries, tasks, projects, contacts, custom_field_definitions, "
     "activity_log, dashboard_prefs, user_prefs, companies, "
     "role_audit_log, membership_roles, role_permissions, roles, memberships, org_settings, "

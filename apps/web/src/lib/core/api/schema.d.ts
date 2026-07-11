@@ -574,6 +574,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/leave/contracts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Contracts
+         * @description A user's employment history. Own for a member; anyone's — or everyone's, with
+         *     ``all_users`` — for a manager (the Settings → Users roster).
+         */
+        get: operations["list_contracts_api_v1_leave_contracts_get"];
+        put?: never;
+        /** Create Contract */
+        post: operations["create_contract_api_v1_leave_contracts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/contracts/{contract_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Contract */
+        delete: operations["delete_contract_api_v1_leave_contracts__contract_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Contract */
+        patch: operations["update_contract_api_v1_leave_contracts__contract_id__patch"];
+        trace?: never;
+    };
     "/api/v1/leave/entitlements": {
         parameters: {
             query?: never;
@@ -3013,6 +3053,83 @@ export interface components {
             /** User Id */
             user_id: string;
         };
+        /** EmploymentContractCreate */
+        EmploymentContractCreate: {
+            /** Contract Hours Per Week */
+            contract_hours_per_week: number | string;
+            /** End Date */
+            end_date?: string | null;
+            /** Note */
+            note?: string | null;
+            schedule?: components["schemas"]["WorkSchedule-Input"] | null;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** EmploymentContractRead */
+        EmploymentContractRead: {
+            /** Contract Hours Per Week */
+            contract_hours_per_week: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** End Date */
+            end_date: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Note */
+            note: string | null;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            schedule: components["schemas"]["WorkSchedule-Output"] | null;
+            /** Scheduled Hours Per Week */
+            scheduled_hours_per_week: string;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /**
+         * EmploymentContractUpdate
+         * @description Correcting or terminating a contract. A *changed* contract is a new row, not an edit.
+         */
+        EmploymentContractUpdate: {
+            /** Contract Hours Per Week */
+            contract_hours_per_week?: number | string | null;
+            /** End Date */
+            end_date?: string | null;
+            /** Note */
+            note?: string | null;
+            schedule?: components["schemas"]["WorkSchedule-Input"] | null;
+            /** Start Date */
+            start_date?: string | null;
+        };
         /**
          * EntitlementGenerate
          * @description Fill missing entitlements for a year from each type's default_weeks × contract hours.
@@ -3600,6 +3717,11 @@ export interface components {
         /** LeaveTypeCreate */
         LeaveTypeCreate: {
             /**
+             * Accrues Schedule Gap
+             * @default false
+             */
+            accrues_schedule_gap: boolean;
+            /**
              * Active
              * @default true
              */
@@ -3642,6 +3764,11 @@ export interface components {
         };
         /** LeaveTypeRead */
         LeaveTypeRead: {
+            /**
+             * Accrues Schedule Gap
+             * @default false
+             */
+            accrues_schedule_gap: boolean;
             /**
              * Active
              * @default true
@@ -3705,6 +3832,8 @@ export interface components {
         };
         /** LeaveTypeUpdate */
         LeaveTypeUpdate: {
+            /** Accrues Schedule Gap */
+            accrues_schedule_gap?: boolean | null;
             /** Active */
             active?: boolean | null;
             /** Carry Over Months */
@@ -6998,6 +7127,135 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LeaveBalance"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_contracts_api_v1_leave_contracts_get: {
+        parameters: {
+            query?: {
+                user_id?: string | null;
+                all_users?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmploymentContractRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_contract_api_v1_leave_contracts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmploymentContractCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmploymentContractRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_contract_api_v1_leave_contracts__contract_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contract_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_contract_api_v1_leave_contracts__contract_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contract_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmploymentContractUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmploymentContractRead"];
                 };
             };
             /** @description Validation Error */

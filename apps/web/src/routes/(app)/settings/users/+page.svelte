@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { BadgeEuro, CalendarClock, UserMinus } from "@lucide/svelte";
+  import { BadgeEuro, CalendarClock, FileText, Trash2, UserMinus } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
@@ -80,6 +80,21 @@
     rateOpen = true;
   }
 
+  // --- employment contracts (#65) -----------------------------------------------
+  const contractsByUser = $derived.by(() => {
+    const map: Record<string, typeof data.contracts> = {};
+    for (const c of data.contracts ?? []) (map[c.user_id] ??= []).push(c);
+    return map;
+  });
+  let contractsOpen = $state(false);
+  let contractsFor = $state<Member | null>(null);
+  const todayIso = new Date().toISOString().slice(0, 10);
+
+  function openContracts(member: Member) {
+    contractsFor = member;
+    contractsOpen = true;
+  }
+
   function memberActions(member: Member) {
     const items = [];
     if (data.schedules) {
@@ -87,6 +102,11 @@
         label: t("settings.users.schedule"),
         icon: CalendarClock,
         onclick: () => openSchedule(member),
+      });
+      items.push({
+        label: t("settings.users.contracts"),
+        icon: FileText,
+        onclick: () => openContracts(member),
       });
     }
     if (data.rates) {
@@ -365,6 +385,119 @@
           >
             {t("common.save")}
           </button>
+        </form>
+      </div>
+    {/key}
+  {/if}
+</Modal>
+
+<!-- Employment contracts (#65): contract hours, distinct from scheduled hours; ADV accrues on
+     the gap. A changed contract is a new row, so this is add + terminate, never edit-in-place. -->
+<Modal bind:open={contractsOpen} title={t("settings.users.contracts")}>
+  {#if contractsFor}
+    {#key contractsFor.user_id}
+      {@const rows = contractsByUser[contractsFor.user_id] ?? []}
+      <div class="space-y-4">
+        <p class="text-sm text-text-muted">{contractsFor.full_name || contractsFor.email}</p>
+
+        {#if rows.length > 0}
+          <ul class="divide-y divide-border rounded-lg border border-border">
+            {#each rows as contract (contract.id)}
+              <li class="flex items-center gap-3 px-3 py-2 text-sm">
+                <div class="min-w-0 flex-1">
+                  <span class="font-medium text-text">
+                    {t("settings.users.contract_hours_value", {
+                      hours: fmtHours(contract.contract_hours_per_week),
+                    })}
+                  </span>
+                  <span class="block text-xs text-text-muted">
+                    {contract.start_date} → {contract.end_date ?? t("settings.users.contract_open")}
+                    · {t("settings.users.contract_scheduled", {
+                      hours: fmtHours(contract.scheduled_hours_per_week),
+                    })}
+                  </span>
+                </div>
+                {#if !contract.end_date}
+                  <form method="POST" action="?/terminateContract" use:enhance>
+                    <input type="hidden" name="contract_id" value={contract.id} />
+                    <input type="hidden" name="end_date" value={todayIso} />
+                    <button
+                      class="rounded-lg border border-border px-2 py-1 text-xs text-text-muted hover:text-text"
+                      title={t("settings.users.contract_terminate")}
+                    >
+                      {t("settings.users.contract_terminate")}
+                    </button>
+                  </form>
+                {/if}
+                <form method="POST" action="?/deleteContract" use:enhance>
+                  <input type="hidden" name="contract_id" value={contract.id} />
+                  <button
+                    class="rounded-lg p-1 text-text-muted hover:text-red-600 dark:hover:text-red-400"
+                    title={t("common.delete")}
+                    aria-label={t("common.delete")}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </form>
+              </li>
+            {/each}
+          </ul>
+        {:else}
+          <p class="rounded-lg bg-surface px-3 py-2 text-xs text-text-muted">
+            {t("settings.users.contract_empty")}
+          </p>
+        {/if}
+
+        <form
+          method="POST"
+          action="?/saveContract"
+          class="space-y-3 border-t border-border pt-4"
+          use:enhance={() =>
+            ({ result, update }) => {
+              if (result.type === "success") void update({ reset: true });
+              else void update({ reset: false });
+            }}
+        >
+          <input type="hidden" name="user_id" value={contractsFor.user_id} />
+          <p class="text-xs font-semibold uppercase tracking-wide text-text-muted">
+            {t("settings.users.contract_add")}
+          </p>
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div>
+              <label for="c-start" class="mb-1 block text-xs text-text-muted"
+                >{t("settings.users.contract_start")}</label
+              >
+              <input id="c-start" name="start_date" type="date" required class={inputClass} />
+            </div>
+            <div>
+              <label for="c-end" class="mb-1 block text-xs text-text-muted"
+                >{t("settings.users.contract_end")}</label
+              >
+              <input id="c-end" name="end_date" type="date" class={inputClass} />
+            </div>
+            <div>
+              <label for="c-hours" class="mb-1 block text-xs text-text-muted"
+                >{t("settings.users.contract_hours")}</label
+              >
+              <input
+                id="c-hours"
+                name="contract_hours_per_week"
+                inputmode="decimal"
+                required
+                placeholder="38"
+                class={inputClass}
+              />
+            </div>
+          </div>
+          <p class="text-xs text-text-muted">{t("settings.users.contract_hint")}</p>
+          {#if form?.error}<p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
+          <div class="flex justify-end">
+            <button
+              class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+            >
+              {t("settings.users.contract_add")}
+            </button>
+          </div>
         </form>
       </div>
     {/key}
