@@ -62,3 +62,19 @@ body {
 body {
   @apply bg-surface text-text antialiased;
 }
+
+/*
+ * iOS Safari zooms the page *in* whenever a focused <input>/<select>/<textarea> renders
+ * below 16px (issue #85). Our controls use `text-sm` (14px), so on phones bump every form
+ * control to 16px — the accessible fix. The alternative, locking the viewport with
+ * `maximum-scale`/`user-scalable=no`, would kill pinch-zoom app-wide; the viewport meta is
+ * deliberately left untouched (see #36). These rules are unlayered, so they win over the
+ * layered `text-sm` utility without `!important`. Desktop keeps the denser 14px.
+ */
+@media (max-width: 640px) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
