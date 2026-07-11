@@ -77,6 +77,12 @@
   Detail headers name the primary and render the rest as an `AvatarStack` of initials.
   **"Mine" filters match any assignee, never only the primary** — otherwise the feature is
   invisible to everyone but the owner.
+- **Show an inherited value, don't hide it behind a placeholder** (#81). When the API will
+  auto-assign something on save — a new project inherits the client's verantwoordelijke — the
+  form pre-fills that value the moment the client is picked, so the assignment is visible and
+  obviously already made. An empty field with a "wordt overgenomen" hint reads as unset and gets
+  re-picked by hand. The pre-fill is web-only: the server still does the same inheritance, so a
+  field left untouched stores exactly what the placeholder promised.
 - **One shared row/tile per concept** (`TaskRow`, panel rows): title link, chips (labels,
   checklist n/m, ⏱ allocated), red overdue date, assignee initials — identical wherever the
   concept appears.

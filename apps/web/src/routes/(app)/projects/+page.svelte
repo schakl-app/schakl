@@ -28,11 +28,24 @@
   let deleteName = $state("");
   let confirmDelete = $state(false);
 
+  // #81: which client is picked on the create form, so the assignee field can show the
+  // verantwoordelijke it will inherit instead of an empty placeholder.
+  let newProjectCompanyId = $state("");
+
   const STATUSES = ["active", "on_hold", "completed", "archived"] as const;
 
   const companyName = $derived((id: string | null | undefined) =>
     id ? (data.companies.find((c) => c.id === id)?.name ?? "") : "",
   );
+
+  // Pre-fill the new-project assignee picker with the selected client's primary employee. This is
+  // web-only and matches the API exactly: it already falls back to the company's verantwoordelijke
+  // when no roster is posted, so this just makes the inherited person visible (docs/UX.md).
+  const inheritedAssignees = $derived.by(() => {
+    const company = data.companies.find((c) => c.id === newProjectCompanyId);
+    const primary = company?.assignees?.find((a) => a.is_primary) ?? company?.assignees?.[0];
+    return primary ? [{ user_id: primary.user_id, is_primary: true }] : [];
+  });
 
   // --- columns ---------------------------------------------------------------
   const allColumns = $derived([
@@ -228,7 +241,7 @@
         <label for="company_id" class="mb-1 block text-sm font-medium text-text">
           {t("projects.field.company")}
         </label>
-        <select id="company_id" name="company_id" class={inputClass}>
+        <select id="company_id" name="company_id" bind:value={newProjectCompanyId} class={inputClass}>
           <option value="">{t("common.none")}</option>
           {#each data.companies as company (company.id)}
             <option value={company.id}>{company.name}</option>
@@ -249,11 +262,16 @@
         <span class="mb-1 block text-sm font-medium text-text">
           {t("projects.field.assignees")}
         </span>
-        <AssigneePicker
-          members={data.members}
-          id="new-project-assignees"
-          placeholder={t("projects.responsible_inherits")}
-        />
+        <!-- Remount on a client change so the picker re-seeds from `value` (it reads `value`
+             once at mount, #81). The placeholder still shows when no client is picked. -->
+        {#key newProjectCompanyId}
+          <AssigneePicker
+            members={data.members}
+            value={inheritedAssignees}
+            id="new-project-assignees"
+            placeholder={t("projects.responsible_inherits")}
+          />
+        {/key}
       </div>
       <div>
         <label for="budget_hours" class="mb-1 block text-sm font-medium text-text">
