@@ -60,11 +60,26 @@ registerWebModule({
           // approvers' Team page (whose guard redirects a non-approver back to /leave).
           const page = own ? "/leave" : "/leave/team";
           const year = item.start_date.slice(0, 4);
+          // Part-day leave wears its window, time-first like any calendar (#107): "15:00–17:00
+          // Stan · ADV" — otherwise someone off from 15:00 reads as away all day, and the
+          // window is detail the chip (and its hover title) has nowhere else to show. HH:MM is
+          // locale-neutral; an open end renders as "15:00 –" (from) / "– 14:00" (until). Only
+          // on single-day spans: repeating "15:00 – 12:00" on every cell of a Thu-15:00 →
+          // Fri-12:00 chip would claim each *day* covers that window.
+          const singleDay = item.start_date === item.end_date;
+          const window =
+            singleDay && (item.start_time || item.end_time)
+              ? item.start_time && item.end_time
+                ? `${item.start_time}–${item.end_time} `
+                : item.start_time
+                  ? `${item.start_time} – `
+                  : `– ${item.end_time} `
+              : "";
           return {
             id: item.id,
             start: item.start_date,
             end: item.end_date,
-            title: `${item.user_name} · ${typeLabel(leaveType, locale)}`,
+            title: `${window}${item.user_name} · ${typeLabel(leaveType, locale)}`,
             color: leaveType?.color ?? "emerald",
             href: `${page}?year=${year}&request=${item.id}`,
             tentative: item.status === "pending",
