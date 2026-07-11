@@ -22,24 +22,31 @@ export const load: PageServerLoad = async (event) => {
   // Work schedules are employment data, so they live on the person (#46) — but only when the
   // tenant runs `leave` and the caller may manage them. Two calls, not one per member: the
   // roster and the org default are what the whole list needs (docs/PERFORMANCE.md).
-  const schedules =
-    (event.locals.theme?.enabledModules?.includes("leave") ?? false) &&
-    can(event.locals.user, "leave.profile.manage");
+  const leaveEnabled = event.locals.theme?.enabledModules?.includes("leave") ?? false;
+  const schedules = leaveEnabled && can(event.locals.user, "leave.profile.manage");
+  // Hourly rates (#82) are salary-adjacent: a separate permission, shown only to someone who may
+  // read anyone's rate. One roster call, like schedules (docs/PERFORMANCE.md).
+  const rates = leaveEnabled && can(event.locals.user, "leave.rate.read", "any");
+  const canEditRates = leaveEnabled && can(event.locals.user, "leave.rate.write");
 
   const api = apiFor(event);
   // `/members` carries each membership's `role_ids`, so the effective set is derived here rather
   // than requested per member. The tenant's roles come from `settings/+layout.server.ts` — shared
   // with the Rollen screen and not refetched on tab navigation (docs/PERFORMANCE.md).
-  const [members, profiles, settings] = await Promise.all([
+  const [members, profiles, settings, rateRows] = await Promise.all([
     api.GET("/api/v1/members"),
     schedules ? api.GET("/api/v1/leave/profiles") : Promise.resolve({ data: null }),
     schedules ? api.GET("/api/v1/leave/settings") : Promise.resolve({ data: null }),
+    rates ? api.GET("/api/v1/leave/rates") : Promise.resolve({ data: null }),
   ]);
 
   return {
     members: members.data ?? [],
     schedules,
+    rates,
+    canEditRates,
     profiles: profiles.data ?? [],
+    rateRows: rateRows.data ?? [],
     defaultSchedule: settings.data?.default_schedule ?? defaultSchedule(),
   };
 };
@@ -96,6 +103,24 @@ export const actions: Actions = {
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { scheduleSaved: true };
+  },
+
+  /**
+   * This person's hourly rate (#82), or `null` to clear it. Admin-only (`leave.rate.write`),
+   * which the API re-enforces; the empty field means "no rate recorded".
+   */
+  saveRate: async (event) => {
+    const form = await event.request.formData();
+    const userId = String(form.get("user_id") ?? "");
+    if (!userId) return fail(400, { error: "errors.required" });
+    const raw = String(form.get("hourly_rate") ?? "").trim().replace(",", ".");
+    const hourly_rate = raw === "" ? null : raw;
+    const { error } = await apiFor(event).PUT("/api/v1/leave/rate/{user_id}", {
+      params: { path: { user_id: userId } },
+      body: { hourly_rate },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { rateSaved: true };
   },
 
   revoke: async (event) => {

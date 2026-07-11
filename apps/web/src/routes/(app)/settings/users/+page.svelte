@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CalendarClock, UserMinus } from "@lucide/svelte";
+  import { BadgeEuro, CalendarClock, UserMinus } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
@@ -64,6 +64,22 @@
     return stored === inherited ? null : stored;
   }
 
+  // --- hourly rate (#82) --------------------------------------------------------
+  // Salary-adjacent, so its own permission (`leave.rate.read`/`.write`), not `profile.manage`.
+  const rateByUser = $derived(
+    Object.fromEntries((data.rateRows ?? []).map((r) => [r.user_id, r.hourly_rate])),
+  );
+  let rateOpen = $state(false);
+  let rateFor = $state<Member | null>(null);
+  let rateDraft = $state("");
+
+  function openRate(member: Member) {
+    const current = rateByUser[member.user_id];
+    rateDraft = current == null ? "" : String(current);
+    rateFor = member;
+    rateOpen = true;
+  }
+
   function memberActions(member: Member) {
     const items = [];
     if (data.schedules) {
@@ -71,6 +87,13 @@
         label: t("settings.users.schedule"),
         icon: CalendarClock,
         onclick: () => openSchedule(member),
+      });
+    }
+    if (data.rates) {
+      items.push({
+        label: t("settings.users.rate"),
+        icon: BadgeEuro,
+        onclick: () => openRate(member),
       });
     }
     if (!member.is_self) {
@@ -199,6 +222,11 @@
                 })}
               </p>
             {/if}
+          {/if}
+          {#if data.rates && rateByUser[member.user_id] != null}
+            <p class="mt-0.5 text-xs text-text-muted">
+              {t("settings.users.rate_value", { rate: String(rateByUser[member.user_id]) })}
+            </p>
           {/if}
         </div>
 
@@ -339,6 +367,52 @@
           </button>
         </form>
       </div>
+    {/key}
+  {/if}
+</Modal>
+
+<!-- This person's hourly rate (#82). Salary-adjacent — its own permission gates edit. -->
+<Modal bind:open={rateOpen} title={t("settings.users.rate")}>
+  {#if rateFor}
+    {#key rateFor.user_id}
+      <form
+        method="POST"
+        action="?/saveRate"
+        class="space-y-4"
+        use:enhance={() =>
+          ({ result, update }) => {
+            if (result.type === "success") rateOpen = false;
+            void update({ reset: false });
+          }}
+      >
+        <input type="hidden" name="user_id" value={rateFor.user_id} />
+        <p class="text-sm text-text-muted">{rateFor.full_name || rateFor.email}</p>
+        <div>
+          <label for="hourly_rate" class="mb-1 block text-sm font-medium text-text">
+            {t("settings.users.rate_label")}
+          </label>
+          <input
+            id="hourly_rate"
+            name="hourly_rate"
+            inputmode="decimal"
+            bind:value={rateDraft}
+            disabled={!data.canEditRates}
+            placeholder={t("settings.users.rate_placeholder")}
+            class={inputClass}
+          />
+          <p class="mt-1 text-xs text-text-muted">{t("settings.users.rate_hint")}</p>
+        </div>
+        {#if form?.error}<p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
+        {#if data.canEditRates}
+          <div class="flex justify-end">
+            <button
+              class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+            >
+              {t("common.save")}
+            </button>
+          </div>
+        {/if}
+      </form>
     {/key}
   {/if}
 </Modal>

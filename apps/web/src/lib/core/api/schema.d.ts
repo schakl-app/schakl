@@ -731,6 +731,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/leave/rate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My Rate
+         * @description The caller's own hourly rate (salary-adjacent — a member sees only their own).
+         */
+        get: operations["my_rate_api_v1_leave_rate_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/rate/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * User Rate
+         * @description One employee's rate. Own on ``:own``; anyone's on ``:any``.
+         */
+        get: operations["user_rate_api_v1_leave_rate__user_id__get"];
+        /**
+         * Set Rate
+         * @description Set or clear an employee's rate (admin). Attributed nowhere — the rate is current state.
+         */
+        put: operations["set_rate_api_v1_leave_rate__user_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/rates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Rates
+         * @description Every employee's rate for the managers' roster. Requires ``leave.rate.read:any``.
+         */
+        get: operations["list_rates_api_v1_leave_rates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/leave/requests": {
         parameters: {
             query?: never;
@@ -3310,6 +3374,24 @@ export interface components {
             /** Hours Per Week */
             hours_per_week?: number | string | null;
             schedule?: components["schemas"]["WorkSchedule-Input"] | null;
+        };
+        /**
+         * LeaveRateRead
+         * @description One employee's hourly rate. ``None`` = no rate recorded (salary-adjacent, gated read).
+         */
+        LeaveRateRead: {
+            /** Hourly Rate */
+            hourly_rate: string | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** LeaveRateUpdate */
+        LeaveRateUpdate: {
+            /** Hourly Rate */
+            hourly_rate?: number | string | null;
         };
         /**
          * LeaveRequestCreate
@@ -7250,6 +7332,112 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_rate_api_v1_leave_rate_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveRateRead"];
+                };
+            };
+        };
+    };
+    user_rate_api_v1_leave_rate__user_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveRateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_rate_api_v1_leave_rate__user_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveRateUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveRateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_rates_api_v1_leave_rates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveRateRead"][];
                 };
             };
         };

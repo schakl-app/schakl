@@ -166,6 +166,21 @@ class LeaveProfileUpdate(BaseModel):
     schedule: WorkSchedule | None = None
 
 
+# --- hourly rate (#82) --------------------------------------------------------- #
+
+
+class LeaveRateRead(BaseModel):
+    """One employee's hourly rate. ``None`` = no rate recorded (salary-adjacent, gated read)."""
+
+    user_id: uuid.UUID
+    hourly_rate: Decimal | None
+
+
+class LeaveRateUpdate(BaseModel):
+    #: Explicit ``null`` clears the rate. A rate is money, so it is bounded but never negative.
+    hourly_rate: Decimal | None = Field(default=None, ge=0, le=Decimal("100000"))
+
+
 # --- entitlements -------------------------------------------------------------- #
 
 

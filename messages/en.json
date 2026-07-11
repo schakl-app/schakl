@@ -1002,6 +1002,8 @@
   "permissions.leave.profile.manage": "Manage contract hours",
   "permissions.leave.entitlement.read": "View leave entitlements",
   "permissions.leave.entitlement.write": "Manage leave entitlements",
+  "permissions.leave.rate.read": "View hourly rates",
+  "permissions.leave.rate.write": "Manage hourly rates",
   "permissions.members.member.read": "View the team",
   "permissions.members.member.write": "Invite, change and remove users",
   "permissions.notifications.notification.read": "View own notifications",
@@ -1078,5 +1080,10 @@
   "settings.users.schedule_inherit": "Follow the organisation's default schedule",
   "settings.users.schedule_inherited_hint": "This employee works the default schedule of {hours} h a week.",
   "settings.users.schedule_stale_hours": "Contract hours are {hours} h/week, but this person has no schedule of their own — leave is measured against the {inherited} h default.",
-  "settings.users.save_roles": "Save roles"
+  "settings.users.save_roles": "Save roles",
+  "settings.users.rate": "Hourly rate",
+  "settings.users.rate_value": "€ {rate} / hour",
+  "settings.users.rate_label": "Hourly rate (€)",
+  "settings.users.rate_placeholder": "e.g. 85.00",
+  "settings.users.rate_hint": "Used to compute value and remaining budget per employee. Leave empty for no rate."
 }

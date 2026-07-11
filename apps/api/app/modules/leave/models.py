@@ -138,6 +138,12 @@ class LeaveProfile(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     )
     #: This employee's own week, or ``NULL`` to follow ``LeaveSettings.default_schedule``.
     schedule: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    #: The employee's hourly rate in the org currency (#82) — salary-adjacent, so reading it is
+    #: gated on ``leave.rate.read`` (own/any) and writing on ``leave.rate.write`` (admin), never
+    #: on ``leave.profile.manage``. ``NULL`` = no rate recorded; revenue-per-employee then has
+    #: nothing to multiply and simply omits this person. Money data conceptually broader than
+    #: leave, but this is the one per-employee employment row, so it lives here (see issue #82).
+    hourly_rate: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
 
 
 class LeaveEntitlement(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):

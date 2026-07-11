@@ -478,6 +478,44 @@ class LeaveService:
         if membership is None:
             raise AppError("not_found", "errors.not_found", status_code=404)
 
+    # --- hourly rate (#82) ------------------------------------------------------- #
+    async def get_rate(self, user_id: uuid.UUID | None = None) -> tuple[uuid.UUID, Decimal | None]:
+        """One employee's rate. Your own on ``leave.rate.read:own``; another's needs ``:any``.
+
+        A rate is salary-adjacent, so this never leaks across employees: a plain member reading
+        someone else is refused before any row is loaded.
+        """
+        uid = user_id or self.ctx.user.id
+        scope = None if uid == self.ctx.user.id else "any"
+        self.ctx.require("leave.rate.read", scope=scope)
+        if uid != self.ctx.user.id:
+            await self._member_or_404(uid)
+        profile = await self._profile(uid)
+        return uid, (profile.hourly_rate if profile else None)
+
+    async def list_rates(self) -> list[tuple[uuid.UUID, Decimal | None]]:
+        """Every employee's rate, for the managers' Settings → Users roster (``:any`` only)."""
+        self.ctx.require("leave.rate.read", scope="any")
+        rows = (await self.ctx.session.execute(self.profiles.scoped_select())).scalars().all()
+        return [(p.user_id, p.hourly_rate) for p in rows]
+
+    async def set_rate(self, user_id: uuid.UUID, rate: Decimal | None) -> LeaveProfile:
+        """Set (or clear, with ``None``) an employee's rate. Admin act — ``leave.rate.write``.
+
+        Creates the profile row if the employee has none yet (a rate can be recorded before a
+        schedule is), leaving ``hours_per_week`` at the contract default until a schedule lands.
+        """
+        self.ctx.require("leave.rate.write")
+        await self._member_or_404(user_id)
+        profile = await self._profile(user_id)
+        if profile is None:
+            return await self.profiles.create(
+                user_id=user_id,
+                hours_per_week=await self.hours_per_week(user_id),
+                hourly_rate=rate,
+            )
+        return await self.profiles.update(profile, hourly_rate=rate)
+
     # --- entitlements ------------------------------------------------------------ #
     async def list_entitlements(
         self, *, year: int, user_id: uuid.UUID | None = None

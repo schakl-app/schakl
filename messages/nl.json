@@ -1002,6 +1002,8 @@
   "permissions.leave.profile.manage": "Contracturen beheren",
   "permissions.leave.entitlement.read": "Verlofrechten bekijken",
   "permissions.leave.entitlement.write": "Verlofrechten beheren",
+  "permissions.leave.rate.read": "Uurtarieven bekijken",
+  "permissions.leave.rate.write": "Uurtarieven beheren",
   "permissions.members.member.read": "Het team bekijken",
   "permissions.members.member.write": "Gebruikers uitnodigen, wijzigen en verwijderen",
   "permissions.notifications.notification.read": "Eigen meldingen bekijken",
@@ -1078,5 +1080,10 @@
   "settings.users.schedule_inherit": "Volg het standaardrooster van de organisatie",
   "settings.users.schedule_inherited_hint": "Deze medewerker werkt het standaardrooster van {hours} uur per week.",
   "settings.users.schedule_stale_hours": "Contracturen staan op {hours} u/week, maar deze medewerker heeft geen eigen rooster — verlof wordt gerekend tegen het standaardrooster van {inherited} u.",
-  "settings.users.save_roles": "Rollen opslaan"
+  "settings.users.save_roles": "Rollen opslaan",
+  "settings.users.rate": "Uurtarief",
+  "settings.users.rate_value": "€ {rate} / uur",
+  "settings.users.rate_label": "Uurtarief (€)",
+  "settings.users.rate_placeholder": "bijv. 85,00",
+  "settings.users.rate_hint": "Gebruikt om waarde en resterend budget per medewerker te berekenen. Laat leeg voor geen tarief."
 }

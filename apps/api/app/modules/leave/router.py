@@ -32,6 +32,8 @@ from app.modules.leave.schemas import (
     LeaveProfileRead,
     LeaveProfileSummary,
     LeaveProfileUpdate,
+    LeaveRateRead,
+    LeaveRateUpdate,
     LeaveRequestCreate,
     LeaveRequestDecision,
     LeaveRequestPreview,
@@ -267,6 +269,60 @@ async def set_profile(
         hours_per_day=average_day_hours(own or await service.default_schedule()),
         schedule=own,
     )
+
+
+# --- hourly rate (#82) --------------------------------------------------------- #
+@router.get(
+    "/rate",
+    response_model=LeaveRateRead,
+    dependencies=[require_permission("leave.rate.read")],
+)
+async def my_rate(ctx: RequestContext = Depends(require_context)) -> LeaveRateRead:
+    """The caller's own hourly rate (salary-adjacent — a member sees only their own)."""
+    user_id, rate = await LeaveService(ctx).get_rate()
+    return LeaveRateRead(user_id=user_id, hourly_rate=rate)
+
+
+@router.get(
+    "/rates",
+    response_model=list[LeaveRateRead],
+    dependencies=[require_permission("leave.rate.read")],
+)
+async def list_rates(ctx: RequestContext = Depends(require_context)) -> list[LeaveRateRead]:
+    """Every employee's rate for the managers' roster. Requires ``leave.rate.read:any``."""
+    return [
+        LeaveRateRead(user_id=user_id, hourly_rate=rate)
+        for user_id, rate in await LeaveService(ctx).list_rates()
+    ]
+
+
+@router.get(
+    "/rate/{user_id}",
+    response_model=LeaveRateRead,
+    dependencies=[require_permission("leave.rate.read")],
+)
+async def user_rate(
+    user_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> LeaveRateRead:
+    """One employee's rate. Own on ``:own``; anyone's on ``:any``."""
+    uid, rate = await LeaveService(ctx).get_rate(user_id)
+    return LeaveRateRead(user_id=uid, hourly_rate=rate)
+
+
+@router.put(
+    "/rate/{user_id}",
+    response_model=LeaveRateRead,
+    dependencies=[require_permission("leave.rate.write")],
+)
+async def set_rate(
+    user_id: uuid.UUID,
+    payload: LeaveRateUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> LeaveRateRead:
+    """Set or clear an employee's rate (admin). Attributed nowhere — the rate is current state."""
+    profile = await LeaveService(ctx).set_rate(user_id, payload.hourly_rate)
+    return LeaveRateRead(user_id=profile.user_id, hourly_rate=profile.hourly_rate)
 
 
 # --- entitlements --------------------------------------------------------------- #
