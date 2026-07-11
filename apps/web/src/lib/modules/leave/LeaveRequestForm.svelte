@@ -42,6 +42,8 @@
     hours: string | number;
     hours_override: string | number | null;
     note: string | null;
+    /** Present in edit mode; drives the "this returns to pending approval" warning (#72). */
+    status?: string;
   }
 
   let {
@@ -92,7 +94,12 @@
   let breakdown = $state<LeaveDayHours[]>([]);
   let previewError = $state<string | null>(null);
   let previewing = $state(false);
+  let requiresApproval = $state(false);
   let timer: ReturnType<typeof setTimeout> | undefined;
+
+  // Warn only when editing an *already-approved* request that the save would push back to pending
+  // (#72). Creating, or editing a still-pending one, needs no warning — nothing is being undone.
+  const reapprovalWarning = $derived(request?.status === "approved" && requiresApproval);
 
   const effectiveHours = $derived(overriding && override ? Number(override) : hours);
 
@@ -115,6 +122,7 @@
           start_time: partDay ? startTime || null : null,
           end_date: endDate,
           end_time: partDay ? endTime || null : null,
+          leave_type_id: typeId || null,
         }),
       });
       const body = await res.json();
@@ -128,6 +136,7 @@
         hours = Number(body.preview.hours);
         days = Number(body.preview.days);
         breakdown = body.preview.breakdown as LeaveDayHours[];
+        requiresApproval = Boolean(body.preview.requires_approval);
       }
     } catch {
       previewError = "errors.server";
@@ -147,8 +156,9 @@
   }
 
   $effect(() => {
-    // A first preview for an edit surface, and one whenever the span or the employee changes.
-    void [startDate, endDate, partDay, startTime, endTime, userId];
+    // A first preview for an edit surface, and one whenever the span, the employee or the type
+    // changes — the type decides whether a save needs (re-)approval (#72).
+    void [startDate, endDate, partDay, startTime, endTime, userId, typeId];
     schedulePreview();
   });
 
@@ -334,6 +344,14 @@
       >{request?.note ?? ""}</textarea
     >
   </div>
+
+  {#if reapprovalWarning}
+    <p
+      class="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+    >
+      {t("leave.form.reapproval_warning")}
+    </p>
+  {/if}
 
   {#if error}
     <p class="text-sm text-red-600 dark:text-red-400">{t(error)}</p>

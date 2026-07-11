@@ -297,6 +297,9 @@ class LeaveRequestPreview(LeaveRequestSpan):
     """What the form asks before it submits, so the number shown is the number stored."""
 
     user_id: uuid.UUID | None = None
+    #: The selected type, so the preview can tell the form whether saving needs (re-)approval
+    #: (#72). Optional: an older client that only wants the hours can omit it.
+    leave_type_id: uuid.UUID | None = None
 
 
 class LeavePreviewResult(BaseModel):
@@ -304,6 +307,13 @@ class LeavePreviewResult(BaseModel):
     #: ``hours`` in average scheduled working days — the "≈ 2 dagen" hint.
     days: Decimal
     breakdown: list[LeaveDayHours]
+    #: Whether saving this span would require a manager's (re-)approval (#72): true when the
+    #: chosen type requires approval, or when the span touches the past. Lets the edit form warn
+    #: "saving this moves it back to pending approval" before submit. ``False`` when no type given.
+    requires_approval: bool = False
+    #: Whether the span reaches before today (org-local). Surfaced so the form can explain *why*
+    #: an otherwise self-service edit still needs approval.
+    touches_past: bool = False
 
 
 # --- balances -------------------------------------------------------------------- #

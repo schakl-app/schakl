@@ -3323,6 +3323,16 @@ export interface components {
             days: string;
             /** Hours */
             hours: string;
+            /**
+             * Requires Approval
+             * @default false
+             */
+            requires_approval: boolean;
+            /**
+             * Touches Past
+             * @default false
+             */
+            touches_past: boolean;
         };
         /**
          * LeaveProfileRead
@@ -3446,6 +3456,8 @@ export interface components {
             end_date: string;
             /** End Time */
             end_time?: string | null;
+            /** Leave Type Id */
+            leave_type_id?: string | null;
             /**
              * Start Date
              * Format: date

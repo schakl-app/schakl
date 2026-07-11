@@ -22,6 +22,7 @@ from app.core.models import Membership
 from app.core.permissions.service import permission_holder_ids
 from app.core.sorting import apply_sort, user_sort_name
 from app.core.tenancy import RequestContext
+from app.core.timezone import org_zoneinfo
 from app.errors import AppError
 from app.modules.leave import holidays
 from app.modules.leave import schedule as sched
@@ -689,6 +690,11 @@ class LeaveService:
         ]
         return total, breakdown
 
+    async def _org_today(self) -> date:
+        """Today in the org's own zone (CLAUDE.md §8). "The past" is a local-calendar concept:
+        a request touches the past when it reaches before *this* date, not before UTC midnight."""
+        return datetime.now(await org_zoneinfo(self.ctx.session, self.ctx.org.id)).date()
+
     async def preview(self, data: LeaveRequestPreview) -> LeavePreviewResult:
         """What the form shows before submitting — the number the server will store."""
         uid = self._effective_user_id(data.user_id)
@@ -701,7 +707,21 @@ class LeaveService:
         )
         per_day = sched.average_day_hours(await self.effective_schedule(uid))
         days = (hours / per_day).quantize(Decimal("0.01")) if per_day else Decimal("0")
-        return LeavePreviewResult(hours=hours, days=days, breakdown=breakdown)
+        # Tell the form whether saving would need (re-)approval (#72): a past span always does; a
+        # future one only if the chosen type requires approval. The form knows the request's
+        # current status, so it decides whether to warn "this moves it back to pending".
+        touches_past = data.start_date < await self._org_today()
+        requires_approval = touches_past
+        if data.leave_type_id is not None:
+            leave_type = await self.types.get_or_404(data.leave_type_id)
+            requires_approval = leave_type.requires_approval or touches_past
+        return LeavePreviewResult(
+            hours=hours,
+            days=days,
+            breakdown=breakdown,
+            requires_approval=requires_approval,
+            touches_past=touches_past,
+        )
 
     def _validate_span(
         self,
@@ -874,16 +894,18 @@ class LeaveService:
         )
 
     async def update(self, request_id: uuid.UUID, data: LeaveRequestUpdate) -> LeaveRequest:
+        """Edit a request, re-triggering approval when the rule says so (#72).
+
+        An edit needs (re-)approval **if the leave type requires approval, or the edit touches
+        the past** — otherwise the owner may change their own future, self-service leave freely.
+        So the approved-lock is relaxed: an owner may now edit their own approved request, and
+        the resulting status is decided here rather than being frozen at ``approved``.
+        """
         request = await self._owned_or_404(request_id)
         self._ensure_writable(request)
-        # Members may only reshape their own *pending* request; whoever may approve leave may
-        # also fix an approved one (mirrors the approved-lock rule on time entries).
-        if request.status != LeaveRequestStatus.PENDING.value and not self.ctx.can(
-            "leave.request.approve"
-        ):
-            raise AppError("approved_locked", "errors.approved_locked", status_code=403)
         if request.status not in _OCCUPYING:
             raise AppError("conflict", "errors.leave_decided", status_code=409)
+        is_approver = self.ctx.can("leave.request.approve")
         values = data.model_dump(exclude_unset=True)
         leave_type = await self.types.get_or_404(
             values.get("leave_type_id", request.leave_type_id)
@@ -920,7 +942,44 @@ class LeaveService:
             hours=values["hours"],
             exclude_id=request.id,
         )
-        return await self.requests.update(request, **values)
+
+        # --- re-approval decision (#72) ------------------------------------------------ #
+        # Did the edit change anything a manager would need to weigh again? A bare note edit does
+        # not — it must never bounce an approved request back to pending.
+        approval_relevant = (
+            leave_type.id != request.leave_type_id
+            or start_date != request.start_date
+            or start_time != request.start_time
+            or end_date != request.end_date
+            or end_time != request.end_time
+            or values["hours"] != request.hours
+            or override != request.hours_override
+        )
+        # The span touches the past if the *result* reaches before today, or the *original* already
+        # did — so you can neither slip a change into history nor quietly pull one out of it.
+        today = await self._org_today()
+        touches_past = start_date < today or request.start_date < today
+        needs_approval = leave_type.requires_approval or touches_past
+
+        bounce = (
+            request.status == LeaveRequestStatus.APPROVED.value
+            and approval_relevant
+            and needs_approval
+            and not is_approver
+        )
+        if bounce:
+            # A resubmission, not a self-approval: the owner's edit sends an approved request back
+            # through approval. Reuses the whole pending path (decide/notify/balance), and pending
+            # still occupies the balance, so no balance regression.
+            values["status"] = LeaveRequestStatus.PENDING.value
+            values["decided_by_user_id"] = None
+            values["decided_at"] = None
+            values["decision_note"] = None
+
+        updated = await self.requests.update(request, **values)
+        if bounce:
+            await self._emit_leave("leave.requested", updated, await self._managers())
+        return updated
 
     async def decide(
         self, request_id: uuid.UUID, *, approved: bool, note: str | None = None
@@ -947,12 +1006,23 @@ class LeaveService:
         return request
 
     async def cancel(self, request_id: uuid.UUID) -> LeaveRequest:
-        """Requester may cancel while pending; cancelling approved leave needs an approver."""
+        """Cancel a request. Pending: the requester may. Approved: an approver may — and so may
+        the owner, but only for their own *self-service, future* leave (#72).
+
+        The same rule as an edit governs the approved case: an approved request is the owner's to
+        cancel when it would not need approval — an auto-approve type (a free day, a sick report)
+        that does not touch the past. "Moving" an ADV free day is exactly this: cancel one, create
+        another (#65). Cancelling approved leave that needed approval, or that reaches into the
+        past, stays a manager's call.
+        """
         request = await self._owned_or_404(request_id)
         self._ensure_writable(request)
         if request.status == LeaveRequestStatus.APPROVED.value:
             if not self.ctx.can("leave.request.approve"):
-                raise AppError("approved_locked", "errors.approved_locked", status_code=403)
+                leave_type = await self.types.get_or_404(request.leave_type_id)
+                touches_past = request.start_date < await self._org_today()
+                if leave_type.requires_approval or touches_past:
+                    raise AppError("approved_locked", "errors.approved_locked", status_code=403)
         elif request.status != LeaveRequestStatus.PENDING.value:
             raise AppError("conflict", "errors.leave_decided", status_code=409)
         return await self.requests.update(
