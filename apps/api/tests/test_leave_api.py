@@ -145,8 +145,20 @@ async def test_overlap_and_balance_guards(client_for) -> None:
         types = (await c.get("/api/v1/leave/types", headers=headers)).json()
         statutory = next(lt for lt in types if lt["key"] == "vacation_statutory")
 
-        # No entitlement yet → over-request on a balance-tracked type is blocked.
+        # An explicitly granted pot too small for the request → over-request is blocked.
+        # (An *absent* pot no longer blocks: the current/next year seeds on first touch, #108.)
         start, end = _span(1)
+        granted = await c.put(
+            "/api/v1/leave/entitlements",
+            json={
+                "user_id": str(t.user.id),
+                "leave_type_id": statutory["id"],
+                "year": _YEAR,
+                "hours": 4,
+            },
+            headers=headers,
+        )
+        assert granted.status_code == 200, granted.text
         res = await c.post(
             "/api/v1/leave/requests",
             json={

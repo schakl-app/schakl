@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from arq import cron
 
-from app.modules.leave.jobs import import_next_year_holidays
+from app.modules.leave.jobs import generate_next_year_entitlements, import_next_year_holidays
 from app.modules.leave.permissions import LEAVE_PERMISSIONS
 from app.modules.leave.router import router
 from app.registry import ModuleDescriptor, registry
@@ -21,7 +21,13 @@ module = ModuleDescriptor(
     permissions=LEAVE_PERMISSIONS,
     # Next year's holidays, imported in December while there is still time to correct them
     # (#47). Idempotent and per-org; a tenant can switch it off with `holiday_auto_import`.
-    cron_jobs=[cron(import_next_year_holidays, month=12, day=1, hour=3, minute=0)],
+    # Next year's entitlements follow an hour later (#108), so the whole staff's next-year
+    # balance exists before anyone books their summer — first touch seeds an individual pot
+    # earlier if someone plans further ahead.
+    cron_jobs=[
+        cron(import_next_year_holidays, month=12, day=1, hour=3, minute=0),
+        cron(generate_next_year_entitlements, month=12, day=1, hour=4, minute=0),
+    ],
 )
 
 registry.register(module)

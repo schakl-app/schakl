@@ -600,7 +600,11 @@ class LeaveService:
         )
         values = data.model_dump(exclude={"schedule"})
         values["schedule"] = sched.dump(data.schedule) if data.schedule else None
-        return await self.contracts.create(**values)
+        contract = await self.contracts.create(**values)
+        # #105: the contract and the entitlements it earns commit atomically — no separate,
+        # easily-forgotten "Genereer" step before the new hire has a balance.
+        await self._seed_after_contract_change(contract.user_id)
+        return contract
 
     async def update_contract(
         self, contract_id: uuid.UUID, data: EmploymentContractUpdate
@@ -616,7 +620,11 @@ class LeaveService:
         await self._ensure_no_contract_overlap(
             contract.user_id, start, end, exclude_id=contract.id
         )
-        return await self.contracts.update(contract, **values)
+        updated = await self.contracts.update(contract, **values)
+        # A corrected period can pull a year into scope that had nothing for this user yet.
+        # Missing rows only — never a recalculation of what was already granted (§14).
+        await self._seed_after_contract_change(updated.user_id)
+        return updated
 
     async def delete_contract(self, contract_id: uuid.UUID) -> None:
         self.ctx.require("leave.profile.manage")
@@ -670,6 +678,67 @@ class LeaveService:
         return (steps * half).quantize(Decimal("0.01"))
 
     # --- entitlements ------------------------------------------------------------ #
+    async def _seed_after_contract_change(self, user_id: uuid.UUID) -> None:
+        """Fill this user's missing entitlements after a contract create/correct (#105).
+
+        Which years: the current org-local year, plus any **future** year the org has already
+        generated for other staff — a hire in December also gets next year when next year
+        already exists for everyone else. Past years are never backfilled, and nothing existing
+        is touched. Runs in the contract write's own transaction and is deliberately not gated
+        on ``leave.entitlement.write``: a profile-manager adding a contract was already allowed
+        to make this write, and the entitlements are its consequence.
+        """
+        current = (await self._org_today()).year
+        future_years = (
+            (
+                await self.ctx.session.execute(
+                    select(LeaveEntitlement.year)
+                    .where(
+                        LeaveEntitlement.org_id == self.ctx.org.id,
+                        LeaveEntitlement.year > current,
+                    )
+                    .distinct()
+                )
+            )
+            .scalars()
+            .all()
+        )
+        # Only years this user's contracts actually cover: without the overlap filter, a hire
+        # whose contract starts next January would fall into the contract-less fallback for the
+        # *current* year and be granted a full pot for a year they don't work.
+        contracts = await self._user_contracts(user_id)
+        for year in sorted({current, *future_years}):
+            if self._contracts_in_year(contracts, year):
+                await self.seed_entitlements(year, only_users={user_id})
+
+    async def _ensure_entitlements(self, user_id: uuid.UUID, year: int) -> None:
+        """Seed one user's pot on first touch of a year that has nothing for them yet (#108).
+
+        "Book next January while it's still July" must not die on a pot nobody generated. Only
+        the current or the next org-local year (never a backfill of history), only when the user
+        has **no** entitlement rows for that year at all — an admin who deliberately zeroed a
+        grant keeps their zero — and only for callers who can hold leave in the first place
+        (``leave.request.write``), so a read-only client role never writes on read.
+        """
+        if not self.ctx.can("leave.request.write"):
+            return
+        has_rows = (
+            await self.ctx.session.execute(
+                self.entitlements.scoped_select()
+                .where(
+                    LeaveEntitlement.user_id == user_id,
+                    LeaveEntitlement.year == year,
+                )
+                .limit(1)
+            )
+        ).scalars().first() is not None
+        if has_rows:
+            return
+        current = (await self._org_today()).year
+        if year < current or year > current + 1:
+            return
+        await self.seed_entitlements(year, only_users={user_id})
+
     async def list_entitlements(
         self, *, year: int, user_id: uuid.UUID | None = None
     ) -> Sequence[LeaveEntitlement]:
@@ -695,7 +764,14 @@ class LeaveService:
         return await self.entitlements.update(existing, hours=data.hours, note=data.note)
 
     async def generate_entitlements(self, year: int) -> int:
-        """Create missing entitlements for a year (#65).
+        """Create missing entitlements for a year (#65) — the guarded bulk endpoint."""
+        self.ctx.require("leave.entitlement.write")
+        return await self.seed_entitlements(year)
+
+    async def seed_entitlements(
+        self, year: int, *, only_users: set[uuid.UUID] | None = None
+    ) -> int:
+        """The generation core: create **missing** entitlements for a year (#65).
 
         Two families of balance-tracked type:
           * ``default_weeks`` types (statutory/extra vacation) → ``weeks × contract hours``,
@@ -710,8 +786,13 @@ class LeaveService:
 
         "Who is staff for year N" is anyone with a contract overlapping the year, unioned with the
         legacy ``time.entry.write`` holders so a contract-less org still generates.
+
+        **Deliberately not permission-checked** (#105): besides the guarded bulk endpoint it runs
+        as a *side effect of writes the caller was already allowed to make* — adding a contract
+        (``leave.profile.manage``), or reading a balance whose pot simply doesn't exist yet — the
+        same principle as the activity log (CLAUDE.md §16). Idempotent and non-destructive: only
+        missing rows are created, existing or manually-adjusted ones are never touched.
         """
-        self.ctx.require("leave.entitlement.write")
         all_types = await self.list_types()
         weeks_types = [
             t for t in all_types if t.tracks_balance and t.default_weeks is not None
@@ -739,10 +820,22 @@ class LeaveService:
             if self._contracts_in_year(cs, year)
         }
         staff = legacy_staff | contract_staff
+        if only_users is not None:
+            staff &= only_users
 
-        existing = {
-            (e.user_id, e.leave_type_id) for e in await self.list_entitlements(year=year)
-        }
+        # Straight off the repo, not ``list_entitlements``: that read narrows to the caller's own
+        # rows for anyone without ``leave.entitlement.read:any``, and a half-blind "existing" set
+        # here would mean duplicate rows (a unique-violation) for exactly those callers.
+        existing_rows = (
+            (
+                await self.ctx.session.execute(
+                    self.entitlements.scoped_select().where(LeaveEntitlement.year == year)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        existing = {(e.user_id, e.leave_type_id) for e in existing_rows}
         default = await self.default_schedule()
         rows = (await self.ctx.session.execute(self.profiles.scoped_select())).scalars().all()
         by_user = {p.user_id: p for p in rows}
@@ -814,6 +907,9 @@ class LeaveService:
 
     async def balances(self, *, year: int, user_id: uuid.UUID | None = None) -> list[LeaveBalance]:
         uid = self._effective_user_id(user_id)
+        # First touch of an ungenerated current/next-year pot seeds it (#108), so "book next
+        # summer in December" finds a balance instead of a zero.
+        await self._ensure_entitlements(uid, year)
         types = [t for t in await self.list_types() if t.tracks_balance]
         entitled: dict[uuid.UUID, Decimal] = {}
         for ent in await self.list_entitlements(year=year, user_id=uid):
