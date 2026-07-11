@@ -58,6 +58,20 @@
       <p class="mt-1 text-sm text-text-muted">{t("settings.custom_fields.subtitle")}</p>
     </a>
     <a
+      href="/settings/providers"
+      class="rounded-xl border border-border bg-surface-raised p-5 hover:border-brand"
+    >
+      <h3 class="text-sm font-semibold text-text">{t("settings.providers.title")}</h3>
+      <p class="mt-1 text-sm text-text-muted">{t("settings.providers.subtitle")}</p>
+    </a>
+    <a
+      href="/settings/contact-types"
+      class="rounded-xl border border-border bg-surface-raised p-5 hover:border-brand"
+    >
+      <h3 class="text-sm font-semibold text-text">{t("settings.contact_types.title")}</h3>
+      <p class="mt-1 text-sm text-text-muted">{t("settings.contact_types.subtitle")}</p>
+    </a>
+    <a
       href="/settings/branding"
       class="rounded-xl border border-border bg-surface-raised p-5 hover:border-brand"
     >

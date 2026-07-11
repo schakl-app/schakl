@@ -19,20 +19,26 @@ export const load: PageServerLoad = async (event) => {
   const pref = readTablePref(prefs, CONTACTS_TABLE_ID);
   const resolved = resolveColumns(CONTACT_COLUMNS, pref);
   const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
+  const contact_type_id = event.url.searchParams.get("type") || undefined;
 
-  const [contacts, definitions, companies] = await Promise.all([
-    api.GET("/api/v1/contacts", { params: { query: { limit: 100, offset: 0, q, sort } } }),
+  const [contacts, definitions, companies, types] = await Promise.all([
+    api.GET("/api/v1/contacts", {
+      params: { query: { limit: 100, offset: 0, q, sort, contact_type_id } },
+    }),
     api.GET("/api/v1/custom-fields/definitions", {
       params: { query: { entity_type: "contact" } },
     }),
     // For the create form's "connected companies" picker (#80). Lean list — no counts.
     api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
+    api.GET("/api/v1/contacts/types"),
   ]);
   return {
     contacts: contacts.data?.items ?? [],
     total: contacts.data?.total ?? 0,
     definitions: definitions.data ?? [],
     companies: companies.data?.items ?? [],
+    types: types.data ?? [],
+    typeFilter: contact_type_id ?? "",
     table: { pref, sort: sort ?? null, widths: resolved.widths },
     locale: event.locals.locale,
   };

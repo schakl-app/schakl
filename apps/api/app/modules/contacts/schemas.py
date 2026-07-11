@@ -14,14 +14,41 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class ContactTypeBase(BaseModel):
+    key: str = Field(min_length=1, max_length=50, pattern=r"^[a-z0-9_]+$")
+    label_i18n: dict[str, str] = Field(default_factory=dict)
+    position: int = 0
+    active: bool = True
+
+
+class ContactTypeCreate(ContactTypeBase):
+    pass
+
+
+class ContactTypeUpdate(BaseModel):
+    label_i18n: dict[str, str] | None = None
+    position: int | None = None
+    active: bool | None = None
+
+
+class ContactTypeRead(ContactTypeBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    org_id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
+
+
 class ContactCompanyLink(BaseModel):
-    """A company a contact is attached to, with the per-company primary flag."""
+    """A company a contact is attached to, with the per-company primary flag and contact type."""
 
     model_config = ConfigDict(from_attributes=True)
 
     company_id: uuid.UUID
     name: str
     is_primary: bool
+    contact_type_id: uuid.UUID | None = None
 
 
 class ContactBase(BaseModel):
@@ -62,13 +89,16 @@ class ContactRead(ContactBase):
 
 
 class ContactLinkCreate(BaseModel):
-    """Attach a contact to a company; optionally make it that company's primary."""
+    """Attach a contact to a company; optionally make it that company's primary and type it."""
 
     company_id: uuid.UUID
     is_primary: bool = False
+    contact_type_id: uuid.UUID | None = None
 
 
 class ContactLinkUpdate(BaseModel):
-    """Update a company↔contact link (only the primary flag is mutable)."""
+    """Update a company↔contact link (the primary flag and/or the contact type)."""
 
-    is_primary: bool
+    is_primary: bool = False
+    # Present ⇒ set the link's type (``null`` clears it). Absent ⇒ leave the type unchanged.
+    contact_type_id: uuid.UUID | None = None

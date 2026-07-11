@@ -23,8 +23,14 @@ from app.core.customfields import CustomFieldsService
 from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
 from app.errors import AppError
-from app.modules.contacts.models import CompanyContact, Contact
-from app.modules.contacts.schemas import ContactCompanyLink, ContactCreate, ContactUpdate
+from app.modules.contacts.models import CompanyContact, Contact, ContactType
+from app.modules.contacts.schemas import (
+    ContactCompanyLink,
+    ContactCreate,
+    ContactTypeCreate,
+    ContactTypeUpdate,
+    ContactUpdate,
+)
 
 ENTITY_TYPE = "contact"
 
@@ -99,6 +105,7 @@ class ContactService:
         limit: int,
         offset: int,
         company_id: uuid.UUID | None = None,
+        contact_type_id: uuid.UUID | None = None,
         q: str | None = None,
         sort: str | None = None,
     ) -> tuple[Sequence[Contact], int]:
@@ -119,13 +126,16 @@ class ContactService:
             .select_from(Contact)
             .where(Contact.org_id == self._org_id, *conditions)
         )
-        if company_id is not None:
+        # A type filter matches a person who holds that type at *any* company (the type lives on
+        # the link, §91), so it joins ``company_contacts`` and de-duplicates like the company one.
+        if company_id is not None or contact_type_id is not None:
             join_on = CompanyContact.contact_id == Contact.id
-            link_where = (
-                CompanyContact.org_id == self._org_id,
-                CompanyContact.company_id == company_id,
-            )
-            stmt = stmt.join(CompanyContact, join_on).where(*link_where)
+            link_where = [CompanyContact.org_id == self._org_id]
+            if company_id is not None:
+                link_where.append(CompanyContact.company_id == company_id)
+            if contact_type_id is not None:
+                link_where.append(CompanyContact.contact_type_id == contact_type_id)
+            stmt = stmt.join(CompanyContact, join_on).where(*link_where).distinct()
             count_stmt = count_stmt.join(CompanyContact, join_on).where(*link_where)
 
         stmt = apply_sort(stmt, sort, SORTABLE, default=Contact.created_at.desc())
@@ -217,21 +227,32 @@ class ContactService:
         company_id: uuid.UUID,
         *,
         is_primary: bool | None = None,
+        contact_type_id: uuid.UUID | None = None,
+        set_type: bool = False,
     ) -> CompanyContact:
         """Attach a contact to a company (idempotent).
 
         ``is_primary``: ``True`` forces primary (unsets any other), ``False`` forces non-primary,
-        ``None`` auto-promotes to primary only when the company has no primary yet.
+        ``None`` auto-promotes to primary only when the company has no primary yet. ``set_type``
+        marks that ``contact_type_id`` should be written (``None`` clears it); when ``False`` the
+        link's existing type is left untouched.
         """
         self.ctx.require("contacts.link.write")
         await self.repo.get_or_404(contact_id)  # tenant-scoped existence check
         await self._ensure_company_in_tenant(company_id)
+        if set_type and contact_type_id is not None:
+            await self._ensure_type_in_tenant(contact_type_id)
 
         link = await self._get_link(company_id, contact_id)
         if link is None:
             link = await self.links.create(
-                company_id=company_id, contact_id=contact_id, is_primary=False
+                company_id=company_id,
+                contact_id=contact_id,
+                is_primary=False,
+                contact_type_id=contact_type_id if set_type else None,
             )
+        elif set_type:
+            link = await self.links.update(link, contact_type_id=contact_type_id)
 
         make_primary = is_primary is True
         if is_primary is None:
@@ -317,6 +338,20 @@ class ContactService:
         if not ok:
             raise AppError("not_found", "errors.not_found", status_code=404)
 
+    async def _ensure_type_in_tenant(self, contact_type_id: uuid.UUID) -> None:
+        ok = await self.ctx.session.scalar(
+            select(ContactType.id).where(
+                ContactType.org_id == self._org_id, ContactType.id == contact_type_id
+            )
+        )
+        if not ok:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"contact_type_id": "errors.validation"},
+            )
+
     async def _attach_companies(self, contacts: Sequence[Contact]) -> None:
         """Populate ``ContactRead.companies`` for each contact in one batched query."""
         contact_ids = [c.id for c in contacts]
@@ -335,6 +370,7 @@ class ContactService:
                     CompanyContact.contact_id,
                     CompanyContact.company_id,
                     CompanyContact.is_primary,
+                    CompanyContact.contact_type_id,
                 ).where(
                     CompanyContact.org_id == self._org_id,
                     CompanyContact.contact_id.in_(contact_ids),
@@ -360,8 +396,60 @@ class ContactService:
                     company_id=row.company_id,
                     name=names.get(row.company_id, ""),
                     is_primary=row.is_primary,
+                    contact_type_id=row.contact_type_id,
                 )
             )
         for links in result.values():
             links.sort(key=lambda link: (not link.is_primary, link.name.lower()))
         return result
+
+
+class ContactTypeService:
+    """CRUD for tenant-configurable contact types (issue #91), gated on ``contacts.type.manage``.
+
+    The leave-types shape: ``label_i18n`` + ``active`` + ``position``, unique ``key`` per org. The
+    type is referenced from ``company_contacts.contact_type_id``; deleting a type SET NULLs those
+    links (see the model), so a type can always be removed without stranding a contact.
+    """
+
+    def __init__(self, ctx: RequestContext) -> None:
+        self.ctx = ctx
+        self.repo = ctx.repo(ContactType)
+
+    @property
+    def _org_id(self) -> uuid.UUID:
+        return self.ctx.org.id
+
+    async def list(self, *, include_inactive: bool = False) -> Sequence[ContactType]:
+        stmt = self.repo.scoped_select()
+        if not include_inactive:
+            stmt = stmt.where(ContactType.active.is_(True))
+        stmt = stmt.order_by(ContactType.position, ContactType.key)
+        return list((await self.ctx.session.execute(stmt)).scalars().all())
+
+    async def create(self, data: ContactTypeCreate) -> ContactType:
+        self.ctx.require("contacts.type.manage")
+        existing = await self.ctx.session.scalar(
+            select(ContactType.id).where(
+                ContactType.org_id == self._org_id, ContactType.key == data.key
+            )
+        )
+        if existing is not None:
+            raise AppError(
+                "conflict", "errors.conflict", status_code=409, fields={"key": "errors.conflict"}
+            )
+        return await self.repo.create(**data.model_dump(mode="json"))
+
+    async def update(
+        self, contact_type_id: uuid.UUID, data: ContactTypeUpdate
+    ) -> ContactType:
+        self.ctx.require("contacts.type.manage")
+        contact_type = await self.repo.get_or_404(contact_type_id)
+        return await self.repo.update(
+            contact_type, **data.model_dump(mode="json", exclude_unset=True)
+        )
+
+    async def delete(self, contact_type_id: uuid.UUID) -> None:
+        self.ctx.require("contacts.type.manage")
+        contact_type = await self.repo.get_or_404(contact_type_id)
+        await self.repo.delete(contact_type)
