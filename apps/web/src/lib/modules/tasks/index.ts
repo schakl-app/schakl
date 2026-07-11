@@ -37,6 +37,9 @@ registerWebModule({
       module: "tasks",
       position: 20,
       requiresPermission: "tasks.task.read",
+      descriptionKey: "dashboard.widget_desc.tasks.my_open",
+      category: "dashboard.category.tasks",
+      size: "md",
       load: (api) => api.GET("/api/v1/tasks/mine").then((r) => r.data ?? []),
       component: MyTasksWidget,
     },
@@ -45,6 +48,9 @@ registerWebModule({
       module: "tasks",
       requiresPermission: "tasks.task.read",
       position: 30,
+      descriptionKey: "dashboard.widget_desc.tasks.by_group",
+      category: "dashboard.category.tasks",
+      size: "md",
       load: async (api) => {
         // Grouping needs only ids/names — skip the per-task aggregates (`meta`) and the
         // discarded COUNT (`count`) on every list (see docs/PERFORMANCE.md).

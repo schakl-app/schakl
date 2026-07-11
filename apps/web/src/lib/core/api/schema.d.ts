@@ -2007,6 +2007,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tasks/statuses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Statuses */
+        get: operations["list_statuses_api_v1_tasks_statuses_get"];
+        put?: never;
+        /** Create Status */
+        post: operations["create_status_api_v1_tasks_statuses_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/statuses/{status_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Status */
+        delete: operations["delete_status_api_v1_tasks_statuses__status_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Status */
+        patch: operations["update_status_api_v1_tasks_statuses__status_id__patch"];
+        trace?: never;
+    };
     "/api/v1/tasks/templates": {
         parameters: {
             query?: never;
@@ -3121,6 +3157,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Mentioned User Ids */
+            mentioned_user_ids?: string[];
         };
         /** CommentUpdate */
         CommentUpdate: {
@@ -5640,6 +5678,72 @@ export interface components {
             /** Needs Setup */
             needs_setup: boolean;
         };
+        /** StatusCreate */
+        StatusCreate: {
+            /** Color */
+            color: string;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /**
+             * Is Terminal
+             * @default false
+             */
+            is_terminal: boolean;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+        };
+        /** StatusRead */
+        StatusRead: {
+            /** Color */
+            color: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /**
+             * Is Terminal
+             * @default false
+             */
+            is_terminal: boolean;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+        };
+        /** StatusUpdate */
+        StatusUpdate: {
+            /** Color */
+            color?: string | null;
+            /** Is Default */
+            is_default?: boolean | null;
+            /** Is Terminal */
+            is_terminal?: boolean | null;
+            /** Name */
+            name?: string | null;
+            /** Position */
+            position?: number | null;
+        };
         /** SystemInfo */
         SystemInfo: {
             build: components["schemas"]["BuildInfo"];
@@ -5670,8 +5774,8 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence?: components["schemas"]["Recurrence"] | null;
-            /** @default open */
-            status: components["schemas"]["TaskStatus"];
+            /** Status */
+            status?: string | null;
             /** Title */
             title: string;
         };
@@ -5729,8 +5833,8 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence: components["schemas"]["Recurrence"] | null;
-            /** @default open */
-            status: components["schemas"]["TaskStatus"];
+            /** Status */
+            status: string;
             /** Title */
             title: string;
             /**
@@ -5803,8 +5907,8 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence: components["schemas"]["Recurrence"] | null;
-            /** @default open */
-            status: components["schemas"]["TaskStatus"];
+            /** Status */
+            status: string;
             /** Title */
             title: string;
             /**
@@ -5854,8 +5958,8 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence: components["schemas"]["Recurrence"] | null;
-            /** @default open */
-            status: components["schemas"]["TaskStatus"];
+            /** Status */
+            status: string;
             /** Title */
             title: string;
             /**
@@ -5864,11 +5968,6 @@ export interface components {
              */
             updated_at: string;
         };
-        /**
-         * TaskStatus
-         * @enum {string}
-         */
-        TaskStatus: "open" | "in_progress" | "done";
         /** TaskUpdate */
         TaskUpdate: {
             /** Allocated Minutes */
@@ -5889,7 +5988,8 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence?: components["schemas"]["Recurrence"] | null;
-            status?: components["schemas"]["TaskStatus"] | null;
+            /** Status */
+            status?: string | null;
             /** Title */
             title?: string | null;
         };
@@ -11465,7 +11565,8 @@ export interface operations {
                 company_id?: string | null;
                 project_id?: string | null;
                 assignee_user_id?: string | null;
-                status?: components["schemas"]["TaskStatus"] | null;
+                /** @description A configured status key */
+                status?: string | null;
                 label_id?: string | null;
                 due?: ("overdue" | "today" | "week") | null;
                 q?: string | null;
@@ -11787,6 +11888,123 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskListItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_statuses_api_v1_tasks_statuses_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusRead"][];
+                };
+            };
+        };
+    };
+    create_status_api_v1_tasks_statuses_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StatusCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_status_api_v1_tasks_statuses__status_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                status_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_status_api_v1_tasks_statuses__status_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                status_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StatusUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusRead"];
                 };
             };
             /** @description Validation Error */

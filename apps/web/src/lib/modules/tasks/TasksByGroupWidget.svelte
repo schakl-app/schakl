@@ -28,7 +28,10 @@
   interface Group {
     key: string;
     label: string;
-    href: string;
+    /** The project/company record the group is (issue #15 — rows link to their entity). */
+    entityHref: string;
+    /** The open-tasks list filtered to this group (the aggregate's own filtered list). */
+    listHref: string;
     count: number;
     overdue: number;
   }
@@ -37,21 +40,24 @@
     const open = payload.tasks.filter((task) => task.status !== "done");
     const byKey = new Map<string, Group>();
     for (const task of open) {
-      let key: string, label: string, href: string;
+      let key: string, label: string, entityHref: string, listHref: string;
       if (task.project_id) {
         key = `p:${task.project_id}`;
         label = payload.projects.find((p) => p.id === task.project_id)?.name ?? "?";
-        href = `/tasks?project_id=${task.project_id}`;
+        entityHref = `/projects/${task.project_id}`;
+        listHref = `/tasks?project_id=${task.project_id}`;
       } else if (task.company_id) {
         key = `c:${task.company_id}`;
         label = payload.companies.find((c) => c.id === task.company_id)?.name ?? "?";
-        href = `/tasks?company_id=${task.company_id}`;
+        entityHref = `/companies/${task.company_id}`;
+        listHref = `/tasks?company_id=${task.company_id}`;
       } else {
         key = "none";
         label = t("time.general");
-        href = "/tasks";
+        entityHref = "/tasks";
+        listHref = "/tasks";
       }
-      const group = byKey.get(key) ?? { key, label, href, count: 0, overdue: 0 };
+      const group = byKey.get(key) ?? { key, label, entityHref, listHref, count: 0, overdue: 0 };
       group.count += 1;
       if (task.due_date && task.due_date < today) group.overdue += 1;
       byKey.set(key, group);
@@ -70,24 +76,25 @@
   {:else}
     <ul class="divide-y divide-border">
       {#each groups as group (group.key)}
-        <li>
+        <li class="flex items-center justify-between gap-2 py-2">
+          <!-- The name is the record; the count is the filtered task list (issue #15). -->
           <a
-            href={group.href}
-            class="flex items-center justify-between gap-2 py-2 hover:text-brand"
+            href={group.entityHref}
+            class="min-w-0 flex-1 truncate text-sm font-medium text-text hover:text-brand"
+            >{group.label}</a
           >
-            <span class="min-w-0 flex-1 truncate text-sm font-medium text-text">{group.label}</span>
-            {#if group.overdue > 0}
-              <span
-                class="shrink-0 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-red-700 dark:bg-red-950 dark:text-red-300"
-              >
-                {t("tasks.overdue_count", { count: group.overdue })}
-              </span>
-            {/if}
+          {#if group.overdue > 0}
             <span
-              class="shrink-0 rounded-full bg-surface px-2 py-0.5 text-xs font-semibold tabular-nums text-text-muted"
+              class="shrink-0 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-red-700 dark:bg-red-950 dark:text-red-300"
             >
-              {group.count}
+              {t("tasks.overdue_count", { count: group.overdue })}
             </span>
+          {/if}
+          <a
+            href={group.listHref}
+            class="shrink-0 rounded-full bg-surface px-2 py-0.5 text-xs font-semibold tabular-nums text-text-muted hover:text-brand"
+          >
+            {group.count}
           </a>
         </li>
       {/each}

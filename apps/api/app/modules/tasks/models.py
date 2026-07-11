@@ -102,8 +102,10 @@ class Task(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     )
     title: Mapped[str] = mapped_column(String(512), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # A tenant-configured status key (issue #62), not a closed enum. Wide enough for a custom
+    # slug; the ``TaskStatus`` default keeps a fresh row valid before the service sets it.
     status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default=TaskStatus.OPEN.value, index=True
+        String(50), nullable=False, default=TaskStatus.OPEN.value, index=True
     )
     priority: Mapped[str] = mapped_column(
         String(20), nullable=False, default=TaskPriority.NORMAL.value
@@ -126,6 +128,34 @@ class TaskLabel(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     color: Mapped[str] = mapped_column(String(20), nullable=False)
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class TaskStatusDef(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """Tenant-configurable task status vocabulary (issue #62), modelled on ``TaskLabel``.
+
+    Board grouping, sort order and "is this finished?" all read from this ordered list instead of
+    a hardcoded ``TaskStatus`` enum. ``Task.status`` stores a status ``key``; ``key`` is an
+    immutable slug. ``is_terminal`` replaces string-matching ``"done"`` for ``completed_at`` and
+    recurrence-on-completion; ``is_default`` is the status a new task starts in. Seeded per org
+    with ``open`` / ``in_progress`` / ``done`` so nothing regresses (see ``statuses.py``).
+    """
+
+    __tablename__ = "task_statuses"
+    __table_args__ = (UniqueConstraint("org_id", "key"),)
+
+    key: Mapped[str] = mapped_column(String(50), nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    color: Mapped[str] = mapped_column(String(20), nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # A finished state: stamping ``completed_at`` and spawning an after-completion recurrence key
+    # off this flag, never the literal string "done" (issue #62).
+    is_terminal: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    # The status a newly created task falls into when none is given.
+    is_default: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
 
 
 class TaskLabelLink(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
@@ -239,6 +269,12 @@ class TaskComment(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     # exists — a rename should show through — so this is a fallback, not the display value.
     author_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     body: Mapped[str] = mapped_column(Text, nullable=False)
+    # Users @mentioned in the body (issue #63), captured structurally rather than re-parsed on every
+    # render. Extracted from the `@[Name](mention:<uuid>)` markers by the service and validated
+    # against org membership, so a mention notifies even a non-assignee who never commented before.
+    mentioned_user_ids: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
     edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 

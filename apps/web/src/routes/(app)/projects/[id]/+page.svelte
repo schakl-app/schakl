@@ -17,6 +17,7 @@
   import AvatarStack from "$lib/core/ui/AvatarStack.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
+  import { terminalKeys } from "$lib/modules/tasks/statuses";
   import TaskRow from "$lib/modules/tasks/TaskRow.svelte";
 
   let { data, form } = $props();
@@ -44,7 +45,9 @@
 
   const project = $derived(data.project);
   const tasks = $derived(data.tasks);
-  const doneCount = $derived(tasks.filter((t) => t.status === "done").length);
+  // "Done" is any terminal configured status (issue #62), not the literal "done".
+  const terminalSet = $derived(new Set(terminalKeys(data.statuses)));
+  const doneCount = $derived(tasks.filter((t) => terminalSet.has(t.status)).length);
 
   const assignees = $derived(project.assignees ?? []);
 
@@ -458,7 +461,12 @@
             >⋮⋮</span
           >
           <div class="flex-1">
-            <TaskRow {task} toggleAction="?/toggleTask" members={data.members} />
+            <TaskRow
+              {task}
+              toggleAction="?/toggleTask"
+              members={data.members}
+              statuses={data.statuses}
+            />
           </div>
         </div>
       {/each}

@@ -26,6 +26,7 @@ from app.modules.notifications.events import (
     LEAVE_REQUESTED,
     PROJECT_ASSIGNED,
     TASK_ASSIGNED,
+    TASK_MENTIONED,
     TASK_OVERDUE,
 )
 
@@ -38,6 +39,7 @@ DEFAULT_DUE_SOON_DAYS = 3
 _IMMEDIATE_EVENTS: frozenset[str] = frozenset(
     {
         TASK_ASSIGNED,
+        TASK_MENTIONED,
         PROJECT_ASSIGNED,
         COMPANY_ASSIGNED,
         TASK_OVERDUE,

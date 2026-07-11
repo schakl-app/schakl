@@ -15,8 +15,11 @@ import type { Handle } from "@sveltejs/kit";
 
 import "$lib/core/paraglide-strategy.server"; // register custom locale strategy (server)
 import "$lib/core/timezone-context.server"; // register the server timezone resolver
+import "$lib/core/dateformat-context.server"; // register the server format resolver
 import "$lib/modules"; // self-register web modules
 
+import { parseFormatCookie } from "$lib/core/dateformat";
+import { withRequestFormat } from "$lib/core/dateformat-context.server";
 import { asLocale, LOCALE_COOKIE, LOCALE_COOKIE_OPTIONS, parseLocaleCookie } from "$lib/core/i18n";
 import { withRequestLocale } from "$lib/core/locale-context.server";
 import { apiFor, fetchTenant, fetchUser } from "$lib/core/session";
@@ -71,17 +74,26 @@ const handleContext: Handle = async ({ event, resolve }) => {
   // "system" this assumes light (unknowable server-side); the client re-stamps once the real
   // scheme resolves, same as the live re-stamp on a Huisstijl colour save.
   const style = themeStyle(theme, colorScheme === "dark" ? "dark" : "light");
-  // The tenant zone rides an AsyncLocalStorage store (for synchronous SSR `getTimeZone()`) and is
-  // stamped on <html data-timezone> for the client half of `getTimeZone()`.
+  // Personal date/time formatting (issue #13), independent of language. Like theme-mode, the
+  // cross-device source of truth is the `format` namespace on `/api/v1/prefs`; this cookie is the
+  // per-browser cache read here so SSR needs no extra `/prefs` round-trip (docs/PERFORMANCE.md).
+  // The Settings → Account page reconciles it against the persisted value when visited.
+  const format = parseFormatCookie(event.request.headers.get("cookie"));
+  // The tenant zone and the format choice each ride an AsyncLocalStorage store (for the synchronous
+  // SSR read seams in `format.ts`) and are stamped on <html> for their client halves.
   return withRequestTimezone(theme.timezone, () =>
-    withRequestLocale(locale, () =>
-      resolve(event, {
-        transformPageChunk: ({ html }) =>
-          html
-            .replace("%theme%", () => style)
-            .replace("%colorScheme%", () => colorScheme)
-            .replace("%timezone%", () => theme.timezone),
-      }),
+    withRequestFormat(format, () =>
+      withRequestLocale(locale, () =>
+        resolve(event, {
+          transformPageChunk: ({ html }) =>
+            html
+              .replace("%theme%", () => style)
+              .replace("%colorScheme%", () => colorScheme)
+              .replace("%timezone%", () => theme.timezone)
+              .replace("%clock%", () => format.clock)
+              .replace("%dateFormat%", () => format.date),
+        }),
+      ),
     ),
   );
 };

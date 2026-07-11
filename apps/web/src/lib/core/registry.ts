@@ -131,6 +131,9 @@ export interface EntityPanelSpec {
   }>;
 }
 
+/** A widget's grid footprint, so the gallery can show its shape and the layout can honour it. */
+export type WidgetSize = "sm" | "md" | "lg";
+
 export interface DashboardWidgetSpec {
   /** Unique widget key, e.g. "time.today". */
   key: string;
@@ -141,6 +144,26 @@ export interface DashboardWidgetSpec {
   position?: number;
   /** Only offered to holders of this permission — its loader calls an endpoint gated on it. */
   requiresPermission?: string;
+  // --- gallery metadata (issue #15) -------------------------------------------------------- #
+  /** i18n key for the gallery card title. Falls back to `dashboard.widget.<key>`. */
+  titleKey?: string;
+  /** i18n key for the one-line gallery description. */
+  descriptionKey?: string;
+  /** Gallery grouping — an i18n key like `dashboard.category.time`. */
+  category?: string;
+  /** Grid footprint (default `md`), shown in the gallery and applied to the tile. */
+  size?: WidgetSize;
+  /**
+   * A static, **data-free** preview for the gallery card. The gallery must never call `load()`
+   * just to draw a thumbnail (that would fire N API calls to open the picker — docs/PERFORMANCE.md),
+   * so a widget with no preview renders a generic skeleton instead.
+   */
+  preview?: Component;
+}
+
+/** The gallery card title: the widget's own `titleKey`, else the legacy per-key label. */
+export function widgetTitleKey(spec: DashboardWidgetSpec): string {
+  return spec.titleKey ?? `dashboard.widget.${spec.key}`;
 }
 
 /** One entry on the shared calendar (`/calendar`), normalized across modules. */

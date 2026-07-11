@@ -4,6 +4,7 @@
  * day-month ordering and 24-hour clocks. Date-only ISO strings are wall-clock values and
  * are formatted in UTC so they never shift a day.
  */
+import { getClock, getDateFormat } from "$lib/core/dateformat";
 import { getTimeZone } from "$lib/core/timezone";
 import { getLocale } from "$lib/paraglide/runtime";
 
@@ -60,11 +61,24 @@ export function fmtMonthYear(month: string): string {
   return fmt({ month: "long", year: "numeric", timeZone: "UTC" }).format(dateOnly(`${month}-01`));
 }
 
-/** "07-07-2026" — full numeric date, European order. Date-only ISO string. */
+/**
+ * "07-07-2026" — full numeric date in the user's preferred order (issue #13; default `dd-mm-yyyy`).
+ * Date-only ISO string. Assembled from the parts rather than from a locale, so the order is the
+ * personal choice and never a side effect of the UI language.
+ */
 export function fmtNumericDate(isoDate: string): string {
-  return fmt({ day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" }).format(
-    dateOnly(isoDate),
-  );
+  const d = dateOnly(isoDate);
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const yyyy = String(d.getUTCFullYear()).padStart(4, "0");
+  switch (getDateFormat()) {
+    case "yyyy-mm-dd":
+      return `${yyyy}-${mm}-${dd}`;
+    case "mm-dd-yyyy":
+      return `${mm}-${dd}-${yyyy}`;
+    default:
+      return `${dd}-${mm}-${yyyy}`;
+  }
 }
 
 /**
@@ -80,6 +94,8 @@ export function fmtDateTime(isoDateTime: string): string {
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
+    // The clock is the user's personal choice (issue #13), not a side effect of the locale.
+    hour12: getClock() === "12h",
     timeZone: getTimeZone(),
   }).format(new Date(isoDateTime));
 }

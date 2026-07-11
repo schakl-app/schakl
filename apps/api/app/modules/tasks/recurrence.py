@@ -31,8 +31,8 @@ from app.modules.tasks.models import (
     TaskChecklist,
     TaskChecklistItem,
     TaskLabelLink,
-    TaskStatus,
 )
+from app.modules.tasks.statuses import default_key, load_statuses
 
 _TZ = ZoneInfo("Europe/Amsterdam")
 
@@ -104,6 +104,9 @@ async def spawn_next(
     rec = dict(task.recurrence or {})
     due = next_due(task.due_date, rec)
 
+    # A fresh occurrence starts in the org's default status (issue #62), not a hardcoded "open".
+    default_status = default_key(await load_statuses(session, org_id))
+
     clone = Task(
         org_id=org_id,
         company_id=task.company_id,
@@ -111,7 +114,7 @@ async def spawn_next(
         assignee_user_id=task.assignee_user_id,
         title=task.title,
         description=task.description,
-        status=TaskStatus.OPEN.value,
+        status=default_status,
         priority=task.priority,
         due_date=due,
         allocated_minutes=task.allocated_minutes,

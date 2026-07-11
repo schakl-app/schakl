@@ -353,15 +353,24 @@
 {/snippet}
 
 {#snippet mobileItem(row: T)}
+  {@const href = rowHref?.(row)}
   <li
-    class="flex items-center gap-3 px-4 py-3 first:rounded-t-xl last:rounded-b-xl hover:bg-surface
+    class="relative flex items-center gap-3 px-4 py-3 first:rounded-t-xl last:rounded-b-xl hover:bg-surface
       {selectedSet.has(row.id) ? 'bg-brand/5' : ''}"
   >
+    {#if href}
+      <!-- A `<tr>` can't be wrapped in an `<a>`, but a `<li>` can: on the phone the whole row taps
+           through to its record (#59). This is a stretched-link overlay, so plain content is
+           covered and navigates, while positioned inline controls — the ⋯ menu (already
+           `relative`), the checkbox and toggles lifted with `relative z-10` — paint above it and
+           keep their own tap. -->
+      <a href={href} class="absolute inset-0" aria-label={t("table.open_row")}></a>
+    {/if}
     {#if selectable}
       <!-- A phone gets the same bulk actions; it has rows, it just has no header row. -->
       <input
         type="checkbox"
-        class={checkboxClass}
+        class="{checkboxClass} relative z-10"
         checked={selectedSet.has(row.id)}
         aria-label={t("table.select_row")}
         onchange={() => toggleRow(row.id)}

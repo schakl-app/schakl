@@ -7,6 +7,7 @@ a Trello-style history.
 
 from __future__ import annotations
 
+import re
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
@@ -17,6 +18,7 @@ from sqlalchemy import text as sql_text
 
 from app.core.auth.models import User
 from app.core.events import emit
+from app.core.models import Membership
 from app.core.richtext import markdown_to_plaintext, sanitize_markdown
 from app.core.sorting import apply_sort, user_sort_name
 from app.core.tenancy import RequestContext
@@ -34,7 +36,7 @@ from app.modules.tasks.models import (
     TaskLabelLink,
     TaskLink,
     TaskPriority,
-    TaskStatus,
+    TaskStatusDef,
 )
 from app.modules.tasks.schemas import (
     ActivityRead,
@@ -55,14 +57,21 @@ from app.modules.tasks.schemas import (
     LabelUpdate,
     LinkCreate,
     LinkRead,
+    StatusCreate,
+    StatusUpdate,
     TaskCreate,
     TaskDetail,
     TaskListItem,
     TaskUpdate,
     TemplateChecklistItem,
 )
-
-_OPEN_STATUSES = (TaskStatus.OPEN.value, TaskStatus.IN_PROGRESS.value)
+from app.modules.tasks.statuses import (
+    default_key,
+    load_statuses,
+    non_terminal_keys,
+    status_order,
+    terminal_keys,
+)
 
 # Fields whose change is worth an ``updated`` activity entry (position/derived ones are noise).
 _TRACKED_FIELDS = (
@@ -94,13 +103,13 @@ def _rank(column: Any, order: Sequence[str]) -> Any:
 # every uppercase one. ``assignee`` orders by the employee's display name, never by their user id
 # — a list sorted by a person has to read that way (docs/UX.md).
 _PRIORITY_ORDER = (TaskPriority.LOW.value, TaskPriority.NORMAL.value, TaskPriority.HIGH.value)
-_STATUS_ORDER = (TaskStatus.OPEN.value, TaskStatus.IN_PROGRESS.value, TaskStatus.DONE.value)
 
+# Status is no longer a fixed vocabulary, so its rank is built per request from the org's
+# configured order (see ``list``). Everything else is static.
 SORTABLE = {
     "title": func.lower(Task.title),
     "due_date": Task.due_date,
     "priority": _rank(Task.priority, _PRIORITY_ORDER),
-    "status": _rank(Task.status, _STATUS_ORDER),
     "assignee": user_sort_name(Task.assignee_user_id),
     "created_at": Task.created_at,
     "updated_at": Task.updated_at,
@@ -111,6 +120,25 @@ def _display_name(user: User | None) -> str | None:
     if user is None:
         return None
     return user.full_name or user.email
+
+
+# `@[Display Name](mention:<uuid>)` — the marker the composer writes and this extracts (issue #63).
+# The name is display-only; the id is the truth, so a rename never breaks who was mentioned.
+_MENTION_RE = re.compile(
+    r"@\[[^\]]+\]\(mention:([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\)"
+)
+
+
+def _extract_mentions(body: str) -> list[uuid.UUID]:
+    """The distinct user ids mentioned in a comment body, in first-seen order."""
+    seen: dict[uuid.UUID, None] = {}
+    for match in _MENTION_RE.finditer(body):
+        try:
+            seen.setdefault(uuid.UUID(match.group(1)), None)
+        except ValueError:
+            continue
+    return list(seen)
 
 
 def _attribution(live: User | None, snapshot: str | None) -> tuple[str | None, bool]:
@@ -291,7 +319,7 @@ class TaskService:
         company_id: uuid.UUID | None = None,
         project_id: uuid.UUID | None = None,
         assignee_user_id: uuid.UUID | None = None,
-        status: TaskStatus | None = None,
+        status: str | None = None,
         label_id: uuid.UUID | None = None,
         due: str | None = None,
         q: str | None = None,
@@ -309,7 +337,7 @@ class TaskService:
         if assignee_user_id is not None:
             stmt = stmt.where(Task.assignee_user_id == assignee_user_id)
         if status is not None:
-            stmt = stmt.where(Task.status == status.value)
+            stmt = stmt.where(Task.status == status)
         if label_id is not None:
             stmt = stmt.where(
                 Task.id.in_(
@@ -319,9 +347,15 @@ class TaskService:
                     )
                 )
             )
+        # The status vocabulary is per-org (issue #62): "overdue" means an unfinished task past
+        # its date, and the status sort ranks by the tenant's configured order — both read from
+        # ``task_statuses`` rather than a hardcoded open/done tuple.
+        statuses = await load_statuses(self.ctx.session, self.ctx.org.id)
         today = rec_mod.today_local()
         if due == "overdue":
-            stmt = stmt.where(Task.due_date < today, Task.status.in_(_OPEN_STATUSES))
+            stmt = stmt.where(
+                Task.due_date < today, Task.status.in_(non_terminal_keys(statuses))
+            )
         elif due == "today":
             stmt = stmt.where(Task.due_date == today)
         elif due == "week":
@@ -336,8 +370,9 @@ class TaskService:
         # but keeps `created_at` as the tiebreak, so paging stays deterministic either way. The
         # web groups the rows by status afterwards; a sort therefore orders *within* a section
         # and never reshuffles the sections themselves (#38, #41).
+        sortable = {**SORTABLE, "status": _rank(Task.status, status_order(statuses))}
         stmt = (
-            apply_sort(stmt, sort, SORTABLE, default=Task.position.asc())
+            apply_sort(stmt, sort, sortable, default=Task.position.asc())
             .order_by(Task.created_at.asc())
             .limit(limit)
             .offset(offset)
@@ -351,11 +386,12 @@ class TaskService:
         return await self._list_items(tasks), total
 
     async def my_open(self, *, limit: int = 20) -> list[TaskListItem]:
-        """Open/in-progress tasks assigned to the current user (My Day)."""
+        """Unfinished tasks assigned to the current user (My Day)."""
+        statuses = await load_statuses(self.ctx.session, self.ctx.org.id)
         stmt = (
             self.repo.scoped_select()
             .where(Task.assignee_user_id == self.ctx.user.id)
-            .where(Task.status.in_(_OPEN_STATUSES))
+            .where(Task.status.in_(non_terminal_keys(statuses)))
             .order_by(Task.due_date.asc().nulls_last(), Task.created_at.desc())
             .limit(limit)
         )
@@ -498,7 +534,10 @@ class TaskService:
             values["assignee_user_id"] = await self._default_assignee(
                 values.get("project_id"), values.get("company_id")
             )
-        values["status"] = data.status.value
+        # Status is a tenant-configured key (issue #62): unset falls to the org's default status,
+        # anything else must be one the org actually defined.
+        statuses = await load_statuses(self.ctx.session, self.ctx.org.id)
+        values["status"] = self._resolve_status(statuses, data.status, allow_default=True)
         values["priority"] = data.priority.value
         values["recurrence"] = data.recurrence.model_dump(mode="json") if data.recurrence else None
         values["recurrence_next_run"] = rec_mod.compute_next_run(
@@ -536,6 +575,25 @@ class TaskService:
         )
         return float(result or 0.0) + 1024.0
 
+    def _resolve_status(
+        self, statuses: list[TaskStatusDef], key: str | None, *, allow_default: bool
+    ) -> str:
+        """Validate a requested status key against the org's vocabulary (issue #62).
+
+        ``None`` resolves to the org's default status on create; on update it means "leave it",
+        so callers only pass a key there. An unknown key is a 422 like any other bad field.
+        """
+        if key is None and allow_default:
+            return default_key(statuses)
+        if key not in {s.key for s in statuses}:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"status": "errors.validation"},
+            )
+        return key
+
     async def update(self, task_id: uuid.UUID, data: TaskUpdate) -> Task:
         task = await self._writable_task_or_403(task_id)
         values = data.model_dump(exclude_unset=True)
@@ -559,8 +617,11 @@ class TaskService:
                 fields={"due_change_reason": "errors.due_reason_required"},
             )
 
+        # A tenant-configured status vocabulary (issue #62): the requested key must be one the org
+        # defined, and "finished" is the status's ``is_terminal`` flag, not the literal "done".
+        statuses = await load_statuses(self.ctx.session, self.ctx.org.id)
         if values.get("status") is not None:
-            values["status"] = data.status.value  # type: ignore[union-attr]
+            values["status"] = self._resolve_status(statuses, data.status, allow_default=False)
         if values.get("priority") is not None:
             values["priority"] = data.priority.value  # type: ignore[union-attr]
         if "recurrence" in values:
@@ -568,11 +629,12 @@ class TaskService:
                 data.recurrence.model_dump(mode="json") if data.recurrence else None
             )
 
+        terminal = terminal_keys(statuses)
         old_status = task.status
         new_status = values.get("status", old_status)
-        if old_status != TaskStatus.DONE.value and new_status == TaskStatus.DONE.value:
+        if old_status not in terminal and new_status in terminal:
             values["completed_at"] = datetime.now(UTC)
-        elif old_status == TaskStatus.DONE.value and new_status != TaskStatus.DONE.value:
+        elif old_status in terminal and new_status not in terminal:
             values["completed_at"] = None
 
         if "recurrence" in values or "due_date" in values:
@@ -624,7 +686,7 @@ class TaskService:
 
         if (
             status_changed
-            and new_status == TaskStatus.DONE.value
+            and new_status in terminal
             and (task.recurrence or {}).get("mode") == RecurrenceMode.AFTER_COMPLETION.value
         ):
             await rec_mod.spawn_next(
@@ -700,6 +762,59 @@ class TaskService:
         await self.ctx.session.flush()
         await self._record(task_id, "updated", {"changed": ["labels"]})
         return sorted(labels, key=lambda label: (label.position, label.name))
+
+    # ------------------------------------------------------------------ #
+    # Statuses (org-level, tenant-configurable — issue #62)
+    # ------------------------------------------------------------------ #
+    async def list_statuses(self) -> list[TaskStatusDef]:
+        """The org's status vocabulary in board order, seeding the defaults on first read."""
+        return await load_statuses(self.ctx.session, self.ctx.org.id)
+
+    async def _clear_default(self, keep_id: uuid.UUID | None) -> None:
+        """At most one status is the default; making one default clears the others."""
+        others = await self.ctx.repo(TaskStatusDef).list(limit=200)
+        for status in others:
+            if status.is_default and status.id != keep_id:
+                status.is_default = False
+
+    async def create_status(self, data: StatusCreate) -> TaskStatusDef:
+        self.ctx.require("tasks.status.write")
+        repo = self.ctx.repo(TaskStatusDef)
+        await load_statuses(self.ctx.session, self.ctx.org.id)  # ensure defaults exist first
+        if await repo.count(key=data.key):
+            raise AppError("conflict", "errors.conflict", status_code=409)
+        status = await repo.create(**data.model_dump())
+        if status.is_default:
+            await self._clear_default(status.id)
+        await self.ctx.session.flush()
+        return status
+
+    async def update_status(self, status_id: uuid.UUID, data: StatusUpdate) -> TaskStatusDef:
+        self.ctx.require("tasks.status.write")
+        repo = self.ctx.repo(TaskStatusDef)
+        status = await repo.get_or_404(status_id)
+        status = await repo.update(status, **data.model_dump(exclude_unset=True))
+        if status.is_default:
+            await self._clear_default(status.id)
+        await self.ctx.session.flush()
+        return status
+
+    async def delete_status(self, status_id: uuid.UUID) -> None:
+        self.ctx.require("tasks.status.write")
+        repo = self.ctx.repo(TaskStatusDef)
+        status = await repo.get_or_404(status_id)
+        # A status still holding tasks can't be dropped — it would orphan ``Task.status``. Move
+        # those tasks first (or delete them). The last status can't go either: a task needs one.
+        in_use = await self.ctx.session.scalar(
+            select(func.count())
+            .select_from(Task)
+            .where(Task.org_id == self.ctx.org.id, Task.status == status.key)
+        )
+        if in_use:
+            raise AppError("conflict", "errors.status_in_use", status_code=409)
+        if await repo.count() <= 1:
+            raise AppError("conflict", "errors.status_last", status_code=409)
+        await repo.delete(status)
 
     # ------------------------------------------------------------------ #
     # Checklists
@@ -905,30 +1020,52 @@ class TaskService:
     # ------------------------------------------------------------------ #
     # Comments
     # ------------------------------------------------------------------ #
+    async def _valid_mentions(self, ids: list[uuid.UUID]) -> list[uuid.UUID]:
+        """Keep only the mentioned ids that are members of this org (issue #63)."""
+        if not ids:
+            return []
+        members = set(
+            (
+                await self.ctx.session.execute(
+                    select(Membership.user_id).where(
+                        Membership.org_id == self.ctx.org.id, Membership.user_id.in_(ids)
+                    )
+                )
+            ).scalars()
+        )
+        return [uid for uid in ids if uid in members]
+
     async def add_comment(self, task_id: uuid.UUID, data: CommentCreate) -> CommentRead:
         self.ctx.require("tasks.comment.write")
         task = await self.repo.get_or_404(task_id)
         body = sanitize_markdown(data.body) or ""
         excerpt = _excerpt(body)
+        # Mentions are captured structurally from the `@[Name](mention:<uuid>)` markers, validated
+        # against org membership so a stray id can't notify someone in another tenant (issue #63).
+        mentioned = await self._valid_mentions(_extract_mentions(body))
         comment = await self.ctx.repo(TaskComment).create(
             task_id=task_id,
             author_user_id=self.ctx.user.id,
             author_name=_display_name(self.ctx.user),
             body=body,
+            mentioned_user_ids=[str(uid) for uid in mentioned],
         )
         # The excerpt the notification has always carried belongs in the trail too, with the id
         # to reach the comment by — "commented", on its own, sends you hunting for what (#61).
         await self._record(
             task_id, "commented", {"comment_id": str(comment.id), "excerpt": excerpt}
         )
-        # Everyone already in the conversation hears the reply; commenting also subscribes
-        # the author to the task, so the fan-out keeps reaching them (issue #16).
-        await self._emit_task(
-            "task.commented",
-            task,
-            await self._comment_audience(task),
-            {"excerpt": excerpt},
-        )
+        # A mention reads as its own sentence ("X mentioned you"), so a mentioned person gets
+        # `task.mentioned` even when they are neither the assignee nor a prior commenter — and is
+        # dropped from the generic `task.commented` fan-out so they aren't told twice (issue #63).
+        mentioned_set = set(mentioned)
+        commented = [
+            uid for uid in await self._comment_audience(task) if uid not in mentioned_set
+        ]
+        if commented:
+            await self._emit_task("task.commented", task, commented, {"excerpt": excerpt})
+        if mentioned:
+            await self._emit_task("task.mentioned", task, mentioned, {"excerpt": excerpt})
         return CommentRead.model_validate(comment).model_copy(
             update={"author_name": _display_name(self.ctx.user)}
         )
@@ -966,8 +1103,15 @@ class TaskService:
         if comment.author_user_id != self.ctx.user.id:
             raise AppError("forbidden", "errors.forbidden", status_code=403)
         self.ctx.require("tasks.comment.write")
+        body = sanitize_markdown(data.body) or ""
+        # Keep the stored mention set in step with the edited body (issue #63). Editing does not
+        # re-notify — a mention notifies once, when it is first written, like the comment itself.
+        mentioned = await self._valid_mentions(_extract_mentions(body))
         comment = await self.ctx.repo(TaskComment).update(
-            comment, body=sanitize_markdown(data.body) or "", edited_at=datetime.now(UTC)
+            comment,
+            body=body,
+            mentioned_user_ids=[str(uid) for uid in mentioned],
+            edited_at=datetime.now(UTC),
         )
         await self._record(
             task_id,

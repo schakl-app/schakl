@@ -23,6 +23,7 @@
     placeholder = "",
     required = false,
     class: klass = "",
+    mentions = [],
     onchange,
   }: {
     value?: string;
@@ -34,6 +35,8 @@
     placeholder?: string;
     required?: boolean;
     class?: string;
+    /** @mention candidates (issue #63): typing `@` autocompletes against these org members. */
+    mentions?: { id: string; name: string }[];
     onchange?: (value: string) => void;
   } = $props();
 
@@ -44,6 +47,80 @@
   function change(next: string) {
     content = next;
     onchange?.(next);
+  }
+
+  // --- @mention autocomplete (issue #63) -------------------------------------
+  // A picked member is written into the source as `@[Name](mention:<uuid>)`; the API extracts the
+  // id from that marker and the renderer chips it, so nothing depends on fuzzy name matching.
+  let mentionOpen = $state(false);
+  let mentionQuery = $state("");
+  let mentionStart = $state(-1);
+  let mentionIndex = $state(0);
+
+  const mentionMatches = $derived(
+    mentionOpen
+      ? mentions
+          .filter((m) => m.name.toLowerCase().includes(mentionQuery.toLowerCase()))
+          .slice(0, 6)
+      : [],
+  );
+
+  function detectMention() {
+    const el = textarea;
+    if (!el || mentions.length === 0) {
+      mentionOpen = false;
+      return;
+    }
+    const caret = el.selectionStart;
+    const before = content.slice(0, caret);
+    const at = before.lastIndexOf("@");
+    if (at < 0) {
+      mentionOpen = false;
+      return;
+    }
+    // The `@` must open a word (start of line or after whitespace), and the query so far must hold
+    // no whitespace or bracket — otherwise the caret has moved past a mention.
+    const prev = at === 0 ? " " : before[at - 1];
+    const query = before.slice(at + 1);
+    if (!/\s/.test(prev) || /[\s[\]]/.test(query)) {
+      mentionOpen = false;
+      return;
+    }
+    mentionStart = at;
+    mentionQuery = query;
+    mentionIndex = 0;
+    mentionOpen = true;
+  }
+
+  function pickMention(member: { id: string; name: string }) {
+    const el = textarea;
+    if (!el) return;
+    const caret = el.selectionStart;
+    const token = `@[${member.name}](mention:${member.id}) `;
+    change(content.slice(0, mentionStart) + token + content.slice(caret));
+    mentionOpen = false;
+    queueMicrotask(() => {
+      el.focus();
+      const pos = mentionStart + token.length;
+      el.selectionStart = el.selectionEnd = pos;
+    });
+  }
+
+  function onMentionKeydown(event: KeyboardEvent) {
+    if (!mentionOpen || mentionMatches.length === 0) return;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      mentionIndex = (mentionIndex + 1) % mentionMatches.length;
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      mentionIndex = (mentionIndex - 1 + mentionMatches.length) % mentionMatches.length;
+    } else if (event.key === "Enter" || event.key === "Tab") {
+      event.preventDefault();
+      pickMention(mentionMatches[mentionIndex]);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      mentionOpen = false;
+    }
   }
 
   const toolbarButton =
@@ -83,7 +160,7 @@
   }
 </script>
 
-<div class="rounded-lg border border-border focus-within:border-brand {klass}">
+<div class="relative rounded-lg border border-border focus-within:border-brand {klass}">
   <div class="flex items-center gap-1 border-b border-border px-1.5 py-1">
     <button
       type="button"
@@ -144,7 +221,12 @@
   <textarea
     bind:this={textarea}
     bind:value={content}
-    oninput={(e) => onchange?.(e.currentTarget.value)}
+    oninput={(e) => {
+      onchange?.(e.currentTarget.value);
+      detectMention();
+    }}
+    onkeydown={onMentionKeydown}
+    onblur={() => queueMicrotask(() => (mentionOpen = false))}
     {name}
     {id}
     {form}
@@ -154,4 +236,27 @@
     class="block w-full resize-y rounded-b-lg bg-transparent px-3 py-2 text-sm outline-none {preview
       ? 'hidden'
       : ''}"></textarea>
+
+  {#if mentionOpen && mentionMatches.length > 0}
+    <!-- Anchored under the editor; a phone still reaches it without a caret-precise popover. -->
+    <ul
+      class="absolute left-0 right-0 top-full z-30 mt-1 max-h-52 overflow-auto rounded-lg border border-border bg-surface-raised py-1 shadow-lg"
+    >
+      {#each mentionMatches as member, i (member.id)}
+        <li>
+          <button
+            type="button"
+            class="flex w-full items-center px-3 py-1.5 text-left text-sm hover:bg-surface
+              {i === mentionIndex ? 'bg-surface text-brand' : 'text-text'}"
+            onmousedown={(e) => {
+              e.preventDefault();
+              pickMention(member);
+            }}
+          >
+            @{member.name}
+          </button>
+        </li>
+      {/each}
+    </ul>
+  {/if}
 </div>
