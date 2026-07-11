@@ -689,8 +689,11 @@ class LeaveService:
     async def list_recurring(
         self, *, user_id: uuid.UUID | None = None
     ) -> Sequence[LeaveRecurringDay]:
-        """The org's patterns (managers' roster), optionally narrowed to one employee."""
-        self.ctx.require("leave.profile.manage")
+        """Patterns: a member sees their own; ``leave.profile.manage`` sees anyone's/all."""
+        if not self.ctx.can("leave.profile.manage"):
+            if user_id is not None and user_id != self.ctx.user.id:
+                raise AppError("forbidden", "errors.forbidden", status_code=403)
+            user_id = self.ctx.user.id
         stmt = self.recurring.scoped_select().order_by(
             LeaveRecurringDay.user_id, LeaveRecurringDay.anchor_date
         )
@@ -698,31 +701,72 @@ class LeaveService:
             stmt = stmt.where(LeaveRecurringDay.user_id == user_id)
         return (await self.ctx.session.execute(stmt)).scalars().all()
 
-    async def create_recurring(self, data: LeaveRecurringDayCreate) -> tuple[LeaveRecurringDay, int]:
-        """Define a pattern and immediately lay its days onto the calendar.
+    def _ensure_may_manage_pattern(self, user_id: uuid.UUID, leave_type: LeaveType) -> None:
+        """Who may shape a pattern, and for which type.
 
-        A pattern is employment data, so it is managed with the schedules and contracts
-        (``leave.profile.manage``) — not a self-service member act.
+        ``leave.profile.manage`` may plan any active type for anyone — their act is the
+        approval, as everywhere. An employee may plan their **own** pattern, but only for a
+        **self-service type** (``requires_approval = false``, e.g. ADV): generated days are
+        auto-approved, so a member pattern for an approval-requiring type would be a batch
+        bypass of the approval flow. The balance cap bounds what self-service can grant.
         """
-        self.ctx.require("leave.profile.manage")
+        if self.ctx.can("leave.profile.manage"):
+            return
+        if user_id != self.ctx.user.id:
+            raise AppError("forbidden", "errors.forbidden", status_code=403)
+        self.ctx.require("leave.request.write")
+        if leave_type.requires_approval:
+            raise AppError(
+                "forbidden", "errors.leave_recurring_needs_manager", status_code=403
+            )
+
+    async def _owned_recurring_or_404(self, recurring_id: uuid.UUID) -> LeaveRecurringDay:
+        """404, not 403, on someone else's pattern — a 403 would confirm that it exists."""
+        pattern = await self.recurring.get_or_404(recurring_id)
+        if pattern.user_id != self.ctx.user.id and not self.ctx.can("leave.profile.manage"):
+            raise AppError("not_found", "errors.not_found", status_code=404)
+        return pattern
+
+    async def create_recurring(self, data: LeaveRecurringDayCreate) -> tuple[LeaveRecurringDay, int]:
+        """Define a pattern and immediately lay its days onto the calendar."""
         await self._member_or_404(data.user_id)
         leave_type = await self.types.get_or_404(data.leave_type_id)
         if not leave_type.active:
             raise AppError("validation", "errors.validation", status_code=422)
-        pattern = await self.recurring.create(**data.model_dump())
+        self._ensure_may_manage_pattern(data.user_id, leave_type)
+        # Same same-day rule as a request: an inverted part-day window is a typo, not a wish.
+        self._validate_span(data.anchor_date, data.start_time, data.anchor_date, data.end_time)
+        values = data.model_dump()
+        # ``Clock``'s serializer stringifies in model_dump() too, and asyncpg refuses a string
+        # for a TIME column — the ORM needs the actual time objects.
+        values["start_time"] = data.start_time
+        values["end_time"] = data.end_time
+        pattern = await self.recurring.create(**values)
         created = await self.generate_recurring_days(pattern_id=pattern.id)
         return pattern, created
 
     async def update_recurring(
         self, recurring_id: uuid.UUID, data: LeaveRecurringDayUpdate
     ) -> tuple[LeaveRecurringDay, int]:
-        self.ctx.require("leave.profile.manage")
-        pattern = await self.recurring.get_or_404(recurring_id)
+        pattern = await self._owned_recurring_or_404(recurring_id)
         values = data.model_dump(exclude_unset=True)
-        if "leave_type_id" in values:
-            leave_type = await self.types.get_or_404(values["leave_type_id"])
-            if not leave_type.active:
-                raise AppError("validation", "errors.validation", status_code=422)
+        # model_dump() stringifies Clock fields; the TIME columns need the time objects.
+        if "start_time" in values:
+            values["start_time"] = data.start_time
+        if "end_time" in values:
+            values["end_time"] = data.end_time
+        leave_type = await self.types.get_or_404(
+            values.get("leave_type_id", pattern.leave_type_id)
+        )
+        if "leave_type_id" in values and not leave_type.active:
+            raise AppError("validation", "errors.validation", status_code=422)
+        self._ensure_may_manage_pattern(pattern.user_id, leave_type)
+        self._validate_span(
+            values.get("anchor_date", pattern.anchor_date),
+            values.get("start_time", pattern.start_time),
+            values.get("anchor_date", pattern.anchor_date),
+            values.get("end_time", pattern.end_time),
+        )
         pattern = await self.recurring.update(pattern, **values)
         created = 0
         if pattern.active:
@@ -732,8 +776,10 @@ class LeaveService:
     async def delete_recurring(self, recurring_id: uuid.UUID) -> None:
         """Delete the pattern; days already placed stay (FK is SET NULL) — they are real,
         individually cancellable leave the employee may have planned around."""
-        self.ctx.require("leave.profile.manage")
-        await self.recurring.delete(await self.recurring.get_or_404(recurring_id))
+        pattern = await self._owned_recurring_or_404(recurring_id)
+        leave_type = await self.types.get_or_404(pattern.leave_type_id)
+        self._ensure_may_manage_pattern(pattern.user_id, leave_type)
+        await self.recurring.delete(pattern)
 
     @staticmethod
     def _add_months(day: date, months: int) -> date:
@@ -819,7 +865,9 @@ class LeaveService:
                 occurrence += step
                 if day in spent:
                     continue
-                hours, _ = await self.compute_hours(pattern.user_id, day, None, day, None)
+                hours, _ = await self.compute_hours(
+                    pattern.user_id, day, pattern.start_time, day, pattern.end_time
+                )
                 if hours <= 0:
                     continue  # holiday or not a scheduled working day — meaningless free day
                 overlap = (
@@ -849,13 +897,16 @@ class LeaveService:
                     if remaining_by_year[day.year] < hours:
                         continue  # the gap earned no more free hours this year
                     remaining_by_year[day.year] -= hours
-                # An auto-approved registration, like a sick report: the pattern was a
-                # manager's act, and the employee moves individual days within the rules.
+                # An auto-approved registration, like a sick report: defining the pattern was
+                # the sanctioned act (a manager's, or the owner's own self-service type), and
+                # the employee moves individual days within the rules.
                 await self.requests.create(
                     user_id=pattern.user_id,
                     leave_type_id=pattern.leave_type_id,
                     start_date=day,
+                    start_time=pattern.start_time,
                     end_date=day,
+                    end_time=pattern.end_time,
                     hours=hours,
                     note=pattern.note,
                     status=LeaveRequestStatus.APPROVED.value,
@@ -1465,6 +1516,12 @@ class LeaveService:
         # self-approval is off (#110): there they are an ordinary owner and the edit bounces.
         acts_as_approver = await self._acts_as_approver(request.user_id)
         values = data.model_dump(exclude_unset=True)
+        # ``Clock``'s serializer stringifies in model_dump() too; both the hour computation and
+        # the TIME columns need the actual time objects, not "15:00".
+        if "start_time" in values:
+            values["start_time"] = data.start_time
+        if "end_time" in values:
+            values["end_time"] = data.end_time
         leave_type = await self.types.get_or_404(
             values.get("leave_type_id", request.leave_type_id)
         )

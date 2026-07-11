@@ -87,4 +87,52 @@ export const actions: Actions = {
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { cancelled: true };
   },
+
+  /** Own recurring free days (#107): the API restricts a member to self-service types. */
+  saveRecurring: async (event) => {
+    const form = await event.request.formData();
+    const userId = String(form.get("user_id") ?? "");
+    const typeId = String(form.get("leave_type_id") ?? "");
+    const anchor = String(form.get("anchor_date") ?? "");
+    const interval = Number(form.get("interval_weeks") ?? 0);
+    if (!userId || !typeId || !anchor || !interval) {
+      return fail(400, { error: "errors.required" });
+    }
+    const { data, error } = await apiFor(event).POST("/api/v1/leave/recurring", {
+      body: {
+        user_id: userId,
+        leave_type_id: typeId,
+        anchor_date: anchor,
+        interval_weeks: interval,
+        start_time: String(form.get("start_time") ?? "").trim() || null,
+        end_time: String(form.get("end_time") ?? "").trim() || null,
+      },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { recurringSaved: true, recurringGenerated: data?.generated ?? 0 };
+  },
+
+  toggleRecurring: async (event) => {
+    const form = await event.request.formData();
+    const id = String(form.get("id") ?? "");
+    if (!id) return fail(400, { error: "errors.required" });
+    const { data, error } = await apiFor(event).PATCH("/api/v1/leave/recurring/{recurring_id}", {
+      params: { path: { recurring_id: id } },
+      body: { active: form.get("active") === "true" },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { recurringSaved: true, recurringGenerated: data?.generated ?? 0 };
+  },
+
+  deleteRecurring: async (event) => {
+    const form = await event.request.formData();
+    const id = String(form.get("id") ?? "");
+    if (id) {
+      const { error } = await apiFor(event).DELETE("/api/v1/leave/recurring/{recurring_id}", {
+        params: { path: { recurring_id: id } },
+      });
+      if (error) return fail(400, { error: apiErrorKey(error).key });
+    }
+    return { recurringSaved: true, recurringGenerated: 0 };
+  },
 };

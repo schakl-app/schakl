@@ -201,6 +201,9 @@ export const actions: Actions = {
         leave_type_id: typeId,
         anchor_date: anchor,
         interval_weeks: interval,
+        // Part-day pattern ("off from 15:00") — absent fields mean the whole scheduled day.
+        start_time: String(form.get("start_time") ?? "").trim() || null,
+        end_time: String(form.get("end_time") ?? "").trim() || null,
       },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });

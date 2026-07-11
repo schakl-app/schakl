@@ -278,6 +278,11 @@ class LeaveRecurringDay(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Bas
     #: The first free day; its weekday *is* the pattern's weekday.
     anchor_date: Mapped[date] = mapped_column(Date, nullable=False)
     interval_weeks: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    #: Part-day patterns ("every Wednesday off from 15:00"): the window each occurrence
+    #: covers, ``NULL`` = whole scheduled day — the same wall-clock ``TIME`` semantics as
+    #: ``LeaveRequest`` (#48). Generated requests carry the window and the server prices it.
+    start_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    end_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     #: Deactivating stops future generation; days already placed stay — they are real leave
     #: the employee planned around, individually cancellable like any other request.
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Ban, Pencil, Plus } from "@lucide/svelte";
+  import { Ban, Pencil, Plus, Repeat } from "@lucide/svelte";
 
   import { page } from "$app/state";
   import { fmtDayMonth } from "$lib/core/format";
@@ -16,6 +16,7 @@
   import { LEAVE_COLUMNS } from "$lib/modules/leave/columns";
   import LeaveRequestForm from "$lib/modules/leave/LeaveRequestForm.svelte";
   import LeaveStatusPill from "$lib/modules/leave/LeaveStatusPill.svelte";
+  import RecurringDaysManager from "$lib/modules/leave/RecurringDaysManager.svelte";
   import { fmtHours, hoursToDays, typeLabel, type LeaveTypeInfo } from "$lib/modules/leave/format";
 
   let { data, form } = $props();
@@ -42,6 +43,10 @@
   );
 
   let createOpen = $state(false);
+  // Recurring free days, self-service (#107): only for auto-approve types — generated days
+  // are pre-approved, so approval-requiring types stay a manager's act (the API enforces it).
+  const selfServiceTypes = $derived(types.filter((lt) => lt.active && !lt.requires_approval));
+  let recurringOpen = $state(false);
   // Deep link from a calendar chip (#106): `?request=<id>` opens that request's edit modal on
   // arrival. Resolved once, into state initializers, not a derived — the surface opens on
   // load and the user can then close it (the same pattern as core/edit-intent.ts).
@@ -109,14 +114,26 @@
       >
     </div>
   </div>
-  <button
-    type="button"
-    class="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-    onclick={() => (createOpen = true)}
-  >
-    <Plus size={16} />
-    {t("leave.request_button")}
-  </button>
+  <div class="flex flex-wrap items-center gap-2">
+    {#if selfServiceTypes.length > 0}
+      <button
+        type="button"
+        class="flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-text hover:border-brand hover:text-brand"
+        onclick={() => (recurringOpen = true)}
+      >
+        <Repeat size={16} />
+        {t("leave.recurring.title")}
+      </button>
+    {/if}
+    <button
+      type="button"
+      class="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+      onclick={() => (createOpen = true)}
+    >
+      <Plus size={16} />
+      {t("leave.request_button")}
+    </button>
+  </div>
 </div>
 
 <!-- Balances per balance-tracked type -->
@@ -289,6 +306,18 @@
       />
     {/key}
   {/if}
+</Modal>
+
+<!-- Own recurring free days (#107): the same shared surface the manager's modal uses, here
+     limited to self-service types. -->
+<Modal bind:open={recurringOpen} title={t("leave.recurring.title")}>
+  <RecurringDaysManager
+    patterns={data.myRecurring}
+    types={selfServiceTypes}
+    userId={page.data.user?.id ?? ""}
+    error={form?.error ?? null}
+    generated={form?.recurringSaved ? (form.recurringGenerated ?? 0) : null}
+  />
 </Modal>
 
 <ConfirmDialog

@@ -378,13 +378,13 @@ def _recurring_saved(pattern, generated: int) -> LeaveRecurringDaySaved:
 @router.get(
     "/recurring",
     response_model=list[LeaveRecurringDayRead],
-    dependencies=[require_permission("leave.profile.manage")],
+    dependencies=[require_permission("leave.request.read")],
 )
 async def list_recurring(
     user_id: uuid.UUID | None = Query(None),
     ctx: RequestContext = Depends(require_context),
 ) -> list[LeaveRecurringDayRead]:
-    """The org's rostered-free-day patterns — employment data, managed with the schedules."""
+    """Rostered-free-day patterns: a member's own; anyone's/all on ``leave.profile.manage``."""
     items = await LeaveService(ctx).list_recurring(user_id=user_id)
     return [LeaveRecurringDayRead.model_validate(p) for p in items]
 
@@ -393,12 +393,14 @@ async def list_recurring(
     "/recurring",
     response_model=LeaveRecurringDaySaved,
     status_code=201,
-    dependencies=[require_permission("leave.profile.manage")],
+    dependencies=[require_permission("leave.request.write")],
 )
 async def create_recurring(
     payload: LeaveRecurringDayCreate,
     ctx: RequestContext = Depends(require_context),
 ) -> LeaveRecurringDaySaved:
+    """A manager plans any type for anyone; a member plans their **own** self-service types
+    (``requires_approval = false``) — the service enforces the split."""
     pattern, generated = await LeaveService(ctx).create_recurring(payload)
     return _recurring_saved(pattern, generated)
 
@@ -406,7 +408,7 @@ async def create_recurring(
 @router.patch(
     "/recurring/{recurring_id}",
     response_model=LeaveRecurringDaySaved,
-    dependencies=[require_permission("leave.profile.manage")],
+    dependencies=[require_permission("leave.request.write")],
 )
 async def update_recurring(
     recurring_id: uuid.UUID,
@@ -420,7 +422,7 @@ async def update_recurring(
 @router.delete(
     "/recurring/{recurring_id}",
     status_code=204,
-    dependencies=[require_permission("leave.profile.manage")],
+    dependencies=[require_permission("leave.request.write")],
 )
 async def delete_recurring(
     recurring_id: uuid.UUID,

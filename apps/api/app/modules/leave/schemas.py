@@ -232,6 +232,9 @@ class LeaveRecurringDayBase(BaseModel):
     #: Every week (1), every other week (2), … Bounded: a cadence past 8 weeks is a
     #: hand-planned day, not a roster.
     interval_weeks: int = Field(default=1, ge=1, le=8)
+    #: Part-day window ("off from 15:00"); ``None`` = the whole scheduled day (#48).
+    start_time: Clock | None = None
+    end_time: Clock | None = None
     note: str | None = None
 
 
@@ -244,6 +247,8 @@ class LeaveRecurringDayUpdate(BaseModel):
     anchor_date: date | None = None
     interval_weeks: int | None = Field(default=None, ge=1, le=8)
     leave_type_id: uuid.UUID | None = None
+    start_time: Clock | None = None
+    end_time: Clock | None = None
     active: bool | None = None
     note: str | None = None
 

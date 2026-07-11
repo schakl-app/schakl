@@ -342,19 +342,30 @@ async def test_horizon_setting_bounds_open_ended_generation(client_for) -> None:
         )
 
 
-async def test_recurring_requires_profile_manage_and_is_tenant_isolated(client_for) -> None:
-    a = await make_tenant("recurring-org-a")
-    b = await make_tenant("recurring-org-b")
-    ah = await auth_cookie(a.user)
-    bh = await auth_cookie(b.user)
-    async with client_for(a.host) as ca:
-        member = await _member(ca, ah, "e@example.com")
+async def test_member_plans_their_own_self_service_pattern(client_for) -> None:
+    """An employee shapes their own ADV roster (#107 follow-up): auto-approve types only —
+    generated days are pre-approved, so anything needing approval stays a manager's act."""
+    t = await make_tenant("recurring-self")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        member = await _member(c, headers, "e@example.com")
+        other = await _member(c, headers, "other@example.com")
         mh = await auth_cookie(member)
-        types = await _types(ca, ah)
-        anchor = _next_weekday(date.today() + timedelta(days=7), 4)
+        types = await _types(c, headers)
+        res = await c.post(
+            "/api/v1/leave/contracts",
+            json={
+                "user_id": str(member.id),
+                "start_date": f"{_YEAR}-01-01",
+                "end_date": None,
+                "contract_hours_per_week": "36",
+            },
+            headers=headers,
+        )
+        assert res.status_code == 201, res.text
 
-        # A plain member may not define patterns.
-        res = await ca.post(
+        anchor = _next_weekday(date.today() + timedelta(days=7), 4)
+        created = await c.post(
             "/api/v1/leave/recurring",
             json={
                 "user_id": str(member.id),
@@ -364,7 +375,118 @@ async def test_recurring_requires_profile_manage_and_is_tenant_isolated(client_f
             },
             headers=mh,
         )
+        assert created.status_code == 201, created.text
+        assert created.json()["generated"] > 0
+        pattern_id = created.json()["id"]
+
+        # Their own list shows it; they may pause and delete it.
+        listed = await c.get("/api/v1/leave/recurring", headers=mh)
+        assert [p["id"] for p in listed.json()] == [pattern_id]
+        res = await c.patch(
+            f"/api/v1/leave/recurring/{pattern_id}", json={"active": False}, headers=mh
+        )
+        assert res.status_code == 200, res.text
+        res = await c.delete(f"/api/v1/leave/recurring/{pattern_id}", headers=mh)
+        assert res.status_code == 204, res.text
+
+        # An approval-requiring type would batch-bypass the approval flow → manager only.
+        res = await c.post(
+            "/api/v1/leave/recurring",
+            json={
+                "user_id": str(member.id),
+                "leave_type_id": types["special"]["id"],
+                "anchor_date": anchor.isoformat(),
+                "interval_weeks": 2,
+            },
+            headers=mh,
+        )
         assert res.status_code == 403
+        assert "leave_recurring_needs_manager" in res.text
+
+        # Someone else's roster is not theirs to shape, or to list.
+        res = await c.post(
+            "/api/v1/leave/recurring",
+            json={
+                "user_id": str(other.id),
+                "leave_type_id": types["roostervrij"]["id"],
+                "anchor_date": anchor.isoformat(),
+                "interval_weeks": 2,
+            },
+            headers=mh,
+        )
+        assert res.status_code == 403
+        res = await c.get(
+            "/api/v1/leave/recurring", params={"user_id": str(other.id)}, headers=mh
+        )
+        assert res.status_code == 403
+
+
+async def test_part_day_pattern_prices_the_window(client_for) -> None:
+    """"Every Wednesday off from 15:00": occurrences carry the window and cost exactly the
+    scheduled hours inside it — 15:00 to the 17:00 day end is 2 h, not a whole day."""
+    t = await make_tenant("recurring-partday")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        member = await _member(c, headers, "e@example.com")
+        types = await _types(c, headers)
+        await c.post(
+            "/api/v1/leave/contracts",
+            json={
+                "user_id": str(member.id),
+                "start_date": f"{_YEAR}-01-01",
+                "end_date": None,
+                "contract_hours_per_week": "36",
+            },
+            headers=headers,
+        )
+
+        # An inverted same-day window is a typo, not a wish.
+        anchor = _next_weekday(date.today() + timedelta(days=7), 2)
+        res = await c.post(
+            "/api/v1/leave/recurring",
+            json={
+                "user_id": str(member.id),
+                "leave_type_id": types["roostervrij"]["id"],
+                "anchor_date": anchor.isoformat(),
+                "interval_weeks": 1,
+                "start_time": "15:00",
+                "end_time": "14:00",
+            },
+            headers=headers,
+        )
+        assert res.status_code == 422
+
+        created = await c.post(
+            "/api/v1/leave/recurring",
+            json={
+                "user_id": str(member.id),
+                "leave_type_id": types["roostervrij"]["id"],
+                "anchor_date": anchor.isoformat(),
+                "interval_weeks": 1,
+                "start_time": "15:00",
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        assert created.json()["start_time"] == "15:00"
+        rows = await _generated(c, headers, member.id)
+        assert len(rows) > 0
+        for row in rows:
+            assert row["start_time"] == "15:00"
+            assert row["end_time"] is None
+            # Default day runs 08:30–17:00; from 15:00 that is exactly two hours.
+            assert float(row["hours"]) == 2.0
+
+
+async def test_recurring_is_tenant_isolated(client_for) -> None:
+    a = await make_tenant("recurring-org-a")
+    b = await make_tenant("recurring-org-b")
+    ah = await auth_cookie(a.user)
+    bh = await auth_cookie(b.user)
+    async with client_for(a.host) as ca:
+        member = await _member(ca, ah, "e@example.com")
+        types = await _types(ca, ah)
+        anchor = _next_weekday(date.today() + timedelta(days=7), 4)
 
         created = await ca.post(
             "/api/v1/leave/recurring",

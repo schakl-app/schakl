@@ -245,6 +245,34 @@ async def test_preview_hands_back_the_edited_requests_own_hours(client_for) -> N
         assert float(res.json()["remaining_hours"]) == 8.0
 
 
+async def test_edit_can_set_a_part_day_window(client_for) -> None:
+    """PATCHing times must reach the TIME columns as time objects — the Clock serializer
+    stringifies in model_dump(), which both asyncpg and the hour computation refuse."""
+    t = await make_tenant("leave-partday-edit")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        types = (await c.get("/api/v1/leave/types", headers=headers)).json()
+        sick = next(lt for lt in types if lt["key"] == "sick")
+        start, end = _span(1)
+        created = await c.post(
+            "/api/v1/leave/requests",
+            json={"leave_type_id": sick["id"], "start_date": start, "end_date": end},
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        assert float(created.json()["hours"]) == 8.0
+
+        edited = await c.patch(
+            f"/api/v1/leave/requests/{created.json()['id']}",
+            json={"start_time": "15:00"},
+            headers=headers,
+        )
+        assert edited.status_code == 200, edited.text
+        assert edited.json()["start_time"] == "15:00"
+        # 15:00 to the 17:00 day end — the window is priced, not the whole day.
+        assert float(edited.json()["hours"]) == 2.0
+
+
 async def test_sick_leave_is_registered_not_requested(client_for) -> None:
     t = await make_tenant("leave-sick")
     headers = await auth_cookie(t.user)

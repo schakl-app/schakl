@@ -1013,11 +1013,15 @@ export interface paths {
         };
         /**
          * List Recurring
-         * @description The org's rostered-free-day patterns — employment data, managed with the schedules.
+         * @description Rostered-free-day patterns: a member's own; anyone's/all on ``leave.profile.manage``.
          */
         get: operations["list_recurring_api_v1_leave_recurring_get"];
         put?: never;
-        /** Create Recurring */
+        /**
+         * Create Recurring
+         * @description A manager plans any type for anyone; a member plans their **own** self-service types
+         *     (``requires_approval = false``) — the service enforces the split.
+         */
         post: operations["create_recurring_api_v1_leave_recurring_post"];
         delete?: never;
         options?: never;
@@ -4382,6 +4386,8 @@ export interface components {
              * Format: date
              */
             anchor_date: string;
+            /** End Time */
+            end_time?: string | null;
             /**
              * Interval Weeks
              * @default 1
@@ -4394,6 +4400,8 @@ export interface components {
             leave_type_id: string;
             /** Note */
             note?: string | null;
+            /** Start Time */
+            start_time?: string | null;
             /**
              * User Id
              * Format: uuid
@@ -4414,6 +4422,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** End Time */
+            end_time?: string | null;
             /**
              * Id
              * Format: uuid
@@ -4436,6 +4446,8 @@ export interface components {
              * Format: uuid
              */
             org_id: string;
+            /** Start Time */
+            start_time?: string | null;
             /**
              * Updated At
              * Format: date-time
@@ -4465,6 +4477,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** End Time */
+            end_time?: string | null;
             /**
              * Generated
              * @default 0
@@ -4492,6 +4506,8 @@ export interface components {
              * Format: uuid
              */
             org_id: string;
+            /** Start Time */
+            start_time?: string | null;
             /**
              * Updated At
              * Format: date-time
@@ -4509,12 +4525,16 @@ export interface components {
             active?: boolean | null;
             /** Anchor Date */
             anchor_date?: string | null;
+            /** End Time */
+            end_time?: string | null;
             /** Interval Weeks */
             interval_weeks?: number | null;
             /** Leave Type Id */
             leave_type_id?: string | null;
             /** Note */
             note?: string | null;
+            /** Start Time */
+            start_time?: string | null;
         };
         /**
          * LeaveRequestCreate
