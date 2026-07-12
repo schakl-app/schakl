@@ -29,6 +29,23 @@ PanelProvider = Callable[["RequestContext", "uuid.UUID"], Awaitable[dict[str, An
 
 
 @dataclass(frozen=True)
+class AutomationActionSpec:
+    """An action a module contributes to the automation rule engine (issue #27).
+
+    ``handler`` is an async callable ``(action_ctx, config) -> dict`` — the concrete
+    ``ActionContext`` lives in ``app.modules.automation.actions`` (kept opaque here so
+    contributing a spec never requires the automation module to be importable). The v1 set
+    ships on the automation module's own descriptor; other modules add theirs the same way
+    they add panels, so core holds no action list.
+    """
+
+    key: str                      # e.g. "task.create" — unique across modules
+    handler: Any                  # async (ActionContext, config: dict) -> dict (step result)
+    title_key: str = ""           # i18n key for the editor; default automation.action.<key>
+    position: int = 100
+
+
+@dataclass(frozen=True)
 class PanelSpec:
     """A panel a module contributes to a host entity's detail view (e.g. a company)."""
 
@@ -60,6 +77,8 @@ class ModuleDescriptor:
     # each declaring that entity's own read/write permission — core owns the mechanics,
     # modules only describe shape (the custom-fields/panels pattern, CLAUDE.md §13/§6).
     impex: list[ImpexDescriptor] = field(default_factory=list)
+    # Actions this module contributes to the automation rule engine (issue #27).
+    automation_actions: list[AutomationActionSpec] = field(default_factory=list)
 
 
 class ModuleRegistry:

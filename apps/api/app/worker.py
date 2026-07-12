@@ -25,9 +25,13 @@ from app.registry import registry
 logger = logging.getLogger("schakl.worker")
 
 
-def _collect_cron_jobs() -> list:
+def _load_modules() -> None:
     for name in settings.enabled_modules:
         importlib.import_module(f"app.modules.{name}")
+
+
+def _collect_cron_jobs() -> list:
+    _load_modules()
     jobs: list = []
     for module in registry.enabled(settings.enabled_modules):
         jobs.extend(module.cron_jobs)
@@ -35,9 +39,8 @@ def _collect_cron_jobs() -> list:
 
 
 def _collect_functions() -> list:
-    """One-off job functions modules contribute — enqueued from the API by name (#125)."""
-    for name in settings.enabled_modules:
-        importlib.import_module(f"app.modules.{name}")
+    """One-off job functions modules contribute — enqueued by name (#125, #27)."""
+    _load_modules()
     functions: list = []
     for module in registry.enabled(settings.enabled_modules):
         functions.extend(module.worker_functions)

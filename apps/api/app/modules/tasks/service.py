@@ -546,6 +546,18 @@ class TaskService:
         values["position"] = await self._next_position()
         task = await self.repo.create(**values)
         await self._record(task.id, "created")
+        # Automation trigger (issue #27); deliberately not in the notifications vocabulary,
+        # so it fans out to nobody. Status/company/project ride along for condition matching.
+        await self._emit_task(
+            "task.created",
+            task,
+            [],
+            {
+                "status": task.status,
+                "company_id": task.company_id,
+                "project_id": task.project_id,
+            },
+        )
         if task.assignee_user_id is not None:
             # Assigning yourself is silent — the fan-out drops the actor (issue #16).
             await self._emit_task("task.assigned", task, [task.assignee_user_id])

@@ -48,6 +48,11 @@ LEAVE_REJECTED = "leave.rejected"
 # time
 TIME_ENTRY_APPROVED = "time.entry_approved"
 TIME_TIMESHEET_REMINDER = "time.timesheet_reminder"
+# automation (issue #27): a rule's ``notification.send`` action. Not in EVENT_TYPES — it is
+# ingested directly through this module's published service (its entity type varies per run,
+# so the static subscribe/ENTITY_FOR_EVENT path cannot carry it), and it has no place in the
+# per-event preference matrix: switching a rule off is the rule editor's job.
+AUTOMATION_NOTIFY = "automation.notify"
 
 #: Every notifiable event, in display order. The settings matrix renders exactly this list.
 EVENT_TYPES: tuple[str, ...] = (

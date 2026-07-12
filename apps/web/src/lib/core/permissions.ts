@@ -63,6 +63,7 @@ export const SETTINGS_SCREEN_PERMISSIONS = [
   "notifications.defaults.manage",
   "settings.providers.manage",
   "contacts.type.manage",
+  "automation.rule.read",
 ] as const;
 
 export function canAccessSettings(granted: readonly string[] | undefined): boolean {

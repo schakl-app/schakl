@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from datetime import time
 
 from app.modules.notifications.events import (
+    AUTOMATION_NOTIFY,
     CHANNEL_IN_APP,
     COMPANY_ASSIGNED,
     DIGEST_DAILY,
@@ -46,6 +47,8 @@ _IMMEDIATE_EVENTS: frozenset[str] = frozenset(
         LEAVE_REQUESTED,
         LEAVE_APPROVED,
         LEAVE_REJECTED,
+        # A rule author who says "tell these people" means now, not in tomorrow's digest.
+        AUTOMATION_NOTIFY,
     }
 )
 

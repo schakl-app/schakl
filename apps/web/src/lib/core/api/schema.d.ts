@@ -213,6 +213,100 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/automation/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Catalog
+         * @description The trigger events and action types the rule editor may offer (code-defined).
+         */
+        get: operations["get_catalog_api_v1_automation_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/automation/dry-run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dry Run
+         * @description Evaluate a draft rule against a sample entity; executes nothing.
+         */
+        post: operations["dry_run_api_v1_automation_dry_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/automation/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Rules */
+        get: operations["list_rules_api_v1_automation_rules_get"];
+        put?: never;
+        /** Create Rule */
+        post: operations["create_rule_api_v1_automation_rules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/automation/rules/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Rule */
+        get: operations["get_rule_api_v1_automation_rules__rule_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Rule */
+        delete: operations["delete_rule_api_v1_automation_rules__rule_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Rule */
+        patch: operations["update_rule_api_v1_automation_rules__rule_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/automation/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Runs */
+        get: operations["list_runs_api_v1_automation_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/companies": {
         parameters: {
             query?: never;
@@ -3098,6 +3192,31 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ActionRead */
+        ActionRead: {
+            /** Action Type */
+            action_type: string;
+            /** Config */
+            config: {
+                [key: string]: unknown;
+            };
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Position */
+            position: number;
+        };
+        /** ActionWrite */
+        ActionWrite: {
+            /** Action Type */
+            action_type: string;
+            /** Config */
+            config?: {
+                [key: string]: unknown;
+            };
+        };
         /** ActivityRead */
         ActivityRead: {
             /** Action */
@@ -3411,6 +3530,13 @@ export interface components {
         BulkResult: {
             /** Updated */
             updated: number;
+        };
+        /** CatalogRead */
+        CatalogRead: {
+            /** Actions */
+            actions: string[];
+            /** Triggers */
+            triggers: components["schemas"]["TriggerInfo"][];
         };
         /** ChannelCreate */
         ChannelCreate: {
@@ -4238,6 +4364,38 @@ export interface components {
             registrar_provider_id?: string | null;
             registry_contact?: components["schemas"]["PartyRef"] | null;
             status?: components["schemas"]["DomainStatus-Input"] | null;
+        };
+        /**
+         * DryRunRequest
+         * @description A draft rule body + a sample entity: what *would* happen? Nothing executes.
+         */
+        DryRunRequest: {
+            /** Actions */
+            actions?: components["schemas"]["ActionWrite"][];
+            /** Conditions */
+            conditions?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            };
+            /** Trigger Event */
+            trigger_event: string;
+        };
+        /** DryRunResult */
+        DryRunResult: {
+            /** Matched */
+            matched: boolean;
+            /** Snapshot Found */
+            snapshot_found: boolean;
+            /** Would Fire */
+            would_fire: string[];
         };
         /** EffectivePermissions */
         EffectivePermissions: {
@@ -5845,6 +6003,17 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** Page[RunRead] */
+        Page_RunRead_: {
+            /** Items */
+            items: components["schemas"]["RunRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
         /** Page[SubscriptionRead] */
         Page_SubscriptionRead_: {
             /** Items */
@@ -6478,6 +6647,120 @@ export interface components {
              * @enum {string}
              */
             mode: "none" | "carry";
+        };
+        /** RuleCreate */
+        RuleCreate: {
+            /** Actions */
+            actions?: components["schemas"]["ActionWrite"][];
+            /** Conditions */
+            conditions?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /** Trigger Event */
+            trigger_event: string;
+        };
+        /** RuleRead */
+        RuleRead: {
+            /** Actions */
+            actions?: components["schemas"]["ActionRead"][];
+            /** Conditions */
+            conditions: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Position */
+            position: number;
+            /** Trigger Event */
+            trigger_event: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** RuleUpdate */
+        RuleUpdate: {
+            /** Actions */
+            actions?: components["schemas"]["ActionWrite"][] | null;
+            /** Conditions */
+            conditions?: {
+                [key: string]: unknown;
+            } | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Name */
+            name?: string | null;
+            /** Position */
+            position?: number | null;
+            /** Trigger Event */
+            trigger_event?: string | null;
+        };
+        /** RunRead */
+        RunRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Depth */
+            depth: number;
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Error */
+            error: string | null;
+            /** Finished At */
+            finished_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            /** Rule Id */
+            rule_id: string | null;
+            /** Rule Name */
+            rule_name: string;
+            /** Started At */
+            started_at: string | null;
+            /** Status */
+            status: string;
+            /** Steps */
+            steps: unknown[];
+            /** Trigger Event */
+            trigger_event: string;
         };
         /** ServiceAccountCreate */
         ServiceAccountCreate: {
@@ -7708,6 +7991,13 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** TriggerInfo */
+        TriggerInfo: {
+            /** Entity Type */
+            entity_type: string;
+            /** Event */
+            event: string;
+        };
         /** UnreadCount */
         UnreadCount: {
             /** Count */
@@ -8548,6 +8838,240 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_catalog_api_v1_automation_catalog_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogRead"];
+                };
+            };
+        };
+    };
+    dry_run_api_v1_automation_dry_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DryRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DryRunResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_rules_api_v1_automation_rules_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleRead"][];
+                };
+            };
+        };
+    };
+    create_rule_api_v1_automation_rules_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_rule_api_v1_automation_rules__rule_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_rule_api_v1_automation_rules__rule_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_rule_api_v1_automation_rules__rule_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_runs_api_v1_automation_runs_get: {
+        parameters: {
+            query?: {
+                rule_id?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_RunRead_"];
                 };
             };
             /** @description Validation Error */

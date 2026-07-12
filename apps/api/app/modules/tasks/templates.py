@@ -141,6 +141,18 @@ class TemplateService:
             actor_name=_display_name(self.ctx.user),
         )
 
+    async def instantiate_system(
+        self, template_id: uuid.UUID, company_id: uuid.UUID, *, actor_name: str | None = None
+    ) -> list[Task]:
+        """Published for the automation engine (issue #27): apply a template as the system.
+
+        No ``ctx.require`` — the worker's ``SystemContext`` has no user, and authorization
+        already happened when a permission-gated rule author saved the rule. ``actor_name``
+        (the rule's name) is what the activity trail shows instead of a person.
+        """
+        template = await self.repo.get_or_404(template_id)
+        return await self._instantiate(template, company_id, actor_id=None, actor_name=actor_name)
+
     async def _instantiate(
         self,
         template: TaskTemplate,

@@ -115,6 +115,11 @@
       t("settings.notification_defaults.subtitle"),
     )}
     {@render card("/settings/email", t("settings.email.title"), t("settings.email.subtitle"))}
+    {@render card(
+      "/settings/automation",
+      t("settings.automation.title"),
+      t("settings.automation.subtitle"),
+    )}
   </div>
 </section>
 

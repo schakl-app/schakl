@@ -161,6 +161,10 @@ class NotificationService:
         data = dict(payload)
         hinted = data.pop(RECIPIENTS_KEY, None) or []
         dedup_key = data.pop(DEDUP_KEY, None)
+        # Every ``_``-prefixed key is routing by convention (``_recipients``, ``_dedup_key``,
+        # the automation engine's ``_depth`` loop counter — issue #27), never content: none of
+        # it belongs in a persisted event row.
+        data = {key: value for key, value in data.items() if not key.startswith("_")}
         now = datetime.now(UTC)
 
         if dedup_key is not None and await self._dedup_exists(dedup_key):

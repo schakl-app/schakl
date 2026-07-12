@@ -84,7 +84,7 @@ class Settings(BaseSettings):
     enabled_modules: list[str] = Field(
         default_factory=lambda: [
             "companies", "contacts", "tasks", "projects", "time", "leave", "notifications",
-            "domains", "hosting", "websites", "subscriptions",
+            "domains", "hosting", "websites", "subscriptions", "automation",
         ]
     )
     default_locale: str = "nl"
@@ -94,15 +94,19 @@ class Settings(BaseSettings):
     # zone name — validated on write against the platform's zoneinfo database.
     default_timezone: str = "Europe/Amsterdam"
 
+    # --- Outbound hooks (issues #17, #27, #96) ---
+    # Tenant-configured outbound targets (automation webhooks, notification transports) refuse
+    # private/loopback/link-local addresses by default — a self-hosted box must not let a rule
+    # author probe the internal network (SSRF). Set true only for a trusted LAN deployment
+    # whose n8n/Uptime-Kuma etc. live on private addresses.
+    allow_private_notification_targets: bool = False
+
     # --- Auth ---
     secret_key: str = "change-me-in-production-please-32bytes-min"
     #: Key material for encrypting secrets at rest (notification channel URLs #17, Google refresh
     #: tokens). Falls back to ``secret_key`` when unset, so a single-secret install still works;
     #: set ``SCHAKL_ENCRYPTION_KEY`` to rotate it independently of the auth secret.
     encryption_key: str | None = None
-    #: Allow notification webhook URLs pointing at private/link-local addresses (#17). Off by
-    #: default (SSRF guard); a self-hosted admin may enable it for an in-network endpoint.
-    allow_private_notification_targets: bool = False
     # Cookie transport is used by the SSR web app.
     auth_cookie_name: str = "schakl_auth"
     auth_cookie_secure: bool = False  # True behind HTTPS in production
