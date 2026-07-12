@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from arq import cron
 
-from app.modules.domains.jobs import refresh_all_domains
+from app.modules.domains.jobs import refresh_all_domains, refresh_domain_dns
 from app.modules.domains.panels import domains_company_panel
 from app.modules.domains.permissions import DOMAIN_PERMISSIONS
 from app.modules.domains.router import router
@@ -20,8 +20,11 @@ module = ModuleDescriptor(
     i18n_namespace="domains",
     panels=[domains_company_panel],
     permissions=DOMAIN_PERMISSIONS,
-    # Refresh every domain's nameservers + DNSSEC daily, off-peak and offset from other jobs (#92).
+    # Refresh every domain's nameservers + DNSSEC + MX daily, off-peak and offset from other
+    # jobs (#92, #125).
     cron_jobs=[cron(refresh_all_domains, hour=4, minute=30)],
+    # One-off first fetch right after a domain is created (#125).
+    worker_functions=[refresh_domain_dns],
 )
 
 registry.register(module)

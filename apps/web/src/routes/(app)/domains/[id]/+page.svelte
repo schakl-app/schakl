@@ -2,6 +2,7 @@
   import { RefreshCw, Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
+  import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
@@ -39,8 +40,10 @@
   const website = $derived(data.website);
   const hostingItems = $derived(data.hosting.map((h) => ({ value: h.id, label: h.name })));
 
+  // Through the shared formatter (#125): tenant timezone + the personal clock/date prefs,
+  // instead of the browser-locale toLocaleString dump this replaced.
   function checkedAt(iso: string | null | undefined): string {
-    return iso ? new Date(iso).toLocaleString(data.locale ?? undefined) : t("domains.dns.never");
+    return iso ? fmtDateTime(iso) : t("domains.dns.never");
   }
 </script>
 
@@ -171,6 +174,18 @@
           {#if domain.nameservers && domain.nameservers.length > 0}
             <ul class="space-y-0.5 font-mono text-xs">
               {#each domain.nameservers as ns (ns)}<li>{ns}</li>{/each}
+            </ul>
+          {:else}—{/if}
+        </dd>
+      </div>
+      <div>
+        <dt class="text-text-muted">{t("domains.dns.mx")}</dt>
+        <dd class="mt-1 text-text">
+          {#if domain.mx_records && domain.mx_records.length > 0}
+            <ul class="space-y-0.5 font-mono text-xs">
+              {#each domain.mx_records as mx (`${mx.priority}-${mx.exchange}`)}
+                <li><span class="text-text-muted">{mx.priority}</span> {mx.exchange}</li>
+              {/each}
             </ul>
           {:else}—{/if}
         </dd>

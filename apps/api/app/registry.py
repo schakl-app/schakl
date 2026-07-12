@@ -51,6 +51,9 @@ class ModuleDescriptor:
     mcp_tools: list[Any] = field(default_factory=list)
     # ARQ cron job specs; the worker collects these from enabled modules.
     cron_jobs: list[Any] = field(default_factory=list)
+    # One-off ARQ job functions the API may enqueue by name (app.core.jobs.enqueue); the
+    # worker registers these alongside its cron jobs. Names must be globally unique.
+    worker_functions: list[Any] = field(default_factory=list)
 
 
 class ModuleRegistry:

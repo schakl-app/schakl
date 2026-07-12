@@ -91,9 +91,11 @@ class Domain(
     email_contact_party_type: Mapped[str | None] = party_type_column()
     email_contact_party_id: Mapped[uuid.UUID | None] = party_id_column()
 
-    # --- nameservers + DNSSEC, fetched from public DNS on a schedule (#92) --- #
+    # --- nameservers + DNSSEC + MX, fetched from public DNS on a schedule (#92, #125) --- #
     nameservers: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     dnssec: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # [{priority, exchange}] in priority order; NULL until first checked, [] = no MX.
+    mx_records: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     dns_checked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

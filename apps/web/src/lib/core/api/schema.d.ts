@@ -3814,6 +3814,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Mx Records */
+            mx_records?: components["schemas"]["MxRecord"][] | null;
             /** Name */
             name: string;
             /** Nameservers */
@@ -5148,6 +5150,13 @@ export interface components {
             oidc_enabled: boolean;
             /** Supported Locales */
             supported_locales: string[];
+        };
+        /** MxRecord */
+        MxRecord: {
+            /** Exchange */
+            exchange: string;
+            /** Priority */
+            priority: number;
         };
         /** NotificationRead */
         NotificationRead: {

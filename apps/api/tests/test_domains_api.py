@@ -128,7 +128,14 @@ async def test_domain_tenant_isolation(client_for) -> None:
 
 async def test_domain_dns_refresh(client_for, monkeypatch) -> None:
     async def fake_fetch(name: str) -> DnsFacts:
-        return DnsFacts(nameservers=["ns1.example.net", "ns2.example.net"], dnssec=True)
+        return DnsFacts(
+            nameservers=["ns1.example.net", "ns2.example.net"],
+            dnssec=True,
+            mx=[
+                {"priority": 10, "exchange": "mail1.example.net"},
+                {"priority": 20, "exchange": "mail2.example.net"},
+            ],
+        )
 
     monkeypatch.setattr(domains_service, "fetch_dns", fake_fetch)
 
@@ -142,10 +149,15 @@ async def test_domain_dns_refresh(client_for, monkeypatch) -> None:
             )
         ).json()
         assert domain["nameservers"] is None  # not yet checked
+        assert domain["mx_records"] is None
 
         refreshed = await c.post(f"/api/v1/domains/{domain['id']}/refresh", headers=headers)
         assert refreshed.status_code == 200
         body = refreshed.json()
         assert body["nameservers"] == ["ns1.example.net", "ns2.example.net"]
         assert body["dnssec"] is True
+        assert body["mx_records"] == [
+            {"priority": 10, "exchange": "mail1.example.net"},
+            {"priority": 20, "exchange": "mail2.example.net"},
+        ]
         assert body["dns_checked_at"] is not None

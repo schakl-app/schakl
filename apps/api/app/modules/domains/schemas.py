@@ -18,6 +18,11 @@ from app.core.party.schemas import PartyReadRef, PartyRef
 from app.modules.domains.models import DomainStatus
 
 
+class MxRecord(BaseModel):
+    priority: int
+    exchange: str
+
+
 class DomainBase(BaseModel):
     name: str = Field(min_length=1, max_length=253)
     status: DomainStatus = DomainStatus.ACTIVE
@@ -65,9 +70,10 @@ class DomainRead(BaseModel):
     email_provider_id: uuid.UUID | None = None
     email_provider_name: str | None = None
     email_contact: PartyReadRef | None = None
-    # Fetched from public DNS on a schedule (#92); NULL until first checked.
+    # Fetched from public DNS on a schedule (#92, #125); NULL until first checked.
     nameservers: list[str] | None = None
     dnssec: bool | None = None
+    mx_records: list[MxRecord] | None = None
     dns_checked_at: datetime | None = None
     custom: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime

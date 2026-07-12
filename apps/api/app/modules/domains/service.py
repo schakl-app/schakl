@@ -9,6 +9,7 @@ labels so a list never N+1s (docs/PERFORMANCE.md).
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -17,6 +18,7 @@ from typing import Any
 from sqlalchemy import bindparam, func, select, text
 
 from app.core.customfields import CustomFieldsService
+from app.core.jobs import enqueue
 from app.core.party import PartyService, PartyType
 from app.core.party.schemas import PartyRef
 from app.core.providers import ProviderService
@@ -27,6 +29,8 @@ from app.errors import AppError
 from app.modules.domains.dns import fetch_dns
 from app.modules.domains.models import Domain
 from app.modules.domains.schemas import DomainCreate, DomainUpdate
+
+logger = logging.getLogger("schakl.domains")
 
 ENTITY_TYPE = "domain"
 
@@ -136,6 +140,16 @@ class DomainService:
             email_contact_party_id=ec_id,
             custom=custom,
         )
+        # First DNS fetch (#125): a one-off worker job, so create never waits on a resolver and
+        # the DNS section fills in moments later instead of at the nightly cron. Deferred a few
+        # seconds so the request's transaction has committed by the time the worker looks. The
+        # job is a nicety — a queue failure must not fail the create it rides on.
+        try:
+            await enqueue(
+                "refresh_domain_dns", str(self._org_id), str(domain.id), _defer_by=3
+            )
+        except Exception:
+            logger.warning("could not enqueue first DNS fetch for domain %s", domain.id)
         await self._attach([domain])
         return domain
 
@@ -213,6 +227,7 @@ class DomainService:
             domain,
             nameservers=facts.nameservers,
             dnssec=facts.dnssec,
+            mx_records=facts.mx,
             dns_checked_at=datetime.now(UTC),
         )
         await self._attach([domain])

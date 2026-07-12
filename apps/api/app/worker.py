@@ -34,6 +34,16 @@ def _collect_cron_jobs() -> list:
     return jobs
 
 
+def _collect_functions() -> list:
+    """One-off job functions modules contribute — enqueued from the API by name (#125)."""
+    for name in settings.enabled_modules:
+        importlib.import_module(f"app.modules.{name}")
+    functions: list = []
+    for module in registry.enabled(settings.enabled_modules):
+        functions.extend(module.worker_functions)
+    return functions
+
+
 async def heartbeat(ctx: dict) -> str:
     """Record that this worker is alive (issue #18).
 
@@ -64,7 +74,7 @@ _CORE_CRON_JOBS = [
 
 
 class WorkerSettings:
-    functions = [heartbeat]
+    functions = [heartbeat] + _collect_functions()
     cron_jobs = _CORE_CRON_JOBS + _collect_cron_jobs()
     on_startup = startup
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
