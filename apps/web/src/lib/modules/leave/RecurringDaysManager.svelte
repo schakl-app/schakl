@@ -13,7 +13,7 @@
   import { Clock, Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
-  import { fmtNumericDate, fmtWeekdayShort } from "$lib/core/format";
+  import { fmtClockTime, fmtNumericDate, fmtWeekdayShort } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { getLocale } from "$lib/paraglide/runtime";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
@@ -74,10 +74,12 @@
 
   function windowText(pattern: RecurringPattern): string | null {
     if (pattern.start_time && pattern.end_time) {
-      return `${pattern.start_time} – ${pattern.end_time}`;
+      return `${fmtClockTime(pattern.start_time)} – ${fmtClockTime(pattern.end_time)}`;
     }
-    if (pattern.start_time) return t("leave.recurring.from_time", { time: pattern.start_time });
-    if (pattern.end_time) return t("leave.recurring.until_time", { time: pattern.end_time });
+    if (pattern.start_time)
+      return t("leave.recurring.from_time", { time: fmtClockTime(pattern.start_time) });
+    if (pattern.end_time)
+      return t("leave.recurring.until_time", { time: fmtClockTime(pattern.end_time) });
     return null;
   }
 

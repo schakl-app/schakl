@@ -6,6 +6,7 @@
 import { registerWebModule, type CalendarEvent } from "$lib/core/registry";
 import { isoAddDays } from "$lib/core/calendar";
 import { apiErrorKey } from "$lib/core/errors";
+import { fmtClockTime } from "$lib/core/format";
 import { hasPermission } from "$lib/core/permissions";
 import { t } from "$lib/core/i18n";
 import { TreePalm } from "@lucide/svelte";
@@ -66,17 +67,17 @@ registerWebModule({
           // omitted bound *means* the scheduled day's own start/end (#48), so the feed hands
           // the resolved window over ("until 14:00" reads 08:30–14:00) — the browser never
           // guesses a schedule. The open-ended dash survives only for a bound on an
-          // unscheduled day. HH:MM is locale-neutral. Single-day spans only: repeating
-          // "15:00 – 12:00" on every cell of a Thu-15:00 → Fri-12:00 chip would claim each
-          // *day* covers that window.
+          // unscheduled day. Times follow the personal clock preference (#13). Single-day
+          // spans only: repeating "15:00 – 12:00" on every cell of a Thu-15:00 → Fri-12:00
+          // chip would claim each *day* covers that window.
           const singleDay = item.start_date === item.end_date;
           const timed = singleDay && Boolean(item.start_time || item.end_time);
           const window = timed
             ? item.resolved_start_time && item.resolved_end_time
-              ? `${item.resolved_start_time}–${item.resolved_end_time} `
+              ? `${fmtClockTime(item.resolved_start_time)}–${fmtClockTime(item.resolved_end_time)} `
               : item.start_time
-                ? `${item.start_time} – `
-                : `– ${item.end_time} `
+                ? `${fmtClockTime(item.start_time)} – `
+                : `– ${fmtClockTime(item.end_time ?? "")} `
             : "";
           return {
             id: item.id,

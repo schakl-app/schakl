@@ -1,12 +1,15 @@
 <script lang="ts">
   /**
-   * 24-hour time field. Native <input type="time"> renders after the *browser/OS* locale,
+   * Time field. Native <input type="time"> renders after the *browser/OS* locale,
    * not <html lang>, so a user on an en-US machine gets an AM/PM picker no CSS can undo.
    * This owns the control instead: a text input on the "HH:MM" wire format, plus an anchored
-   * quarter-hour dropdown. Typing accepts 9, 930, 9:30, 9.30, 9,30 and 9u30.
-   * (The 12/24-hour display preference of #13 belongs in `toDisplay`/`parseTime`.)
+   * quarter-hour dropdown. Typing accepts 9, 930, 9:30, 9.30, 9,30, 9u30 — and, whatever the
+   * display preference, an explicit meridiem ("9:30 pm", "9pm", "930p").
+   * Display follows the personal 12/24-hour clock (#13); the posted value stays 24-hour.
    */
   import { Clock } from "@lucide/svelte";
+  import { getClock } from "$lib/core/dateformat";
+  import { fmtClockTime } from "$lib/core/format";
 
   let {
     name,
@@ -27,6 +30,9 @@
 
   const STEP_MINUTES = 15;
 
+  // Read once per component: the preference only changes on the Settings page, which navigates.
+  const clock = getClock();
+
   function pad(n: number): string {
     return String(n).padStart(2, "0");
   }
@@ -36,27 +42,45 @@
     if (!m) return "";
     const h = Number(m[1]);
     const min = Number(m[2]);
-    return h <= 23 && min <= 59 ? `${pad(h)}:${pad(min)}` : "";
+    return h <= 23 && min <= 59 ? fmtClockTime(`${pad(h)}:${pad(min)}`) : "";
   }
 
   /**
-   * Forgiving 24-hour parser → "HH:MM", or null when unreadable.
-   * Accepts "9", "9:30", "9.30", "9,30", "9u30", "9h30", "930", "0930" and "14:05".
+   * Forgiving parser → 24-hour "HH:MM", or null when unreadable.
+   * Accepts "9", "9:30", "9.30", "9,30", "9u30", "9h30", "930", "0930", "14:05" — and an
+   * explicit meridiem: "9:30 pm", "9pm", "930p", "12 am". Bare digits keep their 24-hour
+   * meaning in both display modes, so a typed "14:05" never turns into 2:05 AM.
    */
   function parseTime(raw: string): string | null {
-    const text = raw.trim().toLowerCase();
+    let text = raw.trim().toLowerCase();
     if (!text) return null;
 
-    const separated = /^(\d{1,2})\s*[:.,uh]\s*(\d{1,2})$/.exec(text);
-    if (separated) return validTime(Number(separated[1]), Number(separated[2]));
-
-    const digits = /^(\d{1,4})$/.exec(text);
-    if (digits) {
-      const d = digits[1];
-      if (d.length <= 2) return validTime(Number(d), 0);
-      return validTime(Number(d.slice(0, d.length - 2)), Number(d.slice(-2)));
+    let pm: boolean | null = null;
+    const meridiem = /^(.+?)\s*([ap])\.?\s*(?:m\.?)?$/.exec(text);
+    if (meridiem) {
+      pm = meridiem[2] === "p";
+      text = meridiem[1].trim();
     }
-    return null;
+
+    let hours: number | null = null;
+    let minutes = 0;
+    const separated = /^(\d{1,2})\s*[:.,uh]\s*(\d{1,2})$/.exec(text);
+    const digits = /^(\d{1,4})$/.exec(text);
+    if (separated) {
+      hours = Number(separated[1]);
+      minutes = Number(separated[2]);
+    } else if (digits) {
+      const d = digits[1];
+      hours = d.length <= 2 ? Number(d) : Number(d.slice(0, d.length - 2));
+      minutes = d.length <= 2 ? 0 : Number(d.slice(-2));
+    }
+    if (hours === null) return null;
+
+    if (pm !== null) {
+      if (hours < 1 || hours > 12) return null;
+      hours = (hours % 12) + (pm ? 12 : 0);
+    }
+    return validTime(hours, minutes);
   }
 
   function validTime(hours: number, minutes: number): string | null {
@@ -85,14 +109,20 @@
 
   /**
    * Options matching what has been typed so far, compared on bare digits: "9" → 09:xx,
-   * "14" → 14:xx, "930" → 09:30. Never narrows to nothing — an unreadable draft shows all.
+   * "14" → 14:xx, "930" → 09:30. In 12-hour display the typed digits also match the option's
+   * displayed form ("9" → 9:00 AM *and* 9:00 PM). Never narrows to nothing — an unreadable
+   * draft shows all.
    */
   const filtered = $derived.by(() => {
     const digits = text.replace(/\D/g, "");
     if (!digits) return steps;
     const prefix =
       digits.length <= 2 ? digits.padStart(2, "0") : digits.slice(0, 4).padStart(4, "0");
-    const matches = steps.filter((s) => s.replace(":", "").startsWith(prefix));
+    const matches = steps.filter(
+      (s) =>
+        s.replace(":", "").startsWith(prefix) ||
+        (clock === "12h" && toDisplay(s).replace(/\D/g, "").startsWith(digits)),
+    );
     return matches.length ? matches : steps;
   });
 
@@ -162,7 +192,7 @@
     aria-controls="{id}-listbox"
     bind:value={text}
     {required}
-    placeholder="hh:mm"
+    placeholder={clock === "12h" ? "h:mm am" : "hh:mm"}
     class="w-full rounded-lg border border-border px-3 py-2 pr-9 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand"
     onfocus={() => {
       open = true;
@@ -206,7 +236,7 @@
               choose(step);
             }}
           >
-            {step}
+            {toDisplay(step)}
           </button>
         </li>
       {/each}

@@ -100,6 +100,21 @@ export function fmtDateTime(isoDateTime: string): string {
   }).format(new Date(isoDateTime));
 }
 
+/**
+ * A bare wire time ("HH:MM" or "HH:MM:SS") in the user's clock preference (issue #13) —
+ * "14:30" for 24h, "2:30 PM" for 12h. Times are wall-clock values, never instants, so no
+ * timezone applies. An unreadable value passes through untouched.
+ */
+export function fmtClockTime(time: string): string {
+  const m = /^(\d{1,2}):(\d{2})/.exec(time);
+  if (!m) return time;
+  const h = Number(m[1]);
+  if (h > 23) return time;
+  if (getClock() !== "12h") return `${String(h).padStart(2, "0")}:${m[2]}`;
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${m[2]} ${h < 12 ? "AM" : "PM"}`;
+}
+
 /** "€ 1.234" — whole-euro currency in the active locale. */
 /**
  * A plain number in the active locale — `12,5` in Dutch, `12.5` in English (CLAUDE.md §8).
