@@ -14,6 +14,7 @@ from app.modules.leave.jobs import (
     generate_recurring_free_days,
     import_next_year_holidays,
 )
+from app.modules.leave.mcp import LEAVE_MCP_TOOLS
 from app.modules.leave.permissions import LEAVE_PERMISSIONS
 from app.modules.leave.router import router
 from app.registry import ModuleDescriptor, registry
@@ -26,6 +27,7 @@ module = ModuleDescriptor(
     # past expiry+grace the module goes read-only (mutations 402) — reads and exports stay.
     sku="leave",
     permissions=LEAVE_PERMISSIONS,
+    mcp_tools=LEAVE_MCP_TOOLS,
     # Next year's holidays, imported in December while there is still time to correct them
     # (#47). Idempotent and per-org; a tenant can switch it off with `holiday_auto_import`.
     # Next year's entitlements follow an hour later (#108), so the whole staff's next-year
