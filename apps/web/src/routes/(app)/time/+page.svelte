@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { CircleCheck, Plus } from "@lucide/svelte";
+  import { CircleCheck, Plus, Sparkles } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
+  import { aiEnabled } from "$lib/core/ai";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import { fmtDayMonth, fmtLongDay, fmtWeekdayShort } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
@@ -98,6 +99,139 @@
     requestAnimationFrame(() => {
       panelEl?.scrollIntoView({ behavior: "smooth", block: "start" });
       panelEl?.querySelector<HTMLInputElement>('input[name="start"]')?.focus();
+    });
+  }
+
+  // --- AI time assist (#129): quick add + day reconstruction --------------------
+  // Every AI product here is a *draft*: parse and suggestions only prefill the create form;
+  // a real entry exists only after the user saves through the normal action.
+  const hasTimeAssist = $derived(aiEnabled(page.data.user, "time_assist"));
+  let aiText = $state("");
+  let aiBusy = $state(false);
+  let aiError = $state<string | null>(null);
+  let aiBudget = $state(false);
+  let aiPrefill = $state<Record<string, unknown> | null>(null);
+  let aiPrefillVersion = $state(0);
+
+  interface AISuggestion {
+    company_id?: string | null;
+    project_id?: string | null;
+    task_id?: string | null;
+    minutes?: number | null;
+    description: string;
+    label: string;
+  }
+  interface AIRecon {
+    short: boolean;
+    scheduled_minutes: number;
+    logged_minutes: number;
+    leave_minutes: number;
+    suggestions: AISuggestion[];
+  }
+  let recon = $state<{ loading: boolean; data?: AIRecon; error?: string } | null>(null);
+
+  // A new day gets a clean slate — suggestions and prefills belong to the day they were
+  // made for.
+  $effect(() => {
+    void data.selectedDate;
+    recon = null;
+    aiPrefill = null;
+  });
+
+  function endFrom(start: string, minutes: number): string {
+    const [h, m] = start.split(":").map(Number);
+    const total = (h * 60 + m + minutes) % (24 * 60);
+    return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+  }
+
+  function openPrefilled(prefill: Record<string, unknown>) {
+    aiPrefill = prefill;
+    aiPrefillVersion++;
+    jumpToNewEntry();
+  }
+
+  async function aiQuickAdd(override = false) {
+    if (!aiText.trim() || aiBusy) return;
+    aiBusy = true;
+    aiError = null;
+    aiBudget = false;
+    try {
+      const res = await fetch("/ai/time/parse", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text: aiText, override_budget: override }),
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        if (payload?.error?.code === "ai_budget_reached") aiBudget = true;
+        else aiError = payload?.error?.message ?? "errors.ai_provider_error";
+        return;
+      }
+      const parsed = await res.json();
+      let start: string = parsed.start ?? "";
+      let end: string = parsed.end ?? "";
+      if (start && !end && parsed.duration_minutes) end = endFrom(start, parsed.duration_minutes);
+      if (!start && parsed.duration_minutes) {
+        start = "09:00";
+        end = endFrom(start, parsed.duration_minutes);
+      }
+      openPrefilled({
+        date: parsed.date ?? data.selectedDate,
+        start,
+        end,
+        company_id: parsed.company_id ?? "",
+        project_id: parsed.project_id ?? "",
+        task_id: parsed.task_id ?? "",
+        description: parsed.description ?? "",
+      });
+      aiText = "";
+    } catch {
+      aiError = "errors.ai_provider_error";
+    } finally {
+      aiBusy = false;
+    }
+  }
+
+  async function reconstruct(override = false) {
+    recon = { loading: true };
+    aiBudget = false;
+    try {
+      const res = await fetch("/ai/time/reconstruct", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ date: data.selectedDate, override_budget: override }),
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        if (payload?.error?.code === "ai_budget_reached") {
+          recon = null;
+          aiBudget = true;
+        } else {
+          recon = { loading: false, error: payload?.error?.message ?? "errors.ai_provider_error" };
+        }
+        return;
+      }
+      recon = { loading: false, data: await res.json() };
+    } catch {
+      recon = { loading: false, error: "errors.ai_provider_error" };
+    }
+  }
+
+  function applySuggestion(suggestion: AISuggestion) {
+    let start = "";
+    let end = "";
+    if (suggestion.minutes) {
+      start = "09:00";
+      end = endFrom(start, suggestion.minutes);
+    }
+    openPrefilled({
+      date: data.selectedDate,
+      start,
+      end,
+      company_id: suggestion.company_id ?? "",
+      project_id: suggestion.project_id ?? "",
+      task_id: suggestion.task_id ?? "",
+      description: suggestion.description,
     });
   }
 
@@ -295,6 +429,102 @@
       </div>
     </div>
 
+    {#if hasTimeAssist}
+      <!-- AI quick add (#129): parse prefills the form for one confirming glance; the day
+           reconstruction runs on demand so it suggests, never nags. -->
+      <div class="mb-4 space-y-2">
+        <form
+          class="flex flex-wrap gap-2"
+          onsubmit={(e) => {
+            e.preventDefault();
+            void aiQuickAdd();
+          }}
+        >
+          <input
+            bind:value={aiText}
+            placeholder={t("ai.time.quick_add_placeholder")}
+            class="min-w-0 flex-1 rounded-lg border border-border bg-transparent px-3 py-2 text-sm text-text outline-none focus:border-brand"
+            aria-label={t("ai.time.quick_add")}
+          />
+          <button
+            type="submit"
+            disabled={aiBusy || !aiText.trim()}
+            class="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm text-text hover:border-brand disabled:opacity-40"
+          >
+            <Sparkles size={14} class={aiBusy ? "animate-pulse" : ""} />
+            {t("ai.time.quick_add")}
+          </button>
+          {#if data.selectedDate <= data.today}
+            <button
+              type="button"
+              disabled={recon?.loading}
+              onclick={() => void reconstruct()}
+              class="rounded-lg border border-border px-3 py-2 text-sm text-text-muted hover:border-brand hover:text-text disabled:opacity-40"
+              title={t("ai.time.reconstruct_hint")}
+            >
+              {recon?.loading ? t("ai.time.reconstructing") : t("ai.time.reconstruct")}
+            </button>
+          {/if}
+        </form>
+        {#if aiError}<p class="text-sm text-red-600 dark:text-red-400">{t(aiError)}</p>{/if}
+        {#if aiBudget}
+          <p class="text-sm text-amber-700 dark:text-amber-400">
+            {t("ai.budget_notice")}
+            <button type="button" class="underline" onclick={() => void aiQuickAdd(true)}
+              >{t("ai.budget_proceed")}</button
+            >
+          </p>
+        {/if}
+        {#if recon && !recon.loading}
+          {#if recon.error}
+            <p class="text-sm text-red-600 dark:text-red-400">{t(recon.error)}</p>
+          {:else if recon.data && !recon.data.short}
+            <p class="text-sm text-text-muted">{t("ai.time.day_complete")}</p>
+          {:else if recon.data}
+            <div class="rounded-lg border border-dashed border-border p-3">
+              <p class="mb-2 text-xs text-text-muted">
+                {t("ai.time.missing", {
+                  missing: formatMinutes(
+                    Math.max(
+                      0,
+                      recon.data.scheduled_minutes -
+                        recon.data.leave_minutes -
+                        recon.data.logged_minutes,
+                    ),
+                  ),
+                })}
+              </p>
+              {#if recon.data.suggestions.length === 0}
+                <p class="text-sm text-text-muted">{t("ai.time.no_suggestions")}</p>
+              {:else}
+                <div class="flex flex-wrap gap-2">
+                  {#each recon.data.suggestions as suggestion, i (i)}
+                    <button
+                      type="button"
+                      class="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-xs text-text hover:border-brand"
+                      onclick={() => applySuggestion(suggestion)}
+                      title={suggestion.description}
+                    >
+                      <Sparkles size={11} class="text-text-muted" />
+                      {suggestion.label}
+                      {#if suggestion.minutes}<span class="text-text-muted"
+                          >{formatMinutes(suggestion.minutes)}</span
+                        >{/if}
+                    </button>
+                  {/each}
+                </div>
+              {/if}
+              <button
+                type="button"
+                class="mt-2 text-xs text-text-muted hover:text-text"
+                onclick={() => (recon = null)}>{t("common.close")}</button
+              >
+            </div>
+          {/if}
+        {/if}
+      </div>
+    {/if}
+
     {#if entries.length === 0}
       <div class="rounded-xl border border-dashed border-border p-10 text-center">
         <p class="font-medium text-text">{t("time.day_empty")}</p>
@@ -411,7 +641,7 @@
       {/key}
     {:else}
       <h2 class="mb-4 text-sm font-semibold text-text">{t("time.new_registration")}</h2>
-      {#key data.selectedDate}
+      {#key `${data.selectedDate}:${aiPrefillVersion}`}
         <EntryForm
           action="?/createEntry"
           date={data.selectedDate}
@@ -420,10 +650,10 @@
           tasks={data.tasks}
           canSeeMoney={data.canSeeBudgetMoney}
           draftDate={data.selectedDate}
-          draftInitial={data.day?.draft?.payload ?? null}
-          draftSavedAt={data.day?.draft?.updated_at ?? null}
-          defaultCompanyId={data.lastCompanyId ?? ""}
-          defaultProjectId={data.lastProjectId ?? ""}
+          draftInitial={aiPrefill ?? data.day?.draft?.payload ?? null}
+          draftSavedAt={aiPrefill ? null : (data.day?.draft?.updated_at ?? null)}
+          defaultCompanyId={aiPrefill ? "" : (data.lastCompanyId ?? "")}
+          defaultProjectId={aiPrefill ? "" : (data.lastProjectId ?? "")}
           error={form?.error ?? null}
           oncreatecompany={(name) => {
             draftCompanyName = name;

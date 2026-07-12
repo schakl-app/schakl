@@ -3,6 +3,8 @@
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
+  import { aiEnabled } from "$lib/core/ai";
+  import CompanyAIActions from "$lib/core/ai/CompanyAIActions.svelte";
   import { editIntent } from "$lib/core/edit-intent";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
@@ -35,6 +37,9 @@
   // Opened straight into edit when reached from the overview's ⋯ → Bewerken (#78).
   let showEdit = $state(editIntent());
   let confirmDelete = $state(false);
+
+  // AI digest + report drafts (#130): rendered only when the reporting feature is on.
+  const hasReporting = $derived(aiEnabled(page.data.user, "reporting"));
 </script>
 
 <svelte:head>
@@ -83,6 +88,9 @@
       >
         {t("companies.actions.log_time")}
       </a>
+      {#if hasReporting}
+        <CompanyAIActions companyId={company.id} companyName={company.name} />
+      {/if}
       <ActionsMenu
         items={[
           { label: t("common.edit"), icon: Pencil, onclick: () => (showEdit = true) },
