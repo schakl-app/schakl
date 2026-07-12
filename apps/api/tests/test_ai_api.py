@@ -448,3 +448,46 @@ async def test_provider_failure_is_a_502_envelope(client_for, monkeypatch) -> No
         )
         assert response.status_code == 502
         assert response.json()["error"]["code"] == "ai_provider_error"
+
+
+async def test_connection_test_passes_when_reasoning_eats_the_budget(
+    client_for, monkeypatch
+) -> None:
+    """#158: a reasoning model can authenticate fine, spend the whole completion budget
+    thinking and emit zero visible text. That is a *working* connection — never
+    ``ok=False, error=None`` (which the web rendered as "Test mislukt: ?")."""
+    monkeypatch.setattr(
+        "app.core.ai.providers.stream_chat",
+        _fake_stream([AIEvent(kind="done", stop_reason="length", tokens_in=9, tokens_out=32)]),
+    )
+    t = await make_tenant("ai-test-empty")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        result = (await c.post("/api/v1/ai/settings/test", headers=headers)).json()
+        assert result["ok"] is True
+        assert result["model"]
+        assert result["error"] is None
+
+
+async def test_connection_test_reports_network_failure_readably(
+    client_for, monkeypatch
+) -> None:
+    """#158: httpx errors are not OSError subclasses; without the explicit catch a DNS or
+    timeout failure was a raw 500 instead of a test result the settings page can show."""
+    import httpx
+
+    async def fake(config, **kwargs):  # noqa: ANN001, ANN003
+        raise httpx.ConnectError("dns boom")
+        yield  # pragma: no cover - makes this an async generator
+
+    monkeypatch.setattr("app.core.ai.providers.stream_chat", fake)
+    t = await make_tenant("ai-test-net")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        response = await c.post("/api/v1/ai/settings/test", headers=headers)
+        assert response.status_code == 200
+        result = response.json()
+        assert result["ok"] is False
+        assert "dns boom" in result["error"]

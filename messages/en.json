@@ -1740,6 +1740,8 @@
   "settings.ai.test": "Test connection",
   "settings.ai.test_ok": "Connection works ({model} answered).",
   "settings.ai.test_failed": "Test failed: {error}",
+  "settings.ai.test_failed_generic": "Test failed: the provider returned no usable response.",
+  "settings.ai.not_configured": "AI is not configured yet.",
   "settings.ai.usage_title": "Usage",
   "settings.ai.usage_month": "This month ({month}), by feature.",
   "settings.ai.usage_of_budget": "{used} of {budget} tokens",

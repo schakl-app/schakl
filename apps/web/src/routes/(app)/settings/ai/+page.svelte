@@ -246,7 +246,9 @@
           </p>
         {:else}
           <p class="mt-2 text-sm text-red-600 dark:text-red-400">
-            {t("settings.ai.test_failed", { error: form.test.error ?? "?" })}
+            {form.test.error
+              ? t("settings.ai.test_failed", { error: form.test.error })
+              : t("settings.ai.test_failed_generic")}
           </p>
         {/if}
       {/if}

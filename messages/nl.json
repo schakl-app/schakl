@@ -1740,6 +1740,8 @@
   "settings.ai.test": "Verbinding testen",
   "settings.ai.test_ok": "Verbinding werkt ({model} antwoordde).",
   "settings.ai.test_failed": "Test mislukt: {error}",
+  "settings.ai.test_failed_generic": "Test mislukt: de provider gaf geen bruikbare respons.",
+  "settings.ai.not_configured": "AI is nog niet geconfigureerd.",
   "settings.ai.usage_title": "Verbruik",
   "settings.ai.usage_month": "Deze maand ({month}), per functie.",
   "settings.ai.usage_of_budget": "{used} van {budget} tokens",
