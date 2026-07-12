@@ -11,15 +11,23 @@ v3.0 (see [LICENSE](LICENSE)).
 The directories of modules that declare a `sku` on their `ModuleDescriptor` (issue #137),
 and their web counterparts — currently:
 
-- `apps/api/app/modules/leave/`
 - `apps/api/app/core/mcp/`
+- `apps/api/app/modules/automation/`
+- `apps/api/app/modules/leave/`
+- `apps/api/app/modules/subscriptions/`
+- `apps/web/src/lib/modules/automation/`
 - `apps/web/src/lib/modules/leave/`
+- `apps/web/src/lib/modules/subscriptions/`
 - `apps/web/src/routes/(app)/leave/`
+- `apps/web/src/routes/(app)/subscriptions/`
+- `apps/web/src/routes/(app)/settings/automation/`
 - `apps/web/src/routes/(app)/settings/leave/`
+- `apps/web/src/routes/(app)/settings/subscriptions/`
 
 Each covered directory carries a `LICENSE` file referring here. Code in these directories
-published in repository history **before** this file was introduced remains available under
-the AGPL-3.0 terms it was published under; this license governs all later versions.
+published in repository history **before** this file was introduced — or, for a directory
+added to this list later, before the commit that added it — remains available under the
+AGPL-3.0 terms it was published under; this license governs all later versions.
 
 ## Grant
 

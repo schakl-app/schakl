@@ -19,6 +19,9 @@ module = ModuleDescriptor(
     name="subscriptions",
     router=router,
     i18n_namespace="subscriptions",
+    # Licensed module (issue #137): enabling subscriptions requires a license covering this
+    # sku; past expiry+grace it goes read-only (mutations 402) — reads and exports stay.
+    sku="subscriptions",
     panels=[subscriptions_company_panel],
     permissions=SUBSCRIPTION_PERMISSIONS,
     impex=[SUBSCRIPTION_IMPEX],

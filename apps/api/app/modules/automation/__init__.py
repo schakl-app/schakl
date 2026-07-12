@@ -28,6 +28,9 @@ module = ModuleDescriptor(
     router=router,
     i18n_namespace="automation",
     permissions=AUTOMATION_PERMISSIONS,
+    # Licensed module (issue #137): enabling automation requires a license covering this sku;
+    # past expiry+grace the module goes read-only (mutations 402) — reads and exports stay.
+    sku="automation",
     # The v1 actions live on this module's own descriptor (issue #27); other modules
     # contribute theirs the same way, so core holds no action list.
     automation_actions=BUILTIN_ACTIONS,

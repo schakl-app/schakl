@@ -144,6 +144,7 @@
   "module.projects.label": "Projects",
   "module.time.label": "Time",
   "module.leave.label": "Leave",
+  "module.automation.label": "Automation",
   "module.notifications.label": "Notifications",
   "common.quick_create.contact": "New contact",
   "common.quick_create.company": "New client",

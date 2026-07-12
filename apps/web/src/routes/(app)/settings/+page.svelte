@@ -67,14 +67,6 @@
       t("settings.modules.title"),
       t("settings.modules.subtitle"),
     )}
-    <!-- Instance-owner only (issue #137): the license belongs to the installation. -->
-    {#if data.user?.isInstanceOwner}
-      {@render card(
-        "/settings/license",
-        t("settings.license.title"),
-        t("settings.license.subtitle"),
-      )}
-    {/if}
   </div>
 
   <h3 class="mb-2 text-sm font-medium text-text">{t("settings.group.customization")}</h3>
@@ -154,5 +146,15 @@
   </h2>
   <div class="grid gap-4 sm:grid-cols-2">
     {@render card("/settings/system", t("settings.system.title"), t("settings.system.subtitle"))}
+    <!-- Instance-owner only (issue #137): the license belongs to the installation, so it
+         lives in the installation section — not among the org's own knobs. Modules stays
+         org-side on purpose: enabled_modules is org_settings data, an org admin's business. -->
+    {#if data.user?.isInstanceOwner}
+      {@render card(
+        "/settings/license",
+        t("settings.license.title"),
+        t("settings.license.subtitle"),
+      )}
+    {/if}
   </div>
 </section>
