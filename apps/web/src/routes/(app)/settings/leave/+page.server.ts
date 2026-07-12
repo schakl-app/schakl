@@ -50,6 +50,7 @@ export const load: PageServerLoad = async (event) => {
     defaultSchedule: settings.data?.default_schedule ?? defaultSchedule(),
     selfApproval: settings.data?.self_approval ?? false,
     recurringHorizonMonths: settings.data?.recurring_horizon_months ?? 12,
+    defaultHourlyRate: settings.data?.default_hourly_rate ?? null,
     holidays: holidays.data ?? [],
     locale: event.locals.locale,
   };
@@ -159,6 +160,21 @@ export const actions: Actions = {
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { horizonSaved: true };
+  },
+
+  /** The house hourly rate (#113); an empty field clears it. Per-employee rates override. */
+  saveDefaultRate: async (event) => {
+    const form = await event.request.formData();
+    const raw = String(form.get("default_hourly_rate") ?? "").trim();
+    const rate = raw === "" ? null : Number(raw);
+    if (rate !== null && (!Number.isFinite(rate) || rate < 0)) {
+      return fail(400, { error: "errors.validation" });
+    }
+    const { error } = await apiFor(event).PUT("/api/v1/leave/settings", {
+      body: { default_hourly_rate: rate },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { rateSaved: true };
   },
 
   // One save per member row: this year's entitlement per tracked type. Contract hours are no

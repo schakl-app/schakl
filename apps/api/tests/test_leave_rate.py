@@ -109,3 +109,55 @@ async def test_rate_is_tenant_isolated(client_for) -> None:
         res = await cb.get("/api/v1/leave/rates", headers=b_headers)
         assert res.status_code == 200
         assert res.json() == []
+
+
+async def test_default_rate_fallback(client_for) -> None:
+    """#113: org default fills in where no personal rate exists; the override wins; an explicit
+    0 is a rate, never a fallback trigger."""
+    t = await make_tenant("rate-default")
+    owner_headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        member = await _invite_member(c, owner_headers, "employee@example.com")
+        member_headers = await auth_cookie(member)
+
+        # No default, no personal rate → effective is None.
+        res = await c.get("/api/v1/leave/rate", headers=member_headers)
+        assert res.json()["effective_hourly_rate"] is None
+
+        # Admin sets the house default on the leave settings.
+        saved = await c.put(
+            "/api/v1/leave/settings",
+            json={"default_hourly_rate": "85.00"},
+            headers=owner_headers,
+        )
+        assert saved.status_code == 200
+        assert saved.json()["default_hourly_rate"] == "85.00"
+
+        # The member's effective rate now reads the default; their own stays unset.
+        res = await c.get("/api/v1/leave/rate", headers=member_headers)
+        assert res.json()["hourly_rate"] is None
+        assert res.json()["effective_hourly_rate"] == "85.00"
+
+        # A personal rate overrides the default.
+        await c.put(
+            f"/api/v1/leave/rate/{member.id}",
+            json={"hourly_rate": "120.00"},
+            headers=owner_headers,
+        )
+        res = await c.get("/api/v1/leave/rate", headers=member_headers)
+        assert res.json()["effective_hourly_rate"] == "120.00"
+
+        # An explicit 0 is "costs nothing", not "fall back".
+        await c.put(
+            f"/api/v1/leave/rate/{member.id}",
+            json={"hourly_rate": "0"},
+            headers=owner_headers,
+        )
+        res = await c.get("/api/v1/leave/rate", headers=member_headers)
+        assert res.json()["effective_hourly_rate"] == "0.00"
+
+        # The roster carries both values per profile row.
+        rows = (await c.get("/api/v1/leave/rates", headers=owner_headers)).json()
+        member_row = next(r for r in rows if r["user_id"] == str(member.id))
+        assert member_row["hourly_rate"] == "0.00"
+        assert member_row["effective_hourly_rate"] == "0.00"

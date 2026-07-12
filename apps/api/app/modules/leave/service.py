@@ -506,9 +506,26 @@ class LeaveService:
         if membership is None:
             raise AppError("not_found", "errors.not_found", status_code=404)
 
-    # --- hourly rate (#82) ------------------------------------------------------- #
-    async def get_rate(self, user_id: uuid.UUID | None = None) -> tuple[uuid.UUID, Decimal | None]:
-        """One employee's rate. Your own on ``leave.rate.read:own``; another's needs ``:any``.
+    # --- hourly rate (#82, #113) -------------------------------------------------- #
+    async def default_rate(self) -> Decimal | None:
+        """The org's house rate (#113); ``None`` when the tenant never set one."""
+        row = await self.settings_row()
+        return row.default_hourly_rate if row else None
+
+    async def effective_rate(self, own_rate: Decimal | None) -> Decimal | None:
+        """#113's one fallback chain: employee rate (#82) → org default → ``None``.
+
+        The single resolver every consumer reads — the rate endpoints here, the cost math of
+        #111 — so nobody re-implements the fallback. Explicit ``is None``: a recorded rate of
+        0 means "costs nothing", never "fall back to the default".
+        """
+        return own_rate if own_rate is not None else await self.default_rate()
+
+    async def get_rate(
+        self, user_id: uuid.UUID | None = None
+    ) -> tuple[uuid.UUID, Decimal | None, Decimal | None]:
+        """One employee's ``(id, own rate, effective rate)``. Own on ``leave.rate.read:own``;
+        another's needs ``:any``.
 
         A rate is salary-adjacent, so this never leaks across employees: a plain member reading
         someone else is refused before any row is loaded.
@@ -519,13 +536,18 @@ class LeaveService:
         if uid != self.ctx.user.id:
             await self._member_or_404(uid)
         profile = await self._profile(uid)
-        return uid, (profile.hourly_rate if profile else None)
+        own = profile.hourly_rate if profile else None
+        return uid, own, await self.effective_rate(own)
 
-    async def list_rates(self) -> list[tuple[uuid.UUID, Decimal | None]]:
-        """Every employee's rate, for the managers' Settings → Users roster (``:any`` only)."""
+    async def list_rates(self) -> list[tuple[uuid.UUID, Decimal | None, Decimal | None]]:
+        """Every employee's ``(id, own, effective)`` for the managers' roster (``:any`` only)."""
         self.ctx.require("leave.rate.read", scope="any")
         rows = (await self.ctx.session.execute(self.profiles.scoped_select())).scalars().all()
-        return [(p.user_id, p.hourly_rate) for p in rows]
+        default = await self.default_rate()
+        return [
+            (p.user_id, p.hourly_rate, p.hourly_rate if p.hourly_rate is not None else default)
+            for p in rows
+        ]
 
     async def set_rate(self, user_id: uuid.UUID, rate: Decimal | None) -> LeaveProfile:
         """Set (or clear, with ``None``) an employee's rate. Admin act — ``leave.rate.write``.

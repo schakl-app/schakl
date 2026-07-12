@@ -4532,6 +4532,8 @@ export interface components {
          * @description One employee's hourly rate. ``None`` = no rate recorded (salary-adjacent, gated read).
          */
         LeaveRateRead: {
+            /** Effective Hourly Rate */
+            effective_hourly_rate?: string | null;
             /** Hourly Rate */
             hourly_rate: string | null;
             /**
@@ -4859,6 +4861,8 @@ export interface components {
         };
         /** LeaveSettingsRead */
         LeaveSettingsRead: {
+            /** Default Hourly Rate */
+            default_hourly_rate?: string | null;
             default_schedule: components["schemas"]["WorkSchedule-Output"];
             /**
              * Holiday Auto Import
@@ -4886,6 +4890,8 @@ export interface components {
          *     whichever one shipped first quietly reset the other's settings to their defaults.
          */
         LeaveSettingsUpdate: {
+            /** Default Hourly Rate */
+            default_hourly_rate?: number | string | null;
             default_schedule?: components["schemas"]["WorkSchedule-Input"] | null;
             /** Holiday Auto Import */
             holiday_auto_import?: boolean | null;

@@ -130,6 +130,7 @@ async def get_settings(ctx: RequestContext = Depends(require_context)) -> LeaveS
         holiday_auto_import=row.holiday_auto_import,
         self_approval=row.self_approval,
         recurring_horizon_months=row.recurring_horizon_months,
+        default_hourly_rate=row.default_hourly_rate,
     )
 
 
@@ -149,6 +150,7 @@ async def update_settings(
         holiday_auto_import=row.holiday_auto_import,
         self_approval=row.self_approval,
         recurring_horizon_months=row.recurring_horizon_months,
+        default_hourly_rate=row.default_hourly_rate,
     )
 
 
@@ -440,8 +442,8 @@ async def delete_recurring(
 )
 async def my_rate(ctx: RequestContext = Depends(require_context)) -> LeaveRateRead:
     """The caller's own hourly rate (salary-adjacent — a member sees only their own)."""
-    user_id, rate = await LeaveService(ctx).get_rate()
-    return LeaveRateRead(user_id=user_id, hourly_rate=rate)
+    user_id, rate, effective = await LeaveService(ctx).get_rate()
+    return LeaveRateRead(user_id=user_id, hourly_rate=rate, effective_hourly_rate=effective)
 
 
 @router.get(
@@ -452,8 +454,8 @@ async def my_rate(ctx: RequestContext = Depends(require_context)) -> LeaveRateRe
 async def list_rates(ctx: RequestContext = Depends(require_context)) -> list[LeaveRateRead]:
     """Every employee's rate for the managers' roster. Requires ``leave.rate.read:any``."""
     return [
-        LeaveRateRead(user_id=user_id, hourly_rate=rate)
-        for user_id, rate in await LeaveService(ctx).list_rates()
+        LeaveRateRead(user_id=user_id, hourly_rate=rate, effective_hourly_rate=effective)
+        for user_id, rate, effective in await LeaveService(ctx).list_rates()
     ]
 
 
@@ -467,8 +469,8 @@ async def user_rate(
     ctx: RequestContext = Depends(require_context),
 ) -> LeaveRateRead:
     """One employee's rate. Own on ``:own``; anyone's on ``:any``."""
-    uid, rate = await LeaveService(ctx).get_rate(user_id)
-    return LeaveRateRead(user_id=uid, hourly_rate=rate)
+    uid, rate, effective = await LeaveService(ctx).get_rate(user_id)
+    return LeaveRateRead(user_id=uid, hourly_rate=rate, effective_hourly_rate=effective)
 
 
 @router.put(
@@ -482,8 +484,13 @@ async def set_rate(
     ctx: RequestContext = Depends(require_context),
 ) -> LeaveRateRead:
     """Set or clear an employee's rate (admin). Attributed nowhere — the rate is current state."""
-    profile = await LeaveService(ctx).set_rate(user_id, payload.hourly_rate)
-    return LeaveRateRead(user_id=profile.user_id, hourly_rate=profile.hourly_rate)
+    service = LeaveService(ctx)
+    profile = await service.set_rate(user_id, payload.hourly_rate)
+    return LeaveRateRead(
+        user_id=profile.user_id,
+        hourly_rate=profile.hourly_rate,
+        effective_hourly_rate=await service.effective_rate(profile.hourly_rate),
+    )
 
 
 # --- entitlements --------------------------------------------------------------- #

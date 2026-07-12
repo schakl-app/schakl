@@ -68,10 +68,15 @@
     return stored === inherited ? null : stored;
   }
 
-  // --- hourly rate (#82) --------------------------------------------------------
+  // --- hourly rate (#82, #113) ----------------------------------------------------
   // Salary-adjacent, so its own permission (`leave.rate.read`/`.write`), not `profile.manage`.
   const rateByUser = $derived(
     Object.fromEntries((data.rateRows ?? []).map((r) => [r.user_id, r.hourly_rate])),
+  );
+  // The effective rate (#113): the org default fills in where no personal rate is set, and
+  // the roster says so — a defaulted figure must not read as an entered one.
+  const effectiveRateByUser = $derived(
+    Object.fromEntries((data.rateRows ?? []).map((r) => [r.user_id, r.effective_hourly_rate])),
   );
   let rateOpen = $state(false);
   let rateFor = $state<Member | null>(null);
@@ -269,9 +274,14 @@
               </p>
             {/if}
           {/if}
-          {#if data.rates && rateByUser[member.user_id] != null}
+          {#if data.rates && effectiveRateByUser[member.user_id] != null}
             <p class="mt-0.5 text-xs text-text-muted">
-              {t("settings.users.rate_value", { rate: String(rateByUser[member.user_id]) })}
+              {t("settings.users.rate_value", {
+                rate: String(effectiveRateByUser[member.user_id]),
+              })}
+              {#if rateByUser[member.user_id] == null}
+                {t("settings.users.rate_default_marker")}
+              {/if}
             </p>
           {/if}
         </div>

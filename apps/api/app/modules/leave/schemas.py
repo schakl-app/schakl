@@ -71,6 +71,8 @@ class LeaveSettingsRead(BaseModel):
     #: Look-ahead for the rostered-free-day generator (#107), for open-ended contracts; a
     #: fixed-term contract is always filled to its end date instead.
     recurring_horizon_months: int = 12
+    #: The house default hourly rate (#113); the per-employee rate (#82) overrides it.
+    default_hourly_rate: Decimal | None = None
 
 
 class LeaveSettingsUpdate(BaseModel):
@@ -86,6 +88,8 @@ class LeaveSettingsUpdate(BaseModel):
     self_approval: bool | None = None
     #: Bounded: below a month the monthly cron outruns it; past two years is planning fiction.
     recurring_horizon_months: int | None = Field(default=None, ge=1, le=24)
+    #: Explicit ``null`` clears the default (#113); bounded like the per-employee rate.
+    default_hourly_rate: Decimal | None = Field(default=None, ge=0, le=Decimal("100000"))
 
 
 # --- holidays (#47) ------------------------------------------------------------ #
@@ -280,6 +284,8 @@ class LeaveRateRead(BaseModel):
 
     user_id: uuid.UUID
     hourly_rate: Decimal | None
+    #: What cost math actually uses (#113): the employee rate, falling back to the org default.
+    effective_hourly_rate: Decimal | None = None
 
 
 class LeaveRateUpdate(BaseModel):

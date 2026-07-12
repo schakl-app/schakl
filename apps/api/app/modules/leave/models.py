@@ -101,6 +101,9 @@ class LeaveSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     #: an open-ended contract (or none). A fixed-term contract ignores this and is filled to
     #: its end date — a free day after employment ends is meaningless either way.
     recurring_horizon_months: Mapped[int] = mapped_column(Integer, nullable=False, default=12)
+    #: The org's default hourly rate (#113): the fallback when an employee has no rate of their
+    #: own (#82), so a new hire never silently reads as €0. The per-employee value overrides.
+    default_hourly_rate: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
 
 
 class LeaveHoliday(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):

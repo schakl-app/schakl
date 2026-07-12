@@ -330,6 +330,48 @@
   </div>
 </section>
 
+<!-- Standaard uurtarief (#113): the house rate a per-employee rate (#82) overrides -->
+<section class="mb-8">
+  <div class="mb-3">
+    <h2 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
+      {t("settings.leave.rate_heading")}
+    </h2>
+  </div>
+  <div class="rounded-xl border border-border bg-surface p-4">
+    <form
+      method="POST"
+      action="?/saveDefaultRate"
+      use:enhance={() =>
+        ({ update }) =>
+          update({ reset: false })}
+    >
+      <label for="default-hourly-rate" class="mb-1 block text-sm font-medium text-text">
+        {t("settings.leave.default_rate")}
+      </label>
+      <input
+        id="default-hourly-rate"
+        name="default_hourly_rate"
+        type="number"
+        min="0"
+        step="0.01"
+        value={data.defaultHourlyRate ?? ""}
+        class="w-36 rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+      />
+      <p class="mt-1 text-xs text-text-muted">{t("settings.leave.default_rate_hint")}</p>
+      {#if form?.rateSaved}
+        <p class="mt-3 text-sm text-green-600">{t("settings.leave.default_rate_saved")}</p>
+      {/if}
+      <div class="mt-3 flex justify-end">
+        <button
+          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        >
+          {t("common.save")}
+        </button>
+      </div>
+    </form>
+  </div>
+</section>
+
 <!-- Feestdagen (#47): a holiday on a scheduled working day costs no leave hours -->
 <section class="mb-8">
   <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
