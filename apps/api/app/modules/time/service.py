@@ -690,6 +690,52 @@ class TimeService:
             "other_revenue": other,
         }
 
+    async def project_cost(self, project_id: uuid.UUID) -> dict[str, object]:
+        """Cost of a project's logged time from the people who did the work (#111).
+
+        Σ minutes × the employee's *effective* rate (#113: personal rate → org default),
+        joining ``leave_profiles``/``leave_settings`` by table name only — the same
+        no-imports rule ``revenue()`` follows with ``projects``. The **decision recorded on
+        the issue**: the employee rate prices *cost/margin*; revenue keeps billing at the
+        project rate, and the money burn-down is unchanged.
+
+        Salary-derived money: gated on the manager report grant *and* the any-scope rate
+        read, since a per-project cost aggregates exactly what ``/leave/rates`` exposes.
+        ``unrated_minutes`` counts time by people with no rate anywhere — reported, never
+        silently priced at €0 (docs/PERFORMANCE.md's no-silent-truncation rule).
+        """
+        self.ctx.require("time.report.read")
+        self.ctx.require("leave.rate.read", scope="any")
+        row = (
+            await self.ctx.session.execute(
+                sql_text(
+                    """
+                    SELECT COALESCE(SUM(
+                               te.minutes / 60.0
+                               * COALESCE(lp.hourly_rate, ls.default_hourly_rate)
+                           ), 0) AS cost,
+                           COALESCE(SUM(te.minutes) FILTER (
+                               WHERE lp.hourly_rate IS NULL
+                                 AND ls.default_hourly_rate IS NULL
+                           ), 0) AS unrated_minutes
+                    FROM time_entries te
+                    LEFT JOIN leave_profiles lp
+                           ON lp.org_id = te.org_id AND lp.user_id = te.user_id
+                    LEFT JOIN leave_settings ls ON ls.org_id = te.org_id
+                    WHERE te.org_id = :org_id
+                      AND te.project_id = :project_id
+                      AND te.ended_at IS NOT NULL
+                    """
+                ),
+                {"org_id": str(self.ctx.org.id), "project_id": str(project_id)},
+            )
+        ).one()
+        return {
+            "project_id": project_id,
+            "cost": round(float(row[0]), 2),
+            "unrated_minutes": int(row[1]),
+        }
+
     async def _entries_by_ids(self, entry_ids: list[uuid.UUID]) -> Sequence[TimeEntry]:
         stmt = self.repo.scoped_select().where(
             TimeEntry.id.in_(entry_ids), TimeEntry.ended_at.is_not(None)

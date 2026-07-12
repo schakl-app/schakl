@@ -8,7 +8,7 @@
   import CustomFieldsView from "$lib/core/customfields/CustomFieldsView.svelte";
   import { burnBarClass, burnBarWidth, burnPct } from "$lib/core/burn";
   import { editIntent } from "$lib/core/edit-intent";
-  import { fmtNumericDate } from "$lib/core/format";
+  import { fmtNumber, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
   import { entityPanelsFor } from "$lib/core/registry";
@@ -204,6 +204,32 @@
           <span class="text-text-muted">{t("projects.billable_value")}</span>
           <span class="font-medium text-text">{money(billableValue)}</span>
         </div>
+      {/if}
+      <!-- Cost from employee rates (#111) — the project rate bills, people cost. Only loaded
+           (and rendered) for someone the API lets read salary-derived money. -->
+      {#if data.cost}
+        <div class="mt-2 flex items-center justify-between text-sm">
+          <span class="text-text-muted">{t("projects.cost")}</span>
+          <span class="font-medium text-text">{money(data.cost.cost)}</span>
+        </div>
+        {#if billableValue != null}
+          {@const margin = billableValue - data.cost.cost}
+          <div class="mt-2 flex items-center justify-between text-sm">
+            <span class="text-text-muted">{t("projects.margin")}</span>
+            <span
+              class="font-medium {margin < 0 ? 'text-red-600 dark:text-red-400' : 'text-text'}"
+            >
+              {money(margin)}
+            </span>
+          </div>
+        {/if}
+        {#if data.cost.unrated_minutes > 0}
+          <p class="mt-1 text-xs text-text-muted">
+            {t("projects.cost_unrated", {
+              hours: fmtNumber(data.cost.unrated_minutes / 60, 1),
+            })}
+          </p>
+        {/if}
       {/if}
     </div>
   </section>

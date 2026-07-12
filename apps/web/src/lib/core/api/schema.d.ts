@@ -2378,6 +2378,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/time/cost": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Project Cost
+         * @description A project's cost from employee rates (#111). The service also demands
+         *     ``leave.rate.read:any`` — the figure is salary-derived.
+         */
+        get: operations["project_cost_api_v1_time_cost_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/time/day": {
         parameters: {
             query?: never;
@@ -5641,6 +5662,24 @@ export interface components {
             date_to: string;
             /** Rows */
             rows: components["schemas"]["ProductivityRow"][];
+        };
+        /**
+         * ProjectCost
+         * @description What a project's logged time *costs* (#111): Σ minutes × the employee's effective rate
+         *     (#113: personal rate → org default). Distinct from revenue, which bills at the project
+         *     rate. ``unrated_minutes`` counts time by people with no rate at all — reported rather than
+         *     silently priced at zero.
+         */
+        ProjectCost: {
+            /** Cost */
+            cost: number;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Unrated Minutes */
+            unrated_minutes: number;
         };
         /** ProjectCreate */
         ProjectCreate: {
@@ -13388,6 +13427,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    project_cost_api_v1_time_cost_get: {
+        parameters: {
+            query: {
+                project_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectCost"];
+                };
             };
             /** @description Validation Error */
             422: {

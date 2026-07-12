@@ -21,6 +21,7 @@ from app.modules.time.schemas import (
     LoggedSummary,
     ProductivityRow,
     ProductivityStats,
+    ProjectCost,
     RevenueStats,
     TimeEntryCreate,
     TimeEntryRead,
@@ -111,6 +112,20 @@ async def revenue_stats(
 ) -> RevenueStats:
     """Monthly omzet for the selected + previous year and the top clients (managers)."""
     return RevenueStats.model_validate(await TimeService(ctx).revenue(year=year))
+
+
+@router.get(
+    "/cost",
+    response_model=ProjectCost,
+    dependencies=[require_permission("time.report.read")],
+)
+async def project_cost(
+    project_id: uuid.UUID = Query(...),
+    ctx: RequestContext = Depends(require_context),
+) -> ProjectCost:
+    """A project's cost from employee rates (#111). The service also demands
+    ``leave.rate.read:any`` — the figure is salary-derived."""
+    return ProjectCost.model_validate(await TimeService(ctx).project_cost(project_id))
 
 
 @router.post(

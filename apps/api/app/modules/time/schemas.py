@@ -117,6 +117,17 @@ class RevenueStats(BaseModel):
     other_revenue: float  # everything outside the top 10
 
 
+class ProjectCost(BaseModel):
+    """What a project's logged time *costs* (#111): Σ minutes × the employee's effective rate
+    (#113: personal rate → org default). Distinct from revenue, which bills at the project
+    rate. ``unrated_minutes`` counts time by people with no rate at all — reported rather than
+    silently priced at zero."""
+
+    project_id: uuid.UUID
+    cost: float
+    unrated_minutes: int
+
+
 class EntryApproval(BaseModel):
     entry_ids: list[uuid.UUID] = Field(min_length=1, max_length=1000)
     approved: bool = True

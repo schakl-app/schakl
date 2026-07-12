@@ -4,6 +4,7 @@ import { error, fail, redirect } from "@sveltejs/kit";
 
 import { parseAssignees } from "$lib/core/assignees";
 import { apiErrorKey } from "$lib/core/errors";
+import { can } from "$lib/core/permissions";
 import { entityPanelsFor } from "$lib/core/registry";
 import { apiFor } from "$lib/core/session";
 
@@ -45,9 +46,15 @@ export const load: PageServerLoad = async (event) => {
   const enabled = event.locals.theme?.enabledModules ?? [];
   const panels = entityPanelsFor(enabled, "project");
 
+  // Cost from employee rates (#111) is salary-derived: fetched only for someone the API would
+  // let see it (the guard is UX; the API stays the boundary), and only inside the same flight.
+  const canSeeCost =
+    can(event.locals.user, "time.report.read") &&
+    can(event.locals.user, "leave.rate.read", "any");
+
   // Every call in one flight. `projects` is a name-only lookup: the panel's edit modal needs the
   // picker, and `count=false` skips the COUNT(*) it would throw away.
-  const [tasks, companies, projects, members, statuses, definitions, ...panelData] =
+  const [tasks, companies, projects, members, statuses, definitions, cost, ...panelData] =
     await Promise.all([
       api.GET("/api/v1/tasks", { params: { query: { project_id, limit: 200, offset: 0 } } }),
       api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
@@ -58,11 +65,15 @@ export const load: PageServerLoad = async (event) => {
       api.GET("/api/v1/custom-fields/definitions", {
         params: { query: { entity_type: "project" } },
       }),
+      canSeeCost
+        ? api.GET("/api/v1/time/cost", { params: { query: { project_id } } })
+        : Promise.resolve({ data: null }),
       ...panels.map((panel) => panel.load(api, context)),
     ]);
 
   return {
     project,
+    cost: cost.data ?? null,
     tasks: tasks.data?.items ?? [],
     companies: companies.data?.items ?? [],
     projects: projects.data?.items ?? [],
