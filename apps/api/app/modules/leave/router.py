@@ -18,6 +18,9 @@ from app.modules.leave.models import LeaveRequestStatus
 from app.modules.leave.schedule import WorkSchedule, average_day_hours
 from app.modules.leave.schedule import parse as parse_schedule
 from app.modules.leave.schemas import (
+    EmploymentContractCreate,
+    EmploymentContractRead,
+    EmploymentContractUpdate,
     EntitlementGenerate,
     GenerateResult,
     HolidayImport,
@@ -32,6 +35,12 @@ from app.modules.leave.schemas import (
     LeaveProfileRead,
     LeaveProfileSummary,
     LeaveProfileUpdate,
+    LeaveRateRead,
+    LeaveRateUpdate,
+    LeaveRecurringDayCreate,
+    LeaveRecurringDayRead,
+    LeaveRecurringDaySaved,
+    LeaveRecurringDayUpdate,
     LeaveRequestCreate,
     LeaveRequestDecision,
     LeaveRequestPreview,
@@ -110,8 +119,19 @@ async def delete_type(
     dependencies=[require_permission("leave.profile.manage")],
 )
 async def get_settings(ctx: RequestContext = Depends(require_context)) -> LeaveSettingsRead:
-    """The schedule a new employee inherits. An org that never saved one gets the default."""
-    return LeaveSettingsRead(default_schedule=await LeaveService(ctx).default_schedule())
+    """The org's leave settings. An org that never saved a row gets the defaults."""
+    service = LeaveService(ctx)
+    row = await service.settings_row()
+    if row is None:
+        return LeaveSettingsRead(default_schedule=await service.default_schedule())
+    return LeaveSettingsRead(
+        default_schedule=WorkSchedule.model_validate(row.default_schedule),
+        holiday_country=row.holiday_country,
+        holiday_auto_import=row.holiday_auto_import,
+        self_approval=row.self_approval,
+        recurring_horizon_months=row.recurring_horizon_months,
+        default_hourly_rate=row.default_hourly_rate,
+    )
 
 
 @router.put(
@@ -128,6 +148,9 @@ async def update_settings(
         default_schedule=WorkSchedule.model_validate(row.default_schedule),
         holiday_country=row.holiday_country,
         holiday_auto_import=row.holiday_auto_import,
+        self_approval=row.self_approval,
+        recurring_horizon_months=row.recurring_horizon_months,
+        default_hourly_rate=row.default_hourly_rate,
     )
 
 
@@ -266,6 +289,207 @@ async def set_profile(
         hours_per_week=profile.hours_per_week,
         hours_per_day=average_day_hours(own or await service.default_schedule()),
         schedule=own,
+    )
+
+
+# --- employment contracts (#65) ------------------------------------------------ #
+def _contract_read(contract, scheduled_week) -> EmploymentContractRead:
+    return EmploymentContractRead(
+        id=contract.id,
+        org_id=contract.org_id,
+        user_id=contract.user_id,
+        start_date=contract.start_date,
+        end_date=contract.end_date,
+        contract_hours_per_week=contract.contract_hours_per_week,
+        scheduled_hours_per_week=scheduled_week,
+        schedule=parse_schedule(contract.schedule),
+        note=contract.note,
+        created_at=contract.created_at,
+        updated_at=contract.updated_at,
+    )
+
+
+@router.get(
+    "/contracts",
+    response_model=list[EmploymentContractRead],
+    dependencies=[require_permission("leave.request.read")],
+)
+async def list_contracts(
+    user_id: uuid.UUID | None = Query(None),
+    all_users: bool = Query(False),
+    ctx: RequestContext = Depends(require_context),
+) -> list[EmploymentContractRead]:
+    """A user's employment history. Own for a member; anyone's — or everyone's, with
+    ``all_users`` — for a manager (the Settings → Users roster)."""
+    service = LeaveService(ctx)
+    return [
+        _contract_read(contract, scheduled)
+        for contract, scheduled in await service.list_contracts(user_id, all_users=all_users)
+    ]
+
+
+@router.post(
+    "/contracts",
+    response_model=EmploymentContractRead,
+    status_code=201,
+    dependencies=[require_permission("leave.profile.manage")],
+)
+async def create_contract(
+    payload: EmploymentContractCreate,
+    ctx: RequestContext = Depends(require_context),
+) -> EmploymentContractRead:
+    service = LeaveService(ctx)
+    contract = await service.create_contract(payload)
+    return _contract_read(contract, await service.scheduled_week(contract.user_id, contract))
+
+
+@router.patch(
+    "/contracts/{contract_id}",
+    response_model=EmploymentContractRead,
+    dependencies=[require_permission("leave.profile.manage")],
+)
+async def update_contract(
+    contract_id: uuid.UUID,
+    payload: EmploymentContractUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> EmploymentContractRead:
+    service = LeaveService(ctx)
+    contract = await service.update_contract(contract_id, payload)
+    return _contract_read(contract, await service.scheduled_week(contract.user_id, contract))
+
+
+@router.delete(
+    "/contracts/{contract_id}",
+    status_code=204,
+    dependencies=[require_permission("leave.profile.manage")],
+)
+async def delete_contract(
+    contract_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> None:
+    await LeaveService(ctx).delete_contract(contract_id)
+
+
+# --- recurring rostered free days / ADV (#107) ---------------------------------- #
+def _recurring_saved(pattern, generated: int) -> LeaveRecurringDaySaved:
+    return LeaveRecurringDaySaved(
+        **LeaveRecurringDayRead.model_validate(pattern).model_dump(), generated=generated
+    )
+
+
+@router.get(
+    "/recurring",
+    response_model=list[LeaveRecurringDayRead],
+    dependencies=[require_permission("leave.request.read")],
+)
+async def list_recurring(
+    user_id: uuid.UUID | None = Query(None),
+    ctx: RequestContext = Depends(require_context),
+) -> list[LeaveRecurringDayRead]:
+    """Rostered-free-day patterns: a member's own; anyone's/all on ``leave.profile.manage``."""
+    items = await LeaveService(ctx).list_recurring(user_id=user_id)
+    return [LeaveRecurringDayRead.model_validate(p) for p in items]
+
+
+@router.post(
+    "/recurring",
+    response_model=LeaveRecurringDaySaved,
+    status_code=201,
+    dependencies=[require_permission("leave.request.write")],
+)
+async def create_recurring(
+    payload: LeaveRecurringDayCreate,
+    ctx: RequestContext = Depends(require_context),
+) -> LeaveRecurringDaySaved:
+    """A manager plans any type for anyone; a member plans their **own** self-service types
+    (``requires_approval = false``) — the service enforces the split."""
+    pattern, generated = await LeaveService(ctx).create_recurring(payload)
+    return _recurring_saved(pattern, generated)
+
+
+@router.patch(
+    "/recurring/{recurring_id}",
+    response_model=LeaveRecurringDaySaved,
+    dependencies=[require_permission("leave.request.write")],
+)
+async def update_recurring(
+    recurring_id: uuid.UUID,
+    payload: LeaveRecurringDayUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> LeaveRecurringDaySaved:
+    pattern, generated = await LeaveService(ctx).update_recurring(recurring_id, payload)
+    return _recurring_saved(pattern, generated)
+
+
+@router.delete(
+    "/recurring/{recurring_id}",
+    status_code=204,
+    dependencies=[require_permission("leave.request.write")],
+)
+async def delete_recurring(
+    recurring_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> None:
+    """Deletes the pattern only; the days it already placed stay individually cancellable."""
+    await LeaveService(ctx).delete_recurring(recurring_id)
+
+
+# --- hourly rate (#82) --------------------------------------------------------- #
+@router.get(
+    "/rate",
+    response_model=LeaveRateRead,
+    dependencies=[require_permission("leave.rate.read")],
+)
+async def my_rate(ctx: RequestContext = Depends(require_context)) -> LeaveRateRead:
+    """The caller's own hourly rate (salary-adjacent — a member sees only their own)."""
+    user_id, rate, effective = await LeaveService(ctx).get_rate()
+    return LeaveRateRead(user_id=user_id, hourly_rate=rate, effective_hourly_rate=effective)
+
+
+@router.get(
+    "/rates",
+    response_model=list[LeaveRateRead],
+    dependencies=[require_permission("leave.rate.read")],
+)
+async def list_rates(ctx: RequestContext = Depends(require_context)) -> list[LeaveRateRead]:
+    """Every employee's rate for the managers' roster. Requires ``leave.rate.read:any``."""
+    return [
+        LeaveRateRead(user_id=user_id, hourly_rate=rate, effective_hourly_rate=effective)
+        for user_id, rate, effective in await LeaveService(ctx).list_rates()
+    ]
+
+
+@router.get(
+    "/rate/{user_id}",
+    response_model=LeaveRateRead,
+    dependencies=[require_permission("leave.rate.read")],
+)
+async def user_rate(
+    user_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> LeaveRateRead:
+    """One employee's rate. Own on ``:own``; anyone's on ``:any``."""
+    uid, rate, effective = await LeaveService(ctx).get_rate(user_id)
+    return LeaveRateRead(user_id=uid, hourly_rate=rate, effective_hourly_rate=effective)
+
+
+@router.put(
+    "/rate/{user_id}",
+    response_model=LeaveRateRead,
+    dependencies=[require_permission("leave.rate.write")],
+)
+async def set_rate(
+    user_id: uuid.UUID,
+    payload: LeaveRateUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> LeaveRateRead:
+    """Set or clear an employee's rate (admin). Attributed nowhere — the rate is current state."""
+    service = LeaveService(ctx)
+    profile = await service.set_rate(user_id, payload.hourly_rate)
+    return LeaveRateRead(
+        user_id=profile.user_id,
+        hourly_rate=profile.hourly_rate,
+        effective_hourly_rate=await service.effective_rate(profile.hourly_rate),
     )
 
 

@@ -65,6 +65,8 @@ export interface PanelMember {
   user_id: string;
   full_name: string | null;
   email: string;
+  /** Effective avatar (#122); rides the members lookup, no per-person fetch. */
+  avatar_url?: string | null;
 }
 
 /**
@@ -131,6 +133,9 @@ export interface EntityPanelSpec {
   }>;
 }
 
+/** A widget's grid footprint, so the gallery can show its shape and the layout can honour it. */
+export type WidgetSize = "sm" | "md" | "lg";
+
 export interface DashboardWidgetSpec {
   /** Unique widget key, e.g. "time.today". */
   key: string;
@@ -141,6 +146,26 @@ export interface DashboardWidgetSpec {
   position?: number;
   /** Only offered to holders of this permission — its loader calls an endpoint gated on it. */
   requiresPermission?: string;
+  // --- gallery metadata (issue #15) -------------------------------------------------------- #
+  /** i18n key for the gallery card title. Falls back to `dashboard.widget.<key>`. */
+  titleKey?: string;
+  /** i18n key for the one-line gallery description. */
+  descriptionKey?: string;
+  /** Gallery grouping — an i18n key like `dashboard.category.time`. */
+  category?: string;
+  /** Grid footprint (default `md`), shown in the gallery and applied to the tile. */
+  size?: WidgetSize;
+  /**
+   * A static, **data-free** preview for the gallery card. The gallery must never call `load()`
+   * just to draw a thumbnail (that would fire N API calls to open the picker — docs/PERFORMANCE.md),
+   * so a widget with no preview renders a generic skeleton instead.
+   */
+  preview?: Component;
+}
+
+/** The gallery card title: the widget's own `titleKey`, else the legacy per-key label. */
+export function widgetTitleKey(spec: DashboardWidgetSpec): string {
+  return spec.titleKey ?? `dashboard.widget.${spec.key}`;
 }
 
 /** One entry on the shared calendar (`/calendar`), normalized across modules. */
@@ -161,17 +186,40 @@ export interface CalendarEvent {
    * pill next to three people's leave says the opposite.
    */
   kind?: "event" | "holiday";
+  /** The contributing source's `key` — required for drag-to-reschedule, so the page's
+   *  `moveEvent` action can dispatch the drop back to the module that owns the event (#106). */
+  sourceKey?: string;
+  /** Whether the *viewer* may drag this event to another day. The source decides from the
+   *  user it was handed (own event, or a `:any` grant); the API re-checks either way. */
+  draggable?: boolean;
+}
+
+/** What a calendar source's `load` gets to work with. `user` carries the viewer's id +
+ *  effective permissions so a source can mark events as its own / draggable (#106). */
+export interface CalendarRange {
+  from: string;
+  to: string;
+  locale: string;
+  user?: { id: string; permissions: string[] } | null;
 }
 
 export interface CalendarSourceSpec {
   /** Unique source key, e.g. "leave.team". */
   key: string;
   module: string;
+  /** i18n key naming this feed in the visibility menu / legend (#121). */
+  labelKey: string;
+  /** Legend swatch — a label colour token (core/ui/colors), matching the feed's chips. */
+  color: string;
   /** Server-side loader (runs in the calendar's +page.server.ts, API-only). */
-  load: (
-    api: ApiClient,
-    range: { from: string; to: string; locale: string },
-  ) => Promise<CalendarEvent[]>;
+  load: (api: ApiClient, range: CalendarRange) => Promise<CalendarEvent[]>;
+  /**
+   * Reschedule one of this source's events by whole days (#106) — the drop side of
+   * drag-to-move. Runs server-side in the calendar's `moveEvent` action; must go through the
+   * API, which recomputes hours and re-triggers approval (CLAUDE.md §14, #72). Returns an
+   * error i18n key, or null on success.
+   */
+  move?: (api: ApiClient, args: { id: string; deltaDays: number }) => Promise<string | null>;
 }
 
 export interface WebModule {
@@ -186,6 +234,19 @@ export interface WebModule {
 }
 
 const _modules = new Map<string, WebModule>();
+
+// Panels core hangs off *every* host entity, independent of which modules are enabled — the
+// activity trail is a core capability (issue #67), mirroring the API registry's core panels.
+const _coreCompanyPanels: CompanyPanelSpec[] = [];
+const _coreEntityPanels: EntityPanelSpec[] = [];
+
+export function registerCoreCompanyPanel(spec: CompanyPanelSpec): void {
+  _coreCompanyPanels.push(spec);
+}
+
+export function registerCoreEntityPanel(spec: EntityPanelSpec): void {
+  _coreEntityPanels.push(spec);
+}
 
 export function registerWebModule(mod: WebModule): void {
   _modules.set(mod.name, mod);
@@ -206,15 +267,15 @@ export function companyPanelComponent(
   enabled: string[],
   key: string,
 ): CompanyPanelSpec | undefined {
-  return enabledWebModules(enabled)
-    .flatMap((m) => m.companyPanels ?? [])
-    .find((p) => p.key === key);
+  return [
+    ..._coreCompanyPanels,
+    ...enabledWebModules(enabled).flatMap((m) => m.companyPanels ?? []),
+  ].find((p) => p.key === key);
 }
 
-/** The panels enabled modules attach to `entityType`, in display order. */
+/** The panels attached to `entityType`, in display order — core's plus the enabled modules'. */
 export function entityPanelsFor(enabled: string[], entityType: string): EntityPanelSpec[] {
-  return enabledWebModules(enabled)
-    .flatMap((m) => m.entityPanels ?? [])
+  return [..._coreEntityPanels, ...enabledWebModules(enabled).flatMap((m) => m.entityPanels ?? [])]
     .filter((p) => p.entityType === entityType)
     .sort((a, b) => (a.position ?? 100) - (b.position ?? 100));
 }

@@ -48,6 +48,9 @@ export const load: PageServerLoad = async (event) => {
     profiles: profiles.data ?? [],
     entitlements: entitlements.data ?? [],
     defaultSchedule: settings.data?.default_schedule ?? defaultSchedule(),
+    selfApproval: settings.data?.self_approval ?? false,
+    recurringHorizonMonths: settings.data?.recurring_horizon_months ?? 12,
+    defaultHourlyRate: settings.data?.default_hourly_rate ?? null,
     holidays: holidays.data ?? [],
     locale: event.locals.locale,
   };
@@ -65,6 +68,8 @@ function typeBody(form: FormData) {
     paid: form.get("paid") === "on",
     tracks_balance: form.get("tracks_balance") === "on",
     requires_approval: form.get("requires_approval") === "on",
+    // Roostervrij/ADV (#65): entitlement is the scheduled−contract gap, not default_weeks.
+    accrues_schedule_gap: form.get("accrues_schedule_gap") === "on",
     default_weeks: weeks ? Number(weeks) : null,
     carry_over_months: carry ? Number(carry) : null,
     position: Number(form.get("position") ?? 0) || 0,
@@ -130,6 +135,46 @@ export const actions: Actions = {
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { scheduleSaved: true };
+  },
+
+  /** May approvers manage their own leave (#110)? Policy, so it lives here — not in code. */
+  savePolicy: async (event) => {
+    const form = await event.request.formData();
+    const { error } = await apiFor(event).PUT("/api/v1/leave/settings", {
+      body: { self_approval: form.get("self_approval") === "on" },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { policySaved: true };
+  },
+
+  /** How far ahead recurring free days are placed (#107) — open-ended contracts only; a
+   *  fixed-term contract is always filled to its end date. */
+  saveHorizon: async (event) => {
+    const form = await event.request.formData();
+    const months = Number(String(form.get("recurring_horizon_months") ?? "").trim());
+    if (!Number.isInteger(months) || months < 1 || months > 24) {
+      return fail(400, { error: "errors.validation" });
+    }
+    const { error } = await apiFor(event).PUT("/api/v1/leave/settings", {
+      body: { recurring_horizon_months: months },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { horizonSaved: true };
+  },
+
+  /** The house hourly rate (#113); an empty field clears it. Per-employee rates override. */
+  saveDefaultRate: async (event) => {
+    const form = await event.request.formData();
+    const raw = String(form.get("default_hourly_rate") ?? "").trim();
+    const rate = raw === "" ? null : Number(raw);
+    if (rate !== null && (!Number.isFinite(rate) || rate < 0)) {
+      return fail(400, { error: "errors.validation" });
+    }
+    const { error } = await apiFor(event).PUT("/api/v1/leave/settings", {
+      body: { default_hourly_rate: rate },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { rateSaved: true };
   },
 
   // One save per member row: this year's entitlement per tracked type. Contract hours are no

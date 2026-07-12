@@ -16,8 +16,10 @@ x-api-env: &api-env
   SCHAKL_ENVIRONMENT: ${SCHAKL_ENVIRONMENT:-development}
   # Cross-tenant admin surface (issue #26): off by default; instance owners only.
   SCHAKL_INSTANCE_ADMIN_ENABLED: ${SCHAKL_INSTANCE_ADMIN_ENABLED:-false}
-  # --- OIDC single sign-on (optional; CLAUDE.md §3). Set _ENABLED to turn the button on;
-  # set _ENFORCED to true to disable local password login entirely. ---
+  # --- Single sign-on (#76): configured IN THE APP (Instellingen -> Single sign-on), not
+  # here. The SCHAKL_OIDC_* pass-through below is retired and kept ONE release only, so the
+  # #76 upgrade migration can still read an existing install's env and seed the database
+  # from it (secret stored encrypted). Remove next release. ---
   SCHAKL_OIDC_ENABLED: ${SCHAKL_OIDC_ENABLED:-false}
   SCHAKL_OIDC_ENFORCED: ${SCHAKL_OIDC_ENFORCED:-false}
   SCHAKL_OIDC_NAME: ${SCHAKL_OIDC_NAME:-sso}
@@ -26,6 +28,11 @@ x-api-env: &api-env
   SCHAKL_OIDC_CLIENT_SECRET: ${SCHAKL_OIDC_CLIENT_SECRET:-}
   SCHAKL_OIDC_AUTO_PROVISION_MEMBERSHIP: ${SCHAKL_OIDC_AUTO_PROVISION_MEMBERSHIP:-true}
   SCHAKL_OIDC_DEFAULT_ROLE: ${SCHAKL_OIDC_DEFAULT_ROLE:-member}
+  # Break-glass (docs/SSO.md): true re-enables local password login regardless of any org's
+  # "require SSO" setting. Use it to recover from a broken IdP, then unset it.
+  SCHAKL_FORCE_LOCAL_LOGIN: ${SCHAKL_FORCE_LOCAL_LOGIN:-false}
+  # File storage (issue #123): the named volume below; back it up alongside the DB.
+  SCHAKL_STORAGE_PATH: /data/storage
 
 services:
   db:
@@ -97,6 +104,9 @@ services:
       context: ..
       dockerfile: apps/api/Dockerfile
     environment: *api-env
+    volumes:
+      # Uploaded files (issue #123) — stateful like db-data; back up both together.
+      - storage-data:/data/storage
     depends_on:
       # Not `db: service_healthy` — the app role must exist before `alembic upgrade head`
       # connects as it. db-init already waits on db being healthy.
@@ -118,6 +128,9 @@ services:
       dockerfile: apps/api/Dockerfile
     command: ["worker"]
     environment: *api-env
+    volumes:
+      # The worker shares the files volume (image variants / processing land here, #123).
+      - storage-data:/data/storage
     depends_on:
       api:
         condition: service_healthy   # ensures migrations have run
@@ -154,3 +167,4 @@ services:
 
 volumes:
   db-data:
+  storage-data:

@@ -2,8 +2,10 @@ import "$lib/modules"; // ensure the panels are registered before we read the re
 
 import { error, fail, redirect } from "@sveltejs/kit";
 
+import { apiBaseUrl } from "$lib/core/api/client";
 import { parseAssignees } from "$lib/core/assignees";
 import { apiErrorKey } from "$lib/core/errors";
+import { can } from "$lib/core/permissions";
 import { entityPanelsFor } from "$lib/core/registry";
 import { apiFor } from "$lib/core/session";
 
@@ -45,25 +47,43 @@ export const load: PageServerLoad = async (event) => {
   const enabled = event.locals.theme?.enabledModules ?? [];
   const panels = entityPanelsFor(enabled, "project");
 
+  // Cost from employee rates (#111) is salary-derived: fetched only for someone the API would
+  // let see it (the guard is UX; the API stays the boundary), and only inside the same flight.
+  const canSeeCost =
+    can(event.locals.user, "time.report.read") &&
+    can(event.locals.user, "leave.rate.read", "any");
+
   // Every call in one flight. `projects` is a name-only lookup: the panel's edit modal needs the
   // picker, and `count=false` skips the COUNT(*) it would throw away.
-  const [tasks, companies, projects, members, definitions, ...panelData] = await Promise.all([
-    api.GET("/api/v1/tasks", { params: { query: { project_id, limit: 200, offset: 0 } } }),
-    api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
-    api.GET("/api/v1/projects", { params: { query: { limit: 200, offset: 0, count: false } } }),
-    api.GET("/api/v1/members/lookup"),
-    api.GET("/api/v1/custom-fields/definitions", {
-      params: { query: { entity_type: "project" } },
-    }),
-    ...panels.map((panel) => panel.load(api, context)),
-  ]);
+  const [tasks, companies, projects, members, statuses, definitions, cost, files, ...panelData] =
+    await Promise.all([
+      api.GET("/api/v1/tasks", { params: { query: { project_id, limit: 200, offset: 0 } } }),
+      api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
+      api.GET("/api/v1/projects", { params: { query: { limit: 200, offset: 0, count: false } } }),
+      api.GET("/api/v1/members/lookup"),
+      // The tenant's task statuses (issue #62) so the to-do list groups/toggles by the real ones.
+      api.GET("/api/v1/tasks/statuses"),
+      api.GET("/api/v1/custom-fields/definitions", {
+        params: { query: { entity_type: "project" } },
+      }),
+      canSeeCost
+        ? api.GET("/api/v1/time/cost", { params: { query: { project_id } } })
+        : Promise.resolve({ data: null }),
+      api.GET("/api/v1/files", {
+        params: { query: { entity_type: "project", entity_id: project_id } },
+      }),
+      ...panels.map((panel) => panel.load(api, context)),
+    ]);
 
   return {
     project,
+    files: files.data ?? [],
+    cost: cost.data ?? null,
     tasks: tasks.data?.items ?? [],
     companies: companies.data?.items ?? [],
     projects: projects.data?.items ?? [],
     members: members.data ?? [],
+    statuses: statuses.data ?? [],
     definitions: definitions.data ?? [],
     context,
     // Keyed so the page can pair each payload with the spec that produced it, without the page
@@ -109,7 +129,7 @@ export const actions: Actions = {
     const { error: apiError } = await apiFor(event).POST("/api/v1/tasks", {
       body: {
         title,
-        status: "open",
+        // Status omitted → the API assigns the org's default status (issue #62).
         priority: "normal",
         project_id: event.params.id,
         company_id: company_id || null,
@@ -135,8 +155,9 @@ export const actions: Actions = {
   toggleTask: async (event) => {
     const form = await event.request.formData();
     const id = String(form.get("id") ?? "");
-    const status = String(form.get("status") ?? "done") as "open" | "in_progress" | "done";
-    if (id) {
+    // A configured status key (issue #62); the row computes which from the org's vocabulary.
+    const status = String(form.get("status") ?? "").trim();
+    if (id && status) {
       await apiFor(event).PATCH("/api/v1/tasks/{task_id}", {
         params: { path: { task_id: id } },
         body: { status },
@@ -161,6 +182,46 @@ export const actions: Actions = {
       params: { path: { project_id: event.params.id } },
     });
     throw redirect(303, "/projects");
+  },
+
+  /** Document attachment (#123): multipart through a plain fetch — the typed client has no
+   *  multipart serializer — with the same cookie + tenant host the client would send. */
+  uploadFile: async (event) => {
+    const form = await event.request.formData();
+    const upload = form.get("file");
+    if (!(upload instanceof File) || upload.size === 0) {
+      return fail(400, { fileError: "errors.required" });
+    }
+    const body = new FormData();
+    body.append("file", upload, upload.name);
+    const res = await event.fetch(
+      `${apiBaseUrl()}/api/v1/files?entity_type=project&entity_id=${event.params.id}`,
+      {
+        method: "POST",
+        headers: {
+          cookie: event.request.headers.get("cookie") ?? "",
+          "x-forwarded-host": event.request.headers.get("host") ?? "",
+        },
+        body,
+      },
+    );
+    if (!res.ok) {
+      return fail(400, {
+        fileError: res.status === 413 ? "errors.upload_too_large" : "errors.upload_type",
+      });
+    }
+    return { fileUploaded: true };
+  },
+
+  deleteFile: async (event) => {
+    const form = await event.request.formData();
+    const file_id = String(form.get("file_id") ?? "");
+    if (file_id) {
+      await apiFor(event).DELETE("/api/v1/files/{file_id}", {
+        params: { path: { file_id } },
+      });
+    }
+    return { fileDeleted: true };
   },
 
   // The Uren panel's ⋯ menu posts here (its host contract). Identical to the Uren report's

@@ -1,0 +1,28 @@
+{
+  "brandName": "schakl.",
+  "siteUrl": "https://schakl.app",
+  "logo": "/src/assets/site/logo.svg",
+  "logoDark": "/src/assets/site/logo-dark.svg",
+  "favicon": "/favicon.svg",
+  "colors": {
+    "accent": "#4F46E5",
+    "accentDark": "#818CF8"
+  },
+  "social": {
+    "github": "https://github.com/schakl-app/schakl"
+  },
+  "nav": [
+    { "href": "/#features", "nl": "Functies", "en": "Features" },
+    { "href": "/#selfhost", "nl": "Hosting", "en": "Hosting" },
+    { "href": "/docs/", "nl": "Documentatie", "en": "Docs" }
+  ],
+  "footerLinks": [
+    { "href": "/docs/", "nl": "Documentatie", "en": "Documentation" },
+    { "href": "/docs/admin/installation/", "nl": "Installeren", "en": "Install" },
+    { "href": "https://github.com/schakl-app/schakl", "nl": "GitHub", "en": "GitHub" }
+  ],
+  "footerNote": {
+    "nl": "Het wit-label besturingssysteem voor je bureau. Jouw merk, jouw data.",
+    "en": "The white-label operating system for your agency. Your brand, your data."
+  }
+}

@@ -1,4 +1,8 @@
 packages:
   - "apps/web"
+  - "apps/site"
 allowBuilds:
   esbuild: true
+  # sharp is a transitive dep of Starlight; the site uses passthroughImageService, so its
+  # native build is unnecessary — kept off deliberately.
+  sharp: false

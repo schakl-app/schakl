@@ -27,7 +27,12 @@ async def test_contact_crud_and_company_filter(client_for) -> None:
         assert contact["first_name"] == "Ada"
         # The first contact of a company is auto-promoted to its primary.
         assert contact["companies"] == [
-            {"company_id": company["id"], "name": "Acme", "is_primary": True}
+            {
+                "company_id": company["id"],
+                "name": "Acme",
+                "is_primary": True,
+                "contact_type_id": None,
+            }
         ]
 
         # Filter by company (now resolved through the join table).

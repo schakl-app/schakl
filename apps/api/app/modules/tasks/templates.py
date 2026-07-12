@@ -11,8 +11,9 @@ import uuid
 from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
+from app.core.richtext import sanitize_markdown
 from app.core.tenancy import RequestContext
 from app.errors import AppError
 from app.modules.tasks.models import (
@@ -20,20 +21,21 @@ from app.modules.tasks.models import (
     TaskActivity,
     TaskChecklist,
     TaskChecklistItem,
-    TaskStatus,
     TaskTemplate,
     TaskTemplateItem,
     TemplateTrigger,
 )
 from app.modules.tasks.recurrence import today_local
 from app.modules.tasks.schemas import (
+    TemplateChecklistItem,
     TemplateCreate,
     TemplateItemBase,
     TemplateItemRead,
     TemplateRead,
     TemplateUpdate,
 )
-from app.modules.tasks.service import _display_name
+from app.modules.tasks.service import _display_name, _rich_items
+from app.modules.tasks.statuses import default_key, load_statuses
 
 
 class TemplateService:
@@ -42,12 +44,36 @@ class TemplateService:
         self.repo = ctx.repo(TaskTemplate)
         self.item_repo = ctx.repo(TaskTemplateItem)
 
+    @staticmethod
+    def _item_read(item: TaskTemplateItem) -> TemplateItemRead:
+        # Constructed by hand rather than ``model_validate`` because ``checklist_items`` is served
+        # from the authoritative ``checklist_items_rich`` column, not the model attribute of the
+        # same name (the legacy title-only array kept only for rollback — issue #66).
+        return TemplateItemRead(
+            id=item.id,
+            title=item.title,
+            description=item.description,
+            priority=item.priority,
+            relative_due_days=item.relative_due_days,
+            allocated_minutes=item.allocated_minutes,
+            assignee_user_id=item.assignee_user_id,
+            assign_responsible=item.assign_responsible,
+            position=item.position,
+            checklist_title=item.checklist_title,
+            checklist_items=[
+                TemplateChecklistItem(
+                    title=str(entry.get("title") or ""), description=entry.get("description")
+                )
+                for entry in _rich_items(item.checklist_items_rich, item.checklist_items)
+            ],
+        )
+
     async def _read(self, template: TaskTemplate) -> TemplateRead:
         items = await self.item_repo.list(
             limit=200, order_by=TaskTemplateItem.position.asc(), template_id=template.id
         )
         read = TemplateRead.model_validate(template)
-        read.items = [TemplateItemRead.model_validate(i) for i in items]
+        read.items = [self._item_read(i) for i in items]
         return read
 
     async def list(self) -> list[TemplateRead]:
@@ -64,9 +90,18 @@ class TemplateService:
         for item in existing:
             await self.item_repo.delete(item)
         for index, item in enumerate(items):
-            values = item.model_dump()
+            values = item.model_dump(exclude={"checklist_items"})
             values["priority"] = item.priority.value
             values["position"] = index
+            # Markdown source, sanitized on write (issue #66).
+            values["description"] = sanitize_markdown(item.description)
+            # Dual-write the checklist items expand/contract: the authoritative rich objects and the
+            # legacy title-only array a rolled-back previous image still reads (docs/WORKFLOW.md).
+            values["checklist_items_rich"] = [
+                {"title": ci.title, "description": sanitize_markdown(ci.description)}
+                for ci in item.checklist_items
+            ]
+            values["checklist_items"] = [ci.title for ci in item.checklist_items]
             await self.item_repo.create(template_id=template.id, **values)
 
     async def create(self, data: TemplateCreate) -> TemplateRead:
@@ -106,6 +141,18 @@ class TemplateService:
             actor_name=_display_name(self.ctx.user),
         )
 
+    async def instantiate_system(
+        self, template_id: uuid.UUID, company_id: uuid.UUID, *, actor_name: str | None = None
+    ) -> list[Task]:
+        """Published for the automation engine (issue #27): apply a template as the system.
+
+        No ``ctx.require`` — the worker's ``SystemContext`` has no user, and authorization
+        already happened when a permission-gated rule author saved the rule. ``actor_name``
+        (the rule's name) is what the activity trail shows instead of a person.
+        """
+        template = await self.repo.get_or_404(template_id)
+        return await self._instantiate(template, company_id, actor_id=None, actor_name=actor_name)
+
     async def _instantiate(
         self,
         template: TaskTemplate,
@@ -121,6 +168,20 @@ class TemplateService:
         )
         session = self.ctx.session
         org_id = self.ctx.org.id
+        # Who owns this client right now (#28)? Resolved at apply time, so the onboarding task
+        # follows the responsible of the day. A bare table reference (§6), like the companies
+        # check in domains — never an import of another module's internals.
+        responsible_id: uuid.UUID | None = None
+        if any(item.assign_responsible for item in items):
+            responsible_id = await session.scalar(
+                text(
+                    "SELECT user_id FROM company_assignees"
+                    " WHERE org_id = :oid AND company_id = :cid AND is_primary"
+                ),
+                {"oid": org_id, "cid": company_id},
+            )
+        # New tasks land in the org's default status (issue #62), not a hardcoded "open".
+        default_status = default_key(await load_statuses(session, org_id))
         max_position = float(
             await session.scalar(
                 select(func.max(Task.position)).where(Task.org_id == org_id)
@@ -137,10 +198,14 @@ class TemplateService:
             task = Task(
                 org_id=org_id,
                 company_id=company_id,
-                assignee_user_id=item.assignee_user_id,
+                assignee_user_id=(
+                    responsible_id or item.assignee_user_id
+                    if item.assign_responsible
+                    else item.assignee_user_id
+                ),
                 title=item.title,
                 description=item.description,
-                status=TaskStatus.OPEN.value,
+                status=default_status,
                 priority=item.priority,
                 due_date=due,
                 allocated_minutes=item.allocated_minutes,
@@ -149,7 +214,8 @@ class TemplateService:
             session.add(task)
             await session.flush()
 
-            if item.checklist_items:
+            checklist_items = _rich_items(item.checklist_items_rich, item.checklist_items)
+            if checklist_items:
                 checklist = TaskChecklist(
                     org_id=org_id,
                     task_id=task.id,
@@ -158,12 +224,14 @@ class TemplateService:
                 )
                 session.add(checklist)
                 await session.flush()
-                for index, title in enumerate(item.checklist_items):
+                for index, entry in enumerate(checklist_items):
                     session.add(
                         TaskChecklistItem(
                             org_id=org_id,
                             checklist_id=checklist.id,
-                            title=str(title)[:512],
+                            title=str(entry.get("title") or "")[:512],
+                            # Already sanitized at template-write time; copied verbatim (issue #66).
+                            description=entry.get("description"),
                             position=index,
                         )
                     )
@@ -199,6 +267,34 @@ class TemplateService:
                 actor_name=_display_name(self.ctx.user),
             )
 
+    async def instantiate_ids(
+        self, template_ids: list[uuid.UUID], company_id: uuid.UUID
+    ) -> None:
+        """Apply the given templates to a company (subscription activation, issue #142).
+
+        No ``ctx.require`` — spawning is a side effect of a write the caller was already
+        allowed to make; *linking* templates to a subscription type was gated on
+        ``subscriptions.type.manage`` when the tenant configured it. A template deleted or
+        deactivated since is skipped, never an error that would roll the activation back.
+        """
+        if not template_ids:
+            return
+        stmt = (
+            self.repo.scoped_select()
+            .where(TaskTemplate.id.in_(template_ids))
+            .where(TaskTemplate.active.is_(True))
+        )
+        found = {t.id: t for t in (await self.ctx.session.execute(stmt)).scalars()}
+        user = self.ctx.user
+        actor_id = user.id if user is not None else None
+        actor_name = _display_name(user) if user is not None else None
+        for template_id in template_ids:
+            template = found.get(template_id)
+            if template is not None:
+                await self._instantiate(
+                    template, company_id, actor_id=actor_id, actor_name=actor_name
+                )
+
 
 async def on_company_status(ctx: RequestContext, payload: dict[str, Any]) -> None:
     """Event handler for ``company.created`` and ``company.status_changed``."""
@@ -207,3 +303,17 @@ async def on_company_status(ctx: RequestContext, payload: dict[str, Any]) -> Non
     if not isinstance(company_id, uuid.UUID):
         raise AppError("validation", "errors.validation")
     await TemplateService(ctx).instantiate_for_status(company_id, str(status))
+
+
+async def on_subscription_activated(ctx: RequestContext, payload: dict[str, Any]) -> None:
+    """Event handler for ``subscription.activated`` (issue #142).
+
+    The payload carries the template ids the subscription's type is configured to spawn —
+    this module stays ignorant of the subscriptions tables (§6). Fires once per agreement:
+    the emitter guards on first activation, so pause→resume never lands here.
+    """
+    company_id = payload["company_id"]
+    if not isinstance(company_id, uuid.UUID):
+        raise AppError("validation", "errors.validation")
+    template_ids = [uuid.UUID(str(t)) for t in payload.get("task_template_ids", [])]
+    await TemplateService(ctx).instantiate_ids(template_ids, company_id)

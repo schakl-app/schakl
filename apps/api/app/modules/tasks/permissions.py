@@ -38,6 +38,7 @@ TASK_PERMISSIONS: list[PermissionSpec] = [
         default_own_roles=(ROLE_MEMBER,),
     ),
     PermissionSpec("tasks.label.write", position=60),
+    PermissionSpec("tasks.status.write", position=65),
     PermissionSpec("tasks.checklist_template.write", position=70),
     PermissionSpec("tasks.template.write", position=80),
     PermissionSpec("tasks.template.apply", position=90),

@@ -114,20 +114,18 @@ epics and delete the label.
 Not on the issue by default — **set it at triage**, every time. It is an organization issue
 field, so `gh issue edit` cannot touch it; use the REST API with the field's numeric id:
 
-`value` is the **option's numeric id, not its name**. Passing `value=High` returns `200` and
-silently changes nothing — the field stays empty and you will believe you set it. Look the
-ids up once:
+`field_id` is numeric; `value` is the **option's name as a string** (`-f`, not `-F`).
+GitHub changed this once already — passing the option's numeric id used to be required and
+now returns `422 "must be a string option name"` — so when the call fails, suspect the API
+shape before your ids:
 
 ```bash
 gh api /orgs/schakl-app/issue-fields -q '.[] | "\(.id)\t\(.name)"'   # 43901503 = Priority
-gh api /orgs/schakl-app/issue-fields \
-  | jq -r '.[] | select(.name=="Priority") | .options[] | "\(.id)\t\(.name)"'
-# 76831411 Urgent · 76831412 High · 76831413 Medium · 76831414 Low
 
 gh api -X PATCH /repos/schakl-app/schakl/issues/<N> \
   -f 'type=Bug' \
   -F 'issue_field_values[][field_id]=43901503' \
-  -F 'issue_field_values[][value]=76831412'
+  -f 'issue_field_values[][value]=High'
 ```
 
 The write key is `field_id`; the **read** key is `issue_field_id`. Filtering the response on
@@ -232,6 +230,16 @@ expand/contract. Splitting or merging a table is expand/contract.
 - Data migrations that touch tenant rows are **per-org and `org_id`-scoped** like everything
   else (Golden Rule 1); RLS is on, and the migration runs as `schakl_app`, not a superuser.
 - One migration per change, named `<module>_<verb>_<noun>` (CLAUDE.md §9).
+- **The graph has exactly one head.** `alembic upgrade head` refuses to run with two — and two
+  is exactly what you get when your new migration's `down_revision` is not the current head,
+  which is the norm when several agents each branch a migration off the same parent in parallel.
+  Before committing a migration: `cd apps/api && alembic heads` prints **one** revision, and your
+  new `revision` id is **unique** — never hand-copy or pattern-continue an existing id. Two files
+  with the same id are "present more than once" and alembic won't even load. If you branched,
+  re-chain your `down_revision` onto the real head (renaming your revision id **and** its filename
+  to stay unique) or add a merge migration — never push two heads to `dev`. This bit us once:
+  `c5d6e7f8a9b0` was stamped on two different migrations off one parent, and **no** fresh database
+  could migrate at all until it was untangled.
 - Test the upgrade against a database with rows in it, not an empty one. An empty database
   will happily accept a migration that destroys a populated one.
 - If a change genuinely cannot be made non-destructively, say so on the issue **before**
@@ -286,6 +294,23 @@ and `nl.json`, a tenant-isolation test, OpenAPI. On top of that, before you call
 done: `pnpm run check` clean, lint no worse than baseline, `i18n:check` passing, the issue
 commented, and the label applied. If the change touches the schema, the upgrade plan for
 existing releases is written down and the migration was run against a populated database.
+
+**Build the images and boot the stack before you call it done.** `pnpm run check`, `pnpm web
+build` and the dev server all pass on bugs that only surface in the real image — an adapter-node
+runtime that can't resolve a server-imported dependency (`docs/WEB.md`), or a migration graph that
+only fails when alembic actually runs. The dev tree has `node_modules` and no fresh DB, so it hides
+both. So:
+
+```bash
+docker compose -f infra/compose.yaml build api web
+docker compose -f infra/compose.yaml up -d
+docker compose -f infra/compose.yaml ps      # api must reach (healthy); web must NOT be restarting
+```
+
+`api` reaching `(healthy)` proves migrations applied on a real database; a `web` that stays up
+(not crash-looping) proves the SSR bundle is self-contained. If you touched the web app, load the
+screen you changed. Two production-only bugs reached `dev` because this step was skipped — a
+duplicated migration revision (two heads) and a server dependency left out of `ssr.noExternal`.
 
 Lint is currently **red on pre-existing errors** (`svelte/prefer-writable-derived`,
 `svelte/prefer-svelte-reactivity`). Do not add to the count, and do not fix unrelated ones

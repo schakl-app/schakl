@@ -1,5 +1,6 @@
 import { error, fail, redirect } from "@sveltejs/kit";
 
+import { apiBaseUrl } from "$lib/core/api/client";
 import { apiErrorKey } from "$lib/core/errors";
 import { apiFor } from "$lib/core/session";
 
@@ -9,17 +10,20 @@ export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const task_id = event.params.id;
 
-  const { data: task } = await api.GET("/api/v1/tasks/{task_id}", {
-    params: { path: { task_id } },
-  });
-  if (!task) throw error(404, { code: "not_found", message: "errors.not_found" });
-
   // Lookups come from the /tasks layout load (data.labels doubles as allLabels).
-  const { data: checklistTemplates } = await api.GET("/api/v1/tasks/checklist-templates");
+  const [{ data: task }, { data: checklistTemplates }, { data: files }] = await Promise.all([
+    api.GET("/api/v1/tasks/{task_id}", { params: { path: { task_id } } }),
+    api.GET("/api/v1/tasks/checklist-templates"),
+    api.GET("/api/v1/files", {
+      params: { query: { entity_type: "task", entity_id: task_id } },
+    }),
+  ]);
+  if (!task) throw error(404, { code: "not_found", message: "errors.not_found" });
 
   return {
     task,
     checklistTemplates: checklistTemplates ?? [],
+    files: files ?? [],
   };
 };
 
@@ -158,11 +162,33 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const title = String(form.get("title") ?? "").trim();
     const template_id = String(form.get("template_id") ?? "").trim();
+    const description = String(form.get("description") ?? "").trim();
     if (!title && !template_id) return fail(400, { error: "errors.required" });
     const { error: apiError } = await apiFor(event).POST("/api/v1/tasks/{task_id}/checklists", {
       params: { path: { task_id: event.params.id } },
-      body: { title: title || null, template_id: template_id || null },
+      body: {
+        title: title || null,
+        description: description || null,
+        template_id: template_id || null,
+      },
     });
+    if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
+    return { checklist: true };
+  },
+
+  editChecklist: async (event) => {
+    const form = await event.request.formData();
+    const checklist_id = String(form.get("checklist_id") ?? "");
+    const title = String(form.get("title") ?? "").trim();
+    const description = String(form.get("description") ?? "").trim();
+    if (!checklist_id || !title) return fail(400, { error: "errors.required" });
+    const { error: apiError } = await apiFor(event).PATCH(
+      "/api/v1/tasks/{task_id}/checklists/{checklist_id}",
+      {
+        params: { path: { task_id: event.params.id, checklist_id } },
+        body: { title, description: description || null },
+      },
+    );
     if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
     return { checklist: true };
   },
@@ -190,13 +216,65 @@ export const actions: Actions = {
     return { linkDeleted: true };
   },
 
+  /** Document attachment (#123): multipart through a plain fetch — the typed client has no
+   *  multipart serializer — with the same cookie + tenant host the client would send. */
+  uploadFile: async (event) => {
+    const form = await event.request.formData();
+    const upload = form.get("file");
+    if (!(upload instanceof File) || upload.size === 0) {
+      return fail(400, { fileError: "errors.required" });
+    }
+    const body = new FormData();
+    body.append("file", upload, upload.name);
+    const res = await event.fetch(
+      `${apiBaseUrl()}/api/v1/files?entity_type=task&entity_id=${event.params.id}`,
+      {
+        method: "POST",
+        headers: {
+          cookie: event.request.headers.get("cookie") ?? "",
+          "x-forwarded-host": event.request.headers.get("host") ?? "",
+        },
+        body,
+      },
+    );
+    if (!res.ok) {
+      return fail(400, {
+        fileError: res.status === 413 ? "errors.upload_too_large" : "errors.upload_type",
+      });
+    }
+    return { fileUploaded: true };
+  },
+
+  deleteFile: async (event) => {
+    const form = await event.request.formData();
+    const file_id = String(form.get("file_id") ?? "");
+    if (file_id) {
+      await apiFor(event).DELETE("/api/v1/files/{file_id}", {
+        params: { path: { file_id } },
+      });
+    }
+    return { fileDeleted: true };
+  },
+
   saveChecklistTemplate: async (event) => {
     const form = await event.request.formData();
     const title = String(form.get("title") ?? "").trim();
-    const items = String(form.get("items") ?? "")
-      .split("\n")
-      .map((s) => s.trim())
-      .filter(Boolean);
+    // Items arrive as a JSON array of `{title, description}` (issue #66) so a checklist saved as a
+    // template keeps its item descriptions, not just the titles.
+    let items: { title: string; description: string | null }[] = [];
+    try {
+      const parsed = JSON.parse(String(form.get("items") ?? "[]")) as unknown;
+      if (Array.isArray(parsed)) {
+        items = parsed
+          .map((i) => ({
+            title: String((i as { title?: unknown }).title ?? "").trim(),
+            description: String((i as { description?: unknown }).description ?? "").trim() || null,
+          }))
+          .filter((i) => i.title);
+      }
+    } catch {
+      return fail(400, { error: "errors.validation" });
+    }
     if (!title) return fail(400, { error: "errors.required" });
     const { error: apiError } = await apiFor(event).POST("/api/v1/tasks/checklist-templates", {
       body: { title, items },
@@ -220,10 +298,32 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const checklist_id = String(form.get("checklist_id") ?? "");
     const title = String(form.get("title") ?? "").trim();
+    const description = String(form.get("description") ?? "").trim();
     if (!checklist_id || !title) return fail(400, { error: "errors.required" });
     const { error: apiError } = await apiFor(event).POST(
       "/api/v1/tasks/{task_id}/checklists/{checklist_id}/items",
-      { params: { path: { task_id: event.params.id, checklist_id } }, body: { title } },
+      {
+        params: { path: { task_id: event.params.id, checklist_id } },
+        body: { title, description: description || null },
+      },
+    );
+    if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
+    return { checklist: true };
+  },
+
+  editItem: async (event) => {
+    const form = await event.request.formData();
+    const checklist_id = String(form.get("checklist_id") ?? "");
+    const item_id = String(form.get("item_id") ?? "");
+    const title = String(form.get("title") ?? "").trim();
+    const description = String(form.get("description") ?? "").trim();
+    if (!checklist_id || !item_id || !title) return fail(400, { error: "errors.required" });
+    const { error: apiError } = await apiFor(event).PATCH(
+      "/api/v1/tasks/{task_id}/checklists/{checklist_id}/items/{item_id}",
+      {
+        params: { path: { task_id: event.params.id, checklist_id, item_id } },
+        body: { title, description: description || null },
+      },
     );
     if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
     return { checklist: true };

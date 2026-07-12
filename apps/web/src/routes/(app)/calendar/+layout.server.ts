@@ -9,8 +9,15 @@ import type { LayoutServerLoad } from "./$types";
  */
 export const load: LayoutServerLoad = async (event) => {
   const prefs = await apiFor(event).GET("/api/v1/prefs");
-  const stored = (prefs.data?.prefs as { calendar?: { view?: string } } | undefined)?.calendar
-    ?.view;
-  const defaultView: CalendarView = isCalendarView(stored) ? stored : "week";
-  return { defaultView };
+  const calendar = (
+    prefs.data?.prefs as { calendar?: { view?: string; hiddenSources?: unknown } } | undefined
+  )?.calendar;
+  const storedView = calendar?.view;
+  const defaultView: CalendarView = isCalendarView(storedView) ? storedView : "week";
+  // Which feeds this user hid (#121). Rides the same prefs read — no extra call.
+  const storedHidden = calendar?.hiddenSources;
+  const hiddenSources = Array.isArray(storedHidden)
+    ? storedHidden.filter((s): s is string => typeof s === "string")
+    : [];
+  return { defaultView, hiddenSources };
 };

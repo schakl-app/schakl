@@ -18,7 +18,7 @@ _TEMPLATE = {
             "priority": "high",
             "relative_due_days": 2,
             "checklist_title": "Prep",
-            "checklist_items": ["Agenda", "Slides"],
+            "checklist_items": [{"title": "Agenda"}, {"title": "Slides", "description": "10 max"}],
         },
         {"title": "Set up analytics", "relative_due_days": 7},
     ],
@@ -88,6 +88,59 @@ async def test_company_created_with_trigger_status_instantiates(client_for) -> N
 
         detail = (await c.get(f"/api/v1/tasks/{kickoff['id']}", headers=headers)).json()
         assert any(a["action"] == "template_applied" for a in detail["activities"])
+
+
+async def test_assign_responsible_resolves_at_apply_time(client_for) -> None:
+    """An item with assign_responsible lands on the company's primary responsible (#28) —
+    resolved when the template applies, with the fixed assignee as fallback."""
+    t = await make_tenant("tpl-responsible")
+    headers = await auth_cookie(t.user)
+    member = await add_member(t, role="member")
+
+    async with client_for(t.host) as c:
+        template = {
+            "name": "Onboarding",
+            "trigger": "company_status",
+            "trigger_status": "onboarding",
+            "items": [{"title": "Welcome the client", "assign_responsible": True}],
+        }
+        created = await c.post("/api/v1/tasks/templates", json=template, headers=headers)
+        assert created.status_code == 201
+        assert created.json()["items"][0]["assign_responsible"] is True
+
+        # A client owned by the member → the onboarding task goes to the member.
+        company = (
+            await c.post(
+                "/api/v1/companies",
+                json={
+                    "name": "Owned Client",
+                    "status": "onboarding",
+                    "assignees": [{"user_id": str(member.id), "is_primary": True}],
+                },
+                headers=headers,
+            )
+        ).json()
+        tasks = (
+            await c.get(
+                "/api/v1/tasks", params={"company_id": company["id"]}, headers=headers
+            )
+        ).json()["items"]
+        assert tasks[0]["assignee_user_id"] == str(member.id)
+
+        # No responsible on the company → falls back to unassigned (no fixed assignee set).
+        bare = (
+            await c.post(
+                "/api/v1/companies",
+                json={"name": "Bare Client", "status": "onboarding"},
+                headers=headers,
+            )
+        ).json()
+        bare_tasks = (
+            await c.get(
+                "/api/v1/tasks", params={"company_id": bare["id"]}, headers=headers
+            )
+        ).json()["items"]
+        assert bare_tasks[0]["assignee_user_id"] is None
 
 
 async def test_status_transition_triggers_once_and_only_on_match(client_for) -> None:

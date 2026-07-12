@@ -4,6 +4,7 @@
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import { can } from "$lib/core/permissions";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
@@ -44,8 +45,9 @@
       priority?: string;
       relative_due_days?: number | null;
       assignee_user_id?: string | null;
+      assign_responsible?: boolean;
       checklist_title?: string | null;
-      checklist_items?: string[];
+      checklist_items?: { title: string; description?: string | null }[];
     }[];
   }
 
@@ -83,9 +85,10 @@
       priority: item.priority ?? "normal",
       relative_due_days: item.relative_due_days == null ? "" : String(item.relative_due_days),
       allocated_minutes: item.allocated_minutes == null ? "" : String(item.allocated_minutes),
-      assignee_user_id: item.assignee_user_id ?? "",
+      // "__responsible__" is the apply-time sentinel (#28), never a real user id.
+      assignee_user_id: item.assign_responsible ? "__responsible__" : (item.assignee_user_id ?? ""),
       checklist_title: item.checklist_title ?? "",
-      checklist_text: (item.checklist_items ?? []).join("\n"),
+      checklist_text: (item.checklist_items ?? []).map((c) => c.title).join("\n"),
     }));
     if (items.length === 0) items = [blankItem()];
   }
@@ -106,7 +109,11 @@
         priority: item.priority,
         relative_due_days: item.relative_due_days === "" ? null : Number(item.relative_due_days),
         allocated_minutes: item.allocated_minutes === "" ? null : Number(item.allocated_minutes),
-        assignee_user_id: item.assignee_user_id || null,
+        assignee_user_id:
+          item.assignee_user_id && item.assignee_user_id !== "__responsible__"
+            ? item.assignee_user_id
+            : null,
+        assign_responsible: item.assignee_user_id === "__responsible__",
         checklist_title: item.checklist_title,
         checklist_items: item.checklist_text
           .split("\n")
@@ -121,7 +128,7 @@
 </script>
 
 <svelte:head>
-  <title>{t("settings.task_templates.title")}</title>
+  <title>{pageTitle(t("settings.task_templates.title"))}</title>
 </svelte:head>
 
 <TasksNav />
@@ -279,6 +286,8 @@
               aria-label={t("tasks.field.assignee")}
             >
               <option value="">{t("tasks.templates.no_assignee")}</option>
+              <!-- Resolved at apply time to the company's primary responsible (#28). -->
+              <option value="__responsible__">{t("tasks.templates.assignee_responsible")}</option>
               {#each data.members as member (member.user_id)}
                 <option value={member.user_id}>{member.full_name || member.email}</option>
               {/each}

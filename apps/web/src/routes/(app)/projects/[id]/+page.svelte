@@ -7,14 +7,18 @@
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import CustomFieldsView from "$lib/core/customfields/CustomFieldsView.svelte";
   import { burnBarClass, burnBarWidth, burnPct } from "$lib/core/burn";
-  import { fmtNumericDate } from "$lib/core/format";
+  import { editIntent } from "$lib/core/edit-intent";
+  import { fmtNumber, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import { entityPanelsFor } from "$lib/core/registry";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import AssigneePicker from "$lib/core/ui/AssigneePicker.svelte";
   import AvatarStack from "$lib/core/ui/AvatarStack.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
+  import FileAttachments from "$lib/core/ui/FileAttachments.svelte";
+  import { terminalKeys } from "$lib/modules/tasks/statuses";
   import TaskRow from "$lib/modules/tasks/TaskRow.svelte";
 
   let { data, form } = $props();
@@ -31,8 +35,9 @@
     tasks: data.tasks,
   });
 
-  // Use mode vs edit mode (UX §3): the definition is edited behind the ⋯ → Bewerken toggle.
-  let editing = $state(false);
+  // Use mode vs edit mode (UX §3): the definition is edited behind the ⋯ → Bewerken toggle, or
+  // opened straight into edit when reached from the overview's ⋯ → Bewerken (#78).
+  let editing = $state(editIntent());
   let confirmDelete = $state(false);
 
   const STATUSES = ["active", "on_hold", "completed", "archived"] as const;
@@ -41,7 +46,9 @@
 
   const project = $derived(data.project);
   const tasks = $derived(data.tasks);
-  const doneCount = $derived(tasks.filter((t) => t.status === "done").length);
+  // "Done" is any terminal configured status (issue #62), not the literal "done".
+  const terminalSet = $derived(new Set(terminalKeys(data.statuses)));
+  const doneCount = $derived(tasks.filter((t) => terminalSet.has(t.status)).length);
 
   const assignees = $derived(project.assignees ?? []);
 
@@ -105,7 +112,7 @@
 </script>
 
 <svelte:head>
-  <title>{project.name}</title>
+  <title>{pageTitle(project.name)}</title>
 </svelte:head>
 
 <div class="mb-6 flex items-start justify-between">
@@ -198,6 +205,32 @@
           <span class="text-text-muted">{t("projects.billable_value")}</span>
           <span class="font-medium text-text">{money(billableValue)}</span>
         </div>
+      {/if}
+      <!-- Cost from employee rates (#111) — the project rate bills, people cost. Only loaded
+           (and rendered) for someone the API lets read salary-derived money. -->
+      {#if data.cost}
+        <div class="mt-2 flex items-center justify-between text-sm">
+          <span class="text-text-muted">{t("projects.cost")}</span>
+          <span class="font-medium text-text">{money(data.cost.cost)}</span>
+        </div>
+        {#if billableValue != null}
+          {@const margin = billableValue - data.cost.cost}
+          <div class="mt-2 flex items-center justify-between text-sm">
+            <span class="text-text-muted">{t("projects.margin")}</span>
+            <span
+              class="font-medium {margin < 0 ? 'text-red-600 dark:text-red-400' : 'text-text'}"
+            >
+              {money(margin)}
+            </span>
+          </div>
+        {/if}
+        {#if data.cost.unrated_minutes > 0}
+          <p class="mt-1 text-xs text-text-muted">
+            {t("projects.cost_unrated", {
+              hours: fmtNumber(data.cost.unrated_minutes / 60, 1),
+            })}
+          </p>
+        {/if}
       {/if}
     </div>
   </section>
@@ -455,12 +488,31 @@
             >⋮⋮</span
           >
           <div class="flex-1">
-            <TaskRow {task} toggleAction="?/toggleTask" members={data.members} />
+            <TaskRow
+              {task}
+              toggleAction="?/toggleTask"
+              members={data.members}
+              statuses={data.statuses}
+            />
           </div>
         </div>
       {/each}
     </div>
   {/if}
+</section>
+
+<!-- Documents attached through the storage core (#123). -->
+<section class="mt-4 rounded-xl border border-border bg-surface-raised p-5">
+  <h2 class="mb-3 text-sm font-semibold text-text">{t("files.title")}</h2>
+  {#if data.files.length === 0}
+    <p class="mb-3 text-sm text-text-muted">{t("files.empty")}</p>
+  {/if}
+  <FileAttachments
+    files={data.files}
+    uploadAction="?/uploadFile"
+    deleteAction="?/deleteFile"
+    error={form?.fileError ?? null}
+  />
 </section>
 
 <ConfirmDialog

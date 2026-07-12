@@ -1,125 +1,142 @@
-"""Optional OIDC relying-party via Authlib (CLAUDE.md §3).
+"""OIDC relying-party via Authlib — per-org, resolved at request time (issue #76).
 
-Disabled by default. When ``OIDC_ENABLED`` (and configured), this contributes login/callback
-routes that federate to an external IdP and issue the platform's own session cookie. When
-``OIDC_ENFORCED``, local username/password login is turned off (see ``router.py``).
+The ``/auth/oidc/login`` and ``/callback`` routes are mounted **unconditionally**. Each request
+resolves the org from the hostname (the same strict resolution every request uses, CLAUDE.md §5),
+loads that org's stored SSO settings (:mod:`app.core.auth.sso`) and builds/reuses the Authlib
+client for exactly that config. An org that has SSO disabled or half-configured gets a clean
+``404 errors.sso_not_configured`` — the same status an unmounted route used to give, so the
+login button's invariant (shown iff the flow works) survives the move to per-org config.
 
-Not exercised by the P0 gate (needs a real IdP); written defensively so import/mount never
-fails when unconfigured.
+Enabling, disabling or enforcing SSO is a settings write; nothing here is decided at boot.
 """
 
 from __future__ import annotations
 
 import logging
 import uuid
+from dataclasses import dataclass
 
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 
 from app.config import settings
+from app.core.auth import sso
 from app.core.auth.backend import cookie_transport, get_jwt_strategy
 from app.core.auth.models import User
-from app.db import async_session_maker
+from app.db import async_session_maker, set_current_org
+from app.errors import AppError
 
 logger = logging.getLogger("schakl.auth.oidc")
 
+router = APIRouter()
 
-def build_oidc_router() -> APIRouter | None:
-    if not settings.oidc_configured:
-        missing = settings.oidc_missing_settings
-        if settings.oidc_enforced:
-            # Enforced OIDC disables local login; silently dropping the SSO routes on top
-            # of that would lock every user out. Refuse to boot instead (issue #6).
-            raise RuntimeError(
-                "SCHAKL_OIDC_ENFORCED=true but OIDC is not configured, which would disable "
-                f"local login with no SSO to fall back on. Set: {', '.join(missing)}."
+
+@dataclass
+class _ResolvedSso:
+    """The per-request view of one org's SSO config — plain values, no live session."""
+
+    org_id: uuid.UUID
+    client: object
+    auto_provision: bool
+    default_role: str
+
+
+async def _resolve_sso(request: Request) -> _ResolvedSso:
+    """Hostname → org → stored config → Authlib client, or a clean error.
+
+    The org resolves before any user exists (exactly like the login screen's branding read):
+    resolve first, bind the RLS GUC, then read the RLS-forced settings row.
+    """
+    from app.core.tenancy import request_hostname, resolve_org
+
+    async with async_session_maker() as session:
+        org = await resolve_org(session, request_hostname(request))
+        if org is None:
+            raise AppError("unknown_host", "errors.unknown_host", status_code=404)
+        await set_current_org(session, org.id)
+        row = await sso.sso_row(session, org.id)
+        if not sso.sso_configured(row):
+            raise AppError(
+                "sso_not_configured", "errors.sso_not_configured", status_code=404
             )
-        if settings.oidc_enabled:
-            logger.warning(
-                "OIDC is enabled but not configured; the SSO routes are not mounted and "
-                "the login page will not offer SSO. Set: %s.",
-                ", ".join(missing),
-            )
-        return None
-
-    from authlib.integrations.starlette_client import OAuth
-
-    oauth = OAuth()
-    oauth.register(
-        name=settings.oidc_name,
-        server_metadata_url=settings.oidc_discovery_url,
-        client_id=settings.oidc_client_id,
-        client_secret=settings.oidc_client_secret,
-        client_kwargs={"scope": "openid email profile"},
-    )
-    client = getattr(oauth, settings.oidc_name)
-    router = APIRouter()
-
-    @router.get("/login")
-    async def oidc_login(request: Request):
-        redirect_uri = str(request.url_for("oidc_callback"))
-        return await client.authorize_redirect(request, redirect_uri)
-
-    @router.get("/callback", name="oidc_callback")
-    async def oidc_callback(request: Request):
-        token = await client.authorize_access_token(request)
-        userinfo = token.get("userinfo") or await client.userinfo(token=token)
-        email = userinfo.get("email")
-        if not email:
-            return RedirectResponse(url="/login?error=oidc")
-
-        async with async_session_maker() as session:
-            from sqlalchemy import select
-
-            from app.core.models import Membership
-            from app.core.permissions.service import create_membership
-            from app.core.tenancy import request_hostname, resolve_org
-            from app.db import set_current_org
-
-            user = await session.scalar(select(User).where(User.email == email))
-            if user is None:
-                user = User(
-                    id=uuid.uuid4(),
-                    email=email,
-                    full_name=userinfo.get("name"),
-                    # Unusable local password; identity is asserted by the IdP.
-                    hashed_password=uuid.uuid4().hex,
-                    is_active=True,
-                    is_verified=True,
-                )
-                session.add(user)
-                await session.flush()
-
-            # Grant a membership in the resolved org, otherwise a JIT-provisioned SSO user would
-            # authenticate but be locked out (no membership → 403 in require_context).
-            if settings.oidc_auto_provision_membership:
-                org = await resolve_org(session, request_hostname(request))
-                if org is not None:
-                    await set_current_org(session, org.id)
-                    existing = await session.scalar(
-                        select(Membership).where(
-                            Membership.org_id == org.id, Membership.user_id == user.id
-                        )
-                    )
-                    if existing is None:
-                        # Goes through the RBAC helper so a JIT-provisioned user also holds the
-                        # system role that carries their permissions (issue #19) — a membership
-                        # without one authenticates and can then do nothing at all.
-                        await create_membership(
-                            session, org.id, user.id, settings.oidc_default_role
-                        )
-            await session.commit()
-
-        jwt = await get_jwt_strategy().write_token(user)
-        response = RedirectResponse(url="/")
-        response.set_cookie(
-            key=cookie_transport.cookie_name,
-            value=jwt,
-            max_age=settings.auth_token_lifetime_seconds,
-            httponly=True,
-            secure=settings.auth_cookie_secure,
-            samesite="lax",
+        assert row is not None  # sso_configured guarantees it; keeps the type-checker honest
+        return _ResolvedSso(
+            org_id=org.id,
+            client=sso.oauth_client(row),
+            auto_provision=row.oidc_auto_provision_membership,
+            default_role=row.oidc_default_role,
         )
-        return response
 
-    return router
+
+@router.get("/login")
+async def oidc_login(request: Request):
+    resolved = await _resolve_sso(request)
+    redirect_uri = str(request.url_for("oidc_callback"))
+    return await resolved.client.authorize_redirect(request, redirect_uri)
+
+
+@router.get("/callback", name="oidc_callback")
+async def oidc_callback(request: Request):
+    resolved = await _resolve_sso(request)
+    token = await resolved.client.authorize_access_token(request)
+    userinfo = token.get("userinfo") or await resolved.client.userinfo(token=token)
+    email = userinfo.get("email")
+    if not email:
+        return RedirectResponse(url="/login?error=oidc")
+
+    async with async_session_maker() as session:
+        from sqlalchemy import select
+
+        from app.core.models import Membership
+        from app.core.permissions.service import create_membership
+
+        user = await session.scalar(select(User).where(User.email == email))
+        if user is None:
+            user = User(
+                id=uuid.uuid4(),
+                email=email,
+                full_name=userinfo.get("name"),
+                # The IdP's picture claim (#122) — `profile` scope already requested.
+                oidc_avatar_url=userinfo.get("picture"),
+                # Unusable local password; identity is asserted by the IdP.
+                hashed_password=uuid.uuid4().hex,
+                is_active=True,
+                is_verified=True,
+            )
+            session.add(user)
+            await session.flush()
+        else:
+            # Returning user: refresh the IdP-owned picture each login (#122) — a stale or
+            # dropped claim follows through, while the personal override stays untouched.
+            user.oidc_avatar_url = userinfo.get("picture")
+
+        # Grant a membership in the resolved org, otherwise a JIT-provisioned SSO user would
+        # authenticate but be locked out (no membership → 403 in require_context). Per-org
+        # policy now: the org's stored auto-provision flag and default role (issue #76).
+        if resolved.auto_provision:
+            await set_current_org(session, resolved.org_id)
+            existing = await session.scalar(
+                select(Membership).where(
+                    Membership.org_id == resolved.org_id, Membership.user_id == user.id
+                )
+            )
+            if existing is None:
+                # Goes through the RBAC helper so a JIT-provisioned user also holds the
+                # system role that carries their permissions (issue #19) — a membership
+                # without one authenticates and can then do nothing at all.
+                await create_membership(
+                    session, resolved.org_id, user.id, resolved.default_role
+                )
+        await session.commit()
+
+    jwt = await get_jwt_strategy().write_token(user)
+    response = RedirectResponse(url="/")
+    response.set_cookie(
+        key=cookie_transport.cookie_name,
+        value=jwt,
+        max_age=settings.auth_token_lifetime_seconds,
+        httponly=True,
+        secure=settings.auth_cookie_secure,
+        samesite="lax",
+    )
+    return response

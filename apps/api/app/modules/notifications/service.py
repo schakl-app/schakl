@@ -9,7 +9,8 @@ imports another's models (Golden Rule 3) — the payload is the whole contract.
 The fan-out runs **inline in the emitter's transaction** (``app/core/events.py``), so an event
 and the notifications it produces commit or roll back together. That is why ``ingest`` does no
 network I/O and issues a bounded number of queries — a dedup probe, the watchers, the
-preferences, the collapse probe, then one bulk insert — regardless of recipient count.
+preferences, the collapse probe, one bulk insert, then one batched hand-off per delivery
+channel — regardless of recipient count.
 
 Three rules that are easy to get wrong, so they are enforced here rather than at each emit
 site:
@@ -38,9 +39,7 @@ from app.core.auth.models import User
 from app.core.events import EmitContext
 from app.core.models import Membership
 from app.errors import AppError
-from app.modules.notifications.channels import get_channel
 from app.modules.notifications.events import (
-    CHANNEL_IN_APP,
     DEDUP_KEY,
     ENTITY_FOR_EVENT,
     ENTITY_TYPES,
@@ -71,6 +70,7 @@ ENTITY_ID_KEY: dict[str, str] = {
     "task.unassigned": "task_id",
     "task.status_changed": "task_id",
     "task.commented": "task_id",
+    "task.mentioned": "task_id",
     "task.due_soon": "task_id",
     "task.overdue": "task_id",
     "project.assigned": "project_id",
@@ -161,6 +161,10 @@ class NotificationService:
         data = dict(payload)
         hinted = data.pop(RECIPIENTS_KEY, None) or []
         dedup_key = data.pop(DEDUP_KEY, None)
+        # Every ``_``-prefixed key is routing by convention (``_recipients``, ``_dedup_key``,
+        # the automation engine's ``_depth`` loop counter — issue #27), never content: none of
+        # it belongs in a persisted event row.
+        data = {key: value for key, value in data.items() if not key.startswith("_")}
         now = datetime.now(UTC)
 
         if dedup_key is not None and await self._dedup_exists(dedup_key):
@@ -288,16 +292,16 @@ class NotificationService:
             fresh.append(row)
         await self.session.flush()
 
-        # The in-app channel is pull, so this is a no-op today; it is the seam #17 fills.
-        channel = get_channel(CHANNEL_IN_APP)
-        if channel is not None:
-            for row in fresh:
-                await channel.deliver(
-                    self.ctx,
-                    notification_id=row.id,
-                    user_id=row.user_id,
-                    event_type=event.event_type,
-                )
+        # Hand the fresh rows to every registered channel as one batch, so each channel can
+        # resolve whatever it needs (e-mail preferences, channel configs) in one query instead
+        # of one per recipient. The in-app channel is pull (a no-op); the push channels (#17)
+        # enqueue delivery rows for the worker.
+        from app.modules.notifications.channels import channels as all_channels
+
+        if not fresh:
+            return
+        for channel in all_channels():
+            await channel.deliver(self.ctx, event=event, notifications=fresh)
 
     async def _dedup_exists(self, dedup_key: str) -> bool:
         found = await self.session.scalar(

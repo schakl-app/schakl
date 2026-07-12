@@ -45,7 +45,7 @@ other identifiers; the dot appears solely when the official product name is disp
 | Typed client  | `openapi-typescript` client generated from the API's OpenAPI spec |
 | Database      | PostgreSQL (with Row-Level Security) |
 | Jobs & cache  | Redis + ARQ |
-| Auth          | App-native at the API: FastAPI Users (local username/password, verification, reset) + Authlib (OIDC relying-party, optional & toggleable) · Google OAuth for Workspace scopes |
+| Auth          | App-native at the API: FastAPI Users (local username/password, verification, reset) + Authlib (OIDC relying-party, configured **per org in the DB** — Instellingen → SSO, #76; encrypted secret, runtime toggles, `SCHAKL_FORCE_LOCAL_LOGIN` break-glass) · Google OAuth for Workspace scopes |
 | Infra         | Docker Compose · Traefik · deployed on Hetzner · Cloudflare Zero Trust |
 | MCP / AI       | MCP server over Streamable HTTP (OAuth 2.1 resource server) via the official Python MCP SDK / FastMCP; mounted on the API app; tools contributed per module, read-first |
 
@@ -179,8 +179,14 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   - `scripts/i18n:check` fails CI if keys are missing/extra across locales (`nl` must be full).
   - Keys are descriptive and grouped by module, so a whole file can be translated in one pass.
   - Rule: any change that adds a string updates **all** locale files (incl. `nl`) in the same commit.
-- **Formatting:** dates, numbers, currency via `Intl`, default timezone `Europe/Amsterdam`,
-  currency `EUR`.
+- **Formatting:** dates, numbers, currency via `Intl`, currency `EUR`. Timezone is
+  **per-tenant** (`org_settings.timezone`, an IANA name; instance fallback `Europe/Amsterdam`):
+  the web renders event timestamps in it (resolved via `getTimeZone()` — server AsyncLocalStorage
+  + `<html data-timezone>` on the client, mirroring the locale plumbing), and the per-org cron
+  (timesheet nudges, holiday top-up) reasons about the local calendar in it via
+  `app.core.timezone.org_zoneinfo`. Stored instants stay `TIMESTAMPTZ`/UTC; date-only values stay
+  wall-clock UTC; leave `TIME` stays naive (§14). No per-user override yet — the resolution seam
+  is in place for one.
 
 ## 9. Conventions
 
@@ -192,8 +198,10 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
 - Commits: small, scoped, conventional (`feat(time): add weekly timesheet grid`).
 - **Definition of done** for a feature: migration written, endpoints + tenant scoping,
   **every route declaring a permission** (§15) and its `PermissionSpec`s on the module
-  descriptor with `en`+`nl` labels, web UI, `nl.json` + `en.json` keys, test for tenant
-  isolation, docs/OpenAPI updated.
+  descriptor with `en`+`nl` labels, web UI (**every entity-reference picker offers inline-create →
+  full dialog → auto-select**, `docs/UX.md`), `nl.json` + `en.json` keys, test for tenant
+  isolation, **a mutable entity records its changes to the activity log and its detail view
+  renders the trail** (§16), docs/OpenAPI updated.
 
 ## 10. Phased plan (build gates)
 
@@ -238,26 +246,30 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
 
 ## 12. MCP / AI access
 
-The platform exposes an **MCP server** so AI clients (Claude Desktop/Code, agents) can
-answer questions about clients, their recent projects, time, etc. Design rules:
+The platform exposes an **MCP server** (shipped — see `docs/MCP.md`) so AI clients (Claude
+Desktop/Code, agents) can work with the instance's data. Design rules:
 
-- **Transport:** Streamable HTTP at `/mcp`, mounted on the API app, behind Traefik. The
-  older SSE transport is deprecated — do not use it.
-- **Auth:** the MCP server is an **OAuth 2.1 resource server**. It validates access tokens
-  issued by the platform's own auth (or the enforced external OIDC provider) and implements
-  RFC 9728 Protected Resource Metadata (`/.well-known/oauth-protected-resource`). It does
-  **not** run its own login. Use the official Python MCP SDK / FastMCP for the OAuth plumbing.
-- **Tenant + permission scoping:** every tool resolves `current_user` + `current_org` from
-  the token and calls the **same tenant-scoped services/repositories** as the REST API, so
-  MCP can never cross tenants or exceed the user's role. **Never** pass the incoming MCP
-  token to a downstream service (confused-deputy risk) — tools call internal services directly.
-- **Modular:** each module contributes its tools via `mcp.py` (see §6); only enabled modules
-  expose tools. Scopes: `mcp:read` by default, write scopes added later per action.
-- **Read-first:** ship read tools only at first (`companies.find`,
-  `companies.recent_projects`, `time.summary`, …). Add writes later behind explicit scopes
-  and step-up authorization.
-- **Moving target:** MCP evolves fast — pin the SDK and let it track the spec; don't hardcode
-  protocol details or well-known paths beyond what the SDK needs.
+- **Transport:** Streamable HTTP at `/mcp` (stateless, JSON responses), mounted on the API
+  app (`app/core/mcp/`), behind Traefik. The older SSE transport is deprecated — do not use
+  it. `SCHAKL_MCP_ENABLED=false` removes the surface.
+- **Auth: API keys** (#20), which already carry **per-key permission scopes** — the
+  permissions-per-MCP-key model. The proxy forwards the caller's `Authorization`/`X-API-Key`
+  plus the tenant hostname on every internal call; keys are tenant-scoped, revocable and
+  optionally non-expiring. An **OAuth 2.1 resource-server** layer (RFC 9728) is the later
+  addition for clients that require it — the MCP server never runs its own login either way.
+- **Tool surface:** every `/api/v1` operation is a tool, generated from the API's own
+  OpenAPI spec (FastMCP) and proxied **in-process** back to the REST API — so every call
+  travels `require_context` (tenant + RLS + permissions) exactly like the HTTP request it
+  is, and MCP can never cross tenants or exceed the key's scopes. `/auth`, `/setup` and
+  `/instance` are excluded. **Never** pass the incoming MCP credential to a downstream
+  *external* service (confused-deputy risk).
+- **Modular refinement:** each module can still contribute curated tools via `mcp.py` (see
+  §6) where a richer shape than a 1:1 endpoint mapping is worth it; only enabled modules'
+  routes exist, so the generated surface already tracks per-tenant modules.
+- **Read-first is a key-minting decision:** a cautious instance mints read-only-scoped keys;
+  the deny-by-default route permissions answer every call either way.
+- **Moving target:** MCP evolves fast — the SDK is pinned (`fastmcp>=2.12,<3`) and tracks
+  the spec; don't hardcode protocol details or well-known paths beyond what the SDK needs.
 
 ## 13. Per-tenant custom fields (custom attributes)
 
@@ -332,8 +344,23 @@ apply as everywhere.
   express (four hours agreed on a day they were not scheduled); it is recorded against their name.
   **Approved requests are never retroactively recalculated** — new holidays do not rewrite last
   year's balance.
+- **Self-approval is tenant policy, off by default** (#110). While off, a holder of
+  `leave.request.approve` is an ordinary owner on their *own* requests: deciding their own
+  pending request is refused (`errors.leave_self_approval`), an approval-relevant edit of their
+  own approved request bounces to pending for the *other* approvers, and their own past is
+  locked like anyone else's. Both the decide path and the edit path enforce it — one without the
+  other is trivially sidestepped. The org's **sole** approver may always self-manage (a
+  one-person agency must not deadlock). `leave_settings.self_approval` (Instellingen → Verlof)
+  restores the trusted-approver behaviour; a pending request never notifies its own requester.
 - **Balances:** entitlement + carry-over − used − pending, per user / type / year. Show the
-  employee their remaining balance; block/warn on over-request.
+  employee their remaining balance. **Over-requests warn but submit** (#109): advance/borrowed
+  leave is the manager's call, so the form warns, the request goes through, the balance reads
+  negative, and the approver sees the shortfall again on the pending list. Overlapping requests
+  and zero-hour spans stay hard errors. Entitlement pots are **seeded automatically** (#105,
+  #108): a contract create/correct fills that user's missing entitlements for the years the
+  contract covers (same transaction, missing rows only), the first balance read of an
+  ungenerated current/next-year pot seeds it, and a December cron rolls next year forward for
+  the whole staff — the bulk "Genereer" stays for backfills.
 - **Unit:** track in **hours** (matches time tracking and part-time contracts); display as days
   using the employee's **average scheduled working day** — never `hours_per_week / 5`, which tells
   a three-day part-timer their working day is 4,8 hours long.
@@ -388,3 +415,28 @@ It is a **core, cross-cutting capability**, like custom fields (§13) — not pe
 - **A module that ships later** brings its own permissions; a startup reconciler grants them to
   each org's system roles exactly once, tracked in `org_settings.applied_permission_defaults`.
   A migration must never import the catalog (`docs/WORKFLOW.md`).
+
+## 16. Activity trail / audit log (core capability)
+
+Every record that can be changed carries a visible paper trail of *what changed, by whom, when*.
+This is a **core, cross-cutting capability** (issue #67), like custom fields (§13) and permissions
+(§15) — not per-module code, and not the notification log (`NotificationEvent` is about
+*delivery*; its vocabulary is the notifiable subset, and it records no field edits).
+
+- **One table.** `activity_log(org_id, entity_type, entity_id, actor_user_id, actor_name, action,
+  payload)` in `app/core/activity/`, org-scoped and RLS-forced like every domain table. `entity_id`
+  carries **no FK** — the trail outlives the record it describes. `TaskActivity` predates this and
+  still stands; folding it in is a later step.
+- **Opt in like custom fields.** An entity adds `AuditableMixin` and sets `__entity_type__` (the same
+  attribute `CustomizableMixin` reads); that registers it as auditable. A core-contributed panel then
+  renders the trail on its detail page — the company hub via an API `PanelSpec`, a project/contact via
+  a typed `EntityPanelSpec`, both reading `GET /api/v1/activity`.
+- **The actor is snapshotted, never joined live** (§14's #64 rule, generalised). `actor_name` is
+  written at record time; the live account wins while it exists, a departed one reads
+  "Naam (verwijderd)", and a genuinely absent actor is the system. An audit trail whose actor
+  evaporates is not an audit trail.
+- **A service records; a write is not a permission.** `ActivityService.record` runs in the writing
+  request's transaction, so the change and its trail entry commit atomically. Reading the trail is
+  gated on `activity.read`; *recording* is a side effect of a write the caller was already allowed to
+  make, never its own grant. `payload` for an edit is `{changes: {field: {from, to}}}` — the record's
+  own definition fields, not its freeform notes or custom JSONB.

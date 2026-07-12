@@ -5,6 +5,7 @@
   import { enhance } from "$app/forms";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
@@ -105,7 +106,7 @@
 </script>
 
 <svelte:head>
-  <title>{t("settings.leave.title")}</title>
+  <title>{pageTitle(t("settings.leave.title"))}</title>
 </svelte:head>
 
 <div class="mb-6">
@@ -240,6 +241,133 @@
       <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
         {t("common.save")}
       </button>
+    </form>
+  </div>
+</section>
+
+<!-- Goedkeuringsbeleid (#110): may approvers manage their own leave? -->
+<section class="mb-8">
+  <div class="mb-3">
+    <h2 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
+      {t("settings.leave.approval_heading")}
+    </h2>
+  </div>
+  <div class="rounded-xl border border-border bg-surface p-4">
+    <form
+      method="POST"
+      action="?/savePolicy"
+      use:enhance={() =>
+        ({ update }) =>
+          update({ reset: false })}
+    >
+      <label class="flex items-start gap-3 text-sm text-text">
+        <input
+          type="checkbox"
+          name="self_approval"
+          checked={data.selfApproval}
+          class="mt-0.5 h-4 w-4 rounded border-border"
+        />
+        <span>
+          {t("settings.leave.self_approval")}
+          <span class="mt-0.5 block text-xs text-text-muted">
+            {t("settings.leave.self_approval_hint")}
+          </span>
+        </span>
+      </label>
+      {#if form?.policySaved}
+        <p class="mt-3 text-sm text-green-600">{t("settings.leave.policy_saved")}</p>
+      {/if}
+      <div class="mt-3 flex justify-end">
+        <button
+          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        >
+          {t("common.save")}
+        </button>
+      </div>
+    </form>
+  </div>
+</section>
+
+<!-- Roostervrije dagen (#107): how far ahead the generator plans -->
+<section class="mb-8">
+  <div class="mb-3">
+    <h2 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
+      {t("settings.leave.recurring_heading")}
+    </h2>
+  </div>
+  <div class="rounded-xl border border-border bg-surface p-4">
+    <form
+      method="POST"
+      action="?/saveHorizon"
+      use:enhance={() =>
+        ({ update }) =>
+          update({ reset: false })}
+    >
+      <label for="recurring-horizon" class="mb-1 block text-sm font-medium text-text">
+        {t("settings.leave.recurring_horizon")}
+      </label>
+      <input
+        id="recurring-horizon"
+        name="recurring_horizon_months"
+        type="number"
+        min="1"
+        max="24"
+        value={data.recurringHorizonMonths}
+        class="w-28 rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+      />
+      <p class="mt-1 text-xs text-text-muted">{t("settings.leave.recurring_horizon_hint")}</p>
+      {#if form?.horizonSaved}
+        <p class="mt-3 text-sm text-green-600">{t("settings.leave.recurring_horizon_saved")}</p>
+      {/if}
+      <div class="mt-3 flex justify-end">
+        <button
+          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        >
+          {t("common.save")}
+        </button>
+      </div>
+    </form>
+  </div>
+</section>
+
+<!-- Standaard uurtarief (#113): the house rate a per-employee rate (#82) overrides -->
+<section class="mb-8">
+  <div class="mb-3">
+    <h2 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
+      {t("settings.leave.rate_heading")}
+    </h2>
+  </div>
+  <div class="rounded-xl border border-border bg-surface p-4">
+    <form
+      method="POST"
+      action="?/saveDefaultRate"
+      use:enhance={() =>
+        ({ update }) =>
+          update({ reset: false })}
+    >
+      <label for="default-hourly-rate" class="mb-1 block text-sm font-medium text-text">
+        {t("settings.leave.default_rate")}
+      </label>
+      <input
+        id="default-hourly-rate"
+        name="default_hourly_rate"
+        type="number"
+        min="0"
+        step="0.01"
+        value={data.defaultHourlyRate ?? ""}
+        class="w-36 rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+      />
+      <p class="mt-1 text-xs text-text-muted">{t("settings.leave.default_rate_hint")}</p>
+      {#if form?.rateSaved}
+        <p class="mt-3 text-sm text-green-600">{t("settings.leave.default_rate_saved")}</p>
+      {/if}
+      <div class="mt-3 flex justify-end">
+        <button
+          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        >
+          {t("common.save")}
+        </button>
+      </div>
     </form>
   </div>
 </section>

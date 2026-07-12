@@ -17,12 +17,70 @@ from app.modules.contacts.schemas import (
     ContactLinkCreate,
     ContactLinkUpdate,
     ContactRead,
+    ContactTypeCreate,
+    ContactTypeRead,
+    ContactTypeUpdate,
     ContactUpdate,
 )
-from app.modules.contacts.service import ContactService
+from app.modules.contacts.service import ContactService, ContactTypeService
 from app.schemas import Page
 
 router = APIRouter(prefix="/contacts", tags=["contacts"])
+
+
+# --- contact types (issue #91) ---------------------------------------------- #
+# Declared before ``/{contact_id}`` so "types" never matches the id path param.
+@router.get(
+    "/types",
+    response_model=list[ContactTypeRead],
+    dependencies=[require_permission("contacts.type.read")],
+)
+async def list_contact_types(
+    include_inactive: bool = Query(False),
+    ctx: RequestContext = Depends(require_context),
+) -> list[ContactTypeRead]:
+    items = await ContactTypeService(ctx).list(include_inactive=include_inactive)
+    return [ContactTypeRead.model_validate(t) for t in items]
+
+
+@router.post(
+    "/types",
+    response_model=ContactTypeRead,
+    status_code=201,
+    dependencies=[require_permission("contacts.type.manage")],
+)
+async def create_contact_type(
+    payload: ContactTypeCreate,
+    ctx: RequestContext = Depends(require_context),
+) -> ContactTypeRead:
+    contact_type = await ContactTypeService(ctx).create(payload)
+    return ContactTypeRead.model_validate(contact_type)
+
+
+@router.patch(
+    "/types/{type_id}",
+    response_model=ContactTypeRead,
+    dependencies=[require_permission("contacts.type.manage")],
+)
+async def update_contact_type(
+    type_id: uuid.UUID,
+    payload: ContactTypeUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> ContactTypeRead:
+    contact_type = await ContactTypeService(ctx).update(type_id, payload)
+    return ContactTypeRead.model_validate(contact_type)
+
+
+@router.delete(
+    "/types/{type_id}",
+    status_code=204,
+    dependencies=[require_permission("contacts.type.manage")],
+)
+async def delete_contact_type(
+    type_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> None:
+    await ContactTypeService(ctx).delete(type_id)
 
 
 @router.get(
@@ -34,6 +92,7 @@ async def list_contacts(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     company_id: uuid.UUID | None = Query(None),
+    contact_type_id: uuid.UUID | None = Query(None),
     q: str | None = Query(None, max_length=200),
     sort: str | None = Query(
         None, description="first_name | last_name | email | job_title | company | …, '-' desc"
@@ -41,7 +100,12 @@ async def list_contacts(
     ctx: RequestContext = Depends(require_context),
 ) -> Page[ContactRead]:
     items, total = await ContactService(ctx).list(
-        limit=limit, offset=offset, company_id=company_id, q=q, sort=sort
+        limit=limit,
+        offset=offset,
+        company_id=company_id,
+        contact_type_id=contact_type_id,
+        q=q,
+        sort=sort,
     )
     return Page(
         items=[ContactRead.model_validate(c) for c in items],
@@ -118,7 +182,11 @@ async def link_contact_to_company(
 ) -> ContactRead:
     service = ContactService(ctx)
     await service.link(
-        contact_id, payload.company_id, is_primary=payload.is_primary or None
+        contact_id,
+        payload.company_id,
+        is_primary=payload.is_primary or None,
+        contact_type_id=payload.contact_type_id,
+        set_type=True,
     )
     return ContactRead.model_validate(await service.get(contact_id))
 
@@ -135,10 +203,13 @@ async def update_contact_company_link(
     ctx: RequestContext = Depends(require_context),
 ) -> ContactRead:
     service = ContactService(ctx)
-    if payload.is_primary:
-        await service.set_primary(contact_id, company_id)
-    else:
-        await service.link(contact_id, company_id, is_primary=False)
+    await service.link(
+        contact_id,
+        company_id,
+        is_primary=True if payload.is_primary else False,
+        contact_type_id=payload.contact_type_id,
+        set_type="contact_type_id" in payload.model_fields_set,
+    )
     return ContactRead.model_validate(await service.get(contact_id))
 
 

@@ -17,6 +17,7 @@
 
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
@@ -84,7 +85,7 @@
 </script>
 
 <svelte:head>
-  <title>{t("notifications.title")}</title>
+  <title>{pageTitle(t("notifications.title"))}</title>
 </svelte:head>
 
 <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -171,7 +172,9 @@
 {/snippet}
 
 {#snippet readToggle(item: Item)}
-  <form method="POST" action="?/markRead" use:enhance>
+  <!-- `relative z-10` keeps mark-read tappable above the mobile row's stretched-link overlay (#59);
+       harmless in the desktop actions cell where there is no overlay. -->
+  <form method="POST" action="?/markRead" use:enhance class="relative z-10">
     <input type="hidden" name="id" value={item.id} />
     <input type="hidden" name="read" value={item.read_at === null ? "true" : "false"} />
     <button

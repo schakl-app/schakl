@@ -1,5 +1,6 @@
 <script lang="ts">
   import "$lib/modules"; // ensure the web-module registry is populated
+  import Avatar from "$lib/core/ui/Avatar.svelte";
   import {
     BarChart3,
     BellRing,
@@ -94,11 +95,6 @@
 
   // --- profile menu -----------------------------------------------------------
   let profileOpen = $state(false);
-  function initials(name: string | null | undefined, email: string | undefined): string {
-    const source = name || email || "?";
-    const parts = source.split(/[\s@._-]+/).filter(Boolean);
-    return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
-  }
 
   const itemClass = (active: boolean) =>
     `flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-text hover:bg-surface ${
@@ -312,11 +308,12 @@
             aria-haspopup="menu"
             aria-expanded={profileOpen}
           >
-            <span
-              class="flex h-8 w-8 items-center justify-center rounded-full bg-brand/10 text-xs font-semibold text-brand"
-            >
-              {initials(user?.full_name, user?.email)}
-            </span>
+            <Avatar
+              name={user?.full_name}
+              email={user?.email}
+              avatarUrl={user?.avatarUrl ?? null}
+              size="md"
+            />
             <span class="hidden font-medium text-text md:inline">
               {user?.full_name || user?.email}
             </span>

@@ -113,6 +113,67 @@ async def test_branding_update_manager_gated(client_for) -> None:
         assert public["brand_name"] == "Breik"
 
 
+async def test_branding_currency_setting(client_for) -> None:
+    """Currency is a per-org setting like the timezone (#124): defaults to EUR, validated
+    against ISO 4217, case-normalised, and reflected on the public branding payload."""
+    t = await make_tenant("brand-cur")
+    owner_headers = await auth_cookie(t.user)
+
+    async with client_for(t.host) as c:
+        # Default before anyone touches it.
+        assert (await c.get("/api/v1/meta/tenant")).json()["currency"] == "EUR"
+
+        # A typo is rejected with a field error.
+        bad = await c.patch(
+            "/api/v1/meta/tenant", json={"currency": "EUO"}, headers=owner_headers
+        )
+        assert bad.status_code == 422
+
+        # Lowercase input is normalised; the public payload reflects the change.
+        updated = await c.patch(
+            "/api/v1/meta/tenant", json={"currency": "usd"}, headers=owner_headers
+        )
+        assert updated.status_code == 200
+        assert updated.json()["currency"] == "USD"
+        assert (await c.get("/api/v1/meta/tenant")).json()["currency"] == "USD"
+
+
+async def test_branding_tab_title_template(client_for) -> None:
+    """The tab-title template (#97): whitelisted tokens only, {page} required, empty clears."""
+    t = await make_tenant("brand-tab")
+    owner_headers = await auth_cookie(t.user)
+
+    async with client_for(t.host) as c:
+        # Default: unset.
+        assert (await c.get("/api/v1/meta/tenant")).json()["tab_title_template"] is None
+
+        # {page} is required; unknown tokens are typos, not variables.
+        for bad in ("{brand} only", "{page} · {typo}"):
+            res = await c.patch(
+                "/api/v1/meta/tenant",
+                json={"tab_title_template": bad},
+                headers=owner_headers,
+            )
+            assert res.status_code == 422, bad
+
+        updated = await c.patch(
+            "/api/v1/meta/tenant",
+            json={"tab_title_template": "{page} · {brand}"},
+            headers=owner_headers,
+        )
+        assert updated.status_code == 200
+        assert updated.json()["tab_title_template"] == "{page} · {brand}"
+        assert (await c.get("/api/v1/meta/tenant")).json()[
+            "tab_title_template"
+        ] == "{page} · {brand}"
+
+        # Empty string clears it back to the built-in format.
+        cleared = await c.patch(
+            "/api/v1/meta/tenant", json={"tab_title_template": ""}, headers=owner_headers
+        )
+        assert cleared.json()["tab_title_template"] is None
+
+
 async def test_search_filters(client_for) -> None:
     t = await make_tenant("search")
     headers = await auth_cookie(t.user)

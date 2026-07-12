@@ -18,7 +18,6 @@ registerWebModule({
       href: "/companies",
       label: () => t("nav.companies"),
       module: "companies",
-      group: "relations",
       icon: Building2,
       position: 10,
       requiresPermission: "companies.company.read",

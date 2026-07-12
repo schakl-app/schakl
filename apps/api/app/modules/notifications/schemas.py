@@ -153,3 +153,87 @@ __all__ = [
     "WatchRead",
     "WatchUpdate",
 ]
+
+
+# --- personal e-mail delivery (#17) ---------------------------------------------- #
+class EmailPrefRead(BaseModel):
+    """The user's effective e-mail rule: off, or a cadence (immediate / daily / weekly)."""
+
+    enabled: bool
+    digest: Literal["immediate", "daily", "weekly"]
+    digest_time: time | None = None
+    # 0 = Monday … 6 = Sunday (weekly only).
+    digest_weekday: int | None = None
+    #: Which layer decided: ``default`` (off), ``org``, or ``user``.
+    source: str = "default"
+
+
+class EmailPrefWrite(BaseModel):
+    enabled: bool
+    digest: Literal["immediate", "daily", "weekly"] = "daily"
+    digest_time: time | None = None
+    digest_weekday: int | None = Field(default=None, ge=0, le=6)
+
+
+# --- external channels (#17) --------------------------------------------------- #
+# ``email`` sends to a recipient address through the org's own transport (Instellingen →
+# E-mail, ``app.core.email``); the rest are Apprise families.
+CHANNEL_KINDS = Literal[
+    "email", "slack", "msteams", "gchat", "discord", "telegram", "mailto", "webhook", "custom"
+]
+
+
+class ChannelCreate(BaseModel):
+    kind: CHANNEL_KINDS
+    name: str = Field(min_length=1, max_length=120)
+    #: The full Apprise URL. Write-only: encrypted at rest, never returned (#17).
+    url: str = Field(min_length=1)
+    enabled: bool = True
+    #: Event types routed here; empty = all. Validated against the known set.
+    event_filter: list[str] = Field(default_factory=list)
+    #: A personal channel (my DM) when set to a member; ``None`` = an org channel.
+    user_id: uuid.UUID | None = None
+
+    @field_validator("event_filter")
+    @classmethod
+    def _known_events(cls, value: list[str]) -> list[str]:
+        for event in value:
+            if event not in EVENT_TYPES:
+                raise ValueError("errors.validation")
+        return value
+
+
+class ChannelUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=120)
+    #: Rotate the URL by sending a new one; omit to leave it unchanged.
+    url: str | None = None
+    enabled: bool | None = None
+    event_filter: list[str] | None = None
+
+    @field_validator("event_filter")
+    @classmethod
+    def _known_events(cls, value: list[str] | None) -> list[str] | None:
+        if value is not None:
+            for event in value:
+                if event not in EVENT_TYPES:
+                    raise ValueError("errors.validation")
+        return value
+
+
+class ChannelRead(BaseModel):
+    id: uuid.UUID
+    org_id: uuid.UUID
+    kind: str
+    name: str
+    #: A redacted preview (``slack://xoxb-****``) — never the secret-bearing URL.
+    redacted: str
+    enabled: bool
+    event_filter: list[str]
+    user_id: uuid.UUID | None
+    created_at: datetime
+
+
+class ChannelTestResult(BaseModel):
+    ok: bool
+    #: The provider's own error, surfaced verbatim so a broken webhook is diagnosable (#17).
+    error: str | None = None

@@ -10,13 +10,15 @@ from __future__ import annotations
 from arq import cron
 
 from app.core.events import subscribe
+from app.modules.tasks.attachments import on_file_event
+from app.modules.tasks.impex import TASK_IMPEX
 from app.modules.tasks.mcp import TASK_MCP_TOOLS
 from app.modules.tasks.panels import tasks_company_panel
 from app.modules.tasks.permissions import TASK_PERMISSIONS
 from app.modules.tasks.recurrence import spawn_scheduled_recurrences
 from app.modules.tasks.reminders import send_task_reminders
 from app.modules.tasks.router import router
-from app.modules.tasks.templates import on_company_status
+from app.modules.tasks.templates import on_company_status, on_subscription_activated
 from app.registry import ModuleDescriptor, registry
 
 module = ModuleDescriptor(
@@ -25,6 +27,7 @@ module = ModuleDescriptor(
     i18n_namespace="tasks",
     panels=[tasks_company_panel],
     permissions=TASK_PERMISSIONS,
+    impex=[TASK_IMPEX],
     mcp_tools=TASK_MCP_TOOLS,
     # 04:00 UTC ≈ early morning in Europe/Amsterdam; the job reasons in local dates itself.
     cron_jobs=[
@@ -40,3 +43,11 @@ registry.register(module)
 # with — or transitions into — a template's trigger status.
 subscribe("company.created", on_company_status)
 subscribe("company.status_changed", on_company_status)
+
+# Subscription onboarding (#142): the type's templates spawn on an agreement's first
+# activation — the payload names them, so this module never reads the subscriptions tables.
+subscribe("subscription.activated", on_subscription_activated)
+
+# Document attachments (#123 follow-up): validate the target task, write its activity trail.
+subscribe("file.attached", on_file_event)
+subscribe("file.removed", on_file_event)

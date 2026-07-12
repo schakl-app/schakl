@@ -22,6 +22,7 @@ from app.core.customfields.schemas import (
     CustomFieldDefinitionUpdate,
 )
 from app.core.customfields.types import CustomFieldType
+from app.core.richtext import sanitize_markdown
 from app.core.tenancy import RequestContext
 from app.errors import AppError
 
@@ -85,6 +86,17 @@ class CustomFieldsService:
         ``AppError`` (422) with per-field i18n keys on any failure.
         """
         defs = await self.definitions(entity_type, include_inactive=False)
+        return self.validate_values(defs, custom)
+
+    def validate_values(
+        self, defs: Sequence[CustomFieldDefinition], custom: dict[str, Any]
+    ) -> dict[str, Any]:
+        """`validate` against **preloaded** definitions — no query.
+
+        A caller validating many value sets in one request (the CSV import, issue #77) loads
+        the definitions once and calls this per row, instead of paying one definitions query
+        per row (docs/PERFORMANCE.md).
+        """
         by_key = {d.key: d for d in defs}
 
         errors: dict[str, str] = {}
@@ -119,6 +131,10 @@ class CustomFieldsService:
         if dt in (CustomFieldType.TEXT, CustomFieldType.LONG_TEXT, CustomFieldType.PHONE):
             value = str(raw)
             self._check_text_rules(value, config)
+            # LONG_TEXT is markdown, authored through the shared editor (issue #66); strip raw HTML
+            # on write like every other rich-text field. TEXT/PHONE stay single-line plain text.
+            if dt is CustomFieldType.LONG_TEXT:
+                value = sanitize_markdown(value) or ""
             return value
 
         if dt is CustomFieldType.EMAIL:

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="132" height="32" viewBox="0 0 132 32" role="img" aria-label="schakl.">
+  <g fill="none" stroke-width="3.4" stroke-linecap="round">
+    <rect x="2.2" y="9" width="14" height="14" rx="7" stroke="#818CF8"/>
+    <rect x="12.2" y="9" width="14" height="14" rx="7" stroke="#F3F4F6"/>
+  </g>
+  <text x="33" y="23.5" font-family="ui-sans-serif, system-ui, sans-serif" font-size="21" font-weight="650" letter-spacing="-0.5" fill="#F3F4F6">schakl<tspan fill="#818CF8">.</tspan></text>
+</svg>

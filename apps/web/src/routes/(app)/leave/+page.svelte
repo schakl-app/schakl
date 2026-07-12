@@ -1,8 +1,11 @@
 <script lang="ts">
-  import { Ban, Pencil, Plus } from "@lucide/svelte";
+  import { Ban, Pencil, Plus, Repeat } from "@lucide/svelte";
 
-  import { fmtDayMonth } from "$lib/core/format";
+  import { page } from "$app/state";
+  import { fmtPeriod } from "$lib/core/format";
+  import { can } from "$lib/core/permissions";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
@@ -13,6 +16,7 @@
   import { LEAVE_COLUMNS } from "$lib/modules/leave/columns";
   import LeaveRequestForm from "$lib/modules/leave/LeaveRequestForm.svelte";
   import LeaveStatusPill from "$lib/modules/leave/LeaveStatusPill.svelte";
+  import RecurringDaysManager from "$lib/modules/leave/RecurringDaysManager.svelte";
   import { fmtHours, hoursToDays, typeLabel, type LeaveTypeInfo } from "$lib/modules/leave/format";
 
   let { data, form } = $props();
@@ -39,8 +43,34 @@
   );
 
   let createOpen = $state(false);
-  let editOpen = $state(false);
-  let editRequest = $state<(typeof data.requests)[number] | null>(null);
+  // Recurring free days, self-service (#107): balance-tracked auto-approve types only. The
+  // approval requirement keeps vacation a manager's act (generated days are pre-approved);
+  // the balance requirement keeps "sick" out — a *recurring sick day* is not a plan, and a
+  // pot is what bounds how much a pattern may hand out. The API enforces both.
+  const selfServiceTypes = $derived(
+    types.filter((lt) => lt.active && !lt.requires_approval && lt.tracks_balance),
+  );
+  let recurringOpen = $state(false);
+
+  // Bulk cancel: the one bulk act your own list has — everything else is per-request.
+  let bulkSelected = $state<string[]>([]);
+  const bulkCancellableIds = $derived(
+    data.requests
+      .filter((r: Request) => bulkSelected.includes(r.id) && canCancel(r))
+      .map((r: Request) => r.id),
+  );
+  let bulkCancelOpen = $state(false);
+  // Deep link from a calendar chip (#106): `?request=<id>` opens that request's edit modal on
+  // arrival. Resolved once, into state initializers, not a derived — the surface opens on
+  // load and the user can then close it (the same pattern as core/edit-intent.ts).
+  function deepLinkedRequest(): Request | null {
+    const id = page.url.searchParams.get("request");
+    if (!id) return null;
+    return data.requests.find((r: Request) => r.id === id && canEdit(r)) ?? null;
+  }
+  const initialEdit = deepLinkedRequest();
+  let editRequest = $state<Request | null>(initialEdit);
+  let editOpen = $state(initialEdit !== null);
   let cancelId = $state("");
   let cancelOpen = $state(false);
 
@@ -49,17 +79,35 @@
     editOpen = true;
   }
 
+  // #72: editing and cancelling are no longer pending-only. Approved leave is editable — the API
+  // decides whether the save returns it to pending. Cancel is offered on an approved request only
+  // when it would not need approval to undo (an approver, or the owner's own future self-service
+  // leave); otherwise the API would 403 and offering it is a dead end.
+  const canApprove = $derived(can(page.data.user, "leave.request.approve"));
+  const todayIso = new Date().toISOString().slice(0, 10);
+
+  function canEdit(request: Request): boolean {
+    return request.status === "pending" || request.status === "approved";
+  }
+
+  function canCancel(request: Request): boolean {
+    if (request.status === "pending") return true;
+    if (request.status !== "approved") return false;
+    if (canApprove) return true;
+    const type = typeById[request.leave_type_id];
+    const selfServable = type ? !type.requires_approval : false;
+    return selfServable && request.start_date >= todayIso;
+  }
+
   function period(request: { start_date: string; end_date: string }): string {
-    return request.start_date === request.end_date
-      ? fmtDayMonth(request.start_date)
-      : `${fmtDayMonth(request.start_date)} – ${fmtDayMonth(request.end_date)}`;
+    return fmtPeriod(request.start_date, request.end_date);
   }
 
   const yearLink = (year: number) => `?year=${year}`;
 </script>
 
 <svelte:head>
-  <title>{t("leave.title")}</title>
+  <title>{pageTitle(t("leave.title"))}</title>
 </svelte:head>
 
 <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -77,14 +125,26 @@
       >
     </div>
   </div>
-  <button
-    type="button"
-    class="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-    onclick={() => (createOpen = true)}
-  >
-    <Plus size={16} />
-    {t("leave.request_button")}
-  </button>
+  <div class="flex flex-wrap items-center gap-2">
+    {#if selfServiceTypes.length > 0}
+      <button
+        type="button"
+        class="flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-text hover:border-brand hover:text-brand"
+        onclick={() => (recurringOpen = true)}
+      >
+        <Repeat size={16} />
+        {t("leave.recurring.title")}
+      </button>
+    {/if}
+    <button
+      type="button"
+      class="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+      onclick={() => (createOpen = true)}
+    >
+      <Plus size={16} />
+      {t("leave.request_button")}
+    </button>
+  </div>
 </div>
 
 <!-- Balances per balance-tracked type -->
@@ -164,22 +224,26 @@
 {/snippet}
 
 {#snippet rowActions(request: Request)}
-  {#if request.status === "pending"}
-    <ActionsMenu
-      compact
-      items={[
-        { label: t("common.edit"), icon: Pencil, onclick: () => openEdit(request) },
-        {
-          label: t("leave.requests.cancel"),
-          icon: Ban,
-          danger: true,
-          onclick: () => {
-            cancelId = request.id;
-            cancelOpen = true;
+  {@const items = [
+    ...(canEdit(request)
+      ? [{ label: t("common.edit"), icon: Pencil, onclick: () => openEdit(request) }]
+      : []),
+    ...(canCancel(request)
+      ? [
+          {
+            label: t("leave.requests.cancel"),
+            icon: Ban,
+            danger: true,
+            onclick: () => {
+              cancelId = request.id;
+              cancelOpen = true;
+            },
           },
-        },
-      ]}
-    />
+        ]
+      : []),
+  ]}
+  {#if items.length > 0}
+    <ActionsMenu compact {items} />
   {/if}
 {/snippet}
 
@@ -202,6 +266,12 @@
   </p>
 {/snippet}
 
+{#if form?.bulkDone !== undefined}
+  <p class="mb-4 text-sm text-green-600">
+    {t("leave.bulk.result", { count: form.bulkDone ?? 0, skipped: form.bulkSkipped ?? 0 })}
+  </p>
+{/if}
+
 <!-- My requests -->
 <div class="mb-2 flex items-center justify-between">
   <h2 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
@@ -216,6 +286,19 @@
   />
 </div>
 
+{#snippet bulkBar(ids: string[])}
+  <span class="text-xs font-medium text-text">{t("table.selected", { count: ids.length })}</span>
+  <button
+    type="button"
+    disabled={bulkCancellableIds.length === 0}
+    class="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-text hover:border-red-400 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:border-red-500 dark:hover:text-red-400"
+    onclick={() => (bulkCancelOpen = true)}
+  >
+    <Ban size={13} />
+    {t("leave.requests.cancel")}
+  </button>
+{/snippet}
+
 <DataTable
   rows={data.requests}
   columns={table.columns}
@@ -225,14 +308,27 @@
   actions={rowActions}
   {mobileRow}
   empty={emptyState}
+  selectable
+  bind:selected={bulkSelected}
+  selection={bulkBar}
   onsort={table.onSort}
   onresize={table.onResize}
+/>
+
+<ConfirmDialog
+  bind:open={bulkCancelOpen}
+  title={t("leave.requests.cancel")}
+  message={t("leave.bulk.cancel_confirm")}
+  action="?/bulkCancel"
+  fields={{ ids: bulkCancellableIds.join(",") }}
+  confirmLabel={t("leave.requests.cancel")}
 />
 
 <Modal bind:open={createOpen} title={t("leave.request_button")}>
   <LeaveRequestForm
     types={types.filter((lt) => lt.active)}
     balances={remainingByType}
+    canBackdate={can(page.data.user, "leave.request.write", "any")}
     error={form?.error ?? null}
     ondone={() => (createOpen = false)}
   />
@@ -245,12 +341,25 @@
         types={types.filter((lt) => lt.active)}
         balances={remainingByType}
         request={editRequest}
+        canBackdate={can(page.data.user, "leave.request.write", "any")}
         action="?/update"
         error={form?.error ?? null}
         ondone={() => (editOpen = false)}
       />
     {/key}
   {/if}
+</Modal>
+
+<!-- Own recurring free days (#107): the same shared surface the manager's modal uses, here
+     limited to self-service types. -->
+<Modal bind:open={recurringOpen} title={t("leave.recurring.title")}>
+  <RecurringDaysManager
+    patterns={data.myRecurring}
+    types={selfServiceTypes}
+    userId={page.data.user?.id ?? ""}
+    error={form?.error ?? null}
+    generated={form?.recurringSaved ? (form.recurringGenerated ?? 0) : null}
+  />
 </Modal>
 
 <ConfirmDialog

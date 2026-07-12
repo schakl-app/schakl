@@ -15,6 +15,8 @@ from typing import Any
 
 from sqlalchemy import func, or_, select
 
+from app.core.activity import ActivityService
+from app.core.activity.service import snapshot
 from app.core.assignees import AssigneeService
 from app.core.auth.models import User
 from app.core.customfields import CustomFieldsService
@@ -26,6 +28,10 @@ from app.modules.companies.schemas import CompanyCreate, CompanyUpdate
 from app.schemas import CompanyBudgetHours
 
 ENTITY_TYPE = "company"
+
+# The definition fields whose before/after values the activity trail records (issue #67). Notes
+# (freeform) and custom (its own concern) are deliberately left out of the trail's diff.
+_AUDITED_FIELDS = ("name", "website", "invoice_email", "status", "responsible_user_id")
 
 
 def _primary_assignee_name() -> Any:
@@ -151,6 +157,7 @@ class CompanyService:
         limit: int,
         offset: int,
         q: str | None = None,
+        status: str | None = None,
         mine: bool = False,
         sort: str | None = None,
         hours: bool = False,
@@ -160,6 +167,8 @@ class CompanyService:
         if q:
             pattern = f"%{q.strip()}%"
             conditions.append(or_(Company.name.ilike(pattern), Company.website.ilike(pattern)))
+        if status:
+            conditions.append(Company.status == status)
         if mine:
             # "My clients" matches *any* assignee, not just the primary.
             conditions.append(
@@ -217,6 +226,7 @@ class CompanyService:
         company = await self.repo.create(**values)
         await self.assignees.replace(company.id, links)
         company.assignees = await self.assignees.for_entity(company.id)
+        await ActivityService(self.ctx).record_created(ENTITY_TYPE, company.id)
         # ``company_id``/``status`` are the tasks module's onboarding-template contract; the
         # rest is what notifications needs (issue #16). No ``company.assigned`` here — the
         # roster hears about the client through ``company.created`` and shouldn't be told twice.
@@ -236,6 +246,7 @@ class CompanyService:
         self.ctx.require("companies.company.write")
         company = await self.repo.get_or_404(company_id)
         previous_status = company.status
+        before_fields = snapshot(company, _AUDITED_FIELDS)
         values = data.model_dump(exclude_unset=True)
         # ``replace`` is delete-then-insert, so who is *new* has to be read before the write.
         roster_touched = "assignees" in values or "responsible_user_id" in values
@@ -268,6 +279,9 @@ class CompanyService:
             await self.assignees.set_primary(company.id, values["responsible_user_id"])
         company.assignees = await self.assignees.for_entity(company.id)
         after = {a.user_id for a in company.assignees}
+        await ActivityService(self.ctx).record_update(
+            ENTITY_TYPE, company.id, before_fields, snapshot(company, _AUDITED_FIELDS)
+        )
 
         if company.status != previous_status:
             await emit(

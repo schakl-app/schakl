@@ -109,3 +109,73 @@ async def test_show_brand_name_toggle(client_for) -> None:
         )
         assert updated.json()["show_brand_name"] is False
         assert (await c.get("/api/v1/meta/tenant")).json()["show_brand_name"] is False
+
+
+async def test_project_cost_from_employee_rates(client_for) -> None:
+    """#111: cost = Σ minutes × the employee's *effective* rate (#113) — personal rate first,
+    org default next, and unrated time reported instead of silently priced at €0."""
+    t = await make_tenant("stats-cost")
+    owner_headers = await auth_cookie(t.user)
+    member = await add_member(t)
+    member_headers = await auth_cookie(member)
+    now = datetime.now(UTC)
+
+    async with client_for(t.host) as c:
+        project = (
+            await c.post(
+                "/api/v1/projects",
+                json={"name": "Bouw", "hourly_rate": 100, "currency": "EUR"},
+                headers=owner_headers,
+            )
+        ).json()
+        # Owner at a personal €120/h for 60 min; member logs 30 min with no rate anywhere.
+        await c.put(
+            f"/api/v1/leave/rate/{t.user.id}",
+            json={"hourly_rate": "120.00"},
+            headers=owner_headers,
+        )
+        for headers, minutes in ((owner_headers, 60), (member_headers, 30)):
+            await c.post(
+                "/api/v1/time/entries",
+                json={
+                    "started_at": now.isoformat(),
+                    "minutes": minutes,
+                    "project_id": project["id"],
+                },
+                headers=headers,
+            )
+
+        # Salary-derived money: a plain member is refused.
+        assert (
+            await c.get(
+                "/api/v1/time/cost",
+                params={"project_id": project["id"]},
+                headers=member_headers,
+            )
+        ).status_code == 403
+
+        cost = (
+            await c.get(
+                "/api/v1/time/cost",
+                params={"project_id": project["id"]},
+                headers=owner_headers,
+            )
+        ).json()
+        assert cost["cost"] == 120.0  # 60 min × €120/h; the member's 30 min carry no rate
+        assert cost["unrated_minutes"] == 30
+
+        # The org default (#113) picks the member up; unrated drops to zero.
+        await c.put(
+            "/api/v1/leave/settings",
+            json={"default_hourly_rate": "60.00"},
+            headers=owner_headers,
+        )
+        cost = (
+            await c.get(
+                "/api/v1/time/cost",
+                params={"project_id": project["id"]},
+                headers=owner_headers,
+            )
+        ).json()
+        assert cost["cost"] == 150.0  # 120 + 30 min × €60/h
+        assert cost["unrated_minutes"] == 0

@@ -12,6 +12,7 @@ interface ItemDraft {
   relative_due_days?: unknown;
   allocated_minutes?: unknown;
   assignee_user_id?: unknown;
+  assign_responsible?: unknown;
   checklist_title?: unknown;
   checklist_items?: unknown;
 }
@@ -24,9 +25,10 @@ function parseItems(raw: string): {
   relative_due_days: number | null;
   allocated_minutes: number | null;
   assignee_user_id: string | null;
+  assign_responsible: boolean;
   position: number;
   checklist_title: string | null;
-  checklist_items: string[];
+  checklist_items: { title: string; description: string | null }[];
 }[] {
   let drafts: ItemDraft[] = [];
   try {
@@ -50,10 +52,24 @@ function parseItems(raw: string): {
         allocated_minutes:
           Number.isFinite(allocated) && allocated > 0 ? Math.round(allocated) : null,
         assignee_user_id: String(draft.assignee_user_id ?? "").trim() || null,
+        assign_responsible: draft.assign_responsible === true,
         position: index,
         checklist_title: String(draft.checklist_title ?? "").trim() || null,
+        // Item titles reshaped to `{title, description}` (issue #66). The bulk editor here enters
+        // titles only; a per-item description authored on a task card is preserved on round-trip
+        // because objects are accepted as well as bare strings.
         checklist_items: Array.isArray(draft.checklist_items)
-          ? draft.checklist_items.map(String).filter((s) => s.trim())
+          ? draft.checklist_items
+              .map((ci) =>
+                typeof ci === "string"
+                  ? { title: ci.trim(), description: null }
+                  : {
+                      title: String((ci as { title?: unknown }).title ?? "").trim(),
+                      description:
+                        String((ci as { description?: unknown }).description ?? "").trim() || null,
+                    },
+              )
+              .filter((ci) => ci.title)
           : [],
       };
     })
@@ -72,11 +88,17 @@ function templateBody(form: FormData) {
   };
 }
 
-function parseLines(raw: FormDataEntryValue | null): string[] {
+/** Newline-separated titles → checklist template items (issue #66). Descriptions are authored on
+ *  task cards, not in this bulk editor, so they default to null here. */
+function parseChecklistItems(raw: FormDataEntryValue | null): {
+  title: string;
+  description: string | null;
+}[] {
   return String(raw ?? "")
     .split("\n")
     .map((s) => s.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((title) => ({ title, description: null }));
 }
 
 // The template repository is shared per instance: every staff member sees it. Task templates
@@ -133,7 +155,7 @@ export const actions: Actions = {
     const title = String(form.get("title") ?? "").trim();
     if (!title) return fail(400, { error: "errors.required" });
     const { error } = await apiFor(event).POST("/api/v1/tasks/checklist-templates", {
-      body: { title, items: parseLines(form.get("items")) },
+      body: { title, items: parseChecklistItems(form.get("items")) },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { saved: true };
@@ -146,7 +168,7 @@ export const actions: Actions = {
     if (!template_id || !title) return fail(400, { error: "errors.required" });
     const { error } = await apiFor(event).PATCH("/api/v1/tasks/checklist-templates/{template_id}", {
       params: { path: { template_id } },
-      body: { title, items: parseLines(form.get("items")) },
+      body: { title, items: parseChecklistItems(form.get("items")) },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { saved: true };

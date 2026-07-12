@@ -1,0 +1,13 @@
+{
+  "name": "Uren zonder frictie",
+  "order": 30,
+  "icon": "⏱️",
+  "title": {
+    "nl": "Uren zonder frictie",
+    "en": "Frictionless time tracking"
+  },
+  "description": {
+    "nl": "Timer, weekstaat en rapportages. Goedkeuren, uurtarieven en factureerbaar markeren zitten erbij in.",
+    "en": "Timer, weekly timesheet and reports. Approval, hourly rates and billable flags included."
+  }
+}

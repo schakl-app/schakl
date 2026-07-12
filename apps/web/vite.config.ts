@@ -19,9 +19,12 @@ export default defineConfig({
     }),
   ],
   // Bundle server-imported runtime deps into the adapter-node output so the production
-  // image is self-contained (no node_modules needed at runtime).
+  // image is self-contained (no node_modules needed at runtime). `Markdown.svelte` renders
+  // the escaped source during SSR, so `markdown.ts` (and its `dompurify` / `marked` imports)
+  // is reachable on the server and must be bundled too, not left as a bare `import` the
+  // node_modules-less runtime image can't resolve (#66).
   ssr: {
-    noExternal: ["openapi-fetch"],
+    noExternal: ["openapi-fetch", "dompurify", "marked"],
   },
   server: {
     host: true,

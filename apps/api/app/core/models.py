@@ -10,14 +10,23 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, UniqueConstraint, func, text
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.config import settings
 from app.core.mixins import OrgScopedMixin, TimestampMixin, UUIDPrimaryKeyMixin
-from app.core.roles import Role
 from app.db import Base
 
 
@@ -63,7 +72,7 @@ class Org(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
 
 class Membership(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
-    """Links a (global) user to an org with a role."""
+    """Links a (global) user to an org; what they may do lives in ``membership_roles`` (#19)."""
 
     __tablename__ = "memberships"
     __table_args__ = (UniqueConstraint("org_id", "user_id"),)
@@ -74,7 +83,6 @@ class Membership(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
         nullable=False,
         index=True,
     )
-    role: Mapped[str] = mapped_column(String(20), nullable=False, default=Role.MEMBER.value)
 
 
 class OrgSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
@@ -100,6 +108,23 @@ class OrgSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     default_locale: Mapped[str] = mapped_column(
         String(10), nullable=False, default=settings.default_locale
     )
+    # IANA timezone the org's local calendar runs in (CLAUDE.md §8): drives display of event
+    # timestamps and the local-date reasoning in per-org cron (timesheet nudges, holiday top-up).
+    # Validated against the zoneinfo database on write; falls back to the instance default.
+    timezone: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        default=settings.default_timezone,
+        server_default=settings.default_timezone,
+    )
+    # ISO 4217 code every money figure renders in (#124) — a business fact of the org, like the
+    # timezone; validated against app.core.currency.ISO_4217 on write.
+    currency: Mapped[str] = mapped_column(
+        String(3), nullable=False, default="EUR", server_default="EUR"
+    )
+    # Browser-tab title template (#97, #71 tier 2): free text with {page} / {brand} tokens,
+    # e.g. "{page} · {brand}". NULL = the built-in i18n format. Branding, so it lives here.
+    tab_title_template: Mapped[str | None] = mapped_column(String(120), nullable=True)
     enabled_modules: Mapped[list[str]] = mapped_column(
         ARRAY(String), nullable=False, default=list
     )
@@ -160,6 +185,27 @@ class UserPref(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     prefs: Mapped[dict] = mapped_column(
         JSONB, nullable=False, default=dict, server_default="{}"
     )
+
+
+class InstanceLicense(Base):
+    """The installed product license (issue #137).
+
+    Instance-level like :class:`InstanceAuditLog` — deliberately **not** org-scoped and
+    **not** under RLS: one license covers the installation. A single row (``id = 1``) exists
+    from migration time; besides the license key text it carries ``grace_started_at``, the
+    bootstrap-grace clock that lets licensed modules enabled *before* licensing shipped keep
+    working for a fixed window after upgrade instead of going read-only mid-flight.
+    """
+
+    __tablename__ = "instance_license"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    license_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    grace_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    installed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    installed_by_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
 
 
 class InstanceAuditLog(UUIDPrimaryKeyMixin, Base):

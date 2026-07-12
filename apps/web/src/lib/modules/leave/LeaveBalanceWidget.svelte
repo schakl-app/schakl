@@ -1,6 +1,6 @@
 <script lang="ts">
   /** My Day widget: remaining vacation balance + pending requests + next approved leave. */
-  import { fmtDayMonth } from "$lib/core/format";
+  import { fmtPeriod } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
 
   import { fmtHours, hoursToDays } from "./format";
@@ -34,9 +34,10 @@
     <h2 class="text-sm font-semibold text-text">{t("dashboard.my_day.leave")}</h2>
     <a href="/leave" class="text-xs text-brand hover:underline">{t("nav.leave")}</a>
   </div>
-  <p class="text-2xl font-semibold text-text">
+  <!-- The balance links to the leave overview it summarizes (issue #15). -->
+  <a href="/leave" class="block text-2xl font-semibold text-text hover:text-brand">
     {t("leave.widget.remaining", { hours: fmtHours(summary.remaining_hours) })}
-  </p>
+  </a>
   <p class="mt-1 text-sm text-text-muted">
     {t("leave.widget.days_equiv", { days: fmtHours(days) })}
     {#if summary.pending_count > 0}
@@ -46,8 +47,8 @@
   {#if summary.next_leave_start && summary.next_leave_end}
     <p class="mt-1 text-sm text-text-muted">
       {t("leave.widget.next", {
-        from: fmtDayMonth(summary.next_leave_start),
-        to: fmtDayMonth(summary.next_leave_end),
+        from: fmtPeriod(summary.next_leave_start),
+        to: fmtPeriod(summary.next_leave_end),
       })}
     </p>
   {/if}

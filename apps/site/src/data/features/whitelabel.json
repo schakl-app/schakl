@@ -1,0 +1,13 @@
+{
+  "name": "Wit-label en meertalig",
+  "order": 60,
+  "icon": "🎨",
+  "title": {
+    "nl": "Wit-label & meertalig",
+    "en": "White-label & multilingual"
+  },
+  "description": {
+    "nl": "Jouw logo, kleuren en domein door de hele app, zonder rebuild. Nederlands als standaard, Engels ingebouwd, meer talen zijn één bestand.",
+    "en": "Your logo, colors and domain throughout the app — no rebuild. Dutch by default, English built in, more languages are one file away."
+  }
+}

@@ -26,6 +26,8 @@ class LeaveTypeBase(BaseModel):
     default_weeks: Decimal | None = Field(default=None, ge=0, le=52)
     # Months into the next year before carried-over hours expire (NL: 6 / 60). None = never.
     carry_over_months: int | None = Field(default=None, ge=0, le=120)
+    # Roostervrij/ADV (#65): entitlement is the scheduled−contract hours gap, not default_weeks.
+    accrues_schedule_gap: bool = False
     position: int = 0
     active: bool = True
 
@@ -42,6 +44,7 @@ class LeaveTypeUpdate(BaseModel):
     requires_approval: bool | None = None
     default_weeks: Decimal | None = Field(default=None, ge=0, le=52)
     carry_over_months: int | None = Field(default=None, ge=0, le=120)
+    accrues_schedule_gap: bool | None = None
     position: int | None = None
     active: bool | None = None
 
@@ -62,6 +65,14 @@ class LeaveSettingsRead(BaseModel):
     default_schedule: WorkSchedule
     holiday_country: str | None = None
     holiday_auto_import: bool = True
+    #: May approvers decide/edit/backdate their own leave (#110)? Off = separation of duties;
+    #: the org's sole approver may always self-manage regardless.
+    self_approval: bool = False
+    #: Look-ahead for the rostered-free-day generator (#107), for open-ended contracts; a
+    #: fixed-term contract is always filled to its end date instead.
+    recurring_horizon_months: int = 12
+    #: The house default hourly rate (#113); the per-employee rate (#82) overrides it.
+    default_hourly_rate: Decimal | None = None
 
 
 class LeaveSettingsUpdate(BaseModel):
@@ -74,6 +85,11 @@ class LeaveSettingsUpdate(BaseModel):
     default_schedule: WorkSchedule | None = None
     holiday_country: str | None = Field(default=None, max_length=2)
     holiday_auto_import: bool | None = None
+    self_approval: bool | None = None
+    #: Bounded: below a month the monthly cron outruns it; past two years is planning fiction.
+    recurring_horizon_months: int | None = Field(default=None, ge=1, le=24)
+    #: Explicit ``null`` clears the default (#113); bounded like the per-employee rate.
+    default_hourly_rate: Decimal | None = Field(default=None, ge=0, le=Decimal("100000"))
 
 
 # --- holidays (#47) ------------------------------------------------------------ #
@@ -164,6 +180,117 @@ class LeaveProfileUpdate(BaseModel):
     hours_per_week: Decimal | None = Field(default=None, gt=0, le=Decimal("80"))
     #: Explicit ``null`` clears the employee's own schedule → back to the org default.
     schedule: WorkSchedule | None = None
+
+
+# --- employment contracts (#65) ------------------------------------------------ #
+
+
+class EmploymentContractBase(BaseModel):
+    start_date: date
+    #: ``null`` = open-ended (still employed). Termination = setting this later.
+    end_date: date | None = None
+    #: The legal contract hours — entered, never derived from the schedule.
+    contract_hours_per_week: Decimal = Field(gt=0, le=Decimal("80"))
+    #: An optional schedule on the contract itself; ``null`` follows the profile / org default.
+    schedule: WorkSchedule | None = None
+    note: str | None = None
+
+
+class EmploymentContractCreate(EmploymentContractBase):
+    user_id: uuid.UUID
+
+
+class EmploymentContractUpdate(BaseModel):
+    """Correcting or terminating a contract. A *changed* contract is a new row, not an edit."""
+
+    start_date: date | None = None
+    end_date: date | None = None
+    contract_hours_per_week: Decimal | None = Field(default=None, gt=0, le=Decimal("80"))
+    schedule: WorkSchedule | None = None
+    note: str | None = None
+
+
+class EmploymentContractRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    org_id: uuid.UUID
+    user_id: uuid.UUID
+    start_date: date
+    end_date: date | None
+    contract_hours_per_week: Decimal
+    #: Derived from the effective schedule — the number the ADV gap is measured against.
+    scheduled_hours_per_week: Decimal
+    schedule: WorkSchedule | None
+    note: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+# --- recurring rostered free days / ADV (#107) ---------------------------------- #
+
+
+class LeaveRecurringDayBase(BaseModel):
+    #: The first free day; its weekday is the pattern's weekday.
+    anchor_date: date
+    #: Every week (1), every other week (2), … Bounded: a cadence past 8 weeks is a
+    #: hand-planned day, not a roster.
+    interval_weeks: int = Field(default=1, ge=1, le=8)
+    #: Part-day window ("off from 15:00"); ``None`` = the whole scheduled day (#48).
+    start_time: Clock | None = None
+    end_time: Clock | None = None
+    note: str | None = None
+
+
+class LeaveRecurringDayCreate(LeaveRecurringDayBase):
+    user_id: uuid.UUID
+    leave_type_id: uuid.UUID
+
+
+class LeaveRecurringDayUpdate(BaseModel):
+    anchor_date: date | None = None
+    interval_weeks: int | None = Field(default=None, ge=1, le=8)
+    leave_type_id: uuid.UUID | None = None
+    start_time: Clock | None = None
+    end_time: Clock | None = None
+    active: bool | None = None
+    note: str | None = None
+
+
+class LeaveRecurringDayRead(LeaveRecurringDayBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    org_id: uuid.UUID
+    user_id: uuid.UUID
+    leave_type_id: uuid.UUID
+    active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class LeaveRecurringDaySaved(LeaveRecurringDayRead):
+    """The saved pattern, plus how many free days the save just placed on the calendar —
+    surfaced so the settings screen can confirm something visible actually happened."""
+
+    generated: int = 0
+
+
+# --- hourly rate (#82) --------------------------------------------------------- #
+
+
+class LeaveRateRead(BaseModel):
+    """One employee's hourly rate. ``None`` = no rate recorded (salary-adjacent, gated read)."""
+
+    user_id: uuid.UUID
+    hourly_rate: Decimal | None
+    #: What cost math actually uses (#113): the employee rate, falling back to the org default.
+    effective_hourly_rate: Decimal | None = None
+
+
+class LeaveRateUpdate(BaseModel):
+    #: Explicit ``null`` clears the rate. A rate is money, so it is bounded but never negative.
+    hourly_rate: Decimal | None = Field(default=None, ge=0, le=Decimal("100000"))
 
 
 # --- entitlements -------------------------------------------------------------- #
@@ -262,6 +389,10 @@ class LeaveRequestRead(BaseModel):
     decided_by_user_id: uuid.UUID | None
     decided_at: datetime | None
     decision_note: str | None
+    #: Set while an edit-bounced (previously approved) request awaits re-approval (#120).
+    resubmitted_at: datetime | None = None
+    #: Set when this row was generated from a recurring rostered-free-day pattern (#107).
+    recurring_day_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -282,6 +413,12 @@ class LeaveRequestPreview(LeaveRequestSpan):
     """What the form asks before it submits, so the number shown is the number stored."""
 
     user_id: uuid.UUID | None = None
+    #: The selected type, so the preview can tell the form whether saving needs (re-)approval
+    #: (#72). Optional: an older client that only wants the hours can omit it.
+    leave_type_id: uuid.UUID | None = None
+    #: The request being edited, if any: its own hours still occupy the balance, so the
+    #: over-request warning (#109) gives them back before comparing against the new span.
+    request_id: uuid.UUID | None = None
 
 
 class LeavePreviewResult(BaseModel):
@@ -289,6 +426,18 @@ class LeavePreviewResult(BaseModel):
     #: ``hours`` in average scheduled working days — the "≈ 2 dagen" hint.
     days: Decimal
     breakdown: list[LeaveDayHours]
+    #: Whether saving this span would require a manager's (re-)approval (#72): true when the
+    #: chosen type requires approval, or when the span touches the past. Lets the edit form warn
+    #: "saving this moves it back to pending approval" before submit. ``False`` when no type given.
+    requires_approval: bool = False
+    #: Whether the span reaches before today (org-local). Surfaced so the form can explain *why*
+    #: an otherwise self-service edit still needs approval.
+    touches_past: bool = False
+    #: Remaining balance for the chosen type in the span's year, for *this* employee (the form's
+    #: own balance props belong to the viewer, which differs on the register-for-someone flow).
+    #: ``None`` when no type was given or the type tracks no balance. Over-requests submit; this
+    #: is what lets both sides see the shortfall before they do (#109).
+    remaining_hours: Decimal | None = None
 
 
 # --- balances -------------------------------------------------------------------- #
@@ -325,6 +474,11 @@ class TeamLeaveItem(BaseModel):
     start_time: Clock | None
     end_date: date
     end_time: Clock | None
+    #: The stored times with omitted bounds resolved from the schedule (#107): "until 14:00"
+    #: displays as "08:30–14:00" because a NULL start *means* the day's own start (#48).
+    #: ``None`` for whole-day absences, and for a bound on an unscheduled day.
+    resolved_start_time: Clock | None = None
+    resolved_end_time: Clock | None = None
     hours: Decimal
     status: LeaveRequestStatus
     #: Hours per day, from the schedule (#48). The timesheet renders these rather than spreading

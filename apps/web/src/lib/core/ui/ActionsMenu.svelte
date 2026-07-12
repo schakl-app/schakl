@@ -40,6 +40,32 @@
 
   let open = $state(false);
   let root: HTMLElement | undefined = $state();
+  // The panel renders `position: fixed` at coordinates measured from the trigger, for two
+  // reasons at once: a trigger near the bottom of the *viewport* must flip upward instead of
+  // opening below the fold (#60), and a trigger inside an `overflow` container — every
+  // DataTable wraps its grid in `overflow-x-auto` — must escape it entirely, or the last
+  // row's menu is clipped into a scrollbar and invisible until you scroll the *table*.
+  // Absolute positioning can never do the second; no ancestor class can fix it per screen.
+  let panelStyle = $state("");
+
+  function toggle() {
+    if (!open && root) {
+      const rect = root.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      // The panel height is dynamic; approximate from the item count (~36px each) plus padding.
+      const estimated = Math.min(items.length * 36 + 16, 320);
+      const flipUp = spaceBelow < estimated && rect.top > spaceBelow;
+      const vertical = flipUp
+        ? `bottom: ${window.innerHeight - rect.top + 4}px;`
+        : `top: ${rect.bottom + 4}px;`;
+      const horizontal =
+        align === "right"
+          ? `right: ${Math.max(0, window.innerWidth - rect.right)}px;`
+          : `left: ${rect.left}px;`;
+      panelStyle = vertical + horizontal;
+    }
+    open = !open;
+  }
 
   const iconSize = $derived(size ?? (compact ? 15 : 16));
   const triggerClass = $derived(
@@ -63,13 +89,18 @@
   onkeydown={(e) => {
     if (e.key === "Escape") open = false;
   }}
+  onscrollcapture={() => {
+    // Fixed coordinates go stale the moment anything scrolls (page or an inner container);
+    // closing beats chasing the trigger around.
+    if (open) open = false;
+  }}
 />
 
 <div class="relative shrink-0" bind:this={root}>
   <button
     type="button"
     class={triggerClass}
-    onclick={() => (open = !open)}
+    onclick={toggle}
     aria-haspopup="menu"
     aria-expanded={open}
     aria-label={label ?? t("common.actions")}
@@ -80,8 +111,8 @@
   {#if open}
     <div
       role="menu"
-      class="absolute z-30 mt-1 w-48 rounded-xl border border-border bg-surface-raised py-1 shadow-lg
-        {align === 'right' ? 'right-0' : 'left-0'}"
+      style={panelStyle}
+      class="fixed z-30 w-48 rounded-xl border border-border bg-surface-raised py-1 shadow-lg"
     >
       {#each items as item (item.label)}
         {@const Icon = item.icon}

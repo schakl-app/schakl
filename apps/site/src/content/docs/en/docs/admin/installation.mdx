@@ -1,0 +1,76 @@
+---
+title: Installation
+description: Installing schakl. with Docker Compose — requirements, environment variables, the first-run wizard and hostnames.
+sidebar:
+  order: 1
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+schakl. runs as one Docker Compose stack: `web`, `api`, `worker`, `db` (PostgreSQL),
+`redis` and an ingress. Two ready-made variants exist:
+
+| File | Ingress | Use when |
+| --- | --- | --- |
+| `infra/compose.yaml` | Traefik, publishes ports | schakl. owns :80/:443 on the host |
+| `infra/compose.tunnel.yaml` | none — your existing `cloudflared` | the host already runs a Cloudflare Tunnel |
+
+The `worker` reuses the API image, so only two images exist:
+`ghcr.io/schakl-app/schakl-api` and `ghcr.io/schakl-app/schakl-web`.
+
+## Requirements
+
+- A host with Docker and Docker Compose (or Portainer).
+- A hostname pointing at the server — the hostname determines which organization is
+  served, so install on the address you intend to keep.
+- Access to the images on GHCR (private): a GitHub token with only `read:packages`.
+
+## Environment variables
+
+Four variables are required and have no default:
+
+| Variable | Meaning |
+| --- | --- |
+| `POSTGRES_ADMIN_PASSWORD` | password of the Postgres superuser |
+| `APP_DB_PASSWORD` | password of the application role `schakl_app` |
+| `SCHAKL_SECRET_KEY` | secret key for sessions and tokens |
+| `SCHAKL_BASE_DOMAIN` | base domain; the app is served at `app.<base domain>` |
+
+Also pin `SCHAKL_TAG` to an exact version (e.g. `1.2.3`) instead of `latest` — see
+[Upgrades & backups](/en/docs/admin/upgrades/).
+
+## First run
+
+<Steps>
+
+1. Deploy the stack **from Git** (Portainer: *Stacks → Add stack → Repository*), not by
+   pasting YAML into the web editor — relative paths silently lose their meaning there.
+
+2. Wait for `api` to become *healthy*. The API runs all database migrations before it
+   starts serving; a database problem therefore shows up as a restarting `api`, never as a
+   half-working app.
+
+3. Open the app in a browser. Every route lands on `/setup`: the **first-run wizard**
+   creates the organization, its branding, its locale and the **owner account** in one
+   step. The wizard closes permanently once the first organization exists — there is no
+   seed step.
+
+4. The hostname you run the wizard on is **claimed as the organization's verified custom
+   domain**. Run the wizard on the address you intend to keep.
+
+</Steps>
+
+## Hostnames are strict
+
+A request resolves to an organization in exactly two ways: a **verified custom domain**,
+or `<slug>.<SCHAKL_BASE_DOMAIN>`. An unknown hostname is a 404 — there is deliberately no
+fallback to "the only organization". Add another domain later under *Settings → Branding →
+Custom domain*; it activates after DNS TXT verification.
+
+## Health endpoints
+
+| Endpoint | Auth | Purpose |
+| --- | --- | --- |
+| `GET /health` | none | liveness — cheap, never touches the database |
+| `GET /health/ready` | none | readiness — checks Postgres, Redis and migrations without leaking details |
+| `GET /api/v1/system/info` | owner/admin | the *Settings → System* screen: versions, migration state, worker heartbeat |

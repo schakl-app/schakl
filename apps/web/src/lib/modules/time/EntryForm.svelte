@@ -5,6 +5,9 @@
    * ("1:30", "90m", "1,5") and the end time is back-computed.
    */
   import { enhance } from "$app/forms";
+  import { beforeNavigate } from "$app/navigation";
+  import { burnBarClass, burnBarWidth, burnPct } from "$lib/core/burn";
+  import { fmtDateTime, fmtMoney, fmtNumber } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
@@ -25,6 +28,15 @@
     company_id?: string | null;
     project_id?: string | null;
     allocated_minutes?: number | null;
+    // Budget burn (#112): present when the caller's lookup asked the API for `hours=true`.
+    budget_amount?: number | null;
+    hourly_rate?: number | null;
+    hours?: {
+      budget_hours?: number | null;
+      spent_hours?: number;
+      billable_hours?: number;
+      remaining_hours?: number | null;
+    } | null;
   }
 
   interface EntryLike {
@@ -50,6 +62,10 @@
     defaultProjectId = "",
     error = null,
     deleteAction = null,
+    canSeeMoney = false,
+    draftDate = null,
+    draftInitial = null,
+    draftSavedAt = null,
     oncancel,
     ondone,
     oncreatecompany,
@@ -66,6 +82,15 @@
     error?: string | null;
     /** When set (edit mode), renders a delete button submitting to this action. */
     deleteAction?: string | null;
+    /** Show the euro budget-remaining next to the hours bar (#112) — manager-gated by the caller. */
+    canSeeMoney?: boolean;
+    /** The day this form autosaves its draft under (#44); null disables autosave (edit mode,
+     *  report modal). Create-only — an existing entry is its own persistence. */
+    draftDate?: string | null;
+    /** A previously autosaved payload to restore, from the day view's ride-along. */
+    draftInitial?: Record<string, unknown> | null;
+    /** When the restored draft was last saved (ISO), for the quiet status line. */
+    draftSavedAt?: string | null;
     oncancel?: () => void;
     ondone?: () => void;
     /** When provided, typing an unknown client/project name offers to create it inline. */
@@ -73,16 +98,29 @@
     oncreateproject?: (name: string) => void;
   } = $props();
 
-  // --- form state (prefilled when editing) -----------------------------------
-  let fDate = $state(entry ? entry.started_at.slice(0, 10) : date);
-  let fStart = $state(entry ? entry.started_at.slice(11, 16) : "");
-  let fEnd = $state(entry?.ended_at ? entry.ended_at.slice(11, 16) : "");
-  let fBreak = $state(entry?.break_minutes ?? 0);
-  let fBillable = $state(entry?.billable ?? true);
-  let fCompany = $state(entry?.company_id ?? defaultCompanyId);
-  let fProject = $state(entry?.project_id ?? defaultProjectId);
-  let fTask = $state(entry?.task_id ?? "");
-  let durationText = $state("");
+  // --- form state (prefilled when editing; a restored draft fills the create form, #44) ---
+  const restored = (entry ? null : draftInitial) as {
+    date?: string | null;
+    start?: string | null;
+    end?: string | null;
+    break_minutes?: number | null;
+    duration_text?: string | null;
+    billable?: boolean | null;
+    company_id?: string | null;
+    project_id?: string | null;
+    task_id?: string | null;
+    description?: string | null;
+  } | null;
+  let fDate = $state(entry ? entry.started_at.slice(0, 10) : (restored?.date ?? date));
+  let fStart = $state(entry ? entry.started_at.slice(11, 16) : (restored?.start ?? ""));
+  let fEnd = $state(entry?.ended_at ? entry.ended_at.slice(11, 16) : (restored?.end ?? ""));
+  let fBreak = $state(entry?.break_minutes ?? restored?.break_minutes ?? 0);
+  let fBillable = $state(entry?.billable ?? restored?.billable ?? true);
+  let fCompany = $state(entry?.company_id ?? restored?.company_id ?? defaultCompanyId);
+  let fProject = $state(entry?.project_id ?? restored?.project_id ?? defaultProjectId);
+  let fTask = $state(entry?.task_id ?? restored?.task_id ?? "");
+  let fDescription = $state(entry?.description ?? restored?.description ?? "");
+  let durationText = $state(restored?.duration_text ?? "");
   let confirmDelete = $state(false);
 
   // Live worked minutes from the times (span minus break).
@@ -133,6 +171,149 @@
     if (project?.company_id) fCompany = project.company_id;
   }
 
+  // Budget feedback where the hours are spent (#112): the person logging sees how much of the
+  // picked project's budget is left *before* saving, not on another screen afterwards. Hours
+  // are team-visible (the same aggregate every budget bar draws); the euro figure is passed in
+  // only for holders of the manager report permission.
+  const pickedProject = $derived(fProject ? projects.find((p) => p.id === fProject) : undefined);
+  const pickedBurn = $derived.by(() => {
+    const hours = pickedProject?.hours;
+    if (!hours || hours.budget_hours == null) return null;
+    return {
+      spent: hours.spent_hours ?? 0,
+      budget: hours.budget_hours,
+      pct: burnPct(hours.spent_hours ?? 0, hours.budget_hours),
+    };
+  });
+  const pickedMoneyLeft = $derived.by(() => {
+    if (!canSeeMoney || !pickedProject) return null;
+    const { budget_amount, hourly_rate, hours } = pickedProject;
+    if (budget_amount == null || hourly_rate == null || !hours) return null;
+    return budget_amount - (hours.billable_hours ?? 0) * hourly_rate;
+  });
+
+  // --- draft autosave (#44) ---------------------------------------------------
+  // Never silently lose typed input: the create form autosaves ~1s after the last change,
+  // flushes before navigation, and beacons on tab close / PWA backgrounding. Pristine never
+  // writes a row — "dirty" means *differs from the day's defaults*, not *differs from empty*,
+  // or merely visiting a day would create a draft.
+  const draftEnabled = Boolean(draftDate) && !entry;
+  let hasConcept = $state(Boolean(draftInitial));
+  let conceptSavedAt = $state<string | null>(draftSavedAt ?? null);
+  let draftTimer: ReturnType<typeof setTimeout> | undefined;
+  let sawFirstRun = false;
+
+  function draftPayload(): Record<string, unknown> {
+    return {
+      date: fDate || null,
+      start: fStart || null,
+      end: fEnd || null,
+      break_minutes: Number(fBreak) || 0,
+      duration_text: durationText || null,
+      billable: fBillable,
+      company_id: fCompany || null,
+      project_id: fProject || null,
+      task_id: fTask || null,
+      description: fDescription || null,
+    };
+  }
+  const pristine = JSON.stringify({
+    date: date || null,
+    start: null,
+    end: null,
+    break_minutes: 0,
+    duration_text: null,
+    billable: true,
+    company_id: defaultCompanyId || null,
+    project_id: defaultProjectId || null,
+    task_id: null,
+    description: null,
+  });
+
+  async function saveDraft(payload: Record<string, unknown>): Promise<void> {
+    try {
+      const res = await fetch("/time/draft", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ date: draftDate, payload }),
+      });
+      if (res.ok) {
+        const body = (await res.json()) as { updated_at?: string | null };
+        hasConcept = true;
+        conceptSavedAt = body.updated_at ?? new Date().toISOString();
+      }
+    } catch {
+      // Offline / flaky network: the next change reschedules the save.
+    }
+  }
+
+  async function discardDraft(): Promise<void> {
+    clearTimeout(draftTimer);
+    hasConcept = false;
+    conceptSavedAt = null;
+    fDate = date;
+    fStart = "";
+    fEnd = "";
+    fBreak = 0;
+    fBillable = true;
+    fCompany = defaultCompanyId;
+    fProject = defaultProjectId;
+    fTask = "";
+    fDescription = "";
+    durationText = "";
+    sawFirstRun = false; // the reset itself must not re-save
+    try {
+      await fetch("/time/draft", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ date: draftDate }),
+      });
+    } catch {
+      // A failed discard leaves the row for the retention cron; nothing to surface.
+    }
+  }
+
+  $effect(() => {
+    const payload = draftPayload(); // reads every field — the effect's dependencies
+    if (!draftEnabled) return;
+    if (!sawFirstRun) {
+      sawFirstRun = true; // mounting (or restoring a draft) is not an edit
+      return;
+    }
+    if (!hasConcept && JSON.stringify(payload) === pristine) return;
+    clearTimeout(draftTimer);
+    draftTimer = setTimeout(() => void saveDraft(payload), 1000);
+  });
+
+  beforeNavigate(() => {
+    if (!draftEnabled || draftTimer === undefined) return;
+    clearTimeout(draftTimer);
+    draftTimer = undefined;
+    const payload = draftPayload();
+    if (hasConcept || JSON.stringify(payload) !== pristine) void saveDraft(payload);
+  });
+
+  $effect(() => {
+    if (!draftEnabled) return;
+    const flush = () => {
+      const payload = draftPayload();
+      if (!hasConcept && JSON.stringify(payload) === pristine) return;
+      navigator.sendBeacon(
+        "/time/draft",
+        new Blob([JSON.stringify({ date: draftDate, payload })], { type: "application/json" }),
+      );
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", flush);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", flush);
+    };
+  });
+
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
@@ -141,13 +322,42 @@
   method="POST"
   {action}
   use:enhance={() =>
-    ({ update }) => {
+    ({ result, update }) => {
+      if (result.type === "success" && draftEnabled) {
+        // The entry landed and the API cleared the draft with it (#44).
+        clearTimeout(draftTimer);
+        draftTimer = undefined;
+        hasConcept = false;
+        conceptSavedAt = null;
+        sawFirstRun = false;
+      }
       ondone?.();
       void update({ reset: !entry });
     }}
   class="space-y-3"
 >
   {#if entry}<input type="hidden" name="id" value={entry.id} />{/if}
+
+  <!-- Restored/autosaved draft (#44): a quiet line, never a toast; discard is one click. -->
+  {#if draftEnabled && hasConcept}
+    <div class="flex items-center justify-between text-xs text-text-muted">
+      <span class="inline-flex items-center gap-2">
+        <span class="rounded-full border border-border bg-surface px-2 py-0.5 font-medium">
+          {t("time.draft.chip")}
+        </span>
+        {#if conceptSavedAt}
+          <span>{t("time.draft.saved", { time: fmtDateTime(conceptSavedAt) })}</span>
+        {/if}
+      </span>
+      <button
+        type="button"
+        class="hover:text-red-600 dark:hover:text-red-400"
+        onclick={() => void discardDraft()}
+      >
+        {t("time.draft.discard")}
+      </button>
+    </div>
+  {/if}
 
   <div class="grid grid-cols-3 gap-2">
     <div>
@@ -267,6 +477,32 @@
       onselect={onProjectPicked}
       oncreate={oncreateproject}
     />
+    {#if pickedBurn}
+      <div class="mt-1.5">
+        <div class="flex items-center justify-between text-xs text-text-muted">
+          <span class="tabular-nums">
+            {t("time.budget.spent", {
+              spent: fmtNumber(pickedBurn.spent, 1),
+              budget: fmtNumber(pickedBurn.budget, 1),
+            })}
+          </span>
+          {#if pickedMoneyLeft != null}
+            <span class="tabular-nums {pickedMoneyLeft < 0 ? 'text-red-600 dark:text-red-400' : ''}">
+              {t("time.budget.money_left", { amount: fmtMoney(pickedMoneyLeft) })}
+            </span>
+          {/if}
+        </div>
+        {#if pickedBurn.pct != null}
+          <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-surface">
+            <!-- The one burn scale (core/burn.ts): the number may exceed 100 %, the bar can't. -->
+            <div
+              class="h-full rounded-full {burnBarClass(pickedBurn.pct)}"
+              style="width: {burnBarWidth(pickedBurn.pct)}%"
+            ></div>
+          </div>
+        {/if}
+      </div>
+    {/if}
   </div>
   <div>
     <label for="task-{action}" class="mb-1 block text-xs font-medium text-text-muted"
@@ -284,9 +520,12 @@
     <label for="description-{action}" class="mb-1 block text-xs font-medium text-text-muted"
       >{t("time.field.description")}</label
     >
-    <textarea id="description-{action}" name="description" rows="2" class={inputClass}
-      >{entry?.description ?? ""}</textarea
-    >
+    <textarea
+      id="description-{action}"
+      name="description"
+      rows="2"
+      class={inputClass}
+      bind:value={fDescription}></textarea>
   </div>
 
   {#if error}<p class="text-sm text-red-600">{t(error)}</p>{/if}

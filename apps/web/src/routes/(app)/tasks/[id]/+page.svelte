@@ -5,23 +5,46 @@
   import { page } from "$app/state";
   import { fmtDateTime, fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import { can } from "$lib/core/permissions";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import FileAttachments from "$lib/core/ui/FileAttachments.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
+  import Markdown from "$lib/core/ui/Markdown.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
+  import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import { LABEL_COLORS, labelChipClass, labelDotClass } from "$lib/modules/tasks/labels";
   import { formatMinutes } from "$lib/modules/time/format";
 
   let { data, form } = $props();
 
   const task = $derived(data.task);
+
+  // The activity log grows without bound on a busy task (issue #86): show the most recent few and
+  // expand the rest in place. Rows are newest-first, so the head is the newest.
+  const ACTIVITY_COLLAPSED = 3;
+  let activityExpanded = $state(false);
+  const activities = $derived(task.activities ?? []);
+  const visibleActivities = $derived(
+    activityExpanded || activities.length <= ACTIVITY_COLLAPSED
+      ? activities
+      : activities.slice(0, ACTIVITY_COLLAPSED),
+  );
   const userId = $derived(page.data.user?.id ?? "");
   // `tasks.comment.write:any` lets a manager clean up anyone's comment; the author always can.
   const canDeleteAnyComment = $derived(can(page.data.user, "tasks.comment.write", "any"));
 
-  const statuses = ["open", "in_progress", "done"] as const;
+  // The org's configured status vocabulary (issue #62), from the /tasks layout load.
+  const statuses = $derived(data.statuses);
+  const statusName = (key: string) =>
+    statuses.find((s) => s.key === key)?.name ?? key;
+  const isDone = $derived(statuses.find((s) => s.key === task.status)?.is_terminal ?? false);
+  // @mention candidates for the comment composer (issue #63): the org members already loaded.
+  const mentionCandidates = $derived(
+    data.members.map((m) => ({ id: m.user_id, name: m.full_name || m.email })),
+  );
   const priorities = ["low", "normal", "high"] as const;
   const freqs = ["daily", "weekly", "monthly", "quarterly", "yearly"] as const;
 
@@ -42,6 +65,11 @@
   let editMode = $state(false);
   let confirmDelete = $state(false);
   let editingCommentId = $state<string | null>(null);
+  // Inline description editing for a checklist / a checklist item (issue #66), one at a time.
+  let editingChecklistId = $state<string | null>(null);
+  let editingItemId = $state<string | null>(null);
+  // Bumped after a comment is posted to remount (and so clear) the markdown editor.
+  let newCommentKey = $state(0);
 
   // One shared confirm for every inline sub-item delete (comment, checklist, item, link):
   // the ⋯ Delete sets the action/fields/message, then opens the dialog which owns the form.
@@ -73,7 +101,7 @@
   }
 
   const today = new Date().toISOString().slice(0, 10);
-  const overdue = $derived(task.status !== "done" && !!task.due_date && task.due_date < today);
+  const overdue = $derived(!isDone && !!task.due_date && task.due_date < today);
   const currentLabelIds = $derived((task.labels ?? []).map((l) => l.id));
 
   // Time budget: logged vs allocated drives the colour (green → amber → red).
@@ -119,9 +147,11 @@
 
   function activityText(a: { action: string; payload: Record<string, unknown> }): string {
     if (a.action === "status_changed") {
+      // Statuses are tenant data now (issue #62): name them from the configured list, not an i18n
+      // key. A status deleted since the change falls back to the stored key.
       return t("tasks.activity.status_changed", {
-        from: t(`tasks.status.${a.payload.from}`),
-        to: t(`tasks.status.${a.payload.to}`),
+        from: statusName(String(a.payload.from)),
+        to: statusName(String(a.payload.to)),
       });
     }
     if (a.action === "due_extended") {
@@ -147,6 +177,9 @@
         to: String(a.payload.to ?? ""),
       });
     }
+    if (a.action === "attachment_added" || a.action === "attachment_deleted") {
+      return t(`tasks.activity.${a.action}`, { filename: String(a.payload.filename ?? "") });
+    }
     if (
       a.action === "link_deleted" ||
       a.action === "checklist_created" ||
@@ -171,7 +204,7 @@
 </script>
 
 <svelte:head>
-  <title>{task.title}</title>
+  <title>{pageTitle(task.title)}</title>
 </svelte:head>
 
 <div class="mb-4">
@@ -196,7 +229,7 @@
           />
         {:else}
           <h1
-            class="flex-1 text-lg font-semibold {task.status === 'done'
+            class="flex-1 text-lg font-semibold {isDone
               ? 'text-text-muted line-through'
               : 'text-text'}"
           >
@@ -252,11 +285,14 @@
           {t("tasks.field.description")}
         </h3>
         {#if editMode}
-          <textarea name="description" rows="4" form="task-edit" class={inputClass}
-            >{task.description ?? ""}</textarea
-          >
+          <RichTextEditor
+            name="description"
+            form="task-edit"
+            rows={4}
+            value={task.description ?? ""}
+          />
         {:else if task.description}
-          <p class="whitespace-pre-wrap text-sm text-text">{task.description}</p>
+          <Markdown value={task.description} />
         {:else}
           <p class="text-sm text-text-muted">{t("tasks.detail.description_placeholder")}</p>
         {/if}
@@ -274,7 +310,7 @@
         {@const total = items.length}
         {@const doneCount = items.filter((i) => i.done).length}
         <div class="mb-4">
-          <div class="mb-1 flex items-center justify-between">
+          <div class="mb-1 flex items-center justify-between gap-2">
             <h4 class="text-sm font-semibold text-text">{checklist.title}</h4>
             <div class="flex items-center gap-2">
               <span class="text-xs tabular-nums text-text-muted"
@@ -283,7 +319,14 @@
               {#if items.length > 0}
                 <form method="POST" action="?/saveChecklistTemplate" use:enhance>
                   <input type="hidden" name="title" value={checklist.title} />
-                  <input type="hidden" name="items" value={items.map((i) => i.title).join("\n")} />
+                  <!-- Item titles *and* descriptions, so the saved template carries both (issue #66). -->
+                  <input
+                    type="hidden"
+                    name="items"
+                    value={JSON.stringify(
+                      items.map((i) => ({ title: i.title, description: i.description ?? null })),
+                    )}
+                  />
                   <button
                     class="text-xs text-text-muted hover:text-brand"
                     title={t("tasks.checklist.save_template_hint")}
@@ -295,6 +338,13 @@
               <ActionsMenu
                 compact
                 items={[
+                  {
+                    label: t("common.edit"),
+                    icon: Pencil,
+                    onclick: () =>
+                      (editingChecklistId =
+                        editingChecklistId === checklist.id ? null : checklist.id),
+                  },
                   {
                     label: t("common.delete"),
                     icon: Trash2,
@@ -310,6 +360,39 @@
               />
             </div>
           </div>
+          {#if editingChecklistId === checklist.id}
+            <form
+              method="POST"
+              action="?/editChecklist"
+              use:enhance={() =>
+                ({ update }) => {
+                  editingChecklistId = null;
+                  void update();
+                }}
+              class="mb-2 space-y-2"
+            >
+              <input type="hidden" name="checklist_id" value={checklist.id} />
+              <input name="title" value={checklist.title} required class={inputClass} />
+              <RichTextEditor
+                name="description"
+                rows={2}
+                value={checklist.description ?? ""}
+                placeholder={t("tasks.checklist.description_placeholder")}
+              />
+              <div class="flex gap-2">
+                <button class="rounded-lg bg-brand px-2 py-1 text-xs font-medium text-white"
+                  >{t("common.save")}</button
+                >
+                <button
+                  type="button"
+                  class="rounded-lg border border-border px-2 py-1 text-xs"
+                  onclick={() => (editingChecklistId = null)}>{t("common.cancel")}</button
+                >
+              </div>
+            </form>
+          {:else if checklist.description}
+            <div class="mb-2"><Markdown value={checklist.description} /></div>
+          {/if}
           {#if total > 0}
             <div class="mb-2 h-1.5 overflow-hidden rounded-full bg-surface">
               <div
@@ -320,39 +403,81 @@
           {/if}
           <ul class="space-y-1">
             {#each items as item (item.id)}
-              <li class="group flex items-center gap-2">
-                <form method="POST" action="?/toggleItem" use:enhance>
-                  <input type="hidden" name="checklist_id" value={checklist.id} />
-                  <input type="hidden" name="item_id" value={item.id} />
-                  <input type="hidden" name="done" value={String(!item.done)} />
-                  <button
-                    class="flex h-4 w-4 items-center justify-center rounded border text-[10px]
-                      {item.done
-                      ? 'border-brand bg-brand text-white'
-                      : 'border-border text-transparent hover:border-brand'}"
-                    aria-label={t("tasks.toggle_done")}>✓</button
+              <li class="group">
+                <div class="flex items-center gap-2">
+                  <form method="POST" action="?/toggleItem" use:enhance>
+                    <input type="hidden" name="checklist_id" value={checklist.id} />
+                    <input type="hidden" name="item_id" value={item.id} />
+                    <input type="hidden" name="done" value={String(!item.done)} />
+                    <button
+                      class="flex h-4 w-4 items-center justify-center rounded border text-[10px]
+                        {item.done
+                        ? 'border-brand bg-brand text-white'
+                        : 'border-border text-transparent hover:border-brand'}"
+                      aria-label={t("tasks.toggle_done")}>✓</button
+                    >
+                  </form>
+                  <span
+                    class="flex-1 text-sm {item.done
+                      ? 'text-text-muted line-through'
+                      : 'text-text'}">{item.title}</span
                   >
-                </form>
-                <span
-                  class="flex-1 text-sm {item.done ? 'text-text-muted line-through' : 'text-text'}"
-                  >{item.title}</span
-                >
-                <ActionsMenu
-                  compact
-                  items={[
-                    {
-                      label: t("common.delete"),
-                      icon: Trash2,
-                      danger: true,
-                      onclick: () =>
-                        askDelete(
-                          "?/deleteItem",
-                          { checklist_id: checklist.id, item_id: item.id },
-                          t("tasks.checklist.item_delete_confirm"),
-                        ),
-                    },
-                  ]}
-                />
+                  <ActionsMenu
+                    compact
+                    items={[
+                      {
+                        label: t("common.edit"),
+                        icon: Pencil,
+                        onclick: () => (editingItemId = editingItemId === item.id ? null : item.id),
+                      },
+                      {
+                        label: t("common.delete"),
+                        icon: Trash2,
+                        danger: true,
+                        onclick: () =>
+                          askDelete(
+                            "?/deleteItem",
+                            { checklist_id: checklist.id, item_id: item.id },
+                            t("tasks.checklist.item_delete_confirm"),
+                          ),
+                      },
+                    ]}
+                  />
+                </div>
+                {#if editingItemId === item.id}
+                  <form
+                    method="POST"
+                    action="?/editItem"
+                    use:enhance={() =>
+                      ({ update }) => {
+                        editingItemId = null;
+                        void update();
+                      }}
+                    class="mt-1 space-y-2 pl-6"
+                  >
+                    <input type="hidden" name="checklist_id" value={checklist.id} />
+                    <input type="hidden" name="item_id" value={item.id} />
+                    <input name="title" value={item.title} required class={inputClass} />
+                    <RichTextEditor
+                      name="description"
+                      rows={2}
+                      value={item.description ?? ""}
+                      placeholder={t("tasks.checklist.description_placeholder")}
+                    />
+                    <div class="flex gap-2">
+                      <button class="rounded-lg bg-brand px-2 py-1 text-xs font-medium text-white"
+                        >{t("common.save")}</button
+                      >
+                      <button
+                        type="button"
+                        class="rounded-lg border border-border px-2 py-1 text-xs"
+                        onclick={() => (editingItemId = null)}>{t("common.cancel")}</button
+                      >
+                    </div>
+                  </form>
+                {:else if item.description}
+                  <div class="mt-0.5 pl-6"><Markdown value={item.description} /></div>
+                {/if}
               </li>
             {/each}
           </ul>
@@ -475,6 +600,16 @@
           {t("common.create")}
         </button>
       </form>
+
+      <!-- Document uploads through the storage core (#123). -->
+      <div class="mt-4 border-t border-border pt-4">
+        <FileAttachments
+          files={data.files}
+          uploadAction="?/uploadFile"
+          deleteAction="?/deleteFile"
+          error={form?.fileError ?? null}
+        />
+      </div>
       <p class="mt-2 text-[11px] text-text-muted">{t("tasks.links.files_hint")}</p>
     </section>
 
@@ -488,16 +623,22 @@
         method="POST"
         action="?/addComment"
         use:enhance={() =>
-          ({ update }) =>
-            void update({ reset: true })}
+          ({ update, result }) => {
+            // Reset the editor by remounting it; its internal state survives a plain form reset.
+            if (result.type === "success") newCommentKey += 1;
+            void update({ reset: true });
+          }}
         class="mb-4"
       >
-        <textarea
-          name="body"
-          rows="2"
-          required
-          placeholder={t("tasks.comments.placeholder")}
-          class={inputClass}></textarea>
+        {#key newCommentKey}
+          <RichTextEditor
+            name="body"
+            rows={2}
+            required
+            placeholder={t("tasks.comments.placeholder")}
+            mentions={mentionCandidates}
+          />
+        {/key}
         <div class="mt-2 flex justify-end">
           <button
             class="rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
@@ -561,9 +702,13 @@
                     }}
                 >
                   <input type="hidden" name="comment_id" value={comment.id} />
-                  <textarea name="body" rows="2" required class={inputClass}
-                    >{comment.body}</textarea
-                  >
+                  <RichTextEditor
+                    name="body"
+                    rows={2}
+                    required
+                    value={comment.body}
+                    mentions={mentionCandidates}
+                  />
                   <div class="mt-1 flex gap-2">
                     <button class="rounded-lg bg-brand px-2 py-1 text-xs font-medium text-white"
                       >{t("common.save")}</button
@@ -576,7 +721,7 @@
                   </div>
                 </form>
               {:else}
-                <p class="whitespace-pre-wrap text-sm text-text">{comment.body}</p>
+                <Markdown value={comment.body} />
               {/if}
             </li>
           {/each}
@@ -589,11 +734,11 @@
       <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
         {t("tasks.activity.title")}
       </h3>
-      {#if (task.activities ?? []).length === 0}
+      {#if activities.length === 0}
         <p class="text-sm text-text-muted">—</p>
       {:else}
         <ul class="space-y-2">
-          {#each task.activities ?? [] as activity (activity.id)}
+          {#each visibleActivities as activity (activity.id)}
             {@const href = activityHref(activity)}
             <li class="flex items-baseline gap-2 text-sm">
               <span class="shrink-0 text-[11px] tabular-nums text-text-muted"
@@ -610,6 +755,17 @@
             </li>
           {/each}
         </ul>
+        {#if activities.length > ACTIVITY_COLLAPSED}
+          <button
+            type="button"
+            class="mt-3 text-xs font-medium text-brand hover:underline"
+            onclick={() => (activityExpanded = !activityExpanded)}
+          >
+            {activityExpanded
+              ? t("common.show_less")
+              : t("common.show_all", { count: activities.length })}
+          </button>
+        {/if}
       {/if}
     </section>
   </div>
@@ -630,8 +786,8 @@
               class={inputClass}
               onchange={(e) => e.currentTarget.form?.requestSubmit()}
             >
-              {#each statuses as s (s)}
-                <option value={s} selected={task.status === s}>{t(`tasks.status.${s}`)}</option>
+              {#each statuses as s (s.key)}
+                <option value={s.key} selected={task.status === s.key}>{s.name}</option>
               {/each}
             </select>
           </form>

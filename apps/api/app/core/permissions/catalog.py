@@ -99,9 +99,43 @@ CORE_PERMISSIONS: tuple[PermissionSpec, ...] = (
     PermissionSpec("settings.customfields.write", group="settings", position=60),
     PermissionSpec("settings.dashboard.manage", group="settings", position=70),
     PermissionSpec("settings.system.read", group="settings", position=80),
+    # Provider catalog (issue #89): all staff read it to fill pickers; managing it is admin-only.
+    PermissionSpec(
+        "settings.providers.read", group="settings", position=90, default_roles=_ALL
+    ),
+    PermissionSpec("settings.providers.manage", group="settings", position=100),
+    # Org e-mail transport (issue #17): embeds API keys / SMTP credentials, admin-only.
+    PermissionSpec("settings.email.manage", group="settings", position=110),
+    # Single sign-on (issue #76): embeds the IdP client secret and its "enforce" toggle can
+    # turn password login off for the whole org — admin-only (owner via the wildcard).
+    PermissionSpec("settings.auth.manage", group="settings", position=120),
     # --- dashboard (personal My Day layout) ------------------------------- #
     PermissionSpec("dashboard.prefs.read", group="dashboard", position=10, default_roles=_ALL),
     PermissionSpec("dashboard.prefs.write", group="dashboard", position=20, default_roles=_ALL),
+    # --- activity trail (issue #67) --------------------------------------- #
+    # Every role that can reach a record's detail page may read its paper trail; the rows are
+    # org-scoped (RLS), so this never crosses a tenant. Recording is not a permission — it is a
+    # side effect of a write the caller was already allowed to make.
+    PermissionSpec("activity.read", group="activity", position=10, default_roles=_ALL),
+    # --- API keys & service accounts (issue #20) -------------------------- #
+    # Any member may mint personal keys for themselves (capped by their own live permissions);
+    # only an admin manages service accounts, which are shared, employee-outliving principals.
+    PermissionSpec(
+        "apikeys.personal.manage",
+        group="apikeys",
+        position=10,
+        default_roles=(ROLE_ADMIN, ROLE_MEMBER),
+    ),
+    PermissionSpec("apikeys.service_account.manage", group="apikeys", position=20),
+    # --- file storage (issue #123) ----------------------------------------- #
+    # Uploading is a staff act (avatars, attachments, logos); reading is any member — the
+    # serve route is RLS-scoped and declares no permission on purpose.
+    PermissionSpec(
+        "files.file.write",
+        group="files",
+        position=10,
+        default_roles=(ROLE_ADMIN, ROLE_MEMBER),
+    ),
 )
 
 

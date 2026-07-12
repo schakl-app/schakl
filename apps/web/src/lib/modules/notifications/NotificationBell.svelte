@@ -103,9 +103,13 @@
   </button>
 
   {#if open}
+    <!-- On a phone the bell isn't flush-right (the avatar sits to its right), so an
+         `absolute right-0` panel anchored to the bell computes a negative left edge and runs
+         off the *left* of the screen once it has rows in it (issue #73). Pin it to the viewport
+         instead — `fixed inset-x-2` below the header — and only anchor it to the bell on `sm+`. -->
     <div
       role="menu"
-      class="absolute right-0 z-30 mt-1 w-[22rem] max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-surface-raised py-1 shadow-lg"
+      class="fixed inset-x-2 top-14 z-30 rounded-xl border border-border bg-surface-raised py-1 shadow-lg sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-1 sm:w-[22rem]"
     >
       <div class="flex items-center justify-between gap-2 border-b border-border px-4 py-2.5">
         <p class="text-sm font-semibold text-text">{t("notifications.bell.title")}</p>
@@ -139,7 +143,7 @@
                 onclick={() => (open = false)}
                 role={href ? undefined : "presentation"}
               >
-                <p class="text-sm text-text">
+                <p class="break-words text-sm text-text">
                   <!-- A person's event is a predicate after their name; a system reminder is
                        already a whole sentence and names no actor. -->
                   {#if item.actor_name}

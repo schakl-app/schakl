@@ -51,6 +51,26 @@ class Settings(BaseSettings):
     update_check_enabled: bool = True
     update_check_repo: str = "schakl-app/schakl"
 
+    # --- File storage (issue #123) ---
+    # "local" writes under storage_path (a named volume in Compose); "gdrive"/"s3" are the
+    # future backends the seam exists for. Callers depend on the interface, never the path.
+    storage_backend: str = "local"
+    storage_path: str = "/data/storage"
+    # Upload guardrails: bytes, and an allow-list of content types (images, pdf, plain text,
+    # archives, office docs — the practical attachment set; extend per deployment via env).
+    upload_max_bytes: int = 10 * 1024 * 1024
+    upload_allowed_types: list[str] = Field(
+        default_factory=lambda: [
+            "image/png", "image/jpeg", "image/webp", "image/gif", "image/svg+xml",
+            "image/x-icon", "image/vnd.microsoft.icon",
+            "application/pdf", "text/plain", "text/csv",
+            "application/zip",
+            "application/msword", "application/vnd.ms-excel",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ]
+    )
+
     # --- Database / cache ---
     # Async SQLAlchemy URL (asyncpg driver). The app connects as a NON-superuser role so
     # Postgres RLS is enforced (superusers bypass RLS) — see infra/db init and CLAUDE.md §5.
@@ -63,32 +83,42 @@ class Settings(BaseSettings):
     # Config-level modules mounted by main.py; per-tenant enablement lives in org_settings.
     enabled_modules: list[str] = Field(
         default_factory=lambda: [
-            "companies", "contacts", "tasks", "projects", "time", "leave", "notifications"
+            "companies", "contacts", "tasks", "projects", "time", "leave", "notifications",
+            "domains", "hosting", "websites", "subscriptions", "automation",
         ]
     )
     default_locale: str = "nl"
     supported_locales: list[str] = Field(default_factory=lambda: ["nl", "en"])
+    # Fallback display/scheduling timezone for an org that has not set its own (CLAUDE.md §8).
+    # Per-tenant value lives on org_settings.timezone; this is only the seed/fallback. An IANA
+    # zone name — validated on write against the platform's zoneinfo database.
+    default_timezone: str = "Europe/Amsterdam"
+
+    # --- Outbound hooks (issues #17, #27, #96) ---
+    # Tenant-configured outbound targets (automation webhooks, notification transports) refuse
+    # private/loopback/link-local addresses by default — a self-hosted box must not let a rule
+    # author probe the internal network (SSRF). Set true only for a trusted LAN deployment
+    # whose n8n/Uptime-Kuma etc. live on private addresses.
+    allow_private_notification_targets: bool = False
 
     # --- Auth ---
     secret_key: str = "change-me-in-production-please-32bytes-min"
+    #: Key material for encrypting secrets at rest (notification channel URLs #17, Google refresh
+    #: tokens). Falls back to ``secret_key`` when unset, so a single-secret install still works;
+    #: set ``SCHAKL_ENCRYPTION_KEY`` to rotate it independently of the auth secret.
+    encryption_key: str | None = None
     # Cookie transport is used by the SSR web app.
     auth_cookie_name: str = "schakl_auth"
     auth_cookie_secure: bool = False  # True behind HTTPS in production
     auth_token_lifetime_seconds: int = 60 * 60 * 24 * 7
     allow_registration: bool = True
-
-    # --- OIDC (optional; when enforced, local login is disabled — CLAUDE.md §3, P0) ---
-    oidc_enabled: bool = False
-    oidc_enforced: bool = False
-    oidc_name: str = "sso"
-    oidc_discovery_url: str | None = None
-    oidc_client_id: str | None = None
-    oidc_client_secret: str | None = None
-    # On SSO login, auto-grant a membership in the resolved org so JIT-provisioned users aren't
-    # locked out (they'd otherwise have an identity but no org access). Disable to require an
-    # explicit invite first.
-    oidc_auto_provision_membership: bool = True
-    oidc_default_role: str = "member"
+    # OIDC / SSO is **per-org tenant data** (issue #76): everything lives on the RLS-forced
+    # ``org_auth_settings`` row and is managed under Instellingen → SSO — the old
+    # ``SCHAKL_OIDC_*`` env vars are retired (the #76 migration seeded them into the DB once).
+    # This one flag remains: the operator break-glass that re-enables local password login
+    # regardless of any org's "enforce SSO" toggle, so a broken IdP can never lock a tenant
+    # out of its own instance (docs/SSO.md).
+    force_local_login: bool = False
 
     # --- Google Workspace OAuth (stub for P3) ---
     google_client_id: str | None = None
@@ -98,6 +128,21 @@ class Settings(BaseSettings):
     # Shared message catalogs (single source of truth with the web app).
     messages_dir: Path = Field(default_factory=_default_messages_dir)
 
+    # --- MCP server (CLAUDE.md §12) ---
+    # Streamable HTTP at /mcp: every /api/v1 operation as a tool, authenticated with the
+    # platform's API keys (per-key permission scopes, #20). Disable to remove the surface.
+    mcp_enabled: bool = True
+
+    # --- Entitlements / licensing (issue #137) ---
+    # Ed25519 public key (base64url, raw 32 bytes) that license keys are verified against.
+    # Verification is fully offline — a self-hosted box never needs our infrastructure to
+    # boot or keep running. The default is the production signing key's public half; tests
+    # and a future key rotation override it via SCHAKL_LICENSE_PUBLIC_KEY.
+    license_public_key: str = "wXZZDCEuAVzK82CoaPckClnLtSnNWk1jpeuDbHk1RwQ"
+    # Days an already-enabled licensed module keeps working without any license — the
+    # upgrade path for installs that enabled it before licensing existed (#137).
+    license_bootstrap_grace_days: int = 14
+
     # --- Instance administration (issue #26) ---
     # The cross-tenant admin surface is pure attack surface on a single-tenant box, so it
     # ships **disabled**; SCHAKL_INSTANCE_ADMIN_ENABLED=true opens it to instance owners
@@ -105,32 +150,6 @@ class Settings(BaseSettings):
     instance_admin_enabled: bool = False
     # Upper bound for a single impersonation grant; every grant is audited and time-boxed.
     impersonation_max_minutes: int = 60
-
-    @property
-    def local_login_enabled(self) -> bool:
-        """Local username/password login is on unless OIDC is *enforced*."""
-        return not self.oidc_enforced
-
-    @property
-    def oidc_missing_settings(self) -> list[str]:
-        """The env vars the OIDC flow needs but that are unset (empty string counts as unset)."""
-        required = {
-            "SCHAKL_OIDC_ENABLED": self.oidc_enabled,
-            "SCHAKL_OIDC_DISCOVERY_URL": self.oidc_discovery_url,
-            "SCHAKL_OIDC_CLIENT_ID": self.oidc_client_id,
-            "SCHAKL_OIDC_CLIENT_SECRET": self.oidc_client_secret,
-        }
-        return [name for name, value in required.items() if not value]
-
-    @property
-    def oidc_configured(self) -> bool:
-        """Single gate for the whole OIDC surface (issue #6).
-
-        Both the route mount (``build_oidc_router``) and the login page's SSO button
-        (``/meta/modules``) key off this one property, so the button can never point at a
-        route that was not mounted.
-        """
-        return not self.oidc_missing_settings
 
     @property
     def is_production(self) -> bool:

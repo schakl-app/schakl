@@ -16,7 +16,7 @@ registerWebModule({
       href: "/contacts",
       label: () => t("nav.contacts"),
       module: "contacts",
-      group: "relations",
+      // Its own top-level item (issue #91) — no longer under the "relations" group.
       icon: Users,
       position: 20,
       requiresPermission: "contacts.contact.read",

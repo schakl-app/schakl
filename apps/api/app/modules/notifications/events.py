@@ -30,6 +30,7 @@ TASK_ASSIGNED = "task.assigned"
 TASK_UNASSIGNED = "task.unassigned"
 TASK_STATUS_CHANGED = "task.status_changed"
 TASK_COMMENTED = "task.commented"
+TASK_MENTIONED = "task.mentioned"
 TASK_DUE_SOON = "task.due_soon"
 TASK_OVERDUE = "task.overdue"
 # projects
@@ -47,6 +48,11 @@ LEAVE_REJECTED = "leave.rejected"
 # time
 TIME_ENTRY_APPROVED = "time.entry_approved"
 TIME_TIMESHEET_REMINDER = "time.timesheet_reminder"
+# automation (issue #27): a rule's ``notification.send`` action. Not in EVENT_TYPES — it is
+# ingested directly through this module's published service (its entity type varies per run,
+# so the static subscribe/ENTITY_FOR_EVENT path cannot carry it), and it has no place in the
+# per-event preference matrix: switching a rule off is the rule editor's job.
+AUTOMATION_NOTIFY = "automation.notify"
 
 #: Every notifiable event, in display order. The settings matrix renders exactly this list.
 EVENT_TYPES: tuple[str, ...] = (
@@ -54,6 +60,7 @@ EVENT_TYPES: tuple[str, ...] = (
     TASK_UNASSIGNED,
     TASK_STATUS_CHANGED,
     TASK_COMMENTED,
+    TASK_MENTIONED,
     TASK_DUE_SOON,
     TASK_OVERDUE,
     PROJECT_ASSIGNED,
@@ -75,6 +82,7 @@ ENTITY_FOR_EVENT: dict[str, str] = {
     TASK_UNASSIGNED: ENTITY_TASK,
     TASK_STATUS_CHANGED: ENTITY_TASK,
     TASK_COMMENTED: ENTITY_TASK,
+    TASK_MENTIONED: ENTITY_TASK,
     TASK_DUE_SOON: ENTITY_TASK,
     TASK_OVERDUE: ENTITY_TASK,
     PROJECT_ASSIGNED: ENTITY_PROJECT,
@@ -92,6 +100,9 @@ ENTITY_FOR_EVENT: dict[str, str] = {
 
 # --- channels ---------------------------------------------------------------------------- #
 CHANNEL_IN_APP = "in_app"
+#: Personal e-mail delivery through the org transport (Instellingen → E-mail, #17). One
+#: *general* preference row per user (no per-event matrix): off, immediate, or a digest.
+CHANNEL_EMAIL = "email"
 
 #: Reserved payload keys the emitter uses to carry recipients/dedup to the subscriber. They
 #: are stripped before the event row is persisted (they are routing, not content).

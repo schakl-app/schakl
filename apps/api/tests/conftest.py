@@ -43,20 +43,28 @@ _password_hash = PasswordHash.recommended()
 # `memberships`/`roles`, so they precede both (CASCADE would take them anyway, but the explicit
 # order is what documents the dependency).
 _DOMAIN_TABLES = (
-    "notification_deliveries, notifications, notification_watchers, "
+    "automation_runs, automation_actions, automation_rules, "
+    "notification_deliveries, notification_channels, notifications, notification_watchers, "
     "notification_preferences, notification_events, "
     "task_checklist_items, task_checklists, task_checklist_templates, task_links, "
     "task_label_links, task_labels, "
     "task_comments, task_activities, task_template_items, task_templates, "
-    "leave_requests, leave_entitlements, leave_profiles, leave_types, "
-    "leave_holidays, leave_settings, "
-    "time_entries, tasks, projects, contacts, custom_field_definitions, "
-    "dashboard_prefs, user_prefs, companies, "
+    "leave_requests, leave_recurring_days, leave_entitlements, leave_profiles, leave_types, "
+    "leave_holidays, leave_settings, employment_contracts, "
+    "subscription_links, subscription_lines, subscription_prices, subscriptions, "
+    "subscription_templates, subscription_types, "
+    "websites, hosting, domains, providers, "
+    "time_entry_drafts, time_entries, tasks, projects, contacts, contact_types, "
+    "custom_field_definitions, "
+    "files, activity_log, dashboard_prefs, user_prefs, companies, "
+    "api_keys, service_accounts, "
+    "email_settings, org_auth_settings, "
     "role_audit_log, membership_roles, role_permissions, roles, memberships, org_settings, "
     "instance_audit_log, users, orgs"
 )
 _ENABLED_MODULES = [
-    "companies", "contacts", "tasks", "projects", "time", "leave", "notifications"
+    "companies", "contacts", "tasks", "projects", "time", "leave", "notifications",
+    "domains", "hosting", "websites", "subscriptions", "automation",
 ]
 
 

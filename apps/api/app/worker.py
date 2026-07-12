@@ -17,6 +17,7 @@ from arq import cron
 from arq.connections import RedisSettings
 
 from app.config import settings
+from app.core.apikeys.jobs import flush_api_key_last_used
 from app.core.cache import WORKER_HEARTBEAT_KEY, WORKER_HEARTBEAT_TTL, get_redis
 from app.core.update_check import check_for_update
 from app.registry import registry
@@ -24,13 +25,26 @@ from app.registry import registry
 logger = logging.getLogger("schakl.worker")
 
 
-def _collect_cron_jobs() -> list:
+def _load_modules() -> None:
     for name in settings.enabled_modules:
         importlib.import_module(f"app.modules.{name}")
+
+
+def _collect_cron_jobs() -> list:
+    _load_modules()
     jobs: list = []
     for module in registry.enabled(settings.enabled_modules):
         jobs.extend(module.cron_jobs)
     return jobs
+
+
+def _collect_functions() -> list:
+    """One-off job functions modules contribute — enqueued by name (#125, #27)."""
+    _load_modules()
+    functions: list = []
+    for module in registry.enabled(settings.enabled_modules):
+        functions.extend(module.worker_functions)
+    return functions
 
 
 async def heartbeat(ctx: dict) -> str:
@@ -57,11 +71,13 @@ _CORE_CRON_JOBS = [
     cron(heartbeat, second=0, run_at_startup=False),
     # Daily. Off-peak, and offset from the tasks module's 04:00 recurrence spawn.
     cron(check_for_update, hour=5, minute=0),
+    # Drain the API-key last-use buffer to the DB every few minutes (#20) — off the hot path.
+    cron(flush_api_key_last_used, minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55}),
 ]
 
 
 class WorkerSettings:
-    functions = [heartbeat]
+    functions = [heartbeat] + _collect_functions()
     cron_jobs = _CORE_CRON_JOBS + _collect_cron_jobs()
     on_startup = startup
     redis_settings = RedisSettings.from_dsn(settings.redis_url)

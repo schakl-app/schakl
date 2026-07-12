@@ -1,0 +1,13 @@
+{
+  "name": "Klanten als middelpunt",
+  "order": 10,
+  "icon": "🏢",
+  "title": {
+    "nl": "Klanten als middelpunt",
+    "en": "Clients at the centre"
+  },
+  "description": {
+    "nl": "Contactpersonen, projecten, domeinen, uren en afspraken hangen allemaal aan de klant: één pagina met het hele beeld.",
+    "en": "Contacts, projects, domains, hours and agreements all attach to the client — one page with the full picture."
+  }
+}

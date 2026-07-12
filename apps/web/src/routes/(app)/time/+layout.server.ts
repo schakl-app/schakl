@@ -1,3 +1,4 @@
+import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 
 import type { LayoutServerLoad } from "./$types";
@@ -11,7 +12,12 @@ export const load: LayoutServerLoad = async (event) => {
   const api = apiFor(event);
   const [companies, projects, tasks, members, companyDefs, projectDefs, prefs] = await Promise.all([
     api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
-    api.GET("/api/v1/projects", { params: { query: { limit: 200, offset: 0, count: false } } }),
+    // `hours=true` (#112): the budget burn per project rides the lookup this layout already
+    // makes — one grouped query server-side, zero extra API calls — so the entry form can
+    // show hours-left for the project being logged against.
+    api.GET("/api/v1/projects", {
+      params: { query: { limit: 200, offset: 0, count: false, hours: true } },
+    }),
     api.GET("/api/v1/tasks", {
       params: { query: { limit: 200, offset: 0, meta: false, count: false } },
     }),
@@ -37,6 +43,8 @@ export const load: LayoutServerLoad = async (event) => {
     companyDefinitions: companyDefs.data ?? [],
     projectDefinitions: projectDefs.data ?? [],
     weekView: weekView === "work" ? "work" : "full",
+    // Money on the time page is manager-gated (#112); the hours bar stays team-visible.
+    canSeeBudgetMoney: can(event.locals.user, "time.report.read"),
     locale: event.locals.locale,
   };
 };

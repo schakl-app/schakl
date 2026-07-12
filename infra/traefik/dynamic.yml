@@ -2,6 +2,16 @@
 # compose-network DNS names. Tenants are resolved by the API from the (forwarded) hostname.
 http:
   routers:
+    # API paths on ANY host (incl. verified custom tenant domains) go to the API: the web
+    # app renders relative URLs like /api/v1/files/{id} (avatars, branding uploads) and MCP
+    # clients connect to https://<tenant-domain>/mcp — none of which the SSR server serves.
+    # Strict tenant resolution still happens in the API, from the very same Host header.
+    api-paths:
+      rule: "PathPrefix(`/api/`) || PathPrefix(`/mcp`)"
+      priority: 1000
+      entryPoints:
+        - web
+      service: api
     api:
       rule: "Host(`api.localhost`)"
       entryPoints:

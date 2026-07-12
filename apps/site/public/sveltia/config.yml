@@ -1,0 +1,218 @@
+# Sveltia CMS content model. Paths are repo-root-relative (the CMS operates on the git
+# repo, not on this package). i18n: one entry, locale switcher in the editor; translations
+# pair by file path (multiple_folders) or nest per locale in one file (single_file).
+
+backend:
+  name: github
+  repo: schakl-app/schakl
+  branch: dev
+  # Remote sign-in needs a token-exchange service (sveltia-cms-auth) — set base_url when
+  # the deploy target lands. Local editing ("Work with Local Repository") works without it.
+
+media_folder: apps/site/public/images
+public_folder: /images
+
+i18n:
+  structure: multiple_folders
+  locales: [nl, en]
+  default_locale: nl
+  # A page may exist in one language: untranslated docs fall back to Dutch on the site.
+  save_all_locales: false
+
+collections:
+  - name: settings
+    label: Site-instellingen
+    icon: settings
+    files:
+      - name: site
+        label: Site-instellingen
+        file: apps/site/src/data/settings/site.json
+        fields:
+          - { name: brandName, label: Merknaam, widget: string }
+          - { name: siteUrl, label: Site-URL, widget: string }
+          - name: logo
+            label: Logo
+            widget: image
+            required: false
+            media_folder: /apps/site/src/assets/site
+            public_folder: /src/assets/site
+          - name: logoDark
+            label: Logo — donker thema (optioneel; anders wordt het gewone logo gebruikt)
+            widget: image
+            required: false
+            media_folder: /apps/site/src/assets/site
+            public_folder: /src/assets/site
+          - name: favicon
+            label: Favicon (SVG aangeraden)
+            widget: image
+            required: false
+            media_folder: /apps/site/public
+            public_folder: /
+          - name: colors
+            label: Kleuren
+            widget: object
+            fields:
+              - { name: accent, label: 'Accentkleur — licht thema', widget: color }
+              - { name: accentDark, label: 'Accentkleur — donker thema', widget: color }
+          - name: social
+            label: Sociale links
+            widget: object
+            fields:
+              - { name: github, label: GitHub-URL, widget: string }
+          - name: nav
+            label: Hoofdnavigatie
+            widget: list
+            summary: '{{fields.nl}}'
+            fields:
+              - { name: href, label: Link, widget: string }
+              - { name: nl, label: Label (NL), widget: string }
+              - { name: en, label: Label (EN), widget: string }
+          - name: footerLinks
+            label: Footerlinks
+            widget: list
+            summary: '{{fields.nl}}'
+            fields:
+              - { name: href, label: Link, widget: string }
+              - { name: nl, label: Label (NL), widget: string }
+              - { name: en, label: Label (EN), widget: string }
+          - name: footerNote
+            label: Footertekst
+            widget: object
+            fields:
+              - { name: nl, label: NL, widget: string }
+              - { name: en, label: EN, widget: string }
+
+  - name: landing
+    label: Landingspagina
+    icon: home
+    i18n:
+      structure: single_file
+      locales: [nl, en]
+      default_locale: nl
+    files:
+      - name: landing
+        label: Landingspagina
+        file: apps/site/src/data/landing.json
+        i18n: true
+        fields:
+          - name: blocks
+            label: Secties
+            label_singular: sectie
+            widget: list
+            i18n: true
+            types:
+              - name: hero
+                label: Hero
+                widget: object
+                summary: 'Hero — {{fields.title}}'
+                fields:
+                  - { name: eyebrow, label: Eyebrow (regeltje boven de titel), widget: string }
+                  - { name: title, label: Titel, widget: string }
+                  - { name: subtitle, label: Subtitel, widget: text }
+                  - name: ctaPrimary
+                    label: Primaire knop
+                    widget: object
+                    fields:
+                      - { name: label, label: Tekst, widget: string }
+                      - { name: href, label: Link, widget: string }
+                  - name: ctaSecondary
+                    label: Secundaire knop
+                    widget: object
+                    fields:
+                      - { name: label, label: Tekst, widget: string }
+                      - { name: href, label: Link, widget: string }
+              - name: features
+                label: Functie-kaarten
+                widget: object
+                summary: 'Functies — {{fields.title}}'
+                fields:
+                  - { name: anchor, label: 'Anker (voor #links)', widget: string, required: false }
+                  - { name: title, label: Titel, widget: string }
+                  - { name: intro, label: Intro, widget: text }
+              - name: textBullets
+                label: Tekst + punten
+                widget: object
+                summary: 'Tekst — {{fields.title}}'
+                fields:
+                  - { name: anchor, label: 'Anker (voor #links)', widget: string, required: false }
+                  - { name: title, label: Titel, widget: string }
+                  - { name: body, label: Tekst, widget: text }
+                  - name: bullets
+                    label: Punten
+                    widget: list
+                    field: { name: bullet, label: Punt, widget: string }
+              - name: cta
+                label: Call-to-action-band
+                widget: object
+                summary: 'CTA — {{fields.title}}'
+                fields:
+                  - { name: anchor, label: 'Anker (voor #links)', widget: string, required: false }
+                  - { name: title, label: Titel, widget: string }
+                  - { name: body, label: Tekst, widget: text }
+                  - { name: label, label: Knoptekst, widget: string }
+                  - { name: href, label: Knoplink, widget: string }
+
+  - name: features
+    label: Functie-kaarten
+    icon: category
+    folder: apps/site/src/data/features
+    extension: json
+    create: true
+    identifier_field: name
+    summary: '{{name}}'
+    fields:
+      - { name: name, label: Naam (intern), widget: string }
+      - { name: order, label: Volgorde, widget: number, value_type: int }
+      - { name: icon, label: Icoon (emoji), widget: string }
+      - name: title
+        label: Titel
+        widget: object
+        fields:
+          - { name: nl, label: NL, widget: string }
+          - { name: en, label: EN, widget: string }
+      - name: description
+        label: Omschrijving
+        widget: object
+        fields:
+          - { name: nl, label: NL, widget: text }
+          - { name: en, label: EN, widget: text }
+
+  - name: pages
+    label: "Pagina's"
+    icon: description
+    folder: apps/site/src/content/pages
+    extension: mdx
+    format: frontmatter
+    create: true
+    i18n: true
+    slug: '{{slug}}'
+    summary: '{{title}}'
+    # De slug is het URL-pad (/<slug>/ en /en/<slug>/) — gebruik niet "docs", "nl" of "en".
+    fields:
+      - { name: title, label: Titel, widget: string, i18n: true }
+      - { name: description, label: Omschrijving (voor zoekmachines), widget: text, required: false, i18n: true }
+      - { name: body, label: Inhoud, widget: markdown, i18n: true }
+
+  - name: docs
+    label: Documentatie
+    icon: menu_book
+    folder: apps/site/src/content/docs
+    extension: mdx
+    format: frontmatter
+    create: true
+    i18n: true
+    nested: { depth: 5 }
+    summary: '{{title}}'
+    meta:
+      path: { widget: string, label: Pad, index_file: index }
+    fields:
+      - { name: title, label: Titel, widget: string, i18n: true }
+      - { name: description, label: Omschrijving, widget: text, required: false, i18n: true }
+      - name: sidebar
+        label: Zijbalk
+        widget: object
+        required: false
+        i18n: duplicate
+        fields:
+          - { name: order, label: Volgorde, widget: number, value_type: int, required: false }
+      - { name: body, label: Inhoud, widget: markdown, i18n: true }

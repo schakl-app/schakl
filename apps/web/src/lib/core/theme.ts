@@ -14,6 +14,12 @@ export interface OrgTheme {
   primaryColor: string;
   accentColor: string;
   defaultLocale: string;
+  /** IANA zone the tenant's local calendar runs in (CLAUDE.md §8); drives timestamp display. */
+  timezone: string;
+  /** ISO 4217 code every money figure renders in (#124) — per-org, like the timezone. */
+  currency: string;
+  /** Tab-title template with {page}/{brand} tokens (#97); null = the built-in format. */
+  tabTitleTemplate: string | null;
   enabledModules: string[];
   /** False when the hostname resolved to no org (unknown host, or a fresh install). */
   resolved: boolean;
@@ -30,6 +36,9 @@ export const DEFAULT_THEME: OrgTheme = {
   primaryColor: "#4f46e5",
   accentColor: "#0ea5e9",
   defaultLocale: "nl",
+  timezone: "Europe/Amsterdam",
+  currency: "EUR",
+  tabTitleTemplate: null,
   enabledModules: ["companies"],
   resolved: false,
   suspended: false,

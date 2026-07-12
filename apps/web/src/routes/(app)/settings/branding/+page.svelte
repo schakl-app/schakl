@@ -1,19 +1,37 @@
 <script lang="ts">
   import { enhance } from "$app/forms";
+  import { currencyLabel } from "$lib/core/currencies";
   import { localeLabel, t } from "$lib/core/i18n";
+  import { pageTitle, renderTabTitle } from "$lib/core/title";
+  import { getLocale } from "$lib/paraglide/runtime";
 
   let { data, form } = $props();
 
   const branding = $derived(data.branding);
   let primary = $state(data.branding?.primary_color ?? "#4f46e5");
   let accent = $state(data.branding?.accent_color ?? "#0ea5e9");
+  // Live preview while typing (#97): the same renderer the real tab uses.
+  let tabTemplate = $state(data.branding?.tab_title_template ?? "");
+  const tabPreview = $derived(
+    renderTabTitle(
+      tabTemplate.trim() || "{brand} · {page}",
+      t("settings.branding.tab_title_example"),
+      data.branding?.brand_name ?? "",
+    ),
+  );
+  const tabTemplateInvalid = $derived.by(() => {
+    const template = tabTemplate.trim();
+    if (!template) return false;
+    const tokens = [...template.matchAll(/\{([^{}]*)\}/g)].map((m) => m[1]);
+    return !tokens.includes("page") || tokens.some((tok) => tok !== "page" && tok !== "brand");
+  });
 
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
 
 <svelte:head>
-  <title>{t("settings.branding.title")}</title>
+  <title>{pageTitle(t("settings.branding.title"))}</title>
 </svelte:head>
 
 <div class="mb-6">
@@ -29,6 +47,7 @@
     <form
       method="POST"
       action="?/update"
+      enctype="multipart/form-data"
       use:enhance={() =>
         async ({ update }) => {
           await update({ reset: false });
@@ -70,7 +89,83 @@
           </select>
         </div>
         <div>
-          <label for="logo_url" class="mb-1 block text-sm font-medium text-text"
+          <label for="timezone" class="mb-1 block text-sm font-medium text-text"
+            >{t("settings.branding.timezone")}</label
+          >
+          <select id="timezone" name="timezone" class={inputClass}>
+            <optgroup label={t("settings.branding.timezone_common")}>
+              {#each data.commonTimezones as tz (tz)}
+                <option value={tz} selected={branding.timezone === tz}>{tz}</option>
+              {/each}
+            </optgroup>
+            <optgroup label={t("settings.branding.timezone_other")}>
+              {#each data.otherTimezones as tz (tz)}
+                <option value={tz} selected={branding.timezone === tz}>{tz}</option>
+              {/each}
+            </optgroup>
+          </select>
+          <p class="mt-1 text-xs text-text-muted">{t("settings.branding.timezone_help")}</p>
+        </div>
+        <div>
+          <label for="currency" class="mb-1 block text-sm font-medium text-text"
+            >{t("settings.branding.currency")}</label
+          >
+          <select id="currency" name="currency" class={inputClass}>
+            <optgroup label={t("settings.branding.timezone_common")}>
+              {#each data.commonCurrencies as code (code)}
+                <option value={code} selected={branding.currency === code}
+                  >{currencyLabel(code, getLocale())}</option
+                >
+              {/each}
+            </optgroup>
+            <optgroup label={t("settings.branding.currency_other")}>
+              {#each data.otherCurrencies as code (code)}
+                <option value={code} selected={branding.currency === code}
+                  >{currencyLabel(code, getLocale())}</option
+                >
+              {/each}
+            </optgroup>
+          </select>
+          <p class="mt-1 text-xs text-text-muted">{t("settings.branding.currency_help")}</p>
+        </div>
+        <div class="sm:col-span-2">
+          <label for="tab_title_template" class="mb-1 block text-sm font-medium text-text"
+            >{t("settings.branding.tab_title")}</label
+          >
+          <input
+            id="tab_title_template"
+            name="tab_title_template"
+            bind:value={tabTemplate}
+            placeholder={"{page} · {brand}"}
+            class={inputClass}
+          />
+          <p class="mt-1 text-xs text-text-muted">
+            {t("settings.branding.tab_title_help", { pageToken: "{page}", brandToken: "{brand}" })}
+            {#if !tabTemplateInvalid}
+              · {t("settings.branding.tab_title_preview", { preview: tabPreview })}
+            {/if}
+          </p>
+          {#if tabTemplateInvalid}
+            <p class="mt-1 text-xs text-red-600 dark:text-red-400">
+              {t("settings.branding.tab_title_invalid", {
+                pageToken: "{page}",
+                brandToken: "{brand}",
+              })}
+            </p>
+          {/if}
+        </div>
+        <div>
+          <label for="logo_file" class="mb-1 block text-sm font-medium text-text"
+            >{t("settings.branding.logo")}</label
+          >
+          <input
+            id="logo_file"
+            name="logo_file"
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+            class="block w-full text-sm text-text-muted file:mr-3 file:cursor-pointer file:rounded-lg file:border file:border-solid file:border-border file:bg-transparent file:px-3 file:py-1.5 file:text-sm file:text-text hover:file:border-brand"
+          />
+          <label for="logo_url" class="mb-1 mt-2 block text-xs text-text-muted"
             >{t("settings.branding.logo_url")}</label
           >
           <input
@@ -80,9 +175,20 @@
             placeholder="https://…"
             class={inputClass}
           />
+          <p class="mt-1 text-xs text-text-muted">{t("settings.branding.upload_help")}</p>
         </div>
         <div>
-          <label for="favicon_url" class="mb-1 block text-sm font-medium text-text"
+          <label for="favicon_file" class="mb-1 block text-sm font-medium text-text"
+            >{t("settings.branding.favicon")}</label
+          >
+          <input
+            id="favicon_file"
+            name="favicon_file"
+            type="file"
+            accept="image/png,image/svg+xml,image/x-icon,image/vnd.microsoft.icon"
+            class="block w-full text-sm text-text-muted file:mr-3 file:cursor-pointer file:rounded-lg file:border file:border-solid file:border-border file:bg-transparent file:px-3 file:py-1.5 file:text-sm file:text-text hover:file:border-brand"
+          />
+          <label for="favicon_url" class="mb-1 mt-2 block text-xs text-text-muted"
             >{t("settings.branding.favicon_url")}</label
           >
           <input
@@ -92,6 +198,7 @@
             placeholder="https://…"
             class={inputClass}
           />
+          <p class="mt-1 text-xs text-text-muted">{t("settings.branding.upload_help")}</p>
         </div>
         <div>
           <label for="primary_color" class="mb-1 block text-sm font-medium text-text"

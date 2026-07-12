@@ -15,3 +15,17 @@ export function apiErrorKey(error: unknown, fallback = "errors.validation"): Api
     ?.error;
   return { key: envelope?.message ?? fallback, fields: envelope?.fields };
 }
+
+/**
+ * Unwrap a paged lookup response, logging a failed call instead of swallowing it.
+ *
+ * Lookup lists that feed pickers are non-fatal — the page still renders — but a silent
+ * `?? []` makes a 403/422 indistinguishable from "no rows", which is how #116 shipped.
+ */
+export function lookupItems<T>(
+  resp: { data?: { items?: T[] } | null; error?: unknown },
+  label: string,
+): T[] {
+  if (resp.error) console.error(`lookup ${label} failed`, resp.error);
+  return resp.data?.items ?? [];
+}

@@ -121,29 +121,39 @@ release** (imports across schema revisions are rejected).
 
 ## Single sign-on (OIDC, off by default)
 
-Federates login to an external IdP (Authentik, Keycloak, Entra ID, Google, …). Register the app
-there with callback URL `https://<your-host>/api/v1/auth/oidc/callback`, then set the variables
-below. Provider walkthroughs, the exact-match rules for that callback URL, and the
-`redirect_uri_mismatch` fix live in [`SSO.md`](SSO.md).
+Federates login to an external IdP (Authentik, Keycloak, Entra ID, Google, …). Since #76 this
+is **configured in the app, per organization** — Instellingen → Single sign-on — not with
+environment variables: client id, discovery URL, display name, JIT-provisioning policy, the
+enabled/enforced toggles, and the client secret (encrypted at rest with a key derived from
+`SCHAKL_ENCRYPTION_KEY`, falling back to `SCHAKL_SECRET_KEY`). Changes apply immediately, no
+restart. The settings page shows the exact callback URL to register at the IdP and offers a
+**Test connection**; "require SSO" cannot be switched on until a test has succeeded. Provider
+walkthroughs, the exact-match rules for the callback URL, and the `redirect_uri_mismatch` fix
+live in [`SSO.md`](SSO.md).
+
+The old `SCHAKL_OIDC_*` variables are retired: the migration that ships #76 reads them **once**
+at upgrade time and seeds each org's row from them (secret stored encrypted), after which the
+app ignores them — remove them from your compose file at leisure. One auth-related variable
+remains:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `SCHAKL_OIDC_ENABLED` | `false` | Mount the SSO routes and show the SSO button on the login page. |
-| `SCHAKL_OIDC_DISCOVERY_URL` | — | The IdP's `/.well-known/openid-configuration` URL. **Required when enabled.** |
-| `SCHAKL_OIDC_CLIENT_ID` | — | Client id registered at the IdP. **Required when enabled.** |
-| `SCHAKL_OIDC_CLIENT_SECRET` | — | Client secret. **Required when enabled.** |
-| `SCHAKL_OIDC_ENFORCED` | `false` | Disable local username/password login; SSO becomes the only way in. |
-| `SCHAKL_OIDC_NAME` | `sso` | Internal client name; cosmetic. |
-| `SCHAKL_OIDC_AUTO_PROVISION_MEMBERSHIP` | `true` | First SSO login auto-grants a membership in the resolved org. Set `false` to require an explicit invite first. |
-| `SCHAKL_OIDC_DEFAULT_ROLE` | `member` | Role granted by auto-provisioning. |
+| `SCHAKL_FORCE_LOCAL_LOGIN` | `false` | **Break-glass.** Re-enables local password login regardless of any org's "require SSO" setting — for when the IdP is broken or misconfigured and nobody can sign in. Set it, sign in locally, fix or disable SSO in Instellingen → Single sign-on, then unset it. |
 
-All three of discovery URL, client id and client secret must be set (non-empty) for OIDC
-to be considered configured — one gate covers both the routes and the login-page button,
-so a half-configured instance never shows an SSO button that 404s (issue #6). If
-`SCHAKL_OIDC_ENABLED=true` with any of them missing, the API logs a startup `WARNING`
-naming the missing variables and runs with local login only. If `SCHAKL_OIDC_ENFORCED=true`
-with any of them missing, the API **refuses to start** — enforced OIDC turns local login
-off, so booting anyway would lock every user out.
+## File storage (the second stateful thing)
+
+Uploaded files (issue #123 — avatars, task attachments, branding assets) live on the named
+volume **`storage-data`**, mounted into `api` and `worker` at `SCHAKL_STORAGE_PATH`
+(`/data/storage`). Postgres is no longer the only state on the box:
+
+- **Back up `storage-data` alongside the database.** A restored DB without the volume leaves
+  `files` rows whose bytes are gone (the API then serves 404 for them); a restored volume
+  without the DB leaves orphaned bytes. Snapshot both together.
+- **Node-local by design.** A single volume is right for the one-host Compose deploy; a future
+  multi-node/cloud deploy swaps the storage backend (`SCHAKL_STORAGE_BACKEND`), not the callers.
+- **Limits are instance config:** `SCHAKL_UPLOAD_MAX_BYTES` (default 10 MB) and
+  `SCHAKL_UPLOAD_ALLOWED_TYPES` (a JSON list; defaults to images, PDF, text, zip and office
+  documents). The API refuses anything outside them with `413`/`422`.
 
 ## Releases and image tags
 
@@ -163,7 +173,8 @@ app than the one you tested.
 
 ## Private GHCR
 
-The repo is private, so the images are too, and the host needs credentials to pull. In
+The images on GHCR may require credentials to pull (their visibility is a package
+setting, independent of the now-public repo). If a pull is denied: in
 Portainer: *Registries → Add registry → Custom registry*, URL `ghcr.io`, username = your
 GitHub user, password = a **classic** PAT with only the `read:packages` scope. Portainer
 matches it by hostname, so every stack pulling `ghcr.io/schakl-app/*` picks it up — nothing
@@ -294,3 +305,18 @@ destroys the database and was never necessary.
 **Editing a service that Compose sees as unchanged** does not recreate its container. After
 changing networks or environment, force it: Portainer's *Re-pull image and redeploy*, or
 `docker compose -f compose.tunnel.yaml up -d --force-recreate`.
+
+## Licensed modules (issue #137)
+
+The core platform is free to use. A small set of extension modules — currently `leave` and
+the MCP server — requires a **license key**, installed by the instance owner under
+*Instellingen → Licentie* (`PUT /api/v1/instance/license`). Validation is **fully offline**
+against a public key baked into the image: the box never phones home.
+
+- Every fresh install or upgrade to this release starts a **built-in trial window**
+  (`SCHAKL_LICENSE_BOOTSTRAP_GRACE_DAYS`, default 14): licensed modules work fully without
+  a key. After it, they cannot be newly enabled, and already-enabled ones turn read-only.
+- An **expired** license keeps working through its grace period, then its modules turn
+  **read-only**: mutations answer `402 errors.license_expired`, reads and CSV exports keep
+  working forever. Installing a new key restores everything instantly — no data is touched.
+- `SCHAKL_LICENSE_PUBLIC_KEY` overrides the baked-in verification key (key rotation).

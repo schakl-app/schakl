@@ -1,12 +1,18 @@
 <script lang="ts">
-  import { CalendarClock, UserMinus } from "@lucide/svelte";
+  import { BadgeEuro, CalendarClock, FileText, Repeat, Trash2, UserMinus } from "@lucide/svelte";
+  import Avatar from "$lib/core/ui/Avatar.svelte";
 
   import { enhance } from "$app/forms";
+  import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { type LeaveTypeInfo } from "$lib/modules/leave/format";
+  import RecurringDaysManager from "$lib/modules/leave/RecurringDaysManager.svelte";
+  import { pageTitle } from "$lib/core/title";
   import { localeName } from "$lib/core/roles/name";
   import { effectivePermissions, WILDCARD } from "$lib/core/roles/permissions";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import DateInput from "$lib/core/ui/DateInput.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import { fmtHours } from "$lib/modules/leave/format";
   import WorkScheduleEditor from "$lib/modules/leave/WorkScheduleEditor.svelte";
@@ -63,6 +69,59 @@
     return stored === inherited ? null : stored;
   }
 
+  // --- hourly rate (#82, #113) ----------------------------------------------------
+  // Salary-adjacent, so its own permission (`leave.rate.read`/`.write`), not `profile.manage`.
+  const rateByUser = $derived(
+    Object.fromEntries((data.rateRows ?? []).map((r) => [r.user_id, r.hourly_rate])),
+  );
+  // The effective rate (#113): the org default fills in where no personal rate is set, and
+  // the roster says so — a defaulted figure must not read as an entered one.
+  const effectiveRateByUser = $derived(
+    Object.fromEntries((data.rateRows ?? []).map((r) => [r.user_id, r.effective_hourly_rate])),
+  );
+  let rateOpen = $state(false);
+  let rateFor = $state<Member | null>(null);
+  let rateDraft = $state("");
+
+  function openRate(member: Member) {
+    const current = rateByUser[member.user_id];
+    rateDraft = current == null ? "" : String(current);
+    rateFor = member;
+    rateOpen = true;
+  }
+
+  // --- employment contracts (#65) -----------------------------------------------
+  const contractsByUser = $derived.by(() => {
+    const map: Record<string, typeof data.contracts> = {};
+    for (const c of data.contracts ?? []) (map[c.user_id] ??= []).push(c);
+    return map;
+  });
+  let contractsOpen = $state(false);
+  let contractsFor = $state<Member | null>(null);
+  const todayIso = new Date().toISOString().slice(0, 10);
+
+  function openContracts(member: Member) {
+    contractsFor = member;
+    contractsOpen = true;
+  }
+
+  // --- recurring rostered free days / ADV (#107) ----------------------------------
+  const activeLeaveTypes = $derived(
+    ((data.leaveTypes ?? []) as LeaveTypeInfo[]).filter((lt) => lt.active),
+  );
+  const recurringByUser = $derived.by(() => {
+    const map: Record<string, typeof data.recurring> = {};
+    for (const p of data.recurring ?? []) (map[p.user_id] ??= []).push(p);
+    return map;
+  });
+  let recurringOpen = $state(false);
+  let recurringFor = $state<Member | null>(null);
+
+  function openRecurring(member: Member) {
+    recurringFor = member;
+    recurringOpen = true;
+  }
+
   function memberActions(member: Member) {
     const items = [];
     if (data.schedules) {
@@ -70,6 +129,23 @@
         label: t("settings.users.schedule"),
         icon: CalendarClock,
         onclick: () => openSchedule(member),
+      });
+      items.push({
+        label: t("settings.users.contracts"),
+        icon: FileText,
+        onclick: () => openContracts(member),
+      });
+      items.push({
+        label: t("settings.users.recurring"),
+        icon: Repeat,
+        onclick: () => openRecurring(member),
+      });
+    }
+    if (data.rates) {
+      items.push({
+        label: t("settings.users.rate"),
+        icon: BadgeEuro,
+        onclick: () => openRate(member),
       });
     }
     if (!member.is_self) {
@@ -91,7 +167,7 @@
 </script>
 
 <svelte:head>
-  <title>{t("settings.users.title")}</title>
+  <title>{pageTitle(t("settings.users.title"))}</title>
 </svelte:head>
 
 <div class="mb-6 flex items-start justify-between">
@@ -172,6 +248,12 @@
     {#each data.members as member (member.membership_id)}
       {@const effective = effectiveFor(member.role_ids)}
       <li class="flex items-center gap-3 px-4 py-3 first:rounded-t-xl last:rounded-b-xl">
+        <Avatar
+          name={member.full_name}
+          email={member.email}
+          avatarUrl={member.avatar_url ?? null}
+          size="md"
+        />
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">
             <span class="truncate font-medium text-text">{member.full_name || member.email}</span>
@@ -198,6 +280,16 @@
                 })}
               </p>
             {/if}
+          {/if}
+          {#if data.rates && effectiveRateByUser[member.user_id] != null}
+            <p class="mt-0.5 text-xs text-text-muted">
+              {t("settings.users.rate_value", {
+                rate: String(effectiveRateByUser[member.user_id]),
+              })}
+              {#if rateByUser[member.user_id] == null}
+                {t("settings.users.rate_default_marker")}
+              {/if}
+            </p>
           {/if}
         </div>
 
@@ -338,6 +430,197 @@
           </button>
         </form>
       </div>
+    {/key}
+  {/if}
+</Modal>
+
+<!-- Employment contracts (#65): contract hours, distinct from scheduled hours; ADV accrues on
+     the gap. A changed contract is a new row, so this is add + terminate, never edit-in-place. -->
+<Modal bind:open={contractsOpen} title={t("settings.users.contracts")}>
+  {#if contractsFor}
+    {#key contractsFor.user_id}
+      {@const rows = contractsByUser[contractsFor.user_id] ?? []}
+      <div class="space-y-4">
+        <p class="text-sm text-text-muted">{contractsFor.full_name || contractsFor.email}</p>
+
+        {#if rows.length > 0}
+          <ul class="divide-y divide-border rounded-lg border border-border">
+            {#each rows as contract (contract.id)}
+              <li class="flex items-center gap-3 px-3 py-2 text-sm">
+                <div class="min-w-0 flex-1">
+                  <span class="font-medium text-text">
+                    {t("settings.users.contract_hours_value", {
+                      hours: fmtHours(contract.contract_hours_per_week),
+                    })}
+                  </span>
+                  <span class="block text-xs text-text-muted">
+                    <!-- Through the shared formatter, so the period honors the personal
+                         date-format preference like the rest of the app (#104). -->
+                    {fmtNumericDate(contract.start_date)} → {contract.end_date
+                      ? fmtNumericDate(contract.end_date)
+                      : t("settings.users.contract_open")}
+                    · {t("settings.users.contract_scheduled", {
+                      hours: fmtHours(contract.scheduled_hours_per_week),
+                    })}
+                  </span>
+                </div>
+                {#if !contract.end_date}
+                  <form method="POST" action="?/terminateContract" use:enhance>
+                    <input type="hidden" name="contract_id" value={contract.id} />
+                    <input type="hidden" name="end_date" value={todayIso} />
+                    <button
+                      class="rounded-lg border border-border px-2 py-1 text-xs text-text-muted hover:text-text"
+                      title={t("settings.users.contract_terminate")}
+                    >
+                      {t("settings.users.contract_terminate")}
+                    </button>
+                  </form>
+                {/if}
+                <form method="POST" action="?/deleteContract" use:enhance>
+                  <input type="hidden" name="contract_id" value={contract.id} />
+                  <button
+                    class="rounded-lg p-1 text-text-muted hover:text-red-600 dark:hover:text-red-400"
+                    title={t("common.delete")}
+                    aria-label={t("common.delete")}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </form>
+              </li>
+            {/each}
+          </ul>
+        {:else}
+          <p class="rounded-lg bg-surface px-3 py-2 text-xs text-text-muted">
+            {t("settings.users.contract_empty")}
+          </p>
+        {/if}
+
+        <!-- Keyed on the row count: a successful add re-mounts the form, which is what clears
+             the DateInputs — their display text is component state a form reset cannot reach. -->
+        {#key rows.length}
+          <form
+            method="POST"
+            action="?/saveContract"
+            class="space-y-3 border-t border-border pt-4"
+            use:enhance={() =>
+              ({ result, update }) => {
+                if (result.type === "success") void update({ reset: true });
+                else void update({ reset: false });
+              }}
+          >
+            <input type="hidden" name="user_id" value={contractsFor.user_id} />
+            <p class="text-xs font-semibold uppercase tracking-wide text-text-muted">
+              {t("settings.users.contract_add")}
+            </p>
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <!-- Shared DateInput, never a native type="date": browsers render those after the
+                 browser locale, ignoring the personal date-format preference (#104, docs/UX.md). -->
+              <div>
+                <label for="c-start" class="mb-1 block text-xs text-text-muted"
+                  >{t("settings.users.contract_start")}</label
+                >
+                <DateInput id="c-start" name="start_date" required />
+              </div>
+              <div>
+                <label for="c-end" class="mb-1 block text-xs text-text-muted"
+                  >{t("settings.users.contract_end")}</label
+                >
+                <DateInput id="c-end" name="end_date" />
+              </div>
+              <div>
+                <label for="c-hours" class="mb-1 block text-xs text-text-muted"
+                  >{t("settings.users.contract_hours")}</label
+                >
+                <input
+                  id="c-hours"
+                  name="contract_hours_per_week"
+                  inputmode="decimal"
+                  required
+                  placeholder="38"
+                  class={inputClass}
+                />
+              </div>
+            </div>
+            <p class="text-xs text-text-muted">{t("settings.users.contract_hint")}</p>
+            {#if form?.error}<p class="text-sm text-red-600 dark:text-red-400">
+                {t(form.error)}
+              </p>{/if}
+            <div class="flex justify-end">
+              <button
+                class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+              >
+                {t("settings.users.contract_add")}
+              </button>
+            </div>
+          </form>
+        {/key}
+      </div>
+    {/key}
+  {/if}
+</Modal>
+
+<!-- Recurring rostered free days / ADV (#107): a schedule-derived pattern the generator lays
+     onto the calendar as pre-approved, individually movable free days. Shared surface with
+     the employee's own on /leave; here a manager may plan any active type. -->
+<Modal bind:open={recurringOpen} title={t("settings.users.recurring")}>
+  {#if recurringFor}
+    {#key recurringFor.user_id}
+      <div class="space-y-4">
+        <p class="text-sm text-text-muted">{recurringFor.full_name || recurringFor.email}</p>
+        <RecurringDaysManager
+          patterns={recurringByUser[recurringFor.user_id] ?? []}
+          types={activeLeaveTypes}
+          userId={recurringFor.user_id}
+          error={form?.error ?? null}
+          generated={form?.recurringSaved ? (form.recurringGenerated ?? 0) : null}
+        />
+      </div>
+    {/key}
+  {/if}
+</Modal>
+
+<!-- This person's hourly rate (#82). Salary-adjacent — its own permission gates edit. -->
+<Modal bind:open={rateOpen} title={t("settings.users.rate")}>
+  {#if rateFor}
+    {#key rateFor.user_id}
+      <form
+        method="POST"
+        action="?/saveRate"
+        class="space-y-4"
+        use:enhance={() =>
+          ({ result, update }) => {
+            if (result.type === "success") rateOpen = false;
+            void update({ reset: false });
+          }}
+      >
+        <input type="hidden" name="user_id" value={rateFor.user_id} />
+        <p class="text-sm text-text-muted">{rateFor.full_name || rateFor.email}</p>
+        <div>
+          <label for="hourly_rate" class="mb-1 block text-sm font-medium text-text">
+            {t("settings.users.rate_label")}
+          </label>
+          <input
+            id="hourly_rate"
+            name="hourly_rate"
+            inputmode="decimal"
+            bind:value={rateDraft}
+            disabled={!data.canEditRates}
+            placeholder={t("settings.users.rate_placeholder")}
+            class={inputClass}
+          />
+          <p class="mt-1 text-xs text-text-muted">{t("settings.users.rate_hint")}</p>
+        </div>
+        {#if form?.error}<p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
+        {#if data.canEditRates}
+          <div class="flex justify-end">
+            <button
+              class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+            >
+              {t("common.save")}
+            </button>
+          </div>
+        {/if}
+      </form>
     {/key}
   {/if}
 </Modal>

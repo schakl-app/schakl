@@ -89,3 +89,16 @@ integration design), [`WORKFLOW.md`](docs/WORKFLOW.md) (branches, commits, break
 P0 Foundation (this) → P1 MVP (contacts/tasks/time + custom-fields) → P2 Agency core
 (projects/pipeline/leave/reporting) → P3 Google Workspace → P4 Automation + MCP server.
 Build one phase at a time; stop at each gate. See `CLAUDE.md` §10.
+
+## Licensing
+
+schakl is **open core**. Everything in this repository is licensed under the
+[GNU AGPL-3.0](LICENSE), **except** the licensed-module directories (currently the `leave`
+module and the MCP server, plus their web counterparts), which are governed by the
+[schakl Commercial License](LICENSE-COMMERCIAL.md) — each such directory carries its own
+`LICENSE` notice. Licensed modules run with a license key (Instellingen → Licentie); every
+installation gets a built-in trial window, and without a key those modules turn read-only —
+your data always stays readable and exportable.
+
+Contributions: by submitting a PR you agree your contribution is licensed AGPL-3.0, or —
+for the commercial directories — under the terms in LICENSE-COMMERCIAL.md.

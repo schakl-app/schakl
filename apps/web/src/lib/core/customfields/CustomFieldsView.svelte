@@ -4,6 +4,7 @@
    * Used by company panels and entity detail views. Values with no matching definition are
    * skipped (the definition may have been deactivated).
    */
+  import Markdown from "$lib/core/ui/Markdown.svelte";
   import type { CustomFieldDefinition } from "./types";
   import { fieldLabel } from "./types";
 
@@ -24,6 +25,11 @@
     return String(value);
   }
 
+  /** LONG_TEXT holds markdown (issue #66) — render it, not its source. */
+  function isMarkdown(def: CustomFieldDefinition, value: unknown): boolean {
+    return def.data_type === "long_text" && typeof value === "string" && value.trim() !== "";
+  }
+
   const shown = $derived(definitions.filter((d) => values[d.key] !== undefined));
 </script>
 
@@ -34,7 +40,13 @@
         <dt class="text-xs font-medium uppercase tracking-wide text-neutral-500">
           {fieldLabel(def, locale)}
         </dt>
-        <dd class="mt-1 text-sm text-neutral-900">{display(values[def.key])}</dd>
+        <dd class="mt-1 text-sm text-neutral-900">
+          {#if isMarkdown(def, values[def.key])}
+            <Markdown value={String(values[def.key])} />
+          {:else}
+            {display(values[def.key])}
+          {/if}
+        </dd>
       </div>
     {/each}
   </dl>

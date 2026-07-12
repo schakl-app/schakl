@@ -5,6 +5,19 @@ from __future__ import annotations
 from tests.conftest import auth_cookie, make_tenant
 
 
+async def _role_key_by_id(client, headers) -> dict[str, str]:
+    """id → key for the org's roles, so tests can assert which system role a member holds."""
+    roles = (await client.get("/api/v1/roles", headers=headers)).json()
+    return {r["id"]: r["key"] for r in roles}
+
+
+async def _held_keys(client, headers, membership_id: str) -> set[str]:
+    by_id = await _role_key_by_id(client, headers)
+    members = (await client.get("/api/v1/members", headers=headers)).json()
+    target = next(m for m in members if m["membership_id"] == membership_id)
+    return {by_id[rid] for rid in target["role_ids"]}
+
+
 async def test_list_requires_manager(client_for) -> None:
     t = await make_tenant("mem-member", role="member")
     async with client_for(t.host) as c:
@@ -24,8 +37,8 @@ async def test_invite_creates_member(client_for) -> None:
         assert invited.status_code == 201
         body = invited.json()
         assert body["email"] == "new.person@example.com"  # normalised
-        assert body["role"] == "admin"
         assert body["is_active"] is True
+        assert "admin" in await _held_keys(c, headers, body["membership_id"])
 
         members = await c.get("/api/v1/members", headers=headers)
         emails = {m["email"] for m in members.json()}
@@ -68,7 +81,7 @@ async def test_change_role_and_last_role_manager_guard(client_for) -> None:
             headers=headers,
         )
         assert to_admin.status_code == 200
-        assert to_admin.json()["role"] == "admin"
+        assert "admin" in await _held_keys(c, headers, owner["membership_id"])
 
         # Invite a second person and promote them to owner.
         other = (
@@ -84,7 +97,7 @@ async def test_change_role_and_last_role_manager_guard(client_for) -> None:
             headers=headers,
         )
         assert promote.status_code == 200
-        assert promote.json()["role"] == "owner"
+        assert "owner" in await _held_keys(c, headers, other["membership_id"])
 
 
 async def test_cannot_revoke_the_last_role_manager(client_for) -> None:
@@ -121,8 +134,8 @@ async def test_cannot_revoke_the_last_role_manager(client_for) -> None:
         still_owner = next(
             m for m in (await c.get("/api/v1/members", headers=headers)).json() if m["is_self"]
         )
-        assert still_owner["role"] == "owner"
-        assert plain["role"] == "member"
+        assert "owner" in await _held_keys(c, headers, still_owner["membership_id"])
+        assert "member" in await _held_keys(c, headers, plain["membership_id"])
 
 
 async def test_cannot_revoke_self(client_for) -> None:
@@ -179,4 +192,5 @@ async def test_lookup_open_to_plain_members(client_for) -> None:
         assert r.status_code == 200
         rows = r.json()
         assert len(rows) == 1
-        assert set(rows[0].keys()) == {"user_id", "full_name", "email"}
+        # avatar_url joined the safe minimal shape in #122 (effective avatar for pickers).
+        assert set(rows[0].keys()) == {"user_id", "full_name", "email", "avatar_url"}

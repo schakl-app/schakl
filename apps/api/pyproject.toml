@@ -18,10 +18,17 @@ dependencies = [
     "httpx>=0.27",
     "itsdangerous>=2.2",
     "arq>=0.26",
+    "python-multipart>=0.0.9",
     "redis>=5.0",
     "python-multipart>=0.0.12",
     "email-validator>=2.2",
     "dnspython>=2.6",
+    # Strips raw HTML from stored markdown on write (issue #66); the render-side sanitizer is the
+    # other half. Rust-backed (ammonia), so it adds no meaningful startup or per-write cost.
+    "nh3>=0.2.18",
+    "apprise>=1.12.0",
+    "cryptography>=49.0.0",
+    "fastmcp>=2.12,<3",
 ]
 
 [dependency-groups]

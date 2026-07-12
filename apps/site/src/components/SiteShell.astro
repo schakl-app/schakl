@@ -1,0 +1,81 @@
+---
+// The site chrome — header, footer, head — shared by the landing page and every
+// CMS-created page. Branding (logo, colors, nav, footer) comes from the Keystatic
+// settings singleton.
+import settings from '../data/settings/site.json';
+import { localizeHref } from '../lib/links';
+import '../styles/landing.css';
+
+interface Props {
+  locale: 'nl' | 'en';
+  title: string;
+  description?: string;
+  /** Emit hreflang alternates (only pages that exist in both locales, e.g. the landing). */
+  alternates?: boolean;
+}
+const { locale, title, description, alternates = false } = Astro.props;
+
+// The logos are CMS-managed: Keystatic writes files into src/assets/site/ and stores their
+// paths in the settings singleton. Resolve through Vite so the build fingerprints them.
+// A dark variant exists because an <img> cannot inherit currentColor from the page.
+const logoModules = import.meta.glob('/src/assets/site/*', { eager: true });
+const resolveLogo = (p?: string) => (p ? (logoModules[p] as any)?.default?.src : undefined);
+const logoSrc: string | undefined = resolveLogo(settings.logo);
+const logoDarkSrc: string | undefined = resolveLogo((settings as any).logoDark);
+
+const href = (h: string) => localizeHref(locale, h);
+
+const otherLocaleHref = locale === 'nl' ? '/en/' : '/';
+const themeCss = `:root{--brand-accent:${settings.colors.accent};--brand-accent-dark:${settings.colors.accentDark};}`;
+---
+
+<html lang={locale}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    {description && <meta name="description" content={description} />}
+    <link rel="icon" href={settings.favicon} type="image/svg+xml" />
+    {alternates && <link rel="alternate" hreflang="nl" href={new URL('/', Astro.site)} />}
+    {alternates && <link rel="alternate" hreflang="en" href={new URL('/en/', Astro.site)} />}
+    <style set:html={themeCss}></style>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-row">
+        <a class="brand" href={href('/')}>
+          {logoSrc ? (
+            <picture>
+              {logoDarkSrc && <source media="(prefers-color-scheme: dark)" srcset={logoDarkSrc} />}
+              <img src={logoSrc} alt={settings.brandName} height="28" />
+            </picture>
+          ) : (
+            settings.brandName
+          )}
+        </a>
+        <nav class="site-nav" aria-label={locale === 'nl' ? 'Hoofdnavigatie' : 'Main navigation'}>
+          {settings.nav.map((item) => <a href={href(item.href)}>{item[locale]}</a>)}
+          <a href={otherLocaleHref} class="locale-switch" lang={locale === 'nl' ? 'en' : 'nl'}>
+            {locale === 'nl' ? 'EN' : 'NL'}
+          </a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <slot />
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-row">
+        <div>
+          <span class="brand">{settings.brandName}</span>
+          <p class="footer-note">{settings.footerNote[locale]}</p>
+        </div>
+        <nav aria-label="Footer">
+          {settings.footerLinks.map((item) => <a href={href(item.href)}>{item[locale]}</a>)}
+        </nav>
+      </div>
+    </footer>
+  </body>
+</html>

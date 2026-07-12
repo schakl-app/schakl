@@ -2,7 +2,11 @@
   import { Pencil, Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
+  import { page } from "$app/state";
+  import { editIntent } from "$lib/core/edit-intent";
   import { t } from "$lib/core/i18n";
+  import { entityPanelsFor } from "$lib/core/registry";
+  import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
@@ -14,11 +18,24 @@
 
   let { data, form } = $props();
 
-  let editing = $state(false);
+  // Opened straight into edit when reached from the overview's ⋯ → Bewerken (#78).
+  let editing = $state(editIntent());
   let confirmDelete = $state(false);
   const contact = $derived(data.contact);
   const custom = $derived((contact.custom ?? {}) as Record<string, unknown>);
   const fullName = $derived([contact.first_name, contact.last_name].filter(Boolean).join(" "));
+
+  // Panels contributed to a contact page (CLAUDE.md §6) — the core activity trail today (#67).
+  const enabled = $derived(page.data.theme?.enabledModules ?? []);
+  const panelSpecs = $derived(entityPanelsFor(enabled, "contact"));
+  const panelComponent = (key: string) => panelSpecs.find((spec) => spec.key === key)?.component;
+  // The activity panel reads no lookups; hand it the id/name shapes the page already holds.
+  const panelLookups = $derived({
+    members: data.members,
+    companies: data.companies.map((c) => ({ id: c.id, name: c.name })),
+    projects: [],
+    tasks: [],
+  });
   const companyDefinitions = $derived((data.companyDefinitions ?? []) as CustomFieldDefinition[]);
 
   // --- linked clients (many-to-many) ----------------------------------------
@@ -45,7 +62,7 @@
 </script>
 
 <svelte:head>
-  <title>{fullName}</title>
+  <title>{pageTitle(fullName)}</title>
 </svelte:head>
 
 <div class="mb-6 flex items-center justify-between">
@@ -215,6 +232,18 @@
     {/if}
   </div>
 {/if}
+
+<!-- Panels contributed by the registry — the activity trail hangs last (history under the
+     working surfaces). Every auditable record carries one (docs/UX.md principle 4, #67). -->
+{#each data.panels as panel (panel.key)}
+  {@const PanelComponent = panelComponent(panel.key)}
+  {#if PanelComponent}
+    <section class="mt-4 rounded-xl border border-border bg-surface-raised p-5">
+      <h2 class="mb-3 text-sm font-semibold text-text">{t(panel.titleKey)}</h2>
+      <PanelComponent data={panel.data} context={data.context} lookups={panelLookups} />
+    </section>
+  {/if}
+{/each}
 
 <ConfirmDialog
   bind:open={confirmDelete}

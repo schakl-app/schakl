@@ -86,7 +86,7 @@ export const actions: Actions = {
         assignees: assignees?.length ? assignees : undefined,
         status: String(form.get("status") ?? "active") as "active",
         budget_period: "total",
-        currency: "EUR",
+        currency: event.locals.theme.currency,
         billable_default: form.get("billable_default") === "on",
         budget_hours: numberOrNull(form.get("budget_hours")),
         budget_amount: numberOrNull(form.get("budget_amount")),

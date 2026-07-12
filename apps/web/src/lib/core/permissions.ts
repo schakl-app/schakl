@@ -53,6 +53,7 @@ export function hasPermission(
 export const SETTINGS_SCREEN_PERMISSIONS = [
   "settings.roles.manage",
   "settings.branding.write",
+  "settings.auth.manage",
   "settings.customfields.write",
   "settings.dashboard.manage",
   "settings.system.read",
@@ -60,6 +61,10 @@ export const SETTINGS_SCREEN_PERMISSIONS = [
   "tasks.label.write",
   "leave.type.write",
   "notifications.defaults.manage",
+  "settings.providers.manage",
+  "contacts.type.manage",
+  "subscriptions.type.manage",
+  "automation.rule.read",
 ] as const;
 
 export function canAccessSettings(granted: readonly string[] | undefined): boolean {

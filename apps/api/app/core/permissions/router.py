@@ -312,7 +312,11 @@ async def delete_role(
 
 
 async def _reassert_system_roles_after_delete(ctx: RequestContext, role: Role) -> None:
-    """Deleting a custom role must not leave a membership holding none at all (release *N*)."""
+    """Deleting a role must not leave a membership holding no roles at all (issue #56).
+
+    Custom-role-only memberships are legal since the legacy column dropped; *zero* roles is
+    not — that member would authenticate into a wall of 403s with no visible reason.
+    """
     orphans = (
         await ctx.session.execute(
             select(MembershipRole.membership_id).where(
@@ -325,16 +329,12 @@ async def _reassert_system_roles_after_delete(ctx: RequestContext, role: Role) -
     survivors = (
         await ctx.session.execute(
             select(MembershipRole.membership_id)
-            .join(Role, Role.id == MembershipRole.role_id)
             .where(
                 MembershipRole.org_id == ctx.org.id,
                 MembershipRole.membership_id.in_(orphans),
                 MembershipRole.role_id != role.id,
-                Role.is_system.is_(True),
             )
         )
     ).scalars().all()
     if set(orphans) - set(survivors):
-        raise AppError(
-            "system_role_required", "errors.system_role_required", status_code=409
-        )
+        raise AppError("role_required", "errors.role_required", status_code=409)

@@ -14,17 +14,27 @@ from fastapi import APIRouter, FastAPI
 from fastapi.responses import JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 
+import app.core.activity.panels  # noqa: F401  — registers the core activity panel on import
 from app.config import settings
+from app.core.activity.router import router as activity_router
+from app.core.apikeys.router import router as apikeys_router
 from app.core.auth.router import build_auth_router
+from app.core.auth.sso_router import router as sso_settings_router
 from app.core.customfields.router import router as customfields_router
 from app.core.dashboard import router as dashboard_router
 from app.core.domains import router as domains_router
+from app.core.email.router import router as email_settings_router
+from app.core.entitlements.router import router as license_router
+from app.core.entitlements.service import MCP_SKU, LicenseGateASGI, license_write_gate
+from app.core.impex.router import build_impex_router
 from app.core.instance.router import router as instance_router
 from app.core.members import router as members_router
 from app.core.meta import router as meta_router
 from app.core.permissions.reconcile import reconcile_permission_defaults
 from app.core.permissions.router import permissions_router, roles_router
+from app.core.providers.router import router as providers_router
 from app.core.setup import router as setup_router
+from app.core.storage.router import router as files_router
 from app.core.system import readiness
 from app.core.system import router as system_router
 from app.core.userprefs import router as userprefs_router
@@ -38,12 +48,20 @@ def _load_enabled_modules() -> None:
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app_: FastAPI) -> AsyncIterator[None]:
     """Grant every org's system roles the permissions of any module that shipped after that org
     was seeded (issue #19). One ``SELECT`` per org in steady state, and never fatal — a stale
-    catalog is a missing capability, not a reason to refuse to serve."""
+    catalog is a missing capability, not a reason to refuse to serve.
+
+    The mounted MCP sub-app (CLAUDE.md §12) brings its own lifespan (the streamable-HTTP
+    session manager); FastAPI only runs the outermost one, so it is entered here."""
     await reconcile_permission_defaults()
-    yield
+    mcp_asgi = getattr(app_.state, "mcp_app", None)
+    if mcp_asgi is not None:
+        async with mcp_asgi.lifespan(mcp_asgi):
+            yield
+    else:
+        yield
 
 
 def create_app() -> FastAPI:
@@ -73,15 +91,40 @@ def create_app() -> FastAPI:
     api.include_router(roles_router)
     api.include_router(permissions_router)
     api.include_router(customfields_router)
+    api.include_router(activity_router)
+    api.include_router(providers_router)
+    api.include_router(files_router)
+    api.include_router(email_settings_router)
+    api.include_router(sso_settings_router)
     api.include_router(dashboard_router)
     api.include_router(userprefs_router)
     api.include_router(system_router)
     api.include_router(instance_router)
+    api.include_router(license_router)
+    api.include_router(apikeys_router)
     for module in registry.enabled(settings.enabled_modules):
         if module.router is not None:
-            api.include_router(module.router)
+            # Licensed modules (issue #137) get one mount-time gate: mutations require the
+            # sku to be writable (covered by a license, or inside a grace window). Reads
+            # never block — an expired module is read-only, not gone.
+            deps = [license_write_gate(module.sku)] if module.sku else []
+            api.include_router(module.router, dependencies=deps)
+    # After module loading on purpose: the impex routes are built per opted-in entity so each
+    # one declares that entity's own read/write permission (issue #77, §15 deny-by-default).
+    api.include_router(build_impex_router())
 
     app.include_router(api)
+
+    # MCP (CLAUDE.md §12): the API surface as tools, API-key authenticated. Built after the
+    # routers so the OpenAPI spec it derives from is complete.
+    if settings.mcp_enabled:
+        from app.core.mcp import build_mcp_asgi_app
+
+        mcp_asgi = build_mcp_asgi_app(app)
+        app.state.mcp_app = mcp_asgi
+        # The MCP surface is a licensed sku (issue #137). It is read-first by design, so
+        # instead of a read/write split the whole surface answers 402 when not covered.
+        app.mount("/mcp", LicenseGateASGI(mcp_asgi, sku=MCP_SKU))
 
     @app.get("/health", tags=["meta"])
     async def health() -> dict:

@@ -4,6 +4,62 @@
  */
 
 export interface paths {
+    "/api/v1/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Entity Activity */
+        get: operations["entity_activity_api_v1_activity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/api-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Personal Keys */
+        get: operations["list_personal_keys_api_v1_api_keys_get"];
+        put?: never;
+        /** Create Personal Key */
+        post: operations["create_personal_key_api_v1_api_keys_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/api-keys/{key_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke Key
+         * @description Revoke a key. Own personal keys need ``apikeys.personal.manage``; the service refines to
+         *     ``apikeys.service_account.manage`` for a service-account key.
+         */
+        post: operations["revoke_key_api_v1_api_keys__key_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/forgot-password": {
         parameters: {
             query?: never;
@@ -49,6 +105,40 @@ export interface paths {
         put?: never;
         /** Auth:Cookie.Logout */
         post: operations["auth_cookie_logout_api_v1_auth_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/oidc/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Oidc Callback */
+        get: operations["oidc_callback_api_v1_auth_oidc_callback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/oidc/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Oidc Login */
+        get: operations["oidc_login_api_v1_auth_oidc_login_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -117,6 +207,100 @@ export interface paths {
         put?: never;
         /** Verify:Verify */
         post: operations["verify_verify_api_v1_auth_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/automation/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Catalog
+         * @description The trigger events and action types the rule editor may offer (code-defined).
+         */
+        get: operations["get_catalog_api_v1_automation_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/automation/dry-run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dry Run
+         * @description Evaluate a draft rule against a sample entity; executes nothing.
+         */
+        post: operations["dry_run_api_v1_automation_dry_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/automation/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Rules */
+        get: operations["list_rules_api_v1_automation_rules_get"];
+        put?: never;
+        /** Create Rule */
+        post: operations["create_rule_api_v1_automation_rules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/automation/rules/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Rule */
+        get: operations["get_rule_api_v1_automation_rules__rule_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Rule */
+        delete: operations["delete_rule_api_v1_automation_rules__rule_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Rule */
+        patch: operations["update_rule_api_v1_automation_rules__rule_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/automation/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Runs */
+        get: operations["list_runs_api_v1_automation_runs_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -196,6 +380,42 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/contacts/types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Contact Types */
+        get: operations["list_contact_types_api_v1_contacts_types_get"];
+        put?: never;
+        /** Create Contact Type */
+        post: operations["create_contact_type_api_v1_contacts_types_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/contacts/types/{type_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Contact Type */
+        delete: operations["delete_contact_type_api_v1_contacts_types__type_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Contact Type */
+        patch: operations["update_contact_type_api_v1_contacts_types__type_id__patch"];
         trace?: never;
     };
     "/api/v1/contacts/{contact_id}": {
@@ -350,6 +570,431 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/domains": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Domains */
+        get: operations["list_domains_api_v1_domains_get"];
+        put?: never;
+        /** Create Domain */
+        post: operations["create_domain_api_v1_domains_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/domains/{domain_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Domain */
+        get: operations["get_domain_api_v1_domains__domain_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Domain */
+        delete: operations["delete_domain_api_v1_domains__domain_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Domain */
+        patch: operations["update_domain_api_v1_domains__domain_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/domains/{domain_id}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Domain Dns
+         * @description Re-query public DNS for this domain's nameservers + DNSSEC now (#92).
+         */
+        post: operations["refresh_domain_dns_api_v1_domains__domain_id__refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Files
+         * @description The files attached to one entity (a task's documents, a project's documents).
+         */
+        get: operations["list_files_api_v1_files_get"];
+        put?: never;
+        /**
+         * Upload File
+         * @description Multipart upload. Size and content type are bounded by instance config.
+         */
+        post: operations["upload_file_api_v1_files_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/{file_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Serve File
+         * @description Stream the bytes. Cross-tenant ids read as 404 (tenant-scoped row lookup).
+         */
+        get: operations["serve_file_api_v1_files__file_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete File
+         * @description Remove the row and its bytes. Branding/avatar files carry extra guards (service).
+         */
+        delete: operations["delete_file_api_v1_files__file_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/{file_id}/public": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Serve Public File
+         * @description Anonymous serving for branding assets, org resolved strictly from the hostname.
+         *
+         *     Suspended orgs still resolve (their login screen keeps its branding, matching
+         *     `/meta/tenant`); deleted orgs — and any unknown host — read as 404.
+         */
+        get: operations["serve_public_file_api_v1_files__file_id__public_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hosting": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Hosting */
+        get: operations["list_hosting_api_v1_hosting_get"];
+        put?: never;
+        /** Create Hosting */
+        post: operations["create_hosting_api_v1_hosting_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hosting/{hosting_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Hosting */
+        get: operations["get_hosting_api_v1_hosting__hosting_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Hosting */
+        delete: operations["delete_hosting_api_v1_hosting__hosting_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Hosting */
+        patch: operations["update_hosting_api_v1_hosting__hosting_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/impex/company/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Export Company
+         * @description Export the current filtered company list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+         */
+        get: operations["impex_export_company_api_v1_impex_company_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/company/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Import Company
+         * @description Import company rows from CSV, upserting on `name` (max 2000 data rows per request).
+         */
+        post: operations["impex_import_company_api_v1_impex_company_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/contact/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Export Contact
+         * @description Export the current filtered contact list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+         */
+        get: operations["impex_export_contact_api_v1_impex_contact_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/contact/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Import Contact
+         * @description Import contact rows from CSV, upserting on `email` (max 2000 data rows per request).
+         */
+        post: operations["impex_import_contact_api_v1_impex_contact_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/entities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Impex Entities
+         * @description The entity types with CSV support, for the Instellingen → Import & export screen.
+         */
+        get: operations["list_impex_entities_api_v1_impex_entities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/project/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Export Project
+         * @description Export the current filtered project list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+         */
+        get: operations["impex_export_project_api_v1_impex_project_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/project/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Import Project
+         * @description Import project rows from CSV, upserting on `name` (max 2000 data rows per request).
+         */
+        post: operations["impex_import_project_api_v1_impex_project_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/subscription/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Export Subscription
+         * @description Export the current filtered subscription list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+         */
+        get: operations["impex_export_subscription_api_v1_impex_subscription_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/subscription/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Import Subscription
+         * @description Import subscription rows from CSV, upserting on `name` (max 2000 data rows per request).
+         */
+        post: operations["impex_import_subscription_api_v1_impex_subscription_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/task/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Export Task
+         * @description Export the current filtered task list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+         */
+        get: operations["impex_export_task_api_v1_impex_task_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/task/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Import Task
+         * @description Import task rows from CSV, create-only (no natural key) (max 2000 data rows per request).
+         */
+        post: operations["impex_import_task_api_v1_impex_task_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/time_entry/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Export Time Entry
+         * @description Export the current filtered time_entry list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+         */
+        get: operations["impex_export_time_entry_api_v1_impex_time_entry_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/time_entry/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Import Time Entry
+         * @description Import time_entry rows from CSV, create-only (no natural key) (max 2000 data rows per request).
+         */
+        post: operations["impex_import_time_entry_api_v1_impex_time_entry_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/instance/audit": {
         parameters: {
             query?: never;
@@ -379,6 +1024,33 @@ export interface paths {
         /** Stop Impersonation */
         post: operations["stop_impersonation_api_v1_instance_impersonation_stop_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/instance/license": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get License */
+        get: operations["get_license_api_v1_instance_license_get"];
+        /**
+         * Install License
+         * @description Install (or replace) the instance license. The key is verified before it is stored,
+         *     so a stored license is always one that was valid at install time.
+         */
+        put: operations["install_license_api_v1_instance_license_put"];
+        post?: never;
+        /**
+         * Remove License
+         * @description Remove the installed license (API-level escape hatch; the UI replaces rather than
+         *     removes). Data in licensed modules is untouched — they go read-only, never away.
+         */
+        delete: operations["remove_license_api_v1_instance_license_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -557,6 +1229,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/leave/contracts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Contracts
+         * @description A user's employment history. Own for a member; anyone's — or everyone's, with
+         *     ``all_users`` — for a manager (the Settings → Users roster).
+         */
+        get: operations["list_contracts_api_v1_leave_contracts_get"];
+        put?: never;
+        /** Create Contract */
+        post: operations["create_contract_api_v1_leave_contracts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/contracts/{contract_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Contract */
+        delete: operations["delete_contract_api_v1_leave_contracts__contract_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Contract */
+        patch: operations["update_contract_api_v1_leave_contracts__contract_id__patch"];
+        trace?: never;
+    };
     "/api/v1/leave/entitlements": {
         parameters: {
             query?: never;
@@ -714,6 +1426,116 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/leave/rate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My Rate
+         * @description The caller's own hourly rate (salary-adjacent — a member sees only their own).
+         */
+        get: operations["my_rate_api_v1_leave_rate_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/rate/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * User Rate
+         * @description One employee's rate. Own on ``:own``; anyone's on ``:any``.
+         */
+        get: operations["user_rate_api_v1_leave_rate__user_id__get"];
+        /**
+         * Set Rate
+         * @description Set or clear an employee's rate (admin). Attributed nowhere — the rate is current state.
+         */
+        put: operations["set_rate_api_v1_leave_rate__user_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/rates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Rates
+         * @description Every employee's rate for the managers' roster. Requires ``leave.rate.read:any``.
+         */
+        get: operations["list_rates_api_v1_leave_rates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/recurring": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Recurring
+         * @description Rostered-free-day patterns: a member's own; anyone's/all on ``leave.profile.manage``.
+         */
+        get: operations["list_recurring_api_v1_leave_recurring_get"];
+        put?: never;
+        /**
+         * Create Recurring
+         * @description A manager plans any type for anyone; a member plans their **own** self-service types
+         *     (``requires_approval = false``) — the service enforces the split.
+         */
+        post: operations["create_recurring_api_v1_leave_recurring_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/recurring/{recurring_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Recurring
+         * @description Deletes the pattern only; the days it already placed stay individually cancellable.
+         */
+        delete: operations["delete_recurring_api_v1_leave_recurring__recurring_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Recurring */
+        patch: operations["update_recurring_api_v1_leave_recurring__recurring_id__patch"];
+        trace?: never;
+    };
     "/api/v1/leave/requests": {
         parameters: {
             query?: never;
@@ -819,7 +1641,7 @@ export interface paths {
         };
         /**
          * Get Settings
-         * @description The schedule a new employee inherits. An org that never saved one gets the default.
+         * @description The org's leave settings. An org that never saved a row gets the defaults.
          */
         get: operations["get_settings_api_v1_leave_settings_get"];
         /** Update Settings */
@@ -1014,10 +1836,8 @@ export interface paths {
          * Set Member Roles
          * @description Replace a membership's whole role set in one save. A user may hold several roles.
          *
-         *     Release *N* rejects a set with no ``is_system`` role: ``memberships.role`` is dual-written by
-         *     collapsing the system roles to the highest privilege, and a custom-role-only membership has no
-         *     legacy value the previous image could parse (issue #19, the rollback decision). The constraint
-         *     lifts when that column is dropped.
+         *     Custom-role-only memberships are legal since the legacy column dropped (issue #56); an empty
+         *     set is still refused — a membership holding nothing would authenticate into a wall of 403s.
          */
         put: operations["set_member_roles_api_v1_members__membership_id__roles_put"];
         post?: never;
@@ -1162,6 +1982,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/notifications/channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Channels */
+        get: operations["list_channels_api_v1_notifications_channels_get"];
+        put?: never;
+        /** Create Channel */
+        post: operations["create_channel_api_v1_notifications_channels_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/channels/{channel_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Channel */
+        delete: operations["delete_channel_api_v1_notifications_channels__channel_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Channel */
+        patch: operations["update_channel_api_v1_notifications_channels__channel_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/notifications/channels/{channel_id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Channel
+         * @description Send a test message and report the provider's real error (#17).
+         */
+        post: operations["test_channel_api_v1_notifications_channels__channel_id__test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/notifications/mark-all-read": {
         parameters: {
             query?: never;
@@ -1214,6 +2090,27 @@ export interface paths {
         get: operations["get_default_preferences_api_v1_notifications_preferences_defaults_get"];
         /** Set Default Preferences */
         put: operations["set_default_preferences_api_v1_notifications_preferences_defaults_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/preferences/email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Email Preference
+         * @description My e-mail delivery rule (#17): off by default, one cadence for all my notifications.
+         */
+        get: operations["get_email_preference_api_v1_notifications_preferences_email_get"];
+        /** Set Email Preference */
+        put: operations["set_email_preference_api_v1_notifications_preferences_email_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1351,6 +2248,43 @@ export interface paths {
         patch: operations["update_project_api_v1_projects__project_id__patch"];
         trace?: never;
     };
+    "/api/v1/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Providers */
+        get: operations["list_providers_api_v1_providers_get"];
+        put?: never;
+        /** Create Provider */
+        post: operations["create_provider_api_v1_providers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/providers/{provider_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Provider */
+        get: operations["get_provider_api_v1_providers__provider_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Provider */
+        delete: operations["delete_provider_api_v1_providers__provider_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Provider */
+        patch: operations["update_provider_api_v1_providers__provider_id__patch"];
+        trace?: never;
+    };
     "/api/v1/roles": {
         parameters: {
             query?: never;
@@ -1407,6 +2341,130 @@ export interface paths {
         patch: operations["update_role_api_v1_roles__role_id__patch"];
         trace?: never;
     };
+    "/api/v1/service-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Service Accounts */
+        get: operations["list_service_accounts_api_v1_service_accounts_get"];
+        put?: never;
+        /** Create Service Account */
+        post: operations["create_service_account_api_v1_service_accounts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/service-accounts/{account_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Service Account */
+        delete: operations["delete_service_account_api_v1_service_accounts__account_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/service-accounts/{account_id}/keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Service Account Keys */
+        get: operations["list_service_account_keys_api_v1_service_accounts__account_id__keys_get"];
+        put?: never;
+        /** Create Service Account Key */
+        post: operations["create_service_account_key_api_v1_service_accounts__account_id__keys_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Email Settings */
+        get: operations["get_email_settings_api_v1_settings_email_get"];
+        /** Save Email Settings */
+        put: operations["save_email_settings_api_v1_settings_email_put"];
+        post?: never;
+        /** Delete Email Settings */
+        delete: operations["delete_email_settings_api_v1_settings_email_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/email/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Email Settings */
+        post: operations["test_email_settings_api_v1_settings_email_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/sso": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Sso Settings */
+        get: operations["get_sso_settings_api_v1_settings_sso_get"];
+        /** Save Sso Settings */
+        put: operations["save_sso_settings_api_v1_settings_sso_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/sso/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Sso Settings */
+        post: operations["test_sso_settings_api_v1_settings_sso_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/setup": {
         parameters: {
             query?: never;
@@ -1433,6 +2491,155 @@ export interface paths {
         };
         /** Setup Status */
         get: operations["setup_status_api_v1_setup_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Subscriptions */
+        get: operations["list_subscriptions_api_v1_subscriptions_get"];
+        put?: never;
+        /** Create Subscription */
+        post: operations["create_subscription_api_v1_subscriptions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/subscriptions/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Summary
+         * @description MRR/ARR + the invoices due within a month, for Overzicht → Omzet.
+         */
+        get: operations["summary_api_v1_subscriptions_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/subscriptions/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Subscription Templates */
+        get: operations["list_subscription_templates_api_v1_subscriptions_templates_get"];
+        put?: never;
+        /** Create Subscription Template */
+        post: operations["create_subscription_template_api_v1_subscriptions_templates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/subscriptions/templates/{template_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Subscription Template */
+        delete: operations["delete_subscription_template_api_v1_subscriptions_templates__template_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Subscription Template */
+        patch: operations["update_subscription_template_api_v1_subscriptions_templates__template_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/subscriptions/types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Subscription Types */
+        get: operations["list_subscription_types_api_v1_subscriptions_types_get"];
+        put?: never;
+        /** Create Subscription Type */
+        post: operations["create_subscription_type_api_v1_subscriptions_types_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/subscriptions/types/{type_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Subscription Type */
+        delete: operations["delete_subscription_type_api_v1_subscriptions_types__type_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Subscription Type */
+        patch: operations["update_subscription_type_api_v1_subscriptions_types__type_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/subscriptions/{subscription_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Subscription */
+        get: operations["get_subscription_api_v1_subscriptions__subscription_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Subscription */
+        delete: operations["delete_subscription_api_v1_subscriptions__subscription_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Subscription */
+        patch: operations["update_subscription_api_v1_subscriptions__subscription_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/subscriptions/{subscription_id}/prices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Price History
+         * @description The append-only price history, newest first.
+         */
+        get: operations["price_history_api_v1_subscriptions__subscription_id__prices_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1569,6 +2776,42 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/statuses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Statuses */
+        get: operations["list_statuses_api_v1_tasks_statuses_get"];
+        put?: never;
+        /** Create Status */
+        post: operations["create_status_api_v1_tasks_statuses_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/statuses/{status_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Status */
+        delete: operations["delete_status_api_v1_tasks_statuses__status_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Status */
+        patch: operations["update_status_api_v1_tasks_statuses__status_id__patch"];
         trace?: never;
     };
     "/api/v1/tasks/templates": {
@@ -1803,6 +3046,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/time/cost": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Project Cost
+         * @description A project's cost from employee rates (#111). The service also demands
+         *     ``leave.rate.read:any`` — the figure is salary-derived.
+         */
+        get: operations["project_cost_api_v1_time_cost_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/time/day": {
         parameters: {
             query?: never;
@@ -1818,6 +3082,30 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/time/drafts/{entry_date}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Upsert Draft
+         * @description Upsert the caller's own draft for a day. Author-only by construction.
+         */
+        put: operations["upsert_draft_api_v1_time_drafts__entry_date__put"];
+        post?: never;
+        /**
+         * Delete Draft
+         * @description Discard the caller's own draft. Idempotent.
+         */
+        delete: operations["delete_draft_api_v1_time_drafts__entry_date__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2096,6 +3384,43 @@ export interface paths {
         patch: operations["users_patch_user_api_v1_users__id__patch"];
         trace?: never;
     };
+    "/api/v1/websites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Websites */
+        get: operations["list_websites_api_v1_websites_get"];
+        put?: never;
+        /** Create Website */
+        post: operations["create_website_api_v1_websites_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/websites/{website_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Website */
+        get: operations["get_website_api_v1_websites__website_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Website */
+        delete: operations["delete_website_api_v1_websites__website_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Website */
+        patch: operations["update_website_api_v1_websites__website_id__patch"];
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -2146,34 +3471,28 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /**
-         * ActivityItem
-         * @description One line of a record's activity feed — recipient-independent.
-         */
-        ActivityItem: {
-            /** Actor Name */
-            actor_name?: string | null;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Entity Id
-             * Format: uuid
-             */
-            entity_id: string;
-            /** Entity Type */
-            entity_type: string;
-            /** Event Type */
-            event_type: string;
+        /** ActionRead */
+        ActionRead: {
+            /** Action Type */
+            action_type: string;
+            /** Config */
+            config: {
+                [key: string]: unknown;
+            };
             /**
              * Id
              * Format: uuid
              */
             id: string;
-            /** Payload */
-            payload?: {
+            /** Position */
+            position: number;
+        };
+        /** ActionWrite */
+        ActionWrite: {
+            /** Action Type */
+            action_type: string;
+            /** Config */
+            config?: {
                 [key: string]: unknown;
             };
         };
@@ -2204,6 +3523,92 @@ export interface components {
             payload: {
                 [key: string]: unknown;
             };
+        };
+        /** ApiKeyCreate */
+        ApiKeyCreate: {
+            /** Expires At */
+            expires_at?: string | null;
+            /** Name */
+            name: string;
+            /** Scopes */
+            scopes: string[];
+        };
+        /**
+         * ApiKeyCreated
+         * @description The one and only time the full secret is returned — at creation.
+         */
+        ApiKeyCreated: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Expires At */
+            expires_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /** Principal Type */
+            principal_type: string;
+            /** Redacted */
+            redacted: string;
+            /** Revoked At */
+            revoked_at: string | null;
+            /** Scopes */
+            scopes: string[];
+            /** Secret */
+            secret: string;
+            /** Service Account Id */
+            service_account_id: string | null;
+            /** User Id */
+            user_id: string | null;
+        };
+        /** ApiKeyRead */
+        ApiKeyRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Expires At */
+            expires_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /** Principal Type */
+            principal_type: string;
+            /** Redacted */
+            redacted: string;
+            /** Revoked At */
+            revoked_at: string | null;
+            /** Scopes */
+            scopes: string[];
+            /** Service Account Id */
+            service_account_id: string | null;
+            /** User Id */
+            user_id: string | null;
         };
         /** AssigneeRead */
         AssigneeRead: {
@@ -2279,6 +3684,54 @@ export interface components {
             /** Username */
             username: string;
         };
+        /** Body_impex_import_company_api_v1_impex_company_import_post */
+        Body_impex_import_company_api_v1_impex_company_import_post: {
+            /**
+             * File
+             * @description CSV file; headers are the export's keys
+             */
+            file: string;
+        };
+        /** Body_impex_import_contact_api_v1_impex_contact_import_post */
+        Body_impex_import_contact_api_v1_impex_contact_import_post: {
+            /**
+             * File
+             * @description CSV file; headers are the export's keys
+             */
+            file: string;
+        };
+        /** Body_impex_import_project_api_v1_impex_project_import_post */
+        Body_impex_import_project_api_v1_impex_project_import_post: {
+            /**
+             * File
+             * @description CSV file; headers are the export's keys
+             */
+            file: string;
+        };
+        /** Body_impex_import_subscription_api_v1_impex_subscription_import_post */
+        Body_impex_import_subscription_api_v1_impex_subscription_import_post: {
+            /**
+             * File
+             * @description CSV file; headers are the export's keys
+             */
+            file: string;
+        };
+        /** Body_impex_import_task_api_v1_impex_task_import_post */
+        Body_impex_import_task_api_v1_impex_task_import_post: {
+            /**
+             * File
+             * @description CSV file; headers are the export's keys
+             */
+            file: string;
+        };
+        /** Body_impex_import_time_entry_api_v1_impex_time_entry_import_post */
+        Body_impex_import_time_entry_api_v1_impex_time_entry_import_post: {
+            /**
+             * File
+             * @description CSV file; headers are the export's keys
+             */
+            file: string;
+        };
         /** Body_reset_forgot_password_api_v1_auth_forgot_password_post */
         Body_reset_forgot_password_api_v1_auth_forgot_password_post: {
             /**
@@ -2293,6 +3746,11 @@ export interface components {
             password: string;
             /** Token */
             token: string;
+        };
+        /** Body_upload_file_api_v1_files_post */
+        Body_upload_file_api_v1_files_post: {
+            /** File */
+            file: string;
         };
         /** Body_verify_request_token_api_v1_auth_request_verify_token_post */
         Body_verify_request_token_api_v1_auth_request_verify_token_post: {
@@ -2384,8 +3842,86 @@ export interface components {
             /** Updated */
             updated: number;
         };
+        /** CatalogRead */
+        CatalogRead: {
+            /** Actions */
+            actions: string[];
+            /** Triggers */
+            triggers: components["schemas"]["TriggerInfo"][];
+        };
+        /** ChannelCreate */
+        ChannelCreate: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Event Filter */
+            event_filter?: string[];
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "email" | "slack" | "msteams" | "gchat" | "discord" | "telegram" | "mailto" | "webhook" | "custom";
+            /** Name */
+            name: string;
+            /** Url */
+            url: string;
+            /** User Id */
+            user_id?: string | null;
+        };
+        /** ChannelRead */
+        ChannelRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Event Filter */
+            event_filter: string[];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /** Redacted */
+            redacted: string;
+            /** User Id */
+            user_id: string | null;
+        };
+        /** ChannelTestResult */
+        ChannelTestResult: {
+            /** Error */
+            error?: string | null;
+            /** Ok */
+            ok: boolean;
+        };
+        /** ChannelUpdate */
+        ChannelUpdate: {
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Event Filter */
+            event_filter?: string[] | null;
+            /** Name */
+            name?: string | null;
+            /** Url */
+            url?: string | null;
+        };
         /** ChecklistCreate */
         ChecklistCreate: {
+            /** Description */
+            description?: string | null;
             /** Template Id */
             template_id?: string | null;
             /** Title */
@@ -2393,11 +3929,15 @@ export interface components {
         };
         /** ChecklistItemCreate */
         ChecklistItemCreate: {
+            /** Description */
+            description?: string | null;
             /** Title */
             title: string;
         };
         /** ChecklistItemRead */
         ChecklistItemRead: {
+            /** Description */
+            description?: string | null;
             /** Done */
             done: boolean;
             /**
@@ -2412,6 +3952,8 @@ export interface components {
         };
         /** ChecklistItemUpdate */
         ChecklistItemUpdate: {
+            /** Description */
+            description?: string | null;
             /** Done */
             done?: boolean | null;
             /** Position */
@@ -2421,6 +3963,8 @@ export interface components {
         };
         /** ChecklistRead */
         ChecklistRead: {
+            /** Description */
+            description?: string | null;
             /**
              * Id
              * Format: uuid
@@ -2436,7 +3980,7 @@ export interface components {
         /** ChecklistTemplateCreate */
         ChecklistTemplateCreate: {
             /** Items */
-            items?: string[];
+            items?: components["schemas"]["TemplateChecklistItem"][];
             /** Title */
             title: string;
         };
@@ -2448,19 +3992,21 @@ export interface components {
              */
             id: string;
             /** Items */
-            items?: string[];
+            items?: components["schemas"]["TemplateChecklistItem"][];
             /** Title */
             title: string;
         };
         /** ChecklistTemplateUpdate */
         ChecklistTemplateUpdate: {
             /** Items */
-            items?: string[] | null;
+            items?: components["schemas"]["TemplateChecklistItem"][] | null;
             /** Title */
             title?: string | null;
         };
         /** ChecklistUpdate */
         ChecklistUpdate: {
+            /** Description */
+            description?: string | null;
             /** Position */
             position?: number | null;
             /** Title */
@@ -2503,6 +4049,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Mentioned User Ids */
+            mentioned_user_ids?: string[];
         };
         /** CommentUpdate */
         CommentUpdate: {
@@ -2643,7 +4191,7 @@ export interface components {
         };
         /**
          * ContactCompanyLink
-         * @description A company a contact is attached to, with the per-company primary flag.
+         * @description A company a contact is attached to, with the per-company primary flag and contact type.
          */
         ContactCompanyLink: {
             /**
@@ -2651,6 +4199,8 @@ export interface components {
              * Format: uuid
              */
             company_id: string;
+            /** Contact Type Id */
+            contact_type_id?: string | null;
             /** Is Primary */
             is_primary: boolean;
             /** Name */
@@ -2679,7 +4229,7 @@ export interface components {
         };
         /**
          * ContactLinkCreate
-         * @description Attach a contact to a company; optionally make it that company's primary.
+         * @description Attach a contact to a company; optionally make it that company's primary and type it.
          */
         ContactLinkCreate: {
             /**
@@ -2687,6 +4237,8 @@ export interface components {
              * Format: uuid
              */
             company_id: string;
+            /** Contact Type Id */
+            contact_type_id?: string | null;
             /**
              * Is Primary
              * @default false
@@ -2695,10 +4247,15 @@ export interface components {
         };
         /**
          * ContactLinkUpdate
-         * @description Update a company↔contact link (only the primary flag is mutable).
+         * @description Update a company↔contact link (the primary flag and/or the contact type).
          */
         ContactLinkUpdate: {
-            /** Is Primary */
+            /** Contact Type Id */
+            contact_type_id?: string | null;
+            /**
+             * Is Primary
+             * @default false
+             */
             is_primary: boolean;
         };
         /** ContactRead */
@@ -2741,6 +4298,75 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** ContactTypeCreate */
+        ContactTypeCreate: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Key */
+            key: string;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            };
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+        };
+        /** ContactTypeRead */
+        ContactTypeRead: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Key */
+            key: string;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            };
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** ContactTypeUpdate */
+        ContactTypeUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            } | null;
+            /** Position */
+            position?: number | null;
         };
         /** ContactUpdate */
         ContactUpdate: {
@@ -2908,6 +4534,7 @@ export interface components {
              * Format: date
              */
             date: string;
+            draft?: components["schemas"]["TimeEntryDraftRead"] | null;
             /** Entries */
             entries: components["schemas"]["TimeEntryRead"][];
             /** Total Minutes */
@@ -2925,20 +4552,161 @@ export interface components {
             /** Domain */
             domain: string;
         };
-        /** DomainStatus */
-        DomainStatus: {
-            /** Custom Domain */
-            custom_domain: string | null;
-            /** Custom Domain Verified At */
-            custom_domain_verified_at: string | null;
-            /** Pending Domain */
-            pending_domain: string | null;
-            /** Txt Record Name */
-            txt_record_name: string | null;
-            /** Txt Record Value */
-            txt_record_value: string | null;
-            /** Verification Token */
-            verification_token: string | null;
+        /** DomainCreate */
+        DomainCreate: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Custom */
+            custom?: {
+                [key: string]: unknown;
+            };
+            /** Dns Provider Id */
+            dns_provider_id?: string | null;
+            email_contact?: components["schemas"]["PartyRef"] | null;
+            /**
+             * Email Enabled
+             * @default false
+             */
+            email_enabled: boolean;
+            /** Email Provider Id */
+            email_provider_id?: string | null;
+            /** Name */
+            name: string;
+            /** Registrar Provider Id */
+            registrar_provider_id?: string | null;
+            registry_contact?: components["schemas"]["PartyRef"] | null;
+            /** @default active */
+            status: components["schemas"]["DomainStatus-Input"];
+        };
+        /** DomainRead */
+        DomainRead: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /**
+             * Company Name
+             * @default
+             */
+            company_name: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Custom */
+            custom?: {
+                [key: string]: unknown;
+            };
+            /** Dns Checked At */
+            dns_checked_at?: string | null;
+            /** Dns Provider Id */
+            dns_provider_id?: string | null;
+            /** Dns Provider Name */
+            dns_provider_name?: string | null;
+            /** Dnssec */
+            dnssec?: boolean | null;
+            email_contact?: components["schemas"]["PartyReadRef"] | null;
+            /**
+             * Email Enabled
+             * @default false
+             */
+            email_enabled: boolean;
+            /** Email Provider Id */
+            email_provider_id?: string | null;
+            /** Email Provider Name */
+            email_provider_name?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Mx Records */
+            mx_records?: components["schemas"]["MxRecord"][] | null;
+            /** Name */
+            name: string;
+            /** Nameservers */
+            nameservers?: string[] | null;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /** Registrar Provider Id */
+            registrar_provider_id?: string | null;
+            /** Registrar Provider Name */
+            registrar_provider_name?: string | null;
+            registry_contact?: components["schemas"]["PartyReadRef"] | null;
+            status: components["schemas"]["app__modules__domains__models__DomainStatus"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * DomainStatus
+         * @description Operational state of a domain. ``redirect``'s uptime/redirect webhook is a later slice.
+         * @enum {string}
+         */
+        "DomainStatus-Input": "active" | "redirect" | "parked" | "expired" | "inactive";
+        /** DomainUpdate */
+        DomainUpdate: {
+            /** Company Id */
+            company_id?: string | null;
+            /** Custom */
+            custom?: {
+                [key: string]: unknown;
+            } | null;
+            /** Dns Provider Id */
+            dns_provider_id?: string | null;
+            email_contact?: components["schemas"]["PartyRef"] | null;
+            /** Email Enabled */
+            email_enabled?: boolean | null;
+            /** Email Provider Id */
+            email_provider_id?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Registrar Provider Id */
+            registrar_provider_id?: string | null;
+            registry_contact?: components["schemas"]["PartyRef"] | null;
+            status?: components["schemas"]["DomainStatus-Input"] | null;
+        };
+        /**
+         * DryRunRequest
+         * @description A draft rule body + a sample entity: what *would* happen? Nothing executes.
+         */
+        DryRunRequest: {
+            /** Actions */
+            actions?: components["schemas"]["ActionWrite"][];
+            /** Conditions */
+            conditions?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            };
+            /** Trigger Event */
+            trigger_event: string;
+        };
+        /** DryRunResult */
+        DryRunResult: {
+            /** Matched */
+            matched: boolean;
+            /** Snapshot Found */
+            snapshot_found: boolean;
+            /** Would Fire */
+            would_fire: string[];
         };
         /** EffectivePermissions */
         EffectivePermissions: {
@@ -2950,6 +4718,190 @@ export interface components {
             role_ids: string[];
             /** User Id */
             user_id: string;
+        };
+        /**
+         * EmailPrefRead
+         * @description The user's effective e-mail rule: off, or a cadence (immediate / daily / weekly).
+         */
+        EmailPrefRead: {
+            /**
+             * Digest
+             * @enum {string}
+             */
+            digest: "immediate" | "daily" | "weekly";
+            /** Digest Time */
+            digest_time?: string | null;
+            /** Digest Weekday */
+            digest_weekday?: number | null;
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Source
+             * @default default
+             */
+            source: string;
+        };
+        /** EmailPrefWrite */
+        EmailPrefWrite: {
+            /**
+             * Digest
+             * @default daily
+             * @enum {string}
+             */
+            digest: "immediate" | "daily" | "weekly";
+            /** Digest Time */
+            digest_time?: string | null;
+            /** Digest Weekday */
+            digest_weekday?: number | null;
+            /** Enabled */
+            enabled: boolean;
+        };
+        /**
+         * EmailSettingsRead
+         * @description The stored configuration minus its secrets: enough to repopulate the form.
+         */
+        EmailSettingsRead: {
+            /** From Email */
+            from_email: string;
+            /** From Name */
+            from_name: string;
+            /**
+             * Has Secret
+             * @default false
+             */
+            has_secret: boolean;
+            /** Host */
+            host?: string | null;
+            /** Port */
+            port?: number | null;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "smtp" | "brevo" | "sendgrid" | "smtp2go";
+            /** Reply To */
+            reply_to?: string | null;
+            /** Security */
+            security?: string | null;
+            /** Username */
+            username?: string | null;
+        };
+        /**
+         * EmailSettingsWrite
+         * @description Upsert payload. Secret fields left empty on an update keep the stored value
+         *     (as long as the provider is unchanged) — the API never plays the secret back.
+         */
+        EmailSettingsWrite: {
+            /** Api Key */
+            api_key?: string | null;
+            /**
+             * From Email
+             * Format: email
+             */
+            from_email: string;
+            /** From Name */
+            from_name: string;
+            /** Host */
+            host?: string | null;
+            /** Password */
+            password?: string | null;
+            /** Port */
+            port?: number | null;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "smtp" | "brevo" | "sendgrid" | "smtp2go";
+            /** Reply To */
+            reply_to?: string | null;
+            /** Security */
+            security?: ("starttls" | "ssl" | "none") | null;
+            /** Username */
+            username?: string | null;
+        };
+        /** EmailTestResult */
+        EmailTestResult: {
+            /** Error */
+            error?: string | null;
+            /** Ok */
+            ok: boolean;
+        };
+        /** EmploymentContractCreate */
+        EmploymentContractCreate: {
+            /** Contract Hours Per Week */
+            contract_hours_per_week: number | string;
+            /** End Date */
+            end_date?: string | null;
+            /** Note */
+            note?: string | null;
+            schedule?: components["schemas"]["WorkSchedule-Input"] | null;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** EmploymentContractRead */
+        EmploymentContractRead: {
+            /** Contract Hours Per Week */
+            contract_hours_per_week: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** End Date */
+            end_date: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Note */
+            note: string | null;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            schedule: components["schemas"]["WorkSchedule-Output"] | null;
+            /** Scheduled Hours Per Week */
+            scheduled_hours_per_week: string;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /**
+         * EmploymentContractUpdate
+         * @description Correcting or terminating a contract. A *changed* contract is a new row, not an edit.
+         */
+        EmploymentContractUpdate: {
+            /** Contract Hours Per Week */
+            contract_hours_per_week?: number | string | null;
+            /** End Date */
+            end_date?: string | null;
+            /** Note */
+            note?: string | null;
+            schedule?: components["schemas"]["WorkSchedule-Input"] | null;
+            /** Start Date */
+            start_date?: string | null;
         };
         /**
          * EntitlementGenerate
@@ -3041,6 +4993,78 @@ export interface components {
             /** Updated */
             updated: number;
         };
+        /** HostingCreate */
+        HostingCreate: {
+            /** Company Id */
+            company_id?: string | null;
+            contact?: components["schemas"]["PartyRef"] | null;
+            /** Custom */
+            custom?: {
+                [key: string]: unknown;
+            };
+            /** Ip Address */
+            ip_address?: string | null;
+            /** Name */
+            name: string;
+            /** Provider Id */
+            provider_id?: string | null;
+        };
+        /** HostingRead */
+        HostingRead: {
+            /** Company Id */
+            company_id?: string | null;
+            /** Company Name */
+            company_name?: string | null;
+            contact?: components["schemas"]["PartyReadRef"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Custom */
+            custom?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Ip Address */
+            ip_address?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /** Provider Id */
+            provider_id?: string | null;
+            /** Provider Name */
+            provider_name?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** HostingUpdate */
+        HostingUpdate: {
+            /** Company Id */
+            company_id?: string | null;
+            contact?: components["schemas"]["PartyRef"] | null;
+            /** Custom */
+            custom?: {
+                [key: string]: unknown;
+            } | null;
+            /** Ip Address */
+            ip_address?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Provider Id */
+            provider_id?: string | null;
+        };
         /** ImpersonateRequest */
         ImpersonateRequest: {
             /**
@@ -3066,6 +5090,49 @@ export interface components {
             /** Token */
             token: string;
         };
+        /**
+         * ImpexEntityInfo
+         * @description One CSV-capable entity type — the Instellingen → Import & export screen's catalog.
+         */
+        ImpexEntityInfo: {
+            /** Entity Type */
+            entity_type: string;
+            /** Filters */
+            filters: string[];
+            /** Importable */
+            importable: boolean;
+            /** Read Permission */
+            read_permission: string;
+            /** Write Permission */
+            write_permission: string;
+        };
+        /**
+         * ImportReport
+         * @description What an import did — or, on a dry run, what it *would* do.
+         *
+         *     ``dry_run=false`` is all-or-nothing: with any error, ``applied`` stays ``False`` and nothing
+         *     was written. ``errors`` carries the first slice; ``error_count`` is always the full count,
+         *     so a truncated list never reads as "that's all of them" (docs/UX.md).
+         */
+        ImportReport: {
+            /** Applied */
+            applied: boolean;
+            /** Creates */
+            creates: number;
+            /** Dry Run */
+            dry_run: boolean;
+            /** Error Count */
+            error_count: number;
+            /** Errors */
+            errors: components["schemas"]["ImportRowError"][];
+            /**
+             * Rows
+             * @description Data rows in the file (header excluded).
+             */
+            rows: number;
+            /** Updates */
+            updates: number;
+        };
         /** ImportRequest */
         ImportRequest: {
             /** Data */
@@ -3084,6 +5151,21 @@ export interface components {
             tables: {
                 [key: string]: number;
             };
+        };
+        /**
+         * ImportRowError
+         * @description One validation failure, addressed the way a spreadsheet user counts.
+         *
+         *     ``row`` 0 is the **header row** (unknown/duplicate/missing columns); data rows count from 1
+         *     in file order. ``message_key`` is an i18n key (CLAUDE.md §9) — never user-facing English.
+         */
+        ImportRowError: {
+            /** Field */
+            field?: string | null;
+            /** Message Key */
+            message_key: string;
+            /** Row */
+            row: number;
         };
         /** LabelCreate */
         LabelCreate: {
@@ -3261,6 +5343,18 @@ export interface components {
             days: string;
             /** Hours */
             hours: string;
+            /** Remaining Hours */
+            remaining_hours?: string | null;
+            /**
+             * Requires Approval
+             * @default false
+             */
+            requires_approval: boolean;
+            /**
+             * Touches Past
+             * @default false
+             */
+            touches_past: boolean;
         };
         /**
          * LeaveProfileRead
@@ -3312,6 +5406,183 @@ export interface components {
             /** Hours Per Week */
             hours_per_week?: number | string | null;
             schedule?: components["schemas"]["WorkSchedule-Input"] | null;
+        };
+        /**
+         * LeaveRateRead
+         * @description One employee's hourly rate. ``None`` = no rate recorded (salary-adjacent, gated read).
+         */
+        LeaveRateRead: {
+            /** Effective Hourly Rate */
+            effective_hourly_rate?: string | null;
+            /** Hourly Rate */
+            hourly_rate: string | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** LeaveRateUpdate */
+        LeaveRateUpdate: {
+            /** Hourly Rate */
+            hourly_rate?: number | string | null;
+        };
+        /** LeaveRecurringDayCreate */
+        LeaveRecurringDayCreate: {
+            /**
+             * Anchor Date
+             * Format: date
+             */
+            anchor_date: string;
+            /** End Time */
+            end_time?: string | null;
+            /**
+             * Interval Weeks
+             * @default 1
+             */
+            interval_weeks: number;
+            /**
+             * Leave Type Id
+             * Format: uuid
+             */
+            leave_type_id: string;
+            /** Note */
+            note?: string | null;
+            /** Start Time */
+            start_time?: string | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** LeaveRecurringDayRead */
+        LeaveRecurringDayRead: {
+            /** Active */
+            active: boolean;
+            /**
+             * Anchor Date
+             * Format: date
+             */
+            anchor_date: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** End Time */
+            end_time?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Interval Weeks
+             * @default 1
+             */
+            interval_weeks: number;
+            /**
+             * Leave Type Id
+             * Format: uuid
+             */
+            leave_type_id: string;
+            /** Note */
+            note?: string | null;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /** Start Time */
+            start_time?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /**
+         * LeaveRecurringDaySaved
+         * @description The saved pattern, plus how many free days the save just placed on the calendar —
+         *     surfaced so the settings screen can confirm something visible actually happened.
+         */
+        LeaveRecurringDaySaved: {
+            /** Active */
+            active: boolean;
+            /**
+             * Anchor Date
+             * Format: date
+             */
+            anchor_date: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** End Time */
+            end_time?: string | null;
+            /**
+             * Generated
+             * @default 0
+             */
+            generated: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Interval Weeks
+             * @default 1
+             */
+            interval_weeks: number;
+            /**
+             * Leave Type Id
+             * Format: uuid
+             */
+            leave_type_id: string;
+            /** Note */
+            note?: string | null;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /** Start Time */
+            start_time?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** LeaveRecurringDayUpdate */
+        LeaveRecurringDayUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Anchor Date */
+            anchor_date?: string | null;
+            /** End Time */
+            end_time?: string | null;
+            /** Interval Weeks */
+            interval_weeks?: number | null;
+            /** Leave Type Id */
+            leave_type_id?: string | null;
+            /** Note */
+            note?: string | null;
+            /** Start Time */
+            start_time?: string | null;
         };
         /**
          * LeaveRequestCreate
@@ -3366,6 +5637,10 @@ export interface components {
             end_date: string;
             /** End Time */
             end_time?: string | null;
+            /** Leave Type Id */
+            leave_type_id?: string | null;
+            /** Request Id */
+            request_id?: string | null;
             /**
              * Start Date
              * Format: date
@@ -3419,6 +5694,10 @@ export interface components {
              * Format: uuid
              */
             org_id: string;
+            /** Recurring Day Id */
+            recurring_day_id?: string | null;
+            /** Resubmitted At */
+            resubmitted_at?: string | null;
             /**
              * Start Date
              * Format: date
@@ -3462,6 +5741,8 @@ export interface components {
         };
         /** LeaveSettingsRead */
         LeaveSettingsRead: {
+            /** Default Hourly Rate */
+            default_hourly_rate?: string | null;
             default_schedule: components["schemas"]["WorkSchedule-Output"];
             /**
              * Holiday Auto Import
@@ -3470,6 +5751,16 @@ export interface components {
             holiday_auto_import: boolean;
             /** Holiday Country */
             holiday_country?: string | null;
+            /**
+             * Recurring Horizon Months
+             * @default 12
+             */
+            recurring_horizon_months: number;
+            /**
+             * Self Approval
+             * @default false
+             */
+            self_approval: boolean;
         };
         /**
          * LeaveSettingsUpdate
@@ -3479,11 +5770,17 @@ export interface components {
          *     whichever one shipped first quietly reset the other's settings to their defaults.
          */
         LeaveSettingsUpdate: {
+            /** Default Hourly Rate */
+            default_hourly_rate?: number | string | null;
             default_schedule?: components["schemas"]["WorkSchedule-Input"] | null;
             /** Holiday Auto Import */
             holiday_auto_import?: boolean | null;
             /** Holiday Country */
             holiday_country?: string | null;
+            /** Recurring Horizon Months */
+            recurring_horizon_months?: number | null;
+            /** Self Approval */
+            self_approval?: boolean | null;
         };
         /**
          * LeaveSummary
@@ -3507,6 +5804,11 @@ export interface components {
         };
         /** LeaveTypeCreate */
         LeaveTypeCreate: {
+            /**
+             * Accrues Schedule Gap
+             * @default false
+             */
+            accrues_schedule_gap: boolean;
             /**
              * Active
              * @default true
@@ -3550,6 +5852,11 @@ export interface components {
         };
         /** LeaveTypeRead */
         LeaveTypeRead: {
+            /**
+             * Accrues Schedule Gap
+             * @default false
+             */
+            accrues_schedule_gap: boolean;
             /**
              * Active
              * @default true
@@ -3613,6 +5920,8 @@ export interface components {
         };
         /** LeaveTypeUpdate */
         LeaveTypeUpdate: {
+            /** Accrues Schedule Gap */
+            accrues_schedule_gap?: boolean | null;
             /** Active */
             active?: boolean | null;
             /** Carry Over Months */
@@ -3633,6 +5942,44 @@ export interface components {
             requires_approval?: boolean | null;
             /** Tracks Balance */
             tracks_balance?: boolean | null;
+        };
+        /** LicenseInstall */
+        LicenseInstall: {
+            /** Key */
+            key: string;
+        };
+        /** LicenseStatus */
+        LicenseStatus: {
+            /** Bootstrap Grace Until */
+            bootstrap_grace_until?: string | null;
+            /** Customer */
+            customer?: string | null;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Grace Until */
+            grace_until?: string | null;
+            /** Installed */
+            installed: boolean;
+            /** Licensed */
+            licensed?: components["schemas"]["LicensedModuleState"][];
+            /** Modules */
+            modules?: string[];
+            /** Plan */
+            plan?: string | null;
+        };
+        /**
+         * LicensedModuleState
+         * @description One licensed surface (a module's sku, or ``mcp``) and where it stands.
+         */
+        LicensedModuleState: {
+            /** Entitled */
+            entitled: boolean;
+            /** Notice */
+            notice?: string | null;
+            /** Sku */
+            sku: string;
+            /** Writable */
+            writable: boolean;
         };
         /** LinkCreate */
         LinkCreate: {
@@ -3673,8 +6020,10 @@ export interface components {
          * @description The current user *within the resolved tenant* — including what they may do.
          */
         MeInfo: {
-            /** Can Manage */
-            can_manage: boolean;
+            /** Avatar Url */
+            avatar_url?: string | null;
+            /** Custom Avatar Url */
+            custom_avatar_url?: string | null;
             /** Email */
             email: string;
             /** Full Name */
@@ -3690,18 +6039,23 @@ export interface components {
              * @default false
              */
             is_instance_admin: boolean;
+            /**
+             * Is Instance Owner
+             * @default false
+             */
+            is_instance_owner: boolean;
             /** Locale */
             locale: string | null;
             /** Permissions */
             permissions: string[];
-            /** Role */
-            role: string;
         };
         /**
          * MeUpdate
          * @description Personal, self-service preferences any member may set for their own account.
          */
         MeUpdate: {
+            /** Custom Avatar Url */
+            custom_avatar_url?: string | null;
             /** Full Name */
             full_name?: string | null;
             /** Locale */
@@ -3716,14 +6070,19 @@ export interface components {
             email: string;
             /** Full Name */
             full_name?: string | null;
-            /** @default member */
-            role: components["schemas"]["Role"];
+            /**
+             * Role
+             * @default member
+             */
+            role: string;
         };
         /**
          * MemberLookup
          * @description Minimal member identity for pickers (assignee, approver) — safe for any staff role.
          */
         MemberLookup: {
+            /** Avatar Url */
+            avatar_url?: string | null;
             /** Email */
             email: string;
             /** Full Name */
@@ -3733,6 +6092,8 @@ export interface components {
         };
         /** MemberRead */
         MemberRead: {
+            /** Avatar Url */
+            avatar_url?: string | null;
             /** Email */
             email: string;
             /** Full Name */
@@ -3743,8 +6104,6 @@ export interface components {
             is_self: boolean;
             /** Membership Id */
             membership_id: string;
-            /** Role */
-            role: string;
             /**
              * Role Ids
              * @default []
@@ -3755,7 +6114,8 @@ export interface components {
         };
         /** MemberRoleUpdate */
         MemberRoleUpdate: {
-            role: components["schemas"]["Role"];
+            /** Role */
+            role: string;
         };
         /** MembershipRolesUpdate */
         MembershipRolesUpdate: {
@@ -3781,12 +6141,25 @@ export interface components {
             default_locale: string;
             /** Enabled Modules */
             enabled_modules: string[];
+            /** Entitled Modules */
+            entitled_modules?: string[];
+            /** Licensed Modules */
+            licensed_modules?: string[];
             /** Local Login Enabled */
             local_login_enabled: boolean;
             /** Oidc Enabled */
             oidc_enabled: boolean;
+            /** Oidc Name */
+            oidc_name?: string | null;
             /** Supported Locales */
             supported_locales: string[];
+        };
+        /** MxRecord */
+        MxRecord: {
+            /** Exchange */
+            exchange: string;
+            /** Priority */
+            priority: number;
         };
         /** NotificationRead */
         NotificationRead: {
@@ -3949,6 +6322,28 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** Page[DomainRead] */
+        Page_DomainRead_: {
+            /** Items */
+            items: components["schemas"]["DomainRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[HostingRead] */
+        Page_HostingRead_: {
+            /** Items */
+            items: components["schemas"]["HostingRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
         /** Page[LeaveRequestRead] */
         Page_LeaveRequestRead_: {
             /** Items */
@@ -3982,6 +6377,28 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** Page[RunRead] */
+        Page_RunRead_: {
+            /** Items */
+            items: components["schemas"]["RunRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[SubscriptionRead] */
+        Page_SubscriptionRead_: {
+            /** Items */
+            items: components["schemas"]["SubscriptionRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
         /** Page[TaskListItem] */
         Page_TaskListItem_: {
             /** Items */
@@ -3997,6 +6414,17 @@ export interface components {
         Page_TimeEntryRead_: {
             /** Items */
             items: components["schemas"]["TimeEntryRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[WebsiteRead] */
+        Page_WebsiteRead_: {
+            /** Items */
+            items: components["schemas"]["WebsiteRead"][];
             /** Limit */
             limit: number;
             /** Offset */
@@ -4020,6 +6448,38 @@ export interface components {
             /** Title Key */
             title_key: string;
         };
+        /**
+         * PartyReadRef
+         * @description A responsible party as returned to a client, with its resolved display label.
+         */
+        PartyReadRef: {
+            /** Id */
+            id?: string | null;
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+            type: components["schemas"]["PartyType"];
+        };
+        /**
+         * PartyRef
+         * @description A responsible party as submitted by a client.
+         *
+         *     ``id`` is optional: ``agency`` forbids it, ``company`` treats NULL as *the record's own
+         *     company*, and ``employee`` / ``contact`` require it (validated in the service).
+         */
+        PartyRef: {
+            /** Id */
+            id?: string | null;
+            type: components["schemas"]["PartyType"];
+        };
+        /**
+         * PartyType
+         * @description What a party reference resolves to. ``AGENCY`` is the default and needs no id.
+         * @enum {string}
+         */
+        PartyType: "agency" | "company" | "employee" | "contact";
         /** PermissionCatalog */
         PermissionCatalog: {
             /** Groups */
@@ -4105,6 +6565,16 @@ export interface components {
             events?: components["schemas"]["PreferenceRowWrite"][];
             general?: components["schemas"]["GeneralPreferenceWrite"] | null;
         };
+        /** PriceRead */
+        PriceRead: {
+            /** Amount */
+            amount: string;
+            /**
+             * Valid From
+             * Format: date
+             */
+            valid_from: string;
+        };
         /**
          * ProductivityRow
          * @description Per-employee aggregates for the productivity report.
@@ -4140,6 +6610,24 @@ export interface components {
             date_to: string;
             /** Rows */
             rows: components["schemas"]["ProductivityRow"][];
+        };
+        /**
+         * ProjectCost
+         * @description What a project's logged time *costs* (#111): Σ minutes × the employee's effective rate
+         *     (#113: personal rate → org default). Distinct from revenue, which bills at the project
+         *     rate. ``unrated_minutes`` counts time by people with no rate at all — reported rather than
+         *     silently priced at zero.
+         */
+        ProjectCost: {
+            /** Cost */
+            cost: number;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Unrated Minutes */
+            unrated_minutes: number;
         };
         /** ProjectCreate */
         ProjectCreate: {
@@ -4295,6 +6783,85 @@ export interface components {
             start_date?: string | null;
             status?: components["schemas"]["ProjectStatus"] | null;
         };
+        /** ProviderCreate */
+        ProviderCreate: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Config */
+            config?: {
+                [key: string]: unknown;
+            };
+            kind: components["schemas"]["ProviderKind"];
+            /** Name */
+            name: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+        };
+        /**
+         * ProviderKind
+         * @description The four services a provider can be. A single row is exactly one kind.
+         * @enum {string}
+         */
+        ProviderKind: "email" | "dns" | "registrar" | "hosting";
+        /** ProviderRead */
+        ProviderRead: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Config */
+            config?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["ProviderKind"];
+            /** Name */
+            name: string;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** ProviderUpdate */
+        ProviderUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Config */
+            config?: {
+                [key: string]: unknown;
+            } | null;
+            /** Name */
+            name?: string | null;
+            /** Position */
+            position?: number | null;
+        };
         /** PurgeRequest */
         PurgeRequest: {
             /** Confirm */
@@ -4367,11 +6934,6 @@ export interface components {
             /** Year */
             year: number;
         };
-        /**
-         * Role
-         * @enum {string}
-         */
-        Role: "owner" | "admin" | "member" | "client";
         /** RoleCreate */
         RoleCreate: {
             /** Description I18N */
@@ -4391,6 +6953,19 @@ export interface components {
              * @default 100
              */
             position: number;
+        };
+        /**
+         * RoleOption
+         * @description A role the JIT-provisioning default can point at — included here so the picker does not
+         *     require ``settings.roles.manage`` on top of ``settings.auth.manage``.
+         */
+        RoleOption: {
+            /** Key */
+            key: string;
+            /** Name I18N */
+            name_i18n: {
+                [key: string]: string;
+            };
         };
         /** RoleRead */
         RoleRead: {
@@ -4433,6 +7008,163 @@ export interface components {
             /** Position */
             position?: number | null;
         };
+        /**
+         * RolloverRule
+         * @description Unused included hours: tenant config, never policy in code (§14's rule, issue #30).
+         */
+        RolloverRule: {
+            /** Expires After Periods */
+            expires_after_periods?: number | null;
+            /**
+             * Mode
+             * @default none
+             * @enum {string}
+             */
+            mode: "none" | "carry";
+        };
+        /** RuleCreate */
+        RuleCreate: {
+            /** Actions */
+            actions?: components["schemas"]["ActionWrite"][];
+            /** Conditions */
+            conditions?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /** Trigger Event */
+            trigger_event: string;
+        };
+        /** RuleRead */
+        RuleRead: {
+            /** Actions */
+            actions?: components["schemas"]["ActionRead"][];
+            /** Conditions */
+            conditions: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Position */
+            position: number;
+            /** Trigger Event */
+            trigger_event: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** RuleUpdate */
+        RuleUpdate: {
+            /** Actions */
+            actions?: components["schemas"]["ActionWrite"][] | null;
+            /** Conditions */
+            conditions?: {
+                [key: string]: unknown;
+            } | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Name */
+            name?: string | null;
+            /** Position */
+            position?: number | null;
+            /** Trigger Event */
+            trigger_event?: string | null;
+        };
+        /** RunRead */
+        RunRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Depth */
+            depth: number;
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Error */
+            error: string | null;
+            /** Finished At */
+            finished_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            /** Rule Id */
+            rule_id: string | null;
+            /** Rule Name */
+            rule_name: string;
+            /** Started At */
+            started_at: string | null;
+            /** Status */
+            status: string;
+            /** Steps */
+            steps: unknown[];
+            /** Trigger Event */
+            trigger_event: string;
+        };
+        /** ServiceAccountCreate */
+        ServiceAccountCreate: {
+            /** Name */
+            name: string;
+        };
+        /** ServiceAccountRead */
+        ServiceAccountRead: {
+            /** Active */
+            active: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By User Id */
+            created_by_user_id: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+        };
         /** SetupRequest */
         SetupRequest: {
             /** Accent Color */
@@ -4458,6 +7190,8 @@ export interface components {
             primary_color?: string | null;
             /** Slug */
             slug: string;
+            /** Timezone */
+            timezone?: string | null;
         };
         /** SetupResult */
         SetupResult: {
@@ -4470,6 +7204,640 @@ export interface components {
         SetupStatus: {
             /** Needs Setup */
             needs_setup: boolean;
+        };
+        /** SsoSettingsRead */
+        SsoSettingsRead: {
+            /** Auto Provision */
+            auto_provision: boolean;
+            /** Callback Url */
+            callback_url: string;
+            /** Client Id */
+            client_id: string | null;
+            /** Default Role */
+            default_role: string;
+            /** Discovery Url */
+            discovery_url: string | null;
+            /** Enabled */
+            enabled: boolean;
+            /** Enforced */
+            enforced: boolean;
+            /** Name */
+            name: string;
+            /** Role Options */
+            role_options: components["schemas"]["RoleOption"][];
+            /** Secret Configured */
+            secret_configured: boolean;
+            /** Tested */
+            tested: boolean;
+            /** Weak Encryption Key */
+            weak_encryption_key: boolean;
+        };
+        /** SsoSettingsWrite */
+        SsoSettingsWrite: {
+            /**
+             * Auto Provision
+             * @default true
+             */
+            auto_provision: boolean;
+            /** Client Id */
+            client_id?: string | null;
+            /** Client Secret */
+            client_secret?: string | null;
+            /** Default Role */
+            default_role: string;
+            /** Discovery Url */
+            discovery_url?: string | null;
+            /** Enabled */
+            enabled: boolean;
+            /** Enforced */
+            enforced: boolean;
+            /** Name */
+            name: string;
+        };
+        /** SsoTestResult */
+        SsoTestResult: {
+            /** Error */
+            error?: string | null;
+            /** Issuer */
+            issuer?: string | null;
+            /** Ok */
+            ok: boolean;
+        };
+        /** StatusCreate */
+        StatusCreate: {
+            /** Color */
+            color: string;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /**
+             * Is Terminal
+             * @default false
+             */
+            is_terminal: boolean;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+        };
+        /** StatusRead */
+        StatusRead: {
+            /** Color */
+            color: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /**
+             * Is Terminal
+             * @default false
+             */
+            is_terminal: boolean;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+        };
+        /** StatusUpdate */
+        StatusUpdate: {
+            /** Color */
+            color?: string | null;
+            /** Is Default */
+            is_default?: boolean | null;
+            /** Is Terminal */
+            is_terminal?: boolean | null;
+            /** Name */
+            name?: string | null;
+            /** Position */
+            position?: number | null;
+        };
+        /** StoredFileRead */
+        StoredFileRead: {
+            /** Content Type */
+            content_type: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By User Id */
+            created_by_user_id: string | null;
+            /** Entity Id */
+            entity_id: string | null;
+            /** Entity Type */
+            entity_type: string | null;
+            /** Filename */
+            filename: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /** Size Bytes */
+            size_bytes: number;
+        };
+        /** SubscriptionCreate */
+        SubscriptionCreate: {
+            /** Amount */
+            amount: number | string;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /**
+             * Currency
+             * @default EUR
+             */
+            currency: string;
+            /** Custom */
+            custom?: {
+                [key: string]: unknown;
+            };
+            /** End Date */
+            end_date?: string | null;
+            /** Included Hours */
+            included_hours?: number | string | null;
+            /** @default monthly */
+            interval: components["schemas"]["SubscriptionInterval"];
+            /**
+             * Interval Count
+             * @default 1
+             */
+            interval_count: number;
+            /** Lines */
+            lines?: components["schemas"]["SubscriptionLineWrite-Input"][];
+            /** Links */
+            links?: components["schemas"]["SubscriptionLinkWrite"][];
+            /** Name */
+            name: string;
+            /** Next Invoice Date */
+            next_invoice_date?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Notice Period Days */
+            notice_period_days?: number | null;
+            rollover?: components["schemas"]["RolloverRule"];
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /** @default draft */
+            status: components["schemas"]["SubscriptionStatus"];
+            /** Subscription Type Id */
+            subscription_type_id?: string | null;
+        };
+        /**
+         * SubscriptionInterval
+         * @enum {string}
+         */
+        SubscriptionInterval: "monthly" | "quarterly" | "yearly";
+        /** SubscriptionLineRead */
+        SubscriptionLineRead: {
+            /** Description */
+            description: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Position */
+            position: number;
+            /**
+             * Quantity
+             * @default 1
+             */
+            quantity: string;
+            /**
+             * Unit Amount
+             * @default 0
+             */
+            unit_amount: string;
+        };
+        /** SubscriptionLineWrite */
+        "SubscriptionLineWrite-Input": {
+            /** Description */
+            description: string;
+            /**
+             * Quantity
+             * @default 1
+             */
+            quantity: number | string;
+            /**
+             * Unit Amount
+             * @default 0
+             */
+            unit_amount: number | string;
+        };
+        /** SubscriptionLineWrite */
+        "SubscriptionLineWrite-Output": {
+            /** Description */
+            description: string;
+            /**
+             * Quantity
+             * @default 1
+             */
+            quantity: string;
+            /**
+             * Unit Amount
+             * @default 0
+             */
+            unit_amount: string;
+        };
+        /** SubscriptionLinkRead */
+        SubscriptionLinkRead: {
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /**
+             * Entity Type
+             * @enum {string}
+             */
+            entity_type: "project" | "task";
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
+        /** SubscriptionLinkWrite */
+        SubscriptionLinkWrite: {
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /**
+             * Entity Type
+             * @enum {string}
+             */
+            entity_type: "project" | "task";
+        };
+        /** SubscriptionRead */
+        SubscriptionRead: {
+            /** Activated At */
+            activated_at?: string | null;
+            /** Amount */
+            amount?: string | null;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /**
+             * Company Name
+             * @default
+             */
+            company_name: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Currency */
+            currency: string;
+            /** Custom */
+            custom?: {
+                [key: string]: unknown;
+            };
+            /** End Date */
+            end_date: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Included Hours */
+            included_hours: string | null;
+            interval: components["schemas"]["SubscriptionInterval"];
+            /** Interval Count */
+            interval_count: number;
+            /** Lines */
+            lines?: components["schemas"]["SubscriptionLineRead"][];
+            /** Links */
+            links?: components["schemas"]["SubscriptionLinkRead"][];
+            /** Monthly Equivalent */
+            monthly_equivalent?: number | null;
+            /** Name */
+            name: string;
+            /** Next Invoice Date */
+            next_invoice_date: string | null;
+            /** Notes */
+            notes: string | null;
+            /** Notice Period Days */
+            notice_period_days: number | null;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            rollover: components["schemas"]["RolloverRule"];
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            status: components["schemas"]["SubscriptionStatus"];
+            /** Subscription Type Id */
+            subscription_type_id?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            usage?: components["schemas"]["SubscriptionUsage"] | null;
+        };
+        /**
+         * SubscriptionStatus
+         * @enum {string}
+         */
+        SubscriptionStatus: "draft" | "active" | "paused" | "cancelled";
+        /**
+         * SubscriptionSummary
+         * @description Omzet view (#30): recurring revenue at a glance.
+         */
+        SubscriptionSummary: {
+            /** Active Count */
+            active_count: number;
+            /** Arr */
+            arr: number;
+            /** Mrr */
+            mrr: number;
+            /** Upcoming */
+            upcoming: components["schemas"]["UpcomingInvoice"][];
+        };
+        /** SubscriptionTemplateCreate */
+        SubscriptionTemplateCreate: {
+            /** Amount */
+            amount?: number | string | null;
+            /**
+             * Currency
+             * @default EUR
+             */
+            currency: string;
+            /** Included Hours */
+            included_hours?: number | string | null;
+            /** @default monthly */
+            interval: components["schemas"]["SubscriptionInterval"];
+            /**
+             * Interval Count
+             * @default 1
+             */
+            interval_count: number;
+            /** Lines */
+            lines?: components["schemas"]["SubscriptionLineWrite-Input"][];
+            /** Name */
+            name: string;
+            /** Notes */
+            notes?: string | null;
+            /** Notice Period Days */
+            notice_period_days?: number | null;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            rollover?: components["schemas"]["RolloverRule"];
+            /** Subscription Type Id */
+            subscription_type_id?: string | null;
+        };
+        /** SubscriptionTemplateRead */
+        SubscriptionTemplateRead: {
+            /** Amount */
+            amount?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Currency
+             * @default EUR
+             */
+            currency: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Included Hours */
+            included_hours?: string | null;
+            /** @default monthly */
+            interval: components["schemas"]["SubscriptionInterval"];
+            /**
+             * Interval Count
+             * @default 1
+             */
+            interval_count: number;
+            /** Lines */
+            lines?: components["schemas"]["SubscriptionLineWrite-Output"][];
+            /** Name */
+            name: string;
+            /** Notes */
+            notes?: string | null;
+            /** Notice Period Days */
+            notice_period_days?: number | null;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            rollover?: components["schemas"]["RolloverRule"];
+            /** Subscription Type Id */
+            subscription_type_id?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** SubscriptionTemplateUpdate */
+        SubscriptionTemplateUpdate: {
+            /** Amount */
+            amount?: number | string | null;
+            /** Currency */
+            currency?: string | null;
+            /** Included Hours */
+            included_hours?: number | string | null;
+            interval?: components["schemas"]["SubscriptionInterval"] | null;
+            /** Interval Count */
+            interval_count?: number | null;
+            /** Lines */
+            lines?: components["schemas"]["SubscriptionLineWrite-Input"][] | null;
+            /** Name */
+            name?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Notice Period Days */
+            notice_period_days?: number | null;
+            /** Position */
+            position?: number | null;
+            rollover?: components["schemas"]["RolloverRule"] | null;
+            /** Subscription Type Id */
+            subscription_type_id?: string | null;
+        };
+        /** SubscriptionTypeCreate */
+        SubscriptionTypeCreate: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Key */
+            key: string;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            };
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /** Task Template Ids */
+            task_template_ids?: string[];
+        };
+        /** SubscriptionTypeRead */
+        SubscriptionTypeRead: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Key */
+            key: string;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            };
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /** Task Template Ids */
+            task_template_ids?: string[];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** SubscriptionTypeUpdate */
+        SubscriptionTypeUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            } | null;
+            /** Position */
+            position?: number | null;
+            /** Task Template Ids */
+            task_template_ids?: string[] | null;
+        };
+        /** SubscriptionUpdate */
+        SubscriptionUpdate: {
+            /** Amount */
+            amount?: number | string | null;
+            /** Amount Valid From */
+            amount_valid_from?: string | null;
+            /** Company Id */
+            company_id?: string | null;
+            /** Currency */
+            currency?: string | null;
+            /** Custom */
+            custom?: {
+                [key: string]: unknown;
+            } | null;
+            /** End Date */
+            end_date?: string | null;
+            /** Included Hours */
+            included_hours?: number | string | null;
+            interval?: components["schemas"]["SubscriptionInterval"] | null;
+            /** Interval Count */
+            interval_count?: number | null;
+            /** Lines */
+            lines?: components["schemas"]["SubscriptionLineWrite-Input"][] | null;
+            /** Links */
+            links?: components["schemas"]["SubscriptionLinkWrite"][] | null;
+            /** Name */
+            name?: string | null;
+            /** Next Invoice Date */
+            next_invoice_date?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Notice Period Days */
+            notice_period_days?: number | null;
+            rollover?: components["schemas"]["RolloverRule"] | null;
+            /** Start Date */
+            start_date?: string | null;
+            status?: components["schemas"]["SubscriptionStatus"] | null;
+            /** Subscription Type Id */
+            subscription_type_id?: string | null;
+        };
+        /**
+         * SubscriptionUsage
+         * @description Included-hours consumption for the *current* period — measured against the time logged
+         *     on the linked projects (the same aggregate every budget bar reads, #25).
+         */
+        SubscriptionUsage: {
+            /** Included Hours */
+            included_hours: string | null;
+            /** Overage Hours */
+            overage_hours: number;
+            /** Period End */
+            period_end: string | null;
+            /** Period Start */
+            period_start: string | null;
+            /** Used Hours */
+            used_hours: number;
         };
         /** SystemInfo */
         SystemInfo: {
@@ -4501,8 +7869,8 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence?: components["schemas"]["Recurrence"] | null;
-            /** @default open */
-            status: components["schemas"]["TaskStatus"];
+            /** Status */
+            status?: string | null;
             /** Title */
             title: string;
         };
@@ -4560,8 +7928,8 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence: components["schemas"]["Recurrence"] | null;
-            /** @default open */
-            status: components["schemas"]["TaskStatus"];
+            /** Status */
+            status: string;
             /** Title */
             title: string;
             /**
@@ -4634,8 +8002,8 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence: components["schemas"]["Recurrence"] | null;
-            /** @default open */
-            status: components["schemas"]["TaskStatus"];
+            /** Status */
+            status: string;
             /** Title */
             title: string;
             /**
@@ -4685,8 +8053,8 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence: components["schemas"]["Recurrence"] | null;
-            /** @default open */
-            status: components["schemas"]["TaskStatus"];
+            /** Status */
+            status: string;
             /** Title */
             title: string;
             /**
@@ -4695,11 +8063,6 @@ export interface components {
              */
             updated_at: string;
         };
-        /**
-         * TaskStatus
-         * @enum {string}
-         */
-        TaskStatus: "open" | "in_progress" | "done";
         /** TaskUpdate */
         TaskUpdate: {
             /** Allocated Minutes */
@@ -4720,7 +8083,8 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence?: components["schemas"]["Recurrence"] | null;
-            status?: components["schemas"]["TaskStatus"] | null;
+            /** Status */
+            status?: string | null;
             /** Title */
             title?: string | null;
         };
@@ -4750,6 +8114,10 @@ export interface components {
              * Format: uuid
              */
             leave_type_id: string;
+            /** Resolved End Time */
+            resolved_end_time?: string | null;
+            /** Resolved Start Time */
+            resolved_start_time?: string | null;
             /**
              * Start Date
              * Format: date
@@ -4774,6 +8142,19 @@ export interface components {
              */
             company_id: string;
         };
+        /**
+         * TemplateChecklistItem
+         * @description One item of a checklist template — a title and an optional markdown description (issue #66).
+         *
+         *     Reshaped from a bare ``str``; the API stores it in the ``*_rich`` columns and dual-writes the
+         *     legacy title-only arrays for rollback safety (expand/contract, docs/WORKFLOW.md).
+         */
+        TemplateChecklistItem: {
+            /** Description */
+            description?: string | null;
+            /** Title */
+            title: string;
+        };
         /** TemplateCreate */
         TemplateCreate: {
             /**
@@ -4794,10 +8175,15 @@ export interface components {
         TemplateItemBase: {
             /** Allocated Minutes */
             allocated_minutes?: number | null;
+            /**
+             * Assign Responsible
+             * @default false
+             */
+            assign_responsible: boolean;
             /** Assignee User Id */
             assignee_user_id?: string | null;
             /** Checklist Items */
-            checklist_items?: string[];
+            checklist_items?: components["schemas"]["TemplateChecklistItem"][];
             /** Checklist Title */
             checklist_title?: string | null;
             /** Description */
@@ -4818,10 +8204,15 @@ export interface components {
         TemplateItemRead: {
             /** Allocated Minutes */
             allocated_minutes?: number | null;
+            /**
+             * Assign Responsible
+             * @default false
+             */
+            assign_responsible: boolean;
             /** Assignee User Id */
             assignee_user_id?: string | null;
             /** Checklist Items */
-            checklist_items?: string[];
+            checklist_items?: components["schemas"]["TemplateChecklistItem"][];
             /** Checklist Title */
             checklist_title?: string | null;
             /** Description */
@@ -4887,6 +8278,8 @@ export interface components {
             accent_color: string;
             /** Brand Name */
             brand_name: string;
+            /** Currency */
+            currency: string;
             /** Default Locale */
             default_locale: string;
             /** Enabled Modules */
@@ -4906,6 +8299,10 @@ export interface components {
              * @default false
              */
             suspended: boolean;
+            /** Tab Title Template */
+            tab_title_template?: string | null;
+            /** Timezone */
+            timezone: string;
         };
         /**
          * TenantBrandingUpdate
@@ -4916,6 +8313,8 @@ export interface components {
             accent_color?: string | null;
             /** Brand Name */
             brand_name?: string | null;
+            /** Currency */
+            currency?: string | null;
             /** Default Locale */
             default_locale?: string | null;
             /** Enabled Modules */
@@ -4928,6 +8327,10 @@ export interface components {
             primary_color?: string | null;
             /** Show Brand Name */
             show_brand_name?: boolean | null;
+            /** Tab Title Template */
+            tab_title_template?: string | null;
+            /** Timezone */
+            timezone?: string | null;
         };
         /**
          * TimeEntryCreate
@@ -4964,6 +8367,51 @@ export interface components {
             started_at: string;
             /** Task Id */
             task_id?: string | null;
+        };
+        /**
+         * TimeEntryDraftPayload
+         * @description What the entry form holds mid-typing (#44). A validated, closed shape — every field
+         *     optional (a draft may be invalid), every key whitelisted (``extra="forbid"``), strings
+         *     bounded so the row can't balloon. UI-only fields (``duration_text``) ride along verbatim.
+         */
+        TimeEntryDraftPayload: {
+            /** Billable */
+            billable?: boolean | null;
+            /** Break Minutes */
+            break_minutes?: number | null;
+            /** Company Id */
+            company_id?: string | null;
+            /** Date */
+            date?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Duration Text */
+            duration_text?: string | null;
+            /** End */
+            end?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Start */
+            start?: string | null;
+            /** Task Id */
+            task_id?: string | null;
+        };
+        /** TimeEntryDraftRead */
+        TimeEntryDraftRead: {
+            /**
+             * Entry Date
+             * Format: date
+             */
+            entry_date: string;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /** TimeEntryRead */
         TimeEntryRead: {
@@ -5105,6 +8553,8 @@ export interface components {
             day_totals: number[];
             /** Days */
             days: string[];
+            /** Draft Days */
+            draft_days?: string[];
             /** Rows */
             rows: components["schemas"]["TimesheetRow"][];
             /** Total */
@@ -5128,10 +8578,46 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** TriggerInfo */
+        TriggerInfo: {
+            /** Entity Type */
+            entity_type: string;
+            /** Event */
+            event: string;
+        };
         /** UnreadCount */
         UnreadCount: {
             /** Count */
             count: number;
+        };
+        /** UpcomingInvoice */
+        UpcomingInvoice: {
+            /** Amount */
+            amount: string | null;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /**
+             * Company Name
+             * @default
+             */
+            company_name: string;
+            /** Currency */
+            currency: string;
+            /** Name */
+            name: string;
+            /**
+             * Next Invoice Date
+             * Format: date
+             */
+            next_invoice_date: string;
+            /**
+             * Subscription Id
+             * Format: uuid
+             */
+            subscription_id: string;
         };
         /** UpdateInfo */
         UpdateInfo: {
@@ -5270,6 +8756,94 @@ export interface components {
             /** Watching */
             watching?: boolean | null;
         };
+        /** WebsiteCreate */
+        WebsiteCreate: {
+            /** Custom */
+            custom?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Domain Id
+             * Format: uuid
+             */
+            domain_id: string;
+            /** Hosting Id */
+            hosting_id?: string | null;
+            /**
+             * Root
+             * @default true
+             */
+            root: boolean;
+            technical_owner?: components["schemas"]["PartyRef"] | null;
+            /**
+             * Uptime Enabled
+             * @default false
+             */
+            uptime_enabled: boolean;
+        };
+        /** WebsiteRead */
+        WebsiteRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Custom */
+            custom?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Domain Id
+             * Format: uuid
+             */
+            domain_id: string;
+            /**
+             * Domain Name
+             * @default
+             */
+            domain_name: string;
+            /** Hosting Id */
+            hosting_id?: string | null;
+            /** Hosting Name */
+            hosting_name?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /** Root */
+            root: boolean;
+            technical_owner?: components["schemas"]["PartyReadRef"] | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Uptime Enabled
+             * @default false
+             */
+            uptime_enabled: boolean;
+        };
+        /** WebsiteUpdate */
+        WebsiteUpdate: {
+            /** Custom */
+            custom?: {
+                [key: string]: unknown;
+            } | null;
+            /** Hosting Id */
+            hosting_id?: string | null;
+            /** Root */
+            root?: boolean | null;
+            technical_owner?: components["schemas"]["PartyRef"] | null;
+            /** Uptime Enabled */
+            uptime_enabled?: boolean | null;
+        };
         /**
          * WorkDay
          * @description One working block plus its breaks. ``breaks: []`` is an uninterrupted day.
@@ -5335,6 +8909,94 @@ export interface components {
             /** Status */
             status: string;
         };
+        /**
+         * ActivityItem
+         * @description One line of a record's paper trail.
+         */
+        app__core__activity__schemas__ActivityItem: {
+            /** Action */
+            action: string;
+            /**
+             * Actor Deleted
+             * @default false
+             */
+            actor_deleted: boolean;
+            /** Actor Name */
+            actor_name?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            };
+        };
+        /** DomainStatus */
+        app__core__domains__DomainStatus: {
+            /** Custom Domain */
+            custom_domain: string | null;
+            /** Custom Domain Verified At */
+            custom_domain_verified_at: string | null;
+            /** Pending Domain */
+            pending_domain: string | null;
+            /** Txt Record Name */
+            txt_record_name: string | null;
+            /** Txt Record Value */
+            txt_record_value: string | null;
+            /** Verification Token */
+            verification_token: string | null;
+        };
+        /**
+         * DomainStatus
+         * @description Operational state of a domain. ``redirect``'s uptime/redirect webhook is a later slice.
+         * @enum {string}
+         */
+        app__modules__domains__models__DomainStatus: "active" | "redirect" | "parked" | "expired" | "inactive";
+        /**
+         * ActivityItem
+         * @description One line of a record's activity feed — recipient-independent.
+         */
+        app__modules__notifications__schemas__ActivityItem: {
+            /** Actor Name */
+            actor_name?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Event Type */
+            event_type: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            };
+        };
     };
     responses: never;
     parameters: never;
@@ -5344,6 +9006,123 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    entity_activity_api_v1_activity_get: {
+        parameters: {
+            query: {
+                entity_type: string;
+                entity_id: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app__core__activity__schemas__ActivityItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_personal_keys_api_v1_api_keys_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyRead"][];
+                };
+            };
+        };
+    };
+    create_personal_key_api_v1_api_keys_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApiKeyCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_key_api_v1_api_keys__key_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     reset_forgot_password_api_v1_auth_forgot_password_post: {
         parameters: {
             query?: never;
@@ -5457,6 +9236,46 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    oidc_callback_api_v1_auth_oidc_callback_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    oidc_login_api_v1_auth_oidc_login_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
             };
         };
     };
@@ -5619,12 +9438,248 @@ export interface operations {
             };
         };
     };
+    get_catalog_api_v1_automation_catalog_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogRead"];
+                };
+            };
+        };
+    };
+    dry_run_api_v1_automation_dry_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DryRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DryRunResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_rules_api_v1_automation_rules_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleRead"][];
+                };
+            };
+        };
+    };
+    create_rule_api_v1_automation_rules_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_rule_api_v1_automation_rules__rule_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_rule_api_v1_automation_rules__rule_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_rule_api_v1_automation_rules__rule_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_runs_api_v1_automation_runs_get: {
+        parameters: {
+            query?: {
+                rule_id?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_RunRead_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_companies_api_v1_companies_get: {
         parameters: {
             query?: {
                 limit?: number;
                 offset?: number;
                 q?: string | null;
+                /** @description Filter on one lifecycle status */
+                status?: string | null;
                 /** @description Only clients I'm assigned to (primary or not) */
                 mine?: boolean;
                 /** @description name | status | created_at | updated_at, '-' desc */
@@ -5825,6 +9880,7 @@ export interface operations {
                 limit?: number;
                 offset?: number;
                 company_id?: string | null;
+                contact_type_id?: string | null;
                 q?: string | null;
                 /** @description first_name | last_name | email | job_title | company | …, '-' desc */
                 sort?: string | null;
@@ -5875,6 +9931,134 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ContactRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_contact_types_api_v1_contacts_types_get: {
+        parameters: {
+            query?: {
+                include_inactive?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactTypeRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_contact_type_api_v1_contacts_types_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContactTypeCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactTypeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_contact_type_api_v1_contacts_types__type_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                type_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_contact_type_api_v1_contacts_types__type_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                type_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContactTypeUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactTypeRead"];
                 };
             };
             /** @description Validation Error */
@@ -6337,6 +10521,984 @@ export interface operations {
             };
         };
     };
+    list_domains_api_v1_domains_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                company_id?: string | null;
+                q?: string | null;
+                /** @description name | status | created_at | updated_at, '-' desc */
+                sort?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_DomainRead_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_domain_api_v1_domains_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DomainCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_domain_api_v1_domains__domain_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_domain_api_v1_domains__domain_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_domain_api_v1_domains__domain_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DomainUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_domain_dns_api_v1_domains__domain_id__refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_files_api_v1_files_get: {
+        parameters: {
+            query: {
+                entity_type: string;
+                entity_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoredFileRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_file_api_v1_files_post: {
+        parameters: {
+            query?: {
+                entity_type?: string | null;
+                entity_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_file_api_v1_files_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoredFileRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    serve_file_api_v1_files__file_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_file_api_v1_files__file_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    serve_public_file_api_v1_files__file_id__public_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_hosting_api_v1_hosting_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                company_id?: string | null;
+                q?: string | null;
+                /** @description name | ip_address | created_at | updated_at, '-' desc */
+                sort?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_HostingRead_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_hosting_api_v1_hosting_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HostingCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostingRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_hosting_api_v1_hosting__hosting_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                hosting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostingRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_hosting_api_v1_hosting__hosting_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                hosting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_hosting_api_v1_hosting__hosting_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                hosting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HostingUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostingRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_export_company_api_v1_impex_company_export_get: {
+        parameters: {
+            query?: {
+                /** @description Search, as on the list */
+                q?: string | null;
+                status?: string | null;
+                /** @description Only rows assigned to me */
+                mine?: boolean;
+                /** @description List sort key, '-' desc */
+                sort?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CSV file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_import_company_api_v1_impex_company_import_post: {
+        parameters: {
+            query?: {
+                /** @description Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. */
+                dry_run?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_import_company_api_v1_impex_company_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_export_contact_api_v1_impex_contact_export_get: {
+        parameters: {
+            query?: {
+                /** @description Search, as on the list */
+                q?: string | null;
+                company_id?: string | null;
+                /** @description List sort key, '-' desc */
+                sort?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CSV file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_import_contact_api_v1_impex_contact_import_post: {
+        parameters: {
+            query?: {
+                /** @description Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. */
+                dry_run?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_import_contact_api_v1_impex_contact_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_impex_entities_api_v1_impex_entities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexEntityInfo"][];
+                };
+            };
+        };
+    };
+    impex_export_project_api_v1_impex_project_export_get: {
+        parameters: {
+            query?: {
+                /** @description Search, as on the list */
+                q?: string | null;
+                status?: string | null;
+                company_id?: string | null;
+                /** @description Only rows assigned to me */
+                mine?: boolean;
+                /** @description List sort key, '-' desc */
+                sort?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CSV file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_import_project_api_v1_impex_project_import_post: {
+        parameters: {
+            query?: {
+                /** @description Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. */
+                dry_run?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_import_project_api_v1_impex_project_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_export_subscription_api_v1_impex_subscription_export_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                company_id?: string | null;
+                /** @description List sort key, '-' desc */
+                sort?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CSV file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_import_subscription_api_v1_impex_subscription_import_post: {
+        parameters: {
+            query?: {
+                /** @description Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. */
+                dry_run?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_import_subscription_api_v1_impex_subscription_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_export_task_api_v1_impex_task_export_get: {
+        parameters: {
+            query?: {
+                /** @description Search, as on the list */
+                q?: string | null;
+                status?: string | null;
+                company_id?: string | null;
+                project_id?: string | null;
+                /** @description Only rows assigned to me */
+                mine?: boolean;
+                /** @description List sort key, '-' desc */
+                sort?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CSV file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_import_task_api_v1_impex_task_import_post: {
+        parameters: {
+            query?: {
+                /** @description Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. */
+                dry_run?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_import_task_api_v1_impex_task_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_export_time_entry_api_v1_impex_time_entry_export_get: {
+        parameters: {
+            query?: {
+                /** @description Only rows assigned to me */
+                mine?: boolean;
+                user_id?: string | null;
+                company_id?: string | null;
+                project_id?: string | null;
+                /** @description Rows on/after this day */
+                date_from?: string | null;
+                /** @description Rows on/before this day */
+                date_to?: string | null;
+                /** @description List sort key, '-' desc */
+                sort?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CSV file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_import_time_entry_api_v1_impex_time_entry_import_post: {
+        parameters: {
+            query?: {
+                /** @description Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. */
+                dry_run?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_import_time_entry_api_v1_impex_time_entry_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_audit_api_v1_instance_audit_get: {
         parameters: {
             query?: {
@@ -6384,6 +11546,79 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    get_license_api_v1_instance_license_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LicenseStatus"];
+                };
+            };
+        };
+    };
+    install_license_api_v1_instance_license_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LicenseInstall"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LicenseStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_license_api_v1_instance_license_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LicenseStatus"];
+                };
             };
         };
     };
@@ -6800,6 +12035,135 @@ export interface operations {
             };
         };
     };
+    list_contracts_api_v1_leave_contracts_get: {
+        parameters: {
+            query?: {
+                user_id?: string | null;
+                all_users?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmploymentContractRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_contract_api_v1_leave_contracts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmploymentContractCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmploymentContractRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_contract_api_v1_leave_contracts__contract_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contract_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_contract_api_v1_leave_contracts__contract_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contract_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmploymentContractUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmploymentContractRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_entitlements_api_v1_leave_entitlements_get: {
         parameters: {
             query: {
@@ -7124,6 +12488,240 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LeaveProfileSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_rate_api_v1_leave_rate_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveRateRead"];
+                };
+            };
+        };
+    };
+    user_rate_api_v1_leave_rate__user_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveRateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_rate_api_v1_leave_rate__user_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveRateUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveRateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_rates_api_v1_leave_rates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveRateRead"][];
+                };
+            };
+        };
+    };
+    list_recurring_api_v1_leave_recurring_get: {
+        parameters: {
+            query?: {
+                user_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveRecurringDayRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_recurring_api_v1_leave_recurring_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveRecurringDayCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveRecurringDaySaved"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_recurring_api_v1_leave_recurring__recurring_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recurring_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_recurring_api_v1_leave_recurring__recurring_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recurring_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveRecurringDayUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveRecurringDaySaved"];
                 };
             };
             /** @description Validation Error */
@@ -7963,7 +13561,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DomainStatus"];
+                    "application/json": components["schemas"]["app__core__domains__DomainStatus"];
                 };
             };
         };
@@ -7987,7 +13585,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DomainStatus"];
+                    "application/json": components["schemas"]["app__core__domains__DomainStatus"];
                 };
             };
             /** @description Validation Error */
@@ -8016,7 +13614,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DomainStatus"];
+                    "application/json": components["schemas"]["app__core__domains__DomainStatus"];
                 };
             };
         };
@@ -8036,7 +13634,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DomainStatus"];
+                    "application/json": components["schemas"]["app__core__domains__DomainStatus"];
                 };
             };
         };
@@ -8099,7 +13697,155 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ActivityItem"][];
+                    "application/json": components["schemas"]["app__modules__notifications__schemas__ActivityItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_channels_api_v1_notifications_channels_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelRead"][];
+                };
+            };
+        };
+    };
+    create_channel_api_v1_notifications_channels_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChannelCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_channel_api_v1_notifications_channels__channel_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_channel_api_v1_notifications_channels__channel_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChannelUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_channel_api_v1_notifications_channels__channel_id__test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelTestResult"];
                 };
             };
             /** @description Validation Error */
@@ -8226,6 +13972,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PreferenceMatrix"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_email_preference_api_v1_notifications_preferences_email_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailPrefRead"];
+                };
+            };
+        };
+    };
+    set_email_preference_api_v1_notifications_preferences_email_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailPrefWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailPrefRead"];
                 };
             };
             /** @description Validation Error */
@@ -8606,6 +14405,166 @@ export interface operations {
             };
         };
     };
+    list_providers_api_v1_providers_get: {
+        parameters: {
+            query?: {
+                kind?: components["schemas"]["ProviderKind"] | null;
+                include_inactive?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_provider_api_v1_providers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_provider_api_v1_providers__provider_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_provider_api_v1_providers__provider_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_provider_api_v1_providers__provider_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_roles_api_v1_roles_get: {
         parameters: {
             query?: never;
@@ -8726,6 +14685,318 @@ export interface operations {
             };
         };
     };
+    list_service_accounts_api_v1_service_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceAccountRead"][];
+                };
+            };
+        };
+    };
+    create_service_account_api_v1_service_accounts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServiceAccountCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceAccountRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_service_account_api_v1_service_accounts__account_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_service_account_keys_api_v1_service_accounts__account_id__keys_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_service_account_key_api_v1_service_accounts__account_id__keys_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApiKeyCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_email_settings_api_v1_settings_email_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailSettingsRead"] | null;
+                };
+            };
+        };
+    };
+    save_email_settings_api_v1_settings_email_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailSettingsWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailSettingsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_email_settings_api_v1_settings_email_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    test_email_settings_api_v1_settings_email_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailTestResult"];
+                };
+            };
+        };
+    };
+    get_sso_settings_api_v1_settings_sso_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SsoSettingsRead"];
+                };
+            };
+        };
+    };
+    save_sso_settings_api_v1_settings_sso_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SsoSettingsWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SsoSettingsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_sso_settings_api_v1_settings_sso_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SsoTestResult"];
+                };
+            };
+        };
+    };
     run_setup_api_v1_setup_post: {
         parameters: {
             query?: never;
@@ -8779,6 +15050,475 @@ export interface operations {
             };
         };
     };
+    list_subscriptions_api_v1_subscriptions_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                company_id?: string | null;
+                status?: string | null;
+                subscription_type_id?: string | null;
+                /** @description name | status | next_invoice_date | start_date */
+                sort?: string | null;
+                /** @description with entity_id: linked-entity filter */
+                entity_type?: string | null;
+                entity_id?: string | null;
+                /** @description include current-period usage per row */
+                usage?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_SubscriptionRead_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_subscription_api_v1_subscriptions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubscriptionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    summary_api_v1_subscriptions_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionSummary"];
+                };
+            };
+        };
+    };
+    list_subscription_templates_api_v1_subscriptions_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionTemplateRead"][];
+                };
+            };
+        };
+    };
+    create_subscription_template_api_v1_subscriptions_templates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubscriptionTemplateCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionTemplateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_subscription_template_api_v1_subscriptions_templates__template_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_subscription_template_api_v1_subscriptions_templates__template_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubscriptionTemplateUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionTemplateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_subscription_types_api_v1_subscriptions_types_get: {
+        parameters: {
+            query?: {
+                include_inactive?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionTypeRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_subscription_type_api_v1_subscriptions_types_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubscriptionTypeCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionTypeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_subscription_type_api_v1_subscriptions_types__type_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                type_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_subscription_type_api_v1_subscriptions_types__type_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                type_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubscriptionTypeUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionTypeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_subscription_api_v1_subscriptions__subscription_id__get: {
+        parameters: {
+            query?: {
+                /** @description Include current-period included-hours usage */
+                usage?: boolean;
+            };
+            header?: never;
+            path: {
+                subscription_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_subscription_api_v1_subscriptions__subscription_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subscription_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_subscription_api_v1_subscriptions__subscription_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subscription_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubscriptionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    price_history_api_v1_subscriptions__subscription_id__prices_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subscription_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PriceRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     system_info_api_v1_system_info_get: {
         parameters: {
             query?: never;
@@ -8807,7 +15547,8 @@ export interface operations {
                 company_id?: string | null;
                 project_id?: string | null;
                 assignee_user_id?: string | null;
-                status?: components["schemas"]["TaskStatus"] | null;
+                /** @description A configured status key */
+                status?: string | null;
                 label_id?: string | null;
                 due?: ("overdue" | "today" | "week") | null;
                 q?: string | null;
@@ -9129,6 +15870,123 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskListItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_statuses_api_v1_tasks_statuses_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusRead"][];
+                };
+            };
+        };
+    };
+    create_status_api_v1_tasks_statuses_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StatusCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_status_api_v1_tasks_statuses__status_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                status_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_status_api_v1_tasks_statuses__status_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                status_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StatusUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusRead"];
                 };
             };
             /** @description Validation Error */
@@ -9826,6 +16684,37 @@ export interface operations {
             };
         };
     };
+    project_cost_api_v1_time_cost_get: {
+        parameters: {
+            query: {
+                project_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectCost"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     day_view_api_v1_time_day_get: {
         parameters: {
             query: {
@@ -9846,6 +16735,70 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DayView"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upsert_draft_api_v1_time_drafts__entry_date__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_date: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TimeEntryDraftPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeEntryDraftRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_draft_api_v1_time_drafts__entry_date__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_date: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -10604,6 +17557,167 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_websites_api_v1_websites_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                domain_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_WebsiteRead_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_website_api_v1_websites_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebsiteCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebsiteRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_website_api_v1_websites__website_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                website_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebsiteRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_website_api_v1_websites__website_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                website_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_website_api_v1_websites__website_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                website_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebsiteUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebsiteRead"];
+                };
             };
             /** @description Validation Error */
             422: {

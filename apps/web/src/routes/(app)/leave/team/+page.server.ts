@@ -19,6 +19,16 @@ function parseYear(raw: string | null): number {
   return Number.isInteger(year) && year >= 2000 && year <= 2100 ? year : currentYear();
 }
 
+/** Selected ids: repeated `ids` fields from the bulk bar, or one comma-joined value from a
+ *  ConfirmDialog's flat `fields` record. */
+function _bulkIds(form: FormData): string[] {
+  return form
+    .getAll("ids")
+    .flatMap((v) => String(v).split(","))
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 export const load: PageServerLoad = async (event) => {
   // The approver surface: pending decisions + everyone's balances.
   if (!can(event.locals.user, "leave.request.approve")) throw redirect(303, "/leave");
@@ -87,6 +97,57 @@ export const actions: Actions = {
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { cancelled: true };
+  },
+
+  // Edit a member's request from the team table (#106). The API recomputes hours (#48) and
+  // decides whether the change re-enters approval (#72).
+  update: async (event) => {
+    const form = await event.request.formData();
+    const id = String(form.get("id") ?? "");
+    if (!id) return fail(400, { error: "errors.required" });
+    const { error } = await apiFor(event).PATCH("/api/v1/leave/requests/{request_id}", {
+      params: { path: { request_id: id } },
+      body: requestBody(form),
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { updated: true };
+  },
+
+  /**
+   * Bulk approve/reject (#leave bulk). Sequential decide calls per id — the API's guards run
+   * per request, so one already-decided row (409) is *skipped*, never a reason to abort the
+   * rest. Reports processed vs skipped; silent partial success would read as "all done".
+   */
+  bulkDecide: async (event) => {
+    const form = await event.request.formData();
+    const ids = _bulkIds(form);
+    if (ids.length === 0) return fail(400, { error: "errors.required" });
+    const approved = form.get("approved") === "true";
+    const api = apiFor(event);
+    let done = 0;
+    for (const id of ids) {
+      const { error } = await api.POST("/api/v1/leave/requests/{request_id}/decide", {
+        params: { path: { request_id: id } },
+        body: { approved, note: null },
+      });
+      if (!error) done += 1;
+    }
+    return { bulkDone: done, bulkSkipped: ids.length - done };
+  },
+
+  bulkCancel: async (event) => {
+    const form = await event.request.formData();
+    const ids = _bulkIds(form);
+    if (ids.length === 0) return fail(400, { error: "errors.required" });
+    const api = apiFor(event);
+    let done = 0;
+    for (const id of ids) {
+      const { error } = await api.POST("/api/v1/leave/requests/{request_id}/cancel", {
+        params: { path: { request_id: id } },
+      });
+      if (!error) done += 1;
+    }
+    return { bulkDone: done, bulkSkipped: ids.length - done };
   },
 
   // Register leave on someone's behalf (e.g. a sick call) — API enforces manager role.

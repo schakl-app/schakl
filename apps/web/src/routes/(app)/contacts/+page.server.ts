@@ -1,6 +1,7 @@
 import { fail } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
+import { importCsvAction } from "$lib/core/impex/actions.server";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
@@ -19,21 +20,40 @@ export const load: PageServerLoad = async (event) => {
   const pref = readTablePref(prefs, CONTACTS_TABLE_ID);
   const resolved = resolveColumns(CONTACT_COLUMNS, pref);
   const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
+  const contact_type_id = event.url.searchParams.get("type") || undefined;
 
-  const [contacts, definitions] = await Promise.all([
-    api.GET("/api/v1/contacts", { params: { query: { limit: 100, offset: 0, q, sort } } }),
+  const [contacts, definitions, companies, types] = await Promise.all([
+    api.GET("/api/v1/contacts", {
+      params: { query: { limit: 100, offset: 0, q, sort, contact_type_id } },
+    }),
     api.GET("/api/v1/custom-fields/definitions", {
       params: { query: { entity_type: "contact" } },
     }),
+    // For the create form's "connected companies" picker (#80). Lean list — no counts.
+    api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
+    api.GET("/api/v1/contacts/types"),
   ]);
   return {
     contacts: contacts.data?.items ?? [],
     total: contacts.data?.total ?? 0,
     definitions: definitions.data ?? [],
+    companies: companies.data?.items ?? [],
+    types: types.data ?? [],
+    typeFilter: contact_type_id ?? "",
     table: { pref, sort: sort ?? null, widths: resolved.widths },
     locale: event.locals.locale,
   };
 };
+
+/** The create form serialises the picked company IDs into one hidden JSON field (#80). */
+function parseCompanyIds(raw: FormDataEntryValue | null): string[] {
+  try {
+    const value = JSON.parse(String(raw ?? "[]"));
+    return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+  } catch {
+    return [];
+  }
+}
 
 function parseCustom(raw: FormDataEntryValue | null): Record<string, unknown> {
   try {
@@ -51,11 +71,15 @@ export const actions: Actions = {
     return { tableSaved: true };
   },
 
+  /** CSV import (issue #77): dry-run preview by default, all-or-nothing commit on demand. */
+  importCsv: (event) => importCsvAction(event, "/api/v1/impex/contact/import"),
+
   create: async (event) => {
     const form = await event.request.formData();
     const first_name = String(form.get("first_name") ?? "").trim();
     if (!first_name) return fail(400, { error: "errors.required" });
 
+    const company_ids = parseCompanyIds(form.get("company_ids"));
     const { error } = await apiFor(event).POST("/api/v1/contacts", {
       body: {
         first_name,
@@ -63,6 +87,8 @@ export const actions: Actions = {
         email: String(form.get("email") ?? "").trim() || null,
         phone: String(form.get("phone") ?? "").trim() || null,
         job_title: String(form.get("job_title") ?? "").trim() || null,
+        // The API links each and promotes the first to the company's primary contact.
+        company_ids: company_ids.length ? company_ids : undefined,
         custom: parseCustom(form.get("custom")),
       },
     });

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { fmtMoney } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import DonutChart from "$lib/core/ui/charts/DonutChart.svelte";
   import MonthlyComparisonChart from "$lib/core/ui/charts/MonthlyComparisonChart.svelte";
 
@@ -24,7 +25,7 @@
 </script>
 
 <svelte:head>
-  <title>{t("overview.revenue.title")}</title>
+  <title>{pageTitle(t("overview.revenue.title"))}</title>
 </svelte:head>
 
 <div class="mb-4 flex flex-wrap items-end justify-between gap-3">

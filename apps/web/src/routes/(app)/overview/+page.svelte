@@ -6,6 +6,7 @@
   import { page } from "$app/state";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
@@ -18,7 +19,7 @@
   import EntryForm from "$lib/modules/time/EntryForm.svelte";
   import EntryStatusPill from "$lib/modules/time/EntryStatusPill.svelte";
   import TimeEntryRow from "$lib/modules/time/TimeEntryRow.svelte";
-  import { formatMinutes, formatTime } from "$lib/modules/time/format";
+  import { entryStatus, formatMinutes, formatTime } from "$lib/modules/time/format";
 
   let { data, form } = $props();
 
@@ -98,10 +99,38 @@
 
   const bulkClass =
     "rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-text-muted hover:border-brand hover:text-brand";
+
+  // Only offer bulk actions that can actually change a row in the current selection (#45). The row
+  // lifecycle is one of open/approved/to_invoice/invoiced (`entryStatus`), and the API enforces
+  // `invoiced ⇒ approved`, so a static four-button bar always shows two guaranteed no-ops. Derive
+  // the buttons from the selected rows' status instead — reusing `entryStatus`, never a second copy
+  // of the rule. A mixed selection may legitimately show several; each acts only on the subset it
+  // applies to, server-side.
+  const selectedStatuses = $derived(
+    entries.filter((e) => selected.includes(e.id)).map((e) => entryStatus(e)),
+  );
+  const bulkActions = $derived.by(() => {
+    const st = selectedStatuses;
+    const anyInvoiced = st.some((s) => s === "invoiced");
+    const out: { action: string; label: string }[] = [];
+    if (st.some((s) => s === "open")) out.push({ action: "approve", label: t("time.overview.approve") });
+    if (st.some((s) => s !== "open"))
+      // Unapproving an invoiced row also clears its invoice (`set_approval`'s cascade) — say so up
+      // front rather than surprise the approver, since "unapprove" only shows when the selection
+      // already holds something approved, which by the invariant includes anything invoiced.
+      out.push({
+        action: "unapprove",
+        label: anyInvoiced ? t("time.overview.unapprove_cascade") : t("time.overview.unapprove"),
+      });
+    if (st.some((s) => s !== "invoiced"))
+      out.push({ action: "invoice", label: t("time.overview.mark_invoiced") });
+    if (anyInvoiced) out.push({ action: "uninvoice", label: t("time.overview.unmark_invoiced") });
+    return out;
+  });
 </script>
 
 <svelte:head>
-  <title>{t("time.overview.title")}</title>
+  <title>{pageTitle(t("time.overview.title"))}</title>
 </svelte:head>
 
 <div class="mb-4">
@@ -319,7 +348,7 @@
   >
     <span class="text-xs font-medium text-text">{t("table.selected", { count: ids.length })}</span>
     <span class="text-xs text-text-muted">{t("table.selection_page_only")}</span>
-    {#each [{ action: "approve", label: t("time.overview.approve") }, { action: "unapprove", label: t("time.overview.unapprove") }, { action: "invoice", label: t("time.overview.mark_invoiced") }, { action: "uninvoice", label: t("time.overview.unmark_invoiced") }] as bulkAction (bulkAction.action)}
+    {#each bulkActions as bulkAction (bulkAction.action)}
       <form method="POST" action={`?/${bulkAction.action}`} use:enhance>
         <input type="hidden" name="entry_ids" value={ids.join(",")} />
         <button class={bulkClass}>{bulkAction.label}</button>

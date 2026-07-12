@@ -9,10 +9,13 @@ import type { Actions, PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async (event) => {
   if (event.locals.user) throw redirect(303, "/");
+  // Per-org at request time (#76): the API resolves the org from the hostname and answers
+  // from its *stored* SSO settings, so the button follows a settings save with no restart.
   const { data } = await apiFor(event).GET("/api/v1/meta/modules");
   return {
     localLoginEnabled: data?.local_login_enabled ?? true,
     oidcEnabled: data?.oidc_enabled ?? false,
+    oidcName: data?.oidc_name ?? null,
   };
 };
 

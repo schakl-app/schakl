@@ -19,22 +19,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.events import SystemContext, emit
 from app.core.models import Org
 from app.core.permissions.service import permission_holder_ids
+from app.core.timezone import DEFAULT_TIMEZONE, org_zoneinfo
 from app.modules.time.models import TimeEntry
 
-_TZ = ZoneInfo("Europe/Amsterdam")
+# Fallback only: ``remind_for_org`` resolves each org's own zone (CLAUDE.md §8). "Last week" is a
+# local-calendar span, so a cloud tenant east of us must not be nudged on our Monday.
+_DEFAULT_TZ = ZoneInfo(DEFAULT_TIMEZONE)
 
 
-def previous_week_start(today: date | None = None) -> date:
+def previous_week_start(today: date | None = None, tz: ZoneInfo = _DEFAULT_TZ) -> date:
     """The Monday of the ISO week before ``today`` (local, because the cron fires in UTC)."""
-    today = today or datetime.now(_TZ).date()
+    today = today or datetime.now(tz).date()
     this_monday = today - timedelta(days=today.weekday())
     return this_monday - timedelta(days=7)
 
 
-def _week_bounds(week_start: date) -> tuple[datetime, datetime]:
+def _week_bounds(week_start: date, tz: ZoneInfo = _DEFAULT_TZ) -> tuple[datetime, datetime]:
     """The UTC instants the local week opens and closes — DST-correct, unlike ``+7 days`` in UTC."""
-    start = datetime.combine(week_start, time.min, tzinfo=_TZ).astimezone(UTC)
-    end = datetime.combine(week_start + timedelta(days=7), time.min, tzinfo=_TZ).astimezone(UTC)
+    start = datetime.combine(week_start, time.min, tzinfo=tz).astimezone(UTC)
+    end = datetime.combine(week_start + timedelta(days=7), time.min, tzinfo=tz).astimezone(UTC)
     return start, end
 
 
@@ -44,8 +47,9 @@ async def remind_for_org(org: Org, session: AsyncSession, *, week_start: date | 
     Returns the number of *candidates announced*, not notifications delivered: a re-run
     announces the same people and the notifications module drops the repeat on its dedup key.
     """
-    week_start = week_start or previous_week_start()
-    start, end = _week_bounds(week_start)
+    tz = await org_zoneinfo(session, org.id)
+    week_start = week_start or previous_week_start(tz=tz)
+    start, end = _week_bounds(week_start, tz)
 
     # Who is expected to log hours: whoever may write a time entry (issue #19). One indexed
     # query, DISTINCT — a user holding two granting roles must not be reminded twice.

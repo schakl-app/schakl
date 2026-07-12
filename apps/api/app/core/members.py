@@ -5,8 +5,8 @@ surface: list the team, invite by email, change a role, or revoke access. All qu
 tenant-scoped (RLS + explicit ``org_id``); an invite creates the global user if needed. No SMTP
 in P0, so the invite is logged — the user sets a password via forgot-password.
 
-Authorization is roles → permissions (issue #19). ``membership_roles`` is authoritative; the
-``memberships.role`` column is dual-written with the membership's highest-privilege system role,
+Authorization is roles → permissions (issue #19). ``membership_roles`` is authoritative;
+the legacy ``memberships.role`` column is gone (issue #56),
 so rolling the image back to the previous release lands old code on a value it can still parse.
 """
 
@@ -24,12 +24,13 @@ from sqlalchemy import func, select
 from app.core.auth.models import User
 from app.core.models import Membership
 from app.core.permissions import audit
-from app.core.permissions.catalog import permission_keys
+from app.core.permissions.catalog import PRIVILEGE_ORDER, permission_keys
 from app.core.permissions.deps import no_permission_required, require_permission
 from app.core.permissions.models import MembershipRole
 from app.core.permissions.models import Role as RoleRow
 from app.core.permissions.schemas import EffectivePermissions, MembershipRolesUpdate
 from app.core.permissions.service import (
+    collapse_to_legacy_role,
     create_membership,
     effective_permissions,
     membership_role_ids,
@@ -38,7 +39,6 @@ from app.core.permissions.service import (
     role_manager_count,
     set_membership_roles,
 )
-from app.core.roles import Role
 from app.core.tenancy import RequestContext, require_context
 from app.errors import AppError
 
@@ -48,13 +48,17 @@ _password_hash = PasswordHash.recommended()
 router = APIRouter(prefix="/members", tags=["members"])
 
 
+def effective_avatar_url(user: User) -> str | None:
+    """#122's one precedence rule: personal override → OIDC picture → None (initials)."""
+    return user.custom_avatar_url or user.oidc_avatar_url or None
+
+
 class MemberRead(BaseModel):
     membership_id: str
     user_id: str
     email: str
     full_name: str | None
-    # DEPRECATED (issue #19): the collapsed legacy role. ``role_ids`` is the real answer.
-    role: str
+    avatar_url: str | None = None
     #: Every role this membership holds. The Users screen derives the effective permission set
     #: from these plus ``GET /roles`` — one grouped query here, never one per member.
     role_ids: list[str] = []
@@ -68,16 +72,29 @@ class MemberLookup(BaseModel):
     user_id: str
     full_name: str | None
     email: str
+    avatar_url: str | None = None
 
 
 class MemberInvite(BaseModel):
     email: EmailStr
     full_name: str | None = None
-    role: Role = Role.MEMBER
+    #: A system role key (owner/admin/member/client); custom roles are assigned afterwards.
+    role: str = "member"
 
 
 class MemberRoleUpdate(BaseModel):
-    role: Role
+    role: str
+
+
+def _system_role_key_or_422(key: str) -> str:
+    if key not in PRIVILEGE_ORDER:
+        raise AppError(
+            "validation",
+            "errors.validation",
+            status_code=422,
+            fields={"role": "errors.validation"},
+        )
+    return key
 
 
 def _member_read(
@@ -91,7 +108,7 @@ def _member_read(
         user_id=str(user.id),
         email=user.email,
         full_name=user.full_name,
-        role=membership.role,
+        avatar_url=effective_avatar_url(user),
         role_ids=[str(role_id) for role_id in role_ids or []],
         is_active=user.is_active,
         is_self=user.id == ctx.user.id,
@@ -182,7 +199,13 @@ async def lookup_members(
 
     rows = (await ctx.session.execute(stmt)).scalars().all()
     return [
-        MemberLookup(user_id=str(u.id), full_name=u.full_name, email=u.email) for u in rows
+        MemberLookup(
+            user_id=str(u.id),
+            full_name=u.full_name,
+            email=u.email,
+            avatar_url=effective_avatar_url(u),
+        )
+        for u in rows
     ]
 
 
@@ -222,14 +245,15 @@ async def invite_member(
     if existing is not None:
         raise AppError("conflict", "errors.conflict", status_code=409)
 
-    membership = await create_membership(ctx.session, ctx.org.id, user.id, payload.role.value)
-    logger.info("Invited %s to org %s as %s", email, ctx.org.slug, payload.role.value)
+    role_key = _system_role_key_or_422(payload.role)
+    membership = await create_membership(ctx.session, ctx.org.id, user.id, role_key)
+    logger.info("Invited %s to org %s as %s", email, ctx.org.slug, role_key)
     await audit.record(
         ctx.session,
         org_id=ctx.org.id,
         actor=ctx.user,
         action="membership.invited",
-        role_key=payload.role.value,
+        role_key=role_key,
         target_user_id=user.id,
     )
     return _member_read(ctx, membership, user)
@@ -258,13 +282,13 @@ async def update_member_role(
 ) -> MemberRead:
     """Swap this membership's **system** role; any custom roles it also holds are untouched."""
     membership = await _membership_or_404(ctx, membership_id)
-    target = await role_by_key(ctx.session, ctx.org.id, payload.role.value)
+    target = await role_by_key(ctx.session, ctx.org.id, _system_role_key_or_422(payload.role))
     if target is None:
         raise AppError("not_found", "errors.not_found", status_code=404)
 
-    held_system_links = (
+    held_system_links_with_keys = list(
         await ctx.session.execute(
-            select(MembershipRole)
+            select(MembershipRole, RoleRow.key)
             .join(RoleRow, RoleRow.id == MembershipRole.role_id)
             .where(
                 MembershipRole.org_id == ctx.org.id,
@@ -272,18 +296,20 @@ async def update_member_role(
                 RoleRow.is_system.is_(True),
             )
         )
-    ).scalars().all()
-    if all(link.role_id != target.id for link in held_system_links):
-        for link in held_system_links:
+    )
+    if all(link.role_id != target.id for link, _ in held_system_links_with_keys):
+        for link, _ in held_system_links_with_keys:
             await ctx.session.delete(link)
         ctx.session.add(
             MembershipRole(org_id=ctx.org.id, membership_id=membership.id, role_id=target.id)
         )
-    previous = membership.role
-    membership.role = payload.role.value  # dual write, release N only
+    # The audit's "from" value: the highest-privilege system role they held (display only).
+    previous = collapse_to_legacy_role(
+        [link_key for _, link_key in held_system_links_with_keys]
+    )
     await ctx.session.flush()
     await ensure_a_role_manager_remains(ctx)
-    if previous != payload.role.value:
+    if previous != target.key:
         await audit.record(
             ctx.session,
             org_id=ctx.org.id,
@@ -292,7 +318,7 @@ async def update_member_role(
             role_id=target.id,
             role_key=target.key,
             target_user_id=membership.user_id,
-            detail={"from": previous, "to": payload.role.value},
+            detail={"from": previous, "to": target.key},
         )
 
     user = await ctx.session.get(User, membership.user_id)
@@ -335,10 +361,8 @@ async def set_member_roles(
 ) -> EffectivePermissions:
     """Replace a membership's whole role set in one save. A user may hold several roles.
 
-    Release *N* rejects a set with no ``is_system`` role: ``memberships.role`` is dual-written by
-    collapsing the system roles to the highest privilege, and a custom-role-only membership has no
-    legacy value the previous image could parse (issue #19, the rollback decision). The constraint
-    lifts when that column is dropped.
+    Custom-role-only memberships are legal since the legacy column dropped (issue #56); an empty
+    set is still refused — a membership holding nothing would authenticate into a wall of 403s.
     """
     membership = await _membership_or_404(ctx, membership_id)
     role_ids = [uuid.UUID(value) for value in payload.role_ids]
@@ -351,8 +375,8 @@ async def set_member_roles(
     ).scalars().all()
     if len(roles) != len(set(role_ids)):
         raise AppError("not_found", "errors.not_found", status_code=404)
-    if not any(role.is_system for role in roles):
-        raise AppError("system_role_required", "errors.system_role_required", status_code=409)
+    if not roles:
+        raise AppError("validation", "errors.validation", status_code=422)
 
     before = set(await membership_role_ids(ctx.session, ctx.org.id, membership.id))
     await set_membership_roles(ctx.session, ctx.org.id, membership, role_ids)

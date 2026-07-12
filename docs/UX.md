@@ -23,6 +23,13 @@
    counts). Extending a deadline requires a reason, and every meaningful change lands in the
    record's activity feed with actor + timestamp. Approval locks records for non-managers.
    Invoiced implies approved — states never contradict each other.
+   **The activity trail is a core capability, not a per-screen nicety** (issue #67, CLAUDE.md §16):
+   a mutable record opts into it with `AuditableMixin`, its service records field edits (`created`,
+   `updated {changes}`) through `ActivityService` in the writing transaction, and a core-contributed
+   panel renders the trail on its detail page. So "every meaningful change lands in the feed" is a
+   platform guarantee that every auditable entity inherits, not a sentence each new screen has to
+   remember to make true. The actor is named from a snapshot, so a deleted user's work never becomes
+   "the system" (#64). The panel hangs last — history sits under the working surfaces, not above them.
 5. **Everything reusable is a template, org-wide.** Task templates, checklist templates,
    dashboard layout templates: define once for the whole instance, apply anywhere. Templates
    are both *manageable* in a dedicated place and *creatable from where you work* ("save as
@@ -49,10 +56,18 @@
   `DateInput` (never a bare `<input type="date">` — browsers render those US-style). Its
   calendar popup must anchor to the field. Formatting goes through `core/format.ts`
   (locale → nl-NL / en-GB).
-- **Pickers are type-ahead comboboxes** (`core/ui/Combobox`), never long native selects.
-  Typing an unknown name offers "＋ … toevoegen", opening a *full* create dialog — real
-  fields plus the tenant's custom-field definitions from the API, prefilled with what was
-  typed. Never a name-only stub form.
+- **Pickers are type-ahead comboboxes** (`core/ui/Combobox`), never long native selects, and
+  **every entity-reference picker offers inline-create — this is per-picker definition of done,
+  not an optional flourish.** Typing an unknown name offers "＋ … toevoegen", which opens the
+  entity's *full* create dialog — real fields plus the tenant's custom-field definitions from the
+  API, prefilled with what was typed (never a name-only stub form) — and on save **auto-selects**
+  the new record in the picker, so the user never leaves the surface they were on. The machinery
+  is built into `Combobox`: pass its `oncreate` and follow `contacts/ContactDraftField.svelte`
+  (draft-in-form, auto-selects the new chip) or the `time` page's quick-create (server create →
+  reselect). A picker that only lists preloaded options and sends the user *elsewhere* to create
+  the missing registrar / provider / client is a bug — that is precisely what the first domains and
+  hosting forms shipped as (#115). The one exception is an entity with no create path of its own —
+  an employee is *invited*, not created — so leave those select-only.
 - **Quick-add where the user is**: contacts on the client page, projects/clients from the
   time entry form, checklist items on the card. The full forms still exist on their own
   pages; quick-add is an accelerator, not a replacement.
@@ -77,6 +92,12 @@
   Detail headers name the primary and render the rest as an `AvatarStack` of initials.
   **"Mine" filters match any assignee, never only the primary** — otherwise the feature is
   invisible to everyone but the owner.
+- **Show an inherited value, don't hide it behind a placeholder** (#81). When the API will
+  auto-assign something on save — a new project inherits the client's verantwoordelijke — the
+  form pre-fills that value the moment the client is picked, so the assignment is visible and
+  obviously already made. An empty field with a "wordt overgenomen" hint reads as unset and gets
+  re-picked by hand. The pre-fill is web-only: the server still does the same inheritance, so a
+  field left untouched stores exactly what the placeholder promised.
 - **One shared row/tile per concept** (`TaskRow`, panel rows): title link, chips (labels,
   checklist n/m, ⏱ allocated), red overdue date, assignee initials — identical wherever the
   concept appears.
@@ -100,6 +121,17 @@
   routine thing that happens on a task, was invisible (#61). And a row says *what* happened:
   a comment entry carries an excerpt and links to the comment, rather than reading "commented"
   and sending the reader hunting.
+- **Edit on a list row opens the record in edit mode** (#78). A list has no edit surface of its
+  own — the form lives on the detail page, and duplicating it onto the overview would be a second
+  copy to keep in sync. So the row ⋯ → Bewerken is a *link* to the detail page carrying `?edit=1`
+  (above the red Verwijderen), and the detail page reads that marker once, on mount, to open its
+  existing edit affordance — the client's edit `Modal`, the contact's / project's inline `editing`
+  toggle. The param name lives once in `core/edit-intent.ts` (`editHref` writes it, `editIntent`
+  reads it) so the two sides can't drift, and it seeds a `$state` initializer, not a `$derived`:
+  the surface opens on arrival, then the user can close it without the URL forcing it back open.
+  The underlying edit surface still differs per module (modal vs inline) — unifying *that* is a
+  separate follow-up; this issue makes the *entry point* consistent (Verwijderen was one click away
+  on every list while Bewerken was not there at all).
 - **A feed names a person from a snapshot, never from a live join** (#64). Every FK to
   `users.id` is `ON DELETE SET NULL`, so a joined-in display name is the one thing that cannot
   survive the account it joins to. Store the name when the row is written: a name with no live
@@ -236,6 +268,23 @@
   Instellingen → Verlof → Feestdagen seeds the whole list and lets the tenant **deactivate** the
   ones they work. Deactivate, never delete: a deleted holiday comes back on the next import, a
   deactivated one does not, and it renders and counts nowhere in the meantime.
+- **Long-form user text is markdown** (issue #66), authored through the shared `RichTextEditor`
+  and rendered through the shared `Markdown` component — never a bare `<textarea>`, and never
+  `{@html}` outside that one component. Store the markdown *source* in the existing `Text` column;
+  never store pre-rendered HTML, or a later sanitizer fix cannot protect the rows already written.
+  The editor is markdown-with-preview, not WYSIWYG — a small bold/italic/link toolbar so nobody
+  types syntax, and a Write ↔ Preview toggle — because a heavy editor bundle fights *"snappy over
+  clever"* on an SSR/PWA shell. This is the design-language rule; it is not a task feature.
+  **Which fields get it, and which stay plain:** the *long-form* ones — a task/checklist/checklist-
+  item description, a comment, project/company/contact notes, a custom-field `LONG_TEXT` — get the
+  editor. One-liners do **not**: a title, a `TimeEntry` description, a leave note. Rich text is for
+  text that has structure to gain from it, not for every string.
+  **Rendering is the security boundary.** `{@html}` lives only in `Markdown.svelte`, and everything
+  it prints has been through DOMPurify in `core/markdown.ts`; the API also strips raw HTML on write
+  (`core/richtext.py`) so a stored value is inert even for a consumer that renders it another way.
+  Any consumer that must show the words *without* the markup — a notification excerpt, an email, a
+  PDF, a `DataTable` cell — flattens to plain text first (the API's `markdown_to_plaintext`); it
+  never truncates raw markdown by character count, which severs a link mid-`()`.
 
 ## Navigation
 
@@ -301,3 +350,20 @@
   browser-default width (~228 px) as its min-content floor, so the row it sits in never fits a
   phone. This is not the same thing as an explicit `min-w-[12rem]`, and it is easy to clear the
   wrong suspect.
+- **A raw `{@html}`, anywhere but `Markdown.svelte`.** Before #66 the app had zero `{@html}` and so
+  zero XSS surface on user text — rich text deliberately took that on, in exactly one audited place
+  that sanitizes first. A second `{@html}` (or piping markdown into an email/PDF without the shared
+  render path) reopens the hole the one component exists to close. Route it through `Markdown`.
+- **Feeding raw markdown to something that shows plain text.** A notification excerpt, a truncated
+  cell, a `title=` attribute — given `**bold** [x](url)` it prints the syntax, and cutting it by
+  character count can sever a link mid-`()`. Flatten with `markdown_to_plaintext` *before* the cut.
+
+- **Dutch copy avoids the English em dash.** The "X — Y" construction that reads naturally in
+  English is not correct Dutch and had crept through the whole UI and site. In `nl.json`, the
+  site's Dutch content and the Dutch docs: use a **colon** when the second part explains the
+  first ("Opgeslagen: 3 dagen ingepland"), a **semicolon or comma** for an afterthought
+  ("…vergrendeld; vraag een beheerder"), or **parentheses** for status labels ("Verlopen
+  (respijtperiode)"). A real *gedachtestreepje* (a paired, spaced aside mid-sentence) remains
+  legitimate but rare — `leave.recurring.hint` is the reference example. Ranges keep the en
+  dash without spaces (`ma–vr`, `{from}–{to}`), and the `—` empty-value placeholder in tables
+  stays. English strings are unaffected; this is a Dutch-only rule (owner feedback, 2026-07-12).

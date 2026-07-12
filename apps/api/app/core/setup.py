@@ -30,6 +30,7 @@ from app.core.permissions.catalog import ROLE_OWNER
 from app.core.permissions.deps import no_permission_required
 from app.core.permissions.service import create_membership, seed_system_roles
 from app.core.tenancy import request_hostname
+from app.core.timezone import is_valid_timezone
 from app.db import async_session_maker, set_current_org
 from app.errors import AppError
 
@@ -55,6 +56,7 @@ class SetupRequest(BaseModel):
     primary_color: str | None = Field(default=None, pattern=_HEX_COLOR)
     accent_color: str | None = Field(default=None, pattern=_HEX_COLOR)
     locale: str | None = None
+    timezone: str | None = Field(default=None, max_length=64)
     enabled_modules: list[str] | None = None
     owner_email: EmailStr
     owner_password: str = Field(min_length=8, max_length=128)
@@ -82,6 +84,14 @@ async def run_setup(payload: SetupRequest, request: Request) -> SetupResult:
             "errors.validation",
             status_code=422,
             fields={"locale": "errors.validation"},
+        )
+    timezone = payload.timezone or settings.default_timezone
+    if not is_valid_timezone(timezone):
+        raise AppError(
+            "validation",
+            "errors.validation",
+            status_code=422,
+            fields={"timezone": "errors.validation"},
         )
     modules = org_service.validate_modules(
         payload.enabled_modules
@@ -123,6 +133,7 @@ async def run_setup(payload: SetupRequest, request: Request) -> SetupResult:
                 primary_color=payload.primary_color or "#4f46e5",
                 accent_color=payload.accent_color or "#0ea5e9",
                 default_locale=locale,
+                timezone=timezone,
                 enabled_modules=modules,
             )
         )

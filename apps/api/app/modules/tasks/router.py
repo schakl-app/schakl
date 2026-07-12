@@ -13,7 +13,6 @@ from fastapi import APIRouter, Depends, Query
 
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
-from app.modules.tasks.models import TaskStatus
 from app.modules.tasks.schemas import (
     ChecklistCreate,
     ChecklistItemCreate,
@@ -32,6 +31,9 @@ from app.modules.tasks.schemas import (
     LabelUpdate,
     LinkCreate,
     LinkRead,
+    StatusCreate,
+    StatusRead,
+    StatusUpdate,
     TaskCreate,
     TaskDetail,
     TaskLabelsSet,
@@ -61,7 +63,7 @@ async def list_tasks(
     company_id: uuid.UUID | None = Query(None),
     project_id: uuid.UUID | None = Query(None),
     assignee_user_id: uuid.UUID | None = Query(None),
-    status: TaskStatus | None = Query(None),
+    status: str | None = Query(None, max_length=50, description="A configured status key"),
     label_id: uuid.UUID | None = Query(None),
     due: Literal["overdue", "today", "week"] | None = Query(None),
     q: str | None = Query(None, max_length=200),
@@ -152,6 +154,55 @@ async def delete_label(
 
 
 # --------------------------------------------------------------------------- #
+# Statuses (org-level, tenant-configurable — issue #62)
+# --------------------------------------------------------------------------- #
+@router.get(
+    "/statuses",
+    response_model=list[StatusRead],
+    dependencies=[require_permission("tasks.task.read")],
+)
+async def list_statuses(ctx: RequestContext = Depends(require_context)) -> list[StatusRead]:
+    statuses = await TaskService(ctx).list_statuses()
+    return [StatusRead.model_validate(status) for status in statuses]
+
+
+@router.post(
+    "/statuses",
+    response_model=StatusRead,
+    status_code=201,
+    dependencies=[require_permission("tasks.status.write")],
+)
+async def create_status(
+    payload: StatusCreate, ctx: RequestContext = Depends(require_context)
+) -> StatusRead:
+    return StatusRead.model_validate(await TaskService(ctx).create_status(payload))
+
+
+@router.patch(
+    "/statuses/{status_id}",
+    response_model=StatusRead,
+    dependencies=[require_permission("tasks.status.write")],
+)
+async def update_status(
+    status_id: uuid.UUID,
+    payload: StatusUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> StatusRead:
+    return StatusRead.model_validate(await TaskService(ctx).update_status(status_id, payload))
+
+
+@router.delete(
+    "/statuses/{status_id}",
+    status_code=204,
+    dependencies=[require_permission("tasks.status.write")],
+)
+async def delete_status(
+    status_id: uuid.UUID, ctx: RequestContext = Depends(require_context)
+) -> None:
+    await TaskService(ctx).delete_status(status_id)
+
+
+# --------------------------------------------------------------------------- #
 # Checklist templates (org-wide repository, staff-writable)
 # --------------------------------------------------------------------------- #
 @router.get(
@@ -162,8 +213,7 @@ async def delete_label(
 async def list_checklist_templates(
     ctx: RequestContext = Depends(require_context),
 ) -> list[ChecklistTemplateRead]:
-    templates = await TaskService(ctx).list_checklist_templates()
-    return [ChecklistTemplateRead.model_validate(t) for t in templates]
+    return await TaskService(ctx).list_checklist_templates()
 
 
 @router.post(
@@ -175,9 +225,7 @@ async def list_checklist_templates(
 async def create_checklist_template(
     payload: ChecklistTemplateCreate, ctx: RequestContext = Depends(require_context)
 ) -> ChecklistTemplateRead:
-    return ChecklistTemplateRead.model_validate(
-        await TaskService(ctx).create_checklist_template(payload)
-    )
+    return await TaskService(ctx).create_checklist_template(payload)
 
 
 @router.patch(
@@ -190,9 +238,7 @@ async def update_checklist_template(
     payload: ChecklistTemplateUpdate,
     ctx: RequestContext = Depends(require_context),
 ) -> ChecklistTemplateRead:
-    return ChecklistTemplateRead.model_validate(
-        await TaskService(ctx).update_checklist_template(template_id, payload)
-    )
+    return await TaskService(ctx).update_checklist_template(template_id, payload)
 
 
 @router.delete(

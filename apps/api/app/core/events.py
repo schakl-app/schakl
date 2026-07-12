@@ -52,7 +52,7 @@ class SystemContext:
     ``user=None`` marking the actor as the system (never a person to exclude from fan-out).
 
     It also exposes ``repo`` so a job can call another module's **read-only** published service
-    the same way a request does. Anything that reads ``ctx.user`` or ``ctx.role`` is a request
+    the same way a request does. Anything that reads ``ctx.user`` is a request
     concern and will rightly fail here: a cron has no one to authorize.
     """
 

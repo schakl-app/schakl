@@ -3,6 +3,7 @@
 
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import { LABEL_COLORS, labelChipClass, labelDotClass } from "$lib/modules/tasks/labels";
@@ -16,7 +17,7 @@
 </script>
 
 <svelte:head>
-  <title>{t("settings.task_labels.title")}</title>
+  <title>{pageTitle(t("settings.task_labels.title"))}</title>
 </svelte:head>
 
 <div class="mb-6">

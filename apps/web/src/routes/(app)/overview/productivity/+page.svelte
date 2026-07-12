@@ -2,6 +2,7 @@
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import { formatMinutes } from "$lib/modules/time/format";
 
@@ -35,7 +36,7 @@
 </script>
 
 <svelte:head>
-  <title>{t("overview.productivity.title")}</title>
+  <title>{pageTitle(t("overview.productivity.title"))}</title>
 </svelte:head>
 
 <div class="mb-4 flex flex-wrap items-end justify-between gap-3">

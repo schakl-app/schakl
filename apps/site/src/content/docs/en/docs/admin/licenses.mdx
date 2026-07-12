@@ -1,0 +1,41 @@
+---
+title: Licenses
+description: How extension modules are licensed — the license key, the trial window, and what happens when a license expires.
+sidebar:
+  order: 3
+---
+
+The core of schakl. is **open source** (AGPL-3.0). A small set of **extension modules** —
+currently the leave, subscriptions and automation modules and the MCP server — is
+governed by the commercial license and
+requires a **license key**. The source of those modules is plainly visible in the
+repository; only using them requires a key.
+
+## How it works
+
+- A license key is a signed block of text (`SCHAKL1.…`). You paste it under
+  *Settings → License* (visible to the instance owner only).
+- Validation is **fully offline**: your server never needs to "phone home" to keep
+  running — even if our infrastructure is unreachable.
+- The license states who it belongs to, which modules it covers and until when it is
+  valid. All of that is shown on the license page.
+
+## Trial window
+
+Every fresh install (and every existing install upgrading to this version) gets a
+**built-in trial**: licensed modules work fully for two weeks without a key. After that
+they can no longer be enabled, and already-enabled licensed modules turn **read-only**.
+
+## When a license expires
+
+- Within the **grace period** (by default two weeks past the expiry date) everything keeps
+  working — time to renew.
+- After that, licensed modules turn **read-only**: existing data stays visible and
+  **export always works**. Nothing is ever lost; installing a new key makes the module
+  fully functional again immediately.
+- The rest of the platform is unaffected.
+
+## Getting or renewing a license
+
+Get in touch through the channels on the website. Renewal is pasting a new key on the same
+page — that is all there is to it.

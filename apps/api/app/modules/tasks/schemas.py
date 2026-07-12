@@ -12,7 +12,6 @@ from app.modules.tasks.models import (
     RecurrenceFreq,
     RecurrenceMode,
     TaskPriority,
-    TaskStatus,
     TemplateTrigger,
 )
 
@@ -29,7 +28,9 @@ class TaskBase(BaseModel):
     assignee_user_id: uuid.UUID | None = None
     title: str = Field(min_length=1, max_length=512)
     description: str | None = None
-    status: TaskStatus = TaskStatus.OPEN
+    # A tenant-configured status key (issue #62); ``None`` on create means the org's default
+    # status. Validated against the org's ``task_statuses`` in the service.
+    status: str | None = Field(default=None, max_length=50)
     priority: TaskPriority = TaskPriority.NORMAL
     due_date: date | None = None
     allocated_minutes: int | None = Field(default=None, ge=0, le=100000)
@@ -45,7 +46,7 @@ class TaskUpdate(BaseModel):
     assignee_user_id: uuid.UUID | None = None
     title: str | None = Field(default=None, min_length=1, max_length=512)
     description: str | None = None
-    status: TaskStatus | None = None
+    status: str | None = Field(default=None, max_length=50)
     priority: TaskPriority | None = None
     due_date: date | None = None
     allocated_minutes: int | None = Field(default=None, ge=0, le=100000)
@@ -60,6 +61,8 @@ class TaskRead(TaskBase):
 
     id: uuid.UUID
     org_id: uuid.UUID
+    # Always present on a stored task (the create default has been resolved to a real key).
+    status: str
     position: float
     completed_at: datetime | None
     recurrence: Recurrence | None
@@ -99,6 +102,40 @@ class TaskLabelsSet(BaseModel):
 
 
 # --------------------------------------------------------------------------- #
+# Statuses (org-level, tenant-configurable — issue #62)
+# --------------------------------------------------------------------------- #
+class StatusBase(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    color: str = Field(min_length=1, max_length=20)
+    position: int = 0
+    # Finished states stamp ``completed_at`` and can spawn an after-completion recurrence.
+    is_terminal: bool = False
+    # The status a new task starts in. At most one per org (the service enforces exactly one).
+    is_default: bool = False
+
+
+class StatusCreate(StatusBase):
+    # An immutable slug ``Task.status`` stores; only settable on create.
+    key: str = Field(min_length=1, max_length=50, pattern=r"^[a-z0-9_]+$")
+
+
+class StatusUpdate(BaseModel):
+    # ``key`` is immutable (tasks reference it), so it is not updatable.
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    color: str | None = Field(default=None, min_length=1, max_length=20)
+    position: int | None = None
+    is_terminal: bool | None = None
+    is_default: bool | None = None
+
+
+class StatusRead(StatusBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    key: str
+
+
+# --------------------------------------------------------------------------- #
 # List / detail composites
 # --------------------------------------------------------------------------- #
 class TaskListItem(TaskRead):
@@ -115,10 +152,14 @@ class TaskListItem(TaskRead):
 # --------------------------------------------------------------------------- #
 class ChecklistItemCreate(BaseModel):
     title: str = Field(min_length=1, max_length=512)
+    # Markdown source, rendered sanitized by the web (issue #66); optional per item.
+    description: str | None = None
 
 
 class ChecklistItemUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=512)
+    # ``exclude_unset`` distinguishes "not touched" from an explicit ``null`` that clears it.
+    description: str | None = None
     done: bool | None = None
     position: int | None = None
 
@@ -128,6 +169,7 @@ class ChecklistItemRead(BaseModel):
 
     id: uuid.UUID
     title: str
+    description: str | None = None
     done: bool
     position: int
 
@@ -136,11 +178,13 @@ class ChecklistCreate(BaseModel):
     # Either a fresh checklist (title) or a copy of a template (template_id wins for content;
     # title still overrides the template's when given).
     title: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = None
     template_id: uuid.UUID | None = None
 
 
 class ChecklistUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = None
     position: int | None = None
 
 
@@ -149,13 +193,25 @@ class ChecklistRead(BaseModel):
 
     id: uuid.UUID
     title: str
+    description: str | None = None
     position: int
     items: list[ChecklistItemRead] = Field(default_factory=list)
 
 
+class TemplateChecklistItem(BaseModel):
+    """One item of a checklist template — a title and an optional markdown description (issue #66).
+
+    Reshaped from a bare ``str``; the API stores it in the ``*_rich`` columns and dual-writes the
+    legacy title-only arrays for rollback safety (expand/contract, docs/WORKFLOW.md).
+    """
+
+    title: str = Field(min_length=1, max_length=512)
+    description: str | None = None
+
+
 class ChecklistTemplateBase(BaseModel):
     title: str = Field(min_length=1, max_length=255)
-    items: list[str] = Field(default_factory=list, max_length=100)
+    items: list[TemplateChecklistItem] = Field(default_factory=list, max_length=100)
 
 
 class ChecklistTemplateCreate(ChecklistTemplateBase):
@@ -164,12 +220,10 @@ class ChecklistTemplateCreate(ChecklistTemplateBase):
 
 class ChecklistTemplateUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=255)
-    items: list[str] | None = Field(default=None, max_length=100)
+    items: list[TemplateChecklistItem] | None = Field(default=None, max_length=100)
 
 
 class ChecklistTemplateRead(ChecklistTemplateBase):
-    model_config = ConfigDict(from_attributes=True)
-
     id: uuid.UUID
 
 
@@ -195,6 +249,8 @@ class CommentRead(BaseModel):
     author_name: str | None = None
     author_deleted: bool = False
     body: str
+    # Users @mentioned in the body (issue #63), extracted from the markers on write.
+    mentioned_user_ids: list[uuid.UUID] = Field(default_factory=list)
     edited_at: datetime | None
     created_at: datetime
 
@@ -248,14 +304,15 @@ class TemplateItemBase(BaseModel):
     relative_due_days: int | None = Field(default=None, ge=0, le=365)
     allocated_minutes: int | None = Field(default=None, ge=0, le=100000)
     assignee_user_id: uuid.UUID | None = None
+    #: Assign to the company's primary responsible at apply time (#28); falls back to
+    #: ``assignee_user_id``, then unassigned, when the company has none.
+    assign_responsible: bool = False
     position: int = 0
     checklist_title: str | None = Field(default=None, max_length=255)
-    checklist_items: list[str] = Field(default_factory=list)
+    checklist_items: list[TemplateChecklistItem] = Field(default_factory=list)
 
 
 class TemplateItemRead(TemplateItemBase):
-    model_config = ConfigDict(from_attributes=True)
-
     id: uuid.UUID
 
 

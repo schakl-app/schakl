@@ -2,6 +2,7 @@
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
 
   let { data, form } = $props();
 
@@ -9,7 +10,7 @@
 </script>
 
 <svelte:head>
-  <title>{t("auth.sign_in")}{brand ? ` · ${brand}` : ""}</title>
+  <title>{pageTitle(t("auth.sign_in"))}</title>
 </svelte:head>
 
 <div class="flex min-h-screen items-center justify-center px-4">
@@ -79,7 +80,7 @@
         href="/api/v1/auth/oidc/login"
         class="mt-4 block w-full rounded-lg border border-border px-4 py-2 text-center text-sm font-medium text-text hover:bg-surface"
       >
-        {t("auth.sign_in_with_oidc")}
+        {t("auth.sign_in_with_sso", { name: data.oidcName || "SSO" })}
       </a>
     {/if}
   </div>

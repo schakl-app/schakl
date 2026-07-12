@@ -1,0 +1,86 @@
+---
+// The landing page is a list of CMS-managed blocks (hero, feature grid, text+bullets,
+// CTA band) — add, remove or reorder sections in Keystatic without touching code.
+import SiteShell from './SiteShell.astro';
+import settings from '../data/settings/site.json';
+import landing from '../data/landing.json';
+import { localizeHref } from '../lib/links';
+
+interface Props {
+  locale: 'nl' | 'en';
+}
+const { locale } = Astro.props;
+// One CMS entry holds both locales (Sveltia single_file i18n structure).
+const { blocks } = landing[locale];
+
+// Feature cards are their own Keystatic collection; the `features` block places the grid.
+const featureModules = import.meta.glob('../data/features/*.json', { eager: true });
+const features = Object.values(featureModules)
+  .map((m: any) => m.default ?? m)
+  .sort((a: any, b: any) => a.order - b.order);
+
+const href = (h: string) => localizeHref(locale, h);
+
+const hero: any = blocks.find((b: any) => b.type === 'hero');
+const title = hero ? `${settings.brandName} · ${hero.title}` : settings.brandName;
+---
+
+<SiteShell locale={locale} title={title} description={hero?.subtitle} alternates>
+  {
+    blocks.map((v: any) => {
+      const id = v.anchor || undefined;
+      switch (v.type) {
+        case 'hero':
+          return (
+            <section class="hero container">
+              <p class="eyebrow">{v.eyebrow}</p>
+              <h1>{v.title}</h1>
+              <p class="subtitle">{v.subtitle}</p>
+              <div class="cta-row">
+                <a class="button primary" href={href(v.ctaPrimary.href)}>{v.ctaPrimary.label}</a>
+                <a class="button" href={href(v.ctaSecondary.href)}>{v.ctaSecondary.label}</a>
+              </div>
+            </section>
+          );
+        case 'features':
+          return (
+            <section id={id} class="container features">
+              <h2>{v.title}</h2>
+              <p class="section-intro">{v.intro}</p>
+              <div class="feature-grid">
+                {features.map((f: any) => (
+                  <article class="feature-card">
+                    <span class="feature-icon" aria-hidden="true">{f.icon}</span>
+                    <h3>{f.title[locale]}</h3>
+                    <p>{f.description[locale]}</p>
+                  </article>
+                ))}
+              </div>
+            </section>
+          );
+        case 'textBullets':
+          return (
+            <section id={id} class="selfhost">
+              <div class="container selfhost-grid">
+                <div>
+                  <h2>{v.title}</h2>
+                  <p class="section-intro">{v.body}</p>
+                </div>
+                <ul class="check-list">
+                  {v.bullets.map((b: string) => <li>{b}</li>)}
+                </ul>
+              </div>
+            </section>
+          );
+        case 'cta':
+          return (
+            <section id={id} class="container docs-cta">
+              <h2>{v.title}</h2>
+              <p class="section-intro">{v.body}</p>
+              <a class="button primary" href={href(v.href)}>{v.label}</a>
+            </section>
+          );
+      }
+    })
+  }
+</SiteShell>

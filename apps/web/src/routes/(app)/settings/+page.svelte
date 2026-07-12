@@ -1,10 +1,20 @@
 <script lang="ts">
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
+
+  let { data } = $props();
 </script>
 
 <svelte:head>
-  <title>{t("settings.title")}</title>
+  <title>{pageTitle(t("settings.title"))}</title>
 </svelte:head>
+
+{#snippet card(href: string, title: string, subtitle: string)}
+  <a {href} class="rounded-xl border border-border bg-surface-raised p-5 hover:border-brand">
+    <h3 class="text-sm font-semibold text-text">{title}</h3>
+    <p class="mt-1 text-sm text-text-muted">{subtitle}</p>
+  </a>
+{/snippet}
 
 <h1 class="mb-6 text-xl font-semibold text-text">{t("settings.title")}</h1>
 
@@ -13,98 +23,115 @@
     {t("settings.section_personal")}
   </h2>
   <div class="grid gap-4 sm:grid-cols-2">
-    <a
-      href="/settings/account"
-      class="rounded-xl border border-border bg-surface-raised p-5 hover:border-brand"
-    >
-      <h3 class="text-sm font-semibold text-text">{t("settings.account.title")}</h3>
-      <p class="mt-1 text-sm text-text-muted">{t("settings.account.subtitle")}</p>
-    </a>
-    <a
-      href="/settings/notifications"
-      class="rounded-xl border border-border bg-surface-raised p-5 hover:border-brand"
-    >
-      <h3 class="text-sm font-semibold text-text">{t("settings.notifications.title")}</h3>
-      <p class="mt-1 text-sm text-text-muted">{t("settings.notifications.subtitle")}</p>
-    </a>
+    {@render card(
+      "/settings/account",
+      t("settings.account.title"),
+      t("settings.account.subtitle"),
+    )}
+    {@render card(
+      "/settings/notifications",
+      t("settings.notifications.title"),
+      t("settings.notifications.subtitle"),
+    )}
   </div>
 </section>
 
+<!-- The Org cards grouped into named sub-sections (#118) — a flat 13-card grid gave every
+     setting equal weight and no scent for where anything lived. -->
 <section>
   <h2 class="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
     {t("settings.section_org")}
   </h2>
+
+  <h3 class="mb-2 text-sm font-medium text-text">{t("settings.group.team_access")}</h3>
+  <div class="mb-6 grid gap-4 sm:grid-cols-2">
+    {@render card("/settings/users", t("settings.users.title"), t("settings.users.subtitle"))}
+    {@render card("/settings/roles", t("settings.roles.title"), t("settings.roles.subtitle"))}
+    {@render card(
+      "/settings/service-accounts",
+      t("settings.service_accounts.title"),
+      t("settings.service_accounts.subtitle"),
+    )}
+    {@render card("/settings/sso", t("settings.sso.title"), t("settings.sso.subtitle"))}
+  </div>
+
+  <h3 class="mb-2 text-sm font-medium text-text">{t("settings.group.brand_platform")}</h3>
+  <div class="mb-6 grid gap-4 sm:grid-cols-2">
+    {@render card(
+      "/settings/branding",
+      t("settings.branding.title"),
+      t("settings.branding.subtitle"),
+    )}
+    {@render card(
+      "/settings/modules",
+      t("settings.modules.title"),
+      t("settings.modules.subtitle"),
+    )}
+  </div>
+
+  <h3 class="mb-2 text-sm font-medium text-text">{t("settings.group.customization")}</h3>
+  <div class="mb-6 grid gap-4 sm:grid-cols-2">
+    {@render card(
+      "/settings/custom-fields",
+      t("settings.custom_fields.title"),
+      t("settings.custom_fields.subtitle"),
+    )}
+    {@render card(
+      "/settings/contact-types",
+      t("settings.contact_types.title"),
+      t("settings.contact_types.subtitle"),
+    )}
+    {@render card(
+      "/settings/providers",
+      t("settings.providers.title"),
+      t("settings.providers.subtitle"),
+    )}
+    {@render card(
+      "/settings/impex",
+      t("impex.settings.title"),
+      t("impex.settings.subtitle"),
+    )}
+  </div>
+
+  <h3 class="mb-2 text-sm font-medium text-text">{t("settings.group.workflows")}</h3>
   <div class="grid gap-4 sm:grid-cols-2">
-    <a
-      href="/settings/users"
-      class="rounded-xl border border-border bg-surface-raised p-5 hover:border-brand"
-    >
-      <h3 class="text-sm font-semibold text-text">{t("settings.users.title")}</h3>
-      <p class="mt-1 text-sm text-text-muted">{t("settings.users.subtitle")}</p>
-    </a>
-    <a
-      href="/settings/roles"
-      class="rounded-xl border border-border bg-surface-raised p-5 hover:border-brand"
-    >
-      <h3 class="text-sm font-semibold text-text">{t("settings.roles.title")}</h3>
-      <p class="mt-1 text-sm text-text-muted">{t("settings.roles.subtitle")}</p>
-    </a>
-    <a
-      href="/settings/custom-fields"
-      class="rounded-xl border border-border bg-surface-raised p-5 hover:border-brand"
-    >
-      <h3 class="text-sm font-semibold text-text">{t("settings.custom_fields.title")}</h3>
-      <p class="mt-1 text-sm text-text-muted">{t("settings.custom_fields.subtitle")}</p>
-    </a>
-    <a
-      href="/settings/branding"
-      class="rounded-xl border border-border bg-surface-raised p-5 hover:border-brand"
-    >
-      <h3 class="text-sm font-semibold text-text">{t("settings.branding.title")}</h3>
-      <p class="mt-1 text-sm text-text-muted">{t("settings.branding.subtitle")}</p>
-    </a>
-    <a
-      href="/settings/modules"
-      class="rounded-xl border border-border bg-surface-raised p-5 hover:border-brand"
-    >
-      <h3 class="text-sm font-semibold text-text">{t("settings.modules.title")}</h3>
-      <p class="mt-1 text-sm text-text-muted">{t("settings.modules.subtitle")}</p>
-    </a>
-    <a
-      href="/settings/notification-defaults"
-      class="rounded-xl border border-border bg-surface-raised p-5 hover:border-brand"
-    >
-      <h3 class="text-sm font-semibold text-text">{t("settings.notification_defaults.title")}</h3>
-      <p class="mt-1 text-sm text-text-muted">{t("settings.notification_defaults.subtitle")}</p>
-    </a>
-    <a
-      href="/settings/dashboard"
-      class="rounded-xl border border-border bg-surface-raised p-5 hover:border-brand"
-    >
-      <h3 class="text-sm font-semibold text-text">{t("settings.dashboard.title")}</h3>
-      <p class="mt-1 text-sm text-text-muted">{t("settings.dashboard.subtitle")}</p>
-    </a>
-    <a
-      href="/tasks/templates"
-      class="rounded-xl border border-border bg-surface-raised p-5 hover:border-brand"
-    >
-      <h3 class="text-sm font-semibold text-text">{t("settings.task_templates.title")}</h3>
-      <p class="mt-1 text-sm text-text-muted">{t("settings.task_templates.subtitle")}</p>
-    </a>
-    <a
-      href="/settings/task-labels"
-      class="rounded-xl border border-border bg-surface-raised p-5 hover:border-brand"
-    >
-      <h3 class="text-sm font-semibold text-text">{t("settings.task_labels.title")}</h3>
-      <p class="mt-1 text-sm text-text-muted">{t("settings.task_labels.subtitle")}</p>
-    </a>
-    <a
-      href="/settings/leave"
-      class="rounded-xl border border-border bg-surface-raised p-5 hover:border-brand"
-    >
-      <h3 class="text-sm font-semibold text-text">{t("settings.leave.title")}</h3>
-      <p class="mt-1 text-sm text-text-muted">{t("settings.leave.subtitle")}</p>
-    </a>
+    {@render card(
+      "/tasks/templates",
+      t("settings.task_templates.title"),
+      t("settings.task_templates.subtitle"),
+    )}
+    {@render card(
+      "/settings/task-labels",
+      t("settings.task_labels.title"),
+      t("settings.task_labels.subtitle"),
+    )}
+    {@render card(
+      "/settings/task-statuses",
+      t("settings.task_statuses.title"),
+      t("settings.task_statuses.subtitle"),
+    )}
+    {@render card("/settings/leave", t("settings.leave.title"), t("settings.leave.subtitle"))}
+    {@render card(
+      "/settings/subscriptions",
+      t("settings.subscriptions.title"),
+      t("settings.subscriptions.subtitle"),
+    )}
+    {@render card(
+      "/settings/dashboard",
+      t("settings.dashboard.title"),
+      t("settings.dashboard.subtitle"),
+    )}
+    {@render card(
+      "/settings/notification-defaults",
+      t("settings.notification_defaults.title"),
+      t("settings.notification_defaults.subtitle"),
+    )}
+    {@render card("/settings/email", t("settings.email.title"), t("settings.email.subtitle"))}
+    {@render card(
+      "/settings/automation",
+      t("settings.automation.title"),
+      t("settings.automation.subtitle"),
+    )}
   </div>
 </section>
 
@@ -118,12 +145,16 @@
     {t("settings.section_system")}
   </h2>
   <div class="grid gap-4 sm:grid-cols-2">
-    <a
-      href="/settings/system"
-      class="rounded-xl border border-border bg-surface-raised p-5 hover:border-brand"
-    >
-      <h3 class="text-sm font-semibold text-text">{t("settings.system.title")}</h3>
-      <p class="mt-1 text-sm text-text-muted">{t("settings.system.subtitle")}</p>
-    </a>
+    {@render card("/settings/system", t("settings.system.title"), t("settings.system.subtitle"))}
+    <!-- Instance-owner only (issue #137): the license belongs to the installation, so it
+         lives in the installation section — not among the org's own knobs. Modules stays
+         org-side on purpose: enabled_modules is org_settings data, an org admin's business. -->
+    {#if data.user?.isInstanceOwner}
+      {@render card(
+        "/settings/license",
+        t("settings.license.title"),
+        t("settings.license.subtitle"),
+      )}
+    {/if}
   </div>
 </section>

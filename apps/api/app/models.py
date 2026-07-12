@@ -9,8 +9,11 @@ from __future__ import annotations
 import importlib
 
 from app.config import settings
+from app.core.activity.models import ActivityLog  # noqa: F401
+from app.core.apikeys.models import ApiKey, ServiceAccount  # noqa: F401
 from app.core.auth.models import User  # noqa: F401
 from app.core.customfields.models import CustomFieldDefinition  # noqa: F401
+from app.core.email.models import EmailSettings  # noqa: F401
 from app.core.models import InstanceAuditLog, Membership, Org, OrgSettings  # noqa: F401
 from app.core.permissions.models import (  # noqa: F401
     MembershipRole,
@@ -18,6 +21,8 @@ from app.core.permissions.models import (  # noqa: F401
     RoleAuditLog,
     RolePermission,
 )
+from app.core.providers.models import Provider  # noqa: F401
+from app.core.storage.models import StoredFile  # noqa: F401
 from app.db import Base  # noqa: F401
 
 for _name in settings.enabled_modules:

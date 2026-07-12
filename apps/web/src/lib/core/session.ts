@@ -11,16 +11,19 @@ export interface SessionUser {
   id: string;
   email: string;
   full_name: string | null;
-  /** Membership role within the resolved tenant (owner/admin/member/client). */
-  role: string;
-  /** True for owner/admin. DEPRECATED (issue #19) — use `can(...)`; dropped next release. */
-  canManage: boolean;
   /** Effective permissions: the union over every role held. `["*"]` for an owner. */
   permissions: string[];
   /** Personal display-language preference (null → org default). */
   locale: string | null;
+  /** Effective avatar (#122): personal override → OIDC picture → null (initials). */
+  avatarUrl: string | null;
+  /** The stored override alone, for Settings → Account. */
+  customAvatarUrl: string | null;
   /** Instance owner with the instance-admin surface enabled (issue #26). */
   isInstanceAdmin: boolean;
+  /** Instance owner (users.is_superuser) regardless of the admin-surface flag — gates
+   *  license management (issue #137). */
+  isInstanceOwner: boolean;
   /** Set while an instance owner impersonates this user — drives the banner. */
   impersonatedBy: string | null;
   impersonationExpiresAt: string | null;
@@ -51,6 +54,9 @@ export async function fetchTenant(event: ApiEvent): Promise<OrgTheme> {
     primaryColor: data.primary_color,
     accentColor: data.accent_color,
     defaultLocale: data.default_locale,
+    timezone: data.timezone,
+    currency: data.currency,
+    tabTitleTemplate: data.tab_title_template ?? null,
     enabledModules: data.enabled_modules,
     resolved: true,
     suspended: data.suspended,
@@ -65,11 +71,12 @@ export async function fetchUser(event: ApiEvent): Promise<SessionUser | null> {
     id: data.id,
     email: data.email,
     full_name: data.full_name ?? null,
-    role: data.role,
-    canManage: data.can_manage,
     permissions: data.permissions ?? [],
     locale: data.locale ?? null,
+    avatarUrl: data.avatar_url ?? null,
+    customAvatarUrl: data.custom_avatar_url ?? null,
     isInstanceAdmin: data.is_instance_admin ?? false,
+    isInstanceOwner: data.is_instance_owner ?? false,
     impersonatedBy: data.impersonated_by ?? null,
     impersonationExpiresAt: data.impersonation_expires_at ?? null,
   };

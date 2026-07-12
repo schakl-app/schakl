@@ -18,6 +18,13 @@ export function isoAddDays(iso: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** Whole days from `from` to `to` (both date-only ISO); negative when `to` lies earlier. */
+export function isoDiffDays(from: string, to: string): number {
+  return Math.round(
+    (new Date(to + "T00:00:00Z").getTime() - new Date(from + "T00:00:00Z").getTime()) / 86400000,
+  );
+}
+
 /** "2026-07" for an ISO date. */
 export function monthOf(isoDate: string): string {
   return isoDate.slice(0, 7);

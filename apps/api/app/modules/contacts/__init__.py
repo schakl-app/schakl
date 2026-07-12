@@ -6,6 +6,7 @@ namespace) into the shared registry. ``main.py`` imports it for each enabled mod
 
 from __future__ import annotations
 
+from app.modules.contacts.impex import CONTACT_IMPEX
 from app.modules.contacts.mcp import CONTACT_MCP_TOOLS
 from app.modules.contacts.panels import contacts_company_panel
 from app.modules.contacts.permissions import CONTACT_PERMISSIONS
@@ -19,6 +20,7 @@ module = ModuleDescriptor(
     panels=[contacts_company_panel],
     permissions=CONTACT_PERMISSIONS,
     mcp_tools=CONTACT_MCP_TOOLS,
+    impex=[CONTACT_IMPEX],
 )
 
 registry.register(module)

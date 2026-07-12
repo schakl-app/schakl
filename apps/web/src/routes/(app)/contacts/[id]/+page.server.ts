@@ -1,7 +1,10 @@
+import "$lib/modules"; // ensure the panels are registered before we read the registry
+
 import { error, fail, redirect } from "@sveltejs/kit";
 
 import { parseAssignees } from "$lib/core/assignees";
 import { apiErrorKey } from "$lib/core/errors";
+import { entityPanelsFor } from "$lib/core/registry";
 import { apiFor } from "$lib/core/session";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -9,18 +12,27 @@ import type { Actions, PageServerLoad } from "./$types";
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const contact_id = event.params.id;
-  const [contact, definitions, companies, companyDefinitions, members] = await Promise.all([
-    api.GET("/api/v1/contacts/{contact_id}", { params: { path: { contact_id } } }),
-    api.GET("/api/v1/custom-fields/definitions", {
-      params: { query: { entity_type: "contact" } },
-    }),
-    api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0 } } }),
-    api.GET("/api/v1/custom-fields/definitions", {
-      params: { query: { entity_type: "company" } },
-    }),
-    // The quick-create client dialog is the full client form, so it needs the member lookup.
-    api.GET("/api/v1/members/lookup"),
-  ]);
+
+  // Panels contributed to a contact (CLAUDE.md §6) — today just the core activity trail (#67).
+  // A contact has no aggregate period, so `periodStart` is null.
+  const context = { entityId: contact_id, periodStart: null };
+  const enabled = event.locals.theme?.enabledModules ?? [];
+  const panels = entityPanelsFor(enabled, "contact");
+
+  const [contact, definitions, companies, companyDefinitions, members, ...panelData] =
+    await Promise.all([
+      api.GET("/api/v1/contacts/{contact_id}", { params: { path: { contact_id } } }),
+      api.GET("/api/v1/custom-fields/definitions", {
+        params: { query: { entity_type: "contact" } },
+      }),
+      api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0 } } }),
+      api.GET("/api/v1/custom-fields/definitions", {
+        params: { query: { entity_type: "company" } },
+      }),
+      // The quick-create client dialog is the full client form, so it needs the member lookup.
+      api.GET("/api/v1/members/lookup"),
+      ...panels.map((panel) => panel.load(api, context)),
+    ]);
   if (!contact.data) throw error(404, { code: "not_found", message: "errors.not_found" });
   return {
     contact: contact.data,
@@ -28,6 +40,12 @@ export const load: PageServerLoad = async (event) => {
     companies: companies.data?.items ?? [],
     companyDefinitions: companyDefinitions.data ?? [],
     members: members.data ?? [],
+    context,
+    panels: panels.map((panel, index) => ({
+      key: panel.key,
+      titleKey: panel.titleKey,
+      data: panelData[index],
+    })),
     locale: event.locals.locale,
   };
 };

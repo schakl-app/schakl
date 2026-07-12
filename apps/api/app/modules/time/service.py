@@ -22,9 +22,10 @@ from app.core.events import emit
 from app.core.sorting import apply_sort, user_sort_name
 from app.core.tenancy import RequestContext
 from app.errors import AppError
-from app.modules.time.models import TimeEntry
+from app.modules.time.models import TimeEntry, TimeEntryDraft
 from app.modules.time.schemas import (
     TimeEntryCreate,
+    TimeEntryDraftPayload,
     TimeEntryUpdate,
     TimerStart,
     Timesheet,
@@ -185,6 +186,9 @@ class TimeService:
     # --- manual entries ------------------------------------------------------ #
     async def create(self, data: TimeEntryCreate) -> TimeEntry:
         self.ctx.require("time.entry.write")
+        # The entry this draft was for now exists — the draft has served (#44). Times are
+        # wall-clock-as-UTC, so the entry's date *is* the form's date field.
+        await self._clear_draft(data.started_at.date())
         values = data.model_dump()
         started_at = values["started_at"]
         ended_at = values.get("ended_at")
@@ -272,6 +276,67 @@ class TimeService:
         minutes = sum(e.minutes for e in entries)
         billable = sum(e.minutes for e in entries if e.billable)
         return minutes, billable
+
+    # --- drafts (#44) ---------------------------------------------------------- #
+    # Author-only, stricter than the rest of the platform: every path filters on
+    # ``ctx.user.id``. A draft is a user's keystrokes, not a record — an owner or admin must
+    # not be able to read someone else's, and no report or manager view ever surfaces one.
+
+    def _own_draft_select(self) -> Any:
+        return select(TimeEntryDraft).where(
+            TimeEntryDraft.org_id == self.ctx.org.id,
+            TimeEntryDraft.user_id == self.ctx.user.id,
+        )
+
+    async def draft_get(self, entry_date: date) -> TimeEntryDraft | None:
+        return await self.ctx.session.scalar(
+            self._own_draft_select().where(TimeEntryDraft.entry_date == entry_date)
+        )
+
+    async def draft_upsert(
+        self, entry_date: date, payload: TimeEntryDraftPayload
+    ) -> TimeEntryDraft:
+        self.ctx.require("time.entry.write")
+        draft = await self.draft_get(entry_date)
+        data = payload.model_dump(mode="json", exclude_none=True)
+        if draft is None:
+            draft = TimeEntryDraft(
+                org_id=self.ctx.org.id,
+                user_id=self.ctx.user.id,
+                entry_date=entry_date,
+                payload=data,
+            )
+            self.ctx.session.add(draft)
+        else:
+            draft.payload = data
+        await self.ctx.session.flush()
+        # The DB stamps created_at/updated_at; load them eagerly so response serialization
+        # never lazy-refreshes outside the async context.
+        await self.ctx.session.refresh(draft)
+        return draft
+
+    async def draft_delete(self, entry_date: date) -> None:
+        """Discard. Idempotent — deleting a draft that isn't there is not an error."""
+        self.ctx.require("time.entry.write")
+        await self._clear_draft(entry_date)
+
+    async def _clear_draft(self, entry_date: date) -> None:
+        draft = await self.draft_get(entry_date)
+        if draft is not None:
+            await self.ctx.session.delete(draft)
+            await self.ctx.session.flush()
+
+    async def draft_days(self, week_start: date) -> list[date]:
+        """The caller's draft days in a week — the day-tab dots, one indexed query."""
+        rows = await self.ctx.session.execute(
+            self._own_draft_select()
+            .where(
+                TimeEntryDraft.entry_date >= week_start,
+                TimeEntryDraft.entry_date < week_start + timedelta(days=7),
+            )
+            .order_by(TimeEntryDraft.entry_date)
+        )
+        return [d.entry_date for d in rows.scalars()]
 
     # --- budget burn-down aggregates ----------------------------------------- #
     # Published for the projects/companies list columns (#25). Grouped in SQL, one query for a
@@ -690,6 +755,52 @@ class TimeService:
             "other_revenue": other,
         }
 
+    async def project_cost(self, project_id: uuid.UUID) -> dict[str, object]:
+        """Cost of a project's logged time from the people who did the work (#111).
+
+        Σ minutes × the employee's *effective* rate (#113: personal rate → org default),
+        joining ``leave_profiles``/``leave_settings`` by table name only — the same
+        no-imports rule ``revenue()`` follows with ``projects``. The **decision recorded on
+        the issue**: the employee rate prices *cost/margin*; revenue keeps billing at the
+        project rate, and the money burn-down is unchanged.
+
+        Salary-derived money: gated on the manager report grant *and* the any-scope rate
+        read, since a per-project cost aggregates exactly what ``/leave/rates`` exposes.
+        ``unrated_minutes`` counts time by people with no rate anywhere — reported, never
+        silently priced at €0 (docs/PERFORMANCE.md's no-silent-truncation rule).
+        """
+        self.ctx.require("time.report.read")
+        self.ctx.require("leave.rate.read", scope="any")
+        row = (
+            await self.ctx.session.execute(
+                sql_text(
+                    """
+                    SELECT COALESCE(SUM(
+                               te.minutes / 60.0
+                               * COALESCE(lp.hourly_rate, ls.default_hourly_rate)
+                           ), 0) AS cost,
+                           COALESCE(SUM(te.minutes) FILTER (
+                               WHERE lp.hourly_rate IS NULL
+                                 AND ls.default_hourly_rate IS NULL
+                           ), 0) AS unrated_minutes
+                    FROM time_entries te
+                    LEFT JOIN leave_profiles lp
+                           ON lp.org_id = te.org_id AND lp.user_id = te.user_id
+                    LEFT JOIN leave_settings ls ON ls.org_id = te.org_id
+                    WHERE te.org_id = :org_id
+                      AND te.project_id = :project_id
+                      AND te.ended_at IS NOT NULL
+                    """
+                ),
+                {"org_id": str(self.ctx.org.id), "project_id": str(project_id)},
+            )
+        ).one()
+        return {
+            "project_id": project_id,
+            "cost": round(float(row[0]), 2),
+            "unrated_minutes": int(row[1]),
+        }
+
     async def _entries_by_ids(self, entry_ids: list[uuid.UUID]) -> Sequence[TimeEntry]:
         stmt = self.repo.scoped_select().where(
             TimeEntry.id.in_(entry_ids), TimeEntry.ended_at.is_not(None)
@@ -797,4 +908,6 @@ class TimeService:
             rows=row_models,
             day_totals=day_totals,
             total=sum(day_totals),
+            # Drafts are the author's alone (#44): another user's sheet never shows yours.
+            draft_days=await self.draft_days(week_start) if uid == self.ctx.user.id else [],
         )

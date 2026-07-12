@@ -11,6 +11,7 @@
   import { CalendarDays } from "@lucide/svelte";
 
   import { addMonths, isoAddDays, monthGrid, monthOf } from "$lib/core/calendar";
+  import { type DateFormat, getDateFormat } from "$lib/core/dateformat";
   import { fmtLongDay, fmtMonthYear, fmtWeekdayShort } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
 
@@ -31,9 +32,26 @@
     onchange?: (value: string) => void;
   } = $props();
 
+  // The display order is the user's personal choice (issue #13), not a fixed European one. The
+  // roles of the three typed fields follow from it; the parser and placeholder read the same table.
+  const ORDER: Record<DateFormat, ("d" | "m" | "y")[]> = {
+    "dd-mm-yyyy": ["d", "m", "y"],
+    "yyyy-mm-dd": ["y", "m", "d"],
+    "mm-dd-yyyy": ["m", "d", "y"],
+  };
+  const PLACEHOLDER: Record<DateFormat, string> = {
+    "dd-mm-yyyy": "dd-mm-jjjj",
+    "yyyy-mm-dd": "jjjj-mm-dd",
+    "mm-dd-yyyy": "mm-dd-jjjj",
+  };
+  const dateFormat = $derived(getDateFormat());
+  const placeholder = $derived(PLACEHOLDER[dateFormat]);
+
   function toDisplay(iso: string): string {
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-    return m ? `${m[3]}-${m[2]}-${m[1]}` : "";
+    if (!m) return "";
+    const parts = { y: m[1], m: m[2], d: m[3] };
+    return ORDER[dateFormat].map((role) => parts[role]).join("-");
   }
 
   function validDate(day: number, month: number, year: number): string | null {
@@ -49,28 +67,55 @@
     return date.toISOString().slice(0, 10);
   }
 
+  // Assemble an ISO date from field values in whatever role order they were typed.
+  function fromRoles(
+    roles: ("d" | "m" | "y")[],
+    values: number[],
+    fallbackYear: number,
+  ): string | null {
+    const map: Partial<Record<"d" | "m" | "y", number>> = {};
+    roles.forEach((role, i) => (map[role] = values[i]));
+    return validDate(map.d ?? NaN, map.m ?? NaN, map.y ?? fallbackYear);
+  }
+
   /**
-   * Forgiving day-first parser: "15-07-2026", "15/7/26", "15.07", "15-7" (current year),
-   * and digit-only "1507", "150726", "15072026".
+   * Forgiving parser in the user's chosen order (issue #13): separators `-` `/` `.`, a two-field
+   * short form (current year), and digit-only entry. ISO `yyyy-mm-dd` is always accepted too
+   * because a four-digit lead is unambiguous whatever the preferred order.
    */
-  function parseEuropean(raw: string): string | null {
+  function parseInput(raw: string): string | null {
     const text = raw.trim();
     if (!text) return null;
     const currentYear = new Date().getUTCFullYear();
+    const order = ORDER[dateFormat];
+    const nonYear = order.filter((r) => r !== "y"); // the two day/month roles, in order
 
-    const full = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/.exec(text);
-    if (full) return validDate(Number(full[1]), Number(full[2]), Number(full[3]));
+    // ISO always wins: a 4-digit lead cannot be a day or month.
+    const iso = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/.exec(text);
+    if (iso) return validDate(Number(iso[3]), Number(iso[2]), Number(iso[1]));
 
-    const dayMonth = /^(\d{1,2})[-/.](\d{1,2})$/.exec(text);
-    if (dayMonth) return validDate(Number(dayMonth[1]), Number(dayMonth[2]), currentYear);
+    const three = /^(\d{1,4})[-/.](\d{1,4})[-/.](\d{1,4})$/.exec(text);
+    if (three) return fromRoles(order, [Number(three[1]), Number(three[2]), Number(three[3])], currentYear);
 
-    const digits = /^(\d{2})(\d{2})(\d{2}|\d{4})?$/.exec(text);
-    if (digits) {
-      return validDate(
-        Number(digits[1]),
-        Number(digits[2]),
-        digits[3] ? Number(digits[3]) : currentYear,
-      );
+    const two = /^(\d{1,2})[-/.](\d{1,2})$/.exec(text);
+    if (two) return fromRoles(nonYear, [Number(two[1]), Number(two[2])], currentYear);
+
+    // Digit-only. Year-first needs a 4-digit lead; the year-last orders take 2+2 then an
+    // optional 2- or 4-digit year.
+    if (/^\d+$/.test(text)) {
+      if (order[0] === "y") {
+        const full = /^(\d{4})(\d{2})(\d{2})$/.exec(text);
+        if (full) return validDate(Number(full[3]), Number(full[2]), Number(full[1]));
+        const md = /^(\d{2})(\d{2})$/.exec(text);
+        if (md) return fromRoles(nonYear, [Number(md[1]), Number(md[2])], currentYear);
+      } else {
+        const digits = /^(\d{2})(\d{2})(\d{2}|\d{4})?$/.exec(text);
+        if (digits) {
+          const values = [Number(digits[1]), Number(digits[2])];
+          if (digits[3]) return fromRoles(order, [...values, Number(digits[3])], currentYear);
+          return fromRoles(nonYear, values, currentYear);
+        }
+      }
     }
     return null;
   }
@@ -116,7 +161,7 @@
   }
 
   function onTextChange() {
-    const iso = parseEuropean(text);
+    const iso = parseInput(text);
     if (iso) commit(iso);
     else if (!text.trim()) commit("");
     else text = toDisplay(value); // revert unreadable input
@@ -187,7 +232,7 @@
     inputmode="numeric"
     bind:value={text}
     {required}
-    placeholder="dd-mm-jjjj"
+    {placeholder}
     autocomplete="off"
     onchange={onTextChange}
     onkeydown={(e) => {
