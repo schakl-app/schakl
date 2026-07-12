@@ -16,6 +16,8 @@
   let {
     open = $bindable(false),
     name = "",
+    email = "",
+    linkCompany = null,
     definitions = [],
     locale,
     action = "?/createContact",
@@ -25,6 +27,11 @@
     open?: boolean;
     /** What was typed in the picker; split into first/last name. */
     name?: string;
+    /** Prefilled address — a participant chip opens this dialog with the email known (#160). */
+    email?: string;
+    /** Offer linking the new contact to this client (checked by default), e.g. the client an
+     *  email contact moment hangs on (#160). The action decides what to do with `company_id`. */
+    linkCompany?: { id: string; name: string } | null;
     definitions?: CustomFieldDefinition[];
     locale: string;
     action?: string;
@@ -79,7 +86,7 @@
           <label for="qc-contact-email" class="mb-1 block text-sm font-medium text-text"
             >{t("contacts.email")}</label
           >
-          <input id="qc-contact-email" name="email" type="email" class={inputClass} />
+          <input id="qc-contact-email" name="email" type="email" value={email} class={inputClass} />
         </div>
         <div>
           <label for="qc-contact-phone" class="mb-1 block text-sm font-medium text-text"
@@ -94,6 +101,12 @@
           <input id="qc-contact-job" name="job_title" class={inputClass} />
         </div>
       </div>
+      {#if linkCompany}
+        <label class="flex items-center gap-2 text-sm text-text">
+          <input type="checkbox" name="company_id" value={linkCompany.id} checked />
+          {t("contacts.link_to_company", { name: linkCompany.name })}
+        </label>
+      {/if}
       {#if definitions.length > 0}
         <CustomFieldsForm {definitions} {locale} />
       {:else}

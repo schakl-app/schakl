@@ -502,3 +502,44 @@ async def test_project_rollup_includes_task_interactions_with_labels(client_for)
                 )
             ).json()
             assert foreign["total"] == 0
+
+
+async def test_participants_resolve_to_org_contacts_at_read_time(client_for) -> None:
+    """#160: participant addresses are matched against org contacts when the row is read —
+    a contact created *after* the email was logged still links up; a stranger stays bare."""
+    t = await make_tenant("inter-participants")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        row = (
+            await c.post(
+                "/api/v1/interactions",
+                json={
+                    "kind": "meeting",
+                    "occurred_at": _NOW.isoformat(),
+                    "subject": "Kennismaking",
+                    "participants": [
+                        {"email": "Anna@Klant.NL", "name": "Anna", "role": "to"},
+                        {"email": "cc@elders.example", "role": "cc"},
+                    ],
+                },
+                headers=headers,
+            )
+        ).json()
+
+        # Not a contact yet: both addresses read unresolved.
+        fetched = (await c.get(f"/api/v1/interactions/{row['id']}", headers=headers)).json()
+        assert all(p["contact_id"] is None for p in fetched["participants"])
+
+        # The contact arrives later (different case): the address now resolves.
+        contact = (
+            await c.post(
+                "/api/v1/contacts",
+                json={"first_name": "Anna", "email": "anna@klant.nl"},
+                headers=headers,
+            )
+        ).json()
+        fetched = (await c.get(f"/api/v1/interactions/{row['id']}", headers=headers)).json()
+        # EmailStr normalises the stored address's domain case — match case-insensitively.
+        by_email = {p["email"].lower(): p for p in fetched["participants"]}
+        assert by_email["anna@klant.nl"]["contact_id"] == contact["id"]
+        assert by_email["cc@elders.example"]["contact_id"] is None

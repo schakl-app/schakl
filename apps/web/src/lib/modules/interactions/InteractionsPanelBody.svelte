@@ -37,6 +37,9 @@
   import Markdown from "$lib/core/ui/Markdown.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
 
+  import type { CustomFieldDefinition } from "$lib/core/customfields/types";
+  import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
+
   import { type InteractionItem, KIND_ICONS } from "./format";
   import InteractionForm from "./InteractionForm.svelte";
   import InteractionMoveDialog from "./InteractionMoveDialog.svelte";
@@ -89,6 +92,37 @@
   let editing = $state<InteractionItem | null>(null);
   let showMove = $state(false);
   let moving = $state<InteractionItem | null>(null);
+
+  // Creating a contact from an unknown email participant (#160). Contact custom-field
+  // definitions load once, on first use — not every host page holds them.
+  let showParticipantCreate = $state(false);
+  let participantDraft = $state<{
+    name: string;
+    email: string;
+    company: { id: string; name: string } | null;
+  } | null>(null);
+  let contactDefinitions = $state<CustomFieldDefinition[] | null>(null);
+
+  async function createFromParticipant(
+    item: InteractionItem,
+    participant: { email: string; name?: string | null },
+  ) {
+    participantDraft = {
+      name: participant.name ?? "",
+      email: participant.email,
+      company:
+        item.company_id && item.company_name
+          ? { id: item.company_id, name: item.company_name }
+          : null,
+    };
+    if (contactDefinitions === null) {
+      const response = await fetch("/api/v1/custom-fields/definitions?entity_type=contact", {
+        headers: { accept: "application/json" },
+      });
+      contactDefinitions = response.ok ? await response.json() : [];
+    }
+    showParticipantCreate = true;
+  }
   let deleteId = $state("");
   let confirmDelete = $state(false);
   let showReject = $state(false);
@@ -261,9 +295,44 @@
         {#if open}
           <div class="mt-2 space-y-2 pl-7 text-sm">
             {#if item.participants?.length}
-              <p class="text-xs text-text-muted">
-                {item.participants.map((p) => p.name || p.email).join(", ")}
-              </p>
+              <!-- Role-aware participant chips (#160): From/To carry the brand tint, CC is
+                   the muted non-primary look (colour is the marker, sr-only carries it —
+                   docs/UX.md #35). Known addresses link to their contact; unknown ones are
+                   dashed and one click from a prefilled create dialog. -->
+              <div class="flex flex-wrap gap-1">
+                {#each item.participants as p ((p.role ?? "to") + p.email)}
+                  {@const cc = p.role === "cc"}
+                  {#if p.contact_id}
+                    <a
+                      href="/contacts/{p.contact_id}"
+                      title={p.email}
+                      class="rounded-full px-2 py-0.5 text-[11px] ring-1 ring-inset {cc
+                        ? 'bg-surface text-text-muted ring-border'
+                        : 'bg-brand/10 text-brand ring-brand/30'} hover:underline"
+                    >
+                      {p.name || p.email}<span class="sr-only">
+                        ({t(`interactions.role.${p.role ?? "to"}`)})</span
+                      >
+                    </a>
+                  {:else}
+                    <button
+                      type="button"
+                      title={p.email}
+                      onclick={() => createFromParticipant(item, p)}
+                      class="inline-flex items-center gap-0.5 rounded-full border border-dashed border-border px-2 py-0.5 text-[11px] {cc
+                        ? 'text-text-muted'
+                        : 'text-text'} hover:border-brand hover:text-brand"
+                    >
+                      {p.name || p.email}
+                      <Plus size={10} aria-hidden="true" />
+                      <span class="sr-only">
+                        {t("interactions.create_contact")}
+                        ({t(`interactions.role.${p.role ?? "to"}`)})</span
+                      >
+                    </button>
+                  {/if}
+                {/each}
+              </div>
             {/if}
             {#if item.body_text}
               {#if item.source === "gmail"}
@@ -339,6 +408,19 @@
     {/key}
   {/if}
 </Modal>
+
+{#if participantDraft}
+  <ContactQuickCreate
+    bind:open={showParticipantCreate}
+    name={participantDraft.name}
+    email={participantDraft.email}
+    linkCompany={participantDraft.company}
+    definitions={contactDefinitions ?? []}
+    locale={(page.data.locale as string | undefined) ?? "nl"}
+    action="?/createParticipantContact"
+    error={(page.form?.qcError as string | undefined) ?? null}
+  />
+{/if}
 
 <Modal bind:open={showMove} title={t("interactions.move_title")}>
   {#if moving}

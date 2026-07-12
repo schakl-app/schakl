@@ -135,9 +135,12 @@ class InteractionService:
             )
             or 0
         )
-        names = await self._link_names([row for row, _, _ in rows])
+        plain_rows = [row for row, _, _ in rows]
+        names = await self._link_names(plain_rows)
+        contacts_by_email = await self._participant_contacts(plain_rows)
         return [
-            self._present(row, full_name, email, names) for row, full_name, email in rows
+            self._present(row, full_name, email, names, contacts_by_email)
+            for row, full_name, email in rows
         ], total
 
     async def get(self, interaction_id: uuid.UUID) -> dict[str, Any]:
@@ -478,9 +481,34 @@ class InteractionService:
             else None
         )
         names = await self._link_names([row])
+        contacts_by_email = await self._participant_contacts([row])
         return self._present(
-            row, owner[0] if owner else None, owner[1] if owner else None, names
+            row,
+            owner[0] if owner else None,
+            owner[1] if owner else None,
+            names,
+            contacts_by_email,
         )
+
+    async def _participant_contacts(self, rows: list[Interaction]) -> dict[str, uuid.UUID]:
+        """Which participant addresses exist as org contacts (#160) — one batched,
+        org-scoped query over the page's distinct emails, matched at read time so a contact
+        created after the email was logged still links up. Display data, never authz."""
+        emails: set[str] = set()
+        for row in rows:
+            for participant in row.participants or []:
+                email = (participant.get("email") or "").lower()
+                if email:
+                    emails.add(email)
+        if not emails:
+            return {}
+        stmt = text(
+            "SELECT lower(email), id FROM contacts WHERE org_id = :oid AND lower(email) IN :emails"
+        ).bindparams(bindparam("emails", expanding=True))
+        result = await self.ctx.session.execute(
+            stmt, {"oid": self._org_id, "emails": list(emails)}
+        )
+        return dict(result.all())
 
     def _present(
         self,
@@ -488,6 +516,7 @@ class InteractionService:
         live_name: str | None,
         live_email: str | None,
         names: dict[tuple[str, uuid.UUID], str] | None = None,
+        contacts_by_email: dict[str, uuid.UUID] | None = None,
     ) -> dict[str, Any]:
         """Owner resolved like the activity trail (issue #64): live account wins, snapshot after."""
         if live_email is not None:
@@ -516,7 +545,15 @@ class InteractionService:
             "owner_user_id": row.owner_user_id,
             "owner_name": owner_name,
             "owner_deleted": owner_deleted,
-            "participants": row.participants,
+            "participants": [
+                {
+                    **participant,
+                    "contact_id": (contacts_by_email or {}).get(
+                        (participant.get("email") or "").lower()
+                    ),
+                }
+                for participant in (row.participants or [])
+            ],
             "source": row.source,
             "gmail_thread_id": row.gmail_thread_id,
             "deep_link": row.deep_link,

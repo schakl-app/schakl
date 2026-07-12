@@ -21,6 +21,13 @@ class Participant(BaseModel):
     role: str = Field("to", pattern="^(from|to|cc)$")
 
 
+class ParticipantRead(Participant):
+    """Read shape only (#160): the org contact this address resolves to, matched at read
+    time so a contact created *after* the email was logged still links up."""
+
+    contact_id: uuid.UUID | None = None
+
+
 class InteractionRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -47,7 +54,7 @@ class InteractionRead(BaseModel):
     #: Resolved at read time: the live account wins, a departed one keeps its snapshot.
     owner_name: str | None = None
     owner_deleted: bool = False
-    participants: list[Participant] = Field(default_factory=list)
+    participants: list[ParticipantRead] = Field(default_factory=list)
     source: InteractionSource
     gmail_thread_id: str | None = None
     deep_link: str | None = None

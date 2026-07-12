@@ -38,6 +38,7 @@ async def _interactions_provider(ctx: RequestContext, company_id: uuid.UUID) -> 
                 "project_id": str(i["project_id"]) if i["project_id"] else None,
                 "task_id": str(i["task_id"]) if i["task_id"] else None,
                 "contact_id": str(i["contact_id"]) if i["contact_id"] else None,
+                "company_name": i["company_name"],
                 "project_name": i["project_name"],
                 "task_title": i["task_title"],
                 "contact_name": i["contact_name"],

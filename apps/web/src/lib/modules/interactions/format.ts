@@ -32,7 +32,13 @@ export interface InteractionItem {
   contact_name?: string | null;
   owner_user_id: string | null;
   owner_name: string | null;
-  participants?: { email: string; name?: string | null; role?: string }[];
+  participants?: {
+    email: string;
+    name?: string | null;
+    role?: string;
+    /** The org contact this address resolves to, matched by the API at read time (#160). */
+    contact_id?: string | null;
+  }[];
   source: string;
   deep_link: string | null;
 }

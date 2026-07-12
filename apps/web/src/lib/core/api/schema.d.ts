@@ -6239,7 +6239,7 @@ export interface components {
             /** Owner User Id */
             owner_user_id?: string | null;
             /** Participants */
-            participants?: components["schemas"]["Participant"][];
+            participants?: components["schemas"]["ParticipantRead"][];
             /** Project Id */
             project_id?: string | null;
             /** Project Name */
@@ -7640,6 +7640,27 @@ export interface components {
         };
         /** Participant */
         Participant: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Name */
+            name?: string | null;
+            /**
+             * Role
+             * @default to
+             */
+            role: string;
+        };
+        /**
+         * ParticipantRead
+         * @description Read shape only (#160): the org contact this address resolves to, matched at read
+         *     time so a contact created *after* the email was logged still links up.
+         */
+        ParticipantRead: {
+            /** Contact Id */
+            contact_id?: string | null;
             /**
              * Email
              * Format: email
