@@ -2020,6 +2020,83 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Subscriptions */
+        get: operations["list_subscriptions_api_v1_subscriptions_get"];
+        put?: never;
+        /** Create Subscription */
+        post: operations["create_subscription_api_v1_subscriptions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/subscriptions/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Summary
+         * @description MRR/ARR + the invoices due within a month, for Overzicht → Omzet.
+         */
+        get: operations["summary_api_v1_subscriptions_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/subscriptions/{subscription_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Subscription */
+        get: operations["get_subscription_api_v1_subscriptions__subscription_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Subscription */
+        delete: operations["delete_subscription_api_v1_subscriptions__subscription_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Subscription */
+        patch: operations["update_subscription_api_v1_subscriptions__subscription_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/subscriptions/{subscription_id}/prices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Price History
+         * @description The append-only price history, newest first.
+         */
+        get: operations["price_history_api_v1_subscriptions__subscription_id__prices_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/system/info": {
         parameters: {
             query?: never;
@@ -5541,6 +5618,17 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** Page[SubscriptionRead] */
+        Page_SubscriptionRead_: {
+            /** Items */
+            items: components["schemas"]["SubscriptionRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
         /** Page[TaskListItem] */
         Page_TaskListItem_: {
             /** Items */
@@ -5706,6 +5794,16 @@ export interface components {
             /** Events */
             events?: components["schemas"]["PreferenceRowWrite"][];
             general?: components["schemas"]["GeneralPreferenceWrite"] | null;
+        };
+        /** PriceRead */
+        PriceRead: {
+            /** Amount */
+            amount: string;
+            /**
+             * Valid From
+             * Format: date
+             */
+            valid_from: string;
         };
         /**
          * ProductivityRow
@@ -6132,6 +6230,20 @@ export interface components {
             /** Position */
             position?: number | null;
         };
+        /**
+         * RolloverRule
+         * @description Unused included hours: tenant config, never policy in code (§14's rule, issue #30).
+         */
+        RolloverRule: {
+            /** Expires After Periods */
+            expires_after_periods?: number | null;
+            /**
+             * Mode
+             * @default none
+             * @enum {string}
+             */
+            mode: "none" | "carry";
+        };
         /** ServiceAccountCreate */
         ServiceAccountCreate: {
             /** Name */
@@ -6296,6 +6408,273 @@ export interface components {
             org_id: string;
             /** Size Bytes */
             size_bytes: number;
+        };
+        /** SubscriptionCreate */
+        SubscriptionCreate: {
+            /** Amount */
+            amount: number | string;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /**
+             * Currency
+             * @default EUR
+             */
+            currency: string;
+            /** Custom */
+            custom?: {
+                [key: string]: unknown;
+            };
+            /** End Date */
+            end_date?: string | null;
+            /** Included Hours */
+            included_hours?: number | string | null;
+            /** @default monthly */
+            interval: components["schemas"]["SubscriptionInterval"];
+            /**
+             * Interval Count
+             * @default 1
+             */
+            interval_count: number;
+            /** Lines */
+            lines?: components["schemas"]["SubscriptionLineWrite"][];
+            /** Links */
+            links?: components["schemas"]["SubscriptionLinkWrite"][];
+            /** Name */
+            name: string;
+            /** Next Invoice Date */
+            next_invoice_date?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Notice Period Days */
+            notice_period_days?: number | null;
+            rollover?: components["schemas"]["RolloverRule"];
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /** @default draft */
+            status: components["schemas"]["SubscriptionStatus"];
+        };
+        /**
+         * SubscriptionInterval
+         * @enum {string}
+         */
+        SubscriptionInterval: "monthly" | "quarterly" | "yearly";
+        /** SubscriptionLineRead */
+        SubscriptionLineRead: {
+            /** Description */
+            description: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Position */
+            position: number;
+            /**
+             * Quantity
+             * @default 1
+             */
+            quantity: string;
+            /**
+             * Unit Amount
+             * @default 0
+             */
+            unit_amount: string;
+        };
+        /** SubscriptionLineWrite */
+        SubscriptionLineWrite: {
+            /** Description */
+            description: string;
+            /**
+             * Quantity
+             * @default 1
+             */
+            quantity: number | string;
+            /**
+             * Unit Amount
+             * @default 0
+             */
+            unit_amount: number | string;
+        };
+        /** SubscriptionLinkRead */
+        SubscriptionLinkRead: {
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /**
+             * Entity Type
+             * @enum {string}
+             */
+            entity_type: "project" | "task";
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
+        /** SubscriptionLinkWrite */
+        SubscriptionLinkWrite: {
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /**
+             * Entity Type
+             * @enum {string}
+             */
+            entity_type: "project" | "task";
+        };
+        /** SubscriptionRead */
+        SubscriptionRead: {
+            /** Amount */
+            amount?: string | null;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /**
+             * Company Name
+             * @default
+             */
+            company_name: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Currency */
+            currency: string;
+            /** Custom */
+            custom?: {
+                [key: string]: unknown;
+            };
+            /** End Date */
+            end_date: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Included Hours */
+            included_hours: string | null;
+            interval: components["schemas"]["SubscriptionInterval"];
+            /** Interval Count */
+            interval_count: number;
+            /** Lines */
+            lines?: components["schemas"]["SubscriptionLineRead"][];
+            /** Links */
+            links?: components["schemas"]["SubscriptionLinkRead"][];
+            /** Monthly Equivalent */
+            monthly_equivalent?: number | null;
+            /** Name */
+            name: string;
+            /** Next Invoice Date */
+            next_invoice_date: string | null;
+            /** Notes */
+            notes: string | null;
+            /** Notice Period Days */
+            notice_period_days: number | null;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            rollover: components["schemas"]["RolloverRule"];
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            status: components["schemas"]["SubscriptionStatus"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            usage?: components["schemas"]["SubscriptionUsage"] | null;
+        };
+        /**
+         * SubscriptionStatus
+         * @enum {string}
+         */
+        SubscriptionStatus: "draft" | "active" | "paused" | "cancelled";
+        /**
+         * SubscriptionSummary
+         * @description Omzet view (#30): recurring revenue at a glance.
+         */
+        SubscriptionSummary: {
+            /** Active Count */
+            active_count: number;
+            /** Arr */
+            arr: number;
+            /** Mrr */
+            mrr: number;
+            /** Upcoming */
+            upcoming: components["schemas"]["UpcomingInvoice"][];
+        };
+        /** SubscriptionUpdate */
+        SubscriptionUpdate: {
+            /** Amount */
+            amount?: number | string | null;
+            /** Amount Valid From */
+            amount_valid_from?: string | null;
+            /** Company Id */
+            company_id?: string | null;
+            /** Currency */
+            currency?: string | null;
+            /** Custom */
+            custom?: {
+                [key: string]: unknown;
+            } | null;
+            /** End Date */
+            end_date?: string | null;
+            /** Included Hours */
+            included_hours?: number | string | null;
+            interval?: components["schemas"]["SubscriptionInterval"] | null;
+            /** Interval Count */
+            interval_count?: number | null;
+            /** Lines */
+            lines?: components["schemas"]["SubscriptionLineWrite"][] | null;
+            /** Links */
+            links?: components["schemas"]["SubscriptionLinkWrite"][] | null;
+            /** Name */
+            name?: string | null;
+            /** Next Invoice Date */
+            next_invoice_date?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Notice Period Days */
+            notice_period_days?: number | null;
+            rollover?: components["schemas"]["RolloverRule"] | null;
+            /** Start Date */
+            start_date?: string | null;
+            status?: components["schemas"]["SubscriptionStatus"] | null;
+        };
+        /**
+         * SubscriptionUsage
+         * @description Included-hours consumption for the *current* period — measured against the time logged
+         *     on the linked projects (the same aggregate every budget bar reads, #25).
+         */
+        SubscriptionUsage: {
+            /** Included Hours */
+            included_hours: string | null;
+            /** Overage Hours */
+            overage_hours: number;
+            /** Period End */
+            period_end: string | null;
+            /** Period Start */
+            period_start: string | null;
+            /** Used Hours */
+            used_hours: number;
         };
         /** SystemInfo */
         SystemInfo: {
@@ -7040,6 +7419,35 @@ export interface components {
         UnreadCount: {
             /** Count */
             count: number;
+        };
+        /** UpcomingInvoice */
+        UpcomingInvoice: {
+            /** Amount */
+            amount: string | null;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /**
+             * Company Name
+             * @default
+             */
+            company_name: string;
+            /** Currency */
+            currency: string;
+            /** Name */
+            name: string;
+            /**
+             * Next Invoice Date
+             * Format: date
+             */
+            next_invoice_date: string;
+            /**
+             * Subscription Id
+             * Format: uuid
+             */
+            subscription_id: string;
         };
         /** UpdateInfo */
         UpdateInfo: {
@@ -12494,6 +12902,224 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SetupStatus"];
+                };
+            };
+        };
+    };
+    list_subscriptions_api_v1_subscriptions_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                company_id?: string | null;
+                status?: string | null;
+                /** @description name | status | next_invoice_date | start_date */
+                sort?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_SubscriptionRead_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_subscription_api_v1_subscriptions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubscriptionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    summary_api_v1_subscriptions_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionSummary"];
+                };
+            };
+        };
+    };
+    get_subscription_api_v1_subscriptions__subscription_id__get: {
+        parameters: {
+            query?: {
+                /** @description Include current-period included-hours usage */
+                usage?: boolean;
+            };
+            header?: never;
+            path: {
+                subscription_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_subscription_api_v1_subscriptions__subscription_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subscription_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_subscription_api_v1_subscriptions__subscription_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subscription_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubscriptionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    price_history_api_v1_subscriptions__subscription_id__prices_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subscription_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PriceRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

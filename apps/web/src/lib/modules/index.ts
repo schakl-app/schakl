@@ -7,6 +7,7 @@ import "./companies";
 import "./contacts";
 import "./tasks";
 import "./projects";
+import "./subscriptions";
 import "./time";
 import "./leave";
 import "./notifications";

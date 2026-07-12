@@ -50,6 +50,7 @@ _DOMAIN_TABLES = (
     "task_comments, task_activities, task_template_items, task_templates, "
     "leave_requests, leave_recurring_days, leave_entitlements, leave_profiles, leave_types, "
     "leave_holidays, leave_settings, employment_contracts, "
+    "subscription_links, subscription_lines, subscription_prices, subscriptions, "
     "websites, hosting, domains, providers, "
     "time_entry_drafts, time_entries, tasks, projects, contacts, contact_types, "
     "custom_field_definitions, "
@@ -61,7 +62,7 @@ _DOMAIN_TABLES = (
 )
 _ENABLED_MODULES = [
     "companies", "contacts", "tasks", "projects", "time", "leave", "notifications",
-    "domains", "hosting", "websites",
+    "domains", "hosting", "websites", "subscriptions",
 ]
 
 
