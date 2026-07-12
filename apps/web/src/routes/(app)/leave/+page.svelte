@@ -2,7 +2,7 @@
   import { Ban, Pencil, Plus, Repeat } from "@lucide/svelte";
 
   import { page } from "$app/state";
-  import { fmtDayMonth } from "$lib/core/format";
+  import { fmtPeriod } from "$lib/core/format";
   import { can } from "$lib/core/permissions";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
@@ -100,9 +100,7 @@
   }
 
   function period(request: { start_date: string; end_date: string }): string {
-    return request.start_date === request.end_date
-      ? fmtDayMonth(request.start_date)
-      : `${fmtDayMonth(request.start_date)} – ${fmtDayMonth(request.end_date)}`;
+    return fmtPeriod(request.start_date, request.end_date);
   }
 
   const yearLink = (year: number) => `?year=${year}`;

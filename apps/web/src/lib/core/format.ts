@@ -39,6 +39,30 @@ export function fmtDayMonth(isoDate: string): string {
   return fmt({ day: "numeric", month: "short", timeZone: "UTC" }).format(dateOnly(isoDate));
 }
 
+/** "7 jul 2027" — day-month with its year, for dates outside the current year. */
+export function fmtDayMonthYear(isoDate: string): string {
+  return fmt({ day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(
+    dateOnly(isoDate),
+  );
+}
+
+/**
+ * A date-only period (#119): "3 dec" / "3 dec – 7 dec" while it lies in the current org-local
+ * calendar year; the year appears when it doesn't ("3 dec 2027", "3 dec – 7 dec 2027") and on
+ * both ends when the span crosses a year boundary ("28 dec 2026 – 3 jan 2027"). Omitting `end`
+ * formats a single date year-aware.
+ */
+export function fmtPeriod(startIso: string, endIso: string = startIso): string {
+  const startYear = startIso.slice(0, 4);
+  const endYear = endIso.slice(0, 4);
+  const currentYear = fmt({ year: "numeric", timeZone: getTimeZone() }).format(new Date());
+  if (startYear !== endYear) return `${fmtDayMonthYear(startIso)} – ${fmtDayMonthYear(endIso)}`;
+  if (startIso === endIso)
+    return startYear === currentYear ? fmtDayMonth(startIso) : fmtDayMonthYear(startIso);
+  const end = startYear === currentYear ? fmtDayMonth(endIso) : fmtDayMonthYear(endIso);
+  return `${fmtDayMonth(startIso)} – ${end}`;
+}
+
 /** "ma 7" — weekday + day, for grid column headers. Date-only ISO string. */
 export function fmtWeekdayDay(isoDate: string): string {
   return fmt({ weekday: "short", day: "numeric", timeZone: "UTC" }).format(dateOnly(isoDate));

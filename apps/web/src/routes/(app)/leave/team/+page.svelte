@@ -3,7 +3,7 @@
   import { Ban, Check, Pencil, Plus, X } from "@lucide/svelte";
 
   import { page } from "$app/state";
-  import { fmtDayMonth } from "$lib/core/format";
+  import { fmtPeriod } from "$lib/core/format";
   import { can } from "$lib/core/permissions";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
@@ -92,12 +92,16 @@
     return map;
   });
 
-  function overBalanceBy(request: Request): number {
+  function balanceFor(request: Request): Cell | null {
     const type = typeById[request.leave_type_id];
-    if (!type?.tracks_balance) return 0;
+    if (!type?.tracks_balance) return null;
     // The loaded entitlements are year-scoped; a request outside the viewed year has no cell.
-    if (Number(request.start_date.slice(0, 4)) !== data.year) return 0;
-    const cell = cellByUserType[`${request.user_id}|${request.leave_type_id}`];
+    if (Number(request.start_date.slice(0, 4)) !== data.year) return null;
+    return cellByUserType[`${request.user_id}|${request.leave_type_id}`] ?? null;
+  }
+
+  function overBalanceBy(request: Request): number {
+    const cell = balanceFor(request);
     return cell && cell.remaining < 0 ? -cell.remaining : 0;
   }
 
@@ -160,9 +164,7 @@
   }
 
   function period(request: { start_date: string; end_date: string }): string {
-    return request.start_date === request.end_date
-      ? fmtDayMonth(request.start_date)
-      : `${fmtDayMonth(request.start_date)} – ${fmtDayMonth(request.end_date)}`;
+    return fmtPeriod(request.start_date, request.end_date);
   }
 </script>
 
@@ -229,6 +231,17 @@
               <span class="tabular-nums">
                 {t("leave.team.hours_amount", { hours: fmtHours(request.hours) })}
               </span>
+              <!-- The decision is self-contained (#119): the still-available balance sits on the
+                   row instead of in the grid below; the amber warning owns the negative case. -->
+              {#if balanceFor(request) && overBalanceBy(request) === 0}
+                {@const cell = balanceFor(request)}
+                <span class="tabular-nums text-xs">
+                  {t("leave.team.balance_left", {
+                    left: fmtHours(cell?.remaining ?? 0),
+                    total: fmtHours(cell?.entitled ?? 0),
+                  })}
+                </span>
+              {/if}
             </p>
             {#if request.note}
               <p class="mt-0.5 truncate text-xs text-text-muted">{request.note}</p>
@@ -495,6 +508,15 @@
           <span class="tabular-nums">
             {t("leave.team.hours_amount", { hours: fmtHours(reviewRequest.hours) })}
           </span>
+          {#if balanceFor(reviewRequest) && overBalanceBy(reviewRequest) === 0}
+            {@const cell = balanceFor(reviewRequest)}
+            <span class="tabular-nums text-xs">
+              {t("leave.team.balance_left", {
+                left: fmtHours(cell?.remaining ?? 0),
+                total: fmtHours(cell?.entitled ?? 0),
+              })}
+            </span>
+          {/if}
         </p>
         {#if reviewRequest.note}
           <p class="mt-1 text-sm text-text-muted">{reviewRequest.note}</p>

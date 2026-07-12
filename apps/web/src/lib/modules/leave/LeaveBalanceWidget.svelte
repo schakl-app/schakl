@@ -1,6 +1,6 @@
 <script lang="ts">
   /** My Day widget: remaining vacation balance + pending requests + next approved leave. */
-  import { fmtDayMonth } from "$lib/core/format";
+  import { fmtPeriod } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
 
   import { fmtHours, hoursToDays } from "./format";
@@ -47,8 +47,8 @@
   {#if summary.next_leave_start && summary.next_leave_end}
     <p class="mt-1 text-sm text-text-muted">
       {t("leave.widget.next", {
-        from: fmtDayMonth(summary.next_leave_start),
-        to: fmtDayMonth(summary.next_leave_end),
+        from: fmtPeriod(summary.next_leave_start),
+        to: fmtPeriod(summary.next_leave_end),
       })}
     </p>
   {/if}

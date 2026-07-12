@@ -17,7 +17,7 @@
   import { Clock } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
-  import { fmtDayMonth } from "$lib/core/format";
+  import { fmtPeriod } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { getLocale } from "$lib/paraglide/runtime";
   import Combobox from "$lib/core/ui/Combobox.svelte";
@@ -134,10 +134,6 @@
   // Someone who can't backdate is told up front, and submit is disabled — a dead-end 403 on
   // submit is exactly what this replaces (#114).
   const pastBlocked = $derived(touchesPast && !canBackdate && spanChanged);
-
-  function fmtPeriod(start: string, end: string): string {
-    return start === end ? fmtDayMonth(start) : `${fmtDayMonth(start)} – ${fmtDayMonth(end)}`;
-  }
 
   /** One call per meaningful change, debounced — not one per keystroke. */
   function schedulePreview() {
@@ -354,7 +350,7 @@
           {@const reason = dayReasonKey(day.reason)}
           <li class="flex justify-between text-xs {reason ? 'text-text-muted' : 'text-text'}">
             <span>
-              <span class="capitalize">{fmtDayMonth(day.date)}</span>
+              <span class="capitalize">{fmtPeriod(day.date)}</span>
               <!-- `capitalize` uppercases every word, so the reason stays outside it: the day
                    reads "5 Nov", the reason reads "geen werkdag", not "Geen Werkdag". -->
               {#if reason}<span class="text-text-muted">· {t(reason)}</span>{/if}
