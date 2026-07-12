@@ -75,7 +75,7 @@ class DriveService:
     # --- browse (as the viewing user) ------------------------------------------- #
     async def browse(self, folder_id: str | None, *, refresh: bool = False) -> dict[str, Any]:
         settings_row = await self._settings()
-        target = folder_id or settings_row.drive_parent_folder_id
+        target = folder_id or drive_root(settings_row)
         if not target:
             raise AppError(
                 "google_drive_no_folder", "errors.google_drive_no_folder", status_code=409
@@ -276,6 +276,12 @@ class DriveService:
                 "errors.google_no_automation_connection",
                 status_code=409,
             )
+        if drive_root(settings_row) is None:
+            # Fail here, visibly — a queued job the worker can only skip is a phantom
+            # 202 the user reads as "the button did nothing" (#149).
+            raise AppError(
+                "google_drive_no_folder", "errors.google_drive_no_folder", status_code=409
+            )
         name = await self._entity_name(entity_type, entity_id)
         if name is None:
             raise AppError("not_found", "errors.not_found", status_code=404)
@@ -292,6 +298,10 @@ class DriveService:
                 "google_no_automation_connection",
                 "errors.google_no_automation_connection",
                 status_code=409,
+            )
+        if drive_root(settings_row) is None:
+            raise AppError(
+                "google_drive_no_folder", "errors.google_drive_no_folder", status_code=409
             )
         rows = await self.ctx.session.execute(
             text(
@@ -390,6 +400,14 @@ _TEMPLATE_MAX_DEPTH = 3
 _TEMPLATE_MAX_ITEMS = 100
 
 
+def drive_root(settings_row: GoogleSettings) -> str | None:
+    """Where new work lands when no explicit folder is given: the configured parent
+    folder, else the shared drive's **root** (#149) — the Drive API accepts a shared
+    drive's id as its root folder id, and every call here already sends
+    ``supportsAllDrives``. ``None`` means Drive is genuinely unconfigured."""
+    return settings_row.drive_parent_folder_id or settings_row.drive_shared_drive_id or None
+
+
 async def provision_folder(session: AsyncSession, org: Org, job: DriveFolderJob) -> None:
     if job.status != FolderJobStatus.PENDING.value:
         return
@@ -398,7 +416,7 @@ async def provision_folder(session: AsyncSession, org: Org, job: DriveFolderJob)
         settings_row is None
         or not settings_row.drive_enabled
         or not settings_row.automation_connection_user_id
-        or not settings_row.drive_parent_folder_id
+        or drive_root(settings_row) is None
     ):
         job.status = FolderJobStatus.SKIPPED.value
         job.last_error = "drive_not_configured"
@@ -414,7 +432,7 @@ async def provision_folder(session: AsyncSession, org: Org, job: DriveFolderJob)
         return
 
     # A project folder nests under its company's folder when that exists.
-    parent = settings_row.drive_parent_folder_id
+    parent = drive_root(settings_row)
     if job.parent_entity_id is not None:
         company_folder = await session.scalar(
             select(DriveLink).where(

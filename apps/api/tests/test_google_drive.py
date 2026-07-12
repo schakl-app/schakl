@@ -38,8 +38,10 @@ class _StubClient:
         self.script = list(script)
         self.calls: list[tuple[str, str]] = []
 
-    async def _pop(self, method: str, url: str, **kwargs) -> _StubResponse:  # noqa: ARG002
+    async def _pop(self, method: str, url: str, **kwargs) -> _StubResponse:
         self.calls.append((method, url))
+        self.call_kwargs = getattr(self, "call_kwargs", [])
+        self.call_kwargs.append(kwargs)
         assert self.script, f"unexpected Google call: {method} {url}"
         expected, response = self.script.pop(0)
         assert expected == method, f"expected {expected}, got {method} {url}"
@@ -74,15 +76,22 @@ class _FakeRedis:
         self.store[key] = value
 
 
-async def _seed(tenant, *, auto_provision: bool = False, automation: bool = False):
+async def _seed(
+    tenant,
+    *,
+    auto_provision: bool = False,
+    automation: bool = False,
+    parent_folder: str | None = "parent-1",
+    shared_drive: str | None = "sd-1",
+):
     async with async_session_maker() as session:
         await set_current_org(session, tenant.org.id)
         session.add(
             GoogleSettings(
                 org_id=tenant.org.id,
                 drive_enabled=True,
-                drive_shared_drive_id="sd-1",
-                drive_parent_folder_id="parent-1",
+                drive_shared_drive_id=shared_drive,
+                drive_parent_folder_id=parent_folder,
                 drive_auto_provision=auto_provision,
                 automation_connection_user_id=tenant.user.id if automation else None,
             )
@@ -405,3 +414,67 @@ async def test_drive_links_tenant_isolation(client_for) -> None:
                 headers=b_headers,
             )
         ).json() == []
+
+
+async def test_provisioning_falls_back_to_shared_drive_root(monkeypatch) -> None:
+    """#149: no parent folder configured but a shared drive is — the worker parents the
+    new folder on the shared drive's root instead of skipping as drive_not_configured."""
+    t = await make_tenant("gdrive-sdroot")
+    await _seed(t, automation=True, parent_folder=None)
+
+    async def _quiet_enqueue(function: str, *args, **kwargs) -> None:  # noqa: ARG001
+        return None
+
+    monkeypatch.setattr("app.core.jobs.enqueue", _quiet_enqueue)
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        from app.modules.google.drive.service import queue_folder_job
+
+        job = await queue_folder_job(session, t.org.id, "company", uuid.uuid4(), "Klant BV")
+        stub = _StubClient(
+            [
+                ("GET", _StubResponse(200, {"files": []})),
+                (
+                    "POST",
+                    _StubResponse(
+                        200,
+                        {"id": "f-1", "name": "Klant BV", "webViewLink": "https://drive/f-1"},
+                    ),
+                ),
+            ]
+        )
+        monkeypatch.setattr(
+            "app.modules.google.drive.service.acting_as", _stub_acting_as(stub)
+        )
+        await provision_folder(session, t.org, job)
+        await session.commit()
+
+        assert job.status == "done" and job.last_error is None
+        create_kwargs = stub.call_kwargs[-1]
+        assert create_kwargs["json"]["parents"] == ["sd-1"]
+
+
+async def test_provision_request_409s_without_any_root(client_for, monkeypatch) -> None:
+    """#149: neither a parent folder nor a shared drive configured — the button must fail
+    visibly with the existing error instead of accepting a job the worker can only skip."""
+    t = await make_tenant("gdrive-noroot")
+    await _seed(t, automation=True, parent_folder=None, shared_drive=None)
+    headers = await auth_cookie(t.user)
+
+    async def _quiet_enqueue(function: str, *args, **kwargs) -> None:  # noqa: ARG001
+        return None
+
+    monkeypatch.setattr("app.core.jobs.enqueue", _quiet_enqueue)
+
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Klant BV"}, headers=headers)
+        ).json()
+        response = await c.post(
+            "/api/v1/google/drive/provision",
+            json={"entity_type": "company", "entity_id": company["id"]},
+            headers=headers,
+        )
+        assert response.status_code == 409, response.text
+        assert response.json()["error"]["code"] == "google_drive_no_folder"
