@@ -4,8 +4,16 @@ import { apiErrorKey, lookupItems } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
+import { readTablePref, resolveColumns } from "$lib/core/table/columns";
+import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
+import {
+  SUBSCRIPTION_COLUMNS,
+  SUBSCRIPTIONS_TABLE_ID,
+} from "$lib/modules/subscriptions/columns";
 
 import type { Actions, PageServerLoad } from "./$types";
+
+const BULK_STATUSES = ["draft", "active", "paused", "cancelled"] as const;
 
 function parseCustom(raw: FormDataEntryValue | null): Record<string, unknown> {
   try {
@@ -50,13 +58,29 @@ function subscriptionBody(form: FormData) {
 export const load: PageServerLoad = async (event) => {
   if (!can(event.locals.user, "subscriptions.subscription.read")) throw redirect(303, "/");
   const api = apiFor(event);
-  const sort = event.url.searchParams.get("sort") ?? undefined;
+  // The saved layout decides how the *server* sorts (#24); the URL wins so a sorted list
+  // stays shareable. Filters live in URL params and the API applies them (#153).
+  const { prefs } = await event.parent();
+  const pref = readTablePref(prefs, SUBSCRIPTIONS_TABLE_ID);
+  const resolved = resolveColumns(SUBSCRIPTION_COLUMNS, pref);
+  const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
   const typeFilter = event.url.searchParams.get("type") ?? undefined;
+  const companyFilter = event.url.searchParams.get("company") || undefined;
+  const statusFilter = event.url.searchParams.get("status") || undefined;
 
   const [subscriptions, summary, types, templates, companies, projects, definitions, companyDefinitions] =
     await Promise.all([
     api.GET("/api/v1/subscriptions", {
-      params: { query: { limit: 200, offset: 0, sort, subscription_type_id: typeFilter } },
+      params: {
+        query: {
+          limit: 200,
+          offset: 0,
+          sort,
+          subscription_type_id: typeFilter,
+          company_id: companyFilter,
+          status: statusFilter as "active" | undefined,
+        },
+      },
     }),
     api.GET("/api/v1/subscriptions/summary"),
     api.GET("/api/v1/subscriptions/types"),
@@ -79,6 +103,9 @@ export const load: PageServerLoad = async (event) => {
     types: types.data ?? [],
     templates: templates.data ?? [],
     typeFilter: typeFilter ?? "",
+    companyFilter: companyFilter ?? "",
+    statusFilter: statusFilter ?? "",
+    table: { pref, sort: sort ?? null, widths: resolved.widths },
     canManageTypes: can(event.locals.user, "subscriptions.type.manage"),
     canManageTemplates: can(event.locals.user, "subscriptions.template.manage"),
     companies: lookupItems(companies, "companies").map((c) => ({ id: c.id, name: c.name })),
@@ -90,6 +117,54 @@ export const load: PageServerLoad = async (event) => {
 };
 
 export const actions: Actions = {
+  /** Persist this user's column layout. Personal, in-view — never org settings (docs/UX.md §6). */
+  saveTable: async (event) => {
+    const form = await event.request.formData();
+    await saveTablePref(event, SUBSCRIPTIONS_TABLE_ID, parseTablePref(form));
+    return { tableSaved: true };
+  },
+
+  /** Bulk status change (#153): a per-id fan-out — the single PATCH is the validation path,
+   *  so a bulk action can never do what a row edit could not. */
+  bulkStatus: async (event) => {
+    const form = await event.request.formData();
+    const status = String(form.get("status") ?? "");
+    const ids = form
+      .getAll("ids")
+      .flatMap((value) => String(value).split(","))
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (!ids.length || !BULK_STATUSES.includes(status as (typeof BULK_STATUSES)[number])) {
+      return fail(400, { error: "errors.required" });
+    }
+    const api = apiFor(event);
+    for (const subscription_id of ids) {
+      const { error } = await api.PATCH("/api/v1/subscriptions/{subscription_id}", {
+        params: { path: { subscription_id } },
+        body: { status: status as "active" },
+      });
+      if (error) return fail(400, { error: apiErrorKey(error).key });
+    }
+    return { bulkUpdated: ids.length };
+  },
+
+  bulkDelete: async (event) => {
+    const form = await event.request.formData();
+    const ids = form
+      .getAll("ids")
+      .flatMap((value) => String(value).split(","))
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (!ids.length) return fail(400, { error: "errors.required" });
+    const api = apiFor(event);
+    for (const subscription_id of ids) {
+      await api.DELETE("/api/v1/subscriptions/{subscription_id}", {
+        params: { path: { subscription_id } },
+      });
+    }
+    return { bulkDeleted: ids.length };
+  },
+
   create: async (event) => {
     const form = await event.request.formData();
     const body = subscriptionBody(form);
