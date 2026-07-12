@@ -4,9 +4,14 @@
    *  per-client panels already offer. */
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
+  import type { InteractionItem } from "$lib/modules/interactions/format";
   import InteractionsPanelBody from "$lib/modules/interactions/InteractionsPanelBody.svelte";
 
   let { data } = $props();
+
+  // The generated client marks optional what the panel type declares nullable — the same
+  // narrowing the entity panels do.
+  const items = $derived(data.items as InteractionItem[]);
 </script>
 
 <svelte:head>
@@ -19,5 +24,5 @@
 </div>
 
 <section class="max-w-3xl rounded-xl border border-border bg-surface-raised p-5">
-  <InteractionsPanelBody items={data.items} total={data.total} members={data.members} />
+  <InteractionsPanelBody {items} total={data.total} members={data.members} />
 </section>
