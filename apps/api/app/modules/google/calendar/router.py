@@ -35,6 +35,10 @@ class CalendarFeedItem(BaseModel):
     start: str
     end: str
     all_day: bool
+    #: UTC instants for timed events (#155) — the day/week time grid positions by these;
+    #: all-day events leave them unset and land in the pinned all-day row.
+    starts_at: str | None = None
+    ends_at: str | None = None
     html_link: str | None = None
     tentative: bool = False
 

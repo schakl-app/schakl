@@ -192,6 +192,13 @@ export interface CalendarEvent {
    * pill next to three people's leave says the opposite.
    */
   kind?: "event" | "holiday";
+  /**
+   * UTC instants for *timed* events (#155): the day/week time grid positions blocks by
+   * these, rendered in the org timezone. A source that only knows dates leaves them unset
+   * and its events land in the pinned all-day row — nothing changes for date-only feeds.
+   */
+  startsAt?: string;
+  endsAt?: string;
   /** The contributing source's `key` — required for drag-to-reschedule, so the page's
    *  `moveEvent` action can dispatch the drop back to the module that owns the event (#106). */
   sourceKey?: string;

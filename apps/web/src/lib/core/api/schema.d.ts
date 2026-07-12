@@ -4569,12 +4569,16 @@ export interface components {
             all_day: boolean;
             /** End */
             end: string;
+            /** Ends At */
+            ends_at?: string | null;
             /** Html Link */
             html_link?: string | null;
             /** Id */
             id: string;
             /** Start */
             start: string;
+            /** Starts At */
+            starts_at?: string | null;
             /**
              * Tentative
              * @default false

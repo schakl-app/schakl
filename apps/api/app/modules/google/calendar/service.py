@@ -254,6 +254,9 @@ async def events_feed(
                 "start": start,
                 "end": end,
                 "all_day": row.all_day,
+                # The time grid (#155) positions timed events by these instants.
+                "starts_at": row.start_at.isoformat() if row.start_at else None,
+                "ends_at": (row.end_at or row.start_at).isoformat() if row.start_at else None,
                 "html_link": row.html_link,
                 "tentative": row.status == "tentative",
             }

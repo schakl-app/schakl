@@ -68,6 +68,9 @@ registerWebModule({
           href: event.html_link ?? undefined,
           tentative: event.tentative,
           sourceKey: "google.calendar",
+          // Timed events position on the day/week grid (#155); all-day ones stay chips.
+          startsAt: event.starts_at ?? undefined,
+          endsAt: event.ends_at ?? undefined,
         }));
       },
     },

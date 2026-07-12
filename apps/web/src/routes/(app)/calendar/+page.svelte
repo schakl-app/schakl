@@ -260,7 +260,7 @@
 {/if}
 
 {#if data.view === "day"}
-  <DayCalendar date={data.date} events={data.events} today={data.today} />
+  <DayCalendar date={data.date} events={data.events} today={data.today} onmove={onEventMove} />
 {:else if data.view === "week"}
   <WeekCalendar
     days={weekGrid(data.date)}

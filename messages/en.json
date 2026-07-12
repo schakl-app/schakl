@@ -109,6 +109,7 @@
   "calendar.next": "Next month",
   "calendar.empty": "Nothing planned this month.",
   "calendar.empty.week": "Nothing planned this week.",
+  "calendar.all_day": "All day",
   "calendar.empty.day": "Nothing planned this day.",
   "calendar.day_empty": "Nothing planned.",
   "calendar.tentative": "pending",

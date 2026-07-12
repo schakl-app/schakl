@@ -109,6 +109,7 @@
   "calendar.next": "Volgende maand",
   "calendar.empty": "Niets gepland deze maand.",
   "calendar.empty.week": "Niets gepland deze week.",
+  "calendar.all_day": "Hele dag",
   "calendar.empty.day": "Niets gepland deze dag.",
   "calendar.day_empty": "Niets gepland.",
   "calendar.tentative": "in afwachting",
