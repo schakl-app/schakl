@@ -44,12 +44,20 @@ def _load_enabled_modules() -> None:
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app_: FastAPI) -> AsyncIterator[None]:
     """Grant every org's system roles the permissions of any module that shipped after that org
     was seeded (issue #19). One ``SELECT`` per org in steady state, and never fatal — a stale
-    catalog is a missing capability, not a reason to refuse to serve."""
+    catalog is a missing capability, not a reason to refuse to serve.
+
+    The mounted MCP sub-app (CLAUDE.md §12) brings its own lifespan (the streamable-HTTP
+    session manager); FastAPI only runs the outermost one, so it is entered here."""
     await reconcile_permission_defaults()
-    yield
+    mcp_asgi = getattr(app_.state, "mcp_app", None)
+    if mcp_asgi is not None:
+        async with mcp_asgi.lifespan(mcp_asgi):
+            yield
+    else:
+        yield
 
 
 def create_app() -> FastAPI:
@@ -93,6 +101,15 @@ def create_app() -> FastAPI:
             api.include_router(module.router)
 
     app.include_router(api)
+
+    # MCP (CLAUDE.md §12): the API surface as tools, API-key authenticated. Built after the
+    # routers so the OpenAPI spec it derives from is complete.
+    if settings.mcp_enabled:
+        from app.core.mcp import build_mcp_asgi_app
+
+        mcp_asgi = build_mcp_asgi_app(app)
+        app.state.mcp_app = mcp_asgi
+        app.mount("/mcp", mcp_asgi)
 
     @app.get("/health", tags=["meta"])
     async def health() -> dict:

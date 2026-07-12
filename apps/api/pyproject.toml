@@ -28,6 +28,7 @@ dependencies = [
     "nh3>=0.2.18",
     "apprise>=1.12.0",
     "cryptography>=49.0.0",
+    "fastmcp>=2.12,<3",
 ]
 
 [dependency-groups]

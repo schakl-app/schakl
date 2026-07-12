@@ -246,26 +246,30 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
 
 ## 12. MCP / AI access
 
-The platform exposes an **MCP server** so AI clients (Claude Desktop/Code, agents) can
-answer questions about clients, their recent projects, time, etc. Design rules:
+The platform exposes an **MCP server** (shipped — see `docs/MCP.md`) so AI clients (Claude
+Desktop/Code, agents) can work with the instance's data. Design rules:
 
-- **Transport:** Streamable HTTP at `/mcp`, mounted on the API app, behind Traefik. The
-  older SSE transport is deprecated — do not use it.
-- **Auth:** the MCP server is an **OAuth 2.1 resource server**. It validates access tokens
-  issued by the platform's own auth (or the enforced external OIDC provider) and implements
-  RFC 9728 Protected Resource Metadata (`/.well-known/oauth-protected-resource`). It does
-  **not** run its own login. Use the official Python MCP SDK / FastMCP for the OAuth plumbing.
-- **Tenant + permission scoping:** every tool resolves `current_user` + `current_org` from
-  the token and calls the **same tenant-scoped services/repositories** as the REST API, so
-  MCP can never cross tenants or exceed the user's role. **Never** pass the incoming MCP
-  token to a downstream service (confused-deputy risk) — tools call internal services directly.
-- **Modular:** each module contributes its tools via `mcp.py` (see §6); only enabled modules
-  expose tools. Scopes: `mcp:read` by default, write scopes added later per action.
-- **Read-first:** ship read tools only at first (`companies.find`,
-  `companies.recent_projects`, `time.summary`, …). Add writes later behind explicit scopes
-  and step-up authorization.
-- **Moving target:** MCP evolves fast — pin the SDK and let it track the spec; don't hardcode
-  protocol details or well-known paths beyond what the SDK needs.
+- **Transport:** Streamable HTTP at `/mcp` (stateless, JSON responses), mounted on the API
+  app (`app/core/mcp/`), behind Traefik. The older SSE transport is deprecated — do not use
+  it. `SCHAKL_MCP_ENABLED=false` removes the surface.
+- **Auth: API keys** (#20), which already carry **per-key permission scopes** — the
+  permissions-per-MCP-key model. The proxy forwards the caller's `Authorization`/`X-API-Key`
+  plus the tenant hostname on every internal call; keys are tenant-scoped, revocable and
+  optionally non-expiring. An **OAuth 2.1 resource-server** layer (RFC 9728) is the later
+  addition for clients that require it — the MCP server never runs its own login either way.
+- **Tool surface:** every `/api/v1` operation is a tool, generated from the API's own
+  OpenAPI spec (FastMCP) and proxied **in-process** back to the REST API — so every call
+  travels `require_context` (tenant + RLS + permissions) exactly like the HTTP request it
+  is, and MCP can never cross tenants or exceed the key's scopes. `/auth`, `/setup` and
+  `/instance` are excluded. **Never** pass the incoming MCP credential to a downstream
+  *external* service (confused-deputy risk).
+- **Modular refinement:** each module can still contribute curated tools via `mcp.py` (see
+  §6) where a richer shape than a 1:1 endpoint mapping is worth it; only enabled modules'
+  routes exist, so the generated surface already tracks per-tenant modules.
+- **Read-first is a key-minting decision:** a cautious instance mints read-only-scoped keys;
+  the deny-by-default route permissions answer every call either way.
+- **Moving target:** MCP evolves fast — the SDK is pinned (`fastmcp>=2.12,<3`) and tracks
+  the spec; don't hardcode protocol details or well-known paths beyond what the SDK needs.
 
 ## 13. Per-tenant custom fields (custom attributes)
 

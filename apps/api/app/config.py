@@ -130,6 +130,11 @@ class Settings(BaseSettings):
     # Shared message catalogs (single source of truth with the web app).
     messages_dir: Path = Field(default_factory=_default_messages_dir)
 
+    # --- MCP server (CLAUDE.md §12) ---
+    # Streamable HTTP at /mcp: every /api/v1 operation as a tool, authenticated with the
+    # platform's API keys (per-key permission scopes, #20). Disable to remove the surface.
+    mcp_enabled: bool = True
+
     # --- Instance administration (issue #26) ---
     # The cross-tenant admin surface is pure attack surface on a single-tenant box, so it
     # ships **disabled**; SCHAKL_INSTANCE_ADMIN_ENABLED=true opens it to instance owners
