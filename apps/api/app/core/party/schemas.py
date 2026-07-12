@@ -17,7 +17,7 @@ from app.core.party.models import PartyType
 class PartyRef(BaseModel):
     """A responsible party as submitted by a client.
 
-    ``id`` is optional: ``agency`` ignores it, ``company`` treats NULL as *the record's own
+    ``id`` is optional: ``agency`` forbids it, ``company`` treats NULL as *the record's own
     company*, and ``employee`` / ``contact`` require it (validated in the service).
     """
 

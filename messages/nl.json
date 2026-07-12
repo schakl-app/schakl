@@ -145,6 +145,7 @@
   "module.time.label": "Uren",
   "module.leave.label": "Verlof",
   "module.notifications.label": "Meldingen",
+  "common.quick_create.contact": "Nieuwe contactpersoon",
   "common.quick_create.company": "Nieuwe klant",
   "common.quick_create.provider": "Nieuwe provider ({kind})",
   "module.domains.label": "Domeinen",

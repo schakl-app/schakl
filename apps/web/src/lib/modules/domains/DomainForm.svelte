@@ -25,6 +25,7 @@
     locale,
     idPrefix = "domain",
     oncreatecompany,
+    oncreatecontact,
     oncreateprovider,
     created = null,
   }: {
@@ -37,8 +38,10 @@
     definitions: Definition[];
     locale: string;
     idPrefix?: string;
-    /** Inline-create (#115, docs/UX.md): typing an unknown name offers "＋ … toevoegen". */
-    oncreatecompany?: (name: string) => void;
+    /** Inline-create (#115, docs/UX.md): typing an unknown name offers "＋ … toevoegen".
+     * `slot` is set when a PartyPicker asks, so the created entity auto-selects there. */
+    oncreatecompany?: (name: string, slot?: string) => void;
+    oncreatecontact?: (name: string, slot: string) => void;
     oncreateprovider?: (kind: "registrar" | "dns" | "email", name: string) => void;
     /** The entity a quick-create modal just made; auto-selected in the matching picker. */
     created?: { slot: string; id: string } | null;
@@ -144,6 +147,9 @@
       {employees}
       {contacts}
       id="{idPrefix}-registry"
+      {oncreatecompany}
+      {oncreatecontact}
+      {created}
     />
   </div>
 
@@ -177,6 +183,9 @@
             {employees}
             {contacts}
             id="{idPrefix}-email-contact"
+            {oncreatecompany}
+            {oncreatecontact}
+            {created}
           />
         </div>
       </div>

@@ -55,7 +55,11 @@ class PartyService:
         ptype = PartyType(ref.type)
 
         if ptype is PartyType.AGENCY:
-            return ptype.value, None  # the agency is the org itself; any id is meaningless
+            # The agency is the org itself; an id here means the client meant something else
+            # (a contact? another org?) — reject rather than guess.
+            if ref.id is not None:
+                raise self._invalid()
+            return ptype.value, None
         if ptype is PartyType.COMPANY:
             if ref.id is not None:
                 await self._ensure_in_tenant("companies", ref.id)

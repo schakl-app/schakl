@@ -36,7 +36,27 @@ export async function createCompanyAction(event: RequestEvent) {
     },
   });
   if (error || !data) return fail(400, { qcError: apiErrorKey(error).key });
-  return { inlineCreated: { slot: "company", id: data.id } };
+  // The dialog echoes the slot of the picker that asked (a PartyPicker names its own),
+  // so a company created from a party field never auto-selects into a sibling company field.
+  return { inlineCreated: { slot: String(form.get("slot") ?? "") || "company", id: data.id } };
+}
+
+export async function createContactAction(event: RequestEvent) {
+  const form = await event.request.formData();
+  const first_name = String(form.get("first_name") ?? "").trim();
+  if (!first_name) return fail(400, { qcError: "errors.required" });
+  const { data, error } = await apiFor(event).POST("/api/v1/contacts", {
+    body: {
+      first_name,
+      last_name: String(form.get("last_name") ?? "").trim() || null,
+      email: String(form.get("email") ?? "").trim() || null,
+      phone: String(form.get("phone") ?? "").trim() || null,
+      job_title: String(form.get("job_title") ?? "").trim() || null,
+      custom: parseCustom(form.get("custom")),
+    },
+  });
+  if (error || !data) return fail(400, { qcError: apiErrorKey(error).key });
+  return { inlineCreated: { slot: String(form.get("slot") ?? "") || "contact", id: data.id } };
 }
 
 export async function createProviderAction(event: RequestEvent) {

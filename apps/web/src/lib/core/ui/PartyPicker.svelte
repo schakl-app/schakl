@@ -4,6 +4,13 @@
    * contact. Serialises `{ type, id }` into one hidden field under `name` so a server action
    * reads it with `parseParty`. Mirrors AssigneePicker: comboboxes, never native selects
    * (docs/UX.md). The type is a small button group; the entity is a searchable combobox.
+   *
+   * Inline-create (#115, docs/UX.md): companies and contacts have a create path, so typing an
+   * unknown name offers "＋ … toevoegen" when the host page wires `oncreatecompany` /
+   * `oncreatecontact`. The callbacks carry a slot unique to this picker (`<name>:company` /
+   * `<name>:contact`); the page threads it through the quick-create dialog so the action's
+   * `inlineCreated` answer auto-selects here — and only here, never in a sibling company field.
+   * Employees are invited, not created (select-only); the agency is a static option.
    */
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import { t } from "$lib/core/i18n";
@@ -32,6 +39,9 @@
     contacts = [],
     id = name,
     formId,
+    oncreatecompany,
+    oncreatecontact,
+    created = null,
   }: {
     name: string;
     value?: { type: PartyType; id?: string | null } | null;
@@ -41,10 +51,31 @@
     contacts?: Contact[];
     id?: string;
     formId?: string;
+    /** Inline-create (#115): typing an unknown company offers "＋ … toevoegen". */
+    oncreatecompany?: (query: string, slot: string) => void;
+    /** Inline-create (#115): typing an unknown contact offers "＋ … toevoegen". */
+    oncreatecontact?: (query: string, slot: string) => void;
+    /** The entity a quick-create modal just made; auto-selected when its slot is this picker's. */
+    created?: { slot: string; id: string } | null;
   } = $props();
 
   let type = $state<PartyType>(value?.type ?? "agency");
   let entityId = $state<string>(value?.id ?? "");
+
+  // Apply each `created` once: a later manual re-pick must never be overridden by a stale prop.
+  let applied = $state<{ slot: string; id: string } | null>(null);
+  $effect(() => {
+    if (!created || created === applied) return;
+    if (created.slot === `${name}:company`) {
+      type = "company";
+      entityId = created.id;
+      applied = created;
+    } else if (created.slot === `${name}:contact`) {
+      type = "contact";
+      entityId = created.id;
+      applied = created;
+    }
+  });
 
   const TYPES: { key: PartyType; label: () => string }[] = [
     { key: "agency", label: () => t("party.agency") },
@@ -66,6 +97,15 @@
   // Company allows "empty" = the record's own company; the others need a concrete pick.
   const allowEmpty = $derived(type === "company");
   const payload = $derived(JSON.stringify({ type, id: entityId || null }));
+
+  // Employees are invited, not created — only company and contact get a create affordance.
+  const oncreate = $derived(
+    type === "company" && oncreatecompany
+      ? (query: string) => oncreatecompany(query, `${name}:company`)
+      : type === "contact" && oncreatecontact
+        ? (query: string) => oncreatecontact(query, `${name}:contact`)
+        : undefined,
+  );
 
   function pickType(next: PartyType) {
     type = next;
@@ -98,6 +138,7 @@
       {allowEmpty}
       id="{id}-entity"
       placeholder={type === "company" ? t("party.own_company") : t("party.select")}
+      {oncreate}
     />
   {/if}
 </div>

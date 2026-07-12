@@ -2,7 +2,11 @@ import { error, fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey, lookupItems } from "$lib/core/errors";
 import { parseParty } from "$lib/core/party";
-import { createCompanyAction, createProviderAction } from "$lib/core/quickcreate.server";
+import {
+  createCompanyAction,
+  createContactAction,
+  createProviderAction,
+} from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -31,6 +35,7 @@ export const load: PageServerLoad = async (event) => {
     hosting,
     companyDefs,
     hostingDefs,
+    contactDefs,
   ] = await Promise.all([
     api.GET("/api/v1/domains/{domain_id}", { params: { path: { domain_id } } }),
     api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
@@ -52,6 +57,9 @@ export const load: PageServerLoad = async (event) => {
     api.GET("/api/v1/custom-fields/definitions", {
       params: { query: { entity_type: "hosting" } },
     }),
+    api.GET("/api/v1/custom-fields/definitions", {
+      params: { query: { entity_type: "contact" } },
+    }),
   ]);
 
   if (!domain.data) throw error(404, { code: "not_found", message: "errors.not_found" });
@@ -69,6 +77,7 @@ export const load: PageServerLoad = async (event) => {
     websiteDefinitions: websiteDefs.data ?? [],
     companyDefinitions: companyDefs.data ?? [],
     hostingDefinitions: hostingDefs.data ?? [],
+    contactDefinitions: contactDefs.data ?? [],
     website: websites.data?.items?.[0] ?? null,
     hosting: lookupItems(hosting, "hosting").map((h) => ({ id: h.id, name: h.name })),
     agencyLabel: event.locals.theme?.brandName ?? "",
@@ -156,6 +165,7 @@ export const actions: Actions = {
   },
 
   createCompany: createCompanyAction,
+  createContact: createContactAction,
   createProvider: createProviderAction,
 
   // Inline-create for the website form's hosting picker (#115): the full HostingForm in a modal.

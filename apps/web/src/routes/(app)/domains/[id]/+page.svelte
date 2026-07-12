@@ -11,6 +11,7 @@
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ProviderQuickCreate from "$lib/core/ui/ProviderQuickCreate.svelte";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
+  import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
   import DomainForm from "$lib/modules/domains/DomainForm.svelte";
   import HostingQuickCreate from "$lib/modules/hosting/HostingQuickCreate.svelte";
 
@@ -21,13 +22,29 @@
   let confirmDelete = $state(false);
 
   // Inline-create from the pickers (#115): "＋ … toevoegen" opens these dialogs.
+  // The slot names the picker that asked, so its `inlineCreated` auto-selects only there.
   let qcCompanyOpen = $state(false);
   let qcCompanyName = $state("");
+  let qcCompanySlot = $state("company");
+  let qcContactOpen = $state(false);
+  let qcContactName = $state("");
+  let qcContactSlot = $state("contact");
   let qcProviderOpen = $state(false);
   let qcProviderKind = $state<"registrar" | "dns" | "email">("registrar");
   let qcProviderName = $state("");
   let qcHostingOpen = $state(false);
   let qcHostingName = $state("");
+
+  function quickCreateCompany(name: string, slot = "company") {
+    qcCompanyName = name;
+    qcCompanySlot = slot;
+    qcCompanyOpen = true;
+  }
+  function quickCreateContact(name: string, slot: string) {
+    qcContactName = name;
+    qcContactSlot = slot;
+    qcContactOpen = true;
+  }
 
   // The website form's hosting picker lives in this page, so its auto-select does too.
   let websiteHostingCreated = $state("");
@@ -96,10 +113,8 @@
           definitions={data.definitions}
           locale={data.locale}
           idPrefix="edit-domain"
-          oncreatecompany={(name) => {
-            qcCompanyName = name;
-            qcCompanyOpen = true;
-          }}
+          oncreatecompany={quickCreateCompany}
+          oncreatecontact={quickCreateContact}
           oncreateprovider={(kind, name) => {
             qcProviderKind = kind;
             qcProviderName = name;
@@ -297,6 +312,9 @@
             employees={data.employees}
             contacts={data.contacts}
             id="website-owner"
+            oncreatecompany={quickCreateCompany}
+            oncreatecontact={quickCreateContact}
+            created={form?.inlineCreated ?? null}
           />
         </div>
         <div>
@@ -356,7 +374,16 @@
 <CompanyQuickCreate
   bind:open={qcCompanyOpen}
   name={qcCompanyName}
+  pickerSlot={qcCompanySlot}
   definitions={data.companyDefinitions}
+  locale={data.locale}
+  error={form?.qcError ?? null}
+/>
+<ContactQuickCreate
+  bind:open={qcContactOpen}
+  name={qcContactName}
+  pickerSlot={qcContactSlot}
+  definitions={data.contactDefinitions}
   locale={data.locale}
   error={form?.qcError ?? null}
 />

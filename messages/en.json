@@ -145,6 +145,7 @@
   "module.time.label": "Time",
   "module.leave.label": "Leave",
   "module.notifications.label": "Notifications",
+  "common.quick_create.contact": "New contact",
   "common.quick_create.company": "New client",
   "common.quick_create.provider": "New provider ({kind})",
   "module.domains.label": "Domains",

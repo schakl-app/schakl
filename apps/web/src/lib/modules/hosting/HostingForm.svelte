@@ -23,6 +23,7 @@
     idPrefix = "hosting",
     nameDefault = "",
     oncreatecompany,
+    oncreatecontact,
     oncreateprovider,
     created = null,
   }: {
@@ -37,8 +38,10 @@
     idPrefix?: string;
     /** Prefills the name on create — for quick-create from another form's picker (#115). */
     nameDefault?: string;
-    /** Inline-create (#115, docs/UX.md): typing an unknown name offers "＋ … toevoegen". */
-    oncreatecompany?: (name: string) => void;
+    /** Inline-create (#115, docs/UX.md): typing an unknown name offers "＋ … toevoegen".
+     * `slot` is set when the PartyPicker asks, so the created entity auto-selects there. */
+    oncreatecompany?: (name: string, slot?: string) => void;
+    oncreatecontact?: (name: string, slot: string) => void;
     oncreateprovider?: (kind: "hosting", name: string) => void;
     /** The entity a quick-create modal just made; auto-selected in the matching picker. */
     created?: { slot: string; id: string } | null;
@@ -118,6 +121,9 @@
       {employees}
       {contacts}
       id="{idPrefix}-contact"
+      {oncreatecompany}
+      {oncreatecontact}
+      {created}
     />
   </div>
   {#if definitions.length > 0}

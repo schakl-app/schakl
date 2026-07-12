@@ -8,6 +8,7 @@
   import Modal from "$lib/core/ui/Modal.svelte";
   import ProviderQuickCreate from "$lib/core/ui/ProviderQuickCreate.svelte";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
+  import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
   import DomainForm from "$lib/modules/domains/DomainForm.svelte";
 
   let { data, form } = $props();
@@ -17,15 +18,26 @@
   let confirmDelete = $state(false);
 
   // Inline-create from the form's pickers (#115): "＋ … toevoegen" opens these over the modal.
+  // The slot names the picker that asked, so its `inlineCreated` auto-selects only there.
   let qcCompanyOpen = $state(false);
   let qcCompanyName = $state("");
+  let qcCompanySlot = $state("company");
+  let qcContactOpen = $state(false);
+  let qcContactName = $state("");
+  let qcContactSlot = $state("contact");
   let qcProviderOpen = $state(false);
   let qcProviderKind = $state<"registrar" | "dns" | "email">("registrar");
   let qcProviderName = $state("");
 
-  function quickCreateCompany(name: string) {
+  function quickCreateCompany(name: string, slot = "company") {
     qcCompanyName = name;
+    qcCompanySlot = slot;
     qcCompanyOpen = true;
+  }
+  function quickCreateContact(name: string, slot: string) {
+    qcContactName = name;
+    qcContactSlot = slot;
+    qcContactOpen = true;
   }
   function quickCreateProvider(kind: "registrar" | "dns" | "email", name: string) {
     qcProviderKind = kind;
@@ -125,6 +137,7 @@
       locale={data.locale}
       idPrefix="new-domain"
       oncreatecompany={quickCreateCompany}
+      oncreatecontact={quickCreateContact}
       oncreateprovider={quickCreateProvider}
       created={form?.inlineCreated ?? null}
     />
@@ -145,7 +158,16 @@
 <CompanyQuickCreate
   bind:open={qcCompanyOpen}
   name={qcCompanyName}
+  pickerSlot={qcCompanySlot}
   definitions={data.companyDefinitions}
+  locale={data.locale}
+  error={form?.qcError ?? null}
+/>
+<ContactQuickCreate
+  bind:open={qcContactOpen}
+  name={qcContactName}
+  pickerSlot={qcContactSlot}
+  definitions={data.contactDefinitions}
   locale={data.locale}
   error={form?.qcError ?? null}
 />

@@ -2,7 +2,11 @@ import { fail } from "@sveltejs/kit";
 
 import { apiErrorKey, lookupItems } from "$lib/core/errors";
 import { parseParty } from "$lib/core/party";
-import { createCompanyAction, createProviderAction } from "$lib/core/quickcreate.server";
+import {
+  createCompanyAction,
+  createContactAction,
+  createProviderAction,
+} from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -20,21 +24,32 @@ export const load: PageServerLoad = async (event) => {
   const q = event.url.searchParams.get("q") || undefined;
   const sort = event.url.searchParams.get("sort") ?? undefined;
 
-  const [domains, companies, providers, members, contacts, definitions, companyDefinitions] =
-    await Promise.all([
-      api.GET("/api/v1/domains", { params: { query: { limit: 200, offset: 0, q, sort } } }),
-      api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
-      api.GET("/api/v1/providers"),
-      api.GET("/api/v1/members/lookup"),
-      api.GET("/api/v1/contacts", { params: { query: { limit: 200, offset: 0 } } }),
-      api.GET("/api/v1/custom-fields/definitions", {
-        params: { query: { entity_type: "domain" } },
-      }),
-      // For the inline company quick-create (#115): the full dialog includes custom fields.
-      api.GET("/api/v1/custom-fields/definitions", {
-        params: { query: { entity_type: "company" } },
-      }),
-    ]);
+  const [
+    domains,
+    companies,
+    providers,
+    members,
+    contacts,
+    definitions,
+    companyDefinitions,
+    contactDefinitions,
+  ] = await Promise.all([
+    api.GET("/api/v1/domains", { params: { query: { limit: 200, offset: 0, q, sort } } }),
+    api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
+    api.GET("/api/v1/providers"),
+    api.GET("/api/v1/members/lookup"),
+    api.GET("/api/v1/contacts", { params: { query: { limit: 200, offset: 0 } } }),
+    api.GET("/api/v1/custom-fields/definitions", {
+      params: { query: { entity_type: "domain" } },
+    }),
+    // For the inline quick-creates (#115): their full dialogs include custom fields.
+    api.GET("/api/v1/custom-fields/definitions", {
+      params: { query: { entity_type: "company" } },
+    }),
+    api.GET("/api/v1/custom-fields/definitions", {
+      params: { query: { entity_type: "contact" } },
+    }),
+  ]);
 
   return {
     domains: domains.data?.items ?? [],
@@ -48,6 +63,7 @@ export const load: PageServerLoad = async (event) => {
     })),
     definitions: definitions.data ?? [],
     companyDefinitions: companyDefinitions.data ?? [],
+    contactDefinitions: contactDefinitions.data ?? [],
     agencyLabel: event.locals.theme?.brandName ?? "",
     q: q ?? "",
     locale: event.locals.locale,
@@ -97,5 +113,6 @@ export const actions: Actions = {
   },
 
   createCompany: createCompanyAction,
+  createContact: createContactAction,
   createProvider: createProviderAction,
 };

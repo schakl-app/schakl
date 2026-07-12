@@ -19,6 +19,7 @@
     locale,
     action = "?/createCompany",
     error = null,
+    pickerSlot = "company",
   }: {
     open?: boolean;
     /** What was typed in the picker; prefills the name. */
@@ -28,6 +29,8 @@
     action?: string;
     /** The page's `form?.qcError`. */
     error?: string | null;
+    /** Echoed in `inlineCreated` so only the picker that asked auto-selects (PartyPicker). */
+    pickerSlot?: string;
   } = $props();
 </script>
 
@@ -43,6 +46,7 @@
         }}
       class="space-y-3"
     >
+      <input type="hidden" name="slot" value={pickerSlot} />
       <div class="grid gap-3 sm:grid-cols-2">
         <div>
           <label for="qc-company-name" class="mb-1 block text-sm font-medium text-text"
