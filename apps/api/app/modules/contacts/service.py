@@ -108,6 +108,7 @@ class ContactService:
         contact_type_id: uuid.UUID | None = None,
         q: str | None = None,
         sort: str | None = None,
+        count: bool = True,
     ) -> tuple[Sequence[Contact], int]:
         conditions = []
         if q:
@@ -141,7 +142,9 @@ class ContactService:
         stmt = apply_sort(stmt, sort, SORTABLE, default=Contact.created_at.desc())
         stmt = stmt.limit(limit).offset(offset)
         items = list((await self.ctx.session.execute(stmt)).scalars().all())
-        total = int(await self.ctx.session.scalar(count_stmt) or 0)
+        # ``count=False`` skips the discarded COUNT(*) — batched consumers like the CSV export
+        # never show a total (docs/PERFORMANCE.md).
+        total = int(await self.ctx.session.scalar(count_stmt) or 0) if count else len(items)
         await self._attach_companies(items)
         return items, total
 

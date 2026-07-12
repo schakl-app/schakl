@@ -607,6 +607,86 @@ export interface paths {
         patch: operations["update_hosting_api_v1_hosting__hosting_id__patch"];
         trace?: never;
     };
+    "/api/v1/impex/company/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Export Company
+         * @description Export the current filtered company list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+         */
+        get: operations["impex_export_company_api_v1_impex_company_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/company/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Import Company
+         * @description Import company rows from CSV, upserting on `name` (max 2000 data rows per request).
+         */
+        post: operations["impex_import_company_api_v1_impex_company_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/contact/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Export Contact
+         * @description Export the current filtered contact list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+         */
+        get: operations["impex_export_contact_api_v1_impex_contact_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/contact/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Import Contact
+         * @description Import contact rows from CSV, upserting on `email` (max 2000 data rows per request).
+         */
+        post: operations["impex_import_contact_api_v1_impex_contact_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/instance/audit": {
         parameters: {
             query?: never;
@@ -3137,6 +3217,22 @@ export interface components {
             /** Username */
             username: string;
         };
+        /** Body_impex_import_company_api_v1_impex_company_import_post */
+        Body_impex_import_company_api_v1_impex_company_import_post: {
+            /**
+             * File
+             * @description CSV file; headers are the export's keys
+             */
+            file: string;
+        };
+        /** Body_impex_import_contact_api_v1_impex_contact_import_post */
+        Body_impex_import_contact_api_v1_impex_contact_import_post: {
+            /**
+             * File
+             * @description CSV file; headers are the export's keys
+             */
+            file: string;
+        };
         /** Body_reset_forgot_password_api_v1_auth_forgot_password_post */
         Body_reset_forgot_password_api_v1_auth_forgot_password_post: {
             /**
@@ -4456,6 +4552,33 @@ export interface components {
             /** Token */
             token: string;
         };
+        /**
+         * ImportReport
+         * @description What an import did — or, on a dry run, what it *would* do.
+         *
+         *     ``dry_run=false`` is all-or-nothing: with any error, ``applied`` stays ``False`` and nothing
+         *     was written. ``errors`` carries the first slice; ``error_count`` is always the full count,
+         *     so a truncated list never reads as "that's all of them" (docs/UX.md).
+         */
+        ImportReport: {
+            /** Applied */
+            applied: boolean;
+            /** Creates */
+            creates: number;
+            /** Dry Run */
+            dry_run: boolean;
+            /** Error Count */
+            error_count: number;
+            /** Errors */
+            errors: components["schemas"]["ImportRowError"][];
+            /**
+             * Rows
+             * @description Data rows in the file (header excluded).
+             */
+            rows: number;
+            /** Updates */
+            updates: number;
+        };
         /** ImportRequest */
         ImportRequest: {
             /** Data */
@@ -4474,6 +4597,21 @@ export interface components {
             tables: {
                 [key: string]: number;
             };
+        };
+        /**
+         * ImportRowError
+         * @description One validation failure, addressed the way a spreadsheet user counts.
+         *
+         *     ``row`` 0 is the **header row** (unknown/duplicate/missing columns); data rows count from 1
+         *     in file order. ``message_key`` is an i18n key (CLAUDE.md §9) — never user-facing English.
+         */
+        ImportRowError: {
+            /** Field */
+            field?: string | null;
+            /** Message Key */
+            message_key: string;
+            /** Row */
+            row: number;
         };
         /** LabelCreate */
         LabelCreate: {
@@ -8247,6 +8385,8 @@ export interface operations {
                 limit?: number;
                 offset?: number;
                 q?: string | null;
+                /** @description Filter on one lifecycle status */
+                status?: string | null;
                 /** @description Only clients I'm assigned to (primary or not) */
                 mine?: boolean;
                 /** @description name | status | created_at | updated_at, '-' desc */
@@ -9593,6 +9733,150 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HostingRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_export_company_api_v1_impex_company_export_get: {
+        parameters: {
+            query?: {
+                /** @description Search, as on the list */
+                q?: string | null;
+                status?: string | null;
+                /** @description Only rows assigned to me */
+                mine?: boolean;
+                /** @description List sort key, '-' desc */
+                sort?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CSV file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_import_company_api_v1_impex_company_import_post: {
+        parameters: {
+            query?: {
+                /** @description Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. */
+                dry_run?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_import_company_api_v1_impex_company_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_export_contact_api_v1_impex_contact_export_get: {
+        parameters: {
+            query?: {
+                /** @description Search, as on the list */
+                q?: string | null;
+                company_id?: string | null;
+                /** @description List sort key, '-' desc */
+                sort?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CSV file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_import_contact_api_v1_impex_contact_import_post: {
+        parameters: {
+            query?: {
+                /** @description Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. */
+                dry_run?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_import_contact_api_v1_impex_contact_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportReport"];
                 };
             };
             /** @description Validation Error */

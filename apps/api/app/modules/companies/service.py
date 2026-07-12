@@ -157,6 +157,7 @@ class CompanyService:
         limit: int,
         offset: int,
         q: str | None = None,
+        status: str | None = None,
         mine: bool = False,
         sort: str | None = None,
         hours: bool = False,
@@ -166,6 +167,8 @@ class CompanyService:
         if q:
             pattern = f"%{q.strip()}%"
             conditions.append(or_(Company.name.ilike(pattern), Company.website.ilike(pattern)))
+        if status:
+            conditions.append(Company.status == status)
         if mine:
             # "My clients" matches *any* assignee, not just the primary.
             conditions.append(

@@ -1,6 +1,7 @@
 import { fail } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
+import { importCsvAction } from "$lib/core/impex/actions.server";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
@@ -69,6 +70,9 @@ export const actions: Actions = {
     await saveTablePref(event, CONTACTS_TABLE_ID, parseTablePref(form));
     return { tableSaved: true };
   },
+
+  /** CSV import (issue #77): dry-run preview by default, all-or-nothing commit on demand. */
+  importCsv: (event) => importCsvAction(event, "/api/v1/impex/contact/import"),
 
   create: async (event) => {
     const form = await event.request.formData();

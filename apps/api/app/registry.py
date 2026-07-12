@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
     from fastapi import APIRouter
 
+    from app.core.impex.spec import ImpexDescriptor
     from app.core.permissions.spec import PermissionSpec
     from app.core.tenancy import RequestContext
 
@@ -54,6 +55,11 @@ class ModuleDescriptor:
     # One-off ARQ job functions the API may enqueue by name (app.core.jobs.enqueue); the
     # worker registers these alongside its cron jobs. Names must be globally unique.
     worker_functions: list[Any] = field(default_factory=list)
+    # CSV import/export descriptors (issue #77): the entities this module opts into the core
+    # impex engine. ``app.core.impex.router`` mounts one export + one import route per entry,
+    # each declaring that entity's own read/write permission — core owns the mechanics,
+    # modules only describe shape (the custom-fields/panels pattern, CLAUDE.md §13/§6).
+    impex: list[ImpexDescriptor] = field(default_factory=list)
 
 
 class ModuleRegistry:

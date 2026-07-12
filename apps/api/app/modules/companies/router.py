@@ -36,6 +36,7 @@ async def list_companies(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     q: str | None = Query(None, max_length=200),
+    status: str | None = Query(None, max_length=50, description="Filter on one lifecycle status"),
     mine: bool = Query(False, description="Only clients I'm assigned to (primary or not)"),
     sort: str | None = Query(None, description="name | status | created_at | updated_at, '-' desc"),
     hours: bool = Query(
@@ -45,7 +46,8 @@ async def list_companies(
     ctx: RequestContext = Depends(require_context),
 ) -> Page[CompanyRead]:
     items, total = await CompanyService(ctx).list(
-        limit=limit, offset=offset, q=q, mine=mine, sort=sort, hours=hours, count=count
+        limit=limit, offset=offset, q=q, status=status, mine=mine, sort=sort,
+        hours=hours, count=count,
     )
     return Page(
         items=[CompanyRead.model_validate(c) for c in items],

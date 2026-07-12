@@ -23,6 +23,7 @@ from app.core.customfields.router import router as customfields_router
 from app.core.dashboard import router as dashboard_router
 from app.core.domains import router as domains_router
 from app.core.email.router import router as email_settings_router
+from app.core.impex.router import build_impex_router
 from app.core.instance.router import router as instance_router
 from app.core.members import router as members_router
 from app.core.meta import router as meta_router
@@ -99,6 +100,9 @@ def create_app() -> FastAPI:
     for module in registry.enabled(settings.enabled_modules):
         if module.router is not None:
             api.include_router(module.router)
+    # After module loading on purpose: the impex routes are built per opted-in entity so each
+    # one declares that entity's own read/write permission (issue #77, §15 deny-by-default).
+    api.include_router(build_impex_router())
 
     app.include_router(api)
 

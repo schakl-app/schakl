@@ -1,10 +1,12 @@
 <script lang="ts">
-  import { Pencil, Trash2, X } from "@lucide/svelte";
+  import { Download, Pencil, Trash2, Upload, X } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
   import { editHref } from "$lib/core/edit-intent";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import ImportCsvModal from "$lib/core/impex/ImportCsvModal.svelte";
+  import { can } from "$lib/core/permissions";
   import { pageTitle } from "$lib/core/title";
   import { customFieldColumns } from "$lib/core/table/columns";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
@@ -35,6 +37,18 @@
   let deleteId = $state("");
   let deleteName = $state("");
   let confirmDelete = $state(false);
+  let showImport = $state(false);
+
+  // The Export link carries the page's current filters, so the file holds exactly the
+  // filtered list on screen — the whole set, not just the loaded page (issue #77).
+  const exportHref = $derived.by(() => {
+    const params = new URLSearchParams();
+    const q = page.url.searchParams.get("q");
+    if (q) params.set("q", q);
+    if (data.table.sort) params.set("sort", data.table.sort);
+    const query = params.toString();
+    return `/contacts/export${query ? `?${query}` : ""}`;
+  });
 
   // #80: companies to link while creating the contact. `ContactCreate.company_ids` does the
   // linking server-side (the first becomes that company's primary contact), so the picker only
@@ -190,14 +204,37 @@
      min-content width no phone has. This is the shape `companies` already uses. -->
 <div class="mb-4 flex flex-wrap items-center gap-2">
   <SearchInput />
-  <ColumnPicker
-    all={table.pickerColumns}
-    visible={table.visibleKeys}
-    sort={table.sort}
-    onchange={table.onColumnsChange}
-    onsort={table.onSort}
-  />
+  <div class="ml-auto flex flex-wrap items-center gap-2">
+    <!-- A plain link: the browser downloads through its own session (issue #77). -->
+    <a
+      href={exportHref}
+      data-sveltekit-preload-data="off"
+      class="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:text-text"
+    >
+      <Download class="h-4 w-4" />
+      {t("impex.export")}
+    </a>
+    {#if can(page.data.user, "contacts.contact.write")}
+      <button
+        type="button"
+        class="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:text-text"
+        onclick={() => (showImport = true)}
+      >
+        <Upload class="h-4 w-4" />
+        {t("impex.import")}
+      </button>
+    {/if}
+    <ColumnPicker
+      all={table.pickerColumns}
+      visible={table.visibleKeys}
+      sort={table.sort}
+      onchange={table.onColumnsChange}
+      onsort={table.onSort}
+    />
+  </div>
 </div>
+
+<ImportCsvModal bind:open={showImport} report={form?.impex ?? null} error={form?.impexError ?? null} />
 
 {#if data.types.length > 0}
   <div class="mb-4 flex flex-wrap gap-1.5">
