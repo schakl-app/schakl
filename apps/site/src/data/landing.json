@@ -6,8 +6,14 @@
         "eyebrow": "Modulair · wit-label · jouw data",
         "title": "Het besturingssysteem voor je bureau",
         "subtitle": "Klanten, projecten, uren, verlof en taken in één snel, modulair platform. Onder jouw merk, in jouw taal, met jouw data onder controle.",
-        "ctaPrimary": { "label": "Lees de documentatie", "href": "/docs/" },
-        "ctaSecondary": { "label": "Bekijk op GitHub", "href": "https://github.com/schakl-app/schakl" }
+        "ctaPrimary": {
+          "label": "Lees de documentatie",
+          "href": "/docs/"
+        },
+        "ctaSecondary": {
+          "label": "Bekijk op GitHub",
+          "href": "https://github.com/schakl-app/schakl"
+        }
       },
       {
         "type": "features",
@@ -23,7 +29,7 @@
         "bullets": [
           "Eén compose-stack — geen losse diensten om te babysitten",
           "Automatische databasemigraties bij elke update",
-          "De kern is vrij te gebruiken — alleen uitbreidingsmodules vragen een licentiesleutel",
+          "De kern is open source (AGPL) — alleen uitbreidingsmodules vragen een licentiesleutel",
           "Telemetrie staat standaard uit — jij bepaalt wat je deelt",
           "Wit-label: jouw logo, kleuren en eigen domein",
           "Jouw data blijft van jou — exporteren kan altijd, licentie of niet"
@@ -46,8 +52,14 @@
         "eyebrow": "Modular · white-label · your data",
         "title": "The operating system for your agency",
         "subtitle": "Clients, projects, hours, leave and tasks in one fast, modular platform. Under your brand, in your language, with your data under your control.",
-        "ctaPrimary": { "label": "Read the documentation", "href": "/docs/" },
-        "ctaSecondary": { "label": "View on GitHub", "href": "https://github.com/schakl-app/schakl" }
+        "ctaPrimary": {
+          "label": "Read the documentation",
+          "href": "/docs/"
+        },
+        "ctaSecondary": {
+          "label": "View on GitHub",
+          "href": "https://github.com/schakl-app/schakl"
+        }
       },
       {
         "type": "features",
@@ -63,7 +75,7 @@
         "bullets": [
           "One compose stack — no scattered services to babysit",
           "Automatic database migrations on every update",
-          "The core is free to use — only extension modules require a license key",
+          "The core is open source (AGPL) — only extension modules require a license key",
           "Telemetry is off by default — you decide what you share",
           "White-label: your logo, colors and custom domain",
           "Your data stays yours — export always works, license or not"
