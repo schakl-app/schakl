@@ -13,9 +13,20 @@
    * The marker form is what's stored and submitted — via the hidden input (JS on) or the textarea
    * itself (JS off, which then shows raw source) — and what `onchange` reports.
    */
-  import { Bold, Eye, Italic, Link as LinkIcon, Pencil } from "@lucide/svelte";
+  import {
+    Bold,
+    CircleStop,
+    Eye,
+    Italic,
+    Link as LinkIcon,
+    Pencil,
+    Sparkles,
+  } from "@lucide/svelte";
+  import { getContext } from "svelte";
 
   import { browser } from "$app/environment";
+  import { AI_CONTEXT_KEY, type AIContext } from "$lib/core/ai";
+  import { streamAI } from "$lib/core/ai/stream";
   import { t } from "$lib/core/i18n";
   import Markdown from "$lib/core/ui/Markdown.svelte";
 
@@ -205,6 +216,115 @@
       el.selectionEnd = start + 1 + label.length;
     });
   }
+
+  // --- writing assist (#128) --------------------------------------------------
+  // Built once, here, so every module inherits it. The gate comes from the (app) layout via
+  // context ("off means invisible", #126): no provider or feature off → no toolbar button.
+  const aiContext = getContext<AIContext | undefined>(AI_CONTEXT_KEY);
+  const assistAvailable = $derived(browser && (aiContext?.enabled("writing_assist") ?? false));
+
+  const ASSIST_ACTIONS: { key: string; action: string; target?: string }[] = [
+    { key: "improve", action: "improve" },
+    { key: "shorten", action: "shorten" },
+    { key: "expand", action: "expand" },
+    { key: "fix", action: "fix" },
+    { key: "tone_business", action: "tone_business" },
+    { key: "tone_informal", action: "tone_informal" },
+    { key: "translate_nl", action: "translate", target: "nl" },
+    { key: "translate_en", action: "translate", target: "en" },
+    { key: "draft", action: "draft" },
+  ];
+
+  let assistMenuOpen = $state(false);
+  let assist = $state<{
+    running: boolean;
+    result: string;
+    error: string | null;
+    budget: boolean;
+    start: number;
+    end: number;
+    request: { action: string; target?: string };
+  } | null>(null);
+  let assistAbort: AbortController | null = null;
+
+  async function runAssist(item: { action: string; target?: string }, override = false) {
+    const el = textarea;
+    if (!el || assist?.running) return;
+    assistMenuOpen = false;
+    // A selection scopes the action; no selection means the whole field (#128).
+    let start = el.selectionStart;
+    let end = el.selectionEnd;
+    if (start === end) {
+      start = 0;
+      end = content.length;
+    }
+    const text = toSource(content.slice(start, end)).trim();
+    if (!text) return;
+    assist = {
+      running: true,
+      result: "",
+      error: null,
+      budget: false,
+      start,
+      end,
+      request: item,
+    };
+    assistAbort = new AbortController();
+    try {
+      const failure = await streamAI(
+        "assist/write",
+        {
+          action: item.action,
+          text,
+          target_locale: item.target ?? null,
+          override_budget: override,
+        },
+        {
+          onText: (delta) => {
+            if (assist) assist.result += delta;
+          },
+          onError: (_code, message) => {
+            if (assist) assist.error = message;
+          },
+        },
+        assistAbort.signal,
+      );
+      if (failure && assist) {
+        if (failure.code === "ai_budget_reached") assist.budget = true;
+        else assist.error = failure.message;
+      }
+    } catch (err) {
+      if (assist && !(err instanceof DOMException && err.name === "AbortError")) {
+        assist.error = "errors.ai_provider_error";
+      }
+    } finally {
+      if (assist) assist.running = false;
+      assistAbort = null;
+    }
+  }
+
+  /** Apply the previewed result — always an explicit act, never automatic (#128). Uses
+   *  `insertText` so the native undo stack survives the apply. */
+  function applyAssist(mode: "replace" | "insert") {
+    const el = textarea;
+    if (!el || !assist || assist.running || !assist.result.trim()) return;
+    const display = toDisplay(assist.result.trim());
+    const insertion = mode === "insert" ? `\n\n${display}` : display;
+    el.focus();
+    if (mode === "replace") el.setSelectionRange(assist.start, assist.end);
+    else el.setSelectionRange(assist.end, assist.end);
+    if (!document.execCommand("insertText", false, insertion)) {
+      const from = mode === "replace" ? assist.start : assist.end;
+      change(content.slice(0, from) + insertion + content.slice(assist.end));
+    }
+    assist = null;
+  }
+
+  function cancelAssist() {
+    assistAbort?.abort();
+    assist = null;
+    assistMenuOpen = false;
+  }
 </script>
 
 <div class="relative rounded-lg border border-border focus-within:border-brand {klass}">
@@ -239,6 +359,41 @@
     >
       <LinkIcon size={15} />
     </button>
+    {#if assistAvailable}
+      <div class="relative" data-assist-menu>
+        <button
+          type="button"
+          class={toolbarButton}
+          disabled={preview || assist?.running}
+          aria-label={t("ai.assist.title")}
+          title={t("ai.assist.title")}
+          aria-haspopup="menu"
+          aria-expanded={assistMenuOpen}
+          onclick={() => (assistMenuOpen = !assistMenuOpen)}
+        >
+          <Sparkles size={15} />
+        </button>
+        {#if assistMenuOpen}
+          <ul
+            class="absolute left-0 top-full z-30 mt-1 w-52 rounded-lg border border-border bg-surface-raised py-1 shadow-lg"
+            role="menu"
+          >
+            {#each ASSIST_ACTIONS as item (item.key)}
+              <li>
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="block w-full px-3 py-1.5 text-left text-sm text-text hover:bg-surface"
+                  onclick={() => void runAssist(item)}
+                >
+                  {t(`ai.assist.${item.key}`)}
+                </button>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </div>
+    {/if}
     <div class="ml-auto">
       <button
         type="button"
@@ -288,6 +443,66 @@
     class="block w-full resize-y rounded-b-lg bg-transparent px-3 py-2 text-sm outline-none {preview
       ? 'hidden'
       : ''}"></textarea>
+
+  {#if assist}
+    <!-- The result streams into a preview and is applied only by an explicit click; the
+         native undo stack survives the apply (#128). -->
+    <div class="border-t border-border px-3 py-2">
+      <p class="mb-1 flex items-center gap-1.5 text-xs font-medium text-text-muted">
+        <Sparkles size={12} />
+        {t(
+          `ai.assist.${assist.request.target ? `${assist.request.action}_${assist.request.target}` : assist.request.action}`,
+        )}
+        {#if assist.running}<span class="animate-pulse">…</span>{/if}
+      </p>
+      {#if assist.result}
+        <div class="max-h-56 overflow-y-auto rounded-lg bg-surface px-3 py-2 text-sm">
+          <Markdown value={assist.result} />
+        </div>
+      {/if}
+      {#if assist.error}
+        <p class="text-sm text-red-600 dark:text-red-400">{t(assist.error)}</p>
+      {/if}
+      {#if assist.budget}
+        <p class="text-sm text-amber-700 dark:text-amber-400">
+          {t("ai.budget_notice")}
+          <button
+            type="button"
+            class="underline"
+            onclick={() => void runAssist(assist!.request, true)}>{t("ai.budget_proceed")}</button
+          >
+        </p>
+      {/if}
+      <div class="mt-2 flex items-center gap-2">
+        {#if assist.running}
+          <button
+            type="button"
+            class="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs text-text hover:border-brand"
+            onclick={() => assistAbort?.abort()}
+          >
+            <CircleStop size={13} />
+            {t("ai.assist.stop")}
+          </button>
+        {:else if assist.result.trim()}
+          <button
+            type="button"
+            class="rounded-lg bg-brand px-2.5 py-1 text-xs font-medium text-white hover:opacity-90"
+            onclick={() => applyAssist("replace")}>{t("ai.assist.replace")}</button
+          >
+          <button
+            type="button"
+            class="rounded-lg border border-border px-2.5 py-1 text-xs text-text hover:border-brand"
+            onclick={() => applyAssist("insert")}>{t("ai.assist.insert")}</button
+          >
+        {/if}
+        <button
+          type="button"
+          class="rounded-lg px-2.5 py-1 text-xs text-text-muted hover:text-text"
+          onclick={cancelAssist}>{t("common.cancel")}</button
+        >
+      </div>
+    </div>
+  {/if}
 
   {#if mentionOpen && mentionMatches.length > 0}
     <!-- Anchored under the editor; a phone still reaches it without a caret-precise popover. -->
