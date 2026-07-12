@@ -1,3 +1,5 @@
+import { fmtClockTime } from "$lib/core/format";
+
 /** Format a duration in minutes as "Hh Mm" (e.g. 135 → "2h 15m", 40 → "40m"). */
 export function formatMinutes(total: number): string {
   const mins = Math.max(0, Math.round(total));
@@ -16,10 +18,12 @@ const _timeFmt = new Intl.DateTimeFormat("nl-NL", {
   timeZone: "UTC",
 });
 
-/** ISO datetime → "HH:MM" (e.g. "2026-07-07T09:30:00Z" → "09:30"). */
+/** ISO datetime → the user's clock preference (issue #13): "13:00", or "1:00 PM" on 12h.
+ *  The UTC extraction keeps the stored wall-clock; `fmtClockTime` owns the 12/24h rendering —
+ *  never bolt a meridiem onto the 24-hour digits. */
 export function formatTime(iso: string | null | undefined): string {
   if (!iso) return "";
-  return _timeFmt.format(new Date(iso));
+  return fmtClockTime(_timeFmt.format(new Date(iso)));
 }
 
 /** Minutes → decimal hours rounded to one place (e.g. 105 → 1.8). */

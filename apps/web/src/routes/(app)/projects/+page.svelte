@@ -16,6 +16,7 @@
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
+  import DateInput from "$lib/core/ui/DateInput.svelte";
   import HoursCell from "$lib/core/ui/HoursCell.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
@@ -319,13 +320,13 @@
         <label for="start_date" class="mb-1 block text-sm font-medium text-text">
           {t("projects.field.start_date")}
         </label>
-        <input id="start_date" name="start_date" type="date" class={inputClass} />
+        <DateInput id="start_date" name="start_date" />
       </div>
       <div>
         <label for="end_date" class="mb-1 block text-sm font-medium text-text">
           {t("projects.field.end_date")}
         </label>
-        <input id="end_date" name="end_date" type="date" class={inputClass} />
+        <DateInput id="end_date" name="end_date" />
       </div>
       <div class="flex items-center gap-2 pt-6">
         <input
