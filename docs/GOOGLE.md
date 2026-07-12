@@ -3,7 +3,14 @@
 > Calendar, Drive, and Gmail look like one "Google integration" but they are **two token
 > systems and three different data problems**. Getting the boundaries right up front is what
 > keeps P3 (§10) from becoming a sync swamp. Read this before building any Google surface.
-> Status: design agreed, not yet built. Phase P3.
+> Status: **shipped** (issue #22) — one licensed registry module `google` (sku `"google"`)
+> holding the core plus `calendar/`, `drive/` and `gmail/` subpackages, with the touchpoint
+> timeline in the free `interactions` module (contactmomenten). Deviations from the letter of
+> this doc, decided during the build: one registry module instead of four (one license, one
+> enablement, boundaries kept as subpackages); OAuth client credentials live per-org in the DB
+> (Instellingen → Google, the #76 SSO pattern) with the env vars as fallback; our own
+> browse-and-pick UI instead of the Google Picker; matched emails land **pending** and only
+> the mailbox owner may approve/reject/remap (body fetched after approval).
 
 ## The one rule
 
