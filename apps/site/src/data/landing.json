@@ -3,11 +3,11 @@
     "blocks": [
       {
         "type": "hero",
-        "eyebrow": "Open · zelf-gehost · wit-label",
+        "eyebrow": "Modulair · wit-label · jouw data",
         "title": "Het besturingssysteem voor je bureau",
-        "subtitle": "Klanten, projecten, uren, verlof en taken in één snel, modulair platform. Op jouw server, onder jouw merk, in jouw taal.",
+        "subtitle": "Klanten, projecten, uren, verlof en taken in één snel, modulair platform. Onder jouw merk, in jouw taal, met jouw data onder controle.",
         "ctaPrimary": { "label": "Lees de documentatie", "href": "/docs/" },
-        "ctaSecondary": { "label": "Bekijk op GitHub", "href": "https://github.com/schakl-app/schakl" }
+        "ctaSecondary": { "label": "Bekijk de functies", "href": "/#features" }
       },
       {
         "type": "features",
@@ -18,14 +18,14 @@
       {
         "type": "textBullets",
         "anchor": "selfhost",
-        "title": "Jouw server, jouw data",
-        "body": "schakl. draait waar jij dat wilt: één Docker Compose-stack met web, API, worker, database en Redis. Updates zijn een nieuwe image-tag; migraties draaien vanzelf, vóór de app opstart.",
+        "title": "Draai het waar jij wilt",
+        "body": "Zelf hosten met één Docker Compose-stack — web, API, worker, database en Redis. Updates zijn een nieuwe image-tag; migraties draaien vanzelf, vóór de app opstart. Liever niet zelf beheren? Een beheerde cloudversie staat op de roadmap.",
         "bullets": [
           "Eén compose-stack — geen losse diensten om te babysitten",
           "Automatische databasemigraties bij elke update",
-          "Geen telemetrie: er belt niets naar huis",
+          "Telemetrie staat standaard uit — jij bepaalt wat je deelt",
           "Wit-label: jouw logo, kleuren en eigen domein",
-          "Nederlands als standaardtaal, Engels ingebouwd"
+          "Jouw data blijft van jou — exporteren kan altijd"
         ]
       },
       {
@@ -42,11 +42,11 @@
     "blocks": [
       {
         "type": "hero",
-        "eyebrow": "Open · self-hosted · white-label",
+        "eyebrow": "Modular · white-label · your data",
         "title": "The operating system for your agency",
-        "subtitle": "Clients, projects, hours, leave and tasks in one fast, modular platform. On your server, under your brand, in your language.",
+        "subtitle": "Clients, projects, hours, leave and tasks in one fast, modular platform. Under your brand, in your language, with your data under your control.",
         "ctaPrimary": { "label": "Read the documentation", "href": "/docs/" },
-        "ctaSecondary": { "label": "View on GitHub", "href": "https://github.com/schakl-app/schakl" }
+        "ctaSecondary": { "label": "See the features", "href": "/#features" }
       },
       {
         "type": "features",
@@ -57,14 +57,14 @@
       {
         "type": "textBullets",
         "anchor": "selfhost",
-        "title": "Your server, your data",
-        "body": "schakl. runs wherever you want it: one Docker Compose stack with web, API, worker, database and Redis. Updates are a new image tag; migrations run automatically, before the app boots.",
+        "title": "Run it where you want",
+        "body": "Self-host with one Docker Compose stack — web, API, worker, database and Redis. Updates are a new image tag; migrations run automatically, before the app boots. Rather not manage it yourself? A managed cloud version is on the roadmap.",
         "bullets": [
           "One compose stack — no scattered services to babysit",
           "Automatic database migrations on every update",
-          "No telemetry: nothing phones home",
+          "Telemetry is off by default — you decide what you share",
           "White-label: your logo, colors and custom domain",
-          "Dutch by default, English built in"
+          "Your data stays yours — export is always available"
         ]
       },
       {

@@ -13,7 +13,7 @@
   },
   "nav": [
     { "href": "/#features", "nl": "Functies", "en": "Features" },
-    { "href": "/#selfhost", "nl": "Zelf hosten", "en": "Self-host" },
+    { "href": "/#selfhost", "nl": "Hosting", "en": "Hosting" },
     { "href": "/docs/", "nl": "Documentatie", "en": "Docs" }
   ],
   "footerLinks": [
@@ -22,7 +22,7 @@
     { "href": "https://github.com/schakl-app/schakl", "nl": "GitHub", "en": "GitHub" }
   ],
   "footerNote": {
-    "nl": "Zelf-gehost, wit-label bureauplatform. Jouw server, jouw data.",
-    "en": "Self-hosted, white-label agency platform. Your server, your data."
+    "nl": "Het wit-label besturingssysteem voor je bureau. Jouw merk, jouw data.",
+    "en": "The white-label operating system for your agency. Your brand, your data."
   }
 }
