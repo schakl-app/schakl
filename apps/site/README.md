@@ -17,6 +17,9 @@ pnpm site cms          # dev server; the CMS is at http://localhost:4321/admin
 
 On `/admin`, choose **Work with Local Repository** (Chrome/Edge) and pick the repo folder —
 saves write straight into the working tree, review with `git diff`, commit like any change.
+(Known dev-server quirk: named static pages like `/admin` log a **404 status while rendering
+fine** — every non-index page outside Starlight does, only in `astro dev`; `astro preview`
+and production serve 200. Ignore the status, trust the page.)
 Remote sign-in (edit from anywhere, drafts as branches) needs a small token-exchange
 service (`sveltia-cms-auth`) and is decided together with the deploy target.
 
