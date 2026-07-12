@@ -1,7 +1,9 @@
 <script lang="ts">
-  import { Pencil, Trash2 } from "@lucide/svelte";
+  import { BookmarkPlus, Pencil, Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
+  import { goto } from "$app/navigation";
+  import { page } from "$app/state";
   import { fmtMoney, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
@@ -12,10 +14,12 @@
   import Modal from "$lib/core/ui/Modal.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
+  import { subscriptionTypeLabel } from "$lib/modules/subscriptions/types";
 
   let { data, form } = $props();
 
   type Subscription = (typeof data.subscriptions)[number];
+  type Template = (typeof data.templates)[number];
 
   let showForm = $state(false);
   let editing = $state<Subscription | null>(null);
@@ -29,9 +33,14 @@
   // Inline project create from the links picker — same pattern, auto-links the new project.
   let qcProjectOpen = $state(false);
   let qcProjectName = $state("");
+  // Inline subscription-type create from the type picker (#142) — same pattern again.
+  let qcTypeOpen = $state(false);
+  let qcTypeName = $state("");
+  let createdTypeId = $state("");
   $effect(() => {
     const created = form?.inlineCreated;
     if (created?.slot === "company") createdCompanyId = created.id;
+    if (created?.slot === "subscription_type") createdTypeId = created.id;
     if (created?.slot === "project" && !linkedProjects.some((p) => p.id === created.id)) {
       const name = "name" in created ? created.name : projectName(created.id);
       linkedProjects = [...linkedProjects, { id: created.id, name }];
@@ -41,6 +50,34 @@
   const companyItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
   const STATUSES = ["draft", "active", "paused", "cancelled"] as const;
   const INTERVALS = ["monthly", "quarterly", "yearly"] as const;
+
+  // Tenant-defined categories (#142): picker items, list labels, and the filter pills.
+  const activeTypes = $derived(data.types.filter((st) => st.active));
+  const typeItems = $derived(
+    activeTypes.map((st) => ({ value: st.id, label: subscriptionTypeLabel(st, data.locale) })),
+  );
+  function typeLabel(id: string | null | undefined): string {
+    return subscriptionTypeLabel(data.types.find((st) => st.id === id), data.locale);
+  }
+  function setTypeFilter(typeId: string) {
+    const url = new URL(page.url);
+    if (typeId && typeId !== data.typeFilter) url.searchParams.set("type", typeId);
+    else url.searchParams.delete("type");
+    void goto(url, { keepFocus: true, noScroll: true });
+  }
+
+  // "Create from template" (#142): prefill, never a server-side copy — the create form stays
+  // the single validation path. Rekeys the form so the defaults re-read.
+  let prefill = $state<Template | null>(null);
+
+  // "Opslaan als sjabloon" (UX rule 5): the row posts its own values through a hidden form.
+  let tplForm: HTMLFormElement | undefined = $state();
+  let tplDraft = $state<Subscription | null>(null);
+  function saveAsTemplate(sub: Subscription) {
+    tplDraft = sub;
+    // Post after the hidden fields re-render with this row's values.
+    setTimeout(() => tplForm?.requestSubmit(), 0);
+  }
 
   // Projects linked to the agreement being edited: time on these counts toward the bundle.
   let linkedProjects = $state<{ id: string; name: string }[]>([]);
@@ -60,12 +97,16 @@
   function openCreate() {
     editing = null;
     createdCompanyId = "";
+    createdTypeId = "";
+    prefill = null;
     linkedProjects = [];
     showForm = true;
   }
   function openEdit(sub: Subscription) {
     editing = sub;
     createdCompanyId = "";
+    createdTypeId = "";
+    prefill = null;
     linkedProjects = (sub.links ?? [])
       .filter((l) => l.entity_type === "project")
       .map((l) => ({ id: l.entity_id, name: projectName(l.entity_id) }));
@@ -115,6 +156,36 @@
   </div>
 {/if}
 
+<!-- Type filter pills (#142) — server-side: the list is paginated. -->
+{#if activeTypes.length > 0}
+  <div class="mb-4 flex flex-wrap items-center gap-2">
+    {#each activeTypes as st (st.id)}
+      <button
+        class="rounded-full px-3 py-1 text-xs font-medium
+          {data.typeFilter === st.id
+          ? 'bg-brand/10 text-brand ring-2 ring-brand'
+          : 'bg-surface text-text-muted hover:text-text'}"
+        aria-pressed={data.typeFilter === st.id}
+        onclick={() => setTypeFilter(st.id)}>{subscriptionTypeLabel(st, data.locale)}</button
+      >
+    {/each}
+    {#if data.typeFilter}
+      <button
+        class="text-xs text-text-muted underline hover:text-text"
+        onclick={() => setTypeFilter("")}
+      >
+        {t("tasks.filter.clear")}
+      </button>
+    {/if}
+  </div>
+{/if}
+
+{#if form?.templateSaved}
+  <p class="mb-4 rounded-lg border border-border bg-surface-raised px-4 py-2 text-sm text-text">
+    {t("subscriptions.template_saved")}
+  </p>
+{/if}
+
 <section class="rounded-xl border border-border bg-surface-raised">
   {#if data.subscriptions.length === 0}
     <p class="p-6 text-sm text-text-muted">{t("subscriptions.empty")}</p>
@@ -125,6 +196,7 @@
           <tr>
             <th class="px-4 py-2 font-medium">{t("subscriptions.field.name")}</th>
             <th class="px-4 py-2 font-medium">{t("subscriptions.field.company")}</th>
+            <th class="px-4 py-2 font-medium">{t("subscriptions.field.type")}</th>
             <th class="px-4 py-2 font-medium">{t("subscriptions.field.amount")}</th>
             <th class="px-4 py-2 font-medium">{t("subscriptions.field.next_invoice")}</th>
             <th class="px-4 py-2 font-medium">{t("subscriptions.field.status")}</th>
@@ -136,6 +208,9 @@
             <tr class="hover:bg-surface">
               <td class="px-4 py-2 font-medium text-text">{sub.name}</td>
               <td class="px-4 py-2 text-text-muted">{sub.company_name}</td>
+              <td class="px-4 py-2 text-text-muted">
+                {sub.subscription_type_id ? typeLabel(sub.subscription_type_id) : "—"}
+              </td>
               <td class="px-4 py-2 tabular-nums text-text">
                 {money(sub.amount)}
                 <span class="text-xs text-text-muted">
@@ -155,6 +230,15 @@
                   compact
                   items={[
                     { label: t("common.edit"), icon: Pencil, onclick: () => openEdit(sub) },
+                    ...(data.canManageTemplates
+                      ? [
+                          {
+                            label: t("subscriptions.save_template"),
+                            icon: BookmarkPlus,
+                            onclick: () => saveAsTemplate(sub),
+                          },
+                        ]
+                      : []),
                     {
                       label: t("common.delete"),
                       icon: Trash2,
@@ -180,7 +264,27 @@
   bind:open={showForm}
   title={editing ? t("common.edit") : t("subscriptions.add")}
 >
-  {#key editing?.id ?? "new"}
+  <!-- Prefill from a preset (#142). Outside the {#key} so picking one survives the rekey. -->
+  {#if !editing && data.templates.length > 0}
+    <div class="mb-4">
+      <label for="sub-template" class="mb-1 block text-sm font-medium text-text"
+        >{t("subscriptions.from_template")}</label
+      >
+      <select
+        id="sub-template"
+        class={inputClass}
+        value={prefill?.id ?? ""}
+        onchange={(e) =>
+          (prefill = data.templates.find((tpl) => tpl.id === e.currentTarget.value) ?? null)}
+      >
+        <option value="">—</option>
+        {#each data.templates as tpl (tpl.id)}
+          <option value={tpl.id}>{tpl.name}</option>
+        {/each}
+      </select>
+    </div>
+  {/if}
+  {#key `${editing?.id ?? "new"}-${prefill?.id ?? ""}`}
     <form
       method="POST"
       action={editing ? "?/update" : "?/create"}
@@ -196,7 +300,13 @@
         <label for="sub-name" class="mb-1 block text-sm font-medium text-text"
           >{t("subscriptions.field.name")}</label
         >
-        <input id="sub-name" name="name" required value={editing?.name ?? ""} class={inputClass} />
+        <input
+          id="sub-name"
+          name="name"
+          required
+          value={editing?.name ?? prefill?.name ?? ""}
+          class={inputClass}
+        />
       </div>
       <div>
         <label for="sub-company" class="mb-1 block text-sm font-medium text-text"
@@ -212,6 +322,25 @@
             qcCompanyName = name;
             qcCompanyOpen = true;
           }}
+        />
+      </div>
+      <div>
+        <label for="sub-type" class="mb-1 block text-sm font-medium text-text"
+          >{t("subscriptions.field.type")}</label
+        >
+        <Combobox
+          items={typeItems}
+          name="subscription_type_id"
+          value={createdTypeId ||
+            (editing?.subscription_type_id ?? prefill?.subscription_type_id ?? "")}
+          id="sub-type"
+          placeholder={t("subscriptions.field.type")}
+          oncreate={data.canManageTypes
+            ? (name) => {
+                qcTypeName = name;
+                qcTypeOpen = true;
+              }
+            : undefined}
         />
       </div>
       <div class="grid gap-3 sm:grid-cols-2">
@@ -233,7 +362,9 @@
           >
           <select id="sub-interval" name="interval" class={inputClass}>
             {#each INTERVALS as interval (interval)}
-              <option value={interval} selected={(editing?.interval ?? "monthly") === interval}
+              <option
+                value={interval}
+                selected={(editing?.interval ?? prefill?.interval ?? "monthly") === interval}
                 >{t(`subscriptions.interval.${interval}`)}</option
               >
             {/each}
@@ -250,7 +381,7 @@
             min="0"
             step="0.01"
             required={!editing}
-            value={editing?.amount ?? ""}
+            value={editing?.amount ?? prefill?.amount ?? ""}
             class={inputClass}
           />
         </div>
@@ -264,7 +395,7 @@
             type="number"
             min="0"
             step="0.5"
-            value={editing?.included_hours ?? ""}
+            value={editing?.included_hours ?? prefill?.included_hours ?? ""}
             class={inputClass}
           />
         </div>
@@ -330,7 +461,7 @@
           >{t("subscriptions.field.notes")}</label
         >
         <textarea id="sub-notes" name="notes" rows="2" class={inputClass}
-          >{editing?.notes ?? ""}</textarea
+          >{editing?.notes ?? prefill?.notes ?? ""}</textarea
         >
       </div>
       {#if data.definitions.length > 0}
@@ -432,6 +563,77 @@
     </form>
   {/key}
 </Modal>
+
+<!-- Inline subscription-type create from the picker (#142, docs/UX.md — per-picker rule).
+     The full type dialog; the spawn list stays in Instellingen → Abonnementen. -->
+<Modal bind:open={qcTypeOpen} title={t("settings.subscriptions.new_type")}>
+  {#key qcTypeName + String(qcTypeOpen)}
+    <form
+      method="POST"
+      action="?/createType"
+      use:enhance={() =>
+        ({ result, update }) => {
+          if (result.type === "success") qcTypeOpen = false;
+          void update({ reset: false });
+        }}
+      class="space-y-3"
+    >
+      <div>
+        <label for="qc-type-key" class="mb-1 block text-sm font-medium text-text"
+          >{t("settings.subscriptions.key")}</label
+        >
+        <input
+          id="qc-type-key"
+          name="key"
+          required
+          pattern="[a-z0-9_]+"
+          value={qcTypeName.toLowerCase().replace(/[^a-z0-9]+/g, "_")}
+          class={inputClass}
+        />
+        <p class="mt-1 text-xs text-text-muted">{t("settings.subscriptions.key_hint")}</p>
+      </div>
+      <div class="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label for="qc-type-nl" class="mb-1 block text-sm font-medium text-text"
+            >{t("settings.subscriptions.label_nl")}</label
+          >
+          <input id="qc-type-nl" name="label_nl" required value={qcTypeName} class={inputClass} />
+        </div>
+        <div>
+          <label for="qc-type-en" class="mb-1 block text-sm font-medium text-text"
+            >{t("settings.subscriptions.label_en")}</label
+          >
+          <input id="qc-type-en" name="label_en" required value={qcTypeName} class={inputClass} />
+        </div>
+      </div>
+      {#if form?.qcError}
+        <p class="text-sm text-red-600 dark:text-red-400">{t(form.qcError)}</p>
+      {/if}
+      <div class="flex justify-end gap-2">
+        <button
+          type="button"
+          class="rounded-lg border border-border px-4 py-2 text-sm text-text"
+          onclick={() => (qcTypeOpen = false)}>{t("common.cancel")}</button
+        >
+        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
+          >{t("common.create")}</button
+        >
+      </div>
+    </form>
+  {/key}
+</Modal>
+
+<!-- "Opslaan als sjabloon" — the row's values, posted through a hidden single-purpose form. -->
+<form bind:this={tplForm} method="POST" action="?/saveTemplate" use:enhance class="hidden">
+  <input type="hidden" name="name" value={tplDraft?.name ?? ""} />
+  <input type="hidden" name="subscription_type_id" value={tplDraft?.subscription_type_id ?? ""} />
+  <input type="hidden" name="interval" value={tplDraft?.interval ?? "monthly"} />
+  <input type="hidden" name="interval_count" value={tplDraft?.interval_count ?? 1} />
+  <input type="hidden" name="amount" value={tplDraft?.amount ?? ""} />
+  <input type="hidden" name="included_hours" value={tplDraft?.included_hours ?? ""} />
+  <input type="hidden" name="notice_period_days" value={tplDraft?.notice_period_days ?? ""} />
+  <input type="hidden" name="notes" value={tplDraft?.notes ?? ""} />
+</form>
 
 <ConfirmDialog
   bind:open={confirmDelete}

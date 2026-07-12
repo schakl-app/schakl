@@ -52,6 +52,7 @@ _DOMAIN_TABLES = (
     "leave_requests, leave_recurring_days, leave_entitlements, leave_profiles, leave_types, "
     "leave_holidays, leave_settings, employment_contracts, "
     "subscription_links, subscription_lines, subscription_prices, subscriptions, "
+    "subscription_templates, subscription_types, "
     "websites, hosting, domains, providers, "
     "time_entry_drafts, time_entries, tasks, projects, contacts, contact_types, "
     "custom_field_definitions, "

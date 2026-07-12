@@ -7,6 +7,7 @@ form's behaviour, because the import goes through the same service.
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Sequence
 from decimal import Decimal
 from typing import Any
@@ -18,11 +19,15 @@ from app.modules.subscriptions.models import (
     Subscription,
     SubscriptionInterval,
     SubscriptionStatus,
+    SubscriptionType,
 )
 from app.modules.subscriptions.schemas import SubscriptionCreate, SubscriptionUpdate
 from app.modules.subscriptions.service import SubscriptionService
 
-_FIELDS = ("name", "end_date", "next_invoice_date", "included_hours", "notes", "company_id")
+_FIELDS = (
+    "name", "end_date", "next_invoice_date", "included_hours", "notes", "company_id",
+    "subscription_type_id",
+)
 
 
 async def _fetch_page(
@@ -35,7 +40,56 @@ async def _fetch_page(
         status=filters.get("status"),
         sort=filters.get("sort"),
     )
-    return items  # the service's _attach already carries company_name + current amount
+    # _attach carries company_name + current amount; the type key rides along for the
+    # export getter — one grouped query, keys because labels are per-locale tenant data.
+    type_ids = {s.subscription_type_id for s in items if s.subscription_type_id is not None}
+    if type_ids:
+        rows = await ctx.session.execute(
+            ctx.repo(SubscriptionType)
+            .scoped_select()
+            .where(SubscriptionType.id.in_(type_ids))
+            .with_only_columns(SubscriptionType.id, SubscriptionType.key)
+        )
+        keys = dict(rows.all())
+        for sub in items:
+            sub.subscription_type_key = keys.get(sub.subscription_type_id)  # type: ignore[attr-defined]
+    return items
+
+
+async def _resolve_type(ctx: RequestContext, refs: list[str]) -> dict[str, uuid.UUID | str]:
+    """Type references resolve by ``key`` (or UUID) — types have no ``name`` column, and the
+    per-locale labels are ambiguous across locales. Keys are org-unique, so never ambiguous."""
+    by_id: dict[str, uuid.UUID] = {}
+    keys: list[str] = []
+    for ref in refs:
+        try:
+            by_id[ref] = uuid.UUID(ref)
+        except ValueError:
+            keys.append(ref)
+
+    repo = ctx.repo(SubscriptionType)
+    resolved: dict[str, uuid.UUID | str] = {}
+    if by_id:
+        rows = (
+            await ctx.session.execute(
+                repo.scoped_select()
+                .where(SubscriptionType.id.in_(by_id.values()))
+                .with_only_columns(SubscriptionType.id)
+            )
+        ).scalars()
+        found = set(rows)
+        for ref, ref_id in by_id.items():
+            resolved[ref] = ref_id if ref_id in found else "impex.errors.unresolved_reference"
+    if keys:
+        rows = await ctx.session.execute(
+            repo.scoped_select()
+            .where(SubscriptionType.key.in_(keys))
+            .with_only_columns(SubscriptionType.key, SubscriptionType.id)
+        )
+        by_key = dict(rows.all())
+        for key in keys:
+            resolved[key] = by_key.get(key, "impex.errors.unresolved_reference")
+    return resolved
 
 
 async def _find_existing(ctx: RequestContext, values: list[str]) -> dict[str, list[Any]]:
@@ -58,6 +112,7 @@ async def _create(ctx: RequestContext, values: dict[str, Any]) -> None:
             interval=SubscriptionInterval(values["interval"])
             if values.get("interval")
             else SubscriptionInterval.MONTHLY,
+            subscription_type_id=values.get("subscription_type_id"),
             start_date=values["start_date"],
             end_date=values.get("end_date"),
             next_invoice_date=values.get("next_invoice_date"),
@@ -111,6 +166,13 @@ SUBSCRIPTION_IMPEX = ImpexDescriptor(
             clearable=False,
             options=tuple(interval.value for interval in SubscriptionInterval),
         ),
+        # The tenant-defined category (#142), referenced by its org-unique key.
+        ImpexColumn(
+            "type",
+            data_type="fk",
+            field="subscription_type_id",
+            getter=lambda s: getattr(s, "subscription_type_key", None),
+        ),
         ImpexColumn("start_date", data_type="date", required=True, clearable=False),
         ImpexColumn("end_date", data_type="date"),
         ImpexColumn("next_invoice_date", data_type="date"),
@@ -123,5 +185,8 @@ SUBSCRIPTION_IMPEX = ImpexDescriptor(
     find_existing=_find_existing,
     create_row=_create,
     update_row=_update,
-    fk_resolvers={"company": name_or_id_resolver("companies")},
+    fk_resolvers={
+        "company": name_or_id_resolver("companies"),
+        "type": _resolve_type,
+    },
 )

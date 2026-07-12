@@ -267,6 +267,34 @@ class TemplateService:
                 actor_name=_display_name(self.ctx.user),
             )
 
+    async def instantiate_ids(
+        self, template_ids: list[uuid.UUID], company_id: uuid.UUID
+    ) -> None:
+        """Apply the given templates to a company (subscription activation, issue #142).
+
+        No ``ctx.require`` — spawning is a side effect of a write the caller was already
+        allowed to make; *linking* templates to a subscription type was gated on
+        ``subscriptions.type.manage`` when the tenant configured it. A template deleted or
+        deactivated since is skipped, never an error that would roll the activation back.
+        """
+        if not template_ids:
+            return
+        stmt = (
+            self.repo.scoped_select()
+            .where(TaskTemplate.id.in_(template_ids))
+            .where(TaskTemplate.active.is_(True))
+        )
+        found = {t.id: t for t in (await self.ctx.session.execute(stmt)).scalars()}
+        user = self.ctx.user
+        actor_id = user.id if user is not None else None
+        actor_name = _display_name(user) if user is not None else None
+        for template_id in template_ids:
+            template = found.get(template_id)
+            if template is not None:
+                await self._instantiate(
+                    template, company_id, actor_id=actor_id, actor_name=actor_name
+                )
+
 
 async def on_company_status(ctx: RequestContext, payload: dict[str, Any]) -> None:
     """Event handler for ``company.created`` and ``company.status_changed``."""
@@ -275,3 +303,17 @@ async def on_company_status(ctx: RequestContext, payload: dict[str, Any]) -> Non
     if not isinstance(company_id, uuid.UUID):
         raise AppError("validation", "errors.validation")
     await TemplateService(ctx).instantiate_for_status(company_id, str(status))
+
+
+async def on_subscription_activated(ctx: RequestContext, payload: dict[str, Any]) -> None:
+    """Event handler for ``subscription.activated`` (issue #142).
+
+    The payload carries the template ids the subscription's type is configured to spawn —
+    this module stays ignorant of the subscriptions tables (§6). Fires once per agreement:
+    the emitter guards on first activation, so pause→resume never lands here.
+    """
+    company_id = payload["company_id"]
+    if not isinstance(company_id, uuid.UUID):
+        raise AppError("validation", "errors.validation")
+    template_ids = [uuid.UUID(str(t)) for t in payload.get("task_template_ids", [])]
+    await TemplateService(ctx).instantiate_ids(template_ids, company_id)

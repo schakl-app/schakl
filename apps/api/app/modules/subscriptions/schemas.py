@@ -46,8 +46,83 @@ class RolloverRule(BaseModel):
     expires_after_periods: int | None = Field(default=None, ge=1, le=24)
 
 
+class SubscriptionTypeBase(BaseModel):
+    key: str = Field(min_length=1, max_length=50, pattern=r"^[a-z0-9_]+$")
+    label_i18n: dict[str, str] = Field(default_factory=dict)
+    position: int = 0
+    active: bool = True
+    #: Task templates spawned on a subscription's first activation (#142).
+    task_template_ids: list[uuid.UUID] = Field(default_factory=list)
+
+
+class SubscriptionTypeCreate(SubscriptionTypeBase):
+    pass
+
+
+class SubscriptionTypeUpdate(BaseModel):
+    # ``key`` is immutable by omission (the leave-types/contact-types rule).
+    label_i18n: dict[str, str] | None = None
+    position: int | None = None
+    active: bool | None = None
+    task_template_ids: list[uuid.UUID] | None = None
+
+
+class SubscriptionTypeRead(SubscriptionTypeBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    org_id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class SubscriptionTemplateBase(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    subscription_type_id: uuid.UUID | None = None
+    currency: str = Field(default="EUR", min_length=3, max_length=3)
+    interval: SubscriptionInterval = SubscriptionInterval.MONTHLY
+    interval_count: int = Field(default=1, ge=1, le=12)
+    #: The preset fee; on "create from template" it becomes the first price-history row.
+    amount: Decimal | None = Field(default=None, ge=0)
+    included_hours: Decimal | None = Field(default=None, ge=0)
+    rollover: RolloverRule = Field(default_factory=RolloverRule)
+    notice_period_days: int | None = Field(default=None, ge=0, le=365)
+    lines: list[SubscriptionLineWrite] = Field(default_factory=list)
+    notes: str | None = None
+    position: int = 0
+
+
+class SubscriptionTemplateCreate(SubscriptionTemplateBase):
+    pass
+
+
+class SubscriptionTemplateUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    subscription_type_id: uuid.UUID | None = None
+    currency: str | None = Field(default=None, min_length=3, max_length=3)
+    interval: SubscriptionInterval | None = None
+    interval_count: int | None = Field(default=None, ge=1, le=12)
+    amount: Decimal | None = Field(default=None, ge=0)
+    included_hours: Decimal | None = Field(default=None, ge=0)
+    rollover: RolloverRule | None = None
+    notice_period_days: int | None = Field(default=None, ge=0, le=365)
+    lines: list[SubscriptionLineWrite] | None = None
+    notes: str | None = None
+    position: int | None = None
+
+
+class SubscriptionTemplateRead(SubscriptionTemplateBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    org_id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
+
+
 class SubscriptionBase(BaseModel):
     name: str = Field(min_length=1, max_length=255)
+    subscription_type_id: uuid.UUID | None = None
     status: SubscriptionStatus = SubscriptionStatus.DRAFT
     currency: str = Field(default="EUR", min_length=3, max_length=3)
     interval: SubscriptionInterval = SubscriptionInterval.MONTHLY
@@ -73,6 +148,8 @@ class SubscriptionCreate(SubscriptionBase):
 class SubscriptionUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     company_id: uuid.UUID | None = None
+    #: Sent as ``null`` it clears the type (``exclude_unset`` keeps "absent" distinct).
+    subscription_type_id: uuid.UUID | None = None
     status: SubscriptionStatus | None = None
     currency: str | None = Field(default=None, min_length=3, max_length=3)
     interval: SubscriptionInterval | None = None
@@ -112,8 +189,11 @@ class SubscriptionRead(BaseModel):
     org_id: uuid.UUID
     company_id: uuid.UUID
     company_name: str = ""
+    subscription_type_id: uuid.UUID | None = None
     name: str
     status: SubscriptionStatus
+    #: First-ever activation instant; the web resolves the type's label from its own lookup.
+    activated_at: datetime | None = None
     currency: str
     interval: SubscriptionInterval
     interval_count: int

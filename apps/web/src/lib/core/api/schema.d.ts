@@ -2537,6 +2537,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/subscriptions/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Subscription Templates */
+        get: operations["list_subscription_templates_api_v1_subscriptions_templates_get"];
+        put?: never;
+        /** Create Subscription Template */
+        post: operations["create_subscription_template_api_v1_subscriptions_templates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/subscriptions/templates/{template_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Subscription Template */
+        delete: operations["delete_subscription_template_api_v1_subscriptions_templates__template_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Subscription Template */
+        patch: operations["update_subscription_template_api_v1_subscriptions_templates__template_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/subscriptions/types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Subscription Types */
+        get: operations["list_subscription_types_api_v1_subscriptions_types_get"];
+        put?: never;
+        /** Create Subscription Type */
+        post: operations["create_subscription_type_api_v1_subscriptions_types_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/subscriptions/types/{type_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Subscription Type */
+        delete: operations["delete_subscription_type_api_v1_subscriptions_types__type_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Subscription Type */
+        patch: operations["update_subscription_type_api_v1_subscriptions_types__type_id__patch"];
+        trace?: never;
+    };
     "/api/v1/subscriptions/{subscription_id}": {
         parameters: {
             query?: never;
@@ -7317,7 +7389,7 @@ export interface components {
              */
             interval_count: number;
             /** Lines */
-            lines?: components["schemas"]["SubscriptionLineWrite"][];
+            lines?: components["schemas"]["SubscriptionLineWrite-Input"][];
             /** Links */
             links?: components["schemas"]["SubscriptionLinkWrite"][];
             /** Name */
@@ -7336,6 +7408,8 @@ export interface components {
             start_date: string;
             /** @default draft */
             status: components["schemas"]["SubscriptionStatus"];
+            /** Subscription Type Id */
+            subscription_type_id?: string | null;
         };
         /**
          * SubscriptionInterval
@@ -7365,7 +7439,7 @@ export interface components {
             unit_amount: string;
         };
         /** SubscriptionLineWrite */
-        SubscriptionLineWrite: {
+        "SubscriptionLineWrite-Input": {
             /** Description */
             description: string;
             /**
@@ -7378,6 +7452,21 @@ export interface components {
              * @default 0
              */
             unit_amount: number | string;
+        };
+        /** SubscriptionLineWrite */
+        "SubscriptionLineWrite-Output": {
+            /** Description */
+            description: string;
+            /**
+             * Quantity
+             * @default 1
+             */
+            quantity: string;
+            /**
+             * Unit Amount
+             * @default 0
+             */
+            unit_amount: string;
         };
         /** SubscriptionLinkRead */
         SubscriptionLinkRead: {
@@ -7412,6 +7501,8 @@ export interface components {
         };
         /** SubscriptionRead */
         SubscriptionRead: {
+            /** Activated At */
+            activated_at?: string | null;
             /** Amount */
             amount?: string | null;
             /**
@@ -7473,6 +7564,8 @@ export interface components {
              */
             start_date: string;
             status: components["schemas"]["SubscriptionStatus"];
+            /** Subscription Type Id */
+            subscription_type_id?: string | null;
             /**
              * Updated At
              * Format: date-time
@@ -7499,6 +7592,196 @@ export interface components {
             /** Upcoming */
             upcoming: components["schemas"]["UpcomingInvoice"][];
         };
+        /** SubscriptionTemplateCreate */
+        SubscriptionTemplateCreate: {
+            /** Amount */
+            amount?: number | string | null;
+            /**
+             * Currency
+             * @default EUR
+             */
+            currency: string;
+            /** Included Hours */
+            included_hours?: number | string | null;
+            /** @default monthly */
+            interval: components["schemas"]["SubscriptionInterval"];
+            /**
+             * Interval Count
+             * @default 1
+             */
+            interval_count: number;
+            /** Lines */
+            lines?: components["schemas"]["SubscriptionLineWrite-Input"][];
+            /** Name */
+            name: string;
+            /** Notes */
+            notes?: string | null;
+            /** Notice Period Days */
+            notice_period_days?: number | null;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            rollover?: components["schemas"]["RolloverRule"];
+            /** Subscription Type Id */
+            subscription_type_id?: string | null;
+        };
+        /** SubscriptionTemplateRead */
+        SubscriptionTemplateRead: {
+            /** Amount */
+            amount?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Currency
+             * @default EUR
+             */
+            currency: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Included Hours */
+            included_hours?: string | null;
+            /** @default monthly */
+            interval: components["schemas"]["SubscriptionInterval"];
+            /**
+             * Interval Count
+             * @default 1
+             */
+            interval_count: number;
+            /** Lines */
+            lines?: components["schemas"]["SubscriptionLineWrite-Output"][];
+            /** Name */
+            name: string;
+            /** Notes */
+            notes?: string | null;
+            /** Notice Period Days */
+            notice_period_days?: number | null;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            rollover?: components["schemas"]["RolloverRule"];
+            /** Subscription Type Id */
+            subscription_type_id?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** SubscriptionTemplateUpdate */
+        SubscriptionTemplateUpdate: {
+            /** Amount */
+            amount?: number | string | null;
+            /** Currency */
+            currency?: string | null;
+            /** Included Hours */
+            included_hours?: number | string | null;
+            interval?: components["schemas"]["SubscriptionInterval"] | null;
+            /** Interval Count */
+            interval_count?: number | null;
+            /** Lines */
+            lines?: components["schemas"]["SubscriptionLineWrite-Input"][] | null;
+            /** Name */
+            name?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Notice Period Days */
+            notice_period_days?: number | null;
+            /** Position */
+            position?: number | null;
+            rollover?: components["schemas"]["RolloverRule"] | null;
+            /** Subscription Type Id */
+            subscription_type_id?: string | null;
+        };
+        /** SubscriptionTypeCreate */
+        SubscriptionTypeCreate: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Key */
+            key: string;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            };
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /** Task Template Ids */
+            task_template_ids?: string[];
+        };
+        /** SubscriptionTypeRead */
+        SubscriptionTypeRead: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Key */
+            key: string;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            };
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /** Task Template Ids */
+            task_template_ids?: string[];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** SubscriptionTypeUpdate */
+        SubscriptionTypeUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            } | null;
+            /** Position */
+            position?: number | null;
+            /** Task Template Ids */
+            task_template_ids?: string[] | null;
+        };
         /** SubscriptionUpdate */
         SubscriptionUpdate: {
             /** Amount */
@@ -7521,7 +7804,7 @@ export interface components {
             /** Interval Count */
             interval_count?: number | null;
             /** Lines */
-            lines?: components["schemas"]["SubscriptionLineWrite"][] | null;
+            lines?: components["schemas"]["SubscriptionLineWrite-Input"][] | null;
             /** Links */
             links?: components["schemas"]["SubscriptionLinkWrite"][] | null;
             /** Name */
@@ -7536,6 +7819,8 @@ export interface components {
             /** Start Date */
             start_date?: string | null;
             status?: components["schemas"]["SubscriptionStatus"] | null;
+            /** Subscription Type Id */
+            subscription_type_id?: string | null;
         };
         /**
          * SubscriptionUsage
@@ -14772,6 +15057,7 @@ export interface operations {
                 offset?: number;
                 company_id?: string | null;
                 status?: string | null;
+                subscription_type_id?: string | null;
                 /** @description name | status | next_invoice_date | start_date */
                 sort?: string | null;
                 /** @description with entity_id: linked-entity filter */
@@ -14855,6 +15141,251 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SubscriptionSummary"];
+                };
+            };
+        };
+    };
+    list_subscription_templates_api_v1_subscriptions_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionTemplateRead"][];
+                };
+            };
+        };
+    };
+    create_subscription_template_api_v1_subscriptions_templates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubscriptionTemplateCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionTemplateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_subscription_template_api_v1_subscriptions_templates__template_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_subscription_template_api_v1_subscriptions_templates__template_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubscriptionTemplateUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionTemplateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_subscription_types_api_v1_subscriptions_types_get: {
+        parameters: {
+            query?: {
+                include_inactive?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionTypeRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_subscription_type_api_v1_subscriptions_types_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubscriptionTypeCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionTypeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_subscription_type_api_v1_subscriptions_types__type_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                type_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_subscription_type_api_v1_subscriptions_types__type_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                type_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubscriptionTypeUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionTypeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

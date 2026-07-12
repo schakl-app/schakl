@@ -120,6 +120,11 @@
     )}
     {@render card("/settings/leave", t("settings.leave.title"), t("settings.leave.subtitle"))}
     {@render card(
+      "/settings/subscriptions",
+      t("settings.subscriptions.title"),
+      t("settings.subscriptions.subtitle"),
+    )}
+    {@render card(
       "/settings/dashboard",
       t("settings.dashboard.title"),
       t("settings.dashboard.subtitle"),

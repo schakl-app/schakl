@@ -18,7 +18,7 @@ from app.modules.tasks.permissions import TASK_PERMISSIONS
 from app.modules.tasks.recurrence import spawn_scheduled_recurrences
 from app.modules.tasks.reminders import send_task_reminders
 from app.modules.tasks.router import router
-from app.modules.tasks.templates import on_company_status
+from app.modules.tasks.templates import on_company_status, on_subscription_activated
 from app.registry import ModuleDescriptor, registry
 
 module = ModuleDescriptor(
@@ -43,6 +43,10 @@ registry.register(module)
 # with — or transitions into — a template's trigger status.
 subscribe("company.created", on_company_status)
 subscribe("company.status_changed", on_company_status)
+
+# Subscription onboarding (#142): the type's templates spawn on an agreement's first
+# activation — the payload names them, so this module never reads the subscriptions tables.
+subscribe("subscription.activated", on_subscription_activated)
 
 # Document attachments (#123 follow-up): validate the target task, write its activity trail.
 subscribe("file.attached", on_file_event)

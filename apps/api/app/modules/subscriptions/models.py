@@ -18,11 +18,22 @@ not the same row. Decisions recorded on the issue and encoded here:
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
 
-from sqlalchemy import Date, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -46,6 +57,63 @@ class SubscriptionInterval(StrEnum):
     YEARLY = "yearly"
 
 
+class SubscriptionType(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """A tenant-configurable kind of subscription (issue #142): hosting, onderhoud, SEO, …
+
+    The contact-types / leave-types shape (``label_i18n`` + ``active`` + ``position``, CRUD
+    under Instellingen) — categories are tenant config, never code. Deleting a type SET NULLs
+    the subscriptions that carry it (see ``Subscription.subscription_type_id``), so a type can
+    always be removed without stranding an agreement; ``active`` hides it from pickers first.
+    """
+
+    __tablename__ = "subscription_types"
+    __table_args__ = (UniqueConstraint("org_id", "key", name="uq_subscription_types_org_key"),)
+
+    key: Mapped[str] = mapped_column(String(50), nullable=False)
+    # Per-locale labels ({"nl": ..., "en": ...}) — tenant data, like custom-field labels.
+    label_i18n: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    #: Task templates instantiated on a subscription's *first* activation — plain UUIDs, no FK
+    #: into the tasks module's tables (§6, the ``SubscriptionLink`` rule): validated against the
+    #: bare table on write, and a template deleted later is simply skipped when spawning.
+    task_template_ids: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+
+
+class SubscriptionTemplate(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """A named preset — "Hosting Basis, €25/maand, 1 uur inbegrepen" (issue #142).
+
+    Picking one *prefills* the normal create form (one validation path, no server-side copy);
+    nothing references a template afterwards, so unlike a type it carries no FK from
+    ``subscriptions`` and may be deleted freely. ``amount`` seeds the first price-history row
+    at create time; a later template change never touches existing agreements.
+    """
+
+    __tablename__ = "subscription_templates"
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    subscription_type_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("subscription_types.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="EUR")
+    interval: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=SubscriptionInterval.MONTHLY.value
+    )
+    interval_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    included_hours: Mapped[Decimal | None] = mapped_column(Numeric(7, 2), nullable=True)
+    rollover: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    notice_period_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: Default invoice lines: ``[{description, quantity, unit_amount}]`` — a prefill blob, not
+    #: rows to query, so JSONB rather than a child table.
+    lines: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
 class Subscription(
     UUIDPrimaryKeyMixin,
     OrgScopedMixin,
@@ -67,10 +135,20 @@ class Subscription(
         nullable=False,
         index=True,
     )
+    #: Tenant-defined category (#142). SET NULL: a removed type never strands the agreement.
+    subscription_type_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("subscription_types.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default=SubscriptionStatus.DRAFT.value, index=True
     )
+    #: Stamped on the *first* transition into ``active`` and never cleared — the once-only
+    #: guard for ``subscription.activated`` (#142): pause→resume must not respawn onboarding.
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="EUR")
     interval: Mapped[str] = mapped_column(
         String(20), nullable=False, default=SubscriptionInterval.MONTHLY.value
