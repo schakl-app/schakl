@@ -15,7 +15,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.jobs import run_per_org
 from app.core.models import Org
-from app.modules.notifications.external import MAX_ATTEMPTS, dispatch_delivery
+from app.modules.notifications.external import (
+    CHANNEL_EXTERNAL,
+    MAX_ATTEMPTS,
+    dispatch_delivery,
+    dispatch_email_deliveries,
+)
 from app.modules.notifications.models import NotificationDelivery
 
 logger = logging.getLogger("schakl.notifications")
@@ -31,6 +36,7 @@ async def _dispatch_for_org(org: Org, session: AsyncSession) -> None:
                 select(NotificationDelivery)
                 .where(
                     NotificationDelivery.org_id == org.id,
+                    NotificationDelivery.channel == CHANNEL_EXTERNAL,
                     NotificationDelivery.status == "pending",
                     NotificationDelivery.attempts < MAX_ATTEMPTS,
                 )
@@ -43,6 +49,8 @@ async def _dispatch_for_org(org: Org, session: AsyncSession) -> None:
     )
     for delivery in rows:
         await dispatch_delivery(session, delivery)
+    # Personal e-mail rides its own path: grouped per recipient, one mail per sweep (#17).
+    await dispatch_email_deliveries(session, org)
 
 
 async def dispatch_notification_deliveries(ctx: dict) -> None:

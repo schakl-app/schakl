@@ -1613,6 +1613,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/notifications/preferences/email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Email Preference
+         * @description My e-mail delivery rule (#17): off by default, one cadence for all my notifications.
+         */
+        get: operations["get_email_preference_api_v1_notifications_preferences_email_get"];
+        /** Set Email Preference */
+        put: operations["set_email_preference_api_v1_notifications_preferences_email_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/notifications/unread-count": {
         parameters: {
             query?: never;
@@ -3052,7 +3073,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "email" | "slack" | "msteams" | "gchat" | "discord" | "telegram" | "mailto" | "webhook";
+            kind: "email" | "slack" | "msteams" | "gchat" | "discord" | "telegram" | "mailto" | "webhook" | "custom";
             /** Name */
             name: string;
             /** Url */
@@ -3875,6 +3896,43 @@ export interface components {
             role_ids: string[];
             /** User Id */
             user_id: string;
+        };
+        /**
+         * EmailPrefRead
+         * @description The user's effective e-mail rule: off, or a cadence (immediate / daily / weekly).
+         */
+        EmailPrefRead: {
+            /**
+             * Digest
+             * @enum {string}
+             */
+            digest: "immediate" | "daily" | "weekly";
+            /** Digest Time */
+            digest_time?: string | null;
+            /** Digest Weekday */
+            digest_weekday?: number | null;
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Source
+             * @default default
+             */
+            source: string;
+        };
+        /** EmailPrefWrite */
+        EmailPrefWrite: {
+            /**
+             * Digest
+             * @default daily
+             * @enum {string}
+             */
+            digest: "immediate" | "daily" | "weekly";
+            /** Digest Time */
+            digest_time?: string | null;
+            /** Digest Weekday */
+            digest_weekday?: number | null;
+            /** Enabled */
+            enabled: boolean;
         };
         /**
          * EmailSettingsRead
@@ -11152,6 +11210,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PreferenceMatrix"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_email_preference_api_v1_notifications_preferences_email_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailPrefRead"];
+                };
+            };
+        };
+    };
+    set_email_preference_api_v1_notifications_preferences_email_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailPrefWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailPrefRead"];
                 };
             };
             /** @description Validation Error */

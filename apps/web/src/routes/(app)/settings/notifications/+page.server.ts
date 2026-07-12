@@ -13,14 +13,14 @@ import type { Actions, PageServerLoad } from "./$types";
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const canManageChannels = can(event.locals.user, "notifications.channels.manage");
-  const [prefs, channels] = await Promise.all([
+  const [prefs, emailPref, channels] = await Promise.all([
     api.GET("/api/v1/notifications/preferences"),
-    canManageChannels
-      ? api.GET("/api/v1/notifications/channels")
-      : Promise.resolve({ data: null }),
+    api.GET("/api/v1/notifications/preferences/email"),
+    canManageChannels ? api.GET("/api/v1/notifications/channels") : Promise.resolve({ data: null }),
   ]);
   return {
     matrix: prefs.data ?? EMPTY_MATRIX,
+    emailPref: emailPref.data ?? null,
     canManageChannels,
     channels: channels.data ?? [],
   };
@@ -46,17 +46,42 @@ export const actions: Actions = {
     return { saved: true };
   },
 
+  /** My e-mail delivery: off, immediate, or a daily/weekly digest (#17). */
+  saveEmailPref: async (event) => {
+    const form = await event.request.formData();
+    const mode = String(form.get("mode") ?? "off");
+    const digest = mode === "off" ? "daily" : (mode as "daily");
+    const { error } = await apiFor(event).PUT("/api/v1/notifications/preferences/email", {
+      body: {
+        enabled: mode !== "off",
+        digest,
+        digest_time: String(form.get("digest_time") ?? "").trim() || null,
+        digest_weekday: mode === "weekly" ? Number(form.get("digest_weekday") ?? 0) : null,
+      },
+    });
+    if (error) return fail(400, { emailPrefError: apiErrorKey(error).key });
+    return { emailPrefSaved: true };
+  },
+
   // --- external channels (#17), admin-only (the API re-enforces) ---------------------- #
   createChannel: async (event) => {
     const form = await event.request.formData();
     const kind = String(form.get("kind") ?? "").trim();
     const name = String(form.get("name") ?? "").trim();
-    const url = String(form.get("url") ?? "").trim();
-    if (!kind || !name || !url) return fail(400, { error: "errors.required" });
+    // Telegram is the one guided form with two inputs; the API expects "<token>/<chat id>".
+    const url =
+      kind === "telegram"
+        ? `${String(form.get("bot_token") ?? "").trim()}/${String(form.get("chat_id") ?? "").trim()}`
+        : String(form.get("url") ?? "").trim();
+    if (!kind || !name || !url || url === "/")
+      return fail(400, { channelError: "errors.required" });
     const { error } = await apiFor(event).POST("/api/v1/notifications/channels", {
       body: { kind: kind as "slack", name, url, enabled: true, event_filter: [] },
     });
-    if (error) return fail(400, { error: apiErrorKey(error).key });
+    if (error) {
+      const e = apiErrorKey(error);
+      return fail(400, { channelError: e.fields?.url ?? e.key });
+    }
     return { channelSaved: true };
   },
 

@@ -38,6 +38,7 @@ from app.modules.notifications.defaults import (
     default_event_pref,
 )
 from app.modules.notifications.events import (
+    CHANNEL_EMAIL,
     CHANNEL_IN_APP,
     DIGEST_HOURLY,
     DIGEST_IMMEDIATE,
@@ -208,6 +209,98 @@ async def effective_matrix(
 
 
 # --------------------------------------------------------------------------- #
+# E-mail delivery (#17): one *general* row per user on channel "email"
+# --------------------------------------------------------------------------- #
+#: Off until someone opts in — e-mail is the only channel that leaves the app, so it is
+#: never on by default. The cadence fields still carry sane values for the settings form.
+EMAIL_PREF_OFF = ResolvedPref(
+    enabled=False,
+    delay_minutes=0,
+    digest="daily",
+    digest_time=DEFAULT_DIGEST_TIME,
+    digest_weekday=None,
+    channel=CHANNEL_EMAIL,
+)
+
+
+async def email_prefs_for_recipients(
+    session: AsyncSession, org_id: uuid.UUID, user_ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, ResolvedPref]:
+    """The e-mail rule per recipient: the user's general row, else the org default row, else off.
+
+    Deliberately *not* per event type: "mail me my notifications, at this cadence" is one
+    decision. The per-event nuance stays on the in-app matrix.
+    """
+    if not user_ids:
+        return {}
+    rows = (
+        (
+            await session.execute(
+                select(NotificationPreference).where(
+                    NotificationPreference.org_id == org_id,
+                    NotificationPreference.channel == CHANNEL_EMAIL,
+                    NotificationPreference.event_type.is_(None),
+                    or_(
+                        NotificationPreference.user_id.in_(list(user_ids)),
+                        NotificationPreference.user_id.is_(None),
+                    ),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    org_row = next((r for r in rows if r.user_id is None), None)
+    by_user = {r.user_id: r for r in rows if r.user_id is not None}
+
+    def resolved(row: NotificationPreference | None) -> ResolvedPref:
+        if row is None:
+            return EMAIL_PREF_OFF
+        return ResolvedPref(
+            enabled=row.enabled,
+            delay_minutes=row.delay_minutes,
+            digest=row.digest,
+            digest_time=row.digest_time,
+            digest_weekday=row.digest_weekday,
+            channel=CHANNEL_EMAIL,
+            source="user" if row.user_id is not None else "org",
+        )
+
+    return {uid: resolved(by_user.get(uid, org_row)) for uid in user_ids}
+
+
+async def save_email_pref(
+    session: AsyncSession,
+    org_id: uuid.UUID,
+    user_id: uuid.UUID,
+    *,
+    enabled: bool,
+    digest: str,
+    digest_time: time | None,
+    digest_weekday: int | None,
+) -> None:
+    """Upsert the user's general e-mail row (one per user, enforced by the partial unique)."""
+    row = await session.scalar(
+        select(NotificationPreference).where(
+            NotificationPreference.org_id == org_id,
+            NotificationPreference.channel == CHANNEL_EMAIL,
+            NotificationPreference.event_type.is_(None),
+            NotificationPreference.user_id == user_id,
+        )
+    )
+    if row is None:
+        row = NotificationPreference(
+            org_id=org_id, user_id=user_id, event_type=None, channel=CHANNEL_EMAIL
+        )
+        session.add(row)
+    row.enabled = enabled
+    row.digest = digest
+    row.digest_time = digest_time
+    row.digest_weekday = digest_weekday
+    await session.flush()
+
+
+# --------------------------------------------------------------------------- #
 # Published interface (CLAUDE.md §6) — the one sanctioned cross-module crossing
 # --------------------------------------------------------------------------- #
 async def due_soon_thresholds(
@@ -221,14 +314,18 @@ async def due_soon_thresholds(
     caller resolves with ``thresholds.get(user_id, thresholds[None])``.
     """
     rows = (
-        await session.execute(
-            select(NotificationPreference).where(
-                NotificationPreference.org_id == org_id,
-                NotificationPreference.channel == CHANNEL_IN_APP,
-                NotificationPreference.event_type.is_(None),
+        (
+            await session.execute(
+                select(NotificationPreference).where(
+                    NotificationPreference.org_id == org_id,
+                    NotificationPreference.channel == CHANNEL_IN_APP,
+                    NotificationPreference.event_type.is_(None),
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     org_default = DEFAULT_DUE_SOON_DAYS
     for row in rows:

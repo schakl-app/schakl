@@ -16,7 +16,7 @@ from arq import cron
 from app.core.events import subscribe
 from app.modules.notifications.channels import register_channel
 from app.modules.notifications.events import EVENT_TYPES
-from app.modules.notifications.external import ExternalChannel
+from app.modules.notifications.external import EmailChannel, ExternalChannel
 from app.modules.notifications.jobs import dispatch_notification_deliveries
 from app.modules.notifications.permissions import NOTIFICATION_PERMISSIONS
 from app.modules.notifications.router import router
@@ -26,6 +26,7 @@ from app.registry import ModuleDescriptor, registry
 # External transports (SMTP, Slack, Teams, Google Chat via Apprise — #17) register here, behind
 # the same channel seam as the in-app bell. The push happens in a worker cron, not the request.
 register_channel(ExternalChannel())
+register_channel(EmailChannel())
 
 # The record's activity panel is core now (issue #67) — a real audit trail, not the notifiable
 # subset this module logs. Notifications keeps the inbox, the bell and the event log; it no

@@ -95,6 +95,9 @@ ENTITY_FOR_EVENT: dict[str, str] = {
 
 # --- channels ---------------------------------------------------------------------------- #
 CHANNEL_IN_APP = "in_app"
+#: Personal e-mail delivery through the org transport (Instellingen → E-mail, #17). One
+#: *general* preference row per user (no per-event matrix): off, immediate, or a digest.
+CHANNEL_EMAIL = "email"
 
 #: Reserved payload keys the emitter uses to carry recipients/dedup to the subscriber. They
 #: are stripped before the event row is persisted (they are routing, not content).

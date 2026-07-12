@@ -155,11 +155,31 @@ __all__ = [
 ]
 
 
+# --- personal e-mail delivery (#17) ---------------------------------------------- #
+class EmailPrefRead(BaseModel):
+    """The user's effective e-mail rule: off, or a cadence (immediate / daily / weekly)."""
+
+    enabled: bool
+    digest: Literal["immediate", "daily", "weekly"]
+    digest_time: time | None = None
+    # 0 = Monday … 6 = Sunday (weekly only).
+    digest_weekday: int | None = None
+    #: Which layer decided: ``default`` (off), ``org``, or ``user``.
+    source: str = "default"
+
+
+class EmailPrefWrite(BaseModel):
+    enabled: bool
+    digest: Literal["immediate", "daily", "weekly"] = "daily"
+    digest_time: time | None = None
+    digest_weekday: int | None = Field(default=None, ge=0, le=6)
+
+
 # --- external channels (#17) --------------------------------------------------- #
 # ``email`` sends to a recipient address through the org's own transport (Instellingen →
 # E-mail, ``app.core.email``); the rest are Apprise families.
 CHANNEL_KINDS = Literal[
-    "email", "slack", "msteams", "gchat", "discord", "telegram", "mailto", "webhook"
+    "email", "slack", "msteams", "gchat", "discord", "telegram", "mailto", "webhook", "custom"
 ]
 
 

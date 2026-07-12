@@ -261,6 +261,9 @@ class NotificationDelivery(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, 
     )
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: E-mail digest scheduling (#17): the worker holds the row until this passes, then sends
+    #: everything due for a recipient as one mail. ``NULL`` = due immediately (all other channels).
+    deliver_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class NotificationChannelConfig(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):

@@ -19,7 +19,9 @@ from app.modules.notifications.prefs import (
     GeneralWrite,
     PrefWrite,
     effective_matrix,
+    email_prefs_for_recipients,
     replace_overrides,
+    save_email_pref,
 )
 from app.modules.notifications.schemas import (
     ActivityItem,
@@ -27,6 +29,8 @@ from app.modules.notifications.schemas import (
     ChannelRead,
     ChannelTestResult,
     ChannelUpdate,
+    EmailPrefRead,
+    EmailPrefWrite,
     EntityType,
     GeneralPreference,
     MarkAllResult,
@@ -209,6 +213,43 @@ async def set_preferences(
     events, general = _writes(payload)
     await replace_overrides(ctx.session, ctx.org.id, ctx.user.id, events, general)
     return _matrix(await effective_matrix(ctx.session, ctx.org.id, ctx.user.id))
+
+
+@router.get(
+    "/preferences/email",
+    response_model=EmailPrefRead,
+    dependencies=[require_permission("notifications.notification.read")],
+)
+async def get_email_preference(ctx: RequestContext = Depends(require_context)) -> EmailPrefRead:
+    """My e-mail delivery rule (#17): off by default, one cadence for all my notifications."""
+    pref = (await email_prefs_for_recipients(ctx.session, ctx.org.id, [ctx.user.id]))[ctx.user.id]
+    return EmailPrefRead(
+        enabled=pref.enabled,
+        digest=pref.digest,  # type: ignore[arg-type]
+        digest_time=pref.digest_time,
+        digest_weekday=pref.digest_weekday,
+        source=pref.source,
+    )
+
+
+@router.put(
+    "/preferences/email",
+    response_model=EmailPrefRead,
+    dependencies=[require_permission("notifications.notification.write")],
+)
+async def set_email_preference(
+    payload: EmailPrefWrite, ctx: RequestContext = Depends(require_context)
+) -> EmailPrefRead:
+    await save_email_pref(
+        ctx.session,
+        ctx.org.id,
+        ctx.user.id,
+        enabled=payload.enabled,
+        digest=payload.digest,
+        digest_time=payload.digest_time,
+        digest_weekday=payload.digest_weekday,
+    )
+    return await get_email_preference(ctx)
 
 
 @router.get(
