@@ -1,6 +1,6 @@
 ---
 title: Updaten & back-ups
-description: Nieuwe schakl.-versies uitrollen — image-tags, automatische migraties, en welke twee dingen je veiligstelt.
+description: "Nieuwe schakl.-versies uitrollen: image-tags, automatische migraties en welke twee dingen je veiligstelt."
 sidebar:
   order: 2
 ---
@@ -17,7 +17,7 @@ hebt. `latest` volgt alleen stabiele releases; een pre-release verplaatst hem no
 1. Maak een back-up (zie onder).
 2. Zet `SCHAKL_TAG` op de nieuwe versie en redeploy de stack.
 3. De API draait **automatisch alle databasemigraties**, vóór de app opstart. Een mislukte
-   migratie betekent: de oude situatie blijft staan en `api` wordt niet healthy — lees dan
+   migratie betekent: de oude situatie blijft staan en `api` wordt niet healthy; lees dan
    de logs (`docker logs schakl-api-1`).
 
 Releasenotes vermelden het als een release iets van je aandacht nodig heeft (bijvoorbeeld

@@ -357,3 +357,13 @@
 - **Feeding raw markdown to something that shows plain text.** A notification excerpt, a truncated
   cell, a `title=` attribute — given `**bold** [x](url)` it prints the syntax, and cutting it by
   character count can sever a link mid-`()`. Flatten with `markdown_to_plaintext` *before* the cut.
+
+- **Dutch copy avoids the English em dash.** The "X — Y" construction that reads naturally in
+  English is not correct Dutch and had crept through the whole UI and site. In `nl.json`, the
+  site's Dutch content and the Dutch docs: use a **colon** when the second part explains the
+  first ("Opgeslagen: 3 dagen ingepland"), a **semicolon or comma** for an afterthought
+  ("…vergrendeld; vraag een beheerder"), or **parentheses** for status labels ("Verlopen
+  (respijtperiode)"). A real *gedachtestreepje* (a paired, spaced aside mid-sentence) remains
+  legitimate but rare — `leave.recurring.hint` is the reference example. Ranges keep the en
+  dash without spaces (`ma–vr`, `{from}–{to}`), and the `—` empty-value placeholder in tables
+  stays. English strings are unaffected; this is a Dutch-only rule (owner feedback, 2026-07-12).

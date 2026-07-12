@@ -1,6 +1,6 @@
 ---
 title: Installeren
-description: schakl. installeren met Docker Compose — vereisten, omgevingsvariabelen, de eerste-start-wizard en hostnamen.
+description: "schakl. installeren met Docker Compose: vereisten, omgevingsvariabelen, de eerste-start-wizard en hostnamen."
 sidebar:
   order: 1
 ---
@@ -13,7 +13,7 @@ schakl. draait als één Docker Compose-stack: `web`, `api`, `worker`, `db` (Pos
 | Bestand | Ingress | Gebruik wanneer |
 | --- | --- | --- |
 | `infra/compose.yaml` | Traefik, publiceert poorten | de host waarop schakl. zelf :80/:443 beheert |
-| `infra/compose.tunnel.yaml` | geen — je bestaande `cloudflared` | de host draait al een Cloudflare Tunnel |
+| `infra/compose.tunnel.yaml` | geen (je bestaande `cloudflared`) | de host draait al een Cloudflare Tunnel |
 
 De `worker` hergebruikt de API-image; er bestaan dus maar twee images:
 `ghcr.io/schakl-app/schakl-api` en `ghcr.io/schakl-app/schakl-web`.
@@ -21,7 +21,7 @@ De `worker` hergebruikt de API-image; er bestaan dus maar twee images:
 ## Vereisten
 
 - Een host met Docker en Docker Compose (of Portainer).
-- Een hostnaam die naar de server wijst — de hostnaam bepaalt welke organisatie geladen
+- Een hostnaam die naar de server wijst; de hostnaam bepaalt welke organisatie geladen
   wordt, dus installeer meteen op het adres dat je wilt houden.
 - Toegang tot de images op GHCR (privé): een GitHub-token met alleen `read:packages`.
 
@@ -36,7 +36,7 @@ Vier variabelen zijn verplicht en hebben géén default:
 | `SCHAKL_SECRET_KEY` | geheime sleutel voor sessies en tokens |
 | `SCHAKL_BASE_DOMAIN` | basisdomein; de app is bereikbaar op `app.<basisdomein>` |
 
-Pin daarnaast `SCHAKL_TAG` op een exacte versie (bijv. `1.2.3`) in plaats van `latest` —
+Pin daarnaast `SCHAKL_TAG` op een exacte versie (bijv. `1.2.3`) in plaats van `latest`;
 zie [Updaten & back-ups](/docs/admin/upgrades/).
 
 ## Eerste start
@@ -44,7 +44,7 @@ zie [Updaten & back-ups](/docs/admin/upgrades/).
 <Steps>
 
 1. Deploy de stack **vanuit Git** (Portainer: *Stacks → Add stack → Repository*), niet door
-   YAML in de web-editor te plakken — relatieve paden verliezen anders hun betekenis.
+   YAML in de web-editor te plakken; relatieve paden verliezen anders hun betekenis.
 
 2. Wacht tot `api` *healthy* is. De API draait bij het opstarten eerst alle
    databasemigraties; een databaseprobleem uit zich dus als een herstartende `api`, nooit
@@ -52,7 +52,7 @@ zie [Updaten & back-ups](/docs/admin/upgrades/).
 
 3. Open de app in de browser. Elke route komt uit bij `/setup`: de **eerste-start-wizard**
    maakt in één stap de organisatie, de huisstijl, de taal en het **eigenaarsaccount** aan.
-   De wizard sluit definitief zodra de eerste organisatie bestaat — er is geen seed-stap.
+   De wizard sluit definitief zodra de eerste organisatie bestaat; er is geen seed-stap.
 
 4. De hostnaam waarop je de wizard doorloopt wordt **geclaimd als geverifieerd eigen
    domein** van de organisatie. Draai de wizard dus op het adres dat je wilt houden.
@@ -62,7 +62,7 @@ zie [Updaten & back-ups](/docs/admin/upgrades/).
 ## Hostnamen zijn strikt
 
 Een verzoek komt op precies twee manieren bij een organisatie uit: via een **geverifieerd
-eigen domein**, of via `<slug>.<SCHAKL_BASE_DOMAIN>`. Een onbekende hostnaam is een 404 —
+eigen domein**, of via `<slug>.<SCHAKL_BASE_DOMAIN>`. Een onbekende hostnaam is een 404;
 er is bewust géén terugval naar "de enige organisatie". Een extra domein koppel je later
 onder *Instellingen → Huisstijl → Eigen domein*; het wordt actief na een DNS
 TXT-verificatie.
@@ -71,6 +71,6 @@ TXT-verificatie.
 
 | Endpoint | Auth | Doel |
 | --- | --- | --- |
-| `GET /health` | geen | liveness — goedkoop, raakt de database niet |
-| `GET /health/ready` | geen | readiness — controleert Postgres, Redis en migraties, zonder details prijs te geven |
+| `GET /health` | geen | liveness: goedkoop, raakt de database niet |
+| `GET /health/ready` | geen | readiness: controleert Postgres, Redis en migraties, zonder details prijs te geven |
 | `GET /api/v1/system/info` | eigenaar/beheerder | het scherm *Instellingen → Systeem*: versies, migratiestand, worker-heartbeat |

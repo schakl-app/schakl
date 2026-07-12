@@ -19,20 +19,20 @@
         "type": "features",
         "anchor": "features",
         "title": "Alles wat een bureau draaiende houdt",
-        "intro": "Elke functie is een module. Zet aan wat je gebruikt — de rest blijft uit de weg."
+        "intro": "Elke functie is een module. Zet aan wat je gebruikt; de rest blijft uit de weg."
       },
       {
         "type": "textBullets",
         "anchor": "selfhost",
         "title": "Draai het waar jij wilt",
-        "body": "Zelf hosten met één Docker Compose-stack — web, API, worker, database en Redis. Updates zijn een nieuwe image-tag; migraties draaien vanzelf, vóór de app opstart. Liever niet zelf beheren? Een beheerde cloudversie staat op de roadmap.",
+        "body": "Zelf hosten met één Docker Compose-stack: web, API, worker, database en Redis. Updates zijn een nieuwe image-tag; migraties draaien vanzelf, vóór de app opstart. Liever niet zelf beheren? Een beheerde cloudversie staat op de roadmap.",
         "bullets": [
-          "Eén compose-stack — geen losse diensten om te babysitten",
+          "Eén compose-stack, geen losse diensten om te babysitten",
           "Automatische databasemigraties bij elke update",
-          "De kern is open source (AGPL) — alleen uitbreidingsmodules vragen een licentiesleutel",
-          "Telemetrie staat standaard uit — jij bepaalt wat je deelt",
+          "De kern is open source (AGPL); alleen uitbreidingsmodules vragen een licentiesleutel",
+          "Telemetrie staat standaard uit: jij bepaalt wat je deelt",
           "Wit-label: jouw logo, kleuren en eigen domein",
-          "Jouw data blijft van jou — exporteren kan altijd, licentie of niet"
+          "Jouw data blijft van jou; exporteren kan altijd, licentie of niet"
         ]
       },
       {

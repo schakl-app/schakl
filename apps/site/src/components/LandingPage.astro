@@ -22,7 +22,7 @@ const features = Object.values(featureModules)
 const href = (h: string) => localizeHref(locale, h);
 
 const hero: any = blocks.find((b: any) => b.type === 'hero');
-const title = hero ? `${settings.brandName} — ${hero.title}` : settings.brandName;
+const title = hero ? `${settings.brandName} · ${hero.title}` : settings.brandName;
 ---
 
 <SiteShell locale={locale} title={title} description={hero?.subtitle} alternates>
