@@ -5,6 +5,7 @@
   import { pageTitle } from "$lib/core/title";
   import { THEME_MODES, themeModeLabel } from "$lib/core/theme-mode";
   import Avatar from "$lib/core/ui/Avatar.svelte";
+  import DateInput from "$lib/core/ui/DateInput.svelte";
 
   let { data, form } = $props();
 
@@ -261,7 +262,9 @@
                 <span class="block truncate font-mono text-xs text-text-muted">{key.redacted}</span>
                 <span class="block text-xs text-text-muted">
                   {t("settings.account.api_key_scopes", { count: key.scopes.length })} ·
-                  {t("settings.account.api_key_expires", { date: key.expires_at.slice(0, 10) })}
+                  {key.expires_at
+                    ? t("settings.account.api_key_expires", { date: key.expires_at.slice(0, 10) })
+                    : t("settings.account.api_key_no_expiry")}
                 </span>
               </div>
               {#if !key.revoked_at}
@@ -304,13 +307,10 @@
           <label for="key-expiry" class="mb-1 block text-sm font-medium text-text"
             >{t("settings.account.api_key_expiry")}</label
           >
-          <input
-            id="key-expiry"
-            name="expires_at"
-            type="date"
-            required
-            class="rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand"
-          />
+          <DateInput name="expires_at" id="key-expiry" />
+          <p class="mt-1 text-xs text-text-muted">
+            {t("settings.account.api_key_expiry_help")}
+          </p>
         </div>
         <div>
           <span class="mb-1 block text-sm font-medium text-text"

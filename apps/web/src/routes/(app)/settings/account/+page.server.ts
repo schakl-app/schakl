@@ -114,9 +114,10 @@ export const actions: Actions = {
     const name = String(form.get("name") ?? "").trim();
     const scopes = form.getAll("scopes").map(String).filter(Boolean);
     const expires = String(form.get("expires_at") ?? "").trim();
-    if (!name || scopes.length === 0 || !expires) return fail(400, { error: "errors.required" });
-    // A date input gives a day; store it as end-of-day UTC so "expires 2026-08-01" lasts that day.
-    const expires_at = new Date(`${expires}T23:59:59Z`).toISOString();
+    if (!name || scopes.length === 0) return fail(400, { error: "errors.required" });
+    // A date input gives a day; store it as end-of-day UTC so "expires 2026-08-01" lasts that
+    // day. Left empty, the key never expires (an explicit choice; revoke stays the kill switch).
+    const expires_at = expires ? new Date(`${expires}T23:59:59Z`).toISOString() : null;
     const { data, error } = await apiFor(event).POST("/api/v1/api-keys", {
       body: { name, scopes, expires_at },
     });

@@ -2981,11 +2981,8 @@ export interface components {
         };
         /** ApiKeyCreate */
         ApiKeyCreate: {
-            /**
-             * Expires At
-             * Format: date-time
-             */
-            expires_at: string;
+            /** Expires At */
+            expires_at?: string | null;
             /** Name */
             name: string;
             /** Scopes */
@@ -3001,11 +2998,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
-            /**
-             * Expires At
-             * Format: date-time
-             */
-            expires_at: string;
+            /** Expires At */
+            expires_at: string | null;
             /**
              * Id
              * Format: uuid
@@ -3042,11 +3036,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
-            /**
-             * Expires At
-             * Format: date-time
-             */
-            expires_at: string;
+            /** Expires At */
+            expires_at: string | null;
             /**
              * Id
              * Format: uuid

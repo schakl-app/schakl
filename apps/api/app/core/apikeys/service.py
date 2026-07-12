@@ -45,7 +45,10 @@ class ApiKeyService:
         self.accounts = ctx.repo(ServiceAccount)
 
     # --- validation -------------------------------------------------------------- #
-    def _validate_expiry(self, expires_at: datetime) -> None:
+    def _validate_expiry(self, expires_at: datetime | None) -> None:
+        if expires_at is None:
+            # Never expires — an explicit owner choice; revocation stays the kill switch.
+            return
         now = datetime.now(UTC)
         if expires_at <= now:
             raise AppError(
@@ -172,7 +175,7 @@ class ApiKeyService:
         *,
         name: str,
         scopes: list[str],
-        expires_at: datetime,
+        expires_at: datetime | None,
         principal_type: str,
         user_id: uuid.UUID | None,
         service_account_id: uuid.UUID | None,

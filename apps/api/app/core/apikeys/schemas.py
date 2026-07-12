@@ -29,8 +29,9 @@ class ApiKeyCreate(BaseModel):
     #: the owner's live permissions on every request. Empty = a read of nothing useful, so at
     #: least one is required.
     scopes: list[str] = Field(min_length=1)
-    #: Required (#20). The service caps it at a maximum and rejects a past date.
-    expires_at: datetime
+    #: Omit (or null) for a key that never expires; a set date is capped at a maximum and a
+    #: past date rejected.
+    expires_at: datetime | None = None
 
 
 class ServiceAccountKeyCreate(ApiKeyCreate):
@@ -49,7 +50,8 @@ class ApiKeyRead(BaseModel):
     user_id: uuid.UUID | None
     service_account_id: uuid.UUID | None
     scopes: list[str]
-    expires_at: datetime
+    #: ``null`` = never expires.
+    expires_at: datetime | None
     last_used_at: datetime | None
     revoked_at: datetime | None
     created_at: datetime

@@ -793,6 +793,8 @@
   "settings.account.api_key_name": "Naam",
   "settings.account.api_key_name_placeholder": "bijv. n8n-automatisering",
   "settings.account.api_key_expiry": "Verloopt op",
+  "settings.account.api_key_no_expiry": "Verloopt nooit",
+  "settings.account.api_key_expiry_help": "Laat leeg voor een sleutel die nooit verloopt.",
   "settings.account.api_key_scopes_label": "Scopes",
   "settings.account.api_key_scopes": "{count} scopes",
   "settings.account.api_key_expires": "verloopt {date}",

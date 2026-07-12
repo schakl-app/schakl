@@ -793,6 +793,8 @@
   "settings.account.api_key_name": "Name",
   "settings.account.api_key_name_placeholder": "e.g. n8n automation",
   "settings.account.api_key_expiry": "Expires on",
+  "settings.account.api_key_no_expiry": "Never expires",
+  "settings.account.api_key_expiry_help": "Leave empty for a key that never expires.",
   "settings.account.api_key_scopes_label": "Scopes",
   "settings.account.api_key_scopes": "{count} scopes",
   "settings.account.api_key_expires": "expires {date}",

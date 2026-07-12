@@ -55,7 +55,7 @@ async def test_personal_key_authenticates_and_is_scope_capped(client_for) -> Non
         assert ok2.status_code == 200
 
 
-async def test_expiry_is_required_and_bounded(client_for) -> None:
+async def test_expiry_is_optional_and_bounded(client_for) -> None:
     t = await make_tenant("apikey-expiry")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
@@ -71,6 +71,19 @@ async def test_expiry_is_required_and_bounded(client_for) -> None:
             headers=headers,
         )
         assert too_far.status_code == 422
+
+        # No expiry at all = a key that never expires (an explicit owner choice).
+        unlimited = await c.post(
+            "/api/v1/api-keys",
+            json={"name": "forever", "scopes": ["leave.request.read:any"]},
+            headers=headers,
+        )
+        assert unlimited.status_code == 201, unlimited.text
+        assert unlimited.json()["expires_at"] is None
+        ok = await c.get(
+            "/api/v1/leave/types", headers={"X-API-Key": unlimited.json()["secret"]}
+        )
+        assert ok.status_code == 200
 
 
 async def test_revoked_key_is_401_not_403(client_for) -> None:

@@ -137,9 +137,11 @@
                   >
                   <span class="block text-xs text-text-muted">
                     {t("settings.account.api_key_scopes", { count: key.scopes.length })} ·
-                    {t("settings.account.api_key_expires", {
-                      date: fmtNumericDate(key.expires_at.slice(0, 10)),
-                    })}
+                    {key.expires_at
+                      ? t("settings.account.api_key_expires", {
+                          date: fmtNumericDate(key.expires_at.slice(0, 10)),
+                        })
+                      : t("settings.account.api_key_no_expiry")}
                   </span>
                 </div>
                 {#if !key.revoked_at}
@@ -235,7 +237,8 @@
       <label for="sa-key-expiry" class="mb-1 block text-sm font-medium text-text"
         >{t("settings.account.api_key_expiry")}</label
       >
-      <DateInput name="expires_at" id="sa-key-expiry" required />
+      <DateInput name="expires_at" id="sa-key-expiry" />
+      <p class="mt-1 text-xs text-text-muted">{t("settings.account.api_key_expiry_help")}</p>
     </div>
     <div>
       <span class="mb-1 block text-sm font-medium text-text"

@@ -82,7 +82,7 @@ async def resolve_api_key_context(
         raise _unauthorized()
     if key.revoked_at is not None:
         raise _unauthorized()
-    if key.expires_at <= datetime.now(UTC):
+    if key.expires_at is not None and key.expires_at <= datetime.now(UTC):
         raise _unauthorized()
 
     await _enforce_rate_limit(key.id)

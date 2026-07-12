@@ -69,8 +69,8 @@ class ApiKey(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     )
     #: The permission strings this key may exercise (stored suffixed for scoped permissions).
     scopes: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
-    #: Mandatory (#20): no immortal keys. Enforced with a maximum at creation.
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    #: NULL = never expires (an explicit owner choice); a set date is validated at creation.
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     #: Updated out-of-band from a Redis marker by a cron — never on the request hot path.
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
