@@ -55,7 +55,7 @@ _DOMAIN_TABLES = (
     "subscription_templates, subscription_types, "
     "interactions, "
     "calendar_event_links, google_calendar_events, google_calendar_channels, "
-    "drive_links, drive_folder_jobs, google_connections, google_settings, "
+    "drive_links, drive_folder_jobs, gmail_suppressions, google_connections, google_settings, "
     "websites, hosting, domains, providers, "
     "time_entry_drafts, time_entries, tasks, projects, contacts, contact_types, "
     "custom_field_definitions, "

@@ -116,6 +116,22 @@ async def thread_mappings(
     return mappings if any(mappings.values()) else None
 
 
+async def email_ref(
+    ctx: EmitContext, interaction_id: uuid.UUID
+) -> tuple[uuid.UUID, str] | None:
+    """``(owner_user_id, gmail_message_id)`` for a gmail row — what a body fetch needs."""
+    row = (
+        await ctx.session.execute(
+            select(Interaction.owner_user_id, Interaction.gmail_message_id).where(
+                Interaction.org_id == ctx.org.id, Interaction.id == interaction_id
+            )
+        )
+    ).first()
+    if row is None or row[0] is None or not row[1]:
+        return None
+    return row[0], row[1]
+
+
 async def set_body(ctx: EmitContext, interaction_id: uuid.UUID, body_text: str) -> None:
     """The async body fetch landing (post-approval); a since-rejected row is a silent no-op."""
     row = (
