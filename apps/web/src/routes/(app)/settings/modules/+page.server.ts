@@ -17,6 +17,9 @@ export const load: PageServerLoad = async (event) => {
     // What this installation ships vs. what this workspace has switched on.
     available: instance.data?.enabled_modules ?? [],
     enabled: tenant.data?.enabled_modules ?? [],
+    // Licensing (issue #137): which modules need a license, and which are currently usable.
+    licensed: instance.data?.licensed_modules ?? [],
+    entitled: instance.data?.entitled_modules ?? [],
   };
 };
 

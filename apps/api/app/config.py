@@ -133,6 +133,16 @@ class Settings(BaseSettings):
     # platform's API keys (per-key permission scopes, #20). Disable to remove the surface.
     mcp_enabled: bool = True
 
+    # --- Entitlements / licensing (issue #137) ---
+    # Ed25519 public key (base64url, raw 32 bytes) that license keys are verified against.
+    # Verification is fully offline — a self-hosted box never needs our infrastructure to
+    # boot or keep running. The default is the production signing key's public half; tests
+    # and a future key rotation override it via SCHAKL_LICENSE_PUBLIC_KEY.
+    license_public_key: str = "wXZZDCEuAVzK82CoaPckClnLtSnNWk1jpeuDbHk1RwQ"
+    # Days an already-enabled licensed module keeps working without any license — the
+    # upgrade path for installs that enabled it before licensing existed (#137).
+    license_bootstrap_grace_days: int = 14
+
     # --- Instance administration (issue #26) ---
     # The cross-tenant admin surface is pure attack surface on a single-tenant box, so it
     # ships **disabled**; SCHAKL_INSTANCE_ADMIN_ENABLED=true opens it to instance owners

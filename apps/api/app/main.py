@@ -24,6 +24,8 @@ from app.core.customfields.router import router as customfields_router
 from app.core.dashboard import router as dashboard_router
 from app.core.domains import router as domains_router
 from app.core.email.router import router as email_settings_router
+from app.core.entitlements.router import router as license_router
+from app.core.entitlements.service import MCP_SKU, LicenseGateASGI, license_write_gate
 from app.core.impex.router import build_impex_router
 from app.core.instance.router import router as instance_router
 from app.core.members import router as members_router
@@ -98,10 +100,15 @@ def create_app() -> FastAPI:
     api.include_router(userprefs_router)
     api.include_router(system_router)
     api.include_router(instance_router)
+    api.include_router(license_router)
     api.include_router(apikeys_router)
     for module in registry.enabled(settings.enabled_modules):
         if module.router is not None:
-            api.include_router(module.router)
+            # Licensed modules (issue #137) get one mount-time gate: mutations require the
+            # sku to be writable (covered by a license, or inside a grace window). Reads
+            # never block — an expired module is read-only, not gone.
+            deps = [license_write_gate(module.sku)] if module.sku else []
+            api.include_router(module.router, dependencies=deps)
     # After module loading on purpose: the impex routes are built per opted-in entity so each
     # one declares that entity's own read/write permission (issue #77, §15 deny-by-default).
     api.include_router(build_impex_router())
@@ -115,7 +122,9 @@ def create_app() -> FastAPI:
 
         mcp_asgi = build_mcp_asgi_app(app)
         app.state.mcp_app = mcp_asgi
-        app.mount("/mcp", mcp_asgi)
+        # The MCP surface is a licensed sku (issue #137). It is read-first by design, so
+        # instead of a read/write split the whole surface answers 402 when not covered.
+        app.mount("/mcp", LicenseGateASGI(mcp_asgi, sku=MCP_SKU))
 
     @app.get("/health", tags=["meta"])
     async def health() -> dict:

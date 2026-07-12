@@ -19,6 +19,11 @@ from app.core.auth import sso
 from app.core.auth.models import User
 from app.core.currency import DEFAULT_CURRENCY, is_valid_currency
 from app.core.customfields import customizable_entity_types
+from app.core.entitlements.service import (
+    ensure_modules_enableable,
+    license_state,
+    licensed_skus,
+)
 from app.core.models import OrgSettings, OrgStatus
 from app.core.permissions.deps import no_permission_required, require_permission
 from app.core.tenancy import RequestContext, request_hostname, require_context, resolve_org
@@ -93,6 +98,12 @@ class ModulesMeta(BaseModel):
     # Instance config, not a secret (it is in every tenant URL): lets the instance-admin UI
     # compute an org's address as <slug>.<base_domain> when no custom domain is set.
     base_domain: str
+    # Licensing (issue #137): module names that require a license, and the subset currently
+    # usable — covered by the installed license or inside a grace window (incl. the
+    # bootstrap/trial window). Module names only — no license details on an unauthenticated
+    # endpoint. The modules settings screen renders its locked/unlocked badges from these.
+    licensed_modules: list[str] = Field(default_factory=list)
+    entitled_modules: list[str] = Field(default_factory=list)
 
 
 class MeInfo(BaseModel):
@@ -112,6 +123,10 @@ class MeInfo(BaseModel):
     # Instance administration (issue #26). ``is_instance_admin`` reflects the *effective*
     # user, so it goes false while impersonating; the banner comes from the two fields below.
     is_instance_admin: bool = False
+    # Instance owner (users.is_superuser) regardless of SCHAKL_INSTANCE_ADMIN_ENABLED —
+    # license management (issue #137) is gated on this alone, so the web needs it even on
+    # boxes that keep the cross-tenant admin surface off.
+    is_instance_owner: bool = False
     impersonated_by: str | None = None
     impersonation_expires_at: datetime | None = None
 
@@ -140,6 +155,7 @@ def _me_info(ctx: RequestContext, user: User) -> MeInfo:
             and user.is_superuser
             and ctx.impersonated_by is None
         ),
+        is_instance_owner=user.is_superuser and ctx.impersonated_by is None,
         impersonated_by=ctx.impersonated_by.email if ctx.impersonated_by else None,
         impersonation_expires_at=ctx.impersonation_expires_at,
     )
@@ -282,6 +298,12 @@ async def update_tenant_branding(
     )
     if s is None:
         raise AppError("not_found", "errors.not_found", status_code=404)
+    if data.get("enabled_modules") is not None:
+        # Newly enabling a licensed module requires a covering license (issue #137, 409);
+        # keeping an already-enabled one is allowed — the write gate governs that case.
+        await ensure_modules_enableable(
+            data["enabled_modules"], current=list(s.enabled_modules or [])
+        )
     for key, value in data.items():
         # Empty strings clear the optional fields; required fields ignore empties.
         if key in ("logo_url", "favicon_url", "tab_title_template"):
@@ -328,6 +350,10 @@ async def modules(request: Request) -> ModulesMeta:
             oidc_enabled = sso.sso_configured(row)
             oidc_name = row.oidc_name if row is not None and oidc_enabled else None
             local_login_enabled = sso.local_login_enabled_for(row)
+    state = await license_state()
+    module_skus = {
+        name: sku for name, sku in licensed_skus().items() if registry.get(name) is not None
+    }
     return ModulesMeta(
         enabled_modules=[m.name for m in registry.enabled(settings.enabled_modules)],
         customizable_entity_types=customizable_entity_types(),
@@ -337,4 +363,8 @@ async def modules(request: Request) -> ModulesMeta:
         oidc_enabled=oidc_enabled,
         oidc_name=oidc_name,
         base_domain=settings.base_domain,
+        licensed_modules=sorted(module_skus),
+        entitled_modules=sorted(
+            name for name, sku in module_skus.items() if state.writable(sku)
+        ),
     )

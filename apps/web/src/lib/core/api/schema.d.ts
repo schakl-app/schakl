@@ -1029,6 +1029,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/instance/license": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get License */
+        get: operations["get_license_api_v1_instance_license_get"];
+        /**
+         * Install License
+         * @description Install (or replace) the instance license. The key is verified before it is stored,
+         *     so a stored license is always one that was valid at install time.
+         */
+        put: operations["install_license_api_v1_instance_license_put"];
+        post?: never;
+        /**
+         * Remove License
+         * @description Remove the installed license (API-level escape hatch; the UI replaces rather than
+         *     removes). Data in licensed modules is untouched — they go read-only, never away.
+         */
+        delete: operations["remove_license_api_v1_instance_license_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/instance/orgs": {
         parameters: {
             query?: never;
@@ -5844,6 +5871,44 @@ export interface components {
             /** Tracks Balance */
             tracks_balance?: boolean | null;
         };
+        /** LicenseInstall */
+        LicenseInstall: {
+            /** Key */
+            key: string;
+        };
+        /** LicenseStatus */
+        LicenseStatus: {
+            /** Bootstrap Grace Until */
+            bootstrap_grace_until?: string | null;
+            /** Customer */
+            customer?: string | null;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Grace Until */
+            grace_until?: string | null;
+            /** Installed */
+            installed: boolean;
+            /** Licensed */
+            licensed?: components["schemas"]["LicensedModuleState"][];
+            /** Modules */
+            modules?: string[];
+            /** Plan */
+            plan?: string | null;
+        };
+        /**
+         * LicensedModuleState
+         * @description One licensed surface (a module's sku, or ``mcp``) and where it stands.
+         */
+        LicensedModuleState: {
+            /** Entitled */
+            entitled: boolean;
+            /** Notice */
+            notice?: string | null;
+            /** Sku */
+            sku: string;
+            /** Writable */
+            writable: boolean;
+        };
         /** LinkCreate */
         LinkCreate: {
             /** Title */
@@ -5902,6 +5967,11 @@ export interface components {
              * @default false
              */
             is_instance_admin: boolean;
+            /**
+             * Is Instance Owner
+             * @default false
+             */
+            is_instance_owner: boolean;
             /** Locale */
             locale: string | null;
             /** Permissions */
@@ -5999,6 +6069,10 @@ export interface components {
             default_locale: string;
             /** Enabled Modules */
             enabled_modules: string[];
+            /** Entitled Modules */
+            entitled_modules?: string[];
+            /** Licensed Modules */
+            licensed_modules?: string[];
             /** Local Login Enabled */
             local_login_enabled: boolean;
             /** Oidc Enabled */
@@ -11187,6 +11261,79 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    get_license_api_v1_instance_license_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LicenseStatus"];
+                };
+            };
+        };
+    };
+    install_license_api_v1_instance_license_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LicenseInstall"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LicenseStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_license_api_v1_instance_license_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LicenseStatus"];
+                };
             };
         };
     };

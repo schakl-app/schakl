@@ -10,7 +10,17 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, UniqueConstraint, func, text
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -175,6 +185,27 @@ class UserPref(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     prefs: Mapped[dict] = mapped_column(
         JSONB, nullable=False, default=dict, server_default="{}"
     )
+
+
+class InstanceLicense(Base):
+    """The installed product license (issue #137).
+
+    Instance-level like :class:`InstanceAuditLog` — deliberately **not** org-scoped and
+    **not** under RLS: one license covers the installation. A single row (``id = 1``) exists
+    from migration time; besides the license key text it carries ``grace_started_at``, the
+    bootstrap-grace clock that lets licensed modules enabled *before* licensing shipped keep
+    working for a fixed window after upgrade instead of going read-only mid-flight.
+    """
+
+    __tablename__ = "instance_license"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    license_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    grace_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    installed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    installed_by_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
 
 
 class InstanceAuditLog(UUIDPrimaryKeyMixin, Base):

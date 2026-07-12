@@ -1,6 +1,8 @@
 <script lang="ts">
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
+
+  let { data } = $props();
 </script>
 
 <svelte:head>
@@ -65,6 +67,14 @@
       t("settings.modules.title"),
       t("settings.modules.subtitle"),
     )}
+    <!-- Instance-owner only (issue #137): the license belongs to the installation. -->
+    {#if data.user?.isInstanceOwner}
+      {@render card(
+        "/settings/license",
+        t("settings.license.title"),
+        t("settings.license.subtitle"),
+      )}
+    {/if}
   </div>
 
   <h3 class="mb-2 text-sm font-medium text-text">{t("settings.group.customization")}</h3>

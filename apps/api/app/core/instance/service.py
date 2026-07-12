@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.auth.models import User
+from app.core.entitlements.service import ensure_modules_enableable
 from app.core.instance import audit, repo
 from app.core.models import Org, OrgSettings, OrgStatus
 from app.core.permissions.catalog import ROLE_OWNER
@@ -88,6 +89,8 @@ async def create_org(
     modules = validate_modules(
         enabled_modules if enabled_modules is not None else list(settings.enabled_modules)
     )
+    # Licensed modules need a covering license even on the instance-admin path (issue #137).
+    await ensure_modules_enableable(modules, current=[])
 
     org = Org(slug=slug, name=name)
     session.add(org)
@@ -221,6 +224,9 @@ async def set_org_modules(
     )
     if org_settings is None:
         raise AppError("not_found", "errors.not_found", status_code=404)
+    # Newly enabling a licensed module needs a covering license; keeping one enabled does
+    # not — the write gate governs the already-enabled case (issue #137).
+    await ensure_modules_enableable(modules, current=list(org_settings.enabled_modules or []))
     org_settings.enabled_modules = modules
     await session.flush()
     await audit.record(

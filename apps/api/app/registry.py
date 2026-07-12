@@ -61,6 +61,10 @@ class ModuleDescriptor:
     name: str
     router: APIRouter | None = None
     i18n_namespace: str | None = None
+    # Licensed module (issue #137): the entitlement sku a license must cover before a tenant
+    # may enable this module. None = free. "Which modules are paid" lives here and in license
+    # documents — never as module names hardcoded in gating logic.
+    sku: str | None = None
     panels: list[PanelSpec] = field(default_factory=list)
     # The capabilities this module introduces (issue #19). Aggregated into the permission
     # catalog by ``app.core.permissions.catalog.all_permissions``.

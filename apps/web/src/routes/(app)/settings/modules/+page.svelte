@@ -26,9 +26,16 @@
   <ul class="space-y-2">
     {#each data.available as moduleName (moduleName)}
       {@const isHub = moduleName === "companies"}
+      <!-- Locked (issue #137): needs a license, isn't covered, and isn't already enabled —
+           an enabled-but-uncovered module stays toggleable so it can at least be dropped. -->
+      {@const locked =
+        data.licensed.includes(moduleName) &&
+        !data.entitled.includes(moduleName) &&
+        !data.enabled.includes(moduleName)}
       <li>
         <label
-          class="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5 {isHub
+          class="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5 {isHub ||
+          locked
             ? 'opacity-70'
             : 'hover:border-brand/50'}"
         >
@@ -37,7 +44,7 @@
             name="modules"
             value={moduleName}
             checked={data.enabled.includes(moduleName)}
-            disabled={isHub}
+            disabled={isHub || locked}
             class="h-4 w-4 rounded border-border text-brand focus:ring-brand"
           />
           {#if isHub}<input type="hidden" name="modules" value="companies" />{/if}
@@ -45,6 +52,13 @@
           {#if isHub}
             <span class="rounded-full bg-surface px-2 py-0.5 text-[11px] text-text-muted">
               {t("settings.modules.always_on")}
+            </span>
+          {:else if locked}
+            <span
+              class="rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-700 dark:text-amber-400"
+              title={t("settings.modules.locked_hint")}
+            >
+              {t("settings.modules.locked")}
             </span>
           {/if}
         </label>

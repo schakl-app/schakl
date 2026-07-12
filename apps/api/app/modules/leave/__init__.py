@@ -22,6 +22,9 @@ module = ModuleDescriptor(
     name="leave",
     router=router,
     i18n_namespace="leave",
+    # Licensed module (issue #137): enabling leave requires a license covering this sku;
+    # past expiry+grace the module goes read-only (mutations 402) — reads and exports stay.
+    sku="leave",
     permissions=LEAVE_PERMISSIONS,
     # Next year's holidays, imported in December while there is still time to correct them
     # (#47). Idempotent and per-org; a tenant can switch it off with `holiday_auto_import`.
