@@ -65,6 +65,13 @@
       <p class="mt-1 text-sm text-text-muted">{t("settings.providers.subtitle")}</p>
     </a>
     <a
+      href="/settings/email"
+      class="rounded-xl border border-border bg-surface-raised p-5 hover:border-brand"
+    >
+      <h3 class="text-sm font-semibold text-text">{t("settings.email.title")}</h3>
+      <p class="mt-1 text-sm text-text-muted">{t("settings.email.subtitle")}</p>
+    </a>
+    <a
       href="/settings/contact-types"
       class="rounded-xl border border-border bg-surface-raised p-5 hover:border-brand"
     >

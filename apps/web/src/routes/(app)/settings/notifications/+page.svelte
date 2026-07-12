@@ -6,7 +6,17 @@
 
   let { data, form } = $props();
 
-  const CHANNEL_KINDS = ["slack", "msteams", "gchat", "discord", "telegram", "mailto", "webhook"];
+  // "email" sends to an address via the org's own transport (Instellingen → E-mail, #17).
+  const CHANNEL_KINDS = [
+    "email",
+    "slack",
+    "msteams",
+    "gchat",
+    "discord",
+    "telegram",
+    "mailto",
+    "webhook",
+  ];
 </script>
 
 <svelte:head>

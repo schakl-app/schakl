@@ -156,8 +156,10 @@ __all__ = [
 
 
 # --- external channels (#17) --------------------------------------------------- #
+# ``email`` sends to a recipient address through the org's own transport (Instellingen →
+# E-mail, ``app.core.email``); the rest are Apprise families.
 CHANNEL_KINDS = Literal[
-    "slack", "msteams", "gchat", "discord", "telegram", "mailto", "webhook"
+    "email", "slack", "msteams", "gchat", "discord", "telegram", "mailto", "webhook"
 ]
 
 

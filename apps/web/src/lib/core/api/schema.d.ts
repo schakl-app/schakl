@@ -1889,6 +1889,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Email Settings */
+        get: operations["get_email_settings_api_v1_settings_email_get"];
+        /** Save Email Settings */
+        put: operations["save_email_settings_api_v1_settings_email_put"];
+        post?: never;
+        /** Delete Email Settings */
+        delete: operations["delete_email_settings_api_v1_settings_email_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/email/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Email Settings */
+        post: operations["test_email_settings_api_v1_settings_email_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/setup": {
         parameters: {
             query?: never;
@@ -3016,7 +3052,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "slack" | "msteams" | "gchat" | "discord" | "telegram" | "mailto" | "webhook";
+            kind: "email" | "slack" | "msteams" | "gchat" | "discord" | "telegram" | "mailto" | "webhook";
             /** Name */
             name: string;
             /** Url */
@@ -3837,6 +3873,76 @@ export interface components {
             role_ids: string[];
             /** User Id */
             user_id: string;
+        };
+        /**
+         * EmailSettingsRead
+         * @description The stored configuration minus its secrets: enough to repopulate the form.
+         */
+        EmailSettingsRead: {
+            /** From Email */
+            from_email: string;
+            /** From Name */
+            from_name: string;
+            /**
+             * Has Secret
+             * @default false
+             */
+            has_secret: boolean;
+            /** Host */
+            host?: string | null;
+            /** Port */
+            port?: number | null;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "smtp" | "brevo" | "sendgrid" | "smtp2go";
+            /** Reply To */
+            reply_to?: string | null;
+            /** Security */
+            security?: string | null;
+            /** Username */
+            username?: string | null;
+        };
+        /**
+         * EmailSettingsWrite
+         * @description Upsert payload. Secret fields left empty on an update keep the stored value
+         *     (as long as the provider is unchanged) — the API never plays the secret back.
+         */
+        EmailSettingsWrite: {
+            /** Api Key */
+            api_key?: string | null;
+            /**
+             * From Email
+             * Format: email
+             */
+            from_email: string;
+            /** From Name */
+            from_name: string;
+            /** Host */
+            host?: string | null;
+            /** Password */
+            password?: string | null;
+            /** Port */
+            port?: number | null;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "smtp" | "brevo" | "sendgrid" | "smtp2go";
+            /** Reply To */
+            reply_to?: string | null;
+            /** Security */
+            security?: ("starttls" | "ssl" | "none") | null;
+            /** Username */
+            username?: string | null;
+        };
+        /** EmailTestResult */
+        EmailTestResult: {
+            /** Error */
+            error?: string | null;
+            /** Ok */
+            ok: boolean;
         };
         /** EmploymentContractCreate */
         EmploymentContractCreate: {
@@ -11835,6 +11941,97 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_email_settings_api_v1_settings_email_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailSettingsRead"] | null;
+                };
+            };
+        };
+    };
+    save_email_settings_api_v1_settings_email_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailSettingsWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailSettingsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_email_settings_api_v1_settings_email_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    test_email_settings_api_v1_settings_email_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailTestResult"];
                 };
             };
         };

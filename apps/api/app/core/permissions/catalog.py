@@ -104,6 +104,8 @@ CORE_PERMISSIONS: tuple[PermissionSpec, ...] = (
         "settings.providers.read", group="settings", position=90, default_roles=_ALL
     ),
     PermissionSpec("settings.providers.manage", group="settings", position=100),
+    # Org e-mail transport (issue #17): embeds API keys / SMTP credentials, admin-only.
+    PermissionSpec("settings.email.manage", group="settings", position=110),
     # --- dashboard (personal My Day layout) ------------------------------- #
     PermissionSpec("dashboard.prefs.read", group="dashboard", position=10, default_roles=_ALL),
     PermissionSpec("dashboard.prefs.write", group="dashboard", position=20, default_roles=_ALL),

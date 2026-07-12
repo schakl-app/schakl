@@ -39,9 +39,13 @@ logger = logging.getLogger("schakl.notifications")
 
 CHANNEL_EXTERNAL = "external"
 
-#: Apprise transport families we expose in the UI. ``webhook`` (generic ``json://``/``xml://``)
-#: is the only one whose host is fully user-controlled, so it carries the SSRF guard.
-KINDS: tuple[str, ...] = ("slack", "msteams", "gchat", "discord", "telegram", "mailto", "webhook")
+#: Transport families we expose in the UI. ``webhook`` (generic ``json://``/``xml://``) is the
+#: only one whose host is fully user-controlled, so it carries the SSRF guard. ``email`` is not
+#: Apprise at all: it stores a recipient address and sends through the org's configured e-mail
+#: transport (Instellingen → E-mail, ``app.core.email`` — issue #17).
+KINDS: tuple[str, ...] = (
+    "email", "slack", "msteams", "gchat", "discord", "telegram", "mailto", "webhook",
+)
 
 #: Schemes a channel URL may use. Blocks ``file://`` and friends outright.
 _ALLOWED_SCHEMES = frozenset(
@@ -269,7 +273,19 @@ async def dispatch_delivery(session, delivery: NotificationDelivery) -> None:  #
 
     delivery.attempts += 1
     try:
-        ok, error = await send_via_apprise(decrypt(config.url_enc), message)
+        if config.kind == "email":
+            from app.core.email.senders import OutgoingEmail
+            from app.core.email.service import send_org_email
+
+            ok, error = await send_org_email(
+                session,
+                delivery.org_id,
+                OutgoingEmail(
+                    to=decrypt(config.url_enc), subject=message.title, text=message.body
+                ),
+            )
+        else:
+            ok, error = await send_via_apprise(decrypt(config.url_enc), message)
     except SsrfError as exc:
         ok, error = False, f"blocked target: {exc}"
     except Exception as exc:  # noqa: BLE001 - a provider hiccup must not kill the sweep

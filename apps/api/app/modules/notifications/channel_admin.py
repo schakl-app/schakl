@@ -25,8 +25,15 @@ from app.modules.notifications.schemas import ChannelCreate, ChannelTestResult, 
 
 
 def redact(url: str) -> str:
-    """``slack://xoxb-****`` — enough to recognise the channel, nothing to leak."""
+    """``slack://xoxb-****`` — enough to recognise the channel, nothing to leak.
+
+    An ``email`` channel stores a bare recipient address, not a secret URL: mask only the
+    local part (``t***@agency.nl``) so the admin can still tell channels apart.
+    """
     parts = urlsplit(url)
+    if not parts.scheme and "@" in url:
+        local, _, domain = url.partition("@")
+        return f"{local[:1]}***@{domain}"
     scheme = parts.scheme or "?"
     hint = (parts.netloc or parts.path)[:6]
     return f"{scheme}://{hint}****"
@@ -55,7 +62,17 @@ class ChannelService:
         rows = await self.channels.list(limit=200, order_by=NotificationChannelConfig.name)
         return [self._read(c) for c in rows]
 
-    def _guard_url(self, url: str) -> None:
+    def _guard_url(self, kind: str, url: str) -> None:
+        if kind == "email":
+            # A recipient address for the org's own transport (#17) — not an Apprise URL.
+            if "@" not in url or "://" in url:
+                raise AppError(
+                    "validation",
+                    "errors.validation",
+                    status_code=422,
+                    fields={"url": "errors.validation"},
+                )
+            return
         try:
             check_url_safe(url)
         except SsrfError as exc:
@@ -68,7 +85,7 @@ class ChannelService:
 
     async def create(self, data: ChannelCreate) -> dict:
         self.ctx.require("notifications.channels.manage")
-        self._guard_url(data.url)
+        self._guard_url(data.kind, data.url)
         channel = await self.channels.create(
             kind=data.kind,
             name=data.name,
@@ -85,7 +102,7 @@ class ChannelService:
         channel = await self.channels.get_or_404(channel_id)
         values = data.model_dump(exclude_unset=True, exclude={"url"})
         if "url" in data.model_fields_set and data.url:
-            self._guard_url(data.url)
+            self._guard_url(values.get("kind", channel.kind), data.url)
             values["url_enc"] = encrypt(data.url)
         channel = await self.channels.update(channel, **values)
         return self._read(channel)
@@ -104,7 +121,19 @@ class ChannelService:
             title=f"{brand}: test", body="This is a test notification from schakl."
         )
         try:
-            ok, error = await send_via_apprise(decrypt(channel.url_enc), message)
+            if channel.kind == "email":
+                from app.core.email.senders import OutgoingEmail
+                from app.core.email.service import send_org_email
+
+                ok, error = await send_org_email(
+                    self.ctx.session,
+                    self.ctx.org.id,
+                    OutgoingEmail(
+                        to=decrypt(channel.url_enc), subject=message.title, text=message.body
+                    ),
+                )
+            else:
+                ok, error = await send_via_apprise(decrypt(channel.url_enc), message)
         except SsrfError as exc:
             return ChannelTestResult(ok=False, error=f"blocked target: {exc}")
         except Exception as exc:  # noqa: BLE001 - surface the provider failure, don't 500
