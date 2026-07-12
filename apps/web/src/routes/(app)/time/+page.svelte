@@ -112,6 +112,10 @@
   let aiBudget = $state(false);
   let aiPrefill = $state<Record<string, unknown> | null>(null);
   let aiPrefillVersion = $state(0);
+  // The parse never saves anything (#129) — so say loudly what it *did* do: a summary line
+  // under the input and a flash on the form panel, or an honest "couldn't parse".
+  let aiParsedSummary = $state<string | null>(null);
+  let aiFlash = $state(false);
 
   interface AISuggestion {
     company_id?: string | null;
@@ -131,11 +135,17 @@
   let recon = $state<{ loading: boolean; data?: AIRecon; error?: string } | null>(null);
 
   // A new day gets a clean slate — suggestions and prefills belong to the day they were
-  // made for.
+  // made for. Guarded by value: an unrelated invalidation (a save, a draft write) replaces
+  // `data` without changing the day and must not wipe a prefill mid-flight.
+  let lastResetDay: string | null = null;
   $effect(() => {
-    void data.selectedDate;
-    recon = null;
-    aiPrefill = null;
+    const day = data.selectedDate;
+    if (lastResetDay !== null && day !== lastResetDay) {
+      recon = null;
+      aiPrefill = null;
+      aiParsedSummary = null;
+    }
+    lastResetDay = day;
   });
 
   function endFrom(start: string, minutes: number): string {
@@ -147,6 +157,8 @@
   function openPrefilled(prefill: Record<string, unknown>) {
     aiPrefill = prefill;
     aiPrefillVersion++;
+    aiFlash = true;
+    setTimeout(() => (aiFlash = false), 2500);
     jumpToNewEntry();
   }
 
@@ -155,6 +167,7 @@
     aiBusy = true;
     aiError = null;
     aiBudget = false;
+    aiParsedSummary = null;
     try {
       const res = await fetch("/ai/time/parse", {
         method: "POST",
@@ -168,6 +181,19 @@
         return;
       }
       const parsed = await res.json();
+      const useful =
+        parsed.date ||
+        parsed.start ||
+        parsed.duration_minutes ||
+        parsed.company_id ||
+        parsed.project_id ||
+        parsed.task_id ||
+        parsed.description;
+      if (!useful) {
+        // Ambiguity stays visible (#129): keep the text so the user can refine it.
+        aiError = "ai.time.parse_empty";
+        return;
+      }
       let start: string = parsed.start ?? "";
       let end: string = parsed.end ?? "";
       if (start && !end && parsed.duration_minutes) end = endFrom(start, parsed.duration_minutes);
@@ -175,8 +201,15 @@
         start = "09:00";
         end = endFrom(start, parsed.duration_minutes);
       }
+      // "gisteren 2 uur …" belongs on yesterday: switch the view to the parsed day first,
+      // so the prefilled form — and after Opslaan the entry itself — appear on the day the
+      // user is looking at, never invisibly on another one.
+      const targetDate: string = parsed.date ?? data.selectedDate;
+      if (targetDate !== data.selectedDate) {
+        await goto(`?date=${targetDate}&week=${weekStartOf(targetDate)}`, { keepFocus: true });
+      }
       openPrefilled({
-        date: parsed.date ?? data.selectedDate,
+        date: targetDate,
         start,
         end,
         company_id: parsed.company_id ?? "",
@@ -184,6 +217,19 @@
         task_id: parsed.task_id ?? "",
         description: parsed.description ?? "",
       });
+      const pieces: string[] = [];
+      if (parsed.date) pieces.push(fmtDayMonth(parsed.date));
+      if (start && end) pieces.push(`${start}–${end}`);
+      else if (parsed.duration_minutes) pieces.push(formatMinutes(parsed.duration_minutes));
+      for (const name of [
+        companyName(parsed.company_id),
+        projectName(parsed.project_id),
+        taskTitle(parsed.task_id),
+      ]) {
+        if (name) pieces.push(name);
+      }
+      if (parsed.description) pieces.push(`"${parsed.description}"`);
+      aiParsedSummary = pieces.join(" · ");
       aiText = "";
     } catch {
       aiError = "errors.ai_provider_error";
@@ -389,8 +435,7 @@
           {week.day_totals[i] ? formatMinutes(week.day_totals[i]) : "·"}
           {#if week.draft_days?.includes(day)}
             <!-- An unsaved draft lives on this day (#44). -->
-            <span class="h-1.5 w-1.5 rounded-full bg-amber-400" title={t("time.draft.chip")}
-            ></span>
+            <span class="h-1.5 w-1.5 rounded-full bg-amber-400" title={t("time.draft.chip")}></span>
           {/if}
         </span>
       </a>
@@ -466,6 +511,15 @@
             </button>
           {/if}
         </form>
+        {#if aiParsedSummary}
+          <button
+            type="button"
+            class="block text-left text-sm text-green-700 hover:underline dark:text-green-400"
+            onclick={jumpToNewEntry}
+          >
+            {t("ai.time.parsed", { summary: aiParsedSummary })}
+          </button>
+        {/if}
         {#if aiError}<p class="text-sm text-red-600 dark:text-red-400">{t(aiError)}</p>{/if}
         {#if aiBudget}
           <p class="text-sm text-amber-700 dark:text-amber-400">
@@ -602,7 +656,9 @@
   <!-- New registration / edit panel -->
   <aside
     bind:this={panelEl}
-    class="h-fit scroll-mt-4 rounded-xl border border-border bg-surface-raised p-5"
+    class="h-fit scroll-mt-4 rounded-xl border border-border bg-surface-raised p-5 transition-shadow duration-500 {aiFlash
+      ? 'ring-2 ring-brand'
+      : ''}"
   >
     {#if editingEntry}
       <div class="mb-4 flex items-center justify-between">
@@ -655,6 +711,10 @@
           defaultCompanyId={aiPrefill ? "" : (data.lastCompanyId ?? "")}
           defaultProjectId={aiPrefill ? "" : (data.lastProjectId ?? "")}
           error={form?.error ?? null}
+          ondone={() => {
+            aiPrefill = null;
+            aiParsedSummary = null;
+          }}
           oncreatecompany={(name) => {
             draftCompanyName = name;
             showNewCompany = true;

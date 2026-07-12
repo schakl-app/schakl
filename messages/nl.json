@@ -1966,5 +1966,7 @@
   "errors.google_upload_failed": "Het uploaden is mislukt. Probeer het opnieuw.",
   "errors.google_no_automation_connection": "Er is geen automatiseringsaccount ingesteld onder Instellingen, Google Workspace.",
   "notifications.event.interactions.email_pending": "Nieuwe e-mail vastgelegd: “{subject}”. Keur goed om de inhoud met het team te delen.",
-  "notifications.entity.interaction": "Contactmoment"
+  "notifications.entity.interaction": "Contactmoment",
+  "ai.time.parsed": "Concept ingevuld: {summary}. Controleer het formulier en sla op.",
+  "ai.time.parse_empty": "Kon hier geen registratie uit afleiden; voeg een tijd, duur of klantnaam toe en probeer opnieuw."
 }

@@ -1966,5 +1966,7 @@
   "errors.google_upload_failed": "The upload failed. Try again.",
   "errors.google_no_automation_connection": "No automation account is configured under Settings → Google Workspace.",
   "notifications.event.interactions.email_pending": "New email logged: “{subject}”. Approve it to share the content with the team.",
-  "notifications.entity.interaction": "Interaction"
+  "notifications.entity.interaction": "Interaction",
+  "ai.time.parsed": "Draft filled in: {summary}. Check the form and save.",
+  "ai.time.parse_empty": "Couldn't derive an entry from this; add a time, duration or client name and try again."
 }
