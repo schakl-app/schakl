@@ -70,6 +70,12 @@
         >
           {t("auth.sign_in_action")}
         </button>
+
+        <p class="text-center">
+          <a href="/forgot-password" class="text-sm text-text-muted hover:text-brand">
+            {t("auth.forgot_password")}
+          </a>
+        </p>
       </form>
     {:else}
       <p class="text-center text-sm text-text-muted">{t("auth.local_login_disabled")}</p>

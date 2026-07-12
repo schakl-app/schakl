@@ -194,3 +194,83 @@ async def test_lookup_open_to_plain_members(client_for) -> None:
         assert len(rows) == 1
         # avatar_url joined the safe minimal shape in #122 (effective avatar for pickers).
         assert set(rows[0].keys()) == {"user_id", "full_name", "email", "avatar_url"}
+
+
+async def test_invite_reports_missing_email_transport(client_for) -> None:
+    """#161: the invite stands, but a missing org transport is said out loud — the settings
+    hint used to point at a mail that could never be sent."""
+    t = await make_tenant("mem-invite-nomail")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        invited = await c.post(
+            "/api/v1/members/invite",
+            json={"email": "geen.mail@example.com", "role": "member"},
+            headers=headers,
+        )
+        assert invited.status_code == 201, invited.text
+        body = invited.json()
+        assert body["invite_email_sent"] is False
+        assert body["invite_email_error"] == "errors.email_not_configured"
+
+
+async def test_invite_sends_welcome_mail_with_set_password_link(client_for, monkeypatch) -> None:
+    """#161: with a transport configured, the invite mail rides the reset-token flow and
+    carries a working /reset-password link on the org's own address."""
+    from app.core.crypto import encrypt
+    from app.core.email.models import EmailSettings
+    from app.db import async_session_maker, set_current_org
+
+    t = await make_tenant("mem-invite-mail")
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        session.add(
+            EmailSettings(
+                org_id=t.org.id,
+                provider="smtp",
+                config_enc=encrypt('{"host": "mail.example", "port": 25}'),
+                from_email="noreply@agency.example",
+                from_name="Agency",
+            )
+        )
+        await session.commit()
+
+    sent = []
+
+    async def _capture(session, org_id, message):  # noqa: ANN001, ARG001
+        sent.append(message)
+        return True, None
+
+    monkeypatch.setattr("app.core.auth.emails.send_org_email", _capture)
+
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        invited = await c.post(
+            "/api/v1/members/invite",
+            json={"email": "welkom@example.com", "full_name": "Wel Kom", "role": "member"},
+            headers=headers,
+        )
+        assert invited.status_code == 201, invited.text
+        assert invited.json()["invite_email_sent"] is True
+
+    assert len(sent) == 1
+    assert sent[0].to == "welkom@example.com"
+    assert "/reset-password?token=" in sent[0].text
+
+
+async def test_password_policy_applies_everywhere(client_for) -> None:
+    """#161: FastAPI Users' default accepted any string; the manager now enforces one
+    policy on register, reset and self-update — the update path proves it."""
+    t = await make_tenant("mem-password-policy")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        rejected = await c.patch(
+            "/api/v1/users/me", json={"password": "kort"}, headers=headers
+        )
+        assert rejected.status_code == 400, rejected.text
+        # FastAPI Users' reason travels through the app's own envelope (errors.py).
+        assert rejected.json()["error"]["message"] == "errors.password_too_short"
+
+        accepted = await c.patch(
+            "/api/v1/users/me", json={"password": "lang-genoeg-wachtwoord"}, headers=headers
+        )
+        assert accepted.status_code == 200, accepted.text

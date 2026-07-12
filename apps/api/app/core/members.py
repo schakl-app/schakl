@@ -16,7 +16,7 @@ import logging
 import secrets
 import uuid
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from pwdlib import PasswordHash
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import func, select
@@ -39,6 +39,8 @@ from app.core.permissions.service import (
     role_manager_count,
     set_membership_roles,
 )
+from app.core.auth.users import get_user_manager
+from app.core.email.service import get_row as email_settings_row
 from app.core.tenancy import RequestContext, require_context
 from app.errors import AppError
 
@@ -64,6 +66,10 @@ class MemberRead(BaseModel):
     role_ids: list[str] = []
     is_active: bool
     is_self: bool
+    #: Set only on the invite response (#161): whether the welcome mail went out, and the
+    #: i18n key saying why not (e.g. no transport configured) so the admin knows to act.
+    invite_email_sent: bool | None = None
+    invite_email_error: str | None = None
 
 
 class MemberLookup(BaseModel):
@@ -80,6 +86,9 @@ class MemberInvite(BaseModel):
     full_name: str | None = None
     #: A system role key (owner/admin/member/client); custom roles are assigned afterwards.
     role: str = "member"
+    #: Send the welcome mail with a set-password link (#161). Off = the admin distributes
+    #: credentials themselves (the new user can still use "wachtwoord vergeten").
+    send_email: bool = True
 
 
 class MemberRoleUpdate(BaseModel):
@@ -216,7 +225,10 @@ async def lookup_members(
     dependencies=[require_permission("members.member.write")],
 )
 async def invite_member(
-    payload: MemberInvite, ctx: RequestContext = Depends(require_context)
+    payload: MemberInvite,
+    request: Request,
+    ctx: RequestContext = Depends(require_context),
+    user_manager=Depends(get_user_manager),  # noqa: ANN001 — FastAPI Users' provider
 ) -> MemberRead:
     email = payload.email.lower()
 
@@ -256,7 +268,23 @@ async def invite_member(
         role_key=role_key,
         target_user_id=user.id,
     )
-    return _member_read(ctx, membership, user)
+    member = _member_read(ctx, membership, user)
+    if payload.send_email:
+        # The welcome mail is a set-password link riding the reset-token flow (#161). A
+        # missing transport is reported, never silently swallowed — the settings hint that
+        # pointed at a flow that didn't exist is exactly the failure mode to avoid.
+        if await email_settings_row(ctx.session, ctx.org.id) is None:
+            member.invite_email_sent = False
+            member.invite_email_error = "errors.email_not_configured"
+        else:
+            request.state.password_email_kind = "invite"
+            try:
+                await user_manager.forgot_password(user, request)
+                member.invite_email_sent = True
+            except Exception:  # noqa: BLE001 — the invite itself must stand
+                logger.exception("Invite email for %s failed", email)
+                member.invite_email_sent = False
+    return member
 
 
 async def _membership_or_404(ctx: RequestContext, membership_id: uuid.UUID) -> Membership:

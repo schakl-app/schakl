@@ -107,6 +107,12 @@ async def _http_exception_handler(_: Request, exc: StarletteHTTPException) -> JS
     code = str(exc.status_code)
     if isinstance(exc.detail, str) and exc.detail and "." in exc.detail:
         message = exc.detail
+    elif isinstance(exc.detail, dict):
+        # FastAPI Users' invalid-password shape: {"code": …, "reason": …} — the manager puts
+        # our i18n key in the reason (#161), so the envelope can carry it to the form.
+        reason = exc.detail.get("reason")
+        if isinstance(reason, str) and "." in reason:
+            message = reason
     return JSONResponse(status_code=exc.status_code, content=_envelope(code, message))
 
 
