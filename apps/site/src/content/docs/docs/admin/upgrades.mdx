@@ -1,0 +1,43 @@
+---
+title: Updaten & back-ups
+description: Nieuwe schakl.-versies uitrollen — image-tags, automatische migraties, en welke twee dingen je veiligstelt.
+sidebar:
+  order: 2
+---
+
+## Versies en image-tags
+
+Releases verschijnen als tags (`1.2.3`, `1.2`, `latest` en `sha-<commit>`). **Pin `SCHAKL_TAG`
+op een exacte versie in productie.** `latest` is prima voor een verse installatie, maar op een
+host die je bijwerkt zou een redeploy stilletjes een nieuwere app binnenhalen dan je getest
+hebt. `latest` volgt alleen stabiele releases; een pre-release verplaatst hem nooit.
+
+## Updaten is een nieuwe tag
+
+1. Maak een back-up (zie onder).
+2. Zet `SCHAKL_TAG` op de nieuwe versie en redeploy de stack.
+3. De API draait **automatisch alle databasemigraties**, vóór de app opstart. Een mislukte
+   migratie betekent: de oude situatie blijft staan en `api` wordt niet healthy — lees dan
+   de logs (`docker logs schakl-api-1`).
+
+Releasenotes vermelden het als een release iets van je aandacht nodig heeft (bijvoorbeeld
+gewijzigde rechten of instellingen); lees ze voor je de tag verhoogt.
+
+## Back-ups: twee dingen, samen
+
+Er zijn precies twee plekken met staat, en je stelt ze **samen** veilig:
+
+| Wat | Waar | Hoe |
+| --- | --- | --- |
+| De database | volume `db-data` | `docker compose exec db pg_dump -U schakl schakl > backup.sql` |
+| Geüploade bestanden | volume `storage-data` | snapshot van het volume (avatars, bijlagen, huisstijl-bestanden) |
+
+Een teruggezette database zonder het bestandsvolume verwijst naar bestanden die er niet
+meer zijn; een volume zonder database is losse bytes. Snapshot ze op hetzelfde moment.
+
+## De updatecheck
+
+Eén keer per dag vraagt de worker aan de publieke GitHub-API of er een nieuwere stabiele
+release is; *Instellingen → Systeem* toont dan een melding. Er wordt **niets** over jouw
+installatie meegestuurd en er wordt nooit automatisch geüpdatet. Uitzetten kan met
+`SCHAKL_UPDATE_CHECK_ENABLED: "false"`.

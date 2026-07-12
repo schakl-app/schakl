@@ -1,0 +1,13 @@
+{
+  "name": "Taken en sjablonen",
+  "order": 40,
+  "icon": "✅",
+  "title": {
+    "nl": "Taken & sjablonen",
+    "en": "Tasks & templates"
+  },
+  "description": {
+    "nl": "Borden, checklists en labels, met org-brede sjablonen voor terugkerend werk — één keer vastleggen, overal toepassen.",
+    "en": "Boards, checklists and labels, with org-wide templates for recurring work — define once, apply anywhere."
+  }
+}

@@ -1,0 +1,42 @@
+---
+title: Upgrades & backups
+description: Rolling out new schakl. versions — image tags, automatic migrations, and the two things you safeguard.
+sidebar:
+  order: 2
+---
+
+## Versions and image tags
+
+Releases are published as tags (`1.2.3`, `1.2`, `latest` and `sha-<commit>`). **Pin
+`SCHAKL_TAG` to an exact version in production.** `latest` is fine for a fresh install, but
+on a host you upgrade, a redeploy would silently pull a newer app than the one you tested.
+`latest` only follows stable releases; a pre-release never moves it.
+
+## Upgrading is a new tag
+
+1. Take a backup (below).
+2. Set `SCHAKL_TAG` to the new version and redeploy the stack.
+3. The API **runs all database migrations automatically**, before the app boots. A failed
+   migration means the old state stays put and `api` never turns healthy — read the logs
+   (`docker logs schakl-api-1`).
+
+Release notes call it out when a release needs your attention (changed permissions or
+settings, for example); read them before bumping the tag.
+
+## Backups: two things, together
+
+There are exactly two places holding state, and you safeguard them **together**:
+
+| What | Where | How |
+| --- | --- | --- |
+| The database | volume `db-data` | `docker compose exec db pg_dump -U schakl schakl > backup.sql` |
+| Uploaded files | volume `storage-data` | snapshot the volume (avatars, attachments, branding assets) |
+
+A restored database without the file volume references files that no longer exist; a
+volume without the database is loose bytes. Snapshot both at the same moment.
+
+## The update check
+
+Once a day the worker asks the public GitHub API whether a newer stable release exists;
+*Settings → System* then shows a notice. **Nothing** about your installation is sent, and
+nothing ever updates automatically. Disable it with `SCHAKL_UPDATE_CHECK_ENABLED: "false"`.

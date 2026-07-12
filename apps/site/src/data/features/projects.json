@@ -1,0 +1,13 @@
+{
+  "name": "Projecten en budgetten",
+  "order": 20,
+  "icon": "📁",
+  "title": {
+    "nl": "Projecten & budgetten",
+    "en": "Projects & budgets"
+  },
+  "description": {
+    "nl": "Uren- en geldbudgetten met burn-kleuren, retainers en maandelijkse limieten — elk getal is te openen tot op de registratie.",
+    "en": "Hour and money budgets with burn colours, retainers and monthly caps — every number opens down to the entry behind it."
+  }
+}

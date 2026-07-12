@@ -10,8 +10,10 @@
   "packageManager": "pnpm@11.10.0",
   "scripts": {
     "i18n:check": "node scripts/i18n-check.mjs",
+    "docs:check": "node scripts/docs-check.mjs",
     "gen:client": "bash scripts/gen-client.sh",
     "web": "pnpm --filter @schakl/web",
+    "site": "pnpm --filter @schakl/site",
     "dev": "pnpm --filter @schakl/web dev",
     "build": "pnpm --filter @schakl/web build"
   }

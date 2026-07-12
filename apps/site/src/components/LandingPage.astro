@@ -1,0 +1,116 @@
+---
+import settings from '../data/settings/site.json';
+import landingNl from '../data/landing/nl.json';
+import landingEn from '../data/landing/en.json';
+import '../styles/landing.css';
+
+interface Props {
+  locale: 'nl' | 'en';
+}
+const { locale } = Astro.props;
+const t = locale === 'nl' ? landingNl : landingEn;
+
+// Feature cards are a Keystatic collection: one JSON file per card, ordered by `order`.
+const featureModules = import.meta.glob('../data/features/*.json', { eager: true });
+const features = Object.values(featureModules)
+  .map((m: any) => m.default ?? m)
+  .sort((a: any, b: any) => a.order - b.order);
+
+// The logo is CMS-managed: Keystatic writes the file into src/assets/site/ and stores its
+// path in the settings singleton. Resolve it through Vite so the build fingerprints it.
+const logoModules = import.meta.glob('/src/assets/site/*', { eager: true });
+const logoMod: any = settings.logo ? logoModules[settings.logo] : undefined;
+const logoSrc: string | undefined = logoMod?.default?.src;
+
+// Internal links on the English page live under /en/.
+const href = (h: string) =>
+  locale === 'en' && h.startsWith('/') && !h.startsWith('/en') ? `/en${h}` : h;
+
+const otherLocaleHref = locale === 'nl' ? '/en/' : '/';
+const themeCss = `:root{--brand-accent:${settings.colors.accent};--brand-accent-dark:${settings.colors.accentDark};}`;
+const pageTitle = `${settings.brandName} — ${t.hero.title}`;
+---
+
+<html lang={locale}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{pageTitle}</title>
+    <meta name="description" content={t.hero.subtitle} />
+    <link rel="icon" href={settings.favicon} type="image/svg+xml" />
+    <link rel="alternate" hreflang="nl" href={new URL('/', Astro.site)} />
+    <link rel="alternate" hreflang="en" href={new URL('/en/', Astro.site)} />
+    <style set:html={themeCss}></style>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-row">
+        <a class="brand" href={href('/')}>
+          {logoSrc ? <img src={logoSrc} alt={settings.brandName} height="28" /> : settings.brandName}
+        </a>
+        <nav class="site-nav" aria-label={locale === 'nl' ? 'Hoofdnavigatie' : 'Main navigation'}>
+          {settings.nav.map((item) => <a href={href(item.href)}>{item[locale]}</a>)}
+          <a href={otherLocaleHref} class="locale-switch" lang={locale === 'nl' ? 'en' : 'nl'}>
+            {locale === 'nl' ? 'EN' : 'NL'}
+          </a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero container">
+        <p class="eyebrow">{t.hero.eyebrow}</p>
+        <h1>{t.hero.title}</h1>
+        <p class="subtitle">{t.hero.subtitle}</p>
+        <div class="cta-row">
+          <a class="button primary" href={href(t.hero.ctaPrimary.href)}>{t.hero.ctaPrimary.label}</a>
+          <a class="button" href={href(t.hero.ctaSecondary.href)}>{t.hero.ctaSecondary.label}</a>
+        </div>
+      </section>
+
+      <section id="features" class="container features">
+        <h2>{t.featuresTitle}</h2>
+        <p class="section-intro">{t.featuresIntro}</p>
+        <div class="feature-grid">
+          {features.map((f: any) => (
+            <article class="feature-card">
+              <span class="feature-icon" aria-hidden="true">{f.icon}</span>
+              <h3>{f.title[locale]}</h3>
+              <p>{f.description[locale]}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section id="selfhost" class="selfhost">
+        <div class="container selfhost-grid">
+          <div>
+            <h2>{t.selfhost.title}</h2>
+            <p class="section-intro">{t.selfhost.body}</p>
+          </div>
+          <ul class="check-list">
+            {t.selfhost.bullets.map((b) => <li>{b}</li>)}
+          </ul>
+        </div>
+      </section>
+
+      <section class="container docs-cta">
+        <h2>{t.docsCta.title}</h2>
+        <p class="section-intro">{t.docsCta.body}</p>
+        <a class="button primary" href={href('/docs/')}>{t.docsCta.label}</a>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-row">
+        <div>
+          <span class="brand">{settings.brandName}</span>
+          <p class="footer-note">{t === landingNl ? settings.footerNote.nl : settings.footerNote.en}</p>
+        </div>
+        <nav aria-label="Footer">
+          {settings.footerLinks.map((item) => <a href={href(item.href)}>{item[locale]}</a>)}
+        </nav>
+      </div>
+    </footer>
+  </body>
+</html>

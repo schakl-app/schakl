@@ -1,0 +1,27 @@
+{
+  "brandName": "schakl.",
+  "siteUrl": "https://schakl.app",
+  "logo": "/src/assets/site/logo.svg",
+  "favicon": "/favicon.svg",
+  "colors": {
+    "accent": "#4F46E5",
+    "accentDark": "#818CF8"
+  },
+  "social": {
+    "github": "https://github.com/schakl-app/schakl"
+  },
+  "nav": [
+    { "href": "/#features", "nl": "Functies", "en": "Features" },
+    { "href": "/#selfhost", "nl": "Zelf hosten", "en": "Self-host" },
+    { "href": "/docs/", "nl": "Documentatie", "en": "Docs" }
+  ],
+  "footerLinks": [
+    { "href": "/docs/", "nl": "Documentatie", "en": "Documentation" },
+    { "href": "/docs/admin/installation/", "nl": "Installeren", "en": "Install" },
+    { "href": "https://github.com/schakl-app/schakl", "nl": "GitHub", "en": "GitHub" }
+  ],
+  "footerNote": {
+    "nl": "Zelf-gehost, wit-label bureauplatform. Jouw server, jouw data.",
+    "en": "Self-hosted, white-label agency platform. Your server, your data."
+  }
+}

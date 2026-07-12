@@ -1,0 +1,16 @@
+/* Starlight theme wired to the CMS accent colours. --brand-accent / --brand-accent-dark are
+   injected into <head> by astro.config.mjs from src/data/settings/site.json — change the
+   colour in the CMS, rebuild, and the docs recolour with the rest of the site. */
+
+/* Dark is Starlight's default theme (:root). */
+:root {
+  --sl-color-accent-low: color-mix(in srgb, var(--brand-accent-dark) 25%, #0b0d12);
+  --sl-color-accent: var(--brand-accent-dark);
+  --sl-color-accent-high: color-mix(in srgb, var(--brand-accent-dark) 40%, #ffffff);
+}
+
+:root[data-theme='light'] {
+  --sl-color-accent-low: color-mix(in srgb, var(--brand-accent) 12%, #ffffff);
+  --sl-color-accent: var(--brand-accent);
+  --sl-color-accent-high: color-mix(in srgb, var(--brand-accent) 65%, #000000);
+}

@@ -1,0 +1,13 @@
+{
+  "name": "Verlof en roosters",
+  "order": 50,
+  "icon": "🌴",
+  "title": {
+    "nl": "Verlof & roosters",
+    "en": "Leave & schedules"
+  },
+  "description": {
+    "nl": "Verloftypen naar jouw beleid, werkroosters per medewerker en feestdagen die geen uren kosten. De API rekent, niemand telt na.",
+    "en": "Leave types matching your policy, per-employee work schedules and public holidays that cost no hours. The API does the math."
+  }
+}
