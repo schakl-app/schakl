@@ -76,6 +76,16 @@ async def test_future_requires_approval_edit_bounces_to_pending(client_for) -> N
         assert edited.json()["status"] == "pending"
         assert edited.json()["decided_by_user_id"] is None
         assert edited.json()["decided_at"] is None
+        # The bounce is marked as a re-submission so the approval queue can say "edit to
+        # existing leave" rather than showing it like new (#120)…
+        assert edited.json()["resubmitted_at"] is not None
+
+        # …and the next decision clears the marker.
+        redecided = await c.post(
+            f"/api/v1/leave/requests/{rid}/decide", json={"approved": True}, headers=owner
+        )
+        assert redecided.status_code == 200
+        assert redecided.json()["resubmitted_at"] is None
 
 
 async def test_future_auto_approve_owner_edits_freely(client_for) -> None:
@@ -133,6 +143,37 @@ async def test_note_only_edit_does_not_bounce(client_for) -> None:
         assert edited.status_code == 200, edited.text
         assert edited.json()["status"] == "approved"
         assert edited.json()["note"] == "fyi"
+
+
+async def test_fresh_pending_edit_is_not_marked_resubmitted(client_for) -> None:
+    """A never-approved pending request that gets edited is *not* an edit to approved leave —
+    only the approved→pending bounce may set the marker (#120)."""
+    t = await make_tenant("reapprove-fresh")
+    owner = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        member = await _member(c, owner, "m@example.com")
+        mh = await auth_cookie(member)
+        special = await _type_id(c, owner, "special")
+
+        start, end = _span(0)
+        created = await c.post(
+            "/api/v1/leave/requests",
+            json={"leave_type_id": special, "start_date": start, "end_date": end},
+            headers=mh,
+        )
+        rid = created.json()["id"]
+        assert created.json()["status"] == "pending"
+        assert created.json()["resubmitted_at"] is None
+
+        new_start, new_end = _span(1)
+        edited = await c.patch(
+            f"/api/v1/leave/requests/{rid}",
+            json={"start_date": new_start, "end_date": new_end},
+            headers=mh,
+        )
+        assert edited.status_code == 200, edited.text
+        assert edited.json()["status"] == "pending"
+        assert edited.json()["resubmitted_at"] is None
 
 
 async def test_approver_edit_stays_in_place(client_for) -> None:

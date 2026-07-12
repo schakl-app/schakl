@@ -4756,6 +4756,8 @@ export interface components {
             org_id: string;
             /** Recurring Day Id */
             recurring_day_id?: string | null;
+            /** Resubmitted At */
+            resubmitted_at?: string | null;
             /**
              * Start Date
              * Format: date

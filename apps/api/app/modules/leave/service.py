@@ -1633,11 +1633,13 @@ class LeaveService:
         if bounce:
             # A resubmission, not a self-approval: the owner's edit sends an approved request back
             # through approval. Reuses the whole pending path (decide/notify/balance), and pending
-            # still occupies the balance, so no balance regression.
+            # still occupies the balance, so no balance regression. The bounce clears decided_*,
+            # so the resubmission stamp is what keeps this distinguishable from new leave (#120).
             values["status"] = LeaveRequestStatus.PENDING.value
             values["decided_by_user_id"] = None
             values["decided_at"] = None
             values["decision_note"] = None
+            values["resubmitted_at"] = _now()
 
         updated = await self.requests.update(request, **values)
         if bounce:
@@ -1666,6 +1668,8 @@ class LeaveService:
             decided_by_user_id=self.ctx.user.id,
             decided_at=_now(),
             decision_note=note,
+            # The re-submission marker only describes an *undecided* bounce (#120).
+            resubmitted_at=None,
         )
         # The person who asked is the person who needs the answer.
         await self._emit_leave(

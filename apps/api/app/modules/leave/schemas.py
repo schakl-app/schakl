@@ -383,6 +383,8 @@ class LeaveRequestRead(BaseModel):
     decided_by_user_id: uuid.UUID | None
     decided_at: datetime | None
     decision_note: str | None
+    #: Set while an edit-bounced (previously approved) request awaits re-approval (#120).
+    resubmitted_at: datetime | None = None
     #: Set when this row was generated from a recurring rostered-free-day pattern (#107).
     recurring_day_id: uuid.UUID | None = None
     created_at: datetime

@@ -219,8 +219,16 @@
         {@const leaveType = typeById[request.leave_type_id]}
         <li class="flex flex-wrap items-center gap-3 px-4 py-3">
           <div class="min-w-0 flex-1">
-            <p class="text-sm font-medium text-text">
+            <p class="flex flex-wrap items-center gap-2 text-sm font-medium text-text">
               {memberName[request.user_id] ?? "—"}
+              <!-- An edit to previously-approved leave, not new leave (#120). -->
+              {#if request.resubmitted_at}
+                <span
+                  class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+                >
+                  {t("leave.team.resubmitted")}
+                </span>
+              {/if}
             </p>
             <p class="mt-0.5 flex flex-wrap items-center gap-x-2 text-sm text-text-muted">
               <span class="inline-flex items-center gap-1.5">
@@ -498,7 +506,16 @@
     {@const leaveType = typeById[reviewRequest.leave_type_id]}
     <div class="space-y-4">
       <div>
-        <p class="text-sm font-medium text-text">{memberName[reviewRequest.user_id] ?? "—"}</p>
+        <p class="flex flex-wrap items-center gap-2 text-sm font-medium text-text">
+          {memberName[reviewRequest.user_id] ?? "—"}
+          {#if reviewRequest.resubmitted_at}
+            <span
+              class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+            >
+              {t("leave.team.resubmitted")}
+            </span>
+          {/if}
+        </p>
         <p class="mt-1 flex flex-wrap items-center gap-x-2 text-sm text-text-muted">
           <span class="inline-flex items-center gap-1.5">
             <span class="h-2 w-2 rounded-full {labelDotClass(leaveType?.color ?? '')}"></span>

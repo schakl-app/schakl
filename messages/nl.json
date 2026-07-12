@@ -258,6 +258,7 @@
   "leave.team.requests_heading": "Aanvragen {year}",
   "leave.team.hours_amount": "{hours} u",
   "leave.team.balance_left": "nog {left} van {total} u dit jaar",
+  "leave.team.resubmitted": "Bewerkt — opnieuw ter goedkeuring",
   "leave.team.over_balance": "Boven het saldo — na goedkeuren blijft dit jaar −{hours} u over.",
   "auth.welcome": "Welkom",
   "auth.sign_in": "Inloggen",

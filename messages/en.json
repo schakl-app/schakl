@@ -258,6 +258,7 @@
   "leave.team.requests_heading": "Requests {year}",
   "leave.team.hours_amount": "{hours} h",
   "leave.team.balance_left": "{left} of {total} h left this year",
+  "leave.team.resubmitted": "Edited — re-submitted for approval",
   "leave.team.over_balance": "Exceeds the balance — approving leaves −{hours} h remaining this year.",
   "auth.welcome": "Welcome",
   "auth.sign_in": "Sign in",

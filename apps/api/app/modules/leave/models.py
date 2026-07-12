@@ -257,6 +257,13 @@ class LeaveRequest(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     )
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     decision_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: Set when an edit bounced this *approved* request back to pending (#72), cleared on the
+    #: next decision (#120). This is what lets an approver tell "an edit to leave I already
+    #: approved" apart from a brand-new request — after the bounce clears ``decided_*``, no
+    #: other column can (``updated_at > created_at`` is also true of an edited fresh request).
+    resubmitted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class LeaveRecurringDay(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
