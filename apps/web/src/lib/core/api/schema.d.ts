@@ -21,6 +21,219 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ai/assist/write": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Writing Assist */
+        post: operations["writing_assist_api_v1_ai_assist_write_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/assistant": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Assistant */
+        post: operations["assistant_api_v1_ai_assistant_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/companies/{company_id}/digest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Company Digest */
+        post: operations["company_digest_api_v1_ai_companies__company_id__digest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Reports */
+        get: operations["list_reports_api_v1_ai_reports_get"];
+        put?: never;
+        /** Create Report */
+        post: operations["create_report_api_v1_ai_reports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/reports/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Generate Report */
+        post: operations["generate_report_api_v1_ai_reports_generate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/reports/{report_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Report */
+        get: operations["get_report_api_v1_ai_reports__report_id__get"];
+        /** Update Report */
+        put: operations["update_report_api_v1_ai_reports__report_id__put"];
+        post?: never;
+        /** Delete Report */
+        delete: operations["delete_report_api_v1_ai_reports__report_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Ai Settings */
+        get: operations["get_ai_settings_api_v1_ai_settings_get"];
+        /** Save Ai Settings */
+        put: operations["save_ai_settings_api_v1_ai_settings_put"];
+        post?: never;
+        /** Delete Ai Settings */
+        delete: operations["delete_ai_settings_api_v1_ai_settings_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/settings/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * List Ai Models
+         * @description Live model listing for the settings picker — a settings-page helper like the test
+         *     button, so a provider failure comes back as data, never a 500.
+         */
+        post: operations["list_ai_models_api_v1_ai_settings_models_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/settings/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Ai Settings */
+        post: operations["test_ai_settings_api_v1_ai_settings_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/time/parse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Time Parse */
+        post: operations["time_parse_api_v1_ai_time_parse_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/time/reconstruct": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Time Reconstruct */
+        post: operations["time_reconstruct_api_v1_ai_time_reconstruct_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ai Usage */
+        get: operations["ai_usage_api_v1_ai_usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/api-keys": {
         parameters: {
             query?: never;
@@ -698,6 +911,276 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/google/calendar/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Calendar Events
+         * @description The viewer's own cached Google events. Reads the local cache, never Google live.
+         */
+        get: operations["calendar_events_api_v1_google_calendar_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/calendar/webhook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Calendar Webhook */
+        post: operations["calendar_webhook_api_v1_google_calendar_webhook_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Connections */
+        get: operations["list_connections_api_v1_google_connections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/connections/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** My Connection */
+        get: operations["my_connection_api_v1_google_connections_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update My Connection */
+        patch: operations["update_my_connection_api_v1_google_connections_me_patch"];
+        trace?: never;
+    };
+    "/api/v1/google/connections/me/disconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Disconnect My Connection */
+        post: operations["disconnect_my_connection_api_v1_google_connections_me_disconnect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/drive/browse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Browse
+         * @description Live folder contents **as the viewing user** — Drive's permissions are authoritative.
+         *     Redis-cached ~45 s per user+folder; ``refresh=1`` busts it.
+         */
+        get: operations["browse_api_v1_google_drive_browse_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/drive/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Links */
+        get: operations["list_links_api_v1_google_drive_links_get"];
+        put?: never;
+        /** Create Link */
+        post: operations["create_link_api_v1_google_drive_links_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/drive/links/{link_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Link
+         * @description Unlink only. The Drive file is never touched (issue #21 — the dialog says so too).
+         */
+        delete: operations["delete_link_api_v1_google_drive_links__link_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/drive/provision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Provision Entity
+         * @description Queue one entity's folder — the panel's "create folder" button.
+         */
+        post: operations["provision_entity_api_v1_google_drive_provision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/drive/provision-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Provision All
+         * @description Backfill: a folder for every client that has none (Instellingen → Google).
+         */
+        post: operations["provision_all_api_v1_google_drive_provision_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/drive/upload-session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Upload Session */
+        post: operations["create_upload_session_api_v1_google_drive_upload_session_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/oauth/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Oauth Callback
+         * @description Store the grant and land the browser back on the account card.
+         *
+         *     A denied consent or a state mismatch is a redirect with an error marker, never a JSON
+         *     envelope — a human is holding this request.
+         */
+        get: operations["google_oauth_callback_api_v1_google_oauth_callback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/oauth/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Oauth Connect
+         * @description 302 to Google's consent screen, asking exactly the enabled surfaces' scopes.
+         *
+         *     ``access_type=offline`` + ``prompt=consent`` guarantee a refresh token on every connect;
+         *     ``include_granted_scopes`` makes a later reconnect *add* scopes instead of replacing them
+         *     (incremental authorization — the docs/GOOGLE.md §1 bridge).
+         */
+        get: operations["oauth_connect_api_v1_google_oauth_connect_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Settings */
+        get: operations["get_settings_api_v1_google_settings_get"];
+        /** Save Settings */
+        put: operations["save_settings_api_v1_google_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hosting": {
         parameters: {
             query?: never;
@@ -1206,6 +1689,94 @@ export interface paths {
         put?: never;
         /** Suspend Org */
         post: operations["suspend_org_api_v1_instance_orgs__org_id__suspend_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/interactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Interactions */
+        get: operations["list_interactions_api_v1_interactions_get"];
+        put?: never;
+        /** Create Interaction */
+        post: operations["create_interaction_api_v1_interactions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/interactions/{interaction_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Interaction */
+        get: operations["get_interaction_api_v1_interactions__interaction_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Interaction */
+        delete: operations["delete_interaction_api_v1_interactions__interaction_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Interaction */
+        patch: operations["update_interaction_api_v1_interactions__interaction_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/interactions/{interaction_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Interaction */
+        post: operations["approve_interaction_api_v1_interactions__interaction_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/interactions/{interaction_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Interaction */
+        post: operations["reject_interaction_api_v1_interactions__interaction_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/interactions/{interaction_id}/remap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Remap Interaction */
+        post: operations["remap_interaction_api_v1_interactions__interaction_id__remap_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3471,6 +4042,123 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AIFeatureConfig */
+        AIFeatureConfig: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Model */
+            model?: string | null;
+        };
+        /**
+         * AIModelsRequest
+         * @description Inputs for the live model listing. Everything optional: empty values fall back to
+         *     the stored settings, so the picker works both during first setup (key just typed,
+         *     nothing saved) and afterwards (key stored, never played back).
+         */
+        AIModelsRequest: {
+            /** Api Key */
+            api_key?: string | null;
+            /** Base Url */
+            base_url?: string | null;
+            /** Provider */
+            provider?: ("anthropic" | "openai" | "openai_compatible") | null;
+        };
+        /**
+         * AIModelsResult
+         * @description Settings-page helper semantics like the test button: a provider failure is data
+         *     (verbatim in ``error``), never a 500.
+         */
+        AIModelsResult: {
+            /** Error */
+            error?: string | null;
+            /** Models */
+            models?: string[];
+        };
+        /** AISettingsRead */
+        AISettingsRead: {
+            /** Base Url */
+            base_url: string | null;
+            /** Default Model */
+            default_model: string;
+            /** Features */
+            features: {
+                [key: string]: components["schemas"]["AIFeatureConfig"];
+            };
+            /** Has Key */
+            has_key: boolean;
+            /** House Style */
+            house_style: string | null;
+            /** Monthly Token Budget */
+            monthly_token_budget: number | null;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "anthropic" | "openai" | "openai_compatible";
+        };
+        /** AISettingsWrite */
+        AISettingsWrite: {
+            /** Api Key */
+            api_key?: string | null;
+            /** Base Url */
+            base_url?: string | null;
+            /** Default Model */
+            default_model?: string | null;
+            /** Features */
+            features?: {
+                [key: string]: components["schemas"]["AIFeatureConfig"];
+            };
+            /** House Style */
+            house_style?: string | null;
+            /** Monthly Token Budget */
+            monthly_token_budget?: number | null;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "anthropic" | "openai" | "openai_compatible";
+        };
+        /**
+         * AITestResult
+         * @description Round-trip result of the settings page's test button; ``error`` is the provider's
+         *     failure verbatim — the one place raw provider text reaches the UI on purpose.
+         */
+        AITestResult: {
+            /** Error */
+            error?: string | null;
+            /** Model */
+            model?: string | null;
+            /** Ok */
+            ok: boolean;
+        };
+        /** AIUsageFeature */
+        AIUsageFeature: {
+            /** Feature */
+            feature: string;
+            /** Requests */
+            requests: number;
+            /** Tokens In */
+            tokens_in: number;
+            /** Tokens Out */
+            tokens_out: number;
+        };
+        /**
+         * AIUsageSummary
+         * @description This calendar month's metering, for the settings-page meter (#126).
+         */
+        AIUsageSummary: {
+            /** Budget */
+            budget: number | null;
+            /** Features */
+            features: components["schemas"]["AIUsageFeature"][];
+            /** Month */
+            month: string;
+            /** Tokens Total */
+            tokens_total: number;
+        };
         /** ActionRead */
         ActionRead: {
             /** Action Type */
@@ -3637,6 +4325,39 @@ export interface components {
              * Format: uuid
              */
             user_id: string;
+        };
+        /** AssistantContext */
+        AssistantContext: {
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Label */
+            label?: string | null;
+        };
+        /** AssistantMessage */
+        AssistantMessage: {
+            /** Content */
+            content: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "user" | "assistant";
+        };
+        /** AssistantRequest */
+        AssistantRequest: {
+            context?: components["schemas"]["AssistantContext"] | null;
+            /** Messages */
+            messages: components["schemas"]["AssistantMessage"][];
+            /**
+             * Override Budget
+             * @default false
+             */
+            override_budget: boolean;
         };
         /** AuditEntry */
         AuditEntry: {
@@ -3841,6 +4562,26 @@ export interface components {
         BulkResult: {
             /** Updated */
             updated: number;
+        };
+        /** CalendarFeedItem */
+        CalendarFeedItem: {
+            /** All Day */
+            all_day: boolean;
+            /** End */
+            end: string;
+            /** Html Link */
+            html_link?: string | null;
+            /** Id */
+            id: string;
+            /** Start */
+            start: string;
+            /**
+             * Tentative
+             * @default false
+             */
+            tentative: boolean;
+            /** Title */
+            title: string;
         };
         /** CatalogRead */
         CatalogRead: {
@@ -4188,6 +4929,37 @@ export interface components {
             status?: components["schemas"]["CompanyStatus"] | null;
             /** Website */
             website?: string | null;
+        };
+        /**
+         * ConnectionRead
+         * @description The caller's own connection — or the admin list's per-user rows.
+         */
+        ConnectionRead: {
+            /**
+             * Connected At
+             * Format: date-time
+             */
+            connected_at: string;
+            /** Email */
+            email: string;
+            /** Gmail Excluded Label */
+            gmail_excluded_label?: string | null;
+            /**
+             * Gmail Sync Enabled
+             * @default false
+             */
+            gmail_sync_enabled: boolean;
+            /** Last Error */
+            last_error?: string | null;
+            /** Scopes */
+            scopes?: string[];
+            /** Status */
+            status: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
         };
         /**
          * ContactCompanyLink
@@ -4547,6 +5319,14 @@ export interface components {
             /** Version */
             version?: string | null;
         };
+        /** DigestRequest */
+        DigestRequest: {
+            /**
+             * Override Budget
+             * @default false
+             */
+            override_budget: boolean;
+        };
         /** DomainClaim */
         DomainClaim: {
             /** Domain */
@@ -4675,6 +5455,112 @@ export interface components {
             registrar_provider_id?: string | null;
             registry_contact?: components["schemas"]["PartyRef"] | null;
             status?: components["schemas"]["DomainStatus-Input"] | null;
+        };
+        /** DriveBrowseFolder */
+        DriveBrowseFolder: {
+            /** Id */
+            id?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Web View Link */
+            web_view_link?: string | null;
+        };
+        /** DriveBrowseItem */
+        DriveBrowseItem: {
+            /** Id */
+            id: string;
+            /**
+             * Is Folder
+             * @default false
+             */
+            is_folder: boolean;
+            /** Mime Type */
+            mime_type?: string | null;
+            /** Modified At */
+            modified_at?: string | null;
+            /** Name */
+            name: string;
+            /** Size */
+            size?: number | null;
+            /** Web View Link */
+            web_view_link?: string | null;
+        };
+        /** DriveBrowseResult */
+        DriveBrowseResult: {
+            folder: components["schemas"]["DriveBrowseFolder"];
+            /** Items */
+            items: components["schemas"]["DriveBrowseItem"][];
+        };
+        /** DriveBulkProvisionResult */
+        DriveBulkProvisionResult: {
+            /** Queued */
+            queued: number;
+        };
+        /** DriveLinkCreate */
+        DriveLinkCreate: {
+            /** Drive File Id */
+            drive_file_id: string;
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+        };
+        /** DriveLinkRead */
+        DriveLinkRead: {
+            /** Created By Name */
+            created_by_name?: string | null;
+            /** Drive File Id */
+            drive_file_id: string;
+            /** Drive Url */
+            drive_url: string;
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Is Folder
+             * @default false
+             */
+            is_folder: boolean;
+            /** Mime Type */
+            mime_type?: string | null;
+            /** Name */
+            name: string;
+        };
+        /** DriveProvisionRequest */
+        DriveProvisionRequest: {
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+        };
+        /** DriveUploadSession */
+        DriveUploadSession: {
+            /** Session Uri */
+            session_uri: string;
+        };
+        /** DriveUploadSessionCreate */
+        DriveUploadSessionCreate: {
+            /** Folder Id */
+            folder_id: string;
+            /** Mime Type */
+            mime_type?: string | null;
+            /** Name */
+            name: string;
         };
         /**
          * DryRunRequest
@@ -4966,6 +5852,111 @@ export interface components {
             /** Created */
             created: number;
         };
+        /**
+         * GmailApprovalMode
+         * @description Whether a matched email needs the mailbox owner's approval before it is logged.
+         * @enum {string}
+         */
+        GmailApprovalMode: "approval_required" | "auto_approve";
+        /**
+         * GmailThreadFollowup
+         * @description What a follow-up in an already-mapped thread does: inherit mappings, or also auto-log.
+         * @enum {string}
+         */
+        GmailThreadFollowup: "inherit_pending" | "inherit_approve";
+        /** GoogleSettingsRead */
+        GoogleSettingsRead: {
+            /** Automation Connection User Id */
+            automation_connection_user_id?: string | null;
+            /**
+             * Calendar Enabled
+             * @default false
+             */
+            calendar_enabled: boolean;
+            /** Callback Url */
+            callback_url: string;
+            /** Client Id */
+            client_id?: string | null;
+            /**
+             * Client Secret Configured
+             * @default false
+             */
+            client_secret_configured: boolean;
+            /**
+             * Drive Auto Provision
+             * @default false
+             */
+            drive_auto_provision: boolean;
+            /**
+             * Drive Enabled
+             * @default false
+             */
+            drive_enabled: boolean;
+            /** Drive Parent Folder Id */
+            drive_parent_folder_id?: string | null;
+            /** Drive Shared Drive Id */
+            drive_shared_drive_id?: string | null;
+            /** Drive Template Folder Id */
+            drive_template_folder_id?: string | null;
+            /**
+             * Env Client Configured
+             * @default false
+             */
+            env_client_configured: boolean;
+            /** @default approval_required */
+            gmail_approval_mode: components["schemas"]["GmailApprovalMode"];
+            /**
+             * Gmail Enabled
+             * @default false
+             */
+            gmail_enabled: boolean;
+            /** @default inherit_pending */
+            gmail_thread_followup: components["schemas"]["GmailThreadFollowup"];
+            /**
+             * Weak Encryption Key
+             * @default false
+             */
+            weak_encryption_key: boolean;
+        };
+        /** GoogleSettingsWrite */
+        GoogleSettingsWrite: {
+            /** Automation Connection User Id */
+            automation_connection_user_id?: string | null;
+            /**
+             * Calendar Enabled
+             * @default false
+             */
+            calendar_enabled: boolean;
+            /** Client Id */
+            client_id?: string | null;
+            /** Client Secret */
+            client_secret?: string | null;
+            /**
+             * Drive Auto Provision
+             * @default false
+             */
+            drive_auto_provision: boolean;
+            /**
+             * Drive Enabled
+             * @default false
+             */
+            drive_enabled: boolean;
+            /** Drive Parent Folder Id */
+            drive_parent_folder_id?: string | null;
+            /** Drive Shared Drive Id */
+            drive_shared_drive_id?: string | null;
+            /** Drive Template Folder Id */
+            drive_template_folder_id?: string | null;
+            /** @default approval_required */
+            gmail_approval_mode: components["schemas"]["GmailApprovalMode"];
+            /**
+             * Gmail Enabled
+             * @default false
+             */
+            gmail_enabled: boolean;
+            /** @default inherit_pending */
+            gmail_thread_followup: components["schemas"]["GmailThreadFollowup"];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -5166,6 +6157,148 @@ export interface components {
             message_key: string;
             /** Row */
             row: number;
+        };
+        /**
+         * InteractionCreate
+         * @description A manually logged touchpoint — meetings, calls, notes. Emails only arrive via gmail.
+         */
+        InteractionCreate: {
+            /** Body Text */
+            body_text?: string | null;
+            /** Company Id */
+            company_id?: string | null;
+            /** Contact Id */
+            contact_id?: string | null;
+            /** @default none */
+            direction: components["schemas"]["InteractionDirection"];
+            kind: components["schemas"]["InteractionKind"];
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Participants */
+            participants?: components["schemas"]["Participant"][];
+            /** Project Id */
+            project_id?: string | null;
+            /** Subject */
+            subject: string;
+            /** Task Id */
+            task_id?: string | null;
+        };
+        /**
+         * InteractionDirection
+         * @enum {string}
+         */
+        InteractionDirection: "inbound" | "outbound" | "none";
+        /**
+         * InteractionKind
+         * @enum {string}
+         */
+        InteractionKind: "email" | "meeting" | "call" | "note";
+        /** InteractionRead */
+        InteractionRead: {
+            /** Body Text */
+            body_text?: string | null;
+            /** Company Id */
+            company_id?: string | null;
+            /** Contact Id */
+            contact_id?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Deep Link */
+            deep_link?: string | null;
+            direction: components["schemas"]["InteractionDirection"];
+            /** Gmail Thread Id */
+            gmail_thread_id?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["InteractionKind"];
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /**
+             * Owner Deleted
+             * @default false
+             */
+            owner_deleted: boolean;
+            /** Owner Name */
+            owner_name?: string | null;
+            /** Owner User Id */
+            owner_user_id?: string | null;
+            /** Participants */
+            participants?: components["schemas"]["Participant"][];
+            /** Project Id */
+            project_id?: string | null;
+            /** Snippet */
+            snippet?: string | null;
+            source: components["schemas"]["InteractionSource"];
+            status: components["schemas"]["InteractionStatus"];
+            /** Subject */
+            subject?: string | null;
+            /** Task Id */
+            task_id?: string | null;
+        };
+        /** InteractionReject */
+        InteractionReject: {
+            /**
+             * Suppress Thread
+             * @default false
+             */
+            suppress_thread: boolean;
+        };
+        /**
+         * InteractionRemap
+         * @description Move a gmail-sourced interaction — only fields actually sent change; ``null`` clears.
+         */
+        InteractionRemap: {
+            /** Company Id */
+            company_id?: string | null;
+            /** Contact Id */
+            contact_id?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Task Id */
+            task_id?: string | null;
+        };
+        /**
+         * InteractionSource
+         * @enum {string}
+         */
+        InteractionSource: "manual" | "gmail";
+        /**
+         * InteractionStatus
+         * @enum {string}
+         */
+        InteractionStatus: "pending" | "logged";
+        /** InteractionUpdate */
+        InteractionUpdate: {
+            /** Body Text */
+            body_text?: string | null;
+            /** Company Id */
+            company_id?: string | null;
+            /** Contact Id */
+            contact_id?: string | null;
+            direction?: components["schemas"]["InteractionDirection"] | null;
+            kind?: components["schemas"]["InteractionKind"] | null;
+            /** Occurred At */
+            occurred_at?: string | null;
+            /** Participants */
+            participants?: components["schemas"]["Participant"][] | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Subject */
+            subject?: string | null;
+            /** Task Id */
+            task_id?: string | null;
         };
         /** LabelCreate */
         LabelCreate: {
@@ -6020,6 +7153,8 @@ export interface components {
          * @description The current user *within the resolved tenant* — including what they may do.
          */
         MeInfo: {
+            /** Ai Features */
+            ai_features?: string[];
             /** Avatar Url */
             avatar_url?: string | null;
             /** Custom Avatar Url */
@@ -6160,6 +7295,42 @@ export interface components {
             exchange: string;
             /** Priority */
             priority: number;
+        };
+        /** MyConnectionRead */
+        MyConnectionRead: {
+            /**
+             * Calendar Enabled
+             * @default false
+             */
+            calendar_enabled: boolean;
+            /**
+             * Configured
+             * @default false
+             */
+            configured: boolean;
+            /**
+             * Connected
+             * @default false
+             */
+            connected: boolean;
+            connection?: components["schemas"]["ConnectionRead"] | null;
+            /**
+             * Drive Enabled
+             * @default false
+             */
+            drive_enabled: boolean;
+            /**
+             * Gmail Enabled
+             * @default false
+             */
+            gmail_enabled: boolean;
+        };
+        /** MyConnectionUpdate */
+        MyConnectionUpdate: {
+            /** Gmail Excluded Label */
+            gmail_excluded_label?: string | null;
+            /** Gmail Sync Enabled */
+            gmail_sync_enabled?: boolean | null;
         };
         /** NotificationRead */
         NotificationRead: {
@@ -6344,6 +7515,17 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** Page[InteractionRead] */
+        Page_InteractionRead_: {
+            /** Items */
+            items: components["schemas"]["InteractionRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
         /** Page[LeaveRequestRead] */
         Page_LeaveRequestRead_: {
             /** Items */
@@ -6447,6 +7629,21 @@ export interface components {
             position: number;
             /** Title Key */
             title_key: string;
+        };
+        /** Participant */
+        Participant: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Name */
+            name?: string | null;
+            /**
+             * Role
+             * @default to
+             */
+            role: string;
         };
         /**
          * PartyReadRef
@@ -6893,6 +8090,81 @@ export interface components {
          * @enum {string}
          */
         RecurrenceMode: "after_completion" | "schedule";
+        /** ReportCreate */
+        ReportCreate: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /**
+             * Content
+             * @default
+             */
+            content: string;
+            /**
+             * Language
+             * @default nl
+             */
+            language: string;
+            /** Period */
+            period: string;
+            /** Title */
+            title: string;
+        };
+        /** ReportGenerateRequest */
+        ReportGenerateRequest: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /**
+             * Language
+             * @default nl
+             */
+            language: string;
+            /**
+             * Override Budget
+             * @default false
+             */
+            override_budget: boolean;
+            /** Period */
+            period: string;
+        };
+        /** ReportRead */
+        ReportRead: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Content */
+            content: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By Name */
+            created_by_name: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Language */
+            language: string;
+            /** Period */
+            period: string;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /**
          * ReportTotals
          * @description Aggregates over the full filtered report set (not just the returned page).
@@ -6912,6 +8184,13 @@ export interface components {
             open_minutes: number;
             /** To Invoice Minutes */
             to_invoice_minutes: number;
+        };
+        /** ReportUpdate */
+        ReportUpdate: {
+            /** Content */
+            content?: string | null;
+            /** Title */
+            title?: string | null;
         };
         /**
          * RevenueStats
@@ -8497,6 +9776,64 @@ export interface components {
             /** Task Id */
             task_id?: string | null;
         };
+        /** TimeParseRequest */
+        TimeParseRequest: {
+            /**
+             * Override Budget
+             * @default false
+             */
+            override_budget: boolean;
+            /** Text */
+            text: string;
+        };
+        /**
+         * TimeParseResult
+         * @description A *draft* entry: prefills the form, never creates anything (#129).
+         */
+        TimeParseResult: {
+            /** Company Id */
+            company_id?: string | null;
+            /** Date */
+            date?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Duration Minutes */
+            duration_minutes?: number | null;
+            /** End */
+            end?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Start */
+            start?: string | null;
+            /** Task Id */
+            task_id?: string | null;
+        };
+        /** TimeReconstructRequest */
+        TimeReconstructRequest: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Override Budget
+             * @default false
+             */
+            override_budget: boolean;
+        };
+        /** TimeReconstructResult */
+        TimeReconstructResult: {
+            /** Leave Minutes */
+            leave_minutes: number;
+            /** Logged Minutes */
+            logged_minutes: number;
+            /** Scheduled Minutes */
+            scheduled_minutes: number;
+            /** Short */
+            short: boolean;
+            /** Suggestions */
+            suggestions?: components["schemas"]["TimeSuggestion"][];
+        };
         /** TimeReport */
         TimeReport: {
             /** Items */
@@ -8508,6 +9845,27 @@ export interface components {
             /** Total */
             total: number;
             totals: components["schemas"]["ReportTotals"];
+        };
+        /** TimeSuggestion */
+        TimeSuggestion: {
+            /** Company Id */
+            company_id?: string | null;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+            /** Minutes */
+            minutes?: number | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Task Id */
+            task_id?: string | null;
         };
         /**
          * TimeSummary
@@ -8909,6 +10267,27 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** WritingAssistRequest */
+        WritingAssistRequest: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "improve" | "shorten" | "expand" | "fix" | "tone_business" | "tone_informal" | "translate" | "draft";
+            /** Entity Type */
+            entity_type?: string | null;
+            /**
+             * Override Budget
+             * @default false
+             */
+            override_budget: boolean;
+            /** Target Locale */
+            target_locale?: string | null;
+            /** Text */
+            text: string;
+            /** Title */
+            title?: string | null;
+        };
         /**
          * ActivityItem
          * @description One line of a record's paper trail.
@@ -9035,6 +10414,509 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    writing_assist_api_v1_ai_assist_write_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WritingAssistRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assistant_api_v1_ai_assistant_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    company_digest_api_v1_ai_companies__company_id__digest_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DigestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_reports_api_v1_ai_reports_get: {
+        parameters: {
+            query?: {
+                company_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_report_api_v1_ai_reports_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_report_api_v1_ai_reports_generate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportGenerateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_report_api_v1_ai_reports__report_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_report_api_v1_ai_reports__report_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_report_api_v1_ai_reports__report_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ai_settings_api_v1_ai_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AISettingsRead"] | null;
+                };
+            };
+        };
+    };
+    save_ai_settings_api_v1_ai_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AISettingsWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AISettingsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_ai_settings_api_v1_ai_settings_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_ai_models_api_v1_ai_settings_models_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIModelsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIModelsResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_ai_settings_api_v1_ai_settings_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AITestResult"];
+                };
+            };
+        };
+    };
+    time_parse_api_v1_ai_time_parse_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TimeParseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeParseResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    time_reconstruct_api_v1_ai_time_reconstruct_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TimeReconstructRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeReconstructResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ai_usage_api_v1_ai_usage_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIUsageSummary"];
                 };
             };
         };
@@ -10875,6 +12757,466 @@ export interface operations {
             };
         };
     };
+    calendar_events_api_v1_google_calendar_events_get: {
+        parameters: {
+            query: {
+                date_from: string;
+                date_to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarFeedItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    calendar_webhook_api_v1_google_calendar_webhook_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    list_connections_api_v1_google_connections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionRead"][];
+                };
+            };
+        };
+    };
+    my_connection_api_v1_google_connections_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyConnectionRead"];
+                };
+            };
+        };
+    };
+    update_my_connection_api_v1_google_connections_me_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MyConnectionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyConnectionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    disconnect_my_connection_api_v1_google_connections_me_disconnect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    browse_api_v1_google_drive_browse_get: {
+        parameters: {
+            query?: {
+                folder_id?: string | null;
+                refresh?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveBrowseResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_links_api_v1_google_drive_links_get: {
+        parameters: {
+            query: {
+                entity_type: string;
+                entity_id: string;
+                rollup?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveLinkRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_link_api_v1_google_drive_links_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriveLinkCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveLinkRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_link_api_v1_google_drive_links__link_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    provision_entity_api_v1_google_drive_provision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriveProvisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    provision_all_api_v1_google_drive_provision_all_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveBulkProvisionResult"];
+                };
+            };
+        };
+    };
+    create_upload_session_api_v1_google_drive_upload_session_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriveUploadSessionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveUploadSession"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_oauth_callback_api_v1_google_oauth_callback_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    oauth_connect_api_v1_google_oauth_connect_get: {
+        parameters: {
+            query?: {
+                include_gmail?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_settings_api_v1_google_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleSettingsRead"];
+                };
+            };
+        };
+    };
+    save_settings_api_v1_google_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleSettingsWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleSettingsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_hosting_api_v1_hosting_get: {
         parameters: {
             query?: {
@@ -11990,6 +14332,272 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrgSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_interactions_api_v1_interactions_get: {
+        parameters: {
+            query?: {
+                company_id?: string | null;
+                project_id?: string | null;
+                task_id?: string | null;
+                contact_id?: string | null;
+                kind?: string | null;
+                status?: string | null;
+                owner_user_id?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_InteractionRead_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_interaction_api_v1_interactions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InteractionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InteractionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_interaction_api_v1_interactions__interaction_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                interaction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InteractionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_interaction_api_v1_interactions__interaction_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                interaction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_interaction_api_v1_interactions__interaction_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                interaction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InteractionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InteractionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_interaction_api_v1_interactions__interaction_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                interaction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InteractionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_interaction_api_v1_interactions__interaction_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                interaction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["InteractionReject"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remap_interaction_api_v1_interactions__interaction_id__remap_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                interaction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InteractionRemap"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InteractionRead"];
                 };
             };
             /** @description Validation Error */

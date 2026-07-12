@@ -15,14 +15,20 @@
     LogOut,
     ServerCog,
     Settings,
+    Sparkles,
     UserRound,
     VenetianMask,
   } from "@lucide/svelte";
 
+  import { setContext } from "svelte";
+
   import { page } from "$app/state";
+  import { AI_CONTEXT_KEY, aiEnabled, type AIFeature, type AssistantEntity } from "$lib/core/ai";
+  import AssistantPanel from "$lib/core/ai/AssistantPanel.svelte";
   import { t } from "$lib/core/i18n";
   import { can, canAccessSettings } from "$lib/core/permissions";
   import { navItemsFor, type NavItem } from "$lib/core/registry";
+  import SlideOver from "$lib/core/ui/SlideOver.svelte";
   import NotificationBell from "$lib/modules/notifications/NotificationBell.svelte";
 
   let { children } = $props();
@@ -35,6 +41,26 @@
   const showSettings = $derived(canAccessSettings(user?.permissions));
   // The bell is a shell element, not a nav item, so it is gated here rather than by the registry.
   const hasNotifications = $derived(theme?.enabledModules?.includes("notifications") ?? false);
+
+  // AI affordance gate (epic #131): shared components (RichTextEditor's assist) read this
+  // through context so no consumer needs per-module wiring. Off means invisible (#126).
+  setContext(AI_CONTEXT_KEY, { enabled: (feature: AIFeature) => aiEnabled(user, feature) });
+  const hasAssistant = $derived(aiEnabled(user, "assistant"));
+  let assistantOpen = $state(false);
+  // The assistant inherits the page's entity (#127): derived from the route, labelled from
+  // the data the page already loaded — no extra call.
+  const assistantContext = $derived.by<AssistantEntity | null>(() => {
+    const match = path.match(/^\/(companies|projects|tasks)\/([0-9a-f-]{36})/);
+    if (!match) return null;
+    const kind = { companies: "company", projects: "project", tasks: "task" }[match[1]]!;
+    const data = page.data as Record<string, { name?: string; title?: string } | undefined>;
+    const record = data[kind];
+    return {
+      entity_type: kind,
+      entity_id: match[2],
+      label: record?.name ?? record?.title ?? null,
+    };
+  });
 
   // Grouped nav: a group renders once, where its first item would sit, holding all members.
   type NavEntry =
@@ -297,6 +323,17 @@
         <Menu size={20} />
       </button>
       <div class="flex items-center gap-1">
+        {#if hasAssistant}
+          <button
+            type="button"
+            class="rounded-lg p-2 text-text-muted hover:bg-surface hover:text-brand"
+            aria-label={t("ai.assistant.title")}
+            title={t("ai.assistant.title")}
+            onclick={() => (assistantOpen = true)}
+          >
+            <Sparkles size={18} />
+          </button>
+        {/if}
         {#if hasNotifications}
           <NotificationBell count={page.data.unreadCount ?? 0} />
         {/if}
@@ -370,3 +407,9 @@
     </main>
   </div>
 </div>
+
+{#if hasAssistant}
+  <SlideOver bind:open={assistantOpen} title={t("ai.assistant.title")}>
+    <AssistantPanel context={assistantContext} />
+  </SlideOver>
+{/if}

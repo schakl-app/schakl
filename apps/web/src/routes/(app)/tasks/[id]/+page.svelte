@@ -18,9 +18,23 @@
   import { LABEL_COLORS, labelChipClass, labelDotClass } from "$lib/modules/tasks/labels";
   import { formatMinutes } from "$lib/modules/time/format";
 
+  import { entityPanelsFor } from "$lib/core/registry";
+
   let { data, form } = $props();
 
   const task = $derived(data.task);
+
+  // Panels contributed by enabled modules (CLAUDE.md §6) — contactmomenten, Drive, and
+  // whatever ships later, composed exactly like the project page does.
+  const enabledModules = $derived(page.data.theme?.enabledModules ?? []);
+  const panelSpecs = $derived(entityPanelsFor(enabledModules, "task"));
+  const panelComponent = (key: string) => panelSpecs.find((spec) => spec.key === key)?.component;
+  const panelLookups = $derived({
+    members: data.members,
+    companies: data.companies,
+    projects: data.projects,
+    tasks: [],
+  });
 
   // The activity log grows without bound on a busy task (issue #86): show the most recent few and
   // expand the rest in place. Rows are newest-first, so the head is the newest.
@@ -728,6 +742,19 @@
         </ul>
       {/if}
     </section>
+
+    <!-- Panels contributed by enabled modules; history stays last (docs/UX.md). -->
+    {#each data.panels as panel (panel.key)}
+      {@const PanelComponent = panelComponent(panel.key)}
+      {#if PanelComponent}
+        <section class="rounded-xl border border-border bg-surface-raised p-5">
+          <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
+            {t(panel.titleKey)}
+          </h3>
+          <PanelComponent data={panel.data} context={data.context} lookups={panelLookups} />
+        </section>
+      {/if}
+    {/each}
 
     <!-- Activity -->
     <section class="rounded-xl border border-border bg-surface-raised p-5">

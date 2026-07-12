@@ -14,6 +14,8 @@
 import DOMPurify from "dompurify";
 import { marked, type Tokens } from "marked";
 
+import { sourceHref } from "$lib/core/ai";
+
 // A deliberately small allow-list: the tags markdown itself produces, and nothing else. No
 // `<img>` (no remote content / tracking pixels in a note), no `<h1>`/`<h2>` (headings in a task
 // description are visual noise — `###`+ still render, as `<h3>`). Links are the one attribute
@@ -44,6 +46,9 @@ const ALLOWED_ATTR = ["href", "title", "class", "data-user-id"];
 
 const _UUID = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
 const _MENTION_RE = new RegExp(`^@\\[([^\\]]+)\\]\\(mention:(${_UUID})\\)`);
+// AI answers cite records as `[Name](crm://<type>/<id>)` (epic #131): the type/id resolve to the
+// app route here, so the model never has to know web paths and a bad reference degrades to text.
+const _CRM_RE = new RegExp(`^\\[([^\\]]+)\\]\\(crm://([a-z_]+)/(${_UUID})\\)`);
 
 function escapeHtml(s: string): string {
   return s
@@ -59,9 +64,12 @@ let configured = false;
 function ensureConfigured(): void {
   if (configured) return;
   // Every link opens in a new tab and can never reach back into the app (`noopener`) nor pass a
-  // referrer or link-equity (`noreferrer nofollow`) — the content is user-authored.
+  // referrer or link-equity (`noreferrer nofollow`) — the content is user-authored. The one
+  // exception: site-relative hrefs (the resolved crm:// references below) stay same-tab, they
+  // *are* the app.
   DOMPurify.addHook("afterSanitizeAttributes", (node) => {
     if (node.tagName === "A" && node.hasAttribute("href")) {
+      if ((node.getAttribute("href") ?? "").startsWith("/")) return;
       node.setAttribute("target", "_blank");
       node.setAttribute("rel", "noopener noreferrer nofollow");
     }
@@ -87,6 +95,29 @@ function ensureConfigured(): void {
           return `<span class="mention" data-user-id="${String(token.id ?? "")}">@${name}</span>`;
         },
       },
+      {
+        name: "crmlink",
+        level: "inline",
+        start(src: string) {
+          const i = src.indexOf("[");
+          return i < 0 ? undefined : i;
+        },
+        tokenizer(src: string) {
+          const m = _CRM_RE.exec(src);
+          if (m) return { type: "crmlink", raw: m[0], label: m[1], kind: m[2], id: m[3] };
+        },
+        renderer(token: Tokens.Generic) {
+          const label = escapeHtml(String(token.label ?? ""));
+          const href = sourceHref({
+            type: String(token.kind ?? ""),
+            id: String(token.id ?? ""),
+            label: "",
+          });
+          // An unknown type is a hallucinated reference: show the words, link nothing.
+          if (!href) return label;
+          return `<a href="${href}" class="underline decoration-dotted underline-offset-2">${label}</a>`;
+        },
+      },
     ],
   });
   configured = true;
@@ -102,6 +133,8 @@ export function renderMarkdown(source: string): string {
     ALLOWED_TAGS,
     ALLOWED_ATTR,
     // Belt-and-suspenders on link protocols; DOMPurify blocks `javascript:` by default anyway.
-    ALLOWED_URI_REGEXP: /^(?:https?|mailto|tel):/i,
+    // A single leading `/` (never `//`, which is protocol-relative) admits the app's own routes —
+    // the resolved crm:// references; a scheme can't hide in a path-relative URL.
+    ALLOWED_URI_REGEXP: /^(?:https?|mailto|tel):|^\/(?!\/)/i,
   });
 }

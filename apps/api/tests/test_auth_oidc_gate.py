@@ -98,18 +98,42 @@ async def test_unknown_host_gets_a_clean_error(client_for) -> None:
 
 
 class _StubClient:
-    """Stands in for the Authlib client at ``sso.oauth_client`` — the IdP is out of reach."""
+    """Stands in for the Authlib client at ``sso.oauth_client`` — the IdP is out of reach.
 
-    def __init__(self, email: str = "jit@idp-example.com") -> None:
+    Models the id_token / userinfo-endpoint split the real bug turned on (#122): Authlib parses
+    the validated id_token into ``token["userinfo"]``, while the profile ``picture`` an IdP like
+    Google keeps only at the userinfo endpoint is what ``userinfo()`` returns. ``userinfo_raises``
+    stands in for an IdP with no reachable endpoint, to prove enrichment is best-effort.
+    """
+
+    def __init__(
+        self,
+        email: str = "jit@idp-example.com",
+        *,
+        id_token_claims: dict | None = None,
+        userinfo_claims: dict | None = None,
+        userinfo_raises: bool = False,
+    ) -> None:
         self.email = email
         self.seen_redirect_uri: str | None = None
+        self._id_token_claims = id_token_claims
+        self._userinfo_claims = userinfo_claims or {}
+        self._userinfo_raises = userinfo_raises
 
     async def authorize_redirect(self, request, redirect_uri):  # noqa: ANN001
         self.seen_redirect_uri = redirect_uri
         return RedirectResponse(url=f"https://idp.example.com/authorize?redirect_uri={redirect_uri}")
 
     async def authorize_access_token(self, request):  # noqa: ANN001
-        return {"userinfo": {"email": self.email, "name": "JIT User"}}
+        claims = self._id_token_claims
+        if claims is None:
+            claims = {"email": self.email, "name": "JIT User"}
+        return {"userinfo": claims, "access_token": "stub-access-token"}
+
+    async def userinfo(self, token=None):  # noqa: ANN001
+        if self._userinfo_raises:
+            raise RuntimeError("userinfo endpoint unreachable")
+        return self._userinfo_claims
 
 
 async def test_login_redirects_with_the_request_derived_callback(
@@ -194,3 +218,87 @@ async def test_callback_without_auto_provision_creates_no_membership(
             select(Membership).where(Membership.user_id == user.id)
         )
         assert membership is None
+
+
+async def _avatar_of(email: str) -> str | None:
+    from app.core.auth.models import User
+    from app.db import async_session_maker
+
+    async with async_session_maker() as session:
+        user = await session.scalar(select(User).where(User.email == email))
+        assert user is not None
+        return user.oidc_avatar_url
+
+
+async def test_callback_imports_avatar_from_the_userinfo_endpoint(
+    client_for, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The #122 bug: the id_token carries no ``picture`` (Google's common shape), and the code
+    read only the parsed id_token — so the avatar the userinfo endpoint held was never fetched.
+    With the merge, the endpoint's ``picture`` lands on the user."""
+    tenant = await make_tenant("oidc-avatar-endpoint")
+    headers = await auth_cookie(tenant.user)
+    picture = "https://lh3.googleusercontent.com/a/portrait"
+    monkeypatch.setattr(
+        sso,
+        "oauth_client",
+        lambda row: _StubClient(
+            "shot@idp-example.com",
+            id_token_claims={"email": "shot@idp-example.com", "name": "Shot"},
+            userinfo_claims={"email": "shot@idp-example.com", "picture": picture},
+        ),
+    )
+    async with client_for(tenant.host) as client:
+        await _configure(client, headers)
+        response = await client.get("/api/v1/auth/oidc/callback")
+        assert response.status_code in (302, 307)
+
+    assert await _avatar_of("shot@idp-example.com") == picture
+
+
+async def test_id_token_picture_wins_over_the_endpoint(
+    client_for, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When both carry a picture, the validated id_token is authoritative — the endpoint only
+    fills gaps, it never overrides identity-bearing claims."""
+    tenant = await make_tenant("oidc-avatar-idtoken")
+    headers = await auth_cookie(tenant.user)
+    monkeypatch.setattr(
+        sso,
+        "oauth_client",
+        lambda row: _StubClient(
+            "both@idp-example.com",
+            id_token_claims={"email": "both@idp-example.com", "picture": "https://idp/id-token"},
+            userinfo_claims={"email": "both@idp-example.com", "picture": "https://idp/endpoint"},
+        ),
+    )
+    async with client_for(tenant.host) as client:
+        await _configure(client, headers)
+        assert (await client.get("/api/v1/auth/oidc/callback")).status_code in (302, 307)
+
+    assert await _avatar_of("both@idp-example.com") == "https://idp/id-token"
+
+
+async def test_userinfo_failure_does_not_break_login(
+    client_for, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Enrichment is best-effort: an unreachable userinfo endpoint still logs the user in on the
+    id_token's claims, just without the endpoint-only picture."""
+    tenant = await make_tenant("oidc-avatar-failopen")
+    headers = await auth_cookie(tenant.user)
+    monkeypatch.setattr(
+        sso,
+        "oauth_client",
+        lambda row: _StubClient(
+            "resilient@idp-example.com",
+            id_token_claims={"email": "resilient@idp-example.com", "name": "Resilient"},
+            userinfo_raises=True,
+        ),
+    )
+    async with client_for(tenant.host) as client:
+        await _configure(client, headers)
+        response = await client.get("/api/v1/auth/oidc/callback")
+        assert response.status_code in (302, 307)
+        assert "schakl_auth=" in response.headers.get("set-cookie", "")
+
+    assert await _avatar_of("resilient@idp-example.com") is None

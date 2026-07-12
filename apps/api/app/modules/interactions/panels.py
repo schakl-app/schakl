@@ -1,0 +1,52 @@
+"""Contactmomenten panel on the company detail view (the modular hub, §6).
+
+Projects, contacts and tasks get theirs through the web ``EntityPanelSpec`` seam instead —
+same split the core activity trail uses.
+"""
+
+from __future__ import annotations
+
+import uuid
+
+from app.core.tenancy import RequestContext
+from app.modules.interactions.service import InteractionService
+from app.registry import PanelSpec
+
+PANEL_LIMIT = 8
+
+
+async def _interactions_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
+    if not ctx.can("interactions.interaction.read"):
+        return {"items": [], "total": 0, "forbidden": True}
+    items, total = await InteractionService(ctx).list(
+        limit=PANEL_LIMIT, offset=0, company_id=company_id
+    )
+    return {
+        "items": [
+            {
+                "id": str(i["id"]),
+                "kind": i["kind"],
+                "status": i["status"],
+                "occurred_at": i["occurred_at"].isoformat(),
+                "subject": i["subject"],
+                "snippet": i["snippet"],
+                "direction": i["direction"],
+                "owner_user_id": str(i["owner_user_id"]) if i["owner_user_id"] else None,
+                "owner_name": i["owner_name"],
+                "source": i["source"],
+                "deep_link": i["deep_link"],
+            }
+            for i in items
+        ],
+        "total": total,
+        "current_user_id": str(ctx.user.id),
+    }
+
+
+interactions_company_panel = PanelSpec(
+    key="interactions.company",
+    entity_type="company",
+    title_key="interactions.panel.title",
+    provider=_interactions_provider,
+    position=60,
+)

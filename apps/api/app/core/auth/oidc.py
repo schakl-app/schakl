@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
+from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
@@ -75,11 +76,37 @@ async def oidc_login(request: Request):
     return await resolved.client.authorize_redirect(request, redirect_uri)
 
 
+async def _claims(client: Any, token: dict) -> dict[str, Any]:
+    """The caller's OIDC claims, with the userinfo endpoint filling what the id_token omits.
+
+    ``authorize_access_token`` parses the validated id_token into ``token["userinfo"]`` for every
+    IdP that returns one — which is every OIDC login — so reading ``token["userinfo"]`` alone
+    never consults the userinfo endpoint. But the id_token is an *authentication* token: several
+    IdPs, **Google among them for many accounts**, leave the ``picture`` profile claim (and
+    sometimes ``name``) out of it and expose it only at the userinfo endpoint. That is exactly
+    why avatars were not being imported (#122): the picture lived one HTTP call away and the code
+    never made it.
+
+    So fetch both and merge — the id_token stays authoritative for identity, the endpoint fills
+    the profile gaps. Enrichment is best-effort: a userinfo failure (unreachable endpoint, an IdP
+    that has none) must never break a login the id_token already authenticated, so it is logged
+    and swallowed, leaving the id_token claims to stand.
+    """
+    id_claims = dict(token.get("userinfo") or {})
+    endpoint_claims: dict[str, Any] = {}
+    try:
+        endpoint_claims = dict(await client.userinfo(token=token))
+    except Exception:  # noqa: BLE001 — profile enrichment is best-effort; identity is not
+        logger.warning("OIDC userinfo fetch failed; using id_token claims only", exc_info=True)
+    # id_claims last: the validated id_token wins on any conflict; the endpoint only fills gaps.
+    return {**endpoint_claims, **id_claims}
+
+
 @router.get("/callback", name="oidc_callback")
 async def oidc_callback(request: Request):
     resolved = await _resolve_sso(request)
     token = await resolved.client.authorize_access_token(request)
-    userinfo = token.get("userinfo") or await resolved.client.userinfo(token=token)
+    userinfo = await _claims(resolved.client, token)
     email = userinfo.get("email")
     if not email:
         return RedirectResponse(url="/login?error=oidc")

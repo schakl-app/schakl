@@ -64,9 +64,12 @@ export const load: PageServerLoad = async (event) => {
   // the ones they actually hold (a key can never grant more than its owner), built from the
   // code-defined catalog. The catalog ships in the open-source repo — no tenant data.
   const canManageKeys = can(event.locals.user, "apikeys.personal.manage");
-  const [keys, catalog] = await Promise.all([
+  // The per-user Google connection card (docs/GOOGLE.md §1) — only when the org runs the module.
+  const googleEnabled = (event.locals.theme?.enabledModules ?? []).includes("google");
+  const [keys, catalog, google] = await Promise.all([
     canManageKeys ? api.GET("/api/v1/api-keys") : Promise.resolve({ data: null }),
     canManageKeys ? api.GET("/api/v1/permissions/catalog") : Promise.resolve({ data: null }),
+    googleEnabled ? api.GET("/api/v1/google/connections/me") : Promise.resolve({ data: null }),
   ]);
 
   const scopeOptions: { value: string; label_key: string }[] = [];
@@ -92,6 +95,8 @@ export const load: PageServerLoad = async (event) => {
     canManageKeys,
     apiKeys: keys.data ?? [],
     scopeOptions,
+    google: google.data ?? null,
+    googleStatus: event.url.searchParams.get("google"),
   };
 };
 
@@ -177,5 +182,24 @@ export const actions: Actions = {
       if (error) return fail(400, { error: apiErrorKey(error).key });
     }
     return { revoked: true };
+  },
+
+  // Google connection card contract (lib/modules/google/GoogleAccountCard.svelte).
+  googleDisconnect: async (event) => {
+    const { error } = await apiFor(event).POST("/api/v1/google/connections/me/disconnect");
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { googleDisconnected: true };
+  },
+
+  googleGmailPrefs: async (event) => {
+    const form = await event.request.formData();
+    const { error } = await apiFor(event).PATCH("/api/v1/google/connections/me", {
+      body: {
+        gmail_sync_enabled: form.get("gmail_sync_enabled") === "on",
+        gmail_excluded_label: String(form.get("gmail_excluded_label") ?? "").trim() || null,
+      },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { googleSaved: true };
   },
 };

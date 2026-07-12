@@ -1535,14 +1535,21 @@ class LeaveService:
     async def _emit_leave(
         self, event: str, request: LeaveRequest, recipients: Sequence[uuid.UUID]
     ) -> None:
-        """Announce a leave decision on the bus (CLAUDE.md §6 — no cross-module imports)."""
+        """Announce a leave decision on the bus (CLAUDE.md §6 — no cross-module imports).
+
+        ``user_id`` and the resolved window ride along so a subscriber that mirrors leave
+        elsewhere (the Google Calendar push, issue #22) never reads this module's internals.
+        """
         await emit(
             event,
             self.ctx,
             {
                 "leave_request_id": request.id,
+                "user_id": request.user_id,
                 "start_date": request.start_date,
                 "end_date": request.end_date,
+                "start_time": request.resolved_start_time or request.start_time,
+                "end_time": request.resolved_end_time or request.end_time,
                 "hours": request.hours,
                 "_recipients": list(recipients),
             },
@@ -1726,9 +1733,16 @@ class LeaveService:
                     raise AppError("approved_locked", "errors.approved_locked", status_code=403)
         elif request.status != LeaveRequestStatus.PENDING.value:
             raise AppError("conflict", "errors.leave_decided", status_code=409)
-        return await self.requests.update(
+        was_approved = request.status == LeaveRequestStatus.APPROVED.value
+        request = await self.requests.update(
             request, status=LeaveRequestStatus.CANCELLED.value
         )
+        # Approved leave may have side effects elsewhere (a pushed Google Calendar event,
+        # #22) — announce the cancellation so subscribers undo theirs. Bus-only event: it is
+        # not in the notifications vocabulary, so nobody's inbox is involved.
+        if was_approved:
+            await self._emit_leave("leave.cancelled", request, [])
+        return request
 
     async def get(self, request_id: uuid.UUID) -> LeaveRequest:
         return await self._owned_or_404(request_id)

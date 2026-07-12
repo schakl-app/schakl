@@ -8,6 +8,8 @@ import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { entityPanelsFor } from "$lib/core/registry";
 import { apiFor } from "$lib/core/session";
+import { interactionActions } from "$lib/modules/interactions/actions.server";
+import { driveActions } from "$lib/modules/google/drive-actions.server";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -262,4 +264,9 @@ export const actions: Actions = {
     }
     return { entryDeleted: true };
   },
+
+  // Contactmomenten panel contract (lib/modules/interactions).
+  ...interactionActions,
+  // Drive panel contract (lib/modules/google).
+  ...driveActions,
 };

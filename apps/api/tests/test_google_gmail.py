@@ -1,0 +1,555 @@
+"""google.gmail (#22): matching units, the poll pipeline, approval wiring, suppressions."""
+
+from __future__ import annotations
+
+import base64
+import uuid
+from contextlib import asynccontextmanager
+
+import httpx
+from sqlalchemy import select
+
+from app.core.crypto import encrypt
+from app.db import async_session_maker, set_current_org
+from app.modules.google.gmail import matching
+from app.modules.google.gmail.models import GmailSuppression
+from app.modules.google.gmail.service import fetch_body, poll_connection
+from app.modules.google.models import GoogleConnection, GoogleSettings
+from app.modules.google.oauth import SCOPE_GMAIL
+from app.modules.interactions.models import Interaction
+from tests.conftest import auth_cookie, make_tenant
+
+# --------------------------------------------------------------------------- #
+# Pure matching units
+# --------------------------------------------------------------------------- #
+
+
+def test_participants_direction_and_relevance() -> None:
+    headers = {
+        "From": "Klant <Klant@Client.NL>",
+        "To": "me@agency.nl, Collega <collega@agency.nl>",
+        "Cc": "cc@client.nl",
+    }
+    participants = matching.parse_participants(headers)
+    assert [p["email"] for p in participants] == [
+        "klant@client.nl",
+        "me@agency.nl",
+        "collega@agency.nl",
+        "cc@client.nl",
+    ]
+    assert participants[0]["role"] == "from" and participants[-1]["role"] == "cc"
+
+    assert matching.direction_of(["SENT"]) == "outbound"
+    assert matching.direction_of(["INBOX", "UNREAD"]) == "inbound"
+
+    assert not matching.is_relevant(["DRAFT"], None)
+    assert not matching.is_relevant(["INBOX", "Label_7"], "Label_7")  # the opt-out label
+    assert matching.is_relevant(["INBOX"], "Label_7")
+
+    # Colleague-to-colleague chatter is not a client touchpoint.
+    members = {"me@agency.nl", "collega@agency.nl"}
+    internal = [{"email": "me@agency.nl"}, {"email": "collega@agency.nl"}]
+    assert matching.internal_only(internal, members)
+    assert not matching.internal_only(participants, members)
+
+
+def test_mapping_resolution_and_status_decision() -> None:
+    contact_a, contact_b = uuid.uuid4(), uuid.uuid4()
+    company_1, company_2 = uuid.uuid4(), uuid.uuid4()
+
+    single = matching.resolve_mappings(
+        [matching.ContactMatch(contact_id=contact_a, company_ids=[company_1])]
+    )
+    assert single == {"contact_id": contact_a, "company_id": company_1}
+
+    # Ambiguity resolves to the oldest link, deterministically — remap covers mistakes,
+    # and every logged email stays reachable on some timeline.
+    ambiguous = matching.resolve_mappings(
+        [
+            matching.ContactMatch(contact_id=contact_a, company_ids=[company_1, company_2]),
+            matching.ContactMatch(contact_id=contact_b, company_ids=[company_2]),
+        ]
+    )
+    assert ambiguous["company_id"] == company_1 and ambiguous["contact_id"] == contact_a
+
+    assert matching.decide_status("approval_required", "inherit_pending", inherited=False)
+    assert matching.decide_status("approval_required", "inherit_pending", inherited=True)
+    assert not matching.decide_status("approval_required", "inherit_approve", inherited=True)
+    assert not matching.decide_status("auto_approve", "inherit_pending", inherited=False)
+
+
+def test_body_extraction_prefers_plain_text() -> None:
+    def _b64(value: str) -> str:
+        return base64.urlsafe_b64encode(value.encode()).decode()
+
+    payload = {
+        "mimeType": "multipart/alternative",
+        "parts": [
+            {"mimeType": "text/plain", "body": {"data": _b64("Hallo,\n\nakkoord!")}},
+            {"mimeType": "text/html", "body": {"data": _b64("<p>Hallo</p>")}},
+        ],
+    }
+    assert matching.extract_text(payload) == "Hallo,\n\nakkoord!"
+
+    html_only = {
+        "mimeType": "text/html",
+        "body": {"data": _b64("<style>x{}</style><p>Hallo <b>daar</b></p>")},
+    }
+    assert "Hallo" in (matching.extract_text(html_only) or "")
+    assert "<" not in (matching.extract_text(html_only) or "")
+
+
+# --------------------------------------------------------------------------- #
+# The poll pipeline against a scripted Gmail
+# --------------------------------------------------------------------------- #
+
+
+class _StubResponse:
+    def __init__(self, status_code: int = 200, body: dict | None = None) -> None:
+        self.status_code = status_code
+        self._body = body or {}
+
+    def json(self) -> dict:
+        return self._body
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            raise httpx.HTTPStatusError("boom", request=None, response=None)  # type: ignore[arg-type]
+
+
+class _StubGmail:
+    """URL-routed Gmail stub: profile / history / labels / message fetches."""
+
+    def __init__(
+        self,
+        *,
+        history: list[str],
+        messages: dict[str, dict],
+        history_id: str = "1000",
+        labels: list[dict] | None = None,
+    ) -> None:
+        self.history = history
+        self.messages = messages
+        self.history_id = history_id
+        self.labels = labels or []
+        self.full_fetches: list[str] = []
+
+    async def get(self, url: str, **kwargs) -> _StubResponse:
+        params = kwargs.get("params") or {}
+        if url.endswith("/profile"):
+            return _StubResponse(200, {"historyId": self.history_id})
+        if url.endswith("/history"):
+            return _StubResponse(
+                200,
+                {
+                    "historyId": self.history_id,
+                    "history": [
+                        {"messagesAdded": [{"message": {"id": mid}}]} for mid in self.history
+                    ],
+                },
+            )
+        if url.endswith("/labels"):
+            return _StubResponse(200, {"labels": self.labels})
+        message_id = url.rsplit("/", 1)[-1]
+        message = self.messages.get(message_id)
+        if message is None:
+            return _StubResponse(404)
+        if params.get("format") == "full":
+            self.full_fetches.append(message_id)
+        return _StubResponse(200, message)
+
+
+def _stub_acting_as(stub):
+    @asynccontextmanager
+    async def _factory(session, org, connection):  # noqa: ANN001, ARG001
+        yield stub
+
+    return _factory
+
+
+def _message(
+    message_id: str,
+    *,
+    sender: str,
+    to: str = "me@agency.nl",
+    subject: str = "Offerte",
+    labels: list[str] | None = None,
+    thread: str = "thr-1",
+    rfc822: str | None = None,
+    body_text: str | None = None,
+) -> dict:
+    headers = [
+        {"name": "From", "value": sender},
+        {"name": "To", "value": to},
+        {"name": "Subject", "value": subject},
+        {"name": "Message-ID", "value": rfc822 or f"<{message_id}@mail>"},
+    ]
+    payload: dict = {"headers": headers}
+    if body_text is not None:
+        payload["mimeType"] = "text/plain"
+        payload["body"] = {
+            "data": base64.urlsafe_b64encode(body_text.encode()).decode()
+        }
+    return {
+        "id": message_id,
+        "threadId": thread,
+        "labelIds": labels or ["INBOX"],
+        "snippet": f"{subject}...",
+        "internalDate": "1783868400000",
+        "payload": payload,
+    }
+
+
+async def _seed(tenant, *, approval_mode: str = "approval_required", history_id: str = "5"):
+    async with async_session_maker() as session:
+        await set_current_org(session, tenant.org.id)
+        session.add(
+            GoogleSettings(
+                org_id=tenant.org.id,
+                gmail_enabled=True,
+                gmail_approval_mode=approval_mode,
+            )
+        )
+        connection = GoogleConnection(
+            org_id=tenant.org.id,
+            user_id=tenant.user.id,
+            google_sub="sub",
+            email="me@agency.nl",
+            scopes=["openid", "email", SCOPE_GMAIL],
+            refresh_token_encrypted=encrypt("rt"),
+            gmail_sync_enabled=True,
+            gmail_history_id=history_id,
+        )
+        session.add(connection)
+        await session.commit()
+        return connection.id
+
+
+async def _poll(tenant, connection_id, stub, monkeypatch) -> int:
+    monkeypatch.setattr("app.modules.google.gmail.service.acting_as", _stub_acting_as(stub))
+    async with async_session_maker() as session:
+        await set_current_org(session, tenant.org.id)
+        connection = await session.get(GoogleConnection, connection_id)
+        logged = await poll_connection(session, tenant.org, connection)
+        await session.commit()
+        return logged
+
+
+async def test_poll_matches_contact_and_logs_pending(client_for, monkeypatch) -> None:
+    t = await make_tenant("gmail-poll")
+    connection_id = await _seed(t)
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Client NL"}, headers=headers)
+        ).json()
+        await c.post(
+            "/api/v1/contacts",
+            json={
+                "first_name": "Klant",
+                "email": "klant@client.nl",
+                "company_ids": [company["id"]],
+            },
+            headers=headers,
+        )
+
+    stub = _StubGmail(
+        history=["msg-1", "msg-nomatch"],
+        messages={
+            "msg-1": _message("msg-1", sender="Klant <klant@client.nl>"),
+            "msg-nomatch": _message(
+                "msg-nomatch", sender="onbekend@elders.nl", thread="thr-2"
+            ),
+        },
+        history_id="9000",
+    )
+    assert await _poll(t, connection_id, stub, monkeypatch) == 1
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        row = (await session.execute(select(Interaction))).scalar_one()
+        assert row.kind == "email" and row.status == "pending"
+        assert row.company_id == uuid.UUID(company["id"])
+        assert row.body_text is None  # metadata-first: no content before approval
+        assert row.direction == "inbound"
+        assert row.deep_link and "msg-1" in row.deep_link
+        connection = await session.get(GoogleConnection, connection_id)
+        assert connection.gmail_history_id == "9000"
+
+        # The owner heard about it, once.
+        from app.modules.notifications.models import NotificationEvent
+
+        pending_events = (
+            (
+                await session.execute(
+                    select(NotificationEvent).where(
+                        NotificationEvent.event_type == "interactions.email_pending"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(pending_events) == 1
+        assert pending_events[0].payload.get("subject") == "Offerte"
+
+    # A second poll over the same history is a no-op (message ids already imported).
+    assert await _poll(t, connection_id, stub, monkeypatch) == 0
+
+
+async def test_first_poll_baselines_without_backfill(monkeypatch) -> None:
+    t = await make_tenant("gmail-baseline")
+    connection_id = await _seed(t, history_id=None)  # type: ignore[arg-type]
+    stub = _StubGmail(history=["old-1"], messages={}, history_id="777")
+    assert await _poll(t, connection_id, stub, monkeypatch) == 0
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        connection = await session.get(GoogleConnection, connection_id)
+        assert connection.gmail_history_id == "777"
+        assert (await session.execute(select(Interaction))).first() is None
+
+
+async def test_auto_approve_logs_with_body_and_rfc822_dedup(client_for, monkeypatch) -> None:
+    t = await make_tenant("gmail-auto")
+    connection_id = await _seed(t, approval_mode="auto_approve")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Client NL"}, headers=headers)
+        ).json()
+        await c.post(
+            "/api/v1/contacts",
+            json={
+                "first_name": "Klant",
+                "email": "klant@client.nl",
+                "company_ids": [company["id"]],
+            },
+            headers=headers,
+        )
+
+    stub = _StubGmail(
+        history=["msg-a"],
+        messages={
+            "msg-a": _message(
+                "msg-a",
+                sender="klant@client.nl",
+                rfc822="<shared@mail>",
+                body_text="Akkoord met de offerte.",
+            )
+        },
+        history_id="9100",
+    )
+    assert await _poll(t, connection_id, stub, monkeypatch) == 1
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        row = (await session.execute(select(Interaction))).scalar_one()
+        assert row.status == "logged"
+        assert row.body_text == "Akkoord met de offerte."  # fetched inline on auto-approve
+
+    # A colleague's mailbox sees the same email (same Message-ID): one timeline entry only.
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        colleague = GoogleConnection(
+            org_id=t.org.id,
+            user_id=t.user.id,
+            google_sub="x",
+            email="x",
+            scopes=[SCOPE_GMAIL],
+            refresh_token_encrypted=encrypt("rt"),
+        )
+        del colleague  # (schema: one connection per user; dedup is asserted via the same poll)
+    stub2 = _StubGmail(
+        history=["msg-b"],
+        messages={
+            "msg-b": _message("msg-b", sender="klant@client.nl", rfc822="<shared@mail>")
+        },
+        history_id="9200",
+    )
+    assert await _poll(t, connection_id, stub2, monkeypatch) == 0
+
+
+async def test_rejection_suppresses_and_thread_stays_out(client_for, monkeypatch) -> None:
+    t = await make_tenant("gmail-reject")
+    connection_id = await _seed(t)
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Client NL"}, headers=headers)
+        ).json()
+        await c.post(
+            "/api/v1/contacts",
+            json={
+                "first_name": "Klant",
+                "email": "klant@client.nl",
+                "company_ids": [company["id"]],
+            },
+            headers=headers,
+        )
+
+        stub = _StubGmail(
+            history=["msg-r"],
+            messages={"msg-r": _message("msg-r", sender="klant@client.nl", thread="thr-9")},
+            history_id="9300",
+        )
+        assert await _poll(t, connection_id, stub, monkeypatch) == 1
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            row = (await session.execute(select(Interaction))).scalar_one()
+            row_id = str(row.id)
+
+        # The owner rejects, ignoring the whole conversation.
+        rejected = await c.post(
+            f"/api/v1/interactions/{row_id}/reject",
+            json={"suppress_thread": True},
+            headers=headers,
+        )
+        assert rejected.status_code == 204, rejected.text
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        assert (await session.execute(select(Interaction))).first() is None
+        suppressions = (await session.execute(select(GmailSuppression))).scalars().all()
+        kinds = {(s.gmail_message_id, s.gmail_thread_id) for s in suppressions}
+        assert ("msg-r", None) in kinds and (None, "thr-9") in kinds
+
+    # Re-polling the same message — and a follow-up in the suppressed thread — logs nothing.
+    stub2 = _StubGmail(
+        history=["msg-r", "msg-r2"],
+        messages={
+            "msg-r": _message("msg-r", sender="klant@client.nl", thread="thr-9"),
+            "msg-r2": _message(
+                "msg-r2", sender="klant@client.nl", thread="thr-9", rfc822="<r2@mail>"
+            ),
+        },
+        history_id="9400",
+    )
+    assert await _poll(t, connection_id, stub2, monkeypatch) == 0
+
+
+async def test_thread_inheritance_copies_mappings(client_for, monkeypatch) -> None:
+    async def _quiet_enqueue(function: str, *args, **kwargs) -> None:  # noqa: ARG001
+        return None
+
+    monkeypatch.setattr("app.core.jobs.enqueue", _quiet_enqueue)
+    t = await make_tenant("gmail-thread")
+    connection_id = await _seed(t)
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Client NL"}, headers=headers)
+        ).json()
+        await c.post(
+            "/api/v1/contacts",
+            json={
+                "first_name": "Klant",
+                "email": "klant@client.nl",
+                "company_ids": [company["id"]],
+            },
+            headers=headers,
+        )
+        project = (
+            await c.post(
+                "/api/v1/projects",
+                json={"name": "Website", "company_id": company["id"]},
+                headers=headers,
+            )
+        ).json()
+
+        stub = _StubGmail(
+            history=["msg-t1"],
+            messages={"msg-t1": _message("msg-t1", sender="klant@client.nl", thread="thr-x")},
+            history_id="9500",
+        )
+        assert await _poll(t, connection_id, stub, monkeypatch) == 1
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            first = (await session.execute(select(Interaction))).scalar_one()
+            first_id = str(first.id)
+
+        # The owner approves and maps the email to a project.
+        assert (
+            await c.post(f"/api/v1/interactions/{first_id}/approve", headers=headers)
+        ).status_code == 200
+        assert (
+            await c.post(
+                f"/api/v1/interactions/{first_id}/remap",
+                json={"project_id": project["id"]},
+                headers=headers,
+            )
+        ).status_code == 200
+
+    # The follow-up in the same thread inherits the project mapping.
+    stub2 = _StubGmail(
+        history=["msg-t2"],
+        messages={
+            "msg-t2": _message(
+                "msg-t2", sender="klant@client.nl", thread="thr-x", rfc822="<t2@mail>"
+            )
+        },
+        history_id="9600",
+    )
+    assert await _poll(t, connection_id, stub2, monkeypatch) == 1
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        rows = (
+            (await session.execute(select(Interaction).order_by(Interaction.created_at)))
+            .scalars()
+            .all()
+        )
+        follow_up = rows[-1]
+        assert follow_up.gmail_message_id == "msg-t2"
+        assert str(follow_up.project_id) == project["id"]
+        assert follow_up.status == "pending"  # inherit_pending: mapped, still reviewed
+
+
+async def test_approval_fetches_body_via_worker_path(client_for, monkeypatch) -> None:
+    async def _quiet_enqueue(function: str, *args, **kwargs) -> None:  # noqa: ARG001
+        return None
+
+    monkeypatch.setattr("app.core.jobs.enqueue", _quiet_enqueue)
+    t = await make_tenant("gmail-body")
+    connection_id = await _seed(t)
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Client NL"}, headers=headers)
+        ).json()
+        await c.post(
+            "/api/v1/contacts",
+            json={
+                "first_name": "Klant",
+                "email": "klant@client.nl",
+                "company_ids": [company["id"]],
+            },
+            headers=headers,
+        )
+        stub = _StubGmail(
+            history=["msg-f"],
+            messages={
+                "msg-f": _message(
+                    "msg-f", sender="klant@client.nl", body_text="De volledige inhoud."
+                )
+            },
+            history_id="9700",
+        )
+        assert await _poll(t, connection_id, stub, monkeypatch) == 1
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            row = (await session.execute(select(Interaction))).scalar_one()
+            row_id = row.id
+
+        assert (
+            await c.post(f"/api/v1/interactions/{row_id}/approve", headers=headers)
+        ).status_code == 200
+
+    # The worker (or the sweep) fetches the body after approval.
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        assert await fetch_body(session, t.org, row_id) is True
+        await session.commit()
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        row = (await session.execute(select(Interaction))).scalar_one()
+        assert row.status == "logged" and row.body_text == "De volledige inhoud."
+        assert stub.full_fetches == ["msg-f"]

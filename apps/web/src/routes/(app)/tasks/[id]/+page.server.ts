@@ -1,8 +1,13 @@
+import "$lib/modules"; // ensure the panels are registered before we read the registry
+
 import { error, fail, redirect } from "@sveltejs/kit";
 
 import { apiBaseUrl } from "$lib/core/api/client";
 import { apiErrorKey } from "$lib/core/errors";
+import { entityPanelsFor } from "$lib/core/registry";
 import { apiFor } from "$lib/core/session";
+import { driveActions } from "$lib/modules/google/drive-actions.server";
+import { interactionActions } from "$lib/modules/interactions/actions.server";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -10,20 +15,34 @@ export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const task_id = event.params.id;
 
+  // Panels contributed by enabled modules (CLAUDE.md §6) — the same seam projects and
+  // contacts compose; a task has no aggregate period, so `periodStart` is null.
+  const context = { entityId: task_id, periodStart: null };
+  const enabled = event.locals.theme?.enabledModules ?? [];
+  const panels = entityPanelsFor(enabled, "task");
+
   // Lookups come from the /tasks layout load (data.labels doubles as allLabels).
-  const [{ data: task }, { data: checklistTemplates }, { data: files }] = await Promise.all([
-    api.GET("/api/v1/tasks/{task_id}", { params: { path: { task_id } } }),
-    api.GET("/api/v1/tasks/checklist-templates"),
-    api.GET("/api/v1/files", {
-      params: { query: { entity_type: "task", entity_id: task_id } },
-    }),
-  ]);
+  const [{ data: task }, { data: checklistTemplates }, { data: files }, ...panelData] =
+    await Promise.all([
+      api.GET("/api/v1/tasks/{task_id}", { params: { path: { task_id } } }),
+      api.GET("/api/v1/tasks/checklist-templates"),
+      api.GET("/api/v1/files", {
+        params: { query: { entity_type: "task", entity_id: task_id } },
+      }),
+      ...panels.map((panel) => panel.load(api, context)),
+    ]);
   if (!task) throw error(404, { code: "not_found", message: "errors.not_found" });
 
   return {
     task,
     checklistTemplates: checklistTemplates ?? [],
     files: files ?? [],
+    context,
+    panels: panels.map((panel, index) => ({
+      key: panel.key,
+      titleKey: panel.titleKey,
+      data: panelData[index],
+    })),
   };
 };
 
@@ -364,4 +383,8 @@ export const actions: Actions = {
     });
     throw redirect(303, "/tasks");
   },
+
+  // Contactmomenten + Drive panel contracts (the panels post to their host page).
+  ...interactionActions,
+  ...driveActions,
 };

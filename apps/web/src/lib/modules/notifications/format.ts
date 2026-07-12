@@ -112,6 +112,16 @@ export function notificationHref(item: NotificationLike): string | null {
         : `/leave?request=${item.entity_id}`;
     case "timesheet":
       return "/time";
+    case "interaction": {
+      // A pending email opens where its timeline lives: the mapped client, else the matched
+      // contact (a gmail row always has at least one of the two — matching requires it).
+      const payload = item.payload ?? {};
+      if (typeof payload.company_id === "string" && payload.company_id)
+        return `/companies/${payload.company_id}`;
+      if (typeof payload.contact_id === "string" && payload.contact_id)
+        return `/contacts/${payload.contact_id}`;
+      return null;
+    }
     default:
       return null;
   }

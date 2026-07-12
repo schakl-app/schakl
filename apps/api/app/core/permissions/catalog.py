@@ -136,6 +136,18 @@ CORE_PERMISSIONS: tuple[PermissionSpec, ...] = (
         position=10,
         default_roles=(ROLE_ADMIN, ROLE_MEMBER),
     ),
+    # --- AI assistance (epic #131) ----------------------------------------- #
+    # ``ai.use`` covers every AI feature for staff (a split into per-feature keys waits until
+    # roles genuinely need to differ, #126); clients get none by default — AI reads across
+    # the very records a client role is scoped away from. Managing the provider key and
+    # budget is admin-only, like the email transport.
+    PermissionSpec(
+        "ai.use",
+        group="ai",
+        position=10,
+        default_roles=(ROLE_ADMIN, ROLE_MEMBER),
+    ),
+    PermissionSpec("ai.settings.manage", group="ai", position=20),
 )
 
 

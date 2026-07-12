@@ -13,14 +13,17 @@ and their web counterparts — currently:
 
 - `apps/api/app/core/mcp/`
 - `apps/api/app/modules/automation/`
+- `apps/api/app/modules/google/`
 - `apps/api/app/modules/leave/`
 - `apps/api/app/modules/subscriptions/`
 - `apps/web/src/lib/modules/automation/`
+- `apps/web/src/lib/modules/google/`
 - `apps/web/src/lib/modules/leave/`
 - `apps/web/src/lib/modules/subscriptions/`
 - `apps/web/src/routes/(app)/leave/`
 - `apps/web/src/routes/(app)/subscriptions/`
 - `apps/web/src/routes/(app)/settings/automation/`
+- `apps/web/src/routes/(app)/settings/google/`
 - `apps/web/src/routes/(app)/settings/leave/`
 - `apps/web/src/routes/(app)/settings/subscriptions/`
 

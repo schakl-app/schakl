@@ -84,7 +84,8 @@ class Settings(BaseSettings):
     enabled_modules: list[str] = Field(
         default_factory=lambda: [
             "companies", "contacts", "tasks", "projects", "time", "leave", "notifications",
-            "domains", "hosting", "websites", "subscriptions", "automation",
+            "domains", "hosting", "websites", "subscriptions", "automation", "interactions",
+            "google",
         ]
     )
     default_locale: str = "nl"

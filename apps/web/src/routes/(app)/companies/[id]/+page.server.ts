@@ -3,6 +3,8 @@ import { error, fail, redirect } from "@sveltejs/kit";
 import { parseAssignees } from "$lib/core/assignees";
 import { apiErrorKey } from "$lib/core/errors";
 import { apiFor } from "$lib/core/session";
+import { interactionActions } from "$lib/modules/interactions/actions.server";
+import { driveActions } from "$lib/modules/google/drive-actions.server";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -253,4 +255,9 @@ export const actions: Actions = {
     });
     throw redirect(303, "/companies");
   },
+
+  // Contactmomenten panel contract (lib/modules/interactions).
+  ...interactionActions,
+  // Drive panel contract (lib/modules/google).
+  ...driveActions,
 };
