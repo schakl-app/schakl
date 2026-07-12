@@ -34,6 +34,7 @@ async def list_interactions(
     kind: str | None = Query(None, max_length=10),
     status: str | None = Query(None, max_length=10),
     owner_user_id: uuid.UUID | None = Query(None),
+    mine: bool = Query(False, description="Only my own rows — the review queue's filter"),
     include: str | None = Query(
         None,
         max_length=30,
@@ -52,7 +53,7 @@ async def list_interactions(
         contact_id=contact_id,
         kind=kind,
         status=status,
-        owner_user_id=owner_user_id,
+        owner_user_id=ctx.user.id if mine else owner_user_id,
         include=include,
     )
     return Page(

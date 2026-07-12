@@ -14404,6 +14404,8 @@ export interface operations {
                 kind?: string | null;
                 status?: string | null;
                 owner_user_id?: string | null;
+                /** @description Only my own rows — the review queue's filter */
+                mine?: boolean;
                 /** @description Roll-up: 'tasks' with project_id also returns the project's tasks' rows */
                 include?: string | null;
                 limit?: number;
