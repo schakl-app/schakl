@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "sync-cms": "cp node_modules/@sveltia/cms/dist/sveltia-cms.js public/admin/sveltia-cms.js",
+    "sync-cms": "cp node_modules/@sveltia/cms/dist/sveltia-cms.js public/sveltia/sveltia-cms.js",
     "dev": "pnpm run sync-cms && astro dev",
     "cms": "pnpm run sync-cms && astro dev",
     "build": "pnpm run sync-cms && astro build && pagefind --site dist",

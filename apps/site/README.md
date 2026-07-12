@@ -39,7 +39,7 @@ The accent colors flow into the landing pages *and* the Starlight docs theme
 the same file. Changing them in the CMS and rebuilding restyles the whole site — no code.
 The CMS itself is a single static page (`/admin`); its bundle is copied from
 `node_modules/@sveltia/cms` by the `sync-cms` script, its content model lives in
-`public/admin/config.yml`.
+`public/sveltia/config.yml`.
 
 ## Commands
 
