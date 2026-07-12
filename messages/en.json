@@ -1933,5 +1933,8 @@
   "permissions.google.connection.manage": "Connect own Google account",
   "permissions.google.calendar.read": "View Google Calendar events",
   "permissions.google.drive.read": "Browse Drive files",
-  "permissions.google.drive.write": "Link and upload Drive files"
+  "permissions.google.drive.write": "Link and upload Drive files",
+  "google.calendar.source_label": "Google Calendar",
+  "google.calendar.untitled": "(no title)",
+  "google.calendar.leave_event_title": "Leave"
 }

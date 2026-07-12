@@ -911,6 +911,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/google/calendar/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Calendar Events
+         * @description The viewer's own cached Google events. Reads the local cache, never Google live.
+         */
+        get: operations["calendar_events_api_v1_google_calendar_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/calendar/webhook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Calendar Webhook */
+        post: operations["calendar_webhook_api_v1_google_calendar_webhook_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/google/connections": {
         parameters: {
             query?: never;
@@ -4409,6 +4446,26 @@ export interface components {
         BulkResult: {
             /** Updated */
             updated: number;
+        };
+        /** CalendarFeedItem */
+        CalendarFeedItem: {
+            /** All Day */
+            all_day: boolean;
+            /** End */
+            end: string;
+            /** Html Link */
+            html_link?: string | null;
+            /** Id */
+            id: string;
+            /** Start */
+            start: string;
+            /**
+             * Tentative
+             * @default false
+             */
+            tentative: boolean;
+            /** Title */
+            title: string;
         };
         /** CatalogRead */
         CatalogRead: {
@@ -12474,6 +12531,58 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    calendar_events_api_v1_google_calendar_events_get: {
+        parameters: {
+            query: {
+                date_from: string;
+                date_to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarFeedItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    calendar_webhook_api_v1_google_calendar_webhook_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };

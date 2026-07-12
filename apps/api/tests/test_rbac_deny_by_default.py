@@ -57,6 +57,10 @@ _EXEMPT_OPERATIONS = frozenset(
         # Branding assets render on the login screen before a session exists; only rows
         # tagged with a public entity type are reachable, anything else 404s.
         ("get", "/api/v1/files/{file_id}/public"),
+        # Google Calendar push notifications carry no user session at all; the route
+        # authenticates with our own per-channel token and 404s anything that doesn't match
+        # (docs/GOOGLE.md — webhooks map back to org + connection via our own channel token).
+        ("post", "/api/v1/google/calendar/webhook"),
     }
 )
 

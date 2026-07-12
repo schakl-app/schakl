@@ -1933,5 +1933,8 @@
   "permissions.google.connection.manage": "Eigen Google-account koppelen",
   "permissions.google.calendar.read": "Google Agenda-afspraken bekijken",
   "permissions.google.drive.read": "Drive-bestanden bekijken",
-  "permissions.google.drive.write": "Drive-bestanden koppelen en uploaden"
+  "permissions.google.drive.write": "Drive-bestanden koppelen en uploaden",
+  "google.calendar.source_label": "Google Agenda",
+  "google.calendar.untitled": "(geen titel)",
+  "google.calendar.leave_event_title": "Verlof"
 }
