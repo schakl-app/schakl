@@ -114,6 +114,9 @@ class OrgSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     currency: Mapped[str] = mapped_column(
         String(3), nullable=False, default="EUR", server_default="EUR"
     )
+    # Browser-tab title template (#97, #71 tier 2): free text with {page} / {brand} tokens,
+    # e.g. "{page} · {brand}". NULL = the built-in i18n format. Branding, so it lives here.
+    tab_title_template: Mapped[str | None] = mapped_column(String(120), nullable=True)
     enabled_modules: Mapped[list[str]] = mapped_column(
         ARRAY(String), nullable=False, default=list
     )

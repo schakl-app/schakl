@@ -42,6 +42,8 @@ export const actions: Actions = {
         default_locale: String(form.get("default_locale") ?? "").trim() || undefined,
         timezone: String(form.get("timezone") ?? "").trim() || undefined,
         currency: String(form.get("currency") ?? "").trim() || undefined,
+        // Empty clears the template back to the built-in format (#97).
+        tab_title_template: String(form.get("tab_title_template") ?? "").trim(),
       },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });

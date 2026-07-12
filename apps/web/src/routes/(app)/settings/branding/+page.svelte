@@ -2,7 +2,7 @@
   import { enhance } from "$app/forms";
   import { currencyLabel } from "$lib/core/currencies";
   import { localeLabel, t } from "$lib/core/i18n";
-  import { pageTitle } from "$lib/core/title";
+  import { pageTitle, renderTabTitle } from "$lib/core/title";
   import { getLocale } from "$lib/paraglide/runtime";
 
   let { data, form } = $props();
@@ -10,6 +10,21 @@
   const branding = $derived(data.branding);
   let primary = $state(data.branding?.primary_color ?? "#4f46e5");
   let accent = $state(data.branding?.accent_color ?? "#0ea5e9");
+  // Live preview while typing (#97): the same renderer the real tab uses.
+  let tabTemplate = $state(data.branding?.tab_title_template ?? "");
+  const tabPreview = $derived(
+    renderTabTitle(
+      tabTemplate.trim() || "{brand} · {page}",
+      t("settings.branding.tab_title_example"),
+      data.branding?.brand_name ?? "",
+    ),
+  );
+  const tabTemplateInvalid = $derived.by(() => {
+    const template = tabTemplate.trim();
+    if (!template) return false;
+    const tokens = [...template.matchAll(/\{([^{}]*)\}/g)].map((m) => m[1]);
+    return !tokens.includes("page") || tokens.some((tok) => tok !== "page" && tok !== "brand");
+  });
 
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
@@ -111,6 +126,32 @@
             </optgroup>
           </select>
           <p class="mt-1 text-xs text-text-muted">{t("settings.branding.currency_help")}</p>
+        </div>
+        <div class="sm:col-span-2">
+          <label for="tab_title_template" class="mb-1 block text-sm font-medium text-text"
+            >{t("settings.branding.tab_title")}</label
+          >
+          <input
+            id="tab_title_template"
+            name="tab_title_template"
+            bind:value={tabTemplate}
+            placeholder={"{page} · {brand}"}
+            class={inputClass}
+          />
+          <p class="mt-1 text-xs text-text-muted">
+            {t("settings.branding.tab_title_help", { pageToken: "{page}", brandToken: "{brand}" })}
+            {#if !tabTemplateInvalid}
+              · {t("settings.branding.tab_title_preview", { preview: tabPreview })}
+            {/if}
+          </p>
+          {#if tabTemplateInvalid}
+            <p class="mt-1 text-xs text-red-600 dark:text-red-400">
+              {t("settings.branding.tab_title_invalid", {
+                pageToken: "{page}",
+                brandToken: "{brand}",
+              })}
+            </p>
+          {/if}
         </div>
         <div>
           <label for="logo_url" class="mb-1 block text-sm font-medium text-text"

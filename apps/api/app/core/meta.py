@@ -7,6 +7,7 @@ its settings through the RLS GUC (no membership required for public branding).
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Request
@@ -42,6 +43,8 @@ class TenantBranding(BaseModel):
     timezone: str
     # ISO 4217 code money renders in (#124) — per-org, like the timezone.
     currency: str
+    # Tab-title template (#97): free text with {page} / {brand} tokens; None = built-in format.
+    tab_title_template: str | None = None
     enabled_modules: list[str]
     # Suspended orgs still expose branding (the login screen needs it) but every
     # authenticated request is blocked with errors.org_suspended.
@@ -65,6 +68,8 @@ class TenantBrandingUpdate(BaseModel):
     timezone: str | None = Field(default=None, max_length=64)
     # ISO 4217; validated against the known-codes list in the handler.
     currency: str | None = Field(default=None, min_length=3, max_length=3)
+    # Tab-title template (#97). Empty string clears it back to the built-in format.
+    tab_title_template: str | None = Field(default=None, max_length=120)
     # Which modules this org runs; must stay a subset of the instance's mounted modules
     # and always include the hub module (companies).
     enabled_modules: list[str] | None = None
@@ -197,6 +202,7 @@ async def tenant_branding(request: Request) -> TenantBranding:
             default_locale=s.default_locale if s else settings.default_locale,
             timezone=s.timezone if s else settings.default_timezone,
             currency=s.currency if s else DEFAULT_CURRENCY,
+            tab_title_template=s.tab_title_template if s else None,
             enabled_modules=list(s.enabled_modules)
             if s and s.enabled_modules
             else list(settings.enabled_modules),
@@ -237,6 +243,19 @@ async def update_tenant_branding(
                 status_code=422,
                 fields={"currency": "errors.validation"},
             )
+    if data.get("tab_title_template"):
+        template = data["tab_title_template"].strip()
+        # Whitelisted tokens only (#97): {page} must appear (otherwise every tab reads the
+        # same), and an unknown {token} is a typo, not a variable.
+        tokens = re.findall(r"\{([^{}]*)\}", template)
+        if "page" not in tokens or any(token not in ("page", "brand") for token in tokens):
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"tab_title_template": "errors.validation"},
+            )
+        data["tab_title_template"] = template
     if data.get("enabled_modules") is not None:
         modules = data["enabled_modules"]
         available = set(settings.enabled_modules)
@@ -254,8 +273,8 @@ async def update_tenant_branding(
     if s is None:
         raise AppError("not_found", "errors.not_found", status_code=404)
     for key, value in data.items():
-        # Empty strings clear the optional URL fields; required fields ignore empties.
-        if key in ("logo_url", "favicon_url"):
+        # Empty strings clear the optional fields; required fields ignore empties.
+        if key in ("logo_url", "favicon_url", "tab_title_template"):
             setattr(s, key, value or None)
         elif isinstance(value, bool) or value:
             setattr(s, key, value)
@@ -272,6 +291,7 @@ async def update_tenant_branding(
         default_locale=s.default_locale,
         timezone=s.timezone,
         currency=s.currency,
+        tab_title_template=s.tab_title_template,
         enabled_modules=list(s.enabled_modules) if s.enabled_modules else [],
     )
 

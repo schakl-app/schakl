@@ -6592,6 +6592,8 @@ export interface components {
              * @default false
              */
             suspended: boolean;
+            /** Tab Title Template */
+            tab_title_template?: string | null;
             /** Timezone */
             timezone: string;
         };
@@ -6618,6 +6620,8 @@ export interface components {
             primary_color?: string | null;
             /** Show Brand Name */
             show_brand_name?: boolean | null;
+            /** Tab Title Template */
+            tab_title_template?: string | null;
             /** Timezone */
             timezone?: string | null;
         };

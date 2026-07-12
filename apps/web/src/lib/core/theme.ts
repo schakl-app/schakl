@@ -18,6 +18,8 @@ export interface OrgTheme {
   timezone: string;
   /** ISO 4217 code every money figure renders in (#124) — per-org, like the timezone. */
   currency: string;
+  /** Tab-title template with {page}/{brand} tokens (#97); null = the built-in format. */
+  tabTitleTemplate: string | null;
   enabledModules: string[];
   /** False when the hostname resolved to no org (unknown host, or a fresh install). */
   resolved: boolean;
@@ -36,6 +38,7 @@ export const DEFAULT_THEME: OrgTheme = {
   defaultLocale: "nl",
   timezone: "Europe/Amsterdam",
   currency: "EUR",
+  tabTitleTemplate: null,
   enabledModules: ["companies"],
   resolved: false,
   suspended: false,
