@@ -276,7 +276,7 @@ async def test_revoke_the_last_role_managing_membership(client_for) -> None:
 # --------------------------------------------------------------------------- #
 # Membership role assignment
 # --------------------------------------------------------------------------- #
-async def test_a_membership_must_keep_a_system_role_this_release(client_for) -> None:
+async def test_custom_role_only_memberships_are_assignable(client_for) -> None:
     tenant = await make_tenant("roles-system-required")
     headers = await auth_cookie(tenant.user)
     member = await add_member(tenant)
@@ -291,14 +291,22 @@ async def test_a_membership_must_keep_a_system_role_this_release(client_for) -> 
         members = (await client.get("/api/v1/members", headers=headers)).json()
         target = next(m for m in members if m["user_id"] == str(member.id))
 
-        # Custom-role-only is rejected while `memberships.role` is still dual-written.
-        refused = await client.put(
+        # Custom-role-only memberships are legal since the legacy column dropped (#56).
+        only_custom = await client.put(
             f"/api/v1/members/{target['membership_id']}/roles",
             json={"role_ids": [custom["id"]]},
             headers=headers,
         )
-        assert refused.status_code == 409
-        assert refused.json()["error"]["message"] == "errors.system_role_required"
+        assert only_custom.status_code == 200, only_custom.text
+        assert only_custom.json()["permissions"] == ["time.report.read"]
+
+        # An *empty* set is still refused — a member holding nothing is a lockout, not a choice.
+        refused = await client.put(
+            f"/api/v1/members/{target['membership_id']}/roles",
+            json={"role_ids": []},
+            headers=headers,
+        )
+        assert refused.status_code == 422
 
         # Additive is fine, and the effective set is the union.
         roles = await _roles(client, headers)
@@ -311,16 +319,6 @@ async def test_a_membership_must_keep_a_system_role_this_release(client_for) -> 
         assert "time.report.read" in ok.json()["permissions"]
         assert "tasks.task.write:own" in ok.json()["permissions"]
 
-        # The legacy column collapses to the highest-privilege system role.
-        async with async_session_maker() as session:
-            await set_current_org(session, tenant.org.id)
-            legacy = (
-                await session.execute(
-                    text("SELECT role FROM memberships WHERE id = :id"),
-                    {"id": target["membership_id"]},
-                )
-            ).scalar_one()
-        assert legacy == "member"
 
         member_headers = await auth_cookie(member)
         assert (

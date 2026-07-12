@@ -25,6 +25,9 @@ from app.core.instance.impersonation import (
 )
 from app.core.models import InstanceAuditLog, Membership, Org, OrgSettings, OrgStatus
 from app.core.permissions.deps import no_permission_required
+from app.core.permissions.models import MembershipRole
+from app.core.permissions.models import Role as RoleRow
+from app.core.permissions.service import collapse_to_legacy_role
 from app.db import set_current_org
 from app.errors import AppError
 
@@ -192,6 +195,18 @@ async def org_detail(
             .order_by(User.email.asc())
         )
     ).all()
+    # Display role = the highest-privilege *system* role each membership holds (issue #56:
+    # the legacy column is gone). One grouped query for the whole list, never one per member.
+    system_keys: dict[uuid.UUID, list[str]] = {}
+    for membership_id, key in await ctx.session.execute(
+        select(MembershipRole.membership_id, RoleRow.key)
+        .join(RoleRow, RoleRow.id == MembershipRole.role_id)
+        .where(
+            MembershipRole.org_id == org.id,
+            RoleRow.is_system.is_(True),
+        )
+    ):
+        system_keys.setdefault(membership_id, []).append(key)
     return OrgDetail(
         **_summary(org).model_dump(),
         brand_name=org_settings.brand_name if org_settings else None,
@@ -202,7 +217,7 @@ async def org_detail(
                 user_id=str(user.id),
                 email=user.email,
                 full_name=user.full_name,
-                role=membership.role,
+                role=collapse_to_legacy_role(system_keys.get(membership.id, [])),
                 is_active=user.is_active,
             )
             for membership, user in rows

@@ -11,10 +11,6 @@ export interface SessionUser {
   id: string;
   email: string;
   full_name: string | null;
-  /** Membership role within the resolved tenant (owner/admin/member/client). */
-  role: string;
-  /** True for owner/admin. DEPRECATED (issue #19) — use `can(...)`; dropped next release. */
-  canManage: boolean;
   /** Effective permissions: the union over every role held. `["*"]` for an owner. */
   permissions: string[];
   /** Personal display-language preference (null → org default). */
@@ -72,8 +68,6 @@ export async function fetchUser(event: ApiEvent): Promise<SessionUser | null> {
     id: data.id,
     email: data.email,
     full_name: data.full_name ?? null,
-    role: data.role,
-    canManage: data.can_manage,
     permissions: data.permissions ?? [],
     locale: data.locale ?? null,
     avatarUrl: data.avatar_url ?? null,

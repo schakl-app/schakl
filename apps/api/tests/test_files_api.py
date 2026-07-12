@@ -246,8 +246,8 @@ async def test_avatar_file_delete_is_personal(client_for, tmp_path, monkeypatch)
         file_id = up.json()["id"]
 
         # Another member of the same org may not delete someone's avatar.
-        from tests.conftest import add_membership
         from app.db import async_session_maker, set_current_org
+        from tests.conftest import add_membership
 
         async with async_session_maker() as session:
             await set_current_org(session, t.org.id)

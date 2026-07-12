@@ -292,7 +292,6 @@ async def test_impersonation_is_time_boxed_audited_and_visible(
         me = await client.get("/api/v1/meta/me", headers=both_cookies)
         assert me.status_code == 200
         assert me.json()["email"] == "member@example.org"
-        assert me.json()["role"] == "member"
         assert me.json()["impersonated_by"] == admin.user.email
         assert me.json()["impersonation_expires_at"] is not None
         assert me.json()["is_instance_admin"] is False  # effective user, not the admin

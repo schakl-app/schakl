@@ -17,7 +17,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.config import settings
 from app.core.mixins import OrgScopedMixin, TimestampMixin, UUIDPrimaryKeyMixin
-from app.core.roles import Role
 from app.db import Base
 
 
@@ -63,7 +62,7 @@ class Org(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
 
 class Membership(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
-    """Links a (global) user to an org with a role."""
+    """Links a (global) user to an org; what they may do lives in ``membership_roles`` (#19)."""
 
     __tablename__ = "memberships"
     __table_args__ = (UniqueConstraint("org_id", "user_id"),)
@@ -74,7 +73,6 @@ class Membership(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
         nullable=False,
         index=True,
     )
-    role: Mapped[str] = mapped_column(String(20), nullable=False, default=Role.MEMBER.value)
 
 
 class OrgSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):

@@ -96,11 +96,6 @@ class MeInfo(BaseModel):
     id: str
     email: str
     full_name: str | None
-    # DEPRECATED (issue #19, expand/contract): ``role`` and ``can_manage`` are the coarse
-    # pre-RBAC axis. They stay one release so the API and the web can land independently;
-    # the web reads ``permissions`` and only falls back to ``can_manage`` when it is absent.
-    role: str
-    can_manage: bool
     #: Effective permissions — the union over every role this membership holds. ``["*"]`` for an
     #: owner. This is UX input, never the boundary: the API is the boundary (issue #19).
     permissions: list[str]
@@ -131,8 +126,6 @@ def _me_info(ctx: RequestContext, user: User) -> MeInfo:
         id=str(user.id),
         email=user.email,
         full_name=user.full_name,
-        role=ctx.role.value,
-        can_manage=ctx.role.can_manage,
         permissions=ctx.permissions.keys(),
         locale=user.locale,
         avatar_url=user.custom_avatar_url or user.oidc_avatar_url or None,

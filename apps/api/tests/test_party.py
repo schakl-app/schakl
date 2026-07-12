@@ -8,7 +8,6 @@ import pytest
 
 from app.core.party import PartyService, PartyType
 from app.core.party.schemas import PartyRef
-from app.core.roles import Role
 from app.core.tenancy import RequestContext
 from app.db import async_session_maker, set_current_org
 from app.errors import AppError
@@ -19,7 +18,7 @@ from tests.conftest import make_tenant
 
 async def _ctx(session, tenant) -> RequestContext:
     return RequestContext(
-        user=tenant.user, org=tenant.org, role=Role.OWNER, session=session
+        user=tenant.user, org=tenant.org, session=session
     )
 
 

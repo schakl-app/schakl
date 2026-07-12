@@ -21,7 +21,6 @@ from app.config import settings
 from app.core.auth.models import User
 from app.core.models import Org, OrgStatus
 from app.core.permissions.permset import PermissionSet
-from app.core.roles import Role
 from app.core.tenancy import RequestContext
 from app.db import async_session_maker, set_current_org
 
@@ -64,7 +63,6 @@ def system_context(org: Org, session: AsyncSession) -> RequestContext:
     return RequestContext(
         user=User(id=uuid.uuid4(), email="system@localhost", hashed_password="", is_active=True),
         org=org,
-        role=Role.OWNER,
         session=session,
         permissions=PermissionSet.of(("*",)),
     )

@@ -1,6 +1,6 @@
 """Tenancy layer (CLAUDE.md §5, Golden Rule 1).
 
-One dependency, ``require_context``, yields ``(current_user, current_org, role)`` plus a
+One dependency, ``require_context``, yields ``(current_user, current_org)`` plus a
 tenant-bound session, and is the *only* sanctioned way domain routers touch data. It:
 
 1. authenticates the (global) user;
@@ -30,7 +30,6 @@ from app.core.auth.users import current_active_user_optional
 from app.core.models import Membership, Org, OrgStatus
 from app.core.permissions.models import MembershipRole, RolePermission
 from app.core.permissions.permset import PermissionSet
-from app.core.roles import Role
 from app.db import async_session_maker, set_current_org
 from app.errors import AppError
 
@@ -88,7 +87,6 @@ class RequestContext:
 
     user: User
     org: Org
-    role: Role
     session: AsyncSession
     membership_id: uuid.UUID | None = None
     #: Effective permissions of this membership — the union over every role it holds, resolved
@@ -109,20 +107,6 @@ class RequestContext:
 
     def require(self, permission: str, scope: str | None = None) -> None:
         if not self.can(permission, scope):
-            raise AppError("forbidden", "errors.forbidden", status_code=403)
-
-    # --- DEPRECATED coarse helpers (dropped with ``memberships.role``, issue #56) --------- #
-    @property
-    def can_write(self) -> bool:
-        # Clients are read-only; staff (owner/admin/member) may mutate.
-        return self.role != Role.CLIENT
-
-    def ensure_can_write(self) -> None:
-        if not self.can_write:
-            raise AppError("forbidden", "errors.forbidden", status_code=403)
-
-    def ensure_can_manage(self) -> None:
-        if not self.role.can_manage:
             raise AppError("forbidden", "errors.forbidden", status_code=403)
 
 
@@ -205,7 +189,6 @@ async def require_context(
         ctx = RequestContext(
             user=user,
             org=org,
-            role=Role(membership.role),
             session=session,
             membership_id=membership.id,
             permissions=PermissionSet.of(granted),

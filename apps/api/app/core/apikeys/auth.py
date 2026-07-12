@@ -25,7 +25,6 @@ from app.core.cache import get_redis
 from app.core.models import Membership, Org
 from app.core.permissions.models import MembershipRole, RolePermission
 from app.core.permissions.permset import PermissionSet
-from app.core.roles import Role
 from app.errors import AppError
 
 logger = logging.getLogger("schakl.apikeys")
@@ -126,7 +125,6 @@ async def _personal_context(session, org, key, RequestContext):  # noqa: ANN001
     return RequestContext(
         user=owner,
         org=org,
-        role=Role(membership.role),
         session=session,
         membership_id=membership.id,
         permissions=PermissionSet.of(effective),
@@ -145,7 +143,6 @@ async def _service_account_context(session, org, key, RequestContext):  # noqa: 
     return RequestContext(
         user=principal,
         org=org,
-        role=Role.MEMBER,
         session=session,
         membership_id=None,
         permissions=PermissionSet.of(list(key.scopes)),

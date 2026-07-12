@@ -16,7 +16,6 @@ from sqlalchemy import func, select
 
 from app.core.auth.models import User
 from app.core.events import emit
-from app.core.roles import Role
 from app.core.tenancy import RequestContext
 from app.db import async_session_maker, set_current_org
 from app.modules.notifications.defaults import ResolvedPref
@@ -31,11 +30,11 @@ from tests.conftest import Tenant, add_membership, make_tenant
 
 
 @asynccontextmanager
-async def _ctx(tenant: Tenant, user: User, role: Role = Role.OWNER):
+async def _ctx(tenant: Tenant, user: User):
     """A RequestContext bound to the tenant, the way ``require_context`` builds one."""
     async with async_session_maker() as session:
         await set_current_org(session, tenant.org.id)
-        yield RequestContext(user=user, org=tenant.org, role=role, session=session)
+        yield RequestContext(user=user, org=tenant.org, session=session)
         await session.commit()
 
 
@@ -53,7 +52,7 @@ async def _member(tenant: Tenant, email: str) -> User:
         session.add(user)
         await session.flush()
         await set_current_org(session, tenant.org.id)
-        await add_membership(session, tenant.org.id, user.id, Role.MEMBER.value)
+        await add_membership(session, tenant.org.id, user.id, "member")
         await session.commit()
         return User(id=user.id, email=email, hashed_password="", is_active=True)
 

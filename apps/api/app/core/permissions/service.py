@@ -122,7 +122,7 @@ async def create_membership(
 
     A membership without a role would authenticate and then hold no permissions at all.
     """
-    membership = Membership(org_id=org_id, user_id=user_id, role=role_key)
+    membership = Membership(org_id=org_id, user_id=user_id)
     session.add(membership)
     await session.flush()
     role = await role_by_key(session, org_id, role_key)
@@ -160,7 +160,7 @@ async def set_membership_roles(
     membership: Membership,
     role_ids: Sequence[uuid.UUID],
 ) -> list[Role]:
-    """Replace a membership's whole role set (one save), then dual-write the legacy column."""
+    """Replace a membership's whole role set (one save)."""
     wanted = set(role_ids)
     roles = list(
         (
@@ -195,16 +195,15 @@ async def set_membership_roles(
                 )
             )
     await session.flush()
-    membership.role = collapse_to_legacy_role([r.key for r in roles if r.is_system])
-    await session.flush()
     return roles
 
 
 def collapse_to_legacy_role(system_role_keys: Iterable[str]) -> str:
-    """The single legacy enum value a multi-role membership writes back: highest privilege wins.
+    """The highest-privilege system role among ``system_role_keys`` — display/audit sugar.
 
-    Release *N* forbids a membership that holds no system role precisely so this never fails
-    (see the rollback decision on issue #19); the fallback is defensive, not reachable.
+    The dual-write died with ``memberships.role`` (issue #56); this survives for the audit
+    trail's "from" value and the instance-admin members list. A custom-role-only membership
+    (legal now) collapses to the fallback.
     """
     held = set(system_role_keys)
     for key in PRIVILEGE_ORDER:

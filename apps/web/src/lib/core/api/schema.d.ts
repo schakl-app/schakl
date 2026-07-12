@@ -1421,10 +1421,8 @@ export interface paths {
          * Set Member Roles
          * @description Replace a membership's whole role set in one save. A user may hold several roles.
          *
-         *     Release *N* rejects a set with no ``is_system`` role: ``memberships.role`` is dual-written by
-         *     collapsing the system roles to the highest privilege, and a custom-role-only membership has no
-         *     legacy value the previous image could parse (issue #19, the rollback decision). The constraint
-         *     lifts when that column is dropped.
+         *     Custom-role-only memberships are legal since the legacy column dropped (issue #56); an empty
+         *     set is still refused — a membership holding nothing would authenticate into a wall of 403s.
          */
         put: operations["set_member_roles_api_v1_members__membership_id__roles_put"];
         post?: never;
@@ -5294,8 +5292,6 @@ export interface components {
         MeInfo: {
             /** Avatar Url */
             avatar_url?: string | null;
-            /** Can Manage */
-            can_manage: boolean;
             /** Custom Avatar Url */
             custom_avatar_url?: string | null;
             /** Email */
@@ -5317,8 +5313,6 @@ export interface components {
             locale: string | null;
             /** Permissions */
             permissions: string[];
-            /** Role */
-            role: string;
         };
         /**
          * MeUpdate
@@ -5341,8 +5335,11 @@ export interface components {
             email: string;
             /** Full Name */
             full_name?: string | null;
-            /** @default member */
-            role: components["schemas"]["Role"];
+            /**
+             * Role
+             * @default member
+             */
+            role: string;
         };
         /**
          * MemberLookup
@@ -5372,8 +5369,6 @@ export interface components {
             is_self: boolean;
             /** Membership Id */
             membership_id: string;
-            /** Role */
-            role: string;
             /**
              * Role Ids
              * @default []
@@ -5384,7 +5379,8 @@ export interface components {
         };
         /** MemberRoleUpdate */
         MemberRoleUpdate: {
-            role: components["schemas"]["Role"];
+            /** Role */
+            role: string;
         };
         /** MembershipRolesUpdate */
         MembershipRolesUpdate: {
@@ -6186,11 +6182,6 @@ export interface components {
             /** Year */
             year: number;
         };
-        /**
-         * Role
-         * @enum {string}
-         */
-        Role: "owner" | "admin" | "member" | "client";
         /** RoleCreate */
         RoleCreate: {
             /** Description I18N */

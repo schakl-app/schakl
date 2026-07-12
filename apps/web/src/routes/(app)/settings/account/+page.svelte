@@ -203,15 +203,6 @@
         />
         <p class="mt-1 text-xs text-text-muted">{t("settings.account.email_help")}</p>
       </div>
-      <div>
-        <span class="mb-1 block text-sm font-medium text-text">{t("settings.account.role")}</span>
-        <span
-          class="inline-block rounded-full bg-surface px-3 py-1 text-xs font-medium text-text-muted"
-        >
-          {t(`roles.${account?.role}`)}
-        </span>
-      </div>
-
       {#if form?.saved}
         <p class="text-sm text-green-600 dark:text-green-400">{t("settings.account.saved")}</p>
       {/if}
