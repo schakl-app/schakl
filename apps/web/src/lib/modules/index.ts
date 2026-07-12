@@ -13,3 +13,4 @@ import "./leave";
 import "./notifications";
 import "./domains";
 import "./hosting";
+import "./interactions";

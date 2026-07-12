@@ -1425,6 +1425,94 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/interactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Interactions */
+        get: operations["list_interactions_api_v1_interactions_get"];
+        put?: never;
+        /** Create Interaction */
+        post: operations["create_interaction_api_v1_interactions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/interactions/{interaction_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Interaction */
+        get: operations["get_interaction_api_v1_interactions__interaction_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Interaction */
+        delete: operations["delete_interaction_api_v1_interactions__interaction_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Interaction */
+        patch: operations["update_interaction_api_v1_interactions__interaction_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/interactions/{interaction_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Interaction */
+        post: operations["approve_interaction_api_v1_interactions__interaction_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/interactions/{interaction_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Interaction */
+        post: operations["reject_interaction_api_v1_interactions__interaction_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/interactions/{interaction_id}/remap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Remap Interaction */
+        post: operations["remap_interaction_api_v1_interactions__interaction_id__remap_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/leave/balance": {
         parameters: {
             query?: never;
@@ -5538,6 +5626,148 @@ export interface components {
             /** Row */
             row: number;
         };
+        /**
+         * InteractionCreate
+         * @description A manually logged touchpoint — meetings, calls, notes. Emails only arrive via gmail.
+         */
+        InteractionCreate: {
+            /** Body Text */
+            body_text?: string | null;
+            /** Company Id */
+            company_id?: string | null;
+            /** Contact Id */
+            contact_id?: string | null;
+            /** @default none */
+            direction: components["schemas"]["InteractionDirection"];
+            kind: components["schemas"]["InteractionKind"];
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Participants */
+            participants?: components["schemas"]["Participant"][];
+            /** Project Id */
+            project_id?: string | null;
+            /** Subject */
+            subject: string;
+            /** Task Id */
+            task_id?: string | null;
+        };
+        /**
+         * InteractionDirection
+         * @enum {string}
+         */
+        InteractionDirection: "inbound" | "outbound" | "none";
+        /**
+         * InteractionKind
+         * @enum {string}
+         */
+        InteractionKind: "email" | "meeting" | "call" | "note";
+        /** InteractionRead */
+        InteractionRead: {
+            /** Body Text */
+            body_text?: string | null;
+            /** Company Id */
+            company_id?: string | null;
+            /** Contact Id */
+            contact_id?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Deep Link */
+            deep_link?: string | null;
+            direction: components["schemas"]["InteractionDirection"];
+            /** Gmail Thread Id */
+            gmail_thread_id?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["InteractionKind"];
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /**
+             * Owner Deleted
+             * @default false
+             */
+            owner_deleted: boolean;
+            /** Owner Name */
+            owner_name?: string | null;
+            /** Owner User Id */
+            owner_user_id?: string | null;
+            /** Participants */
+            participants?: components["schemas"]["Participant"][];
+            /** Project Id */
+            project_id?: string | null;
+            /** Snippet */
+            snippet?: string | null;
+            source: components["schemas"]["InteractionSource"];
+            status: components["schemas"]["InteractionStatus"];
+            /** Subject */
+            subject?: string | null;
+            /** Task Id */
+            task_id?: string | null;
+        };
+        /** InteractionReject */
+        InteractionReject: {
+            /**
+             * Suppress Thread
+             * @default false
+             */
+            suppress_thread: boolean;
+        };
+        /**
+         * InteractionRemap
+         * @description Move a gmail-sourced interaction — only fields actually sent change; ``null`` clears.
+         */
+        InteractionRemap: {
+            /** Company Id */
+            company_id?: string | null;
+            /** Contact Id */
+            contact_id?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Task Id */
+            task_id?: string | null;
+        };
+        /**
+         * InteractionSource
+         * @enum {string}
+         */
+        InteractionSource: "manual" | "gmail";
+        /**
+         * InteractionStatus
+         * @enum {string}
+         */
+        InteractionStatus: "pending" | "logged";
+        /** InteractionUpdate */
+        InteractionUpdate: {
+            /** Body Text */
+            body_text?: string | null;
+            /** Company Id */
+            company_id?: string | null;
+            /** Contact Id */
+            contact_id?: string | null;
+            direction?: components["schemas"]["InteractionDirection"] | null;
+            kind?: components["schemas"]["InteractionKind"] | null;
+            /** Occurred At */
+            occurred_at?: string | null;
+            /** Participants */
+            participants?: components["schemas"]["Participant"][] | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Subject */
+            subject?: string | null;
+            /** Task Id */
+            task_id?: string | null;
+        };
         /** LabelCreate */
         LabelCreate: {
             /** Color */
@@ -6717,6 +6947,17 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** Page[InteractionRead] */
+        Page_InteractionRead_: {
+            /** Items */
+            items: components["schemas"]["InteractionRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
         /** Page[LeaveRequestRead] */
         Page_LeaveRequestRead_: {
             /** Items */
@@ -6820,6 +7061,21 @@ export interface components {
             position: number;
             /** Title Key */
             title_key: string;
+        };
+        /** Participant */
+        Participant: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Name */
+            name?: string | null;
+            /**
+             * Role
+             * @default to
+             */
+            role: string;
         };
         /**
          * PartyReadRef
@@ -13048,6 +13304,272 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrgSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_interactions_api_v1_interactions_get: {
+        parameters: {
+            query?: {
+                company_id?: string | null;
+                project_id?: string | null;
+                task_id?: string | null;
+                contact_id?: string | null;
+                kind?: string | null;
+                status?: string | null;
+                owner_user_id?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_InteractionRead_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_interaction_api_v1_interactions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InteractionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InteractionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_interaction_api_v1_interactions__interaction_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                interaction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InteractionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_interaction_api_v1_interactions__interaction_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                interaction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_interaction_api_v1_interactions__interaction_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                interaction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InteractionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InteractionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_interaction_api_v1_interactions__interaction_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                interaction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InteractionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_interaction_api_v1_interactions__interaction_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                interaction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["InteractionReject"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remap_interaction_api_v1_interactions__interaction_id__remap_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                interaction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InteractionRemap"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InteractionRead"];
                 };
             };
             /** @description Validation Error */

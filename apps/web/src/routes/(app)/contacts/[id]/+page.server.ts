@@ -6,6 +6,7 @@ import { parseAssignees } from "$lib/core/assignees";
 import { apiErrorKey } from "$lib/core/errors";
 import { entityPanelsFor } from "$lib/core/registry";
 import { apiFor } from "$lib/core/session";
+import { interactionActions } from "$lib/modules/interactions/actions.server";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -150,4 +151,7 @@ export const actions: Actions = {
     });
     throw redirect(303, "/contacts");
   },
+
+  // Contactmomenten panel contract (lib/modules/interactions).
+  ...interactionActions,
 };
