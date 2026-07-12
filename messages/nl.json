@@ -1985,6 +1985,7 @@
   "google.calendar.source_label": "Google Agenda",
   "google.calendar.untitled": "(geen titel)",
   "google.calendar.leave_event_title": "Verlof",
+  "google.calendar.leave_event_day": "{date}: {hours} u",
   "google.drive.panel.title": "Drive",
   "google.drive.no_links": "Nog geen bestanden gekoppeld.",
   "google.drive.linked_files": "Gekoppelde bestanden",

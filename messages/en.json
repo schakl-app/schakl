@@ -1985,6 +1985,7 @@
   "google.calendar.source_label": "Google Calendar",
   "google.calendar.untitled": "(no title)",
   "google.calendar.leave_event_title": "Leave",
+  "google.calendar.leave_event_day": "{date}: {hours} h",
   "google.drive.panel.title": "Drive",
   "google.drive.no_links": "No files linked yet.",
   "google.drive.linked_files": "Linked files",

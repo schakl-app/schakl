@@ -19,6 +19,7 @@ from app.core.models import Org
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_zoneinfo
 from app.modules.google.calendar.models import (
+    CalendarEventLink,
     GoogleCalendarChannel,
     GoogleCalendarEvent,
     WatchStatus,
@@ -198,12 +199,19 @@ async def events_feed(
     window_start = datetime.fromisoformat(date_from).replace(tzinfo=zone)
     window_end = datetime.fromisoformat(date_to).replace(tzinfo=zone) + timedelta(days=1)
 
+    # Events schakl itself pushed (approved leave, #148) already render natively on the
+    # Agenda through the leave feed — showing the Google mirror too is the same item twice.
+    pushed = select(CalendarEventLink.google_event_id).where(
+        CalendarEventLink.org_id == ctx.org.id,
+        CalendarEventLink.google_event_id.is_not(None),
+    )
     rows = (
         (
             await ctx.session.execute(
                 select(GoogleCalendarEvent).where(
                     GoogleCalendarEvent.org_id == ctx.org.id,
                     GoogleCalendarEvent.connection_id == connection.id,
+                    GoogleCalendarEvent.google_event_id.not_in(pushed),
                     # Two shapes, one window: timed events by instant overlap, all-day by date.
                     (
                         GoogleCalendarEvent.start_at.is_not(None)

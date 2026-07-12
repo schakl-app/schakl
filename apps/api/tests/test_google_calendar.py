@@ -449,3 +449,120 @@ async def test_leave_approved_skips_unconnected_requester() -> None:
         from sqlalchemy import select
 
         assert (await session.execute(select(CalendarEventLink))).first() is None
+
+
+async def test_leave_push_carries_type_breakdown_and_identity(monkeypatch) -> None:
+    """#148: the pushed event reads "Verlof: <type>" in the requester's locale, describes
+    the span per working day, and carries its schakl identity in extendedProperties."""
+    from app.modules.leave.models import LeaveType
+
+    t = await make_tenant("gcal-leave-rich")
+    await _seed(t)
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        leave_type = LeaveType(
+            org_id=t.org.id,
+            key="vacation",
+            label_i18n={"nl": "Vakantie", "en": "Vacation"},
+        )
+        session.add(leave_type)
+        await session.commit()
+        type_id = leave_type.id
+
+    async def _fake_offer(org_id, link_id) -> None:
+        return None
+
+    monkeypatch.setattr(push_mod, "_enqueue_push", _fake_offer)
+
+    request_id = uuid.uuid4()
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        ctx = SystemContext(org=t.org, session=session)
+        await emit(
+            "leave.approved",
+            ctx,
+            {
+                "leave_request_id": request_id,
+                "user_id": t.user.id,
+                "leave_type_id": type_id,
+                "start_date": date(2026, 11, 2),
+                "end_date": date(2026, 11, 3),
+                "start_time": None,
+                "end_time": None,
+                "hours": 13,
+                "breakdown": [
+                    {"date": "2026-11-02", "hours": 8.0},
+                    {"date": "2026-11-03", "hours": 5.0},
+                ],
+                "_recipients": [t.user.id],
+            },
+        )
+        await session.commit()
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        from sqlalchemy import select
+
+        link = (await session.execute(select(CalendarEventLink))).scalar_one()
+        assert link.payload["summary"].endswith(": Vakantie")
+        assert "02-11-2026: 8 u" in link.payload["description"]
+        assert "03-11-2026: 5 u" in link.payload["description"]
+
+        body = push_mod._event_body(link.payload)
+        assert body["extendedProperties"]["private"]["schakl_id"] == str(request_id)
+        assert body["description"]
+
+
+async def test_events_feed_hides_events_schakl_pushed(client_for) -> None:
+    """#148: a leave event schakl pushed to Google must not come back through the Google
+    feed — the Agenda already shows it natively via the leave feed."""
+    t = await make_tenant("gcal-feed-dedup")
+    connection_id = await _seed(t)
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        session.add(
+            GoogleCalendarEvent(
+                org_id=t.org.id,
+                connection_id=connection_id,
+                google_event_id="mine-pushed",
+                summary="Verlof: Vakantie",
+                all_day=True,
+                start_date=date(2026, 7, 9),
+                end_date=date(2026, 7, 10),
+            )
+        )
+        session.add(
+            GoogleCalendarEvent(
+                org_id=t.org.id,
+                connection_id=connection_id,
+                google_event_id="genuine",
+                summary="Externe afspraak",
+                all_day=True,
+                start_date=date(2026, 7, 9),
+                end_date=date(2026, 7, 10),
+            )
+        )
+        session.add(
+            CalendarEventLink(
+                org_id=t.org.id,
+                local_type="leave_request",
+                local_id=uuid.uuid4(),
+                user_id=t.user.id,
+                connection_id=connection_id,
+                status="pushed",
+                google_event_id="mine-pushed",
+                payload={},
+            )
+        )
+        await session.commit()
+
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        feed = (
+            await c.get(
+                "/api/v1/google/calendar/events",
+                params={"date_from": "2026-07-01", "date_to": "2026-07-31"},
+                headers=headers,
+            )
+        ).json()
+        assert [item["title"] for item in feed] == ["Externe afspraak"]

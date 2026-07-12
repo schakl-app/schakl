@@ -12,6 +12,9 @@ from app.core.events import subscribe
 from app.modules.google.calendar.push import handle_leave_approved, handle_leave_gone
 
 subscribe("leave.approved", handle_leave_approved)
+# An approver's in-place edit of approved leave (#148): same handler — the snapshot
+# refreshes and the worker PUTs the stored event instead of leaving it on the old dates.
+subscribe("leave.updated", handle_leave_approved)
 subscribe("leave.cancelled", handle_leave_gone)
 subscribe("leave.rejected", handle_leave_gone)
 subscribe("leave.requested", handle_leave_gone)

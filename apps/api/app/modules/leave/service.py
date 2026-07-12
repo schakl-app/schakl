@@ -15,6 +15,7 @@ from calendar import monthrange
 from collections.abc import Sequence
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import ROUND_HALF_UP, Decimal
+from typing import Any
 
 from sqlalchemy import func, select
 
@@ -1540,20 +1541,34 @@ class LeaveService:
         ``user_id`` and the resolved window ride along so a subscriber that mirrors leave
         elsewhere (the Google Calendar push, issue #22) never reads this module's internals.
         """
-        await emit(
-            event,
-            self.ctx,
-            {
-                "leave_request_id": request.id,
-                "user_id": request.user_id,
-                "start_date": request.start_date,
-                "end_date": request.end_date,
-                "start_time": request.resolved_start_time or request.start_time,
-                "end_time": request.resolved_end_time or request.end_time,
-                "hours": request.hours,
-                "_recipients": list(recipients),
-            },
-        )
+        payload: dict[str, Any] = {
+            "leave_request_id": request.id,
+            "user_id": request.user_id,
+            "leave_type_id": request.leave_type_id,
+            "start_date": request.start_date,
+            "end_date": request.end_date,
+            "start_time": request.resolved_start_time or request.start_time,
+            "end_time": request.resolved_end_time or request.end_time,
+            "hours": request.hours,
+            "_recipients": list(recipients),
+        }
+        if event in ("leave.approved", "leave.updated"):
+            # The Google Calendar push (#148) describes the span day by day — 2 u on
+            # Thursday, 5 u on Friday — which only this module can compute. Decide-time
+            # work, never a list render; zero-hour days say nothing worth syncing.
+            _, breakdown = await self.compute_hours(
+                request.user_id,
+                request.start_date,
+                request.resolved_start_time or request.start_time,
+                request.end_date,
+                request.resolved_end_time or request.end_time,
+            )
+            payload["breakdown"] = [
+                {"date": row.date.isoformat(), "hours": float(row.hours)}
+                for row in breakdown
+                if row.hours
+            ]
+        await emit(event, self.ctx, payload)
 
     async def update(self, request_id: uuid.UUID, data: LeaveRequestUpdate) -> LeaveRequest:
         """Edit a request, re-triggering approval when the rule says so (#72).
@@ -1672,9 +1687,28 @@ class LeaveService:
             values["decision_note"] = None
             values["resubmitted_at"] = _now()
 
+        was_approved = request.status == LeaveRequestStatus.APPROVED.value
+        window_before = (
+            request.start_date,
+            request.start_time,
+            request.end_date,
+            request.end_time,
+        )
         updated = await self.requests.update(request, **values)
         if bounce:
             await self._emit_leave("leave.requested", updated, await self._approvers_for(updated))
+        elif was_approved and updated.status == LeaveRequestStatus.APPROVED.value:
+            window_after = (
+                updated.start_date,
+                updated.start_time,
+                updated.end_date,
+                updated.end_time,
+            )
+            if window_after != window_before:
+                # An approver's in-place edit of approved leave used to leave the pushed
+                # Google event on the old dates (#148). Bus-only event, like leave.cancelled:
+                # the calendar mirror refreshes, nobody's inbox is involved.
+                await self._emit_leave("leave.updated", updated, [])
         return updated
 
     async def decide(
