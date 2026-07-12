@@ -47,6 +47,7 @@
     <form
       method="POST"
       action="?/update"
+      enctype="multipart/form-data"
       use:enhance={() =>
         async ({ update }) => {
           await update({ reset: false });
@@ -154,7 +155,17 @@
           {/if}
         </div>
         <div>
-          <label for="logo_url" class="mb-1 block text-sm font-medium text-text"
+          <label for="logo_file" class="mb-1 block text-sm font-medium text-text"
+            >{t("settings.branding.logo")}</label
+          >
+          <input
+            id="logo_file"
+            name="logo_file"
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+            class="block w-full text-sm text-text-muted file:mr-3 file:cursor-pointer file:rounded-lg file:border file:border-solid file:border-border file:bg-transparent file:px-3 file:py-1.5 file:text-sm file:text-text hover:file:border-brand"
+          />
+          <label for="logo_url" class="mb-1 mt-2 block text-xs text-text-muted"
             >{t("settings.branding.logo_url")}</label
           >
           <input
@@ -164,9 +175,20 @@
             placeholder="https://…"
             class={inputClass}
           />
+          <p class="mt-1 text-xs text-text-muted">{t("settings.branding.upload_help")}</p>
         </div>
         <div>
-          <label for="favicon_url" class="mb-1 block text-sm font-medium text-text"
+          <label for="favicon_file" class="mb-1 block text-sm font-medium text-text"
+            >{t("settings.branding.favicon")}</label
+          >
+          <input
+            id="favicon_file"
+            name="favicon_file"
+            type="file"
+            accept="image/png,image/svg+xml,image/x-icon,image/vnd.microsoft.icon"
+            class="block w-full text-sm text-text-muted file:mr-3 file:cursor-pointer file:rounded-lg file:border file:border-solid file:border-border file:bg-transparent file:px-3 file:py-1.5 file:text-sm file:text-text hover:file:border-brand"
+          />
+          <label for="favicon_url" class="mb-1 mt-2 block text-xs text-text-muted"
             >{t("settings.branding.favicon_url")}</label
           >
           <input
@@ -176,6 +198,7 @@
             placeholder="https://…"
             class={inputClass}
           />
+          <p class="mt-1 text-xs text-text-muted">{t("settings.branding.upload_help")}</p>
         </div>
         <div>
           <label for="primary_color" class="mb-1 block text-sm font-medium text-text"

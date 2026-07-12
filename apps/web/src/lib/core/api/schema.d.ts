@@ -539,6 +539,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/files/{file_id}/public": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Serve Public File
+         * @description Anonymous serving for branding assets, org resolved strictly from the hostname.
+         *
+         *     Suspended orgs still resolve (their login screen keeps its branding, matching
+         *     `/meta/tenant`); deleted orgs — and any unknown host — read as 404.
+         */
+        get: operations["serve_public_file_api_v1_files__file_id__public_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hosting": {
         parameters: {
             query?: never;
@@ -9307,6 +9330,37 @@ export interface operations {
         };
     };
     serve_file_api_v1_files__file_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    serve_public_file_api_v1_files__file_id__public_get: {
         parameters: {
             query?: never;
             header?: never;

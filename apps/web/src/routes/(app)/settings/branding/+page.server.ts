@@ -1,5 +1,6 @@
-import { fail, redirect } from "@sveltejs/kit";
+import { fail, redirect, type RequestEvent } from "@sveltejs/kit";
 
+import { apiBaseUrl } from "$lib/core/api/client";
 import { COMMON_CURRENCIES, otherCurrencies } from "$lib/core/currencies";
 import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
@@ -7,6 +8,31 @@ import { apiFor } from "$lib/core/session";
 import { COMMON_EUROPEAN_TIMEZONES, otherTimeZones } from "$lib/core/timezones";
 
 import type { Actions, PageServerLoad } from "./$types";
+
+/** Upload a branding asset through the storage core (#123). Multipart goes through a plain
+ *  fetch — the typed client has no multipart serializer — with the same cookie + tenant host
+ *  the client would send. Returns the *public* serve URL: branding renders on the login
+ *  screen before a session exists. */
+async function uploadBrandingFile(
+  event: RequestEvent,
+  upload: File,
+): Promise<{ url: string } | { error: string }> {
+  const body = new FormData();
+  body.append("file", upload, upload.name);
+  const res = await event.fetch(`${apiBaseUrl()}/api/v1/files?entity_type=branding`, {
+    method: "POST",
+    headers: {
+      cookie: event.request.headers.get("cookie") ?? "",
+      "x-forwarded-host": event.request.headers.get("host") ?? "",
+    },
+    body,
+  });
+  if (!res.ok) {
+    return { error: res.status === 413 ? "errors.upload_too_large" : "errors.upload_type" };
+  }
+  const meta = (await res.json()) as { id: string };
+  return { url: `/api/v1/files/${meta.id}/public` };
+}
 
 export const load: PageServerLoad = async (event) => {
   if (!can(event.locals.user, "settings.branding.write")) throw redirect(303, "/");
@@ -31,12 +57,29 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const brand_name = String(form.get("brand_name") ?? "").trim();
     if (!brand_name) return fail(400, { error: "errors.required" });
+
+    // A chosen file wins over the URL field; either way the stored value is just a URL.
+    let logo_url = String(form.get("logo_url") ?? "").trim();
+    let favicon_url = String(form.get("favicon_url") ?? "").trim();
+    const logoFile = form.get("logo_file");
+    if (logoFile instanceof File && logoFile.size > 0) {
+      const uploaded = await uploadBrandingFile(event, logoFile);
+      if ("error" in uploaded) return fail(400, { error: uploaded.error });
+      logo_url = uploaded.url;
+    }
+    const faviconFile = form.get("favicon_file");
+    if (faviconFile instanceof File && faviconFile.size > 0) {
+      const uploaded = await uploadBrandingFile(event, faviconFile);
+      if ("error" in uploaded) return fail(400, { error: uploaded.error });
+      favicon_url = uploaded.url;
+    }
+
     const { error } = await apiFor(event).PATCH("/api/v1/meta/tenant", {
       body: {
         brand_name,
         show_brand_name: form.get("show_brand_name") === "on",
-        logo_url: String(form.get("logo_url") ?? "").trim(),
-        favicon_url: String(form.get("favicon_url") ?? "").trim(),
+        logo_url,
+        favicon_url,
         primary_color: String(form.get("primary_color") ?? "").trim() || undefined,
         accent_color: String(form.get("accent_color") ?? "").trim() || undefined,
         default_locale: String(form.get("default_locale") ?? "").trim() || undefined,

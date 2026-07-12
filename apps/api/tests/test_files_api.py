@@ -118,3 +118,73 @@ async def test_avatar_override_and_effective_url(client_for) -> None:
         )
         assert cleared.json()["avatar_url"] is None
         assert cleared.json()["custom_avatar_url"] is None
+
+
+async def test_branding_upload_gate_and_public_serve(client_for, tmp_path, monkeypatch) -> None:
+    """Branding files serve anonymously (the login screen shows them), so tagging an upload
+    as branding requires the branding permission — a plain member cannot publish public files."""
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    t = await make_tenant("files-brand")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        up = await c.post(
+            "/api/v1/files?entity_type=branding",
+            files={"file": ("logo.png", _PNG, "image/png")},
+            headers=headers,
+        )
+        assert up.status_code == 201, up.text
+        file_id = up.json()["id"]
+
+        # Anonymous fetch of the public URL succeeds — no cookie at all.
+        anon = await c.get(f"/api/v1/files/{file_id}/public")
+        assert anon.status_code == 200
+        assert anon.content == _PNG
+        assert anon.headers["cache-control"].startswith("public")
+
+        # The private route still requires a session.
+        assert (await c.get(f"/api/v1/files/{file_id}")).status_code == 401
+
+        # A non-branding file is NOT reachable through the public route.
+        plain = await c.post(
+            "/api/v1/files",
+            files={"file": ("doc.png", _PNG, "image/png")},
+            headers=headers,
+        )
+        assert (await c.get(f"/api/v1/files/{plain.json()['id']}/public")).status_code == 404
+
+        # Branding uploads are images only.
+        pdf = await c.post(
+            "/api/v1/files?entity_type=branding",
+            files={"file": ("doc.pdf", b"%PDF-1.4", "application/pdf")},
+            headers=headers,
+        )
+        assert pdf.status_code == 422
+
+    member = await make_tenant("files-brand-m", role="member")
+    m_headers = await auth_cookie(member.user)
+    async with client_for(member.host) as c:
+        refused = await c.post(
+            "/api/v1/files?entity_type=branding",
+            files={"file": ("logo.png", _PNG, "image/png")},
+            headers=m_headers,
+        )
+        assert refused.status_code == 403
+
+
+async def test_public_serve_is_tenant_scoped(client_for, tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    a = await make_tenant("files-pub-a")
+    b = await make_tenant("files-pub-b")
+    a_headers = await auth_cookie(a.user)
+    async with client_for(a.host) as ca:
+        file_id = (
+            await ca.post(
+                "/api/v1/files?entity_type=branding",
+                files={"file": ("logo.png", _PNG, "image/png")},
+                headers=a_headers,
+            )
+        ).json()["id"]
+        assert (await ca.get(f"/api/v1/files/{file_id}/public")).status_code == 200
+    async with client_for(b.host) as cb:
+        # Another tenant's branding id reads as absent on the public route too.
+        assert (await cb.get(f"/api/v1/files/{file_id}/public")).status_code == 404

@@ -12,6 +12,12 @@ from app.core.storage.models import StoredFile
 from app.core.tenancy import RequestContext
 from app.errors import AppError
 
+#: Entity types whose files are served **without a session** (`GET /files/{id}/public`):
+#: branding assets render on the login screen before anyone is signed in. Uploading one is
+#: therefore gated on the branding permission — otherwise any member could publish
+#: anonymously-readable files on the org's domain.
+PUBLIC_ENTITY_TYPES = frozenset({"branding"})
+
 
 class FileService:
     def __init__(self, ctx: RequestContext) -> None:
@@ -29,6 +35,15 @@ class FileService:
         entity_id: uuid.UUID | None = None,
     ) -> StoredFile:
         self.ctx.require("files.file.write")
+        if entity_type in PUBLIC_ENTITY_TYPES:
+            self.ctx.require("settings.branding.write")
+            if not content_type.startswith("image/"):
+                raise AppError(
+                    "validation",
+                    "errors.upload_type",
+                    status_code=422,
+                    fields={"file": "errors.upload_type"},
+                )
         if content_type not in settings.upload_allowed_types:
             raise AppError(
                 "validation",

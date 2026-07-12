@@ -62,6 +62,7 @@ class Settings(BaseSettings):
     upload_allowed_types: list[str] = Field(
         default_factory=lambda: [
             "image/png", "image/jpeg", "image/webp", "image/gif", "image/svg+xml",
+            "image/x-icon", "image/vnd.microsoft.icon",
             "application/pdf", "text/plain", "text/csv",
             "application/zip",
             "application/msword", "application/vnd.ms-excel",
