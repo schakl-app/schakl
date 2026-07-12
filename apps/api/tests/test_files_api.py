@@ -89,3 +89,32 @@ async def test_files_tenant_isolation(client_for, tmp_path, monkeypatch) -> None
     async with client_for(b.host) as cb:
         # Another tenant's id reads as absent, never as forbidden.
         assert (await cb.get(f"/api/v1/files/{file_id}", headers=b_headers)).status_code == 404
+
+
+async def test_avatar_override_and_effective_url(client_for) -> None:
+    """#122: PATCH /meta/me sets/clears the personal override; the lookup carries the
+    effective avatar for every picker in one query."""
+    t = await make_tenant("avatar-me")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        me = (await c.get("/api/v1/meta/me", headers=headers)).json()
+        assert me["avatar_url"] is None
+
+        saved = await c.patch(
+            "/api/v1/meta/me",
+            json={"custom_avatar_url": "/api/v1/files/00000000-0000-0000-0000-000000000001"},
+            headers=headers,
+        )
+        assert saved.status_code == 200
+        assert saved.json()["avatar_url"].endswith("0001")
+        assert saved.json()["custom_avatar_url"] == saved.json()["avatar_url"]
+
+        lookup = (await c.get("/api/v1/members/lookup", headers=headers)).json()
+        assert lookup[0]["avatar_url"].endswith("0001")
+
+        # Empty clears back to the OIDC picture / initials.
+        cleared = await c.patch(
+            "/api/v1/meta/me", json={"custom_avatar_url": ""}, headers=headers
+        )
+        assert cleared.json()["avatar_url"] is None
+        assert cleared.json()["custom_avatar_url"] is None

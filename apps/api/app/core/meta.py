@@ -105,6 +105,10 @@ class MeInfo(BaseModel):
     #: owner. This is UX input, never the boundary: the API is the boundary (issue #19).
     permissions: list[str]
     locale: str | None
+    #: Effective avatar (#122): personal override → OIDC picture → None (initials).
+    avatar_url: str | None = None
+    #: The stored override alone, so Settings → Account can tell it apart from the OIDC one.
+    custom_avatar_url: str | None = None
     # Instance administration (issue #26). ``is_instance_admin`` reflects the *effective*
     # user, so it goes false while impersonating; the banner comes from the two fields below.
     is_instance_admin: bool = False
@@ -117,6 +121,9 @@ class MeUpdate(BaseModel):
 
     full_name: str | None = None
     locale: str | None = None
+    #: Personal avatar override (#122): an uploaded file's URL or any image URL; empty clears
+    #: it back to the OIDC picture (or initials).
+    custom_avatar_url: str | None = Field(default=None, max_length=1024)
 
 
 def _me_info(ctx: RequestContext, user: User) -> MeInfo:
@@ -128,6 +135,8 @@ def _me_info(ctx: RequestContext, user: User) -> MeInfo:
         can_manage=ctx.role.can_manage,
         permissions=ctx.permissions.keys(),
         locale=user.locale,
+        avatar_url=user.custom_avatar_url or user.oidc_avatar_url or None,
+        custom_avatar_url=user.custom_avatar_url,
         is_instance_admin=(
             settings.instance_admin_enabled
             and user.is_superuser
@@ -173,6 +182,9 @@ async def update_me(
     if user is None:
         raise AppError("not_found", "errors.not_found", status_code=404)
     for key, value in data.items():
+        # An empty override means "back to the OIDC picture / initials" (#122).
+        if key == "custom_avatar_url":
+            value = value or None
         setattr(user, key, value)
     await ctx.session.flush()
     await ctx.session.refresh(user)

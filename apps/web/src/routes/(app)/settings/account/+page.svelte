@@ -4,6 +4,7 @@
   import { localeLabel, t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
   import { THEME_MODES, themeModeLabel } from "$lib/core/theme-mode";
+  import Avatar from "$lib/core/ui/Avatar.svelte";
 
   let { data, form } = $props();
 
@@ -136,6 +137,47 @@
   <!-- Profile -->
   <section class="rounded-xl border border-border bg-surface-raised p-5">
     <h2 class="text-sm font-semibold text-text">{t("settings.account.profile")}</h2>
+
+    <!-- Profile picture (#122): OIDC by default, personally overridable, initials fallback. -->
+    <div class="mt-4 flex items-center gap-4">
+      <Avatar
+        name={account?.full_name}
+        email={account?.email}
+        avatarUrl={account?.avatarUrl ?? null}
+        size="md"
+      />
+      <div class="flex flex-wrap items-center gap-2">
+        <form method="POST" action="?/saveAvatar" enctype="multipart/form-data" use:enhance>
+          <label
+            class="inline-flex cursor-pointer items-center rounded-lg border border-border px-3 py-1.5 text-sm text-text hover:border-brand"
+          >
+            {t("settings.account.avatar_upload")}
+            <input
+              type="file"
+              name="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              class="hidden"
+              onchange={(e) => e.currentTarget.form?.requestSubmit()}
+            />
+          </label>
+        </form>
+        {#if account?.customAvatarUrl}
+          <form method="POST" action="?/saveAvatar" use:enhance>
+            <input type="hidden" name="clear" value="1" />
+            <button
+              class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:text-red-600 dark:hover:text-red-400"
+            >
+              {t("settings.account.avatar_remove")}
+            </button>
+          </form>
+        {/if}
+      </div>
+    </div>
+    <p class="mt-2 text-xs text-text-muted">{t("settings.account.avatar_help")}</p>
+    {#if form?.avatarError}
+      <p class="mt-1 text-sm text-red-600 dark:text-red-400">{t(form.avatarError)}</p>
+    {/if}
+
     <form method="POST" action="?/updateProfile" use:enhance class="mt-4 space-y-4">
       <div>
         <label for="full_name" class="mb-1 block text-sm font-medium text-text">

@@ -15,6 +15,7 @@ import {
 import { apiErrorKey } from "$lib/core/errors";
 import { LOCALES } from "$lib/core/i18n";
 import { can } from "$lib/core/permissions";
+import { apiBaseUrl } from "$lib/core/api/client";
 import { apiFor } from "$lib/core/session";
 import {
   asThemeMode,
@@ -122,6 +123,47 @@ export const actions: Actions = {
     if (error) return fail(400, { error: apiErrorKey(error).key });
     // The full secret is returned exactly once — hand it straight to the page to reveal.
     return { createdSecret: data?.secret, createdName: data?.name };
+  },
+
+  /** Profile picture override (#122): upload through the storage core (#123), or clear back
+   *  to the OIDC picture / initials. */
+  saveAvatar: async (event) => {
+    const form = await event.request.formData();
+    if (form.get("clear") === "1") {
+      const { error } = await apiFor(event).PATCH("/api/v1/meta/me", {
+        body: { custom_avatar_url: "" },
+      });
+      if (error) return fail(400, { avatarError: apiErrorKey(error).key });
+      return { avatarSaved: true };
+    }
+    const upload = form.get("file");
+    if (!(upload instanceof File) || upload.size === 0) {
+      return fail(400, { avatarError: "errors.required" });
+    }
+    // Multipart passes through a plain fetch — the typed client has no multipart serializer —
+    // with the same cookie + tenant host the client would send (Golden Rule 6 still holds:
+    // this talks to the API).
+    const body = new FormData();
+    body.append("file", upload, upload.name);
+    const res = await event.fetch(`${apiBaseUrl()}/api/v1/files?entity_type=avatar`, {
+      method: "POST",
+      headers: {
+        cookie: event.request.headers.get("cookie") ?? "",
+        "x-forwarded-host": event.request.headers.get("host") ?? "",
+      },
+      body,
+    });
+    if (!res.ok) {
+      return fail(400, {
+        avatarError: res.status === 413 ? "errors.upload_too_large" : "errors.upload_type",
+      });
+    }
+    const meta = (await res.json()) as { id: string };
+    const { error } = await apiFor(event).PATCH("/api/v1/meta/me", {
+      body: { custom_avatar_url: `/api/v1/files/${meta.id}` },
+    });
+    if (error) return fail(400, { avatarError: apiErrorKey(error).key });
+    return { avatarSaved: true };
   },
 
   revokeKey: async (event) => {

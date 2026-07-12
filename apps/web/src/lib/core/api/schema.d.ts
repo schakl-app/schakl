@@ -5193,8 +5193,12 @@ export interface components {
          * @description The current user *within the resolved tenant* — including what they may do.
          */
         MeInfo: {
+            /** Avatar Url */
+            avatar_url?: string | null;
             /** Can Manage */
             can_manage: boolean;
+            /** Custom Avatar Url */
+            custom_avatar_url?: string | null;
             /** Email */
             email: string;
             /** Full Name */
@@ -5222,6 +5226,8 @@ export interface components {
          * @description Personal, self-service preferences any member may set for their own account.
          */
         MeUpdate: {
+            /** Custom Avatar Url */
+            custom_avatar_url?: string | null;
             /** Full Name */
             full_name?: string | null;
             /** Locale */
@@ -5244,6 +5250,8 @@ export interface components {
          * @description Minimal member identity for pickers (assignee, approver) — safe for any staff role.
          */
         MemberLookup: {
+            /** Avatar Url */
+            avatar_url?: string | null;
             /** Email */
             email: string;
             /** Full Name */
@@ -5253,6 +5261,8 @@ export interface components {
         };
         /** MemberRead */
         MemberRead: {
+            /** Avatar Url */
+            avatar_url?: string | null;
             /** Email */
             email: string;
             /** Full Name */

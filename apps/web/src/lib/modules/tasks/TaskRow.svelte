@@ -5,6 +5,7 @@
    * Used by the tasks list, the project to-do list and the company panel.
    */
   import { enhance } from "$app/forms";
+  import Avatar from "$lib/core/ui/Avatar.svelte";
   import { fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { labelChipClass } from "$lib/modules/tasks/labels";
@@ -39,6 +40,7 @@
     user_id: string;
     full_name: string | null;
     email: string;
+    avatar_url?: string | null;
   }
 
   let {
@@ -76,11 +78,6 @@
   const overdue = $derived(!done && !!task.due_date && task.due_date < today);
   const assignee = $derived(members.find((m) => m.user_id === task.assignee_user_id));
 
-  function initials(member: Member): string {
-    const source = member.full_name || member.email;
-    const parts = source.split(/[\s@._-]+/).filter(Boolean);
-    return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
-  }
 </script>
 
 <div class="flex items-center gap-3 px-4 py-2.5 hover:bg-surface">
@@ -154,9 +151,11 @@
     </span>
   {/if}
   {#if assignee}
-    <span
-      class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand/10 text-[10px] font-semibold text-brand"
-      title={assignee.full_name || assignee.email}>{initials(assignee)}</span
-    >
+    <Avatar
+      name={assignee.full_name}
+      email={assignee.email}
+      avatarUrl={assignee.avatar_url ?? null}
+      size="sm"
+    />
   {/if}
 </div>

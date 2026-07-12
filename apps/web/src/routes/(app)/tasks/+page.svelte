@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Trash2 } from "@lucide/svelte";
+  import Avatar from "$lib/core/ui/Avatar.svelte";
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
@@ -94,10 +95,6 @@
   const companyName = (id?: string | null) => data.companies.find((c) => c.id === id)?.name ?? "";
   const isOverdue = (task: Task) => !isDone(task) && !!task.due_date && task.due_date < today;
 
-  function initials(source: string): string {
-    const parts = source.split(/[\s@._-]+/).filter(Boolean);
-    return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
-  }
 
   const companyItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
   const projectItems = $derived(data.projects.map((p) => ({ value: p.id, label: p.name })));
@@ -340,14 +337,16 @@
 {/snippet}
 
 {#snippet assigneeCell(task: Task)}
-  {@const name = memberName(task.assignee_user_id)}
-  {#if name}
+  {@const member = data.members.find((m) => m.user_id === task.assignee_user_id)}
+  {#if member}
     <span class="flex items-center gap-2">
-      <span
-        class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand/10 text-[10px] font-semibold text-brand"
-        aria-hidden="true">{initials(name)}</span
-      >
-      <span class="truncate text-text">{name}</span>
+      <Avatar
+        name={member.full_name}
+        email={member.email}
+        avatarUrl={member.avatar_url ?? null}
+        size="sm"
+      />
+      <span class="truncate text-text">{member.full_name || member.email}</span>
     </span>
   {:else}
     <span class="text-text-muted">—</span>

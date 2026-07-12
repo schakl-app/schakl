@@ -82,6 +82,8 @@ def build_oidc_router() -> APIRouter | None:
                     id=uuid.uuid4(),
                     email=email,
                     full_name=userinfo.get("name"),
+                    # The IdP's picture claim (#122) — `profile` scope already requested.
+                    oidc_avatar_url=userinfo.get("picture"),
                     # Unusable local password; identity is asserted by the IdP.
                     hashed_password=uuid.uuid4().hex,
                     is_active=True,
@@ -89,6 +91,10 @@ def build_oidc_router() -> APIRouter | None:
                 )
                 session.add(user)
                 await session.flush()
+            else:
+                # Returning user: refresh the IdP-owned picture each login (#122) — a stale or
+                # dropped claim follows through, while the personal override stays untouched.
+                user.oidc_avatar_url = userinfo.get("picture")
 
             # Grant a membership in the resolved org, otherwise a JIT-provisioned SSO user would
             # authenticate but be locked out (no membership → 403 in require_context).

@@ -65,6 +65,8 @@ export interface PanelMember {
   user_id: string;
   full_name: string | null;
   email: string;
+  /** Effective avatar (#122); rides the members lookup, no per-person fetch. */
+  avatar_url?: string | null;
 }
 
 /**

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { BadgeEuro, CalendarClock, FileText, Repeat, Trash2, UserMinus } from "@lucide/svelte";
+  import Avatar from "$lib/core/ui/Avatar.svelte";
 
   import { enhance } from "$app/forms";
   import { fmtNumericDate } from "$lib/core/format";
@@ -247,6 +248,12 @@
     {#each data.members as member (member.membership_id)}
       {@const effective = effectiveFor(member.role_ids)}
       <li class="flex items-center gap-3 px-4 py-3 first:rounded-t-xl last:rounded-b-xl">
+        <Avatar
+          name={member.full_name}
+          email={member.email}
+          avatarUrl={member.avatar_url ?? null}
+          size="md"
+        />
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">
             <span class="truncate font-medium text-text">{member.full_name || member.email}</span>

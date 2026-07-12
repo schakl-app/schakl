@@ -19,6 +19,10 @@ export interface SessionUser {
   permissions: string[];
   /** Personal display-language preference (null → org default). */
   locale: string | null;
+  /** Effective avatar (#122): personal override → OIDC picture → null (initials). */
+  avatarUrl: string | null;
+  /** The stored override alone, for Settings → Account. */
+  customAvatarUrl: string | null;
   /** Instance owner with the instance-admin surface enabled (issue #26). */
   isInstanceAdmin: boolean;
   /** Set while an instance owner impersonates this user — drives the banner. */
@@ -72,6 +76,8 @@ export async function fetchUser(event: ApiEvent): Promise<SessionUser | null> {
     canManage: data.can_manage,
     permissions: data.permissions ?? [],
     locale: data.locale ?? null,
+    avatarUrl: data.avatar_url ?? null,
+    customAvatarUrl: data.custom_avatar_url ?? null,
     isInstanceAdmin: data.is_instance_admin ?? false,
     impersonatedBy: data.impersonated_by ?? null,
     impersonationExpiresAt: data.impersonation_expires_at ?? null,

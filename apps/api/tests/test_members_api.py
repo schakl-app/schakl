@@ -179,4 +179,5 @@ async def test_lookup_open_to_plain_members(client_for) -> None:
         assert r.status_code == 200
         rows = r.json()
         assert len(rows) == 1
-        assert set(rows[0].keys()) == {"user_id", "full_name", "email"}
+        # avatar_url joined the safe minimal shape in #122 (effective avatar for pickers).
+        assert set(rows[0].keys()) == {"user_id", "full_name", "email", "avatar_url"}

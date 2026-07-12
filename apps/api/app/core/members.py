@@ -48,11 +48,17 @@ _password_hash = PasswordHash.recommended()
 router = APIRouter(prefix="/members", tags=["members"])
 
 
+def effective_avatar_url(user: User) -> str | None:
+    """#122's one precedence rule: personal override → OIDC picture → None (initials)."""
+    return user.custom_avatar_url or user.oidc_avatar_url or None
+
+
 class MemberRead(BaseModel):
     membership_id: str
     user_id: str
     email: str
     full_name: str | None
+    avatar_url: str | None = None
     # DEPRECATED (issue #19): the collapsed legacy role. ``role_ids`` is the real answer.
     role: str
     #: Every role this membership holds. The Users screen derives the effective permission set
@@ -68,6 +74,7 @@ class MemberLookup(BaseModel):
     user_id: str
     full_name: str | None
     email: str
+    avatar_url: str | None = None
 
 
 class MemberInvite(BaseModel):
@@ -91,6 +98,7 @@ def _member_read(
         user_id=str(user.id),
         email=user.email,
         full_name=user.full_name,
+        avatar_url=effective_avatar_url(user),
         role=membership.role,
         role_ids=[str(role_id) for role_id in role_ids or []],
         is_active=user.is_active,
@@ -182,7 +190,13 @@ async def lookup_members(
 
     rows = (await ctx.session.execute(stmt)).scalars().all()
     return [
-        MemberLookup(user_id=str(u.id), full_name=u.full_name, email=u.email) for u in rows
+        MemberLookup(
+            user_id=str(u.id),
+            full_name=u.full_name,
+            email=u.email,
+            avatar_url=effective_avatar_url(u),
+        )
+        for u in rows
     ]
 
 
