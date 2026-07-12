@@ -67,6 +67,11 @@ class ImpexColumn:
     * ``text`` — trimmed string.
     * ``email`` — validated address (row error ``errors.invalid_email`` otherwise).
     * ``select`` — must be one of ``options`` (row error ``impex.errors.invalid_option``).
+    * ``date`` — ISO ``YYYY-MM-DD`` (what export writes; row error ``impex.errors.invalid_date``).
+    * ``time`` — ``HH:MM`` wall clock (row error ``impex.errors.invalid_time``).
+    * ``number`` — decimal, ``.`` or ``,`` separator (row error ``impex.errors.invalid_number``).
+    * ``bool`` — ``true``/``false``/``ja``/``nee``/``yes``/``no``/``1``/``0``
+      (row error ``impex.errors.invalid_bool``).
     * ``fk`` — raw reference handed to the descriptor's resolver; the resolved id lands in
       ``field`` (e.g. column ``company`` → ``company_id``).
 
@@ -84,6 +89,10 @@ class ImpexColumn:
     options: tuple[str, ...] = ()
     #: Export accessor; ``None`` → ``getattr(row, target)``.
     getter: Callable[[Any], Any] | None = None
+    #: Exported but never imported (a derived value: worked minutes, an approval flag, the
+    #: entry's owner). The import accepts the column in the header — an export must re-import
+    #: unchanged (round-trip) — and ignores its cells.
+    readonly: bool = False
 
     @property
     def target(self) -> str:
@@ -99,7 +108,9 @@ class ImpexDescriptor:
     read_permission: str             # declared on the export route (§15 deny-by-default)
     write_permission: str            # declared on the import route
     columns: tuple[ImpexColumn, ...]
-    natural_key: str                 # column key the upsert matches on
+    #: Column key the upsert matches on; ``None`` = create-only import (no reliable natural
+    #: key exists — a time entry, a task title that legitimately repeats).
+    natural_key: str | None
     #: Which of the core filter params (see ``router.FILTER_PARAMS``) this entity's list
     #: supports; they mirror the entity's own list endpoint.
     filters: tuple[str, ...]
@@ -108,3 +119,6 @@ class ImpexDescriptor:
     create_row: CreateRow
     update_row: UpdateRow
     fk_resolvers: Mapping[str, FkResolver] = field(default_factory=dict)
+    #: False = export-only: no import route is mounted (approval-bearing records like leave
+    #: must be requested, never bulk-written).
+    importable: bool = True

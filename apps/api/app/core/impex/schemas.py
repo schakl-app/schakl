@@ -32,3 +32,13 @@ class ImportReport(BaseModel):
     error_count: int
     errors: list[ImportRowError]
     applied: bool
+
+
+class ImpexEntityInfo(BaseModel):
+    """One CSV-capable entity type — the Instellingen → Import & export screen's catalog."""
+
+    entity_type: str
+    read_permission: str
+    write_permission: str
+    importable: bool
+    filters: list[str]

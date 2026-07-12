@@ -21,9 +21,11 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from fastapi.responses import Response
@@ -48,6 +50,10 @@ ERRORS_RETURNED = 50
 MULTI_VALUE_SEPARATOR = "|"
 
 _email_adapter: TypeAdapter[str] = TypeAdapter(EmailStr)
+
+_TIME_RE = re.compile(r"^([01]?\d|2[0-3]):[0-5]\d$")
+_TRUE_WORDS = frozenset({"true", "ja", "yes", "1"})
+_FALSE_WORDS = frozenset({"false", "nee", "no", "0"})
 
 
 def _cell(value: Any) -> str:
@@ -135,6 +141,9 @@ class ImpexService:
         self, d: ImpexDescriptor, raw: bytes, *, dry_run: bool
     ) -> ImportReport:
         self.ctx.require(d.write_permission)  # the route declares it too; defence-in-depth
+        if not d.importable:
+            # Defensive: the router doesn't even mount an import route for these.
+            raise AppError("not_found", "errors.not_found", status_code=404)
         header, data = self._parse(raw)
 
         defs = list(await self.custom_fields.definitions(d.entity_type))
@@ -165,9 +174,12 @@ class ImpexService:
         ]
         rows = [self._parse_row(index, cells, columns) for index, cells in enumerate(data, 1)]
 
-        nk_target = by_key[d.natural_key].target
-        self._mark_natural_keys(d, rows, nk_target)
-        existing = await self._find_existing(d, rows)
+        if d.natural_key is not None:
+            self._mark_natural_keys(d, rows, by_key[d.natural_key].target)
+            existing = await self._find_existing(d, rows)
+        else:
+            # Create-only entity (no reliable natural key): every valid row creates.
+            existing = {}
         fk_resolved = await self._resolve_fks(d, rows)
 
         errors: list[ImportRowError] = []
@@ -289,6 +301,8 @@ class ImpexService:
                 row.custom[spec.key] = cell
                 continue
             column: ImpexColumn = spec
+            if column.readonly:
+                continue  # exported-only (derived) — present for round-trip, never written
             if cell == "":
                 if column.required:
                     row.errors.append((column.key, "errors.required"))
@@ -307,6 +321,30 @@ class ImpexService:
                     row.values[column.target] = cell
                 else:
                     row.errors.append((column.key, "impex.errors.invalid_option"))
+            elif column.data_type == "date":
+                try:
+                    row.values[column.target] = date.fromisoformat(cell).isoformat()
+                except ValueError:
+                    row.errors.append((column.key, "impex.errors.invalid_date"))
+            elif column.data_type == "time":
+                if _TIME_RE.match(cell):
+                    hours, minutes = cell.split(":")
+                    row.values[column.target] = f"{int(hours):02d}:{minutes}"
+                else:
+                    row.errors.append((column.key, "impex.errors.invalid_time"))
+            elif column.data_type == "number":
+                try:
+                    row.values[column.target] = str(Decimal(cell.replace(",", ".")))
+                except InvalidOperation:
+                    row.errors.append((column.key, "impex.errors.invalid_number"))
+            elif column.data_type == "bool":
+                lowered = cell.lower()
+                if lowered in _TRUE_WORDS:
+                    row.values[column.target] = True
+                elif lowered in _FALSE_WORDS:
+                    row.values[column.target] = False
+                else:
+                    row.errors.append((column.key, "impex.errors.invalid_bool"))
             else:
                 row.values[column.target] = cell
         return row

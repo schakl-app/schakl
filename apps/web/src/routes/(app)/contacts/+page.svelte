@@ -208,6 +208,7 @@
     <!-- A plain link: the browser downloads through its own session (issue #77). -->
     <a
       href={exportHref}
+      data-sveltekit-reload
       data-sveltekit-preload-data="off"
       class="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:text-text"
     >

@@ -18,6 +18,7 @@ than a 422.
 
 from __future__ import annotations
 
+import datetime as dt
 import inspect
 import uuid
 from typing import Any
@@ -26,10 +27,10 @@ from fastapi import APIRouter, Depends, File, Query, UploadFile
 from fastapi.responses import Response
 
 from app.config import settings
-from app.core.impex.schemas import ImportReport
+from app.core.impex.schemas import ImpexEntityInfo, ImportReport
 from app.core.impex.service import ImpexService
 from app.core.impex.spec import ImpexDescriptor
-from app.core.permissions.deps import require_permission
+from app.core.permissions.deps import no_permission_required, require_permission
 from app.core.tenancy import RequestContext, require_context
 
 #: The core filter vocabulary. A descriptor names a subset; these mirror the query params the
@@ -39,6 +40,10 @@ FILTER_PARAMS: dict[str, tuple[Any, Any]] = {
     "status": (str | None, Query(None, max_length=50)),
     "mine": (bool, Query(False, description="Only rows assigned to me")),
     "company_id": (uuid.UUID | None, Query(None)),
+    "project_id": (uuid.UUID | None, Query(None)),
+    "user_id": (uuid.UUID | None, Query(None)),
+    "date_from": (dt.date | None, Query(None, description="Rows on/after this day")),
+    "date_to": (dt.date | None, Query(None, description="Rows on/before this day")),
     "sort": (str | None, Query(None, max_length=50, description="List sort key, '-' desc")),
 }
 
@@ -91,9 +96,14 @@ def _import_endpoint(descriptor: ImpexDescriptor) -> Any:
         return await ImpexService(ctx).import_csv(descriptor, raw, dry_run=dry_run)
 
     import_csv.__name__ = f"import_{descriptor.entity_type}_csv"
+    upsert = (
+        f"upserting on `{descriptor.natural_key}`"
+        if descriptor.natural_key
+        else "create-only (no natural key)"
+    )
     import_csv.__doc__ = (
-        f"Import {descriptor.entity_type} rows from CSV, upserting on "
-        f"`{descriptor.natural_key}` (max 2000 data rows per request)."
+        f"Import {descriptor.entity_type} rows from CSV, {upsert} "
+        "(max 2000 data rows per request)."
     )
     return import_csv
 
@@ -107,17 +117,48 @@ def build_impex_router() -> APIRouter:
     from app.registry import registry
 
     router = APIRouter(prefix="/impex", tags=["impex"])
-    for module in registry.enabled(settings.enabled_modules):
-        for descriptor in module.impex:
-            router.add_api_route(
-                f"/{descriptor.entity_type}/export",
-                _export_endpoint(descriptor),
-                methods=["GET"],
-                name=f"impex_export_{descriptor.entity_type}",
-                dependencies=[require_permission(descriptor.read_permission)],
-                response_class=Response,
-                responses={200: {"content": {"text/csv": {}}, "description": "CSV file"}},
+    descriptors = [
+        descriptor
+        for module in registry.enabled(settings.enabled_modules)
+        for descriptor in module.impex
+    ]
+
+    @router.get(
+        "/entities",
+        response_model=list[ImpexEntityInfo],
+        dependencies=[
+            no_permission_required(
+                "the code-defined impex registry — which entity types support CSV, no tenant "
+                "data; each entity's actual export/import route declares its own permission"
             )
+        ],
+    )
+    async def list_impex_entities(
+        ctx: RequestContext = Depends(require_context),
+    ) -> list[ImpexEntityInfo]:
+        """The entity types with CSV support, for the Instellingen → Import & export screen."""
+        return [
+            ImpexEntityInfo(
+                entity_type=d.entity_type,
+                read_permission=d.read_permission,
+                write_permission=d.write_permission,
+                importable=d.importable,
+                filters=list(d.filters),
+            )
+            for d in descriptors
+        ]
+
+    for descriptor in descriptors:
+        router.add_api_route(
+            f"/{descriptor.entity_type}/export",
+            _export_endpoint(descriptor),
+            methods=["GET"],
+            name=f"impex_export_{descriptor.entity_type}",
+            dependencies=[require_permission(descriptor.read_permission)],
+            response_class=Response,
+            responses={200: {"content": {"text/csv": {}}, "description": "CSV file"}},
+        )
+        if descriptor.importable:
             router.add_api_route(
                 f"/{descriptor.entity_type}/import",
                 _import_endpoint(descriptor),

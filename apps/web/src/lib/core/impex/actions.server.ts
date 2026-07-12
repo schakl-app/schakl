@@ -16,7 +16,31 @@ import type { components } from "$lib/core/api/schema";
 export type ImportReport = components["schemas"]["ImportReport"];
 export type ImportRowError = components["schemas"]["ImportRowError"];
 
-type ImportPath = "/api/v1/impex/company/import" | "/api/v1/impex/contact/import";
+type ImportPath =
+  | "/api/v1/impex/company/import"
+  | "/api/v1/impex/contact/import"
+  | "/api/v1/impex/project/import"
+  | "/api/v1/impex/task/import"
+  | "/api/v1/impex/time_entry/import"
+  | "/api/v1/impex/subscription/import";
+
+/** The entity slugs the settings hub may import — mirrors the API's importable registry. */
+export const IMPORTABLE_ENTITIES = [
+  "company",
+  "contact",
+  "project",
+  "task",
+  "time_entry",
+  "subscription",
+] as const;
+
+/** The hub's per-entity variant: validates the slug, then delegates to the shared action. */
+export async function importCsvActionFor(event: ApiEvent, entity: string) {
+  if (!(IMPORTABLE_ENTITIES as readonly string[]).includes(entity)) {
+    return fail(400, { impexError: "errors.not_found" });
+  }
+  return importCsvAction(event, `/api/v1/impex/${entity}/import` as ImportPath);
+}
 
 export async function importCsvAction(event: ApiEvent, path: ImportPath) {
   const form = await event.request.formData();

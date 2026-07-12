@@ -51,6 +51,9 @@ _EXEMPT_OPERATIONS = frozenset(
         ("get", "/api/v1/files/{file_id}"),
         # Listing is the same exposure as fetching each one; filtered to one entity, RLS-scoped.
         ("get", "/api/v1/files"),
+        # The code-defined impex registry (which entities support CSV) — no tenant data; each
+        # entity's actual export/import route declares its own permission.
+        ("get", "/api/v1/impex/entities"),
         # Branding assets render on the login screen before a session exists; only rows
         # tagged with a public entity type are reachable, anything else 404s.
         ("get", "/api/v1/files/{file_id}/public"),

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from arq import cron
 
+from app.modules.time.impex import TIME_ENTRY_IMPEX
 from app.modules.time.jobs import purge_stale_time_drafts
 from app.modules.time.mcp import TIME_MCP_TOOLS
 from app.modules.time.panels import time_company_panel
@@ -22,6 +23,7 @@ module = ModuleDescriptor(
     i18n_namespace="time",
     panels=[time_company_panel],
     permissions=TIME_PERMISSIONS,
+    impex=[TIME_ENTRY_IMPEX],
     mcp_tools=TIME_MCP_TOOLS,
     cron_jobs=[
         # Monday morning, once the week has actually started (weekday 0 = Monday).

@@ -485,3 +485,169 @@ async def test_more_than_2000_rows_is_a_413(client_for) -> None:
         assert r.status_code == 413
         assert r.json()["error"]["message"] == "impex.errors.too_many_rows"
         assert (await c.get("/api/v1/companies", headers=headers)).json()["total"] == 0
+
+
+# --------------------------------------------------------------------------- #
+# Settings hub round: entities catalog + the four new descriptors
+# --------------------------------------------------------------------------- #
+async def test_entities_catalog_lists_all_descriptors(client_for) -> None:
+    t = await make_tenant("impex-cat")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        entities = {
+            e["entity_type"]: e
+            for e in (await c.get("/api/v1/impex/entities", headers=headers)).json()
+        }
+    assert set(entities) >= {
+        "company", "contact", "project", "task", "time_entry", "subscription",
+    }
+    assert all(e["importable"] for e in entities.values())
+    assert entities["time_entry"]["read_permission"] == "time.entry.read"
+
+
+async def test_project_import_upserts_and_resolves_company(client_for) -> None:
+    t = await make_tenant("impex-proj")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.post("/api/v1/companies", json={"name": "Klant BV"}, headers=headers)
+        header = ["name", "company", "status", "budget_hours", "start_date", "billable_default"]
+        created = await c.post(
+            "/api/v1/impex/project/import?dry_run=false",
+            files=_file(_csv_bytes(header, [
+                ["Website", "Klant BV", "active", "40,5", "2026-01-01", "true"],
+            ])),
+            headers=headers,
+        )
+        assert created.status_code == 200, created.text
+        assert created.json()["creates"] == 1 and created.json()["applied"] is True
+
+        # Same name again → an update, not a duplicate; a bad date is a row error.
+        updated = await c.post(
+            "/api/v1/impex/project/import?dry_run=false",
+            files=_file(_csv_bytes(header, [
+                ["Website", "Klant BV", "on_hold", "60", "2026-02-01", "false"],
+            ])),
+            headers=headers,
+        )
+        assert updated.json()["updates"] == 1
+
+        bad = await c.post(
+            "/api/v1/impex/project/import",
+            files=_file(_csv_bytes(header, [
+                ["X", "Klant BV", "active", "1", "01-02-2026", "true"],
+            ])),
+            headers=headers,
+        )
+        assert bad.json()["errors"][0]["message_key"] == "impex.errors.invalid_date"
+
+        exported = await c.get("/api/v1/impex/project/export", headers=headers)
+        _, rows = _rows(exported.content)
+        assert rows[0]["name"] == "Website" and rows[0]["company"] == "Klant BV"
+        assert rows[0]["status"] == "on_hold" and float(rows[0]["budget_hours"]) == 60.0
+
+
+async def test_task_import_is_create_only(client_for) -> None:
+    t = await make_tenant("impex-task")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        header = ["title", "priority", "assignee", "due_date"]
+        first = await c.post(
+            "/api/v1/impex/task/import?dry_run=false",
+            files=_file(_csv_bytes(header, [
+                ["Bellen", "high", t.user.email, "2026-08-01"],
+                ["Bellen", "low", "", ""],
+            ])),
+            headers=headers,
+        )
+        assert first.status_code == 200, first.text
+        # Two rows with the same title both create — tasks have no natural key.
+        assert first.json()["creates"] == 2 and first.json()["updates"] == 0
+
+        tasks = (await c.get("/api/v1/tasks?limit=50&offset=0", headers=headers)).json()
+        titles = [item["title"] for item in tasks["items"]]
+        assert titles.count("Bellen") == 2
+
+        # An unknown assignee is a row error, never a silent orphan.
+        bad = await c.post(
+            "/api/v1/impex/task/import",
+            files=_file(_csv_bytes(header, [["X", "normal", "ghost@niet.nl", ""]])),
+            headers=headers,
+        )
+        assert bad.json()["errors"][0]["message_key"] == "impex.errors.unresolved_reference"
+
+
+async def test_time_entry_round_trip_with_readonly_columns(client_for) -> None:
+    t = await make_tenant("impex-time")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.post("/api/v1/companies", json={"name": "Uren BV"}, headers=headers)
+        header = [
+            "date", "start", "end", "minutes", "break_minutes",
+            "company", "description", "billable",
+        ]
+        created = await c.post(
+            "/api/v1/impex/time_entry/import?dry_run=false",
+            files=_file(_csv_bytes(header, [
+                ["2026-07-06", "09:00", "17:00", "", "30", "Uren BV", "Bouw", "true"],
+                # No end time: the 90-minute duration drives the derived end (the form's rule).
+                ["2026-07-07", "13:15", "", "90", "", "", "Los werk", "false"],
+            ])),
+            headers=headers,
+        )
+        assert created.status_code == 200, created.text
+        assert created.json()["creates"] == 2
+
+        exported = await c.get("/api/v1/impex/time_entry/export", headers=headers)
+        header_out, rows = _rows(exported.content)
+        # Readonly derived columns ride along on export…
+        assert {"user", "approved", "invoiced", "minutes"} <= set(header_out)
+        by_desc = {r["description"]: r for r in rows}
+        assert by_desc["Bouw"]["minutes"] == "450"  # 8h − 30m break
+        assert by_desc["Bouw"]["user"] == t.user.email
+        assert by_desc["Bouw"]["approved"] == "false"
+
+        # …and a re-import of the export is accepted (readonly cells ignored, rows created).
+        again = await c.post(
+            "/api/v1/impex/time_entry/import",
+            files=_file(exported.content),
+            headers=headers,
+        )
+        assert again.status_code == 200, again.text
+        assert again.json()["error_count"] == 0
+        assert again.json()["creates"] == 2
+
+        bad = await c.post(
+            "/api/v1/impex/time_entry/import",
+            files=_file(_csv_bytes(header, [["2026-07-08", "9u30", "", "", "", "", "", ""]])),
+            headers=headers,
+        )
+        assert bad.json()["errors"][0]["message_key"] == "impex.errors.invalid_time"
+
+
+async def test_subscription_import_creates_and_updates(client_for) -> None:
+    t = await make_tenant("impex-sub")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.post("/api/v1/companies", json={"name": "Retainer BV"}, headers=headers)
+        header = ["name", "company", "status", "interval", "start_date", "amount", "included_hours"]
+        created = await c.post(
+            "/api/v1/impex/subscription/import?dry_run=false",
+            files=_file(_csv_bytes(header, [
+                ["SLA Goud", "Retainer BV", "active", "monthly", "2026-01-01", "500", "10"],
+            ])),
+            headers=headers,
+        )
+        assert created.status_code == 200, created.text
+        assert created.json()["creates"] == 1
+
+        updated = await c.post(
+            "/api/v1/impex/subscription/import?dry_run=false",
+            files=_file(_csv_bytes(header, [
+                ["SLA Goud", "Retainer BV", "active", "monthly", "2026-01-01", "550", "12"],
+            ])),
+            headers=headers,
+        )
+        assert updated.json()["updates"] == 1
+
+        subs = (await c.get("/api/v1/subscriptions", headers=headers)).json()["items"]
+        assert subs[0]["amount"] == "550.00" or float(subs[0]["amount"]) == 550.0

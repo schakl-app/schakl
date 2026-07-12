@@ -11,6 +11,7 @@ from arq import cron
 
 from app.core.events import subscribe
 from app.modules.tasks.attachments import on_file_event
+from app.modules.tasks.impex import TASK_IMPEX
 from app.modules.tasks.mcp import TASK_MCP_TOOLS
 from app.modules.tasks.panels import tasks_company_panel
 from app.modules.tasks.permissions import TASK_PERMISSIONS
@@ -26,6 +27,7 @@ module = ModuleDescriptor(
     i18n_namespace="tasks",
     panels=[tasks_company_panel],
     permissions=TASK_PERMISSIONS,
+    impex=[TASK_IMPEX],
     mcp_tools=TASK_MCP_TOOLS,
     # 04:00 UTC ≈ early morning in Europe/Amsterdam; the job reasons in local dates itself.
     cron_jobs=[

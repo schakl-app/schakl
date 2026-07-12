@@ -84,6 +84,11 @@
       t("settings.providers.title"),
       t("settings.providers.subtitle"),
     )}
+    {@render card(
+      "/settings/impex",
+      t("impex.settings.title"),
+      t("impex.settings.subtitle"),
+    )}
   </div>
 
   <h3 class="mb-2 text-sm font-medium text-text">{t("settings.group.workflows")}</h3>

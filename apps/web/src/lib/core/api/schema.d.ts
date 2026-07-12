@@ -815,6 +815,186 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/impex/entities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Impex Entities
+         * @description The entity types with CSV support, for the Instellingen → Import & export screen.
+         */
+        get: operations["list_impex_entities_api_v1_impex_entities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/project/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Export Project
+         * @description Export the current filtered project list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+         */
+        get: operations["impex_export_project_api_v1_impex_project_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/project/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Import Project
+         * @description Import project rows from CSV, upserting on `name` (max 2000 data rows per request).
+         */
+        post: operations["impex_import_project_api_v1_impex_project_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/subscription/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Export Subscription
+         * @description Export the current filtered subscription list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+         */
+        get: operations["impex_export_subscription_api_v1_impex_subscription_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/subscription/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Import Subscription
+         * @description Import subscription rows from CSV, upserting on `name` (max 2000 data rows per request).
+         */
+        post: operations["impex_import_subscription_api_v1_impex_subscription_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/task/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Export Task
+         * @description Export the current filtered task list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+         */
+        get: operations["impex_export_task_api_v1_impex_task_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/task/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Import Task
+         * @description Import task rows from CSV, create-only (no natural key) (max 2000 data rows per request).
+         */
+        post: operations["impex_import_task_api_v1_impex_task_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/time_entry/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Export Time Entry
+         * @description Export the current filtered time_entry list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+         */
+        get: operations["impex_export_time_entry_api_v1_impex_time_entry_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/time_entry/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Import Time Entry
+         * @description Import time_entry rows from CSV, create-only (no natural key) (max 2000 data rows per request).
+         */
+        post: operations["impex_import_time_entry_api_v1_impex_time_entry_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/instance/audit": {
         parameters: {
             query?: never;
@@ -3421,6 +3601,38 @@ export interface components {
              */
             file: string;
         };
+        /** Body_impex_import_project_api_v1_impex_project_import_post */
+        Body_impex_import_project_api_v1_impex_project_import_post: {
+            /**
+             * File
+             * @description CSV file; headers are the export's keys
+             */
+            file: string;
+        };
+        /** Body_impex_import_subscription_api_v1_impex_subscription_import_post */
+        Body_impex_import_subscription_api_v1_impex_subscription_import_post: {
+            /**
+             * File
+             * @description CSV file; headers are the export's keys
+             */
+            file: string;
+        };
+        /** Body_impex_import_task_api_v1_impex_task_import_post */
+        Body_impex_import_task_api_v1_impex_task_import_post: {
+            /**
+             * File
+             * @description CSV file; headers are the export's keys
+             */
+            file: string;
+        };
+        /** Body_impex_import_time_entry_api_v1_impex_time_entry_import_post */
+        Body_impex_import_time_entry_api_v1_impex_time_entry_import_post: {
+            /**
+             * File
+             * @description CSV file; headers are the export's keys
+             */
+            file: string;
+        };
         /** Body_reset_forgot_password_api_v1_auth_forgot_password_post */
         Body_reset_forgot_password_api_v1_auth_forgot_password_post: {
             /**
@@ -4778,6 +4990,22 @@ export interface components {
             expires_at: string;
             /** Token */
             token: string;
+        };
+        /**
+         * ImpexEntityInfo
+         * @description One CSV-capable entity type — the Instellingen → Import & export screen's catalog.
+         */
+        ImpexEntityInfo: {
+            /** Entity Type */
+            entity_type: string;
+            /** Filters */
+            filters: string[];
+            /** Importable */
+            importable: boolean;
+            /** Read Permission */
+            read_permission: string;
+            /** Write Permission */
+            write_permission: string;
         };
         /**
          * ImportReport
@@ -10573,6 +10801,322 @@ export interface operations {
         requestBody: {
             content: {
                 "multipart/form-data": components["schemas"]["Body_impex_import_contact_api_v1_impex_contact_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_impex_entities_api_v1_impex_entities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexEntityInfo"][];
+                };
+            };
+        };
+    };
+    impex_export_project_api_v1_impex_project_export_get: {
+        parameters: {
+            query?: {
+                /** @description Search, as on the list */
+                q?: string | null;
+                status?: string | null;
+                company_id?: string | null;
+                /** @description Only rows assigned to me */
+                mine?: boolean;
+                /** @description List sort key, '-' desc */
+                sort?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CSV file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_import_project_api_v1_impex_project_import_post: {
+        parameters: {
+            query?: {
+                /** @description Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. */
+                dry_run?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_import_project_api_v1_impex_project_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_export_subscription_api_v1_impex_subscription_export_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                company_id?: string | null;
+                /** @description List sort key, '-' desc */
+                sort?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CSV file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_import_subscription_api_v1_impex_subscription_import_post: {
+        parameters: {
+            query?: {
+                /** @description Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. */
+                dry_run?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_import_subscription_api_v1_impex_subscription_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_export_task_api_v1_impex_task_export_get: {
+        parameters: {
+            query?: {
+                /** @description Search, as on the list */
+                q?: string | null;
+                status?: string | null;
+                company_id?: string | null;
+                project_id?: string | null;
+                /** @description Only rows assigned to me */
+                mine?: boolean;
+                /** @description List sort key, '-' desc */
+                sort?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CSV file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_import_task_api_v1_impex_task_import_post: {
+        parameters: {
+            query?: {
+                /** @description Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. */
+                dry_run?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_import_task_api_v1_impex_task_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_export_time_entry_api_v1_impex_time_entry_export_get: {
+        parameters: {
+            query?: {
+                /** @description Only rows assigned to me */
+                mine?: boolean;
+                user_id?: string | null;
+                company_id?: string | null;
+                project_id?: string | null;
+                /** @description Rows on/after this day */
+                date_from?: string | null;
+                /** @description Rows on/before this day */
+                date_to?: string | null;
+                /** @description List sort key, '-' desc */
+                sort?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CSV file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_import_time_entry_api_v1_impex_time_entry_import_post: {
+        parameters: {
+            query?: {
+                /** @description Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. */
+                dry_run?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_import_time_entry_api_v1_impex_time_entry_import_post"];
             };
         };
         responses: {
