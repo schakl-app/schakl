@@ -14,6 +14,7 @@ export const GET = async (event: RequestEvent) => {
     params: {
       query: {
         q: params.get("q") || undefined,
+        company_id: params.get("company") || undefined,
         sort: params.get("sort") || undefined,
       },
     },

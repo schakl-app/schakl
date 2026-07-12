@@ -14,6 +14,7 @@
   import AssigneePicker from "$lib/core/ui/AssigneePicker.svelte";
   import AvatarStack from "$lib/core/ui/AvatarStack.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
+  import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
@@ -89,6 +90,15 @@
     const url = new URL(page.url);
     if (data.mine) url.searchParams.delete("mine");
     else url.searchParams.set("mine", "1");
+    void goto(url, { keepFocus: true, noScroll: true });
+  }
+
+  // Client filter (#154) — the tasks page's URL-param shape; the API applies it.
+  const companyItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
+  function setFilter(key: string, value: string) {
+    const url = new URL(page.url);
+    if (value) url.searchParams.set(key, value);
+    else url.searchParams.delete(key);
     void goto(url, { keepFocus: true, noScroll: true });
   }
 </script>
@@ -215,6 +225,16 @@
     onclick={toggleMine}>{t("projects.filter.mine")}</button
   >
   <SearchInput />
+  <div class="w-44">
+    <Combobox
+      items={companyItems}
+      name="_filter_company"
+      value={data.companyFilter}
+      placeholder={t("projects.filter.company")}
+      onselect={(v) => setFilter("company", v)}
+      id="filter-company"
+    />
+  </div>
   <ColumnPicker
     all={table.pickerColumns}
     visible={table.visibleKeys}
