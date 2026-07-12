@@ -14,3 +14,4 @@ import "./notifications";
 import "./domains";
 import "./hosting";
 import "./interactions";
+import "./google";

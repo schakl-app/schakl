@@ -67,6 +67,11 @@
       t("settings.modules.title"),
       t("settings.modules.subtitle"),
     )}
+    {@render card(
+      "/settings/google",
+      t("settings.google.title"),
+      t("settings.google.subtitle"),
+    )}
   </div>
 
   <h3 class="mb-2 text-sm font-medium text-text">{t("settings.group.customization")}</h3>

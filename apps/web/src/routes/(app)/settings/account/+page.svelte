@@ -6,6 +6,7 @@
   import { THEME_MODES, themeModeLabel } from "$lib/core/theme-mode";
   import Avatar from "$lib/core/ui/Avatar.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
+  import GoogleAccountCard from "$lib/modules/google/GoogleAccountCard.svelte";
 
   let { data, form } = $props();
 
@@ -214,6 +215,11 @@
       </button>
     </form>
   </section>
+
+  <!-- Google koppelen (#22): a per-user grant, so it lives on the person (docs/GOOGLE.md). -->
+  {#if data.google}
+    <GoogleAccountCard data={data.google} status={data.googleStatus} />
+  {/if}
 
   <!-- Personal API keys (#20). Scoped, expiring, capped by what this member holds. -->
   {#if data.canManageKeys}

@@ -911,6 +911,123 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/google/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Connections */
+        get: operations["list_connections_api_v1_google_connections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/connections/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** My Connection */
+        get: operations["my_connection_api_v1_google_connections_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update My Connection */
+        patch: operations["update_my_connection_api_v1_google_connections_me_patch"];
+        trace?: never;
+    };
+    "/api/v1/google/connections/me/disconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Disconnect My Connection */
+        post: operations["disconnect_my_connection_api_v1_google_connections_me_disconnect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/oauth/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Oauth Callback
+         * @description Store the grant and land the browser back on the account card.
+         *
+         *     A denied consent or a state mismatch is a redirect with an error marker, never a JSON
+         *     envelope — a human is holding this request.
+         */
+        get: operations["google_oauth_callback_api_v1_google_oauth_callback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/oauth/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Oauth Connect
+         * @description 302 to Google's consent screen, asking exactly the enabled surfaces' scopes.
+         *
+         *     ``access_type=offline`` + ``prompt=consent`` guarantee a refresh token on every connect;
+         *     ``include_granted_scopes`` makes a later reconnect *add* scopes instead of replacing them
+         *     (incremental authorization — the docs/GOOGLE.md §1 bridge).
+         */
+        get: operations["oauth_connect_api_v1_google_oauth_connect_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Settings */
+        get: operations["get_settings_api_v1_google_settings_get"];
+        /** Save Settings */
+        put: operations["save_settings_api_v1_google_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hosting": {
         parameters: {
             query?: never;
@@ -4641,6 +4758,37 @@ export interface components {
             website?: string | null;
         };
         /**
+         * ConnectionRead
+         * @description The caller's own connection — or the admin list's per-user rows.
+         */
+        ConnectionRead: {
+            /**
+             * Connected At
+             * Format: date-time
+             */
+            connected_at: string;
+            /** Email */
+            email: string;
+            /** Gmail Excluded Label */
+            gmail_excluded_label?: string | null;
+            /**
+             * Gmail Sync Enabled
+             * @default false
+             */
+            gmail_sync_enabled: boolean;
+            /** Last Error */
+            last_error?: string | null;
+            /** Scopes */
+            scopes?: string[];
+            /** Status */
+            status: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /**
          * ContactCompanyLink
          * @description A company a contact is attached to, with the per-company primary flag and contact type.
          */
@@ -5424,6 +5572,111 @@ export interface components {
         GenerateResult: {
             /** Created */
             created: number;
+        };
+        /**
+         * GmailApprovalMode
+         * @description Whether a matched email needs the mailbox owner's approval before it is logged.
+         * @enum {string}
+         */
+        GmailApprovalMode: "approval_required" | "auto_approve";
+        /**
+         * GmailThreadFollowup
+         * @description What a follow-up in an already-mapped thread does: inherit mappings, or also auto-log.
+         * @enum {string}
+         */
+        GmailThreadFollowup: "inherit_pending" | "inherit_approve";
+        /** GoogleSettingsRead */
+        GoogleSettingsRead: {
+            /** Automation Connection User Id */
+            automation_connection_user_id?: string | null;
+            /**
+             * Calendar Enabled
+             * @default false
+             */
+            calendar_enabled: boolean;
+            /** Callback Url */
+            callback_url: string;
+            /** Client Id */
+            client_id?: string | null;
+            /**
+             * Client Secret Configured
+             * @default false
+             */
+            client_secret_configured: boolean;
+            /**
+             * Drive Auto Provision
+             * @default false
+             */
+            drive_auto_provision: boolean;
+            /**
+             * Drive Enabled
+             * @default false
+             */
+            drive_enabled: boolean;
+            /** Drive Parent Folder Id */
+            drive_parent_folder_id?: string | null;
+            /** Drive Shared Drive Id */
+            drive_shared_drive_id?: string | null;
+            /** Drive Template Folder Id */
+            drive_template_folder_id?: string | null;
+            /**
+             * Env Client Configured
+             * @default false
+             */
+            env_client_configured: boolean;
+            /** @default approval_required */
+            gmail_approval_mode: components["schemas"]["GmailApprovalMode"];
+            /**
+             * Gmail Enabled
+             * @default false
+             */
+            gmail_enabled: boolean;
+            /** @default inherit_pending */
+            gmail_thread_followup: components["schemas"]["GmailThreadFollowup"];
+            /**
+             * Weak Encryption Key
+             * @default false
+             */
+            weak_encryption_key: boolean;
+        };
+        /** GoogleSettingsWrite */
+        GoogleSettingsWrite: {
+            /** Automation Connection User Id */
+            automation_connection_user_id?: string | null;
+            /**
+             * Calendar Enabled
+             * @default false
+             */
+            calendar_enabled: boolean;
+            /** Client Id */
+            client_id?: string | null;
+            /** Client Secret */
+            client_secret?: string | null;
+            /**
+             * Drive Auto Provision
+             * @default false
+             */
+            drive_auto_provision: boolean;
+            /**
+             * Drive Enabled
+             * @default false
+             */
+            drive_enabled: boolean;
+            /** Drive Parent Folder Id */
+            drive_parent_folder_id?: string | null;
+            /** Drive Shared Drive Id */
+            drive_shared_drive_id?: string | null;
+            /** Drive Template Folder Id */
+            drive_template_folder_id?: string | null;
+            /** @default approval_required */
+            gmail_approval_mode: components["schemas"]["GmailApprovalMode"];
+            /**
+             * Gmail Enabled
+             * @default false
+             */
+            gmail_enabled: boolean;
+            /** @default inherit_pending */
+            gmail_thread_followup: components["schemas"]["GmailThreadFollowup"];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -6763,6 +7016,42 @@ export interface components {
             exchange: string;
             /** Priority */
             priority: number;
+        };
+        /** MyConnectionRead */
+        MyConnectionRead: {
+            /**
+             * Calendar Enabled
+             * @default false
+             */
+            calendar_enabled: boolean;
+            /**
+             * Configured
+             * @default false
+             */
+            configured: boolean;
+            /**
+             * Connected
+             * @default false
+             */
+            connected: boolean;
+            connection?: components["schemas"]["ConnectionRead"] | null;
+            /**
+             * Drive Enabled
+             * @default false
+             */
+            drive_enabled: boolean;
+            /**
+             * Gmail Enabled
+             * @default false
+             */
+            gmail_enabled: boolean;
+        };
+        /** MyConnectionUpdate */
+        MyConnectionUpdate: {
+            /** Gmail Excluded Label */
+            gmail_excluded_label?: string | null;
+            /** Gmail Sync Enabled */
+            gmail_sync_enabled?: boolean | null;
         };
         /** NotificationRead */
         NotificationRead: {
@@ -12176,6 +12465,201 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_connections_api_v1_google_connections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionRead"][];
+                };
+            };
+        };
+    };
+    my_connection_api_v1_google_connections_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyConnectionRead"];
+                };
+            };
+        };
+    };
+    update_my_connection_api_v1_google_connections_me_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MyConnectionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyConnectionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    disconnect_my_connection_api_v1_google_connections_me_disconnect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    google_oauth_callback_api_v1_google_oauth_callback_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    oauth_connect_api_v1_google_oauth_connect_get: {
+        parameters: {
+            query?: {
+                include_gmail?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_settings_api_v1_google_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleSettingsRead"];
+                };
+            };
+        };
+    };
+    save_settings_api_v1_google_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleSettingsWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleSettingsRead"];
                 };
             };
             /** @description Validation Error */
