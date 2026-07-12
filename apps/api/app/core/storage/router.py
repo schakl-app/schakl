@@ -91,6 +91,39 @@ async def upload_file(
 
 
 @router.get(
+    "",
+    response_model=list[StoredFileRead],
+    dependencies=[
+        no_permission_required(
+            "any signed-in member may list their tenant's files (they can already fetch each "
+            "one unpermissioned); rows are RLS-scoped and filtered to one entity"
+        )
+    ],
+)
+async def list_files(
+    entity_type: str,
+    entity_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> list[StoredFileRead]:
+    """The files attached to one entity (a task's documents, a project's documents)."""
+    rows = await FileService(ctx).list_for(entity_type, entity_id)
+    return [StoredFileRead.model_validate(row) for row in rows]
+
+
+@router.delete(
+    "/{file_id}",
+    status_code=204,
+    dependencies=[require_permission("files.file.write")],
+)
+async def delete_file(
+    file_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> None:
+    """Remove the row and its bytes. Branding/avatar files carry extra guards (service)."""
+    await FileService(ctx).delete(file_id)
+
+
+@router.get(
     "/{file_id}",
     dependencies=[
         no_permission_required(

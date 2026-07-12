@@ -2,6 +2,7 @@ import "$lib/modules"; // ensure the panels are registered before we read the re
 
 import { error, fail, redirect } from "@sveltejs/kit";
 
+import { apiBaseUrl } from "$lib/core/api/client";
 import { parseAssignees } from "$lib/core/assignees";
 import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
@@ -54,7 +55,7 @@ export const load: PageServerLoad = async (event) => {
 
   // Every call in one flight. `projects` is a name-only lookup: the panel's edit modal needs the
   // picker, and `count=false` skips the COUNT(*) it would throw away.
-  const [tasks, companies, projects, members, statuses, definitions, cost, ...panelData] =
+  const [tasks, companies, projects, members, statuses, definitions, cost, files, ...panelData] =
     await Promise.all([
       api.GET("/api/v1/tasks", { params: { query: { project_id, limit: 200, offset: 0 } } }),
       api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
@@ -68,11 +69,15 @@ export const load: PageServerLoad = async (event) => {
       canSeeCost
         ? api.GET("/api/v1/time/cost", { params: { query: { project_id } } })
         : Promise.resolve({ data: null }),
+      api.GET("/api/v1/files", {
+        params: { query: { entity_type: "project", entity_id: project_id } },
+      }),
       ...panels.map((panel) => panel.load(api, context)),
     ]);
 
   return {
     project,
+    files: files.data ?? [],
     cost: cost.data ?? null,
     tasks: tasks.data?.items ?? [],
     companies: companies.data?.items ?? [],
@@ -177,6 +182,46 @@ export const actions: Actions = {
       params: { path: { project_id: event.params.id } },
     });
     throw redirect(303, "/projects");
+  },
+
+  /** Document attachment (#123): multipart through a plain fetch — the typed client has no
+   *  multipart serializer — with the same cookie + tenant host the client would send. */
+  uploadFile: async (event) => {
+    const form = await event.request.formData();
+    const upload = form.get("file");
+    if (!(upload instanceof File) || upload.size === 0) {
+      return fail(400, { fileError: "errors.required" });
+    }
+    const body = new FormData();
+    body.append("file", upload, upload.name);
+    const res = await event.fetch(
+      `${apiBaseUrl()}/api/v1/files?entity_type=project&entity_id=${event.params.id}`,
+      {
+        method: "POST",
+        headers: {
+          cookie: event.request.headers.get("cookie") ?? "",
+          "x-forwarded-host": event.request.headers.get("host") ?? "",
+        },
+        body,
+      },
+    );
+    if (!res.ok) {
+      return fail(400, {
+        fileError: res.status === 413 ? "errors.upload_too_large" : "errors.upload_type",
+      });
+    }
+    return { fileUploaded: true };
+  },
+
+  deleteFile: async (event) => {
+    const form = await event.request.formData();
+    const file_id = String(form.get("file_id") ?? "");
+    if (file_id) {
+      await apiFor(event).DELETE("/api/v1/files/{file_id}", {
+        params: { path: { file_id } },
+      });
+    }
+    return { fileDeleted: true };
   },
 
   // The Uren panel's ⋯ menu posts here (its host contract). Identical to the Uren report's

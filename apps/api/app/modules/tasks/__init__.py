@@ -10,6 +10,7 @@ from __future__ import annotations
 from arq import cron
 
 from app.core.events import subscribe
+from app.modules.tasks.attachments import on_file_event
 from app.modules.tasks.mcp import TASK_MCP_TOOLS
 from app.modules.tasks.panels import tasks_company_panel
 from app.modules.tasks.permissions import TASK_PERMISSIONS
@@ -40,3 +41,7 @@ registry.register(module)
 # with — or transitions into — a template's trigger status.
 subscribe("company.created", on_company_status)
 subscribe("company.status_changed", on_company_status)
+
+# Document attachments (#123 follow-up): validate the target task, write its activity trail.
+subscribe("file.attached", on_file_event)
+subscribe("file.removed", on_file_event)

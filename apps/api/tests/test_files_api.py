@@ -188,3 +188,74 @@ async def test_public_serve_is_tenant_scoped(client_for, tmp_path, monkeypatch) 
     async with client_for(b.host) as cb:
         # Another tenant's branding id reads as absent on the public route too.
         assert (await cb.get(f"/api/v1/files/{file_id}/public")).status_code == 404
+
+
+async def test_attachments_list_delete_and_task_activity(client_for, tmp_path, monkeypatch) -> None:
+    """#123 follow-up: files attach to a task, list per entity, delete removes bytes+row,
+    and the task's activity trail records both sides."""
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    t = await make_tenant("files-att")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        task = (await c.post("/api/v1/tasks", json={"title": "Brief"}, headers=headers)).json()
+
+        up = await c.post(
+            f"/api/v1/files?entity_type=task&entity_id={task['id']}",
+            files={"file": ("brief.pdf", b"%PDF-1.4 brief", "application/pdf")},
+            headers=headers,
+        )
+        assert up.status_code == 201, up.text
+        file_id = up.json()["id"]
+
+        listed = (
+            await c.get(
+                f"/api/v1/files?entity_type=task&entity_id={task['id']}", headers=headers
+            )
+        ).json()
+        assert [f["id"] for f in listed] == [file_id]
+
+        # Attaching to a task that does not exist fails the upload (handler validates).
+        missing = await c.post(
+            "/api/v1/files?entity_type=task&entity_id=00000000-0000-0000-0000-00000000dead",
+            files={"file": ("x.pdf", b"%PDF-1.4", "application/pdf")},
+            headers=headers,
+        )
+        assert missing.status_code == 404
+
+        deleted = await c.delete(f"/api/v1/files/{file_id}", headers=headers)
+        assert deleted.status_code == 204
+        assert (await c.get(f"/api/v1/files/{file_id}", headers=headers)).status_code == 404
+
+        detail = (await c.get(f"/api/v1/tasks/{task['id']}", headers=headers)).json()
+        actions = [a["action"] for a in detail.get("activities", [])]
+        assert "attachment_added" in actions
+        assert "attachment_deleted" in actions
+
+
+async def test_avatar_file_delete_is_personal(client_for, tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    t = await make_tenant("files-av-own")
+    other = await make_tenant("files-av-two")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        up = await c.post(
+            "/api/v1/files?entity_type=avatar",
+            files={"file": ("me.png", _PNG, "image/png")},
+            headers=headers,
+        )
+        file_id = up.json()["id"]
+
+        # Another member of the same org may not delete someone's avatar.
+        from tests.conftest import add_membership
+        from app.db import async_session_maker, set_current_org
+
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            await add_membership(session, t.org.id, other.user.id, "admin")
+            await session.commit()
+        other_headers = await auth_cookie(other.user)
+        refused = await c.delete(f"/api/v1/files/{file_id}", headers=other_headers)
+        assert refused.status_code == 403
+
+        # The owner may.
+        assert (await c.delete(f"/api/v1/files/{file_id}", headers=headers)).status_code == 204

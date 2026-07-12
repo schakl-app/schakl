@@ -17,6 +17,7 @@
   import AvatarStack from "$lib/core/ui/AvatarStack.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
+  import FileAttachments from "$lib/core/ui/FileAttachments.svelte";
   import { terminalKeys } from "$lib/modules/tasks/statuses";
   import TaskRow from "$lib/modules/tasks/TaskRow.svelte";
 
@@ -498,6 +499,20 @@
       {/each}
     </div>
   {/if}
+</section>
+
+<!-- Documents attached through the storage core (#123). -->
+<section class="mt-4 rounded-xl border border-border bg-surface-raised p-5">
+  <h2 class="mb-3 text-sm font-semibold text-text">{t("files.title")}</h2>
+  {#if data.files.length === 0}
+    <p class="mb-3 text-sm text-text-muted">{t("files.empty")}</p>
+  {/if}
+  <FileAttachments
+    files={data.files}
+    uploadAction="?/uploadFile"
+    deleteAction="?/deleteFile"
+    error={form?.fileError ?? null}
+  />
 </section>
 
 <ConfirmDialog

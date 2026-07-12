@@ -72,6 +72,11 @@ export function activityText(item: ActivityLike): string {
     );
     return t("activity.action.updated", { changes: parts.join(", ") });
   }
+  if (item.action === "file_attached" || item.action === "file_removed") {
+    return t(`activity.action.${item.action}`, {
+      filename: String(item.payload?.filename ?? ""),
+    });
+  }
   // `created` today; an unknown action falls back to its own key rather than throwing.
   return t(`activity.action.${item.action}`);
 }

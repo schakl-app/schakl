@@ -10,6 +10,7 @@
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import FileAttachments from "$lib/core/ui/FileAttachments.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import Markdown from "$lib/core/ui/Markdown.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
@@ -175,6 +176,9 @@
         from: String(a.payload.from ?? ""),
         to: String(a.payload.to ?? ""),
       });
+    }
+    if (a.action === "attachment_added" || a.action === "attachment_deleted") {
+      return t(`tasks.activity.${a.action}`, { filename: String(a.payload.filename ?? "") });
     }
     if (
       a.action === "link_deleted" ||
@@ -596,6 +600,16 @@
           {t("common.create")}
         </button>
       </form>
+
+      <!-- Document uploads through the storage core (#123). -->
+      <div class="mt-4 border-t border-border pt-4">
+        <FileAttachments
+          files={data.files}
+          uploadAction="?/uploadFile"
+          deleteAction="?/deleteFile"
+          error={form?.fileError ?? null}
+        />
+      </div>
       <p class="mt-2 text-[11px] text-text-muted">{t("tasks.links.files_hint")}</p>
     </section>
 

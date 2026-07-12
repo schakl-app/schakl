@@ -506,7 +506,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List Files
+         * @description The files attached to one entity (a task's documents, a project's documents).
+         */
+        get: operations["list_files_api_v1_files_get"];
         put?: never;
         /**
          * Upload File
@@ -533,7 +537,11 @@ export interface paths {
         get: operations["serve_file_api_v1_files__file_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete File
+         * @description Remove the row and its bytes. Branding/avatar files carry extra guards (service).
+         */
+        delete: operations["delete_file_api_v1_files__file_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -9293,6 +9301,38 @@ export interface operations {
             };
         };
     };
+    list_files_api_v1_files_get: {
+        parameters: {
+            query: {
+                entity_type: string;
+                entity_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoredFileRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     upload_file_api_v1_files_post: {
         parameters: {
             query?: {
@@ -9348,6 +9388,35 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_file_api_v1_files__file_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

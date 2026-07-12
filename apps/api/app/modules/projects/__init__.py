@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from arq import cron
 
+from app.core.events import subscribe
+from app.modules.projects.attachments import on_file_event
 from app.modules.projects.budget_watch import watch_project_budgets
 from app.modules.projects.mcp import PROJECT_MCP_TOOLS
 from app.modules.projects.panels import projects_company_panel
@@ -27,3 +29,7 @@ module = ModuleDescriptor(
 )
 
 registry.register(module)
+
+# Document attachments (#123 follow-up): validate the target project, record on its trail.
+subscribe("file.attached", on_file_event)
+subscribe("file.removed", on_file_event)

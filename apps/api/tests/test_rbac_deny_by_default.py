@@ -49,6 +49,8 @@ _EXEMPT_OPERATIONS = frozenset(
         # Any signed-in member may fetch their tenant's files (#123); the row is RLS-scoped,
         # so a random id 404s here rather than 403s.
         ("get", "/api/v1/files/{file_id}"),
+        # Listing is the same exposure as fetching each one; filtered to one entity, RLS-scoped.
+        ("get", "/api/v1/files"),
         # Branding assets render on the login screen before a session exists; only rows
         # tagged with a public entity type are reachable, anything else 404s.
         ("get", "/api/v1/files/{file_id}/public"),
