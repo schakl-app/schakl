@@ -13029,6 +13029,11 @@ export interface operations {
                 status?: string | null;
                 /** @description name | status | next_invoice_date | start_date */
                 sort?: string | null;
+                /** @description with entity_id: linked-entity filter */
+                entity_type?: string | null;
+                entity_id?: string | null;
+                /** @description include current-period usage per row */
+                usage?: boolean;
             };
             header?: never;
             path?: never;

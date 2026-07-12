@@ -32,10 +32,20 @@ async def list_subscriptions(
     company_id: uuid.UUID | None = Query(None),
     status: str | None = Query(None),
     sort: str | None = Query(None, description="name | status | next_invoice_date | start_date"),
+    entity_type: str | None = Query(None, description="with entity_id: linked-entity filter"),
+    entity_id: uuid.UUID | None = Query(None),
+    usage: bool = Query(False, description="include current-period usage per row"),
     ctx: RequestContext = Depends(require_context),
 ) -> Page[SubscriptionRead]:
     items, total = await SubscriptionService(ctx).list(
-        limit=limit, offset=offset, company_id=company_id, status=status, sort=sort
+        limit=limit,
+        offset=offset,
+        company_id=company_id,
+        status=status,
+        sort=sort,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        usage=usage,
     )
     return Page(
         items=[SubscriptionRead.model_validate(s) for s in items],

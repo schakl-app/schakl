@@ -113,12 +113,26 @@ class SubscriptionService:
         company_id: uuid.UUID | None = None,
         status: str | None = None,
         sort: str | None = None,
+        entity_type: str | None = None,
+        entity_id: uuid.UUID | None = None,
+        usage: bool = False,
     ) -> tuple[Sequence[Subscription], int]:
         conditions = []
         if company_id is not None:
             conditions.append(Subscription.company_id == company_id)
         if status:
             conditions.append(Subscription.status == status)
+        if entity_type and entity_id:
+            # "Which agreements cover this project/task?" — the project panel's question.
+            conditions.append(
+                Subscription.id.in_(
+                    select(SubscriptionLink.subscription_id).where(
+                        SubscriptionLink.org_id == self._org_id,
+                        SubscriptionLink.entity_type == entity_type,
+                        SubscriptionLink.entity_id == entity_id,
+                    )
+                )
+            )
         stmt = self.repo.scoped_select().where(*conditions)
         stmt = apply_sort(stmt, sort, SORTABLE, default=func.lower(Subscription.name))
         items = list(
@@ -133,6 +147,11 @@ class SubscriptionService:
             or 0
         )
         await self._attach(items)
+        if usage:
+            # One aggregate per row — callers pass this only on entity-filtered lists (a
+            # project links to a handful of agreements), never on the 200-row overview.
+            for sub in items:
+                sub.usage = await self._usage(sub)  # type: ignore[attr-defined]
         return items, total
 
     async def get(self, subscription_id: uuid.UUID, *, usage: bool = False) -> Subscription:

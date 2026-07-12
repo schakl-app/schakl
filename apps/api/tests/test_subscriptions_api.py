@@ -222,3 +222,62 @@ async def test_subscriptions_tenant_isolation_and_permission(client_for) -> None
             await cb.get(f"/api/v1/subscriptions/{sub_id}", headers=b_headers)
         ).status_code == 404
         assert (await cb.get("/api/v1/subscriptions", headers=b_headers)).json()["total"] == 0
+
+
+async def test_list_filters_by_linked_entity_with_usage(client_for) -> None:
+    """The project panel's question: which agreements cover this project, and how full is
+    the bundle?"""
+    t = await make_tenant("subs-entity")
+    headers = await auth_cookie(t.user)
+    today = datetime.now(UTC).date()
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Bundel BV"}, headers=headers)
+        ).json()
+        linked = (
+            await c.post(
+                "/api/v1/projects",
+                json={"name": "Binnen bundel", "company_id": company["id"]},
+                headers=headers,
+            )
+        ).json()
+        unlinked = (
+            await c.post(
+                "/api/v1/projects",
+                json={"name": "Los werk", "company_id": company["id"]},
+                headers=headers,
+            )
+        ).json()
+        await c.post(
+            "/api/v1/subscriptions",
+            json={
+                "company_id": company["id"],
+                "name": "SLA",
+                "status": "active",
+                "interval": "monthly",
+                "start_date": _iso(today - timedelta(days=40)),
+                "next_invoice_date": _iso(today + timedelta(days=10)),
+                "amount": "250.00",
+                "included_hours": "8",
+                "links": [{"entity_type": "project", "entity_id": linked["id"]}],
+            },
+            headers=headers,
+        )
+
+        hit = (
+            await c.get(
+                f"/api/v1/subscriptions?entity_type=project&entity_id={linked['id']}&usage=true",
+                headers=headers,
+            )
+        ).json()
+        assert [s["name"] for s in hit["items"]] == ["SLA"]
+        usage = hit["items"][0]["usage"]
+        assert usage is not None and float(usage["included_hours"]) == 8.0
+
+        miss = (
+            await c.get(
+                f"/api/v1/subscriptions?entity_type=project&entity_id={unlinked['id']}",
+                headers=headers,
+            )
+        ).json()
+        assert miss["items"] == []

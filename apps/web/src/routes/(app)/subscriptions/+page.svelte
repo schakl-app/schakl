@@ -26,23 +26,49 @@
   let qcCompanyOpen = $state(false);
   let qcCompanyName = $state("");
   let createdCompanyId = $state("");
+  // Inline project create from the links picker — same pattern, auto-links the new project.
+  let qcProjectOpen = $state(false);
+  let qcProjectName = $state("");
   $effect(() => {
     const created = form?.inlineCreated;
     if (created?.slot === "company") createdCompanyId = created.id;
+    if (created?.slot === "project" && !linkedProjects.some((p) => p.id === created.id)) {
+      const name = "name" in created ? created.name : projectName(created.id);
+      linkedProjects = [...linkedProjects, { id: created.id, name }];
+    }
   });
 
   const companyItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
   const STATUSES = ["draft", "active", "paused", "cancelled"] as const;
   const INTERVALS = ["monthly", "quarterly", "yearly"] as const;
 
+  // Projects linked to the agreement being edited: time on these counts toward the bundle.
+  let linkedProjects = $state<{ id: string; name: string }[]>([]);
+  const projectItems = $derived(
+    data.projects
+      .filter((p) => !linkedProjects.some((l) => l.id === p.id))
+      .map((p) => ({ value: p.id, label: p.name })),
+  );
+  const linksJson = $derived(
+    JSON.stringify(linkedProjects.map((p) => ({ entity_type: "project", entity_id: p.id }))),
+  );
+
+  function projectName(id: string): string {
+    return data.projects.find((p) => p.id === id)?.name ?? "—";
+  }
+
   function openCreate() {
     editing = null;
     createdCompanyId = "";
+    linkedProjects = [];
     showForm = true;
   }
   function openEdit(sub: Subscription) {
     editing = sub;
     createdCompanyId = "";
+    linkedProjects = (sub.links ?? [])
+      .filter((l) => l.entity_type === "project")
+      .map((l) => ({ id: l.entity_id, name: projectName(l.entity_id) }));
     showForm = true;
   }
 
@@ -260,6 +286,46 @@
         </div>
       </div>
       <div>
+        <span class="mb-1 block text-sm font-medium text-text"
+          >{t("subscriptions.field.projects")}</span
+        >
+        {#if linkedProjects.length > 0}
+          <div class="mb-2 flex flex-wrap gap-1.5">
+            {#each linkedProjects as proj (proj.id)}
+              <span
+                class="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-2.5 py-0.5 text-xs text-text"
+              >
+                {proj.name}
+                <button
+                  type="button"
+                  class="text-text-muted hover:text-red-600 dark:hover:text-red-400"
+                  aria-label={t("common.delete")}
+                  onclick={() =>
+                    (linkedProjects = linkedProjects.filter((p) => p.id !== proj.id))}>✕</button
+                >
+              </span>
+            {/each}
+          </div>
+        {/if}
+        <Combobox
+          items={projectItems}
+          name="link_project_picker"
+          id="sub-projects"
+          placeholder={t("subscriptions.field.projects")}
+          onselect={(value) => {
+            if (value && !linkedProjects.some((p) => p.id === value)) {
+              linkedProjects = [...linkedProjects, { id: value, name: projectName(value) }];
+            }
+          }}
+          oncreate={(name) => {
+            qcProjectName = name;
+            qcProjectOpen = true;
+          }}
+        />
+        <input type="hidden" name="links" value={linksJson} />
+        <p class="mt-1 text-xs text-text-muted">{t("subscriptions.field.projects_help")}</p>
+      </div>
+      <div>
         <label for="sub-notes" class="mb-1 block text-sm font-medium text-text"
           >{t("subscriptions.field.notes")}</label
         >
@@ -300,6 +366,72 @@
   locale={data.locale}
   error={form?.qcError ?? null}
 />
+
+<!-- Inline project create from the links picker (docs/UX.md — per-picker definition of done). -->
+<Modal bind:open={qcProjectOpen} title={t("time.quick_create.project")}>
+  {#key qcProjectName + String(qcProjectOpen)}
+    <form
+      method="POST"
+      action="?/createProject"
+      use:enhance={() =>
+        ({ result, update }) => {
+          if (result.type === "success") qcProjectOpen = false;
+          void update({ reset: false });
+        }}
+      class="space-y-3"
+    >
+      <div>
+        <label for="qc-sub-project-name" class="mb-1 block text-sm font-medium text-text"
+          >{t("projects.field.name")}</label
+        >
+        <input
+          id="qc-sub-project-name"
+          name="name"
+          value={qcProjectName}
+          required
+          class={inputClass}
+        />
+      </div>
+      <div>
+        <label for="qc-sub-project-company" class="mb-1 block text-sm font-medium text-text"
+          >{t("projects.field.company")}</label
+        >
+        <Combobox
+          items={companyItems}
+          name="company_id"
+          id="qc-sub-project-company"
+          placeholder={t("projects.field.company")}
+        />
+      </div>
+      <div>
+        <label for="qc-sub-project-rate" class="mb-1 block text-sm font-medium text-text"
+          >{t("projects.field.hourly_rate")}</label
+        >
+        <input
+          id="qc-sub-project-rate"
+          name="hourly_rate"
+          type="number"
+          min="0"
+          step="0.01"
+          class={inputClass}
+        />
+      </div>
+      {#if form?.qcError}
+        <p class="text-sm text-red-600 dark:text-red-400">{t(form.qcError)}</p>
+      {/if}
+      <div class="flex justify-end gap-2">
+        <button
+          type="button"
+          class="rounded-lg border border-border px-4 py-2 text-sm text-text"
+          onclick={() => (qcProjectOpen = false)}>{t("common.cancel")}</button
+        >
+        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
+          >{t("common.create")}</button
+        >
+      </div>
+    </form>
+  {/key}
+</Modal>
 
 <ConfirmDialog
   bind:open={confirmDelete}
