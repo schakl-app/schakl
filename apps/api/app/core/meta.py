@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.config import settings
+from app.core.ai.service import enabled_features as ai_enabled_features
 from app.core.auth import sso
 from app.core.auth.models import User
 from app.core.currency import DEFAULT_CURRENCY, is_valid_currency
@@ -129,6 +130,10 @@ class MeInfo(BaseModel):
     is_instance_owner: bool = False
     impersonated_by: str | None = None
     impersonation_expires_at: datetime | None = None
+    #: AI features usable in this tenant (epic #131): empty until an admin configures a
+    #: provider under Instellingen → AI — "off means invisible". Rides the payload the web
+    #: already fetches per request, so gating an affordance costs no extra call.
+    ai_features: list[str] = Field(default_factory=list)
 
 
 class MeUpdate(BaseModel):
@@ -141,8 +146,9 @@ class MeUpdate(BaseModel):
     custom_avatar_url: str | None = Field(default=None, max_length=1024)
 
 
-def _me_info(ctx: RequestContext, user: User) -> MeInfo:
+def _me_info(ctx: RequestContext, user: User, ai_features: list[str]) -> MeInfo:
     return MeInfo(
+        ai_features=ai_features,
         id=str(user.id),
         email=user.email,
         full_name=user.full_name,
@@ -167,7 +173,7 @@ def _me_info(ctx: RequestContext, user: User) -> MeInfo:
     dependencies=[no_permission_required("who am I in this tenant; every member needs it")],
 )
 async def me(ctx: RequestContext = Depends(require_context)) -> MeInfo:
-    return _me_info(ctx, ctx.user)
+    return _me_info(ctx, ctx.user, await ai_enabled_features(ctx.session, ctx.org.id))
 
 
 @router.patch(
@@ -202,7 +208,7 @@ async def update_me(
         setattr(user, key, value)
     await ctx.session.flush()
     await ctx.session.refresh(user)
-    return _me_info(ctx, user)
+    return _me_info(ctx, user, await ai_enabled_features(ctx.session, ctx.org.id))
 
 
 @router.get(

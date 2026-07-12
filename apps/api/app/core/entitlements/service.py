@@ -46,6 +46,10 @@ logger = logging.getLogger(__name__)
 LICENSE_PREFIX = "SCHAKL1"
 #: The MCP server is core code, not a registry module — its sku is declared here.
 MCP_SKU = "mcp"
+#: The AI core (epic #131) is likewise a core capability with its own sku. Bundling it with
+#: automation (or anything else) is a *license document* decision — a plan simply lists both
+#: skus — never a coupling in code.
+AI_SKU = "ai"
 
 _MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 _CACHE_TTL_SECONDS = 60.0
@@ -196,10 +200,13 @@ async def license_state(session: AsyncSession | None = None) -> LicenseState:
 
 
 def licensed_skus() -> dict[str, str]:
-    """module name → sku for every registered licensed module, plus the MCP surface."""
+    """module name → sku for every registered licensed module, plus the core surfaces."""
     skus = {m.name: m.sku for m in registry.all() if m.sku}
     if settings.mcp_enabled:
         skus[MCP_SKU] = MCP_SKU
+    # The AI surface always exists (configured per tenant at runtime), so its sku is always
+    # part of the instance's license story.
+    skus[AI_SKU] = AI_SKU
     return skus
 
 

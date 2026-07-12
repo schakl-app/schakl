@@ -17,6 +17,7 @@ from starlette.middleware.sessions import SessionMiddleware
 import app.core.activity.panels  # noqa: F401  — registers the core activity panel on import
 from app.config import settings
 from app.core.activity.router import router as activity_router
+from app.core.ai.router import router as ai_router
 from app.core.apikeys.router import router as apikeys_router
 from app.core.auth.router import build_auth_router
 from app.core.auth.sso_router import router as sso_settings_router
@@ -25,7 +26,7 @@ from app.core.dashboard import router as dashboard_router
 from app.core.domains import router as domains_router
 from app.core.email.router import router as email_settings_router
 from app.core.entitlements.router import router as license_router
-from app.core.entitlements.service import MCP_SKU, LicenseGateASGI, license_write_gate
+from app.core.entitlements.service import AI_SKU, MCP_SKU, LicenseGateASGI, license_write_gate
 from app.core.impex.router import build_impex_router
 from app.core.instance.router import router as instance_router
 from app.core.members import router as members_router
@@ -102,6 +103,10 @@ def create_app() -> FastAPI:
     api.include_router(instance_router)
     api.include_router(license_router)
     api.include_router(apikeys_router)
+    # The AI core (epic #131) is a licensed surface (issue #137): every generation is a
+    # POST, so the standard mutations-gate makes an uncovered instance read-only for AI
+    # while its stored settings and usage stay readable.
+    api.include_router(ai_router, dependencies=[license_write_gate(AI_SKU)])
     for module in registry.enabled(settings.enabled_modules):
         if module.router is not None:
             # Licensed modules (issue #137) get one mount-time gate: mutations require the

@@ -21,6 +21,198 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ai/assist/write": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Writing Assist */
+        post: operations["writing_assist_api_v1_ai_assist_write_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/assistant": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Assistant */
+        post: operations["assistant_api_v1_ai_assistant_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/companies/{company_id}/digest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Company Digest */
+        post: operations["company_digest_api_v1_ai_companies__company_id__digest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Reports */
+        get: operations["list_reports_api_v1_ai_reports_get"];
+        put?: never;
+        /** Create Report */
+        post: operations["create_report_api_v1_ai_reports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/reports/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Generate Report */
+        post: operations["generate_report_api_v1_ai_reports_generate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/reports/{report_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Report */
+        get: operations["get_report_api_v1_ai_reports__report_id__get"];
+        /** Update Report */
+        put: operations["update_report_api_v1_ai_reports__report_id__put"];
+        post?: never;
+        /** Delete Report */
+        delete: operations["delete_report_api_v1_ai_reports__report_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Ai Settings */
+        get: operations["get_ai_settings_api_v1_ai_settings_get"];
+        /** Save Ai Settings */
+        put: operations["save_ai_settings_api_v1_ai_settings_put"];
+        post?: never;
+        /** Delete Ai Settings */
+        delete: operations["delete_ai_settings_api_v1_ai_settings_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/settings/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Ai Settings */
+        post: operations["test_ai_settings_api_v1_ai_settings_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/time/parse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Time Parse */
+        post: operations["time_parse_api_v1_ai_time_parse_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/time/reconstruct": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Time Reconstruct */
+        post: operations["time_reconstruct_api_v1_ai_time_reconstruct_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ai Usage */
+        get: operations["ai_usage_api_v1_ai_usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/api-keys": {
         parameters: {
             query?: never;
@@ -3471,6 +3663,98 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AIFeatureConfig */
+        AIFeatureConfig: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Model */
+            model?: string | null;
+        };
+        /** AISettingsRead */
+        AISettingsRead: {
+            /** Base Url */
+            base_url: string | null;
+            /** Default Model */
+            default_model: string;
+            /** Features */
+            features: {
+                [key: string]: components["schemas"]["AIFeatureConfig"];
+            };
+            /** Has Key */
+            has_key: boolean;
+            /** House Style */
+            house_style: string | null;
+            /** Monthly Token Budget */
+            monthly_token_budget: number | null;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "anthropic" | "openai" | "openai_compatible";
+        };
+        /** AISettingsWrite */
+        AISettingsWrite: {
+            /** Api Key */
+            api_key?: string | null;
+            /** Base Url */
+            base_url?: string | null;
+            /** Default Model */
+            default_model?: string | null;
+            /** Features */
+            features?: {
+                [key: string]: components["schemas"]["AIFeatureConfig"];
+            };
+            /** House Style */
+            house_style?: string | null;
+            /** Monthly Token Budget */
+            monthly_token_budget?: number | null;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "anthropic" | "openai" | "openai_compatible";
+        };
+        /**
+         * AITestResult
+         * @description Round-trip result of the settings page's test button; ``error`` is the provider's
+         *     failure verbatim — the one place raw provider text reaches the UI on purpose.
+         */
+        AITestResult: {
+            /** Error */
+            error?: string | null;
+            /** Model */
+            model?: string | null;
+            /** Ok */
+            ok: boolean;
+        };
+        /** AIUsageFeature */
+        AIUsageFeature: {
+            /** Feature */
+            feature: string;
+            /** Requests */
+            requests: number;
+            /** Tokens In */
+            tokens_in: number;
+            /** Tokens Out */
+            tokens_out: number;
+        };
+        /**
+         * AIUsageSummary
+         * @description This calendar month's metering, for the settings-page meter (#126).
+         */
+        AIUsageSummary: {
+            /** Budget */
+            budget: number | null;
+            /** Features */
+            features: components["schemas"]["AIUsageFeature"][];
+            /** Month */
+            month: string;
+            /** Tokens Total */
+            tokens_total: number;
+        };
         /** ActionRead */
         ActionRead: {
             /** Action Type */
@@ -3637,6 +3921,39 @@ export interface components {
              * Format: uuid
              */
             user_id: string;
+        };
+        /** AssistantContext */
+        AssistantContext: {
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Label */
+            label?: string | null;
+        };
+        /** AssistantMessage */
+        AssistantMessage: {
+            /** Content */
+            content: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "user" | "assistant";
+        };
+        /** AssistantRequest */
+        AssistantRequest: {
+            context?: components["schemas"]["AssistantContext"] | null;
+            /** Messages */
+            messages: components["schemas"]["AssistantMessage"][];
+            /**
+             * Override Budget
+             * @default false
+             */
+            override_budget: boolean;
         };
         /** AuditEntry */
         AuditEntry: {
@@ -4546,6 +4863,14 @@ export interface components {
             status: string;
             /** Version */
             version?: string | null;
+        };
+        /** DigestRequest */
+        DigestRequest: {
+            /**
+             * Override Budget
+             * @default false
+             */
+            override_budget: boolean;
         };
         /** DomainClaim */
         DomainClaim: {
@@ -6020,6 +6345,8 @@ export interface components {
          * @description The current user *within the resolved tenant* — including what they may do.
          */
         MeInfo: {
+            /** Ai Features */
+            ai_features?: string[];
             /** Avatar Url */
             avatar_url?: string | null;
             /** Custom Avatar Url */
@@ -6893,6 +7220,81 @@ export interface components {
          * @enum {string}
          */
         RecurrenceMode: "after_completion" | "schedule";
+        /** ReportCreate */
+        ReportCreate: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /**
+             * Content
+             * @default
+             */
+            content: string;
+            /**
+             * Language
+             * @default nl
+             */
+            language: string;
+            /** Period */
+            period: string;
+            /** Title */
+            title: string;
+        };
+        /** ReportGenerateRequest */
+        ReportGenerateRequest: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /**
+             * Language
+             * @default nl
+             */
+            language: string;
+            /**
+             * Override Budget
+             * @default false
+             */
+            override_budget: boolean;
+            /** Period */
+            period: string;
+        };
+        /** ReportRead */
+        ReportRead: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Content */
+            content: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By Name */
+            created_by_name: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Language */
+            language: string;
+            /** Period */
+            period: string;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /**
          * ReportTotals
          * @description Aggregates over the full filtered report set (not just the returned page).
@@ -6912,6 +7314,13 @@ export interface components {
             open_minutes: number;
             /** To Invoice Minutes */
             to_invoice_minutes: number;
+        };
+        /** ReportUpdate */
+        ReportUpdate: {
+            /** Content */
+            content?: string | null;
+            /** Title */
+            title?: string | null;
         };
         /**
          * RevenueStats
@@ -8497,6 +8906,64 @@ export interface components {
             /** Task Id */
             task_id?: string | null;
         };
+        /** TimeParseRequest */
+        TimeParseRequest: {
+            /**
+             * Override Budget
+             * @default false
+             */
+            override_budget: boolean;
+            /** Text */
+            text: string;
+        };
+        /**
+         * TimeParseResult
+         * @description A *draft* entry: prefills the form, never creates anything (#129).
+         */
+        TimeParseResult: {
+            /** Company Id */
+            company_id?: string | null;
+            /** Date */
+            date?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Duration Minutes */
+            duration_minutes?: number | null;
+            /** End */
+            end?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Start */
+            start?: string | null;
+            /** Task Id */
+            task_id?: string | null;
+        };
+        /** TimeReconstructRequest */
+        TimeReconstructRequest: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Override Budget
+             * @default false
+             */
+            override_budget: boolean;
+        };
+        /** TimeReconstructResult */
+        TimeReconstructResult: {
+            /** Leave Minutes */
+            leave_minutes: number;
+            /** Logged Minutes */
+            logged_minutes: number;
+            /** Scheduled Minutes */
+            scheduled_minutes: number;
+            /** Short */
+            short: boolean;
+            /** Suggestions */
+            suggestions?: components["schemas"]["TimeSuggestion"][];
+        };
         /** TimeReport */
         TimeReport: {
             /** Items */
@@ -8508,6 +8975,27 @@ export interface components {
             /** Total */
             total: number;
             totals: components["schemas"]["ReportTotals"];
+        };
+        /** TimeSuggestion */
+        TimeSuggestion: {
+            /** Company Id */
+            company_id?: string | null;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+            /** Minutes */
+            minutes?: number | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Task Id */
+            task_id?: string | null;
         };
         /**
          * TimeSummary
@@ -8909,6 +9397,27 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** WritingAssistRequest */
+        WritingAssistRequest: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "improve" | "shorten" | "expand" | "fix" | "tone_business" | "tone_informal" | "translate" | "draft";
+            /** Entity Type */
+            entity_type?: string | null;
+            /**
+             * Override Budget
+             * @default false
+             */
+            override_budget: boolean;
+            /** Target Locale */
+            target_locale?: string | null;
+            /** Text */
+            text: string;
+            /** Title */
+            title?: string | null;
+        };
         /**
          * ActivityItem
          * @description One line of a record's paper trail.
@@ -9035,6 +9544,476 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    writing_assist_api_v1_ai_assist_write_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WritingAssistRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assistant_api_v1_ai_assistant_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    company_digest_api_v1_ai_companies__company_id__digest_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DigestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_reports_api_v1_ai_reports_get: {
+        parameters: {
+            query?: {
+                company_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_report_api_v1_ai_reports_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_report_api_v1_ai_reports_generate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportGenerateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_report_api_v1_ai_reports__report_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_report_api_v1_ai_reports__report_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_report_api_v1_ai_reports__report_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ai_settings_api_v1_ai_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AISettingsRead"] | null;
+                };
+            };
+        };
+    };
+    save_ai_settings_api_v1_ai_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AISettingsWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AISettingsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_ai_settings_api_v1_ai_settings_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    test_ai_settings_api_v1_ai_settings_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AITestResult"];
+                };
+            };
+        };
+    };
+    time_parse_api_v1_ai_time_parse_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TimeParseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeParseResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    time_reconstruct_api_v1_ai_time_reconstruct_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TimeReconstructRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeReconstructResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ai_usage_api_v1_ai_usage_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIUsageSummary"];
                 };
             };
         };
