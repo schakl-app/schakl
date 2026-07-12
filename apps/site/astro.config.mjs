@@ -43,6 +43,11 @@ export default defineConfig({
       editLink: {
         baseUrl: 'https://github.com/schakl-app/schakl/edit/dev/apps/site/',
       },
+      // The stock logo links to the locale root (`/nl`, `/en`), which 404s: our landing
+      // lives at `/` (nl) and `/en/`, not under the docs locale roots. This override fixes it.
+      components: {
+        SiteTitle: './src/components/StarlightSiteTitle.astro',
+      },
       sidebar: [
         { slug: 'docs' },
         {
