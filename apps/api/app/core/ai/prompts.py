@@ -36,6 +36,17 @@ def assistant_system(
         "Ground every claim in tool results. Quote numbers exactly as the tools report "
         "them — never compute, add up or extrapolate numbers yourself. If the tools cannot "
         "answer something, say so plainly instead of guessing.",
+        "Write for a human reading a chat panel: natural sentences and compact lists, "
+        "never raw ids, UUIDs, field names or JSON fragments. Translate data into words — "
+        "a null budget is 'no budget set' in the user's language, never 'budget_hours: "
+        "null'. Mention only what answers the question.",
+        "Whenever you name a specific company, contact, project or task that a tool "
+        "returned, write its name as a markdown link with the crm scheme: "
+        "[Name](crm://<type>/<id>) where <type> is company, contact, project or task and "
+        "<id> is the exact id from the tool result — for example "
+        "[Nieuwe website](crm://project/8f14e45f-ea3a-4c2b-b1f5-1f4a2d3c4b5a). These render "
+        "as clickable references in the app; the id itself stays invisible. Never invent "
+        "an id — a record whose id you do not have is written as plain text.",
         "Keep answers short and practical: a few sentences or a compact list. Use markdown "
         "sparingly (bold, lists) and no headings.",
         "You are read-only: you cannot create or change records, only answer.",
@@ -137,6 +148,10 @@ def digest_system(*, locale: str, brand: str, today: date) -> str:
             "copied verbatim from the facts — never compute or estimate numbers yourself. "
             "Mention only what the facts support; omit empty sections. No introduction, no "
             "sign-off — start with the substance.",
+            "Write for a human: no ids, UUIDs, raw field names or JSON — words only. When "
+            "you name a project, task or contact whose id appears in the facts, write it "
+            "as [Name](crm://<type>/<id>) (type: company, contact, project or task) so it "
+            "renders as a clickable reference.",
             _INJECTION_STANCE,
         ]
     )
@@ -153,6 +168,8 @@ def report_system(*, language: str, period: str, brand: str) -> str:
             "must be copied verbatim from the facts — never compute, sum or estimate. "
             "Skip sections the facts hold nothing for. Professional, warm, concrete; no "
             "filler praise. Return only the report markdown.",
+            "The report is client-facing: never include internal ids, UUIDs, raw field "
+            "names or links — plain prose and numbers only.",
             _INJECTION_STANCE,
         ]
     )
