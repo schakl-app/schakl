@@ -13,6 +13,7 @@ registerWebModule({
       href: "/domains",
       label: () => t("nav.domains"),
       module: "domains",
+      group: "assets",
       icon: Globe,
       position: 40,
       requiresPermission: "domains.domain.read",

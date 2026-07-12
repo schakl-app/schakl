@@ -23,7 +23,7 @@ registerWebModule({
       label: () => t("nav.leave"),
       module: "leave",
       icon: TreePalm,
-      position: 45,
+      position: 80,
       requiresPermission: "leave.request.read",
     },
   ],

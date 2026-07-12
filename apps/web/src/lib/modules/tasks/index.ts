@@ -19,7 +19,7 @@ registerWebModule({
       label: () => t("nav.tasks"),
       module: "tasks",
       icon: SquareCheckBig,
-      position: 30,
+      position: 60,
       requiresPermission: "tasks.task.read",
     },
   ],

@@ -24,7 +24,7 @@ registerWebModule({
       label: () => t("nav.time"),
       module: "time",
       icon: Clock,
-      position: 40,
+      position: 70,
       requiresPermission: "time.entry.read",
     },
   ],
