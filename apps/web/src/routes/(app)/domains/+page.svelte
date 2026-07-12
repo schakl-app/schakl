@@ -6,6 +6,8 @@
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
+  import ProviderQuickCreate from "$lib/core/ui/ProviderQuickCreate.svelte";
+  import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import DomainForm from "$lib/modules/domains/DomainForm.svelte";
 
   let { data, form } = $props();
@@ -13,6 +15,23 @@
   let showCreate = $state(false);
   let deleteId = $state("");
   let confirmDelete = $state(false);
+
+  // Inline-create from the form's pickers (#115): "＋ … toevoegen" opens these over the modal.
+  let qcCompanyOpen = $state(false);
+  let qcCompanyName = $state("");
+  let qcProviderOpen = $state(false);
+  let qcProviderKind = $state<"registrar" | "dns" | "email">("registrar");
+  let qcProviderName = $state("");
+
+  function quickCreateCompany(name: string) {
+    qcCompanyName = name;
+    qcCompanyOpen = true;
+  }
+  function quickCreateProvider(kind: "registrar" | "dns" | "email", name: string) {
+    qcProviderKind = kind;
+    qcProviderName = name;
+    qcProviderOpen = true;
+  }
 
   function requestDelete(id: string) {
     deleteId = id;
@@ -105,6 +124,9 @@
       definitions={data.definitions}
       locale={data.locale}
       idPrefix="new-domain"
+      oncreatecompany={quickCreateCompany}
+      oncreateprovider={quickCreateProvider}
+      created={form?.inlineCreated ?? null}
     />
     {#if form?.error}<p class="mt-3 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
     <div class="mt-4 flex justify-end gap-2">
@@ -119,6 +141,20 @@
     </div>
   </form>
 </Modal>
+
+<CompanyQuickCreate
+  bind:open={qcCompanyOpen}
+  name={qcCompanyName}
+  definitions={data.companyDefinitions}
+  locale={data.locale}
+  error={form?.qcError ?? null}
+/>
+<ProviderQuickCreate
+  bind:open={qcProviderOpen}
+  kind={qcProviderKind}
+  name={qcProviderName}
+  error={form?.qcError ?? null}
+/>
 
 <ConfirmDialog
   bind:open={confirmDelete}

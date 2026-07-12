@@ -6,6 +6,8 @@
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
+  import ProviderQuickCreate from "$lib/core/ui/ProviderQuickCreate.svelte";
+  import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import HostingForm from "$lib/modules/hosting/HostingForm.svelte";
   import type { components } from "$lib/core/api/schema";
 
@@ -17,6 +19,12 @@
   let editing = $state<Hosting | null>(null);
   let deleteId = $state("");
   let confirmDelete = $state(false);
+
+  // Inline-create from the form's pickers (#115): "＋ … toevoegen" opens these over the modal.
+  let qcCompanyOpen = $state(false);
+  let qcCompanyName = $state("");
+  let qcProviderOpen = $state(false);
+  let qcProviderName = $state("");
 
   function openCreate() {
     editing = null;
@@ -102,6 +110,15 @@
         definitions={data.definitions}
         locale={data.locale}
         idPrefix={editing ? `edit-${editing.id}` : "new-hosting"}
+        oncreatecompany={(name) => {
+          qcCompanyName = name;
+          qcCompanyOpen = true;
+        }}
+        oncreateprovider={(_kind, name) => {
+          qcProviderName = name;
+          qcProviderOpen = true;
+        }}
+        created={form?.inlineCreated ?? null}
       />
       {#if form?.error}<p class="mt-3 text-sm text-red-600 dark:text-red-400">
           {t(form.error)}
@@ -119,6 +136,20 @@
     </form>
   {/key}
 </Modal>
+
+<CompanyQuickCreate
+  bind:open={qcCompanyOpen}
+  name={qcCompanyName}
+  definitions={data.companyDefinitions}
+  locale={data.locale}
+  error={form?.qcError ?? null}
+/>
+<ProviderQuickCreate
+  bind:open={qcProviderOpen}
+  kind="hosting"
+  name={qcProviderName}
+  error={form?.qcError ?? null}
+/>
 
 <ConfirmDialog
   bind:open={confirmDelete}

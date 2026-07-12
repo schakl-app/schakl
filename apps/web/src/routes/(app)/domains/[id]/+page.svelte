@@ -8,13 +8,32 @@
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import PartyPicker from "$lib/core/ui/PartyPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
+  import ProviderQuickCreate from "$lib/core/ui/ProviderQuickCreate.svelte";
+  import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import DomainForm from "$lib/modules/domains/DomainForm.svelte";
+  import HostingQuickCreate from "$lib/modules/hosting/HostingQuickCreate.svelte";
 
   let { data, form } = $props();
 
   let editing = $state(false);
   let editingWebsite = $state(false);
   let confirmDelete = $state(false);
+
+  // Inline-create from the pickers (#115): "＋ … toevoegen" opens these dialogs.
+  let qcCompanyOpen = $state(false);
+  let qcCompanyName = $state("");
+  let qcProviderOpen = $state(false);
+  let qcProviderKind = $state<"registrar" | "dns" | "email">("registrar");
+  let qcProviderName = $state("");
+  let qcHostingOpen = $state(false);
+  let qcHostingName = $state("");
+
+  // The website form's hosting picker lives in this page, so its auto-select does too.
+  let websiteHostingCreated = $state("");
+  $effect(() => {
+    const c = form?.inlineCreated;
+    if (c?.slot === "hosting_account") websiteHostingCreated = c.id;
+  });
 
   const domain = $derived(data.domain);
   const website = $derived(data.website);
@@ -74,6 +93,16 @@
           definitions={data.definitions}
           locale={data.locale}
           idPrefix="edit-domain"
+          oncreatecompany={(name) => {
+            qcCompanyName = name;
+            qcCompanyOpen = true;
+          }}
+          oncreateprovider={(kind, name) => {
+            qcProviderKind = kind;
+            qcProviderName = name;
+            qcProviderOpen = true;
+          }}
+          created={form?.inlineCreated ?? null}
         />
         {#if form?.error}<p class="mt-3 text-sm text-red-600 dark:text-red-400">
             {t(form.error)}
@@ -262,9 +291,13 @@
           <Combobox
             items={hostingItems}
             name="hosting_id"
-            value={website?.hosting_id ?? ""}
+            value={websiteHostingCreated || (website?.hosting_id ?? "")}
             id="website-hosting"
             placeholder={t("common.none")}
+            oncreate={(name) => {
+              qcHostingName = name;
+              qcHostingOpen = true;
+            }}
           />
         </div>
         <label class="flex items-center gap-2 text-sm text-text">
@@ -304,6 +337,32 @@
     </form>
   {/if}
 </section>
+
+<CompanyQuickCreate
+  bind:open={qcCompanyOpen}
+  name={qcCompanyName}
+  definitions={data.companyDefinitions}
+  locale={data.locale}
+  error={form?.qcError ?? null}
+/>
+<ProviderQuickCreate
+  bind:open={qcProviderOpen}
+  kind={qcProviderKind}
+  name={qcProviderName}
+  error={form?.qcError ?? null}
+/>
+<HostingQuickCreate
+  bind:open={qcHostingOpen}
+  name={qcHostingName}
+  companies={data.companies}
+  providers={data.providers}
+  employees={data.employees}
+  contacts={data.contacts}
+  agencyLabel={data.agencyLabel}
+  definitions={data.hostingDefinitions}
+  locale={data.locale}
+  error={form?.qcError ?? null}
+/>
 
 <ConfirmDialog
   bind:open={confirmDelete}

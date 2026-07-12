@@ -24,6 +24,9 @@
     definitions,
     locale,
     idPrefix = "domain",
+    oncreatecompany,
+    oncreateprovider,
+    created = null,
   }: {
     domain?: Domain | null;
     companies: { id: string; name: string }[];
@@ -34,6 +37,11 @@
     definitions: Definition[];
     locale: string;
     idPrefix?: string;
+    /** Inline-create (#115, docs/UX.md): typing an unknown name offers "＋ … toevoegen". */
+    oncreatecompany?: (name: string) => void;
+    oncreateprovider?: (kind: "registrar" | "dns" | "email", name: string) => void;
+    /** The entity a quick-create modal just made; auto-selected in the matching picker. */
+    created?: { slot: string; id: string } | null;
   } = $props();
 
   const STATUSES = ["active", "redirect", "parked", "expired", "inactive"] as const;
@@ -41,8 +49,17 @@
   const byKind = (kind: string) =>
     providers.filter((p) => p.kind === kind).map((p) => ({ value: p.id, label: p.name }));
 
+  // Remembered per slot so creating a DNS provider doesn't reset an earlier-created registrar,
+  // and a later manual pick in the same slot is never overridden (the prop only changes on create).
+  let createdBySlot = $state<Record<string, string>>({});
+  $effect(() => {
+    if (created) createdBySlot[created.slot] = created.id;
+  });
+
   let emailEnabled = $state(domain?.email_enabled ?? false);
-  const companyItems = companies.map((c) => ({ value: c.id, label: c.name }));
+  // Derived, not a const: a quick-create refreshes `companies` mid-life and the new
+  // entity must resolve to its label in the picker.
+  const companyItems = $derived(companies.map((c) => ({ value: c.id, label: c.name })));
 </script>
 
 <div class="space-y-4">
@@ -65,10 +82,11 @@
     <Combobox
       items={companyItems}
       name="company_id"
-      value={domain?.company_id ?? ""}
+      value={createdBySlot.company ?? domain?.company_id ?? ""}
       allowEmpty={false}
       id="{idPrefix}-company"
       placeholder={t("domains.company")}
+      oncreate={oncreatecompany}
     />
   </div>
 
@@ -97,9 +115,10 @@
       <Combobox
         items={byKind("registrar")}
         name="registrar_provider_id"
-        value={domain?.registrar_provider_id ?? ""}
+        value={createdBySlot.registrar ?? domain?.registrar_provider_id ?? ""}
         id="{idPrefix}-registrar"
         placeholder={t("common.none")}
+        oncreate={oncreateprovider ? (q) => oncreateprovider("registrar", q) : undefined}
       />
     </div>
     <div>
@@ -107,9 +126,10 @@
       <Combobox
         items={byKind("dns")}
         name="dns_provider_id"
-        value={domain?.dns_provider_id ?? ""}
+        value={createdBySlot.dns ?? domain?.dns_provider_id ?? ""}
         id="{idPrefix}-dns"
         placeholder={t("common.none")}
+        oncreate={oncreateprovider ? (q) => oncreateprovider("dns", q) : undefined}
       />
     </div>
   </div>
@@ -141,9 +161,10 @@
           <Combobox
             items={byKind("email")}
             name="email_provider_id"
-            value={domain?.email_provider_id ?? ""}
+            value={createdBySlot.email ?? domain?.email_provider_id ?? ""}
             id="{idPrefix}-email-provider"
             placeholder={t("common.none")}
+            oncreate={oncreateprovider ? (q) => oncreateprovider("email", q) : undefined}
           />
         </div>
         <div>

@@ -21,6 +21,10 @@
     definitions,
     locale,
     idPrefix = "hosting",
+    nameDefault = "",
+    oncreatecompany,
+    oncreateprovider,
+    created = null,
   }: {
     hosting?: Hosting | null;
     companies: { id: string; name: string }[];
@@ -31,12 +35,27 @@
     definitions: Definition[];
     locale: string;
     idPrefix?: string;
+    /** Prefills the name on create — for quick-create from another form's picker (#115). */
+    nameDefault?: string;
+    /** Inline-create (#115, docs/UX.md): typing an unknown name offers "＋ … toevoegen". */
+    oncreatecompany?: (name: string) => void;
+    oncreateprovider?: (kind: "hosting", name: string) => void;
+    /** The entity a quick-create modal just made; auto-selected in the matching picker. */
+    created?: { slot: string; id: string } | null;
   } = $props();
 
-  const providerItems = providers
-    .filter((p) => p.kind === "hosting")
-    .map((p) => ({ value: p.id, label: p.name }));
-  const companyItems = companies.map((c) => ({ value: c.id, label: c.name }));
+  // Derived, not consts: a quick-create refreshes these lists mid-life and the new
+  // entity must resolve to its label in the picker.
+  const providerItems = $derived(
+    providers.filter((p) => p.kind === "hosting").map((p) => ({ value: p.id, label: p.name })),
+  );
+  const companyItems = $derived(companies.map((c) => ({ value: c.id, label: c.name })));
+
+  // Per-slot memory so a manual re-pick after a quick-create is never overridden (see DomainForm).
+  let createdBySlot = $state<Record<string, string>>({});
+  $effect(() => {
+    if (created) createdBySlot[created.slot] = created.id;
+  });
 </script>
 
 <div class="space-y-4">
@@ -46,7 +65,7 @@
       id="{idPrefix}-name"
       name="name"
       required
-      value={hosting?.name ?? ""}
+      value={hosting?.name ?? nameDefault}
       class="w-full rounded-lg border border-border px-3 py-2 text-sm text-text outline-none focus:border-brand"
     />
   </div>
@@ -58,9 +77,10 @@
       <Combobox
         items={companyItems}
         name="company_id"
-        value={hosting?.company_id ?? ""}
+        value={createdBySlot.company ?? hosting?.company_id ?? ""}
         id="{idPrefix}-company"
         placeholder={t("common.none")}
+        oncreate={oncreatecompany}
       />
     </div>
     <div>
@@ -70,9 +90,10 @@
       <Combobox
         items={providerItems}
         name="provider_id"
-        value={hosting?.provider_id ?? ""}
+        value={createdBySlot.hosting ?? hosting?.provider_id ?? ""}
         id="{idPrefix}-provider"
         placeholder={t("common.none")}
+        oncreate={oncreateprovider ? (q) => oncreateprovider("hosting", q) : undefined}
       />
     </div>
   </div>

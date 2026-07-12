@@ -2,6 +2,7 @@ import { error, fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey, lookupItems } from "$lib/core/errors";
 import { parseParty } from "$lib/core/party";
+import { createCompanyAction, createProviderAction } from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -18,22 +19,40 @@ export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const domain_id = event.params.id;
 
-  const [domain, companies, providers, members, contacts, defs, websiteDefs, websites, hosting] =
-    await Promise.all([
-      api.GET("/api/v1/domains/{domain_id}", { params: { path: { domain_id } } }),
-      api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
-      api.GET("/api/v1/providers"),
-      api.GET("/api/v1/members/lookup"),
-      api.GET("/api/v1/contacts", { params: { query: { limit: 200, offset: 0 } } }),
-      api.GET("/api/v1/custom-fields/definitions", {
-        params: { query: { entity_type: "domain" } },
-      }),
-      api.GET("/api/v1/custom-fields/definitions", {
-        params: { query: { entity_type: "website" } },
-      }),
-      api.GET("/api/v1/websites", { params: { query: { domain_id, limit: 1, offset: 0 } } }),
-      api.GET("/api/v1/hosting", { params: { query: { limit: 200, offset: 0 } } }),
-    ]);
+  const [
+    domain,
+    companies,
+    providers,
+    members,
+    contacts,
+    defs,
+    websiteDefs,
+    websites,
+    hosting,
+    companyDefs,
+    hostingDefs,
+  ] = await Promise.all([
+    api.GET("/api/v1/domains/{domain_id}", { params: { path: { domain_id } } }),
+    api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
+    api.GET("/api/v1/providers"),
+    api.GET("/api/v1/members/lookup"),
+    api.GET("/api/v1/contacts", { params: { query: { limit: 200, offset: 0 } } }),
+    api.GET("/api/v1/custom-fields/definitions", {
+      params: { query: { entity_type: "domain" } },
+    }),
+    api.GET("/api/v1/custom-fields/definitions", {
+      params: { query: { entity_type: "website" } },
+    }),
+    api.GET("/api/v1/websites", { params: { query: { domain_id, limit: 1, offset: 0 } } }),
+    api.GET("/api/v1/hosting", { params: { query: { limit: 200, offset: 0 } } }),
+    // For the inline quick-creates (#115): their full dialogs include custom fields.
+    api.GET("/api/v1/custom-fields/definitions", {
+      params: { query: { entity_type: "company" } },
+    }),
+    api.GET("/api/v1/custom-fields/definitions", {
+      params: { query: { entity_type: "hosting" } },
+    }),
+  ]);
 
   if (!domain.data) throw error(404, { code: "not_found", message: "errors.not_found" });
 
@@ -48,6 +67,8 @@ export const load: PageServerLoad = async (event) => {
     })),
     definitions: defs.data ?? [],
     websiteDefinitions: websiteDefs.data ?? [],
+    companyDefinitions: companyDefs.data ?? [],
+    hostingDefinitions: hostingDefs.data ?? [],
     website: websites.data?.items?.[0] ?? null,
     hosting: lookupItems(hosting, "hosting").map((h) => ({ id: h.id, name: h.name })),
     agencyLabel: event.locals.theme?.brandName ?? "",
@@ -132,5 +153,25 @@ export const actions: Actions = {
       params: { path: { domain_id: event.params.id } },
     });
     throw redirect(303, "/domains");
+  },
+
+  createCompany: createCompanyAction,
+  createProvider: createProviderAction,
+
+  // Inline-create for the website form's hosting picker (#115): the full HostingForm in a modal.
+  createHosting: async (event) => {
+    const form = await event.request.formData();
+    const body = {
+      name: String(form.get("name") ?? "").trim(),
+      company_id: String(form.get("company_id") ?? "") || null,
+      provider_id: String(form.get("provider_id") ?? "") || null,
+      ip_address: String(form.get("ip_address") ?? "").trim() || null,
+      contact: parseParty(form.get("contact")),
+      custom: parseCustom(form.get("custom")),
+    };
+    if (!body.name) return fail(400, { qcError: "errors.required" });
+    const { data, error: err } = await apiFor(event).POST("/api/v1/hosting", { body });
+    if (err || !data) return fail(400, { qcError: apiErrorKey(err).key });
+    return { inlineCreated: { slot: "hosting_account", id: data.id } };
   },
 };

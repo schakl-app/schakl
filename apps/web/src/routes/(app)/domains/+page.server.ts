@@ -2,6 +2,7 @@ import { fail } from "@sveltejs/kit";
 
 import { apiErrorKey, lookupItems } from "$lib/core/errors";
 import { parseParty } from "$lib/core/party";
+import { createCompanyAction, createProviderAction } from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -19,14 +20,21 @@ export const load: PageServerLoad = async (event) => {
   const q = event.url.searchParams.get("q") || undefined;
   const sort = event.url.searchParams.get("sort") ?? undefined;
 
-  const [domains, companies, providers, members, contacts, definitions] = await Promise.all([
-    api.GET("/api/v1/domains", { params: { query: { limit: 200, offset: 0, q, sort } } }),
-    api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
-    api.GET("/api/v1/providers"),
-    api.GET("/api/v1/members/lookup"),
-    api.GET("/api/v1/contacts", { params: { query: { limit: 200, offset: 0 } } }),
-    api.GET("/api/v1/custom-fields/definitions", { params: { query: { entity_type: "domain" } } }),
-  ]);
+  const [domains, companies, providers, members, contacts, definitions, companyDefinitions] =
+    await Promise.all([
+      api.GET("/api/v1/domains", { params: { query: { limit: 200, offset: 0, q, sort } } }),
+      api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
+      api.GET("/api/v1/providers"),
+      api.GET("/api/v1/members/lookup"),
+      api.GET("/api/v1/contacts", { params: { query: { limit: 200, offset: 0 } } }),
+      api.GET("/api/v1/custom-fields/definitions", {
+        params: { query: { entity_type: "domain" } },
+      }),
+      // For the inline company quick-create (#115): the full dialog includes custom fields.
+      api.GET("/api/v1/custom-fields/definitions", {
+        params: { query: { entity_type: "company" } },
+      }),
+    ]);
 
   return {
     domains: domains.data?.items ?? [],
@@ -39,6 +47,7 @@ export const load: PageServerLoad = async (event) => {
       name: [c.first_name, c.last_name].filter(Boolean).join(" "),
     })),
     definitions: definitions.data ?? [],
+    companyDefinitions: companyDefinitions.data ?? [],
     agencyLabel: event.locals.theme?.brandName ?? "",
     q: q ?? "",
     locale: event.locals.locale,
@@ -86,4 +95,7 @@ export const actions: Actions = {
     }
     return { deleted: true };
   },
+
+  createCompany: createCompanyAction,
+  createProvider: createProviderAction,
 };
