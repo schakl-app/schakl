@@ -114,20 +114,18 @@ epics and delete the label.
 Not on the issue by default — **set it at triage**, every time. It is an organization issue
 field, so `gh issue edit` cannot touch it; use the REST API with the field's numeric id:
 
-`value` is the **option's numeric id, not its name**. Passing `value=High` returns `200` and
-silently changes nothing — the field stays empty and you will believe you set it. Look the
-ids up once:
+`field_id` is numeric; `value` is the **option's name as a string** (`-f`, not `-F`).
+GitHub changed this once already — passing the option's numeric id used to be required and
+now returns `422 "must be a string option name"` — so when the call fails, suspect the API
+shape before your ids:
 
 ```bash
 gh api /orgs/schakl-app/issue-fields -q '.[] | "\(.id)\t\(.name)"'   # 43901503 = Priority
-gh api /orgs/schakl-app/issue-fields \
-  | jq -r '.[] | select(.name=="Priority") | .options[] | "\(.id)\t\(.name)"'
-# 76831411 Urgent · 76831412 High · 76831413 Medium · 76831414 Low
 
 gh api -X PATCH /repos/schakl-app/schakl/issues/<N> \
   -f 'type=Bug' \
   -F 'issue_field_values[][field_id]=43901503' \
-  -F 'issue_field_values[][value]=76831412'
+  -f 'issue_field_values[][value]=High'
 ```
 
 The write key is `field_id`; the **read** key is `issue_field_id`. Filtering the response on
