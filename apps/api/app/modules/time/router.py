@@ -24,6 +24,8 @@ from app.modules.time.schemas import (
     ProjectCost,
     RevenueStats,
     TimeEntryCreate,
+    TimeEntryDraftPayload,
+    TimeEntryDraftRead,
     TimeEntryRead,
     TimeEntryUpdate,
     TimeReport,
@@ -231,13 +233,47 @@ async def day_view(
     ctx: RequestContext = Depends(require_context),
 ) -> DayView:
     """One day's entries (calendar day view) plus total + billable minutes."""
-    the_day, entries, total, billable = await TimeService(ctx).day(day=day, user_id=user_id)
+    service = TimeService(ctx)
+    the_day, entries, total, billable = await service.day(day=day, user_id=user_id)
+    # The caller's own draft rides along (#44) — never attached to someone else's day.
+    own = user_id is None or user_id == ctx.user.id
+    draft = await service.draft_get(day) if own else None
     return DayView(
         date=the_day,
         total_minutes=total,
         billable_minutes=billable,
         entries=[TimeEntryRead.model_validate(e) for e in entries],
+        draft=TimeEntryDraftRead.model_validate(draft) if draft else None,
     )
+
+
+# --- drafts (#44): the autosaved in-progress registration ------------------ #
+@router.put(
+    "/drafts/{entry_date}",
+    response_model=TimeEntryDraftRead,
+    dependencies=[require_permission("time.entry.write")],
+)
+async def upsert_draft(
+    entry_date: date,
+    payload: TimeEntryDraftPayload,
+    ctx: RequestContext = Depends(require_context),
+) -> TimeEntryDraftRead:
+    """Upsert the caller's own draft for a day. Author-only by construction."""
+    draft = await TimeService(ctx).draft_upsert(entry_date, payload)
+    return TimeEntryDraftRead.model_validate(draft)
+
+
+@router.delete(
+    "/drafts/{entry_date}",
+    status_code=204,
+    dependencies=[require_permission("time.entry.write")],
+)
+async def delete_draft(
+    entry_date: date,
+    ctx: RequestContext = Depends(require_context),
+) -> None:
+    """Discard the caller's own draft. Idempotent."""
+    await TimeService(ctx).draft_delete(entry_date)
 
 
 # Declared with **no scope** on purpose: a project's logged hours are team-visible, and this

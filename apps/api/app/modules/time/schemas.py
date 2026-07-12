@@ -150,6 +150,33 @@ class TimeSummary(BaseModel):
     running: TimeEntryRead | None
 
 
+class TimeEntryDraftPayload(BaseModel):
+    """What the entry form holds mid-typing (#44). A validated, closed shape — every field
+    optional (a draft may be invalid), every key whitelisted (``extra=\"forbid\"``), strings
+    bounded so the row can't balloon. UI-only fields (``duration_text``) ride along verbatim."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    date: str | None = Field(default=None, max_length=10)
+    start: str | None = Field(default=None, max_length=5)
+    end: str | None = Field(default=None, max_length=5)
+    break_minutes: int | None = Field(default=None, ge=0, le=1440)
+    duration_text: str | None = Field(default=None, max_length=40)
+    billable: bool | None = None
+    company_id: uuid.UUID | None = None
+    project_id: uuid.UUID | None = None
+    task_id: uuid.UUID | None = None
+    description: str | None = Field(default=None, max_length=4000)
+
+
+class TimeEntryDraftRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    entry_date: date
+    payload: dict
+    updated_at: datetime
+
+
 class DayView(BaseModel):
     """A single day's entries (the calendar day view) with totals."""
 
@@ -157,6 +184,8 @@ class DayView(BaseModel):
     total_minutes: int
     billable_minutes: int
     entries: list[TimeEntryRead]
+    #: The caller's own autosaved draft for this day (#44); never someone else's.
+    draft: TimeEntryDraftRead | None = None
 
 
 class LoggedSummary(BaseModel):
@@ -182,3 +211,5 @@ class Timesheet(BaseModel):
     rows: list[TimesheetRow]
     day_totals: list[int]     # column totals
     total: int                # grand total
+    #: Days this week where the caller has an autosaved draft (#44) — the tab dots.
+    draft_days: list[date] = Field(default_factory=list)

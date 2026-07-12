@@ -2419,6 +2419,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/time/drafts/{entry_date}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Upsert Draft
+         * @description Upsert the caller's own draft for a day. Author-only by construction.
+         */
+        put: operations["upsert_draft_api_v1_time_drafts__entry_date__put"];
+        post?: never;
+        /**
+         * Delete Draft
+         * @description Discard the caller's own draft. Idempotent.
+         */
+        delete: operations["delete_draft_api_v1_time_drafts__entry_date__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/time/entries": {
         parameters: {
             query?: never;
@@ -3766,6 +3790,7 @@ export interface components {
              * Format: date
              */
             date: string;
+            draft?: components["schemas"]["TimeEntryDraftRead"] | null;
             /** Entries */
             entries: components["schemas"]["TimeEntryRead"][];
             /** Total Minutes */
@@ -6716,6 +6741,51 @@ export interface components {
             /** Task Id */
             task_id?: string | null;
         };
+        /**
+         * TimeEntryDraftPayload
+         * @description What the entry form holds mid-typing (#44). A validated, closed shape — every field
+         *     optional (a draft may be invalid), every key whitelisted (``extra="forbid"``), strings
+         *     bounded so the row can't balloon. UI-only fields (``duration_text``) ride along verbatim.
+         */
+        TimeEntryDraftPayload: {
+            /** Billable */
+            billable?: boolean | null;
+            /** Break Minutes */
+            break_minutes?: number | null;
+            /** Company Id */
+            company_id?: string | null;
+            /** Date */
+            date?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Duration Text */
+            duration_text?: string | null;
+            /** End */
+            end?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Start */
+            start?: string | null;
+            /** Task Id */
+            task_id?: string | null;
+        };
+        /** TimeEntryDraftRead */
+        TimeEntryDraftRead: {
+            /**
+             * Entry Date
+             * Format: date
+             */
+            entry_date: string;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /** TimeEntryRead */
         TimeEntryRead: {
             /** Approved At */
@@ -6856,6 +6926,8 @@ export interface components {
             day_totals: number[];
             /** Days */
             days: string[];
+            /** Draft Days */
+            draft_days?: string[];
             /** Rows */
             rows: components["schemas"]["TimesheetRow"][];
             /** Total */
@@ -13490,6 +13562,70 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DayView"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upsert_draft_api_v1_time_drafts__entry_date__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_date: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TimeEntryDraftPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeEntryDraftRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_draft_api_v1_time_drafts__entry_date__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_date: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

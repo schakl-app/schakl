@@ -9,9 +9,10 @@ later; approved leave (P2) will surface here without being double-counted as a t
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -72,3 +73,30 @@ class TimeEntry(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     @property
     def is_running(self) -> bool:
         return self.ended_at is None
+
+
+class TimeEntryDraft(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """The in-progress *new registration*, autosaved per (user, day) (#44).
+
+    Deliberately its own table, never a ``time_entries`` row with a status: nothing that
+    computes hours, approves, invoices or reports can ever see a draft, so a half-typed
+    registration can never land on an invoice. The payload is JSONB because a draft is
+    *allowed to be invalid* (no end time yet, a dangling project id) — typed NOT NULL columns
+    would reject exactly the states being preserved. Author-only, stricter than the rest of
+    the platform: the service filters ``user_id == ctx.user.id`` on every path — an admin has
+    no business reading someone's keystrokes.
+    """
+
+    __tablename__ = "time_entry_drafts"
+    __table_args__ = (
+        UniqueConstraint("org_id", "user_id", "entry_date", name="uq_time_entry_drafts_day"),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    entry_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)

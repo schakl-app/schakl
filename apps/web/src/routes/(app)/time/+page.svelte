@@ -251,9 +251,14 @@
           >{fmtWeekdayShort(day)}</span
         >
         <span class="text-sm font-semibold {sel ? 'text-brand' : 'text-text'}">{dayNum(day)}</span>
-        <span class="text-[11px] text-text-muted"
-          >{week.day_totals[i] ? formatMinutes(week.day_totals[i]) : "·"}</span
-        >
+        <span class="inline-flex items-center gap-1 text-[11px] text-text-muted">
+          {week.day_totals[i] ? formatMinutes(week.day_totals[i]) : "·"}
+          {#if week.draft_days?.includes(day)}
+            <!-- An unsaved draft lives on this day (#44). -->
+            <span class="h-1.5 w-1.5 rounded-full bg-amber-400" title={t("time.draft.chip")}
+            ></span>
+          {/if}
+        </span>
       </a>
     {/each}
   </div>
@@ -414,6 +419,9 @@
           projects={data.projects}
           tasks={data.tasks}
           canSeeMoney={data.canSeeBudgetMoney}
+          draftDate={data.selectedDate}
+          draftInitial={data.day?.draft?.payload ?? null}
+          draftSavedAt={data.day?.draft?.updated_at ?? null}
           defaultCompanyId={data.lastCompanyId ?? ""}
           defaultProjectId={data.lastProjectId ?? ""}
           error={form?.error ?? null}
