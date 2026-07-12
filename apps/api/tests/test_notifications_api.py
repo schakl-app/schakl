@@ -367,3 +367,42 @@ async def test_notifications_tenant_isolation(client_for) -> None:
         assert (
             await client.get("/api/v1/notifications", headers=a_headers)
         ).status_code == 403
+
+
+async def test_email_pending_is_a_first_class_matrix_event(client_for) -> None:
+    """#146: interactions.email_pending sits in the preference matrix like any event —
+    immediate by default (a review queue is not tomorrow's digest) and user-tunable."""
+    t = await make_tenant("notif-email-pending")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as client:
+        matrix = (
+            await client.get("/api/v1/notifications/preferences", headers=headers)
+        ).json()
+        row = next(
+            r for r in matrix["events"] if r["event_type"] == "interactions.email_pending"
+        )
+        assert row["digest"] == "immediate" and row["source"] == "default"
+
+        # And it can be retuned like any other row.
+        saved = await client.put(
+            "/api/v1/notifications/preferences",
+            json={
+                "events": [
+                    {
+                        "event_type": "interactions.email_pending",
+                        "enabled": True,
+                        "delay_minutes": 0,
+                        "digest": "daily",
+                    }
+                ]
+            },
+            headers=headers,
+        )
+        assert saved.status_code == 200, saved.text
+        matrix = (
+            await client.get("/api/v1/notifications/preferences", headers=headers)
+        ).json()
+        row = next(
+            r for r in matrix["events"] if r["event_type"] == "interactions.email_pending"
+        )
+        assert row["digest"] == "daily" and row["source"] == "user"

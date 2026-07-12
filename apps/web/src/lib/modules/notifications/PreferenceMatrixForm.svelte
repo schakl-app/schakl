@@ -60,6 +60,20 @@
   const rows = $derived(
     matrix.events.map((row) => ({ ...row, ...(edits[row.event_type] ?? {}) })),
   );
+
+  // #146: one flat table reads as a wall. Group rows under module headers derived from the
+  // event key's prefix — the API's EVENT_TYPES order already clusters by module, so this is
+  // purely presentational and a new module's events form their own section for free.
+  const groups = $derived.by(() => {
+    const out: { key: string; rows: typeof rows }[] = [];
+    for (const row of rows) {
+      const key = row.event_type.split(".")[0];
+      const last = out[out.length - 1];
+      if (last && last.key === key) last.rows.push(row);
+      else out.push({ key, rows: [row] });
+    }
+    return out;
+  });
   const general = $derived({ ...matrix.general, ...generalEdit });
 
   function baseline(eventType: string): Row | undefined {
@@ -207,7 +221,17 @@
           </tr>
         </thead>
         <tbody class="divide-y divide-border">
-          {#each rows as row (row.event_type)}
+          {#each groups as group (group.key)}
+            <tr class="bg-surface">
+              <th
+                colspan="5"
+                scope="colgroup"
+                class="px-4 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-text-muted"
+              >
+                {t(`notifications.group.${group.key}`)}
+              </th>
+            </tr>
+            {#each group.rows as row (row.event_type)}
             <tr>
               <td class="px-4 py-2 text-text">
                 {t(`notifications.event_label.${row.event_type}`)}
@@ -257,6 +281,7 @@
                 {/if}
               </td>
             </tr>
+            {/each}
           {/each}
         </tbody>
       </table>

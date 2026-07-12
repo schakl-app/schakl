@@ -22,6 +22,7 @@ from app.modules.notifications.events import (
     COMPANY_ASSIGNED,
     DIGEST_DAILY,
     DIGEST_IMMEDIATE,
+    INTERACTION_EMAIL_PENDING,
     LEAVE_APPROVED,
     LEAVE_REJECTED,
     LEAVE_REQUESTED,
@@ -49,6 +50,8 @@ _IMMEDIATE_EVENTS: frozenset[str] = frozenset(
         LEAVE_REJECTED,
         # A rule author who says "tell these people" means now, not in tomorrow's digest.
         AUTOMATION_NOTIFY,
+        # A review queue is not tomorrow's news (#146) — the owner unblocks the body fetch.
+        INTERACTION_EMAIL_PENDING,
     }
 )
 

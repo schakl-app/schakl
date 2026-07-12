@@ -85,6 +85,8 @@ ENTITY_ID_KEY: dict[str, str] = {
     # A timesheet has no row of its own; it is a person's week, so the person is the subject.
     "time.entry_approved": "user_id",
     "time.timesheet_reminder": "user_id",
+    # Ingested directly by the gmail feed (#146); the bus handler exists for completeness.
+    "interactions.email_pending": "interaction_id",
 }
 
 SORTABLE: dict[str, Any] = {"created_at": Notification.created_at}
