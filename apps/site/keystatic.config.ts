@@ -26,39 +26,87 @@ const cta = (label: string) =>
     { label },
   );
 
+// The landing page is a list of reorderable blocks: add, remove and drag sections in the
+// CMS. The `anchor` on a block is its #id, so nav links like /#features keep working
+// however the sections are arranged.
+const anchor = fields.text({
+  label: 'Anker (voor #links in de navigatie, bijv. "features") — optioneel',
+});
+
 const landingSchema = {
-  hero: fields.object(
+  blocks: fields.blocks(
     {
-      eyebrow: fields.text({ label: 'Eyebrow (regeltje boven de titel)' }),
-      title: fields.text({ label: 'Titel' }),
-      subtitle: fields.text({ label: 'Subtitel', multiline: true }),
-      ctaPrimary: cta('Primaire knop'),
-      ctaSecondary: cta('Secundaire knop'),
+      hero: {
+        label: 'Hero',
+        itemLabel: (props) => `Hero — ${props.fields.title.value}`,
+        schema: fields.object({
+          eyebrow: fields.text({ label: 'Eyebrow (regeltje boven de titel)' }),
+          title: fields.text({ label: 'Titel' }),
+          subtitle: fields.text({ label: 'Subtitel', multiline: true }),
+          ctaPrimary: cta('Primaire knop'),
+          ctaSecondary: cta('Secundaire knop'),
+        }),
+      },
+      features: {
+        label: 'Functie-kaarten',
+        itemLabel: (props) => `Functies — ${props.fields.title.value}`,
+        schema: fields.object({
+          anchor,
+          title: fields.text({ label: 'Titel' }),
+          intro: fields.text({ label: 'Intro', multiline: true }),
+        }),
+      },
+      textBullets: {
+        label: 'Tekst + punten',
+        itemLabel: (props) => `Tekst — ${props.fields.title.value}`,
+        schema: fields.object({
+          anchor,
+          title: fields.text({ label: 'Titel' }),
+          body: fields.text({ label: 'Tekst', multiline: true }),
+          bullets: fields.array(fields.text({ label: 'Punt' }), {
+            label: 'Punten',
+            itemLabel: (props) => props.value ?? '',
+          }),
+        }),
+      },
+      cta: {
+        label: 'Call-to-action-band',
+        itemLabel: (props) => `CTA — ${props.fields.title.value}`,
+        schema: fields.object({
+          anchor,
+          title: fields.text({ label: 'Titel' }),
+          body: fields.text({ label: 'Tekst', multiline: true }),
+          label: fields.text({ label: 'Knoptekst' }),
+          href: fields.text({ label: 'Knoplink' }),
+        }),
+      },
     },
-    { label: 'Hero' },
-  ),
-  featuresTitle: fields.text({ label: 'Titel boven de functies' }),
-  featuresIntro: fields.text({ label: 'Intro boven de functies', multiline: true }),
-  selfhost: fields.object(
-    {
-      title: fields.text({ label: 'Titel' }),
-      body: fields.text({ label: 'Tekst', multiline: true }),
-      bullets: fields.array(fields.text({ label: 'Punt' }), {
-        label: 'Punten',
-        itemLabel: (props) => props.value ?? '',
-      }),
-    },
-    { label: 'Zelf hosten-sectie' },
-  ),
-  docsCta: fields.object(
-    {
-      title: fields.text({ label: 'Titel' }),
-      body: fields.text({ label: 'Tekst', multiline: true }),
-      label: fields.text({ label: 'Knoptekst' }),
-    },
-    { label: 'Docs-callout onderaan' },
+    { label: 'Secties' },
   ),
 };
+
+const pagesCollection = (label: string, path: `${string}/*`) =>
+  collection({
+    label,
+    path,
+    slugField: 'title',
+    format: { contentField: 'content' },
+    entryLayout: 'content',
+    columns: ['title'],
+    schema: {
+      title: fields.slug({
+        name: { label: 'Titel' },
+        slug: {
+          label: 'Slug (het URL-pad, bijv. "prijzen") — gebruik niet "docs" of "en"',
+        },
+      }),
+      description: fields.text({
+        label: 'Omschrijving (voor zoekmachines)',
+        multiline: true,
+      }),
+      content: fields.mdx({ label: 'Inhoud' }),
+    },
+  });
 
 const docsCollection = (label: string, path: `${string}/**`) =>
   collection({
@@ -169,6 +217,8 @@ export default config({
         description: localizedText('Omschrijving', true),
       },
     }),
+    pagesNl: pagesCollection("Pagina's (Nederlands)", 'src/content/pages/nl/*'),
+    pagesEn: pagesCollection('Pages (English)', 'src/content/pages/en/*'),
     docsNl: docsCollection('Docs (Nederlands)', 'src/content/docs/docs/**'),
     docsEn: docsCollection('Docs (English)', 'src/content/docs/en/docs/**'),
   },

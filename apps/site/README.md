@@ -16,10 +16,16 @@ pnpm site cms          # dev server with the CMS at http://localhost:4321/keysta
 
 | What | Where | CMS surface |
 | --- | --- | --- |
-| Brand name, logo, favicon, **colors**, nav, footer | `src/data/settings/site.json` | Site-instellingen |
-| Landing copy (per locale) | `src/data/landing/{nl,en}.json` | Landingspagina NL / EN |
+| Brand name, logo (+dark variant), favicon, **colors**, nav, footer | `src/data/settings/site.json` | Site-instellingen |
+| Landing **blocks** (hero, feature grid, text+bullets, CTA — add/reorder freely, per locale) | `src/data/landing/{nl,en}.json` | Landingspagina NL / EN |
 | Feature cards | `src/data/features/*.json` | Functies |
+| **Free-form pages** (MDX, own URL, site chrome) | `src/content/pages/{nl,en}/*` | Pagina's NL / EN |
 | Docs pages | `src/content/docs/docs/**` (nl) · `src/content/docs/en/docs/**` (en) | Docs NL / EN |
+
+Creating a page in *Pagina's (Nederlands)* with slug `prijzen` publishes `/prijzen/` on the
+next build (English pages land under `/en/<slug>/`); link it by adding a nav item in
+Site-instellingen. Don't use the slugs `docs` or `en` — those paths are taken. Landing
+sections carry an optional *anker* so nav `#`-links keep working when blocks move.
 
 The accent colors flow into the landing pages *and* the Starlight docs theme
 (`astro.config.mjs` reads the settings at build time); the logo is referenced by path from

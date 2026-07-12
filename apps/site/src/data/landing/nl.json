@@ -1,27 +1,47 @@
 {
-  "hero": {
-    "eyebrow": "Open · zelf-gehost · wit-label",
-    "title": "Het besturingssysteem voor je bureau",
-    "subtitle": "Klanten, projecten, uren, verlof en taken in één snel, modulair platform. Op jouw server, onder jouw merk, in jouw taal.",
-    "ctaPrimary": { "label": "Lees de documentatie", "href": "/docs/" },
-    "ctaSecondary": { "label": "Bekijk op GitHub", "href": "https://github.com/schakl-app/schakl" }
-  },
-  "featuresTitle": "Alles wat een bureau draaiende houdt",
-  "featuresIntro": "Elke functie is een module. Zet aan wat je gebruikt — de rest blijft uit de weg.",
-  "selfhost": {
-    "title": "Jouw server, jouw data",
-    "body": "schakl. draait waar jij dat wilt: één Docker Compose-stack met web, API, worker, database en Redis. Updates zijn een nieuwe image-tag; migraties draaien vanzelf, vóór de app opstart.",
-    "bullets": [
-      "Eén compose-stack — geen losse diensten om te babysitten",
-      "Automatische databasemigraties bij elke update",
-      "Geen telemetrie: er belt niets naar huis",
-      "Wit-label: jouw logo, kleuren en eigen domein",
-      "Nederlands als standaardtaal, Engels ingebouwd"
-    ]
-  },
-  "docsCta": {
-    "title": "Klaar om te beginnen?",
-    "body": "Van installatie tot de losse modules: alles staat in de documentatie.",
-    "label": "Naar de documentatie"
-  }
+  "blocks": [
+    {
+      "discriminant": "hero",
+      "value": {
+        "eyebrow": "Open · zelf-gehost · wit-label",
+        "title": "Het besturingssysteem voor je bureau",
+        "subtitle": "Klanten, projecten, uren, verlof en taken in één snel, modulair platform. Op jouw server, onder jouw merk, in jouw taal.",
+        "ctaPrimary": { "label": "Lees de documentatie", "href": "/docs/" },
+        "ctaSecondary": { "label": "Bekijk op GitHub", "href": "https://github.com/schakl-app/schakl" }
+      }
+    },
+    {
+      "discriminant": "features",
+      "value": {
+        "anchor": "features",
+        "title": "Alles wat een bureau draaiende houdt",
+        "intro": "Elke functie is een module. Zet aan wat je gebruikt — de rest blijft uit de weg."
+      }
+    },
+    {
+      "discriminant": "textBullets",
+      "value": {
+        "anchor": "selfhost",
+        "title": "Jouw server, jouw data",
+        "body": "schakl. draait waar jij dat wilt: één Docker Compose-stack met web, API, worker, database en Redis. Updates zijn een nieuwe image-tag; migraties draaien vanzelf, vóór de app opstart.",
+        "bullets": [
+          "Eén compose-stack — geen losse diensten om te babysitten",
+          "Automatische databasemigraties bij elke update",
+          "Geen telemetrie: er belt niets naar huis",
+          "Wit-label: jouw logo, kleuren en eigen domein",
+          "Nederlands als standaardtaal, Engels ingebouwd"
+        ]
+      }
+    },
+    {
+      "discriminant": "cta",
+      "value": {
+        "anchor": "",
+        "title": "Klaar om te beginnen?",
+        "body": "Van installatie tot de losse modules: alles staat in de documentatie.",
+        "label": "Naar de documentatie",
+        "href": "/docs/"
+      }
+    }
+  ]
 }
