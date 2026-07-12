@@ -5,6 +5,8 @@
    * ("1:30", "90m", "1,5") and the end time is back-computed.
    */
   import { enhance } from "$app/forms";
+  import { burnBarClass, burnBarWidth, burnPct } from "$lib/core/burn";
+  import { fmtMoney, fmtNumber } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
@@ -25,6 +27,15 @@
     company_id?: string | null;
     project_id?: string | null;
     allocated_minutes?: number | null;
+    // Budget burn (#112): present when the caller's lookup asked the API for `hours=true`.
+    budget_amount?: number | null;
+    hourly_rate?: number | null;
+    hours?: {
+      budget_hours?: number | null;
+      spent_hours?: number;
+      billable_hours?: number;
+      remaining_hours?: number | null;
+    } | null;
   }
 
   interface EntryLike {
@@ -50,6 +61,7 @@
     defaultProjectId = "",
     error = null,
     deleteAction = null,
+    canSeeMoney = false,
     oncancel,
     ondone,
     oncreatecompany,
@@ -66,6 +78,8 @@
     error?: string | null;
     /** When set (edit mode), renders a delete button submitting to this action. */
     deleteAction?: string | null;
+    /** Show the euro budget-remaining next to the hours bar (#112) — manager-gated by the caller. */
+    canSeeMoney?: boolean;
     oncancel?: () => void;
     ondone?: () => void;
     /** When provided, typing an unknown client/project name offers to create it inline. */
@@ -132,6 +146,27 @@
     const project = projects.find((p) => p.id === projectId);
     if (project?.company_id) fCompany = project.company_id;
   }
+
+  // Budget feedback where the hours are spent (#112): the person logging sees how much of the
+  // picked project's budget is left *before* saving, not on another screen afterwards. Hours
+  // are team-visible (the same aggregate every budget bar draws); the euro figure is passed in
+  // only for holders of the manager report permission.
+  const pickedProject = $derived(fProject ? projects.find((p) => p.id === fProject) : undefined);
+  const pickedBurn = $derived.by(() => {
+    const hours = pickedProject?.hours;
+    if (!hours || hours.budget_hours == null) return null;
+    return {
+      spent: hours.spent_hours ?? 0,
+      budget: hours.budget_hours,
+      pct: burnPct(hours.spent_hours ?? 0, hours.budget_hours),
+    };
+  });
+  const pickedMoneyLeft = $derived.by(() => {
+    if (!canSeeMoney || !pickedProject) return null;
+    const { budget_amount, hourly_rate, hours } = pickedProject;
+    if (budget_amount == null || hourly_rate == null || !hours) return null;
+    return budget_amount - (hours.billable_hours ?? 0) * hourly_rate;
+  });
 
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
@@ -267,6 +302,32 @@
       onselect={onProjectPicked}
       oncreate={oncreateproject}
     />
+    {#if pickedBurn}
+      <div class="mt-1.5">
+        <div class="flex items-center justify-between text-xs text-text-muted">
+          <span class="tabular-nums">
+            {t("time.budget.spent", {
+              spent: fmtNumber(pickedBurn.spent, 1),
+              budget: fmtNumber(pickedBurn.budget, 1),
+            })}
+          </span>
+          {#if pickedMoneyLeft != null}
+            <span class="tabular-nums {pickedMoneyLeft < 0 ? 'text-red-600 dark:text-red-400' : ''}">
+              {t("time.budget.money_left", { amount: fmtMoney(pickedMoneyLeft) })}
+            </span>
+          {/if}
+        </div>
+        {#if pickedBurn.pct != null}
+          <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-surface">
+            <!-- The one burn scale (core/burn.ts): the number may exceed 100 %, the bar can't. -->
+            <div
+              class="h-full rounded-full {burnBarClass(pickedBurn.pct)}"
+              style="width: {burnBarWidth(pickedBurn.pct)}%"
+            ></div>
+          </div>
+        {/if}
+      </div>
+    {/if}
   </div>
   <div>
     <label for="task-{action}" class="mb-1 block text-xs font-medium text-text-muted"

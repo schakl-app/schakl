@@ -635,6 +635,8 @@
   "time.field.end": "To",
   "time.field.break": "Break",
   "time.field.project": "Project",
+  "time.budget.spent": "{spent} / {budget} h this period",
+  "time.budget.money_left": "{amount} budget left",
   "time.field.task": "Task",
   "time.field.date": "Date",
   "time.billable": "Billable",

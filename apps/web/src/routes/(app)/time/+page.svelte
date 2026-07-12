@@ -390,6 +390,7 @@
           companies={data.companies}
           projects={data.projects}
           tasks={data.tasks}
+          canSeeMoney={data.canSeeBudgetMoney}
           error={form?.error ?? null}
           oncancel={() => (editingId = null)}
           ondone={() => (editingId = null)}
@@ -412,6 +413,7 @@
           companies={data.companies}
           projects={data.projects}
           tasks={data.tasks}
+          canSeeMoney={data.canSeeBudgetMoney}
           defaultCompanyId={data.lastCompanyId ?? ""}
           defaultProjectId={data.lastProjectId ?? ""}
           error={form?.error ?? null}

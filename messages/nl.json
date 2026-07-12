@@ -635,6 +635,8 @@
   "time.field.end": "Tot",
   "time.field.break": "Pauze",
   "time.field.project": "Project",
+  "time.budget.spent": "{spent} / {budget} u deze periode",
+  "time.budget.money_left": "nog {amount} budget",
   "time.field.task": "Taak",
   "time.field.date": "Datum",
   "time.billable": "Facturabel",
