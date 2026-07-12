@@ -9,6 +9,12 @@
 
   const license = $derived(form?.license ?? data.license);
 
+  // License timestamps are full TIMESTAMPTZ instants; fmtDayMonthYear expects a date-only
+  // string (it appends T00:00:00Z), so slice to the UTC day first. Null-safe: a missing
+  // date renders an em-dash instead of throwing "Invalid time value" during SSR.
+  const fmtDay = (iso: string | null | undefined) =>
+    iso ? fmtDayMonthYear(iso.slice(0, 10)) : "—";
+
   const stateKey = (notice: string | null | undefined) =>
     notice === "grace"
       ? "settings.license.state_grace"
@@ -43,14 +49,12 @@
         </div>
         <div class="flex justify-between gap-4">
           <dt class="text-text-muted">{t("settings.license.expires")}</dt>
-          <dd class="font-medium text-text">
-            {license.expires_at ? fmtDayMonthYear(license.expires_at) : "—"}
-          </dd>
+          <dd class="font-medium text-text">{fmtDay(license.expires_at)}</dd>
         </div>
         {#if license.grace_until}
           <div class="flex justify-between gap-4">
             <dt class="text-text-muted">{t("settings.license.grace_until")}</dt>
-            <dd class="text-text">{fmtDayMonthYear(license.grace_until)}</dd>
+            <dd class="text-text">{fmtDay(license.grace_until)}</dd>
           </div>
         {/if}
       </dl>
@@ -59,9 +63,7 @@
       {#if license?.bootstrap_grace_until}
         <p class="mt-2 text-sm text-text-muted">
           {t("settings.license.bootstrap_until")}
-          <span class="font-medium text-text"
-            >{fmtDayMonthYear(license.bootstrap_grace_until)}</span
-          >.
+          <span class="font-medium text-text">{fmtDay(license.bootstrap_grace_until)}</span>.
         </p>
       {/if}
     {/if}
