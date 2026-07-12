@@ -6,6 +6,7 @@ tenant's provider choice, key, per-feature toggles and budget apply everywhere a
 
 from __future__ import annotations
 
+import logging
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -36,6 +37,8 @@ from app.core.ai.schemas import (
 from app.core.crypto import decrypt, encrypt
 from app.core.tenancy import RequestContext
 from app.errors import AppError
+
+logger = logging.getLogger(__name__)
 
 #: ``/meta/me`` reads the enabled features on every SSR render; a per-org TTL cache keeps
 #: that free of a query in steady state. Invalidated explicitly on every settings write.
@@ -161,25 +164,38 @@ class AIService:
         messages: list[ChatMessage],
         tools: list[ToolDef] | None = None,
         force_tool: str | None = None,
+        disable_tools: bool = False,
         override_budget: bool = False,
         max_tokens: int = providers.MAX_TOKENS,
     ) -> AsyncIterator[AIEvent]:
-        """One metered model turn; usage is recorded when the provider reports it."""
+        """One metered model turn; usage is recorded when the provider reports it.
+
+        A provider refusal/failure becomes the standard 502 envelope: the verbatim message
+        goes to the log (it may quote our request, never tenant secrets), the client gets
+        the i18n key — except on the settings page's test button, which bypasses this on
+        purpose to show the provider's own words."""
         config = await self.config_for(feature)
         await self.ensure_budget(override=override_budget)
-        async for event in providers.stream_chat(
-            config,
-            system=system,
-            messages=messages,
-            tools=tools,
-            force_tool=force_tool,
-            max_tokens=max_tokens,
-        ):
-            if event.kind == "done":
-                await self.record_usage(
-                    feature, config.model, event.tokens_in, event.tokens_out
-                )
-            yield event
+        try:
+            async for event in providers.stream_chat(
+                config,
+                system=system,
+                messages=messages,
+                tools=tools,
+                force_tool=force_tool,
+                disable_tools=disable_tools,
+                max_tokens=max_tokens,
+            ):
+                if event.kind == "done":
+                    await self.record_usage(
+                        feature, config.model, event.tokens_in, event.tokens_out
+                    )
+                yield event
+        except AIProviderError as exc:
+            logger.warning("AI provider error (%s/%s): %s", config.provider, feature, exc)
+            raise AppError(
+                "ai_provider_error", "errors.ai_provider_error", status_code=502
+            ) from exc
 
     async def complete(
         self,
@@ -189,6 +205,7 @@ class AIService:
         messages: list[ChatMessage],
         tools: list[ToolDef] | None = None,
         force_tool: str | None = None,
+        disable_tools: bool = False,
         override_budget: bool = False,
         max_tokens: int = providers.MAX_TOKENS,
     ) -> tuple[str, list[providers.ToolCall]]:
@@ -200,6 +217,7 @@ class AIService:
             messages=messages,
             tools=tools,
             force_tool=force_tool,
+            disable_tools=disable_tools,
             override_budget=override_budget,
             max_tokens=max_tokens,
         ):

@@ -55,9 +55,10 @@ async def run_assistant(
     ]
     sources: dict[tuple[str, str], dict[str, str]] = {}
 
+    offer = tool_defs(specs) or None
     for round_no in range(MAX_TOOL_ROUNDS + 1):
-        # The last permitted round gets no tools: the model must answer with what it has.
-        offer = tool_defs(specs) if round_no < MAX_TOOL_ROUNDS else None
+        # The final round must answer with what it has: tools stay on the request (a
+        # history holding tool blocks is invalid without them) but new calls are forbidden.
         text_parts: list[str] = []
         calls = []
         async for event in service.stream(
@@ -65,6 +66,7 @@ async def run_assistant(
             system=system,
             messages=history,
             tools=offer,
+            disable_tools=round_no >= MAX_TOOL_ROUNDS,
             override_budget=payload.override_budget,
         ):
             if event.kind == "text":

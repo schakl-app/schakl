@@ -399,3 +399,52 @@ async def test_models_listing_uses_typed_or_stored_key(client_for, monkeypatch) 
         ("anthropic", "sk-typed"),
         ("anthropic", SETTINGS_BODY["api_key"]),
     ]
+
+
+def test_wire_tool_names_sanitized_and_mapped_back() -> None:
+    """Both providers restrict tool names to ``^[a-zA-Z0-9_-]+$`` — the registry's dotted
+    names (companies.find, §12) are translated at the wire and back."""
+    import re
+
+    from app.core.ai.providers import ChatMessage, ToolDef, _wire_tool_setup
+
+    tools = [
+        ToolDef("companies.find", "d", {"type": "object"}),
+        ToolDef("submit_time_entry", "d", {"type": "object"}),
+    ]
+    history = [
+        ChatMessage(role="user", content="q"),
+        ChatMessage(
+            role="assistant",
+            tool_calls=(ToolCall("c1", "companies.find", {"query": "jansen"}),),
+        ),
+        ChatMessage(role="tool", content="{}", tool_call_id="c1"),
+    ]
+    wired, force, messages, from_wire = _wire_tool_setup(tools, "companies.find", history)
+    assert all(re.fullmatch(r"[a-zA-Z0-9_-]+", t.name) for t in wired)
+    assert force == "companies_find"
+    assert messages[1].tool_calls[0].name == "companies_find"
+    assert from_wire["companies_find"] == "companies.find"
+    # An already-valid name passes through untouched.
+    assert wired[1].name == "submit_time_entry"
+
+
+async def test_provider_failure_is_a_502_envelope(client_for, monkeypatch) -> None:
+    """A provider refusal is the standard envelope on the non-streaming endpoints, never a
+    bare 500 (the settings test button alone shows the provider's own words)."""
+    from app.core.ai.providers import AIProviderError
+
+    async def fake(config, **kwargs):  # noqa: ANN001, ANN003
+        raise AIProviderError("HTTP 400: bad tool name")
+        yield  # pragma: no cover - makes this an async generator
+
+    monkeypatch.setattr("app.core.ai.providers.stream_chat", fake)
+    t = await make_tenant("ai-provider-err")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        response = await c.post(
+            "/api/v1/ai/time/parse", json={"text": "gisteren 2 uur"}, headers=headers
+        )
+        assert response.status_code == 502
+        assert response.json()["error"]["code"] == "ai_provider_error"

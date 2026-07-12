@@ -12,6 +12,7 @@ never a hardcoded list that rots (#126).
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any
@@ -100,6 +101,48 @@ class _Usage:
     tokens_out: int = 0
 
 
+#: Both providers restrict tool names to this; registry tool names are dotted
+#: (``companies.find``, CLAUDE.md §12), so they are translated at the wire and back.
+_WIRE_NAME_RE = re.compile(r"[^a-zA-Z0-9_-]")
+
+
+def _wire_tool_setup(
+    tools: list[ToolDef] | None,
+    force_tool: str | None,
+    messages: list[ChatMessage],
+) -> tuple[list[ToolDef] | None, str | None, list[ChatMessage], dict[str, str]]:
+    """Sanitise tool names for the wire (``companies.find`` → ``companies_find``) and
+    return the reverse map so yielded tool calls carry the registry name again. Applies to
+    the offered tools, a forced tool, and the assistant-history tool calls alike."""
+    if not tools:
+        return tools, force_tool, messages, {}
+    to_wire: dict[str, str] = {}
+    from_wire: dict[str, str] = {}
+    safe: list[ToolDef] = []
+    for tool in tools:
+        wire = _WIRE_NAME_RE.sub("_", tool.name)
+        while wire in from_wire and from_wire[wire] != tool.name:
+            wire += "_"
+        to_wire[tool.name] = wire
+        from_wire[wire] = tool.name
+        safe.append(ToolDef(wire, tool.description, tool.input_schema))
+    wired_messages = [
+        ChatMessage(
+            role=msg.role,
+            content=msg.content,
+            tool_calls=tuple(
+                ToolCall(c.id, to_wire.get(c.name, c.name), c.input) for c in msg.tool_calls
+            ),
+        )
+        if msg.role == "assistant" and msg.tool_calls
+        else msg
+        for msg in messages
+    ]
+    if force_tool:
+        force_tool = to_wire.get(force_tool, force_tool)
+    return safe, force_tool, wired_messages, from_wire
+
+
 async def stream_chat(
     config: ProviderConfig,
     *,
@@ -107,27 +150,41 @@ async def stream_chat(
     messages: list[ChatMessage],
     tools: list[ToolDef] | None = None,
     force_tool: str | None = None,
+    disable_tools: bool = False,
     max_tokens: int = MAX_TOKENS,
 ) -> AsyncIterator[AIEvent]:
     """Stream one model turn as normalised :class:`AIEvent`s.
 
     ``force_tool`` makes the named tool the only acceptable answer (structured output —
-    the time quick-add parse). Raises :class:`AIProviderError` with the provider's own
-    message on any non-2xx or malformed stream.
+    the time quick-add parse); ``disable_tools`` keeps the tools on the request (a history
+    holding tool blocks is invalid without them) but forbids new calls — the assistant's
+    final round. Raises :class:`AIProviderError` with the provider's own message on any
+    non-2xx or malformed stream.
     """
+    tools, force_tool, messages, from_wire = _wire_tool_setup(tools, force_tool, messages)
     if config.provider == "anthropic":
         iterator = _anthropic_stream(
             config, system=system, messages=messages, tools=tools,
-            force_tool=force_tool, max_tokens=max_tokens,
+            force_tool=force_tool, disable_tools=disable_tools, max_tokens=max_tokens,
         )
     elif config.provider in ("openai", "openai_compatible"):
         iterator = _openai_stream(
             config, system=system, messages=messages, tools=tools,
-            force_tool=force_tool, max_tokens=max_tokens,
+            force_tool=force_tool, disable_tools=disable_tools, max_tokens=max_tokens,
         )
     else:  # pragma: no cover - settings validation prevents this
         raise AIProviderError(f"unknown provider {config.provider!r}")
     async for event in iterator:
+        if (
+            event.kind == "tool_call"
+            and event.tool_call is not None
+            and event.tool_call.name in from_wire
+        ):
+            call = event.tool_call
+            event = AIEvent(
+                kind="tool_call",
+                tool_call=ToolCall(call.id, from_wire[call.name], call.input),
+            )
         yield event
 
 
@@ -252,6 +309,7 @@ async def _anthropic_stream(
     messages: list[ChatMessage],
     tools: list[ToolDef] | None,
     force_tool: str | None,
+    disable_tools: bool,
     max_tokens: int,
 ) -> AsyncIterator[AIEvent]:
     body: dict[str, Any] = {
@@ -268,6 +326,8 @@ async def _anthropic_stream(
         ]
         if force_tool:
             body["tool_choice"] = {"type": "tool", "name": force_tool}
+        elif disable_tools:
+            body["tool_choice"] = {"type": "none"}
     base = (config.base_url or ANTHROPIC_BASE_URL).rstrip("/")
     headers = {
         "x-api-key": config.api_key,
@@ -380,6 +440,7 @@ async def _openai_stream(
     messages: list[ChatMessage],
     tools: list[ToolDef] | None,
     force_tool: str | None,
+    disable_tools: bool,
     max_tokens: int,
 ) -> AsyncIterator[AIEvent]:
     body: dict[str, Any] = {
@@ -407,6 +468,8 @@ async def _openai_stream(
         ]
         if force_tool:
             body["tool_choice"] = {"type": "function", "function": {"name": force_tool}}
+        elif disable_tools:
+            body["tool_choice"] = "none"
     base = (config.base_url or OPENAI_BASE_URL).rstrip("/")
     headers = {
         "authorization": f"Bearer {config.api_key}",
