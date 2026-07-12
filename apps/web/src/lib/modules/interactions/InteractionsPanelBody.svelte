@@ -19,6 +19,7 @@
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
+  import ActivityFeed from "$lib/core/activity/ActivityFeed.svelte";
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
@@ -50,6 +51,28 @@
 
   const me = $derived(page.data.user?.id ?? null);
   const canWrite = $derived(can(page.data.user, "interactions.interaction.write"));
+  const canReadActivity = $derived(can(page.data.user, "activity.read"));
+
+  // The interaction's own recorded trail (#152): written since #22, rendered nowhere until
+  // now — an entity without a detail page shows its history inside the expanded row.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let trail = $state<any[] | null>(null);
+  let trailFor = $state<string | null>(null);
+
+  async function toggleTrail(id: string) {
+    if (trailFor === id) {
+      trailFor = null;
+      return;
+    }
+    trailFor = id;
+    trail = null;
+    const response = await fetch(
+      `/api/v1/activity?entity_type=interaction&entity_id=${id}&limit=50`,
+      { headers: { accept: "application/json" } },
+    );
+    if (trailFor !== id) return; // the user toggled away while we were fetching
+    trail = response.ok ? await response.json() : [];
+  }
 
   let showCreate = $state(false);
   let showEdit = $state(false);
@@ -208,6 +231,28 @@
                 <ExternalLink size={12} aria-hidden="true" />
                 {t("interactions.open_in_gmail")}
               </a>
+            {/if}
+            {#if canReadActivity}
+              <div>
+                <button
+                  type="button"
+                  class="text-xs font-medium text-text-muted hover:text-brand"
+                  onclick={() => toggleTrail(item.id)}
+                >
+                  {trailFor === item.id
+                    ? t("interactions.history_hide")
+                    : t("interactions.history")}
+                </button>
+                {#if trailFor === item.id}
+                  <div class="mt-2 border-l-2 border-border pl-3">
+                    {#if trail === null}
+                      <p class="text-xs text-text-muted">{t("common.loading")}</p>
+                    {:else}
+                      <ActivityFeed items={trail} limit={50} />
+                    {/if}
+                  </div>
+                {/if}
+              </div>
             {/if}
           </div>
         {/if}

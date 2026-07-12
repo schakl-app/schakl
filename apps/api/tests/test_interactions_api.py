@@ -366,3 +366,63 @@ async def test_mentions_in_note_validate_store_and_notify(client_for) -> None:
             len([n for n in inbox["items"] if n["event_type"] == "interactions.mentioned"])
             == 1
         )
+
+
+async def test_logging_and_moving_mirror_onto_host_trails(client_for) -> None:
+    """#152: a logged contactmoment shows on the host records' activity trails, and a move
+    tells both sides — the interaction's own field-diff trail stays where it was."""
+    t = await make_tenant("inter-host-trail")
+    headers = await auth_cookie(t.user)
+
+    async def trail(c, entity_type: str, entity_id: str) -> list[str]:
+        rows = (
+            await c.get(
+                "/api/v1/activity",
+                params={"entity_type": entity_type, "entity_id": entity_id},
+                headers=headers,
+            )
+        ).json()
+        return [e["action"] for e in rows]
+
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Klant BV"}, headers=headers)
+        ).json()
+        other = (
+            await c.post("/api/v1/companies", json={"name": "Andere BV"}, headers=headers)
+        ).json()
+        project = (
+            await c.post(
+                "/api/v1/projects",
+                json={"name": "Site", "company_id": company["id"]},
+                headers=headers,
+            )
+        ).json()
+
+        row = (
+            await c.post(
+                "/api/v1/interactions",
+                json={
+                    "kind": "call",
+                    "occurred_at": _NOW.isoformat(),
+                    "subject": "Belafspraak",
+                    "project_id": project["id"],
+                },
+                headers=headers,
+            )
+        ).json()
+
+        # Logged on both hosts (company was derived from the project).
+        assert "interaction.logged" in await trail(c, "project", project["id"])
+        assert "interaction.logged" in await trail(c, "company", company["id"])
+
+        # Moving the client link tells both sides.
+        moved = await c.patch(
+            f"/api/v1/interactions/{row['id']}",
+            json={"company_id": other["id"], "project_id": None},
+            headers=headers,
+        )
+        assert moved.status_code == 200, moved.text
+        assert "interaction.unlinked" in await trail(c, "company", company["id"])
+        assert "interaction.linked" in await trail(c, "company", other["id"])
+        assert "interaction.unlinked" in await trail(c, "project", project["id"])

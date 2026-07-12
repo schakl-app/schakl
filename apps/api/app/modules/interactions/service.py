@@ -26,6 +26,7 @@ from app.core.timezone import org_zoneinfo
 from app.errors import AppError
 from app.modules.interactions.models import (
     ENTITY_TYPE,
+    HOST_ENTITY,
     MANUAL_KINDS,
     Interaction,
     InteractionSource,
@@ -158,6 +159,7 @@ class InteractionService:
             **links,
         )
         await ActivityService(self.ctx).record_created(ENTITY_TYPE, row.id)
+        await self._record_on_hosts(row, "interaction.logged")
         await self._notify_mentions(row, mentioned)
         return await self._present_one(row)
 
@@ -197,10 +199,12 @@ class InteractionService:
             values["mentioned_user_ids"] = [str(uid) for uid in mentioned]
             newly_mentioned = [uid for uid in mentioned if str(uid) not in already]
         values.update(await self._resolve_links(link_updates, partial=True))
+        old_links = {field: getattr(row, field) for field in HOST_ENTITY}
         row = await self.repo.update(row, **values)
         await ActivityService(self.ctx).record_update(
             ENTITY_TYPE, row.id, before, snapshot(row, _AUDITED_FIELDS)
         )
+        await self._record_link_moves(row, old_links)
         await self._notify_mentions(row, newly_mentioned)
         return await self._present_one(row)
 
@@ -216,6 +220,9 @@ class InteractionService:
             raise AppError("invalid_state", "errors.interactions_not_pending", status_code=409)
         row = await self.repo.update(row, status=InteractionStatus.LOGGED.value)
         await ActivityService(self.ctx).record(ENTITY_TYPE, row.id, "approved")
+        # Approval is the moment the email becomes team-visible — that is when the host
+        # records hear about it (#152); a pending row must not announce itself.
+        await self._record_on_hosts(row, "interaction.logged")
         # The google module fetches the body asynchronously — never inside this transaction.
         await emit(
             "interaction.approved",
@@ -251,13 +258,44 @@ class InteractionService:
         if not sent:
             return await self._present_one(row)
         values = await self._resolve_links(sent, partial=True)
+        old_links = {field: getattr(row, field) for field in HOST_ENTITY}
         row = await self.repo.update(row, **values)
         await ActivityService(self.ctx).record_update(
             ENTITY_TYPE, row.id, before, snapshot(row, _AUDITED_FIELDS)
         )
+        await self._record_link_moves(row, old_links)
         return await self._present_one(row)
 
     # --- helpers ---------------------------------------------------------------- #
+    async def _record_on_hosts(self, row: Interaction, action: str) -> None:
+        """Mirror a milestone onto every linked host record's trail (#152), in the same
+        transaction. A mirror *event* carrying a pointer — the field-level diff stays on the
+        interaction's own trail, so nothing is audited twice."""
+        activity = ActivityService(self.ctx)
+        payload = {"interaction_id": str(row.id), "kind": row.kind, "subject": row.subject}
+        for field, entity_type in HOST_ENTITY.items():
+            target_id = getattr(row, field)
+            if target_id is not None:
+                await activity.record(entity_type, target_id, action, payload)
+
+    async def _record_link_moves(
+        self, row: Interaction, old_links: dict[str, uuid.UUID | None]
+    ) -> None:
+        """A moved contactmoment tells both sides (#152): the host it left and the one it
+        joined. Only team-visible (logged) rows announce themselves."""
+        if row.status != InteractionStatus.LOGGED.value:
+            return
+        activity = ActivityService(self.ctx)
+        payload = {"interaction_id": str(row.id), "kind": row.kind, "subject": row.subject}
+        for field, entity_type in HOST_ENTITY.items():
+            old, new = old_links[field], getattr(row, field)
+            if old == new:
+                continue
+            if old is not None:
+                await activity.record(entity_type, old, "interaction.unlinked", payload)
+            if new is not None:
+                await activity.record(entity_type, new, "interaction.linked", payload)
+
     async def _valid_mentions(self, ids: list[uuid.UUID]) -> list[uuid.UUID]:
         """Keep only the mentioned ids that are members of this org (#151, like #63)."""
         if not ids:

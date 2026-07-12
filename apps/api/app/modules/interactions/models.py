@@ -55,6 +55,15 @@ class InteractionKind(StrEnum):
 #: Kinds a person may log by hand; ``email`` rows are only ever written by the gmail feed.
 MANUAL_KINDS = (InteractionKind.MEETING, InteractionKind.CALL, InteractionKind.NOTE)
 
+#: Which activity-log entity type each link FK mirrors onto (#152): a contactmoment's
+#: milestones show on the records it hangs on, in the writing transaction (§16).
+HOST_ENTITY = {
+    "company_id": "company",
+    "project_id": "project",
+    "task_id": "task",
+    "contact_id": "contact",
+}
+
 
 class InteractionStatus(StrEnum):
     PENDING = "pending"  # gmail-sourced, awaiting the mailbox owner's review
