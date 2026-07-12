@@ -2,6 +2,7 @@
   "brandName": "schakl.",
   "siteUrl": "https://schakl.app",
   "logo": "/src/assets/site/logo.svg",
+  "logoDark": "/src/assets/site/logo-dark.svg",
   "favicon": "/favicon.svg",
   "colors": {
     "accent": "#4F46E5",

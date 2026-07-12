@@ -12,6 +12,7 @@ const settings = JSON.parse(
 
 // Keystatic stores image paths as '/src/…' (repo-relative); Starlight wants './src/…'.
 const logoSrc = settings.logo ? settings.logo.replace(/^\//, './') : undefined;
+const logoDarkSrc = settings.logoDark ? settings.logoDark.replace(/^\//, './') : logoSrc;
 
 // The Keystatic admin UI needs server routes + React, so it only exists in `pnpm site cms`
 // (KEYSTATIC=1 astro dev). The production build stays 100 % static.
@@ -30,7 +31,11 @@ export default defineConfig({
   integrations: [
     starlight({
       title: settings.brandName,
-      logo: logoSrc ? { src: logoSrc, alt: settings.brandName } : undefined,
+      // The logo SVG carries the wordmark, so it replaces the text title; the dark
+      // variant exists because an <img> cannot inherit currentColor from the page.
+      logo: logoSrc
+        ? { light: logoSrc, dark: logoDarkSrc, alt: settings.brandName, replacesTitle: true }
+        : undefined,
       favicon: settings.favicon || '/favicon.svg',
       defaultLocale: 'root',
       locales: {

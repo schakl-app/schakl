@@ -18,9 +18,11 @@ const features = Object.values(featureModules)
 
 // The logo is CMS-managed: Keystatic writes the file into src/assets/site/ and stores its
 // path in the settings singleton. Resolve it through Vite so the build fingerprints it.
+// A dark variant exists because an <img> cannot inherit currentColor from the page.
 const logoModules = import.meta.glob('/src/assets/site/*', { eager: true });
-const logoMod: any = settings.logo ? logoModules[settings.logo] : undefined;
-const logoSrc: string | undefined = logoMod?.default?.src;
+const resolveLogo = (p?: string) => (p ? (logoModules[p] as any)?.default?.src : undefined);
+const logoSrc: string | undefined = resolveLogo(settings.logo);
+const logoDarkSrc: string | undefined = resolveLogo((settings as any).logoDark);
 
 // Internal links on the English page live under /en/.
 const href = (h: string) =>
@@ -46,7 +48,14 @@ const pageTitle = `${settings.brandName} — ${t.hero.title}`;
     <header class="site-header">
       <div class="container header-row">
         <a class="brand" href={href('/')}>
-          {logoSrc ? <img src={logoSrc} alt={settings.brandName} height="28" /> : settings.brandName}
+          {logoSrc ? (
+            <picture>
+              {logoDarkSrc && <source media="(prefers-color-scheme: dark)" srcset={logoDarkSrc} />}
+              <img src={logoSrc} alt={settings.brandName} height="28" />
+            </picture>
+          ) : (
+            settings.brandName
+          )}
         </a>
         <nav class="site-nav" aria-label={locale === 'nl' ? 'Hoofdnavigatie' : 'Main navigation'}>
           {settings.nav.map((item) => <a href={href(item.href)}>{item[locale]}</a>)}

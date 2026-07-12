@@ -95,6 +95,12 @@ export default config({
           publicPath: '/src/assets/site/',
           validation: { isRequired: false },
         }),
+        logoDark: fields.image({
+          label: 'Logo — donker thema (optioneel; anders wordt het gewone logo gebruikt)',
+          directory: 'src/assets/site',
+          publicPath: '/src/assets/site/',
+          validation: { isRequired: false },
+        }),
         favicon: fields.image({
           label: 'Favicon (SVG aangeraden)',
           directory: 'public',
