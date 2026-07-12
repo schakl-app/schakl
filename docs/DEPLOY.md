@@ -304,3 +304,18 @@ destroys the database and was never necessary.
 **Editing a service that Compose sees as unchanged** does not recreate its container. After
 changing networks or environment, force it: Portainer's *Re-pull image and redeploy*, or
 `docker compose -f compose.tunnel.yaml up -d --force-recreate`.
+
+## Licensed modules (issue #137)
+
+The core platform is free to use. A small set of extension modules — currently `leave` and
+the MCP server — requires a **license key**, installed by the instance owner under
+*Instellingen → Licentie* (`PUT /api/v1/instance/license`). Validation is **fully offline**
+against a public key baked into the image: the box never phones home.
+
+- Every fresh install or upgrade to this release starts a **built-in trial window**
+  (`SCHAKL_LICENSE_BOOTSTRAP_GRACE_DAYS`, default 14): licensed modules work fully without
+  a key. After it, they cannot be newly enabled, and already-enabled ones turn read-only.
+- An **expired** license keeps working through its grace period, then its modules turn
+  **read-only**: mutations answer `402 errors.license_expired`, reads and CSV exports keep
+  working forever. Installing a new key restores everything instantly — no data is touched.
+- `SCHAKL_LICENSE_PUBLIC_KEY` overrides the baked-in verification key (key rotation).

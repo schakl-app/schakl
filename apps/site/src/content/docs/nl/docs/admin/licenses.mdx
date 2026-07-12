@@ -1,0 +1,39 @@
+---
+title: Licenties
+description: Hoe uitbreidingsmodules gelicentieerd worden — de licentiesleutel, de proefperiode, en wat er gebeurt als een licentie verloopt.
+sidebar:
+  order: 3
+---
+
+De kern van schakl. is vrij te gebruiken. Een klein aantal **uitbreidingsmodules** — op dit
+moment de verlofmodule en de MCP-server — vereist een **licentiesleutel**.
+
+## Hoe het werkt
+
+- Een licentiesleutel is een ondertekend tekstblok (`SCHAKL1.…`). Je plakt hem in
+  *Instellingen → Licentie* (alleen zichtbaar voor de instantie-eigenaar).
+- De controle gebeurt **volledig offline**: jouw server hoeft nergens "naar huis te bellen"
+  om te blijven draaien — ook niet als onze infrastructuur onbereikbaar is.
+- De licentie vermeldt op wiens naam hij staat, welke modules hij dekt en tot wanneer hij
+  geldig is. Dat zie je allemaal terug op de licentiepagina.
+
+## Proefperiode
+
+Elke verse installatie (en elke bestaande installatie die naar deze versie bijwerkt) krijgt
+een **ingebouwde proefperiode**: gelicentieerde modules werken twee weken volledig, zonder
+sleutel. Daarna kunnen ze niet meer worden ingeschakeld en worden al ingeschakelde
+gelicentieerde modules **alleen-lezen**.
+
+## Als een licentie verloopt
+
+- Binnen de **respijtperiode** (standaard twee weken na de vervaldatum) blijft alles gewoon
+  werken — tijd om te verlengen.
+- Daarna worden de gelicentieerde modules **alleen-lezen**: bestaande gegevens blijven
+  zichtbaar en **exporteren blijft altijd werken**. Er gaat nooit iets verloren; een nieuwe
+  sleutel installeren maakt de module direct weer volledig werkend.
+- De rest van het platform merkt er niets van.
+
+## Een licentie aanvragen of verlengen
+
+Neem contact op via de kanalen op de website. Verlengen is een nieuwe sleutel plakken op
+dezelfde pagina — meer is het niet.

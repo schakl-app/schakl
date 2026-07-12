@@ -23,9 +23,10 @@
         "bullets": [
           "Eén compose-stack — geen losse diensten om te babysitten",
           "Automatische databasemigraties bij elke update",
+          "De kern is vrij te gebruiken — alleen uitbreidingsmodules vragen een licentiesleutel",
           "Telemetrie staat standaard uit — jij bepaalt wat je deelt",
           "Wit-label: jouw logo, kleuren en eigen domein",
-          "Jouw data blijft van jou — exporteren kan altijd"
+          "Jouw data blijft van jou — exporteren kan altijd, licentie of niet"
         ]
       },
       {
@@ -62,9 +63,10 @@
         "bullets": [
           "One compose stack — no scattered services to babysit",
           "Automatic database migrations on every update",
+          "The core is free to use — only extension modules require a license key",
           "Telemetry is off by default — you decide what you share",
           "White-label: your logo, colors and custom domain",
-          "Your data stays yours — export is always available"
+          "Your data stays yours — export always works, license or not"
         ]
       },
       {
