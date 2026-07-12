@@ -285,8 +285,21 @@ class DriveService:
         name = await self._entity_name(entity_type, entity_id)
         if name is None:
             raise AppError("not_found", "errors.not_found", status_code=404)
+        # A project folder nests under its client's (#150) — the auto-provision path always
+        # carried the parent; the button path used to drop it and land in the org root.
+        parent_entity_id = None
+        if entity_type == "project":
+            parent_entity_id = await self.ctx.session.scalar(
+                text("SELECT company_id FROM projects WHERE id = :pid AND org_id = :oid"),
+                {"pid": entity_id, "oid": self._org_id},
+            )
         await queue_folder_job(
-            self.ctx.session, self._org_id, entity_type, entity_id, name
+            self.ctx.session,
+            self._org_id,
+            entity_type,
+            entity_id,
+            name,
+            parent_entity_id=parent_entity_id,
         )
 
     async def bulk_provision(self) -> int:
