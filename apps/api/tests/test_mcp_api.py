@@ -67,8 +67,11 @@ async def test_mcp_tools_reflect_the_api_and_enforce_key_scopes(client_for) -> N
         listed = await _rpc(c, "tools/list", auth=auth)
         tools = {tool["name"] for tool in listed["result"]["tools"]}
         assert "list_companies" in tools
-        # Session flows and the operator surface are excluded from the tool surface.
-        assert not any("setup" in name or "instance" in name for name in tools)
+        # Session flows, self-service account routes and the operator surface are excluded.
+        assert not any(
+            "setup" in name or "instance" in name or name.startswith("users_")
+            for name in tools
+        )
 
         called = await _rpc(
             c, "tools/call", {"name": "list_companies", "arguments": {}}, auth=auth

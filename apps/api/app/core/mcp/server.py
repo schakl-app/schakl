@@ -56,8 +56,9 @@ class ForwardCallerAuth(httpx.Auth):
 
 
 #: First match wins. GETs become tools too — an agent calls, it doesn't browse resources.
+#: ``/users`` is fastapi-users' cookie-authenticated self-service — dead weight for a key.
 _ROUTE_MAPS = [
-    RouteMap(pattern=r"^/api/v1/(auth|setup|instance)(/.*)?$", mcp_type=MCPType.EXCLUDE),
+    RouteMap(pattern=r"^/api/v1/(auth|setup|instance|users)(/.*)?$", mcp_type=MCPType.EXCLUDE),
     RouteMap(pattern=r"^/api/v1/.*", mcp_type=MCPType.TOOL),
     RouteMap(pattern=r".*", mcp_type=MCPType.EXCLUDE),
 ]
