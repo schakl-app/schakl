@@ -52,6 +52,24 @@ class AITestResult(BaseModel):
     error: str | None = None
 
 
+class AIModelsRequest(BaseModel):
+    """Inputs for the live model listing. Everything optional: empty values fall back to
+    the stored settings, so the picker works both during first setup (key just typed,
+    nothing saved) and afterwards (key stored, never played back)."""
+
+    provider: Provider | None = None
+    api_key: str | None = Field(default=None, max_length=2000)
+    base_url: str | None = Field(default=None, max_length=1024)
+
+
+class AIModelsResult(BaseModel):
+    """Settings-page helper semantics like the test button: a provider failure is data
+    (verbatim in ``error``), never a 500."""
+
+    models: list[str] = Field(default_factory=list)
+    error: str | None = None
+
+
 class AIUsageFeature(BaseModel):
     feature: str
     tokens_in: int
@@ -190,6 +208,8 @@ __all__ = [
     "AISettingsRead",
     "AISettingsWrite",
     "AITestResult",
+    "AIModelsRequest",
+    "AIModelsResult",
     "AIUsageFeature",
     "AIUsageSummary",
     "AssistantContext",

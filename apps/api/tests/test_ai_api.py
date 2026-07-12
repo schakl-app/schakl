@@ -356,3 +356,46 @@ async def test_reports_crud_and_isolation(client_for) -> None:
         assert (
             await c.delete(f"/api/v1/ai/reports/{report_id}", headers=a_headers)
         ).status_code == 204
+
+
+async def test_models_listing_uses_typed_or_stored_key(client_for, monkeypatch) -> None:
+    """#126 follow-up: the model picker is fetched live, with the same key semantics as
+    save — a typed key works before anything is stored, an empty one falls back to the
+    stored key, and a stored key is never sent to a *different* provider."""
+    captured: list[tuple[str, str]] = []
+
+    async def fake_list(config):  # noqa: ANN001
+        captured.append((config.provider, config.api_key))
+        return ["claude-opus-4-8", "claude-sonnet-5"]
+
+    monkeypatch.setattr("app.core.ai.providers.list_models", fake_list)
+    t = await make_tenant("ai-models")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        # Nothing stored, nothing typed → data-shaped error, never a 500.
+        empty = await c.post("/api/v1/ai/settings/models", json={}, headers=headers)
+        assert empty.status_code == 200 and empty.json()["error"]
+
+        # First setup: a typed key works before saving.
+        typed = await c.post(
+            "/api/v1/ai/settings/models",
+            json={"provider": "anthropic", "api_key": "sk-typed"},
+            headers=headers,
+        )
+        assert typed.json()["models"] == ["claude-opus-4-8", "claude-sonnet-5"]
+
+        # Stored key is reused without ever being played back…
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        stored = await c.post("/api/v1/ai/settings/models", json={}, headers=headers)
+        assert stored.json()["models"] and stored.json()["error"] is None
+
+        # …but never handed to another provider.
+        other = await c.post(
+            "/api/v1/ai/settings/models", json={"provider": "openai"}, headers=headers
+        )
+        assert other.json()["models"] == [] and other.json()["error"]
+
+    assert captured == [
+        ("anthropic", "sk-typed"),
+        ("anthropic", SETTINGS_BODY["api_key"]),
+    ]

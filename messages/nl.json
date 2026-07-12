@@ -1811,5 +1811,8 @@
   "ai.report.empty": "Nog geen rapportconcepten voor deze klant.",
   "ai.report.draft_title": "Titel",
   "ai.report.copy": "Markdown kopiëren",
-  "ai.report.delete_confirm": "Dit rapportconcept verwijderen? De historie blijft in het activiteitenlog staan."
+  "ai.report.delete_confirm": "Dit rapportconcept verwijderen? De historie blijft in het activiteitenlog staan.",
+  "settings.ai.fetch_models": "Modellen ophalen",
+  "settings.ai.models_count": "{count} modellen beschikbaar bij de provider; typen filtert de lijst.",
+  "settings.ai.models_failed": "Kon modellen niet ophalen: {error}"
 }

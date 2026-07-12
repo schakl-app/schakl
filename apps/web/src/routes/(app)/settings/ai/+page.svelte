@@ -17,7 +17,49 @@
   };
 
   let provider = $state(data.ai?.provider ?? "anthropic");
+  let apiKey = $state("");
+  let baseUrl = $state(data.ai?.base_url ?? "");
   let confirmRemove = $state(false);
+
+  // Live model suggestions (#126): fetched from the provider, so the picker never carries
+  // a hardcoded list that rots. The field stays free text — the datalist only suggests.
+  let models = $state<string[]>([]);
+  let modelsBusy = $state(false);
+  let modelsError = $state<string | null>(null);
+
+  async function fetchModels() {
+    if (modelsBusy) return;
+    modelsBusy = true;
+    modelsError = null;
+    try {
+      const res = await fetch("/ai/settings/models", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          provider,
+          api_key: apiKey.trim() || null,
+          base_url: baseUrl.trim() || null,
+        }),
+      });
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) {
+        modelsError = payload?.error?.message ?? "errors.ai_provider_error";
+        return;
+      }
+      models = payload?.models ?? [];
+      if (payload?.error) modelsError = payload.error;
+    } catch {
+      modelsError = "errors.ai_provider_error";
+    } finally {
+      modelsBusy = false;
+    }
+  }
+
+  // A stored key means the list is one round-trip away: fetch it as the page arrives (and
+  // again after a save, when `ai` is reloaded), so the picker is simply filled.
+  $effect(() => {
+    if (ai?.has_key) void fetchModels();
+  });
 
   const budgetPct = $derived(
     usage?.budget ? Math.round((usage.tokens_total / usage.budget) * 100) : null,
@@ -63,6 +105,7 @@
           name="api_key"
           type="password"
           autocomplete="new-password"
+          bind:value={apiKey}
           placeholder={ai?.has_key ? t("settings.ai.key_stored") : ""}
           class={inputClass}
         />
@@ -71,15 +114,42 @@
         <label for="ai-model" class="mb-1 block text-sm text-text"
           >{t("settings.ai.default_model")}</label
         >
-        <input
-          id="ai-model"
-          name="default_model"
-          autocomplete="off"
-          value={ai?.default_model ?? ""}
-          placeholder={DEFAULT_MODELS[provider]}
-          class={inputClass}
-        />
-        <p class="mt-1 text-xs text-text-muted">{t("settings.ai.default_model_hint")}</p>
+        <div class="flex gap-2">
+          <input
+            id="ai-model"
+            name="default_model"
+            autocomplete="off"
+            list="ai-model-options"
+            value={ai?.default_model ?? ""}
+            placeholder={DEFAULT_MODELS[provider]}
+            class="{inputClass} min-w-0 flex-1"
+          />
+          <button
+            type="button"
+            onclick={() => void fetchModels()}
+            disabled={modelsBusy}
+            class="shrink-0 rounded-lg border border-border px-3 py-2 text-sm text-text hover:border-brand disabled:opacity-40"
+            >{modelsBusy ? "…" : t("settings.ai.fetch_models")}</button
+          >
+        </div>
+        <datalist id="ai-model-options">
+          {#each models as model (model)}
+            <option value={model}></option>
+          {/each}
+        </datalist>
+        {#if models.length > 0}
+          <p class="mt-1 text-xs text-text-muted">
+            {t("settings.ai.models_count", { count: String(models.length) })}
+          </p>
+        {:else if modelsError}
+          <p class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+            {t("settings.ai.models_failed", {
+              error: modelsError.startsWith("errors.") ? t(modelsError) : modelsError,
+            })}
+          </p>
+        {:else}
+          <p class="mt-1 text-xs text-text-muted">{t("settings.ai.default_model_hint")}</p>
+        {/if}
       </div>
       <div>
         <label for="ai-base-url" class="mb-1 block text-sm text-text"
@@ -90,7 +160,7 @@
           name="base_url"
           type="url"
           placeholder="https://ai.example.com/v1"
-          value={ai?.base_url ?? ""}
+          bind:value={baseUrl}
           class={inputClass}
         />
         <p class="mt-1 text-xs text-text-muted">{t("settings.ai.base_url_hint")}</p>
@@ -113,6 +183,7 @@
           <input
             name={`model_${feature}`}
             autocomplete="off"
+            list="ai-model-options"
             value={ai?.features?.[feature]?.model ?? ""}
             placeholder={t("settings.ai.feature_model_placeholder")}
             class="{inputClass} max-w-56 flex-1"

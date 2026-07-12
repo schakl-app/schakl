@@ -20,6 +20,7 @@ const ALLOWED: Record<string, RegExp[]> = {
     new RegExp(`^companies/${UUID}/digest$`),
     /^reports\/generate$/,
     /^reports$/,
+    /^settings\/models$/,
   ],
   GET: [/^reports$/, new RegExp(`^reports/${UUID}$`)],
   PUT: [new RegExp(`^reports/${UUID}$`)],

@@ -25,6 +25,8 @@ from app.core.ai.providers import (
 )
 from app.core.ai.schemas import (
     AIFeatureConfig,
+    AIModelsRequest,
+    AIModelsResult,
     AISettingsRead,
     AISettingsWrite,
     AITestResult,
@@ -325,6 +327,34 @@ class AISettingsService:
         service = AIService(self.ctx)
         await service.record_usage("test", row.default_model, done.tokens_in, done.tokens_out)
         return AITestResult(ok=bool(text.strip()), model=row.default_model)
+
+    async def list_models(self, payload: AIModelsRequest) -> AIModelsResult:
+        """The provider's live model list, for the settings picker (#126): fetched, so it
+        never rots. Empty inputs fall back to the stored row — a typed-but-unsaved key
+        works during first setup, and the stored key is used without ever playing it back."""
+        self.ctx.require("ai.settings.manage")
+        row = await get_row(self.ctx.session, self.ctx.org.id)
+        provider = payload.provider or (row.provider if row else None)
+        if provider is None:
+            return AIModelsResult(error="no provider configured")
+        api_key = (payload.api_key or "").strip()
+        if not api_key:
+            # Only reuse the stored key for the provider it belongs to — a key typed for
+            # one provider must never be sent to another.
+            if row is None or row.provider != provider:
+                return AIModelsResult(error="no API key")
+            try:
+                api_key = decrypt(row.api_key_enc)
+            except ValueError:
+                return AIModelsResult(error="no API key")
+        base_url = (payload.base_url or "").strip() or (
+            row.base_url if row and row.provider == provider else None
+        )
+        config = ProviderConfig(provider=provider, api_key=api_key, model="", base_url=base_url)
+        try:
+            return AIModelsResult(models=await providers.list_models(config))
+        except (AIProviderError, ValueError, OSError) as exc:
+            return AIModelsResult(error=str(exc))
 
     async def usage(self) -> AIUsageSummary:
         """This month's metering grouped by feature — the settings-page meter."""

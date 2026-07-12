@@ -31,6 +31,8 @@ from app.core.ai.features import (
     stream_writing_assist,
 )
 from app.core.ai.schemas import (
+    AIModelsRequest,
+    AIModelsResult,
     AISettingsRead,
     AISettingsWrite,
     AITestResult,
@@ -128,6 +130,19 @@ async def delete_ai_settings(ctx: RequestContext = Depends(require_context)) -> 
 )
 async def test_ai_settings(ctx: RequestContext = Depends(require_context)) -> AITestResult:
     return await AISettingsService(ctx).test()
+
+
+@router.post(
+    "/settings/models",
+    response_model=AIModelsResult,
+    dependencies=[require_permission("ai.settings.manage")],
+)
+async def list_ai_models(
+    payload: AIModelsRequest, ctx: RequestContext = Depends(require_context)
+) -> AIModelsResult:
+    """Live model listing for the settings picker — a settings-page helper like the test
+    button, so a provider failure comes back as data, never a 500."""
+    return await AISettingsService(ctx).list_models(payload)
 
 
 @router.get(

@@ -145,6 +145,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ai/settings/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * List Ai Models
+         * @description Live model listing for the settings picker — a settings-page helper like the test
+         *     button, so a provider failure comes back as data, never a 500.
+         */
+        post: operations["list_ai_models_api_v1_ai_settings_models_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ai/settings/test": {
         parameters: {
             query?: never;
@@ -3672,6 +3693,31 @@ export interface components {
             enabled: boolean;
             /** Model */
             model?: string | null;
+        };
+        /**
+         * AIModelsRequest
+         * @description Inputs for the live model listing. Everything optional: empty values fall back to
+         *     the stored settings, so the picker works both during first setup (key just typed,
+         *     nothing saved) and afterwards (key stored, never played back).
+         */
+        AIModelsRequest: {
+            /** Api Key */
+            api_key?: string | null;
+            /** Base Url */
+            base_url?: string | null;
+            /** Provider */
+            provider?: ("anthropic" | "openai" | "openai_compatible") | null;
+        };
+        /**
+         * AIModelsResult
+         * @description Settings-page helper semantics like the test button: a provider failure is data
+         *     (verbatim in ``error``), never a 500.
+         */
+        AIModelsResult: {
+            /** Error */
+            error?: string | null;
+            /** Models */
+            models?: string[];
         };
         /** AISettingsRead */
         AISettingsRead: {
@@ -9909,6 +9955,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    list_ai_models_api_v1_ai_settings_models_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIModelsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIModelsResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };

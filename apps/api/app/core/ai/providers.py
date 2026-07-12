@@ -185,6 +185,34 @@ async def _raise_for_status(response: httpx.Response) -> None:
     raise AIProviderError(f"HTTP {response.status_code}: {message[:500]}")
 
 
+async def list_models(config: ProviderConfig) -> list[str]:
+    """The model ids the configured provider currently serves — fetched live, so the
+    settings picker never carries a hardcoded list that rots (#126). Every provider type
+    exposes one: Anthropic ``GET /v1/models``, OpenAI ``GET /models``, and the
+    OpenAI-compatible servers (Ollama, vLLM, Mistral, Azure) implement the same shape."""
+    if config.provider == "anthropic":
+        base = (config.base_url or ANTHROPIC_BASE_URL).rstrip("/")
+        url = f"{base}/v1/models?limit=100"
+        headers = {"x-api-key": config.api_key, "anthropic-version": ANTHROPIC_VERSION}
+    else:
+        base = (config.base_url or OPENAI_BASE_URL).rstrip("/")
+        url = f"{base}/models"
+        headers = {"authorization": f"Bearer {config.api_key}"}
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        response = await client.get(url, headers=headers)
+        await _raise_for_status(response)
+        payload = response.json()
+    models = [
+        str(row["id"])
+        for row in payload.get("data") or []
+        if isinstance(row, dict) and row.get("id")
+    ]
+    # Anthropic returns newest first — keep that; the OpenAI list is a grab bag, so sort it.
+    if config.provider != "anthropic":
+        models.sort()
+    return models[:200]
+
+
 # --------------------------------------------------------------------------- #
 # Anthropic Messages API
 # --------------------------------------------------------------------------- #

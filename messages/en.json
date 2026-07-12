@@ -1811,5 +1811,8 @@
   "ai.report.empty": "No report drafts for this client yet.",
   "ai.report.draft_title": "Title",
   "ai.report.copy": "Copy markdown",
-  "ai.report.delete_confirm": "Delete this report draft? Its history stays in the activity log."
+  "ai.report.delete_confirm": "Delete this report draft? Its history stays in the activity log.",
+  "settings.ai.fetch_models": "Fetch models",
+  "settings.ai.models_count": "{count} models available from the provider; typing filters the list.",
+  "settings.ai.models_failed": "Could not fetch models: {error}"
 }
