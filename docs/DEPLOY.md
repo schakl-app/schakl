@@ -173,7 +173,8 @@ app than the one you tested.
 
 ## Private GHCR
 
-The repo is private, so the images are too, and the host needs credentials to pull. In
+The images on GHCR may require credentials to pull (their visibility is a package
+setting, independent of the now-public repo). If a pull is denied: in
 Portainer: *Registries → Add registry → Custom registry*, URL `ghcr.io`, username = your
 GitHub user, password = a **classic** PAT with only the `read:packages` scope. Portainer
 matches it by hostname, so every stack pulling `ghcr.io/schakl-app/*` picks it up — nothing

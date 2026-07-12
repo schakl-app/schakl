@@ -7,7 +7,7 @@
         "title": "Het besturingssysteem voor je bureau",
         "subtitle": "Klanten, projecten, uren, verlof en taken in één snel, modulair platform. Onder jouw merk, in jouw taal, met jouw data onder controle.",
         "ctaPrimary": { "label": "Lees de documentatie", "href": "/docs/" },
-        "ctaSecondary": { "label": "Bekijk de functies", "href": "/#features" }
+        "ctaSecondary": { "label": "Bekijk op GitHub", "href": "https://github.com/schakl-app/schakl" }
       },
       {
         "type": "features",
@@ -47,7 +47,7 @@
         "title": "The operating system for your agency",
         "subtitle": "Clients, projects, hours, leave and tasks in one fast, modular platform. Under your brand, in your language, with your data under your control.",
         "ctaPrimary": { "label": "Read the documentation", "href": "/docs/" },
-        "ctaSecondary": { "label": "See the features", "href": "/#features" }
+        "ctaSecondary": { "label": "View on GitHub", "href": "https://github.com/schakl-app/schakl" }
       },
       {
         "type": "features",
