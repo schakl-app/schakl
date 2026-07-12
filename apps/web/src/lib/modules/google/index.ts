@@ -6,10 +6,46 @@
  * connect card) and Instellingen → Google (org config).
  */
 import { t } from "$lib/core/i18n";
-import { registerWebModule } from "$lib/core/registry";
+import { registerWebModule, type EntityPanelSpec } from "$lib/core/registry";
+
+import DriveCompanyPanel from "./DriveCompanyPanel.svelte";
+import DriveEntityPanel from "./DriveEntityPanel.svelte";
+
+/** Drive sits with the working surfaces: above contactmomenten (60), under time (10-40). */
+const DRIVE_POSITION = 55;
+
+// Task links roll up onto the project panel (#21), so the project load asks with rollup.
+const driveEntityPanels: EntityPanelSpec[] = (
+  [
+    ["project", true],
+    ["task", false],
+  ] as const
+).map(([entityType, rollup]) => ({
+  key: `google.drive.${entityType}`,
+  module: "google",
+  entityType,
+  titleKey: "google.drive.panel.title",
+  position: DRIVE_POSITION,
+  load: async (api, { entityId }) => {
+    const { data } = await api.GET("/api/v1/google/drive/links", {
+      params: { query: { entity_type: entityType, entity_id: entityId, rollup } },
+    });
+    return { links: data ?? [], entityType };
+  },
+  component: DriveEntityPanel,
+}));
 
 registerWebModule({
   name: "google",
+  companyPanels: [
+    {
+      key: "google.drive.company",
+      module: "google",
+      component: DriveCompanyPanel,
+      position: DRIVE_POSITION,
+    },
+  ],
+  entityPanels: driveEntityPanels,
   calendarSources: [
     {
       // The docs/GOOGLE.md §4 seam: the viewer's own Google events, served from the API's

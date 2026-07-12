@@ -260,7 +260,13 @@ class ProjectService:
         await self.assignees.replace(project.id, links)
         project.assignees = await self.assignees.for_entity(project.id)
         await ActivityService(self.ctx).record_created(ENTITY_TYPE, project.id)
-        # Projects have no "created" event, so this is the roster's only signal (issue #16).
+        # Bus-only creation signal for cross-module reactions (the Drive folder, #21/#22).
+        # Not in the notifications vocabulary; the roster hears via project.assigned below.
+        await emit(
+            "project.created",
+            self.ctx,
+            {"project_id": project.id, "name": project.name, "company_id": project.company_id},
+        )
         if project.assignees:
             await self._emit_project(
                 "project.assigned", project, [a.user_id for a in project.assignees]

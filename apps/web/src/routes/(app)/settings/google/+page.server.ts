@@ -56,4 +56,11 @@ export const actions: Actions = {
     }
     return { saved: true };
   },
+
+  provisionAll: async (event) => {
+    // Backfill: a folder for every client that has none — "every client gets their folder".
+    const { data, error } = await apiFor(event).POST("/api/v1/google/drive/provision-all");
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { provisioned: data?.queued ?? 0 };
+  },
 };

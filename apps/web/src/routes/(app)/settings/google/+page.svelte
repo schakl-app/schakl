@@ -278,4 +278,25 @@
       </button>
     </div>
   </form>
+
+  <!-- Backfill: existing clients get their folder queued (new ones ride company.created). -->
+  <form method="POST" action="?/provisionAll" use:enhance class="mt-5 border-t border-border pt-4">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <div>
+        <p class="text-sm font-medium text-text">{t("settings.google.provision_all")}</p>
+        <p class="text-xs text-text-muted">{t("settings.google.provision_all_hint")}</p>
+        {#if form?.provisioned !== undefined}
+          <p class="mt-1 text-xs text-green-700 dark:text-green-400">
+            {t("settings.google.provision_all_queued", { count: form.provisioned })}
+          </p>
+        {/if}
+      </div>
+      <button
+        type="submit"
+        class="rounded-lg border border-border px-4 py-2 text-sm font-medium text-text hover:border-brand"
+      >
+        {t("settings.google.provision_all_run")}
+      </button>
+    </div>
+  </form>
 </section>

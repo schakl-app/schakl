@@ -1000,6 +1000,122 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/google/drive/browse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Browse
+         * @description Live folder contents **as the viewing user** — Drive's permissions are authoritative.
+         *     Redis-cached ~45 s per user+folder; ``refresh=1`` busts it.
+         */
+        get: operations["browse_api_v1_google_drive_browse_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/drive/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Links */
+        get: operations["list_links_api_v1_google_drive_links_get"];
+        put?: never;
+        /** Create Link */
+        post: operations["create_link_api_v1_google_drive_links_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/drive/links/{link_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Link
+         * @description Unlink only. The Drive file is never touched (issue #21 — the dialog says so too).
+         */
+        delete: operations["delete_link_api_v1_google_drive_links__link_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/drive/provision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Provision Entity
+         * @description Queue one entity's folder — the panel's "create folder" button.
+         */
+        post: operations["provision_entity_api_v1_google_drive_provision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/drive/provision-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Provision All
+         * @description Backfill: a folder for every client that has none (Instellingen → Google).
+         */
+        post: operations["provision_all_api_v1_google_drive_provision_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google/drive/upload-session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Upload Session */
+        post: operations["create_upload_session_api_v1_google_drive_upload_session_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/google/oauth/callback": {
         parameters: {
             query?: never;
@@ -5339,6 +5455,112 @@ export interface components {
             registrar_provider_id?: string | null;
             registry_contact?: components["schemas"]["PartyRef"] | null;
             status?: components["schemas"]["DomainStatus-Input"] | null;
+        };
+        /** DriveBrowseFolder */
+        DriveBrowseFolder: {
+            /** Id */
+            id?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Web View Link */
+            web_view_link?: string | null;
+        };
+        /** DriveBrowseItem */
+        DriveBrowseItem: {
+            /** Id */
+            id: string;
+            /**
+             * Is Folder
+             * @default false
+             */
+            is_folder: boolean;
+            /** Mime Type */
+            mime_type?: string | null;
+            /** Modified At */
+            modified_at?: string | null;
+            /** Name */
+            name: string;
+            /** Size */
+            size?: number | null;
+            /** Web View Link */
+            web_view_link?: string | null;
+        };
+        /** DriveBrowseResult */
+        DriveBrowseResult: {
+            folder: components["schemas"]["DriveBrowseFolder"];
+            /** Items */
+            items: components["schemas"]["DriveBrowseItem"][];
+        };
+        /** DriveBulkProvisionResult */
+        DriveBulkProvisionResult: {
+            /** Queued */
+            queued: number;
+        };
+        /** DriveLinkCreate */
+        DriveLinkCreate: {
+            /** Drive File Id */
+            drive_file_id: string;
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+        };
+        /** DriveLinkRead */
+        DriveLinkRead: {
+            /** Created By Name */
+            created_by_name?: string | null;
+            /** Drive File Id */
+            drive_file_id: string;
+            /** Drive Url */
+            drive_url: string;
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Is Folder
+             * @default false
+             */
+            is_folder: boolean;
+            /** Mime Type */
+            mime_type?: string | null;
+            /** Name */
+            name: string;
+        };
+        /** DriveProvisionRequest */
+        DriveProvisionRequest: {
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+        };
+        /** DriveUploadSession */
+        DriveUploadSession: {
+            /** Session Uri */
+            session_uri: string;
+        };
+        /** DriveUploadSessionCreate */
+        DriveUploadSessionCreate: {
+            /** Folder Id */
+            folder_id: string;
+            /** Mime Type */
+            mime_type?: string | null;
+            /** Name */
+            name: string;
         };
         /**
          * DryRunRequest
@@ -12675,6 +12897,219 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    browse_api_v1_google_drive_browse_get: {
+        parameters: {
+            query?: {
+                folder_id?: string | null;
+                refresh?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveBrowseResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_links_api_v1_google_drive_links_get: {
+        parameters: {
+            query: {
+                entity_type: string;
+                entity_id: string;
+                rollup?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveLinkRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_link_api_v1_google_drive_links_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriveLinkCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveLinkRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_link_api_v1_google_drive_links__link_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    provision_entity_api_v1_google_drive_provision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriveProvisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    provision_all_api_v1_google_drive_provision_all_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveBulkProvisionResult"];
+                };
+            };
+        };
+    };
+    create_upload_session_api_v1_google_drive_upload_session_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriveUploadSessionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveUploadSession"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };
