@@ -132,6 +132,7 @@
       t("settings.automation.title"),
       t("settings.automation.subtitle"),
     )}
+    {@render card("/settings/ai", t("settings.ai.title"), t("settings.ai.subtitle"))}
   </div>
 </section>
 

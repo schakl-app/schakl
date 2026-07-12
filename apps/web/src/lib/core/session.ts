@@ -27,6 +27,10 @@ export interface SessionUser {
   /** Set while an instance owner impersonates this user — drives the banner. */
   impersonatedBy: string | null;
   impersonationExpiresAt: string | null;
+  /** AI features usable in this tenant (epic #131). Empty until an admin configures a
+   *  provider under Instellingen → AI — "off means invisible", so an empty list renders
+   *  no AI affordance anywhere. */
+  aiFeatures: string[];
 }
 
 // Minimal shape shared by SvelteKit load events and action/request events.
@@ -79,5 +83,6 @@ export async function fetchUser(event: ApiEvent): Promise<SessionUser | null> {
     isInstanceOwner: data.is_instance_owner ?? false,
     impersonatedBy: data.impersonated_by ?? null,
     impersonationExpiresAt: data.impersonation_expires_at ?? null,
+    aiFeatures: data.ai_features ?? [],
   };
 }
