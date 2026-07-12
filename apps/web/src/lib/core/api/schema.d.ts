@@ -6202,8 +6202,12 @@ export interface components {
             body_text?: string | null;
             /** Company Id */
             company_id?: string | null;
+            /** Company Name */
+            company_name?: string | null;
             /** Contact Id */
             contact_id?: string | null;
+            /** Contact Name */
+            contact_name?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -6238,6 +6242,8 @@ export interface components {
             participants?: components["schemas"]["Participant"][];
             /** Project Id */
             project_id?: string | null;
+            /** Project Name */
+            project_name?: string | null;
             /** Snippet */
             snippet?: string | null;
             source: components["schemas"]["InteractionSource"];
@@ -6246,6 +6252,8 @@ export interface components {
             subject?: string | null;
             /** Task Id */
             task_id?: string | null;
+            /** Task Title */
+            task_title?: string | null;
         };
         /** InteractionReject */
         InteractionReject: {
@@ -14355,6 +14363,8 @@ export interface operations {
                 kind?: string | null;
                 status?: string | null;
                 owner_user_id?: string | null;
+                /** @description Roll-up: 'tasks' with project_id also returns the project's tasks' rows */
+                include?: string | null;
                 limit?: number;
                 offset?: number;
             };

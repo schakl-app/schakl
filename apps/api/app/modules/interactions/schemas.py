@@ -37,6 +37,12 @@ class InteractionRead(BaseModel):
     project_id: uuid.UUID | None = None
     task_id: uuid.UUID | None = None
     contact_id: uuid.UUID | None = None
+    #: Labels of the linked records (#147), resolved in one batched query per table — the
+    #: web draws link chips from these, never from a raw id or a 200-row lookup.
+    company_name: str | None = None
+    project_name: str | None = None
+    task_title: str | None = None
+    contact_name: str | None = None
     owner_user_id: uuid.UUID | None = None
     #: Resolved at read time: the live account wins, a departed one keeps its snapshot.
     owner_name: str | None = None

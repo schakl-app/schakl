@@ -426,3 +426,79 @@ async def test_logging_and_moving_mirror_onto_host_trails(client_for) -> None:
         assert "interaction.unlinked" in await trail(c, "company", company["id"])
         assert "interaction.linked" in await trail(c, "company", other["id"])
         assert "interaction.unlinked" in await trail(c, "project", project["id"])
+
+
+async def test_project_rollup_includes_task_interactions_with_labels(client_for) -> None:
+    """#147: `?project_id=X&include=tasks` returns the project's own rows plus its tasks',
+    each carrying the linked record's label so the web can draw chips without lookups."""
+    t = await make_tenant("inter-rollup")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Klant BV"}, headers=headers)
+        ).json()
+        project = (
+            await c.post(
+                "/api/v1/projects",
+                json={"name": "Site", "company_id": company["id"]},
+                headers=headers,
+            )
+        ).json()
+        task = (
+            await c.post(
+                "/api/v1/tasks",
+                json={
+                    "title": "Review",
+                    "project_id": project["id"],
+                    "company_id": company["id"],
+                },
+                headers=headers,
+            )
+        ).json()
+
+        await c.post(
+            "/api/v1/interactions",
+            json={
+                "kind": "call",
+                "occurred_at": _NOW.isoformat(),
+                "subject": "Taakoverleg",
+                "task_id": task["id"],
+            },
+            headers=headers,
+        )
+
+        # Without the roll-up the task-linked row is invisible on the project…
+        flat = (
+            await c.get(
+                "/api/v1/interactions",
+                params={"project_id": project["id"]},
+                headers=headers,
+            )
+        ).json()
+        assert flat["total"] == 0
+
+        # …with it, it shows and names its task and (derived) client.
+        rolled = (
+            await c.get(
+                "/api/v1/interactions",
+                params={"project_id": project["id"], "include": "tasks"},
+                headers=headers,
+            )
+        ).json()
+        assert rolled["total"] == 1
+        row = rolled["items"][0]
+        assert row["task_title"] == "Review"
+        assert row["company_name"] == "Klant BV"
+
+        # Tenant isolation: the same query from another org sees nothing.
+        other = await make_tenant("inter-rollup-b")
+        other_headers = await auth_cookie(other.user)
+        async with client_for(other.host) as c2:
+            foreign = (
+                await c2.get(
+                    "/api/v1/interactions",
+                    params={"project_id": project["id"], "include": "tasks"},
+                    headers=other_headers,
+                )
+            ).json()
+            assert foreign["total"] == 0

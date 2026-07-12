@@ -30,9 +30,20 @@ async def _interactions_provider(ctx: RequestContext, company_id: uuid.UUID) -> 
                 "occurred_at": i["occurred_at"].isoformat(),
                 "subject": i["subject"],
                 "snippet": i["snippet"],
+                "body_text": i["body_text"],
                 "direction": i["direction"],
+                # Links + labels (#147): the move dialog prefills from these and the row
+                # chips deep-link through them — labels resolved by the service, batched.
+                "company_id": str(i["company_id"]) if i["company_id"] else None,
+                "project_id": str(i["project_id"]) if i["project_id"] else None,
+                "task_id": str(i["task_id"]) if i["task_id"] else None,
+                "contact_id": str(i["contact_id"]) if i["contact_id"] else None,
+                "project_name": i["project_name"],
+                "task_title": i["task_title"],
+                "contact_name": i["contact_name"],
                 "owner_user_id": str(i["owner_user_id"]) if i["owner_user_id"] else None,
                 "owner_name": i["owner_name"],
+                "participants": i["participants"],
                 "source": i["source"],
                 "deep_link": i["deep_link"],
             }

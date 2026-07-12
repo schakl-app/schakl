@@ -87,6 +87,35 @@ export const interactionActions = {
     return { ok: true };
   },
 
+  /**
+   * Move / re-link (#147). One dialog, two API paths: a manual row changes links through the
+   * ordinary PATCH (own/any write scope); a gmail row goes through the owner-only review
+   * remap. An empty picker posts "" and clears the link (explicit null).
+   */
+  moveInteraction: async (event: RequestEvent) => {
+    const form = await event.request.formData();
+    const id = String(form.get("id") ?? "");
+    if (!id) return fail(400, { error: "errors.required" });
+    const body: Record<string, string | null> = {};
+    for (const field of LINK_FIELDS) {
+      const value = String(form.get(field) ?? "").trim();
+      body[field] = value || null;
+    }
+    const api = apiFor(event);
+    const { error } =
+      String(form.get("source") ?? "") === "gmail"
+        ? await api.POST("/api/v1/interactions/{interaction_id}/remap", {
+            params: { path: { interaction_id: id } },
+            body,
+          })
+        : await api.PATCH("/api/v1/interactions/{interaction_id}", {
+            params: { path: { interaction_id: id } },
+            body,
+          });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { ok: true };
+  },
+
   rejectInteraction: async (event: RequestEvent) => {
     const form = await event.request.formData();
     const id = String(form.get("id") ?? "");

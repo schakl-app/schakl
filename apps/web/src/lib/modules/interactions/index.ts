@@ -31,7 +31,16 @@ const entityPanels: EntityPanelSpec[] = Object.entries(ENTITY_FIELDS).map(
     position: POSITION,
     load: async (api, { entityId }) => {
       const { data } = await api.GET("/api/v1/interactions", {
-        params: { query: { [field]: entityId, limit: PANEL_LIMIT, offset: 0 } },
+        params: {
+          query: {
+            [field]: entityId,
+            limit: PANEL_LIMIT,
+            offset: 0,
+            // A project's communication is its own plus its tasks' (#147); each rolled-up
+            // row carries a task chip so the reader sees where it lives.
+            ...(entityType === "project" ? { include: "tasks" } : {}),
+          },
+        },
       });
       return {
         items: data?.items ?? [],

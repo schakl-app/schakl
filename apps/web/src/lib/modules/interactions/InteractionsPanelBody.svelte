@@ -15,7 +15,16 @@
    * `?/deleteInteraction`, `?/approveInteraction` and `?/rejectInteraction` form actions —
    * spread `interactionActions` from `./actions.server` into its `actions`.
    */
-  import { ArrowDownLeft, ArrowUpRight, ExternalLink, Pencil, Plus, Trash2, X } from "@lucide/svelte";
+  import {
+    ArrowDownLeft,
+    ArrowRightLeft,
+    ArrowUpRight,
+    ExternalLink,
+    Pencil,
+    Plus,
+    Trash2,
+    X,
+  } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
@@ -30,6 +39,7 @@
 
   import { type InteractionItem, KIND_ICONS } from "./format";
   import InteractionForm from "./InteractionForm.svelte";
+  import InteractionMoveDialog from "./InteractionMoveDialog.svelte";
 
   let {
     items,
@@ -77,6 +87,8 @@
   let showCreate = $state(false);
   let showEdit = $state(false);
   let editing = $state<InteractionItem | null>(null);
+  let showMove = $state(false);
+  let moving = $state<InteractionItem | null>(null);
   let deleteId = $state("");
   let confirmDelete = $state(false);
   let showReject = $state(false);
@@ -90,6 +102,24 @@
       ? can(page.data.user, "interactions.interaction.write", "own")
       : can(page.data.user, "interactions.interaction.write", "any"));
 
+  // Moving a manual row rides the ordinary write scope; a gmail row stays the mailbox
+  // owner's call (the review rule) — the API enforces both, harder (#147).
+  const mayMove = (item: InteractionItem) =>
+    item.source === "gmail" ? isOwner(item) : mayEdit(item);
+
+  /** Where this row also belongs (#147): clickable chips for links beyond the current host. */
+  function linkChips(item: InteractionItem): { href: string; label: string }[] {
+    const host = new Set(Object.keys(prefill));
+    const chips: { href: string; label: string }[] = [];
+    if (item.project_id && item.project_name && !host.has("project_id"))
+      chips.push({ href: `/projects/${item.project_id}`, label: item.project_name });
+    if (item.task_id && item.task_title && !host.has("task_id"))
+      chips.push({ href: `/tasks/${item.task_id}`, label: item.task_title });
+    if (item.contact_id && item.contact_name && !host.has("contact_id"))
+      chips.push({ href: `/contacts/${item.contact_id}`, label: item.contact_name });
+    return chips;
+  }
+
   function menuItems(item: InteractionItem) {
     const entries = [];
     if (mayEdit(item)) {
@@ -101,6 +131,18 @@
           showEdit = true;
         },
       });
+    }
+    if (mayMove(item)) {
+      entries.push({
+        label: t("interactions.move"),
+        icon: ArrowRightLeft,
+        onclick: () => {
+          moving = item;
+          showMove = true;
+        },
+      });
+    }
+    if (mayEdit(item)) {
       entries.push({
         label: t("common.delete"),
         icon: Trash2,
@@ -147,6 +189,7 @@
     {#each items as item (item.id)}
       {@const Icon = KIND_ICONS[item.kind] ?? KIND_ICONS.note}
       {@const open = expanded === item.id}
+      {@const chips = linkChips(item)}
       <li class="py-2.5">
         <div class="flex items-start gap-3">
           <Icon size={16} class="mt-0.5 shrink-0 text-text-muted" aria-hidden="true" />
@@ -200,6 +243,20 @@
             <ActionsMenu compact items={menuItems(item)} />
           {/if}
         </div>
+
+        {#if chips.length > 0}
+          <!-- Where else this row lives (#147) — links, outside the expand button. -->
+          <div class="mt-1 flex flex-wrap gap-1 pl-7">
+            {#each chips as chip (chip.href)}
+              <a
+                href={chip.href}
+                class="rounded-full bg-surface px-2 py-0.5 text-[11px] text-text-muted ring-1 ring-inset ring-border hover:text-brand"
+              >
+                {chip.label}
+              </a>
+            {/each}
+          </div>
+        {/if}
 
         {#if open}
           <div class="mt-2 space-y-2 pl-7 text-sm">
@@ -279,6 +336,14 @@
         mentions={mentionCandidates}
         onsaved={() => (showEdit = false)}
       />
+    {/key}
+  {/if}
+</Modal>
+
+<Modal bind:open={showMove} title={t("interactions.move_title")}>
+  {#if moving}
+    {#key moving.id}
+      <InteractionMoveDialog interaction={moving} onsaved={() => (showMove = false)} />
     {/key}
   {/if}
 </Modal>

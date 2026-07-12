@@ -13,7 +13,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, select, text
+from sqlalchemy import bindparam, func, or_, select, text
 
 from app.core.activity import ActivityService
 from app.core.activity.service import snapshot
@@ -84,12 +84,30 @@ class InteractionService:
         kind: str | None = None,
         status: str | None = None,
         owner_user_id: uuid.UUID | None = None,
+        include: str | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
+        include_set = {part.strip() for part in (include or "").split(",") if part.strip()}
         conditions = []
         if company_id is not None:
+            # The client timeline is already complete without a roll-up: a task/project link
+            # derives ``company_id`` on write (``_resolve_links``), so filtering the FK is it.
             conditions.append(Interaction.company_id == company_id)
         if project_id is not None:
-            conditions.append(Interaction.project_id == project_id)
+            if "tasks" in include_set:
+                # A project's communication is its own plus its tasks' (#147): one OR over two
+                # indexed FKs, the task ids fetched once — never a per-row lookup.
+                task_ids = (
+                    await self.ctx.session.scalars(
+                        text("SELECT id FROM tasks WHERE org_id = :oid AND project_id = :pid"),
+                        {"oid": self._org_id, "pid": project_id},
+                    )
+                ).all()
+                own = Interaction.project_id == project_id
+                conditions.append(
+                    or_(own, Interaction.task_id.in_(task_ids)) if task_ids else own
+                )
+            else:
+                conditions.append(Interaction.project_id == project_id)
         if task_id is not None:
             conditions.append(Interaction.task_id == task_id)
         if contact_id is not None:
@@ -117,7 +135,10 @@ class InteractionService:
             )
             or 0
         )
-        return [self._present(row, full_name, email) for row, full_name, email in rows], total
+        names = await self._link_names([row for row, _, _ in rows])
+        return [
+            self._present(row, full_name, email, names) for row, full_name, email in rows
+        ], total
 
     async def get(self, interaction_id: uuid.UUID) -> dict[str, Any]:
         row = await self.repo.get_or_404(interaction_id)
@@ -411,6 +432,41 @@ class InteractionService:
                 fields={field_name: "errors.not_found"},
             )
 
+    #: What each linked table calls its label — the batched name lookup below reads these.
+    _LINK_LABELS = {
+        "company_id": ("companies", "name"),
+        "project_id": ("projects", "name"),
+        "task_id": ("tasks", "title"),
+        "contact_id": ("contacts", "trim(concat(first_name, ' ', coalesce(last_name, '')))"),
+    }
+
+    async def _link_names(
+        self, rows: list[Interaction]
+    ) -> dict[tuple[str, uuid.UUID], str]:
+        """Labels for the linked records (#147) — one batched query per referenced table for
+        the whole page, never a per-row lookup (docs/PERFORMANCE.md). Raw ids are worse than
+        saying nothing, and the web should not need four lookup fetches to draw a chip."""
+        wanted: dict[str, set[uuid.UUID]] = {field: set() for field in _LINK_TABLES}
+        for row in rows:
+            for field in _LINK_TABLES:
+                value = getattr(row, field)
+                if value is not None:
+                    wanted[field].add(value)
+        names: dict[tuple[str, uuid.UUID], str] = {}
+        for field, ids in wanted.items():
+            if not ids:
+                continue
+            table, label = self._LINK_LABELS[field]
+            stmt = text(
+                f"SELECT id, {label} FROM {table} WHERE org_id = :oid AND id IN :ids"  # noqa: S608 — fixed table/label names
+            ).bindparams(bindparam("ids", expanding=True))
+            result = await self.ctx.session.execute(
+                stmt, {"oid": self._org_id, "ids": list(ids)}
+            )
+            for target_id, target_label in result:
+                names[(field, target_id)] = target_label
+        return names
+
     async def _present_one(self, row: Interaction) -> dict[str, Any]:
         owner = (
             (
@@ -421,10 +477,17 @@ class InteractionService:
             if row.owner_user_id
             else None
         )
-        return self._present(row, owner[0] if owner else None, owner[1] if owner else None)
+        names = await self._link_names([row])
+        return self._present(
+            row, owner[0] if owner else None, owner[1] if owner else None, names
+        )
 
     def _present(
-        self, row: Interaction, live_name: str | None, live_email: str | None
+        self,
+        row: Interaction,
+        live_name: str | None,
+        live_email: str | None,
+        names: dict[tuple[str, uuid.UUID], str] | None = None,
     ) -> dict[str, Any]:
         """Owner resolved like the activity trail (issue #64): live account wins, snapshot after."""
         if live_email is not None:
@@ -432,6 +495,7 @@ class InteractionService:
         else:
             owner_name = row.owner_name
             owner_deleted = row.owner_name is not None
+        names = names or {}
         return {
             "id": row.id,
             "kind": row.kind,
@@ -445,6 +509,10 @@ class InteractionService:
             "project_id": row.project_id,
             "task_id": row.task_id,
             "contact_id": row.contact_id,
+            "company_name": names.get(("company_id", row.company_id)),
+            "project_name": names.get(("project_id", row.project_id)),
+            "task_title": names.get(("task_id", row.task_id)),
+            "contact_name": names.get(("contact_id", row.contact_id)),
             "owner_user_id": row.owner_user_id,
             "owner_name": owner_name,
             "owner_deleted": owner_deleted,
