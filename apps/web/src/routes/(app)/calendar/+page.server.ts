@@ -31,7 +31,7 @@ function isIsoDate(value: string): boolean {
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const today = todayIso();
-  const { defaultView } = await event.parent();
+  const { defaultView, hiddenSources } = await event.parent();
 
   const rawDate = event.url.searchParams.get("date") ?? "";
   const date = isIsoDate(rawDate) ? rawDate : today;
@@ -46,19 +46,48 @@ export const load: PageServerLoad = async (event) => {
     locale: event.locals.locale,
     user: event.locals.user,
   };
-  const sources = calendarSourcesFor(event.locals.theme?.enabledModules ?? []);
+  const allSources = calendarSourcesFor(event.locals.theme?.enabledModules ?? []);
+  // The visibility menu doubles as the legend (#121), so it lists every enabled feed —
+  // hidden ones included — while only the visible ones are loaded: a hidden feed costs
+  // no API call (docs/PERFORMANCE.md).
+  const hidden = new Set(hiddenSources);
+  const sources = allSources.filter((source) => !hidden.has(source.key));
   const results = await Promise.all(
     sources.map((source) => source.load(api, range).catch(() => [] as CalendarEvent[])),
   );
   const events = results.flat();
 
+  const sourceOptions = allSources.map((source) => ({
+    key: source.key,
+    labelKey: source.labelKey,
+    color: source.color,
+    hidden: hidden.has(source.key),
+  }));
+
   if (view === "year") {
-    return { view, date, today, events: [], aggregates: aggregateEventsByDay(events) };
+    return {
+      view,
+      date,
+      today,
+      events: [],
+      aggregates: aggregateEventsByDay(events),
+      sourceOptions,
+    };
   }
-  return { view, date, today, events, aggregates: null };
+  return { view, date, today, events, aggregates: null, sourceOptions };
 };
 
 export const actions: Actions = {
+  /** The feeds this user hid (#121) — the whole list per save, like every roster post. */
+  saveSources: async (event) => {
+    const form = await event.request.formData();
+    const hiddenSources = form.getAll("hidden").map(String).filter(Boolean);
+    await apiFor(event).PUT("/api/v1/prefs", {
+      body: { prefs: { calendar: { hiddenSources } } },
+    });
+    return { sourcesSaved: true };
+  },
+
   // Personal "last used view" preference (saved per user, never in org Settings).
   saveView: async (event) => {
     const form = await event.request.formData();

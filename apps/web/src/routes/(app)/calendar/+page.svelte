@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ChevronLeft, ChevronRight } from "@lucide/svelte";
+  import { ChevronLeft, ChevronRight, SlidersHorizontal } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
@@ -8,6 +8,7 @@
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
   import type { CalendarEvent } from "$lib/core/registry";
+  import { labelDotClass } from "$lib/core/ui/colors";
   import DayCalendar from "$lib/core/ui/DayCalendar.svelte";
   import MonthCalendar from "$lib/core/ui/MonthCalendar.svelte";
   import WeekCalendar from "$lib/core/ui/WeekCalendar.svelte";
@@ -78,6 +79,21 @@
     return data.date.slice(0, 4);
   });
 
+  // Feed visibility (#121): the menu doubles as the legend. Toggling posts the *whole* hidden
+  // list and the enhance reload refetches the range — a hidden feed then costs no API call.
+  let sourcesOpen = $state(false);
+  let sourcesRoot: HTMLElement | undefined = $state();
+  let sourcesForm: HTMLFormElement | undefined = $state();
+  // Writable derived: follows the stored pref until a toggle overwrites it mid-save.
+  let hiddenDraft = $derived(data.sourceOptions.filter((s) => s.hidden).map((s) => s.key));
+  function toggleSource(key: string) {
+    hiddenDraft = hiddenDraft.includes(key)
+      ? hiddenDraft.filter((k) => k !== key)
+      : [...hiddenDraft, key];
+    // Submit on the next tick so the hidden inputs carry the fresh list.
+    setTimeout(() => sourcesForm?.requestSubmit(), 0);
+  }
+
   function onkeydown(e: KeyboardEvent) {
     const target = e.target as HTMLElement | null;
     if (
@@ -104,7 +120,14 @@
     "flex items-center rounded-lg border border-border p-2 text-text-muted hover:border-brand hover:text-brand";
 </script>
 
-<svelte:window {onkeydown} />
+<svelte:window
+  {onkeydown}
+  onclick={(e) => {
+    if (sourcesOpen && sourcesRoot && !sourcesRoot.contains(e.target as Node)) {
+      sourcesOpen = false;
+    }
+  }}
+/>
 
 <svelte:head>
   <title>{pageTitle(t("calendar.title"))}</title>
@@ -129,6 +152,13 @@
   <input type="hidden" name="source" bind:this={moveSource} />
   <input type="hidden" name="id" bind:this={moveId} />
   <input type="hidden" name="delta" bind:this={moveDelta} />
+</form>
+
+<!-- Feed visibility (#121). Default enhance: the reload refetches only the visible feeds. -->
+<form method="POST" action="?/saveSources" bind:this={sourcesForm} use:enhance class="hidden">
+  {#each hiddenDraft as key (key)}
+    <input type="hidden" name="hidden" value={key} />
+  {/each}
 </form>
 
 <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -178,6 +208,46 @@
         </a>
       {/each}
     </div>
+
+    <!-- Show/hide each feed, personal + persisted (#121); the checkboxes double as the legend. -->
+    {#if data.sourceOptions.length > 0}
+      <div class="relative" bind:this={sourcesRoot}>
+        <button
+          type="button"
+          class={navButton}
+          aria-expanded={sourcesOpen}
+          aria-haspopup="true"
+          aria-label={t("calendar.sources.label")}
+          title={t("calendar.sources.label")}
+          onclick={() => (sourcesOpen = !sourcesOpen)}
+        >
+          <SlidersHorizontal size={16} />
+        </button>
+        {#if sourcesOpen}
+          <div
+            class="absolute right-0 z-30 mt-1 w-56 rounded-lg border border-border bg-surface-raised py-1 shadow-lg"
+          >
+            <p class="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted">
+              {t("calendar.sources.label")}
+            </p>
+            {#each data.sourceOptions as source (source.key)}
+              <label
+                class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-text hover:bg-surface"
+              >
+                <input
+                  type="checkbox"
+                  checked={!hiddenDraft.includes(source.key)}
+                  onchange={() => toggleSource(source.key)}
+                  class="h-3.5 w-3.5 rounded border-border"
+                />
+                <span class="h-2 w-2 rounded-full {labelDotClass(source.color)}"></span>
+                {t(source.labelKey)}
+              </label>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    {/if}
   </div>
 </div>
 

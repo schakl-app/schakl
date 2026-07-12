@@ -44,6 +44,8 @@ registerWebModule({
     {
       key: "leave.team",
       module: "leave",
+      labelKey: "leave.calendar.team",
+      color: "emerald",
       load: async (api, { from, to, locale, user }): Promise<CalendarEvent[]> => {
         const [team, types] = await Promise.all([
           api.GET("/api/v1/leave/team", {
@@ -117,6 +119,8 @@ registerWebModule({
       // renders as a marking rather than a chip and never counts toward a busy day (#47).
       key: "leave.holidays",
       module: "leave",
+      labelKey: "leave.calendar.holidays",
+      color: "slate",
       load: async (api, { from, to, locale }): Promise<CalendarEvent[]> => {
         const { data } = await api.GET("/api/v1/leave/holidays", {
           params: { query: { date_from: from, date_to: to } },

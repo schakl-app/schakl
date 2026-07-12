@@ -205,6 +205,10 @@ export interface CalendarSourceSpec {
   /** Unique source key, e.g. "leave.team". */
   key: string;
   module: string;
+  /** i18n key naming this feed in the visibility menu / legend (#121). */
+  labelKey: string;
+  /** Legend swatch — a label colour token (core/ui/colors), matching the feed's chips. */
+  color: string;
   /** Server-side loader (runs in the calendar's +page.server.ts, API-only). */
   load: (api: ApiClient, range: CalendarRange) => Promise<CalendarEvent[]>;
   /**
