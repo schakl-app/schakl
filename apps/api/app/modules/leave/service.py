@@ -751,7 +751,9 @@ class LeaveService:
             raise AppError("not_found", "errors.not_found", status_code=404)
         return pattern
 
-    async def create_recurring(self, data: LeaveRecurringDayCreate) -> tuple[LeaveRecurringDay, int]:
+    async def create_recurring(
+        self, data: LeaveRecurringDayCreate
+    ) -> tuple[LeaveRecurringDay, int]:
         """Define a pattern and immediately lay its days onto the calendar."""
         await self._member_or_404(data.user_id)
         leave_type = await self.types.get_or_404(data.leave_type_id)
