@@ -51,10 +51,12 @@
     error = null;
     budgetBlocked = false;
     input = "";
-    if (!overrideBudget) turns.push({ role: "user", content: question });
+    turns.push({ role: "user", content: question });
     const history = turns.map((m) => ({ role: m.role, content: m.content }));
-    const reply: Turn = { role: "assistant", content: "" };
-    turns.push(reply);
+    // Take the reply back OUT of the $state array: mutations must go through the reactive
+    // proxy — appending to the raw object streams into the void (no re-render, ever).
+    turns.push({ role: "assistant", content: "" });
+    const reply = turns[turns.length - 1];
     streaming = true;
     abort = new AbortController();
     try {
