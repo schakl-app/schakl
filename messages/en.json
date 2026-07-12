@@ -507,6 +507,7 @@
   "tasks.templates.relative_due_days": "Due after",
   "tasks.templates.days": "days",
   "tasks.templates.no_assignee": "No assignee",
+  "tasks.templates.assignee_responsible": "Client's responsible person",
   "tasks.templates.checklist_title": "Checklist title (optional)",
   "tasks.templates.checklist_items_hint": "Checklist items, one per line…",
   "tasks.templates.empty": "No task templates yet",

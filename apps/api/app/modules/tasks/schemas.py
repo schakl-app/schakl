@@ -304,6 +304,9 @@ class TemplateItemBase(BaseModel):
     relative_due_days: int | None = Field(default=None, ge=0, le=365)
     allocated_minutes: int | None = Field(default=None, ge=0, le=100000)
     assignee_user_id: uuid.UUID | None = None
+    #: Assign to the company's primary responsible at apply time (#28); falls back to
+    #: ``assignee_user_id``, then unassigned, when the company has none.
+    assign_responsible: bool = False
     position: int = 0
     checklist_title: str | None = Field(default=None, max_length=255)
     checklist_items: list[TemplateChecklistItem] = Field(default_factory=list)

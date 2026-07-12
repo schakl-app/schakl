@@ -11,7 +11,7 @@ import uuid
 from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 from app.core.richtext import sanitize_markdown
 from app.core.tenancy import RequestContext
@@ -57,6 +57,7 @@ class TemplateService:
             relative_due_days=item.relative_due_days,
             allocated_minutes=item.allocated_minutes,
             assignee_user_id=item.assignee_user_id,
+            assign_responsible=item.assign_responsible,
             position=item.position,
             checklist_title=item.checklist_title,
             checklist_items=[
@@ -155,6 +156,18 @@ class TemplateService:
         )
         session = self.ctx.session
         org_id = self.ctx.org.id
+        # Who owns this client right now (#28)? Resolved at apply time, so the onboarding task
+        # follows the responsible of the day. A bare table reference (§6), like the companies
+        # check in domains — never an import of another module's internals.
+        responsible_id: uuid.UUID | None = None
+        if any(item.assign_responsible for item in items):
+            responsible_id = await session.scalar(
+                text(
+                    "SELECT user_id FROM company_assignees"
+                    " WHERE org_id = :oid AND company_id = :cid AND is_primary"
+                ),
+                {"oid": org_id, "cid": company_id},
+            )
         # New tasks land in the org's default status (issue #62), not a hardcoded "open".
         default_status = default_key(await load_statuses(session, org_id))
         max_position = float(
@@ -173,7 +186,11 @@ class TemplateService:
             task = Task(
                 org_id=org_id,
                 company_id=company_id,
-                assignee_user_id=item.assignee_user_id,
+                assignee_user_id=(
+                    responsible_id or item.assignee_user_id
+                    if item.assign_responsible
+                    else item.assignee_user_id
+                ),
                 title=item.title,
                 description=item.description,
                 status=default_status,

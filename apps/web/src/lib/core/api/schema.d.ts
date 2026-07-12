@@ -6478,6 +6478,11 @@ export interface components {
         TemplateItemBase: {
             /** Allocated Minutes */
             allocated_minutes?: number | null;
+            /**
+             * Assign Responsible
+             * @default false
+             */
+            assign_responsible: boolean;
             /** Assignee User Id */
             assignee_user_id?: string | null;
             /** Checklist Items */
@@ -6502,6 +6507,11 @@ export interface components {
         TemplateItemRead: {
             /** Allocated Minutes */
             allocated_minutes?: number | null;
+            /**
+             * Assign Responsible
+             * @default false
+             */
+            assign_responsible: boolean;
             /** Assignee User Id */
             assignee_user_id?: string | null;
             /** Checklist Items */

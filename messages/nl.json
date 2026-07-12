@@ -507,6 +507,7 @@
   "tasks.templates.relative_due_days": "Deadline na",
   "tasks.templates.days": "dagen",
   "tasks.templates.no_assignee": "Niet toegewezen",
+  "tasks.templates.assignee_responsible": "Verantwoordelijke van de klant",
   "tasks.templates.checklist_title": "Checklisttitel (optioneel)",
   "tasks.templates.checklist_items_hint": "Checklistitems, één per regel…",
   "tasks.templates.empty": "Nog geen takensjablonen",

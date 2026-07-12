@@ -342,6 +342,12 @@ class TaskTemplateItem(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # Assign the instantiated task to the company's *primary responsible* (#28), resolved at
+    # apply time — an onboarding task follows whoever owns the client, not a person fixed when
+    # the template was written. Falls back to ``assignee_user_id``, then unassigned.
+    assign_responsible: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     checklist_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Legacy title-only shape — kept for rollback only; new code reads ``checklist_items_rich``.
