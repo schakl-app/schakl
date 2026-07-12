@@ -7222,6 +7222,11 @@ export interface components {
              * @default member
              */
             role: string;
+            /**
+             * Send Email
+             * @default true
+             */
+            send_email: boolean;
         };
         /**
          * MemberLookup
@@ -7245,6 +7250,10 @@ export interface components {
             email: string;
             /** Full Name */
             full_name: string | null;
+            /** Invite Email Error */
+            invite_email_error?: string | null;
+            /** Invite Email Sent */
+            invite_email_sent?: boolean | null;
             /** Is Active */
             is_active: boolean;
             /** Is Self */
