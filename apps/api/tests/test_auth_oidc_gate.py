@@ -302,3 +302,31 @@ async def test_userinfo_failure_does_not_break_login(
         assert "schakl_auth=" in response.headers.get("set-cookie", "")
 
     assert await _avatar_of("resilient@idp-example.com") is None
+
+
+async def test_an_oversized_picture_url_does_not_break_login(
+    client_for, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The v0.5.0 prod regression: the first real Google picture claim (the signed
+    ``lh3.googleusercontent.com/a-/ALV-…`` form) ran past the old VARCHAR(1024) and the
+    overflow failed the *login's own commit* with a 500. The column is TEXT now — the login
+    succeeds and the URL is stored whole."""
+    tenant = await make_tenant("oidc-avatar-oversize")
+    headers = await auth_cookie(tenant.user)
+    picture = "https://lh3.googleusercontent.com/a-/" + "x" * 1500
+    monkeypatch.setattr(
+        sso,
+        "oauth_client",
+        lambda row: _StubClient(
+            "portrait@idp-example.com",
+            id_token_claims={"email": "portrait@idp-example.com", "name": "Portrait"},
+            userinfo_claims={"email": "portrait@idp-example.com", "picture": picture},
+        ),
+    )
+    async with client_for(tenant.host) as client:
+        await _configure(client, headers)
+        response = await client.get("/api/v1/auth/oidc/callback")
+        assert response.status_code in (302, 307)
+        assert "schakl_auth=" in response.headers.get("set-cookie", "")
+
+    assert await _avatar_of("portrait@idp-example.com") == picture
