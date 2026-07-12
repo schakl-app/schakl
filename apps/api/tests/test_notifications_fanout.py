@@ -332,7 +332,9 @@ async def test_fan_out_is_bounded_not_n_plus_one(count_queries) -> None:
             t, t.user, "task.assigned",
             {"task_id": task_id, "_recipients": [p.id for p in people]},
         )
-    assert len(counter.matching("notification_preferences")) == 1
+    # Two constant lookups: the in-app matrix resolve, and the e-mail channel's general
+    # rows (#17) — each is one query for the whole batch, never one per recipient.
+    assert len(counter.matching("notification_preferences")) == 2
     assert len(counter.matching("notification_watchers")) == 1
     assert len(counter.matching("FROM memberships")) == 1
     for person in people:

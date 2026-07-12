@@ -9,7 +9,8 @@ imports another's models (Golden Rule 3) — the payload is the whole contract.
 The fan-out runs **inline in the emitter's transaction** (``app/core/events.py``), so an event
 and the notifications it produces commit or roll back together. That is why ``ingest`` does no
 network I/O and issues a bounded number of queries — a dedup probe, the watchers, the
-preferences, the collapse probe, then one bulk insert — regardless of recipient count.
+preferences, the collapse probe, one bulk insert, then one batched hand-off per delivery
+channel — regardless of recipient count.
 
 Three rules that are easy to get wrong, so they are enforced here rather than at each emit
 site:
@@ -287,18 +288,16 @@ class NotificationService:
             fresh.append(row)
         await self.session.flush()
 
-        # Hand each fresh notification to every registered channel. The in-app channel is pull
-        # (a no-op); the external channel (#17) enqueues delivery rows for the worker to push.
+        # Hand the fresh rows to every registered channel as one batch, so each channel can
+        # resolve whatever it needs (e-mail preferences, channel configs) in one query instead
+        # of one per recipient. The in-app channel is pull (a no-op); the push channels (#17)
+        # enqueue delivery rows for the worker.
         from app.modules.notifications.channels import channels as all_channels
 
+        if not fresh:
+            return
         for channel in all_channels():
-            for row in fresh:
-                await channel.deliver(
-                    self.ctx,
-                    notification_id=row.id,
-                    user_id=row.user_id,
-                    event_type=event.event_type,
-                )
+            await channel.deliver(self.ctx, event=event, notifications=fresh)
 
     async def _dedup_exists(self, dedup_key: str) -> bool:
         found = await self.session.scalar(

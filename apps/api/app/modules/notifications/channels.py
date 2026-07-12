@@ -16,11 +16,12 @@ is a preference row (``channel`` column), not a different object.
 
 from __future__ import annotations
 
-import uuid
+from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
 
 from app.core.events import EmitContext
 from app.modules.notifications.events import CHANNEL_IN_APP
+from app.modules.notifications.models import Notification, NotificationEvent
 
 
 @runtime_checkable
@@ -33,14 +34,16 @@ class NotificationChannel(Protocol):
         self,
         ctx: EmitContext,
         *,
-        notification_id: uuid.UUID,
-        user_id: uuid.UUID,
-        event_type: str,
+        event: NotificationEvent,
+        notifications: Sequence[Notification],
     ) -> None:
-        """Hand this notification to the transport.
+        """Hand this event's freshly written inbox rows to the transport, as one batch.
 
-        Runs inside the emitter's transaction, so an implementation must not do blocking or
-        fallible network I/O here — it enqueues (a delivery row / an ARQ job) and returns.
+        Called once per event with every row the fan-out just wrote, so an implementation
+        must issue a bounded number of queries however many recipients there are (the fan-out
+        N+1 test counts them). Runs inside the emitter's transaction, so it must not do
+        blocking or fallible network I/O here — it enqueues (delivery rows / an ARQ job) and
+        returns.
         """
         ...
 
@@ -54,9 +57,8 @@ class InAppChannel:
         self,
         ctx: EmitContext,
         *,
-        notification_id: uuid.UUID,
-        user_id: uuid.UUID,
-        event_type: str,
+        event: NotificationEvent,
+        notifications: Sequence[Notification],
     ) -> None:
         return None
 

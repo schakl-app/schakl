@@ -19,6 +19,7 @@ import ipaddress
 import logging
 import socket
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from urllib.parse import urlsplit
@@ -161,8 +162,8 @@ class ExternalChannel:
     """Push channel: enqueues one ``notification_deliveries`` row per matching configured channel.
 
     Runs inside the emit transaction — DB writes only, never a provider call. An org channel is
-    written once per event (deduped across the event's recipients); a personal channel is written
-    for its owner's notifications.
+    written once per event (the batch is the event's whole audience, so the first row stands in
+    for the room); a personal channel is written for its owner's notifications.
     """
 
     key = CHANNEL_EXTERNAL
@@ -171,10 +172,11 @@ class ExternalChannel:
         self,
         ctx: EmitContext,
         *,
-        notification_id: uuid.UUID,
-        user_id: uuid.UUID,
-        event_type: str,
+        event: NotificationEvent,
+        notifications: Sequence[Notification],
     ) -> None:
+        if not notifications:
+            return
         session = ctx.session
         org_id = ctx.org.id
         configs = (
@@ -191,44 +193,27 @@ class ExternalChannel:
         )
         if not configs:
             return
-        notification = await session.get(Notification, notification_id)
+        by_user = {row.user_id: row for row in notifications}
         for config in configs:
-            if config.event_filter and event_type not in config.event_filter:
+            if config.event_filter and event.event_type not in config.event_filter:
                 continue
-            if config.user_id is not None and config.user_id != user_id:
-                continue  # a personal channel only receives its owner's notifications
-            if config.user_id is None and await self._org_channel_already_queued(
-                session, org_id, config.id, notification.event_id
-            ):
-                continue  # one message per event for a shared room, not one per recipient
+            if config.user_id is not None:
+                # A personal channel only receives its owner's notifications.
+                target = by_user.get(config.user_id)
+            else:
+                # One message per event for a shared room, not one per recipient.
+                target = notifications[0]
+            if target is None:
+                continue
             session.add(
                 NotificationDelivery(
                     org_id=org_id,
-                    notification_id=notification_id,
+                    notification_id=target.id,
                     channel=CHANNEL_EXTERNAL,
                     channel_config_id=config.id,
                     status="pending",
                 )
             )
-
-    async def _org_channel_already_queued(
-        self,
-        session,
-        org_id,
-        config_id,
-        event_id,  # noqa: ANN001
-    ) -> bool:
-        existing = await session.scalar(
-            select(NotificationDelivery.id)
-            .join(Notification, Notification.id == NotificationDelivery.notification_id)
-            .where(
-                NotificationDelivery.org_id == org_id,
-                NotificationDelivery.channel_config_id == config_id,
-                Notification.event_id == event_id,
-            )
-            .limit(1)
-        )
-        return existing is not None
 
 
 class EmailChannel:
@@ -236,7 +221,8 @@ class EmailChannel:
 
     The recipient's *general* e-mail preference decides cadence: ``immediate`` rows are due
     at once, digest rows carry ``deliver_after`` — the worker holds them and sends everything
-    due for a user as **one** mail. Same DB-only rule as every channel: no I/O here.
+    due for a user as **one** mail. Same DB-only rule as every channel: no I/O here, and the
+    whole batch resolves its preferences in one query (never one per recipient).
     """
 
     key = CHANNEL_EMAIL
@@ -245,25 +231,30 @@ class EmailChannel:
         self,
         ctx: EmitContext,
         *,
-        notification_id: uuid.UUID,
-        user_id: uuid.UUID,
-        event_type: str,
+        event: NotificationEvent,
+        notifications: Sequence[Notification],
     ) -> None:
         from app.modules.notifications.prefs import compute_visible_at, email_prefs_for_recipients
 
-        pref = (await email_prefs_for_recipients(ctx.session, ctx.org.id, [user_id])).get(user_id)
-        if pref is None or not pref.enabled:
+        if not notifications:
             return
-        now = datetime.now(UTC)
-        ctx.session.add(
-            NotificationDelivery(
-                org_id=ctx.org.id,
-                notification_id=notification_id,
-                channel=CHANNEL_EMAIL,
-                status="pending",
-                deliver_after=compute_visible_at(pref, now),
-            )
+        prefs = await email_prefs_for_recipients(
+            ctx.session, ctx.org.id, [row.user_id for row in notifications]
         )
+        now = datetime.now(UTC)
+        for row in notifications:
+            pref = prefs.get(row.user_id)
+            if pref is None or not pref.enabled:
+                continue
+            ctx.session.add(
+                NotificationDelivery(
+                    org_id=ctx.org.id,
+                    notification_id=row.id,
+                    channel=CHANNEL_EMAIL,
+                    status="pending",
+                    deliver_after=compute_visible_at(pref, now),
+                )
+            )
 
 
 # --------------------------------------------------------------------------- #
