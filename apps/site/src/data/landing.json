@@ -1,0 +1,80 @@
+{
+  "nl": {
+    "blocks": [
+      {
+        "type": "hero",
+        "eyebrow": "Open · zelf-gehost · wit-label",
+        "title": "Het besturingssysteem voor je bureau",
+        "subtitle": "Klanten, projecten, uren, verlof en taken in één snel, modulair platform. Op jouw server, onder jouw merk, in jouw taal.",
+        "ctaPrimary": { "label": "Lees de documentatie", "href": "/docs/" },
+        "ctaSecondary": { "label": "Bekijk op GitHub", "href": "https://github.com/schakl-app/schakl" }
+      },
+      {
+        "type": "features",
+        "anchor": "features",
+        "title": "Alles wat een bureau draaiende houdt",
+        "intro": "Elke functie is een module. Zet aan wat je gebruikt — de rest blijft uit de weg."
+      },
+      {
+        "type": "textBullets",
+        "anchor": "selfhost",
+        "title": "Jouw server, jouw data",
+        "body": "schakl. draait waar jij dat wilt: één Docker Compose-stack met web, API, worker, database en Redis. Updates zijn een nieuwe image-tag; migraties draaien vanzelf, vóór de app opstart.",
+        "bullets": [
+          "Eén compose-stack — geen losse diensten om te babysitten",
+          "Automatische databasemigraties bij elke update",
+          "Geen telemetrie: er belt niets naar huis",
+          "Wit-label: jouw logo, kleuren en eigen domein",
+          "Nederlands als standaardtaal, Engels ingebouwd"
+        ]
+      },
+      {
+        "type": "cta",
+        "anchor": "",
+        "title": "Klaar om te beginnen?",
+        "body": "Van installatie tot de losse modules: alles staat in de documentatie.",
+        "label": "Naar de documentatie",
+        "href": "/docs/"
+      }
+    ]
+  },
+  "en": {
+    "blocks": [
+      {
+        "type": "hero",
+        "eyebrow": "Open · self-hosted · white-label",
+        "title": "The operating system for your agency",
+        "subtitle": "Clients, projects, hours, leave and tasks in one fast, modular platform. On your server, under your brand, in your language.",
+        "ctaPrimary": { "label": "Read the documentation", "href": "/docs/" },
+        "ctaSecondary": { "label": "View on GitHub", "href": "https://github.com/schakl-app/schakl" }
+      },
+      {
+        "type": "features",
+        "anchor": "features",
+        "title": "Everything that keeps an agency running",
+        "intro": "Every capability is a module. Enable what you use — the rest stays out of the way."
+      },
+      {
+        "type": "textBullets",
+        "anchor": "selfhost",
+        "title": "Your server, your data",
+        "body": "schakl. runs wherever you want it: one Docker Compose stack with web, API, worker, database and Redis. Updates are a new image tag; migrations run automatically, before the app boots.",
+        "bullets": [
+          "One compose stack — no scattered services to babysit",
+          "Automatic database migrations on every update",
+          "No telemetry: nothing phones home",
+          "White-label: your logo, colors and custom domain",
+          "Dutch by default, English built in"
+        ]
+      },
+      {
+        "type": "cta",
+        "anchor": "",
+        "title": "Ready to get started?",
+        "body": "From installation to every module: it is all in the documentation.",
+        "label": "Go to the docs",
+        "href": "/docs/"
+      }
+    ]
+  }
+}

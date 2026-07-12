@@ -1,0 +1,25 @@
+---
+// Sveltia CMS admin — a single static page, no server. The bundle is copied from
+// node_modules into public/admin/ by the sync-cms script (see package.json); the
+// content model lives in public/admin/config.yml.
+//
+// Editing works two ways:
+//  - locally: `pnpm site cms`, open /admin, "Work with Local Repository" (Chrome/Edge),
+//    pick the repo folder — saves write straight into the working tree.
+//  - hosted (later): GitHub backend sign-in needs a small token-exchange service
+//    (sveltia-cms-auth); decided together with the deploy target.
+---
+
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>CMS — schakl.</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="cms-config-url" type="application/yaml" href="/admin/config.yml" />
+  </head>
+  <body>
+    <script is:inline src="/admin/sveltia-cms.js"></script>
+  </body>
+</html>

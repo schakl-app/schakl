@@ -3,31 +3,26 @@ import { readFileSync } from 'node:fs';
 import { defineConfig, passthroughImageService } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
-// Site settings are content, not code: the Keystatic singleton at src/data/settings/site.json
+// Site settings are content, not code: the Sveltia-managed file at src/data/settings/site.json
 // drives brand name, logo, favicon and colors. Editing it in the CMS and rebuilding restyles
 // the whole site — including the Starlight docs theme below.
 const settings = JSON.parse(
   readFileSync(new URL('./src/data/settings/site.json', import.meta.url), 'utf8'),
 );
 
-// Keystatic stores image paths as '/src/…' (repo-relative); Starlight wants './src/…'.
+// The CMS stores image paths as '/src/…' (repo-relative); Starlight wants './src/…'.
 const logoSrc = settings.logo ? settings.logo.replace(/^\//, './') : undefined;
 const logoDarkSrc = settings.logoDark ? settings.logoDark.replace(/^\//, './') : logoSrc;
-
-// The Keystatic admin UI needs server routes + React, so it only exists in `pnpm site cms`
-// (KEYSTATIC=1 astro dev). The production build stays 100 % static.
-const cms = process.env.KEYSTATIC === '1';
-const cmsIntegrations = cms
-  ? [
-      (await import('@astrojs/react')).default(),
-      (await import('@keystatic/astro')).default(),
-    ]
-  : [];
 
 export default defineConfig({
   site: settings.siteUrl || 'https://schakl.app',
   output: 'static',
   image: { service: passthroughImageService() },
+  // The docs moved from a root-locale layout to symmetric /nl/ + /en/ folders when the CMS
+  // gained per-entry locale switching (translations pair by file path).
+  redirects: {
+    '/docs': '/nl/docs',
+  },
   integrations: [
     starlight({
       title: settings.brandName,
@@ -37,9 +32,9 @@ export default defineConfig({
         ? { light: logoSrc, dark: logoDarkSrc, alt: settings.brandName, replacesTitle: true }
         : undefined,
       favicon: settings.favicon || '/favicon.svg',
-      defaultLocale: 'root',
+      defaultLocale: 'nl',
       locales: {
-        root: { label: 'Nederlands', lang: 'nl' },
+        nl: { label: 'Nederlands', lang: 'nl' },
         en: { label: 'English', lang: 'en' },
       },
       social: settings.social?.github
@@ -68,6 +63,5 @@ export default defineConfig({
       ],
       customCss: ['./src/styles/starlight.css'],
     }),
-    ...cmsIntegrations,
   ],
 });

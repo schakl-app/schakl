@@ -3,6 +3,7 @@
 // CMS-created page. Branding (logo, colors, nav, footer) comes from the Keystatic
 // settings singleton.
 import settings from '../data/settings/site.json';
+import { localizeHref } from '../lib/links';
 import '../styles/landing.css';
 
 interface Props {
@@ -22,9 +23,7 @@ const resolveLogo = (p?: string) => (p ? (logoModules[p] as any)?.default?.src :
 const logoSrc: string | undefined = resolveLogo(settings.logo);
 const logoDarkSrc: string | undefined = resolveLogo((settings as any).logoDark);
 
-// Internal links on the English pages live under /en/.
-const href = (h: string) =>
-  locale === 'en' && h.startsWith('/') && !h.startsWith('/en') ? `/en${h}` : h;
+const href = (h: string) => localizeHref(locale, h);
 
 const otherLocaleHref = locale === 'nl' ? '/en/' : '/';
 const themeCss = `:root{--brand-accent:${settings.colors.accent};--brand-accent-dark:${settings.colors.accentDark};}`;

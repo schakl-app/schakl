@@ -1,3 +1,5 @@
 dist/
 .astro/
 node_modules/
+# copied from node_modules/@sveltia/cms by the sync-cms script
+public/admin/sveltia-cms.js

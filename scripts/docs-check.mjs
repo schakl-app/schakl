@@ -2,7 +2,9 @@
 // docs:check — the docs counterpart of i18n:check (issue #136).
 //
 // Two guarantees, mirroring the messages/ rules in CLAUDE.md §8:
-//  1. The nl (root) and en docs trees carry exactly the same pages — locale drift fails.
+//  1. The nl and en docs trees carry exactly the same pages — locale drift fails.
+//     (Sveltia's save_all_locales lets an entry exist in one language; the site falls
+//     back to Dutch, but this check keeps "translated everything" the enforced norm.)
 //  2. Required pages exist in both locales.
 //
 // Module coverage: every entry in EXPECTED_MODULES should eventually have
@@ -15,7 +17,7 @@
 import { readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
-const NL_ROOT = 'apps/site/src/content/docs/docs';
+const NL_ROOT = 'apps/site/src/content/docs/nl/docs';
 const EN_ROOT = 'apps/site/src/content/docs/en/docs';
 
 const REQUIRED = ['index.mdx', 'admin/installation.mdx', 'admin/upgrades.mdx'];

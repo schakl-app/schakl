@@ -3,14 +3,15 @@
 // CTA band) — add, remove or reorder sections in Keystatic without touching code.
 import SiteShell from './SiteShell.astro';
 import settings from '../data/settings/site.json';
-import landingNl from '../data/landing/nl.json';
-import landingEn from '../data/landing/en.json';
+import landing from '../data/landing.json';
+import { localizeHref } from '../lib/links';
 
 interface Props {
   locale: 'nl' | 'en';
 }
 const { locale } = Astro.props;
-const { blocks } = locale === 'nl' ? landingNl : landingEn;
+// One CMS entry holds both locales (Sveltia single_file i18n structure).
+const { blocks } = landing[locale];
 
 // Feature cards are their own Keystatic collection; the `features` block places the grid.
 const featureModules = import.meta.glob('../data/features/*.json', { eager: true });
@@ -18,19 +19,17 @@ const features = Object.values(featureModules)
   .map((m: any) => m.default ?? m)
   .sort((a: any, b: any) => a.order - b.order);
 
-const href = (h: string) =>
-  locale === 'en' && h.startsWith('/') && !h.startsWith('/en') ? `/en${h}` : h;
+const href = (h: string) => localizeHref(locale, h);
 
-const hero: any = blocks.find((b) => b.discriminant === 'hero')?.value;
+const hero: any = blocks.find((b: any) => b.type === 'hero');
 const title = hero ? `${settings.brandName} — ${hero.title}` : settings.brandName;
 ---
 
 <SiteShell locale={locale} title={title} description={hero?.subtitle} alternates>
   {
-    blocks.map((block: any) => {
-      const v = block.value;
+    blocks.map((v: any) => {
       const id = v.anchor || undefined;
-      switch (block.discriminant) {
+      switch (v.type) {
         case 'hero':
           return (
             <section class="hero container">
