@@ -19,6 +19,7 @@
     ArrowDownLeft,
     ArrowRightLeft,
     ArrowUpRight,
+    CheckCircle2,
     ExternalLink,
     Pencil,
     Plus,
@@ -40,6 +41,7 @@
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
 
+  import CloseTaskDialog from "./CloseTaskDialog.svelte";
   import { type InteractionItem, KIND_ICONS } from "./format";
   import InteractionForm from "./InteractionForm.svelte";
   import InteractionMoveDialog from "./InteractionMoveDialog.svelte";
@@ -92,6 +94,8 @@
   let editing = $state<InteractionItem | null>(null);
   let showMove = $state(false);
   let moving = $state<InteractionItem | null>(null);
+  let showCloseTask = $state(false);
+  let closingWith = $state<InteractionItem | null>(null);
 
   // Creating a contact from an unknown email participant (#160). Contact custom-field
   // definitions load once, on first use — not every host page holds them.
@@ -173,6 +177,18 @@
         onclick: () => {
           moving = item;
           showMove = true;
+        },
+      });
+    }
+    // Close the linked task with this moment (#157): team-visible rows only — a pending
+    // email's content isn't approved yet, so it cannot justify a close.
+    if (item.task_id && item.status === "logged" && canWrite) {
+      entries.push({
+        label: t("interactions.close_task"),
+        icon: CheckCircle2,
+        onclick: () => {
+          closingWith = item;
+          showCloseTask = true;
         },
       });
     }
@@ -421,6 +437,14 @@
     error={(page.form?.qcError as string | undefined) ?? null}
   />
 {/if}
+
+<Modal bind:open={showCloseTask} title={t("interactions.close_task_title")}>
+  {#if closingWith}
+    {#key closingWith.id}
+      <CloseTaskDialog interaction={closingWith} onsaved={() => (showCloseTask = false)} />
+    {/key}
+  {/if}
+</Modal>
 
 <Modal bind:open={showMove} title={t("interactions.move_title")}>
   {#if moving}

@@ -543,3 +543,53 @@ async def test_participants_resolve_to_org_contacts_at_read_time(client_for) -> 
         by_email = {p["email"].lower(): p for p in fetched["participants"]}
         assert by_email["anna@klant.nl"]["contact_id"] == contact["id"]
         assert by_email["cc@elders.example"]["contact_id"] is None
+
+
+async def test_thread_followup_inherits_all_links_including_task(client_for) -> None:
+    """#157 addendum: a reply in a Gmail thread lands where the original lives — thread
+    inheritance copies *all four* links (task and project included), from the newest
+    logged row, so a moved original re-aims future replies."""
+    from app.core.events import SystemContext
+
+    t = await make_tenant("inter-thread-inherit")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Klant BV"}, headers=headers)
+        ).json()
+        project = (
+            await c.post(
+                "/api/v1/projects",
+                json={"name": "Site", "company_id": company["id"]},
+                headers=headers,
+            )
+        ).json()
+        task = (
+            await c.post(
+                "/api/v1/tasks",
+                json={"title": "Review", "project_id": project["id"]},
+                headers=headers,
+            )
+        ).json()
+
+    await _seed_gmail_row(
+        t,
+        t.user.id,
+        pending=False,
+        message_id="orig-1",
+        thread_id="thr-inherit",
+        mappings={
+            "company_id": uuid.UUID(company["id"]),
+            "project_id": uuid.UUID(project["id"]),
+            "task_id": uuid.UUID(task["id"]),
+        },
+    )
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        ctx = SystemContext(org=t.org, session=session)
+        inherited = await interactions_system.thread_mappings(ctx, "thr-inherit")
+        assert inherited is not None
+        assert inherited["task_id"] == uuid.UUID(task["id"])
+        assert inherited["project_id"] == uuid.UUID(project["id"])
+        assert inherited["company_id"] == uuid.UUID(company["id"])

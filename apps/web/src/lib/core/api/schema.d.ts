@@ -8594,6 +8594,11 @@ export interface components {
              * @default 0
              */
             position: number;
+            /**
+             * Requires Interaction
+             * @default false
+             */
+            requires_interaction: boolean;
         };
         /** StatusRead */
         StatusRead: {
@@ -8623,6 +8628,11 @@ export interface components {
              * @default 0
              */
             position: number;
+            /**
+             * Requires Interaction
+             * @default false
+             */
+            requires_interaction: boolean;
         };
         /** StatusUpdate */
         StatusUpdate: {
@@ -8636,6 +8646,8 @@ export interface components {
             name?: string | null;
             /** Position */
             position?: number | null;
+            /** Requires Interaction */
+            requires_interaction?: boolean | null;
         };
         /** StoredFileRead */
         StoredFileRead: {
@@ -9195,6 +9207,8 @@ export interface components {
             assignee_user_id?: string | null;
             /** Checklists */
             checklists?: components["schemas"]["ChecklistRead"][];
+            /** Closing Interaction Id */
+            closing_interaction_id?: string | null;
             /** Comments */
             comments?: components["schemas"]["CommentRead"][];
             /** Company Id */
@@ -9273,6 +9287,8 @@ export interface components {
              * @default 0
              */
             checklist_total: number;
+            /** Closing Interaction Id */
+            closing_interaction_id?: string | null;
             /**
              * Comment Count
              * @default 0
@@ -9331,6 +9347,8 @@ export interface components {
             allocated_minutes?: number | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
+            /** Closing Interaction Id */
+            closing_interaction_id?: string | null;
             /** Company Id */
             company_id?: string | null;
             /** Completed At */
@@ -9377,6 +9395,8 @@ export interface components {
             allocated_minutes?: number | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
+            /** Closing Interaction Id */
+            closing_interaction_id?: string | null;
             /** Company Id */
             company_id?: string | null;
             /** Description */

@@ -573,6 +573,27 @@ class TaskService:
         )
         return float(result or 0.0) + 1024.0
 
+    async def _closing_interaction_or_422(
+        self, task_id: uuid.UUID, interaction_id: uuid.UUID
+    ) -> None:
+        """The closing contact moment must be linked to *this* task and team-visible (#157).
+        Raw org-scoped SQL against the interactions table — never a cross-module import (§6);
+        a pending gmail row cannot close anything (its content isn't approved yet)."""
+        linked = await self.ctx.session.scalar(
+            sql_text(
+                "SELECT 1 FROM interactions WHERE id = :iid AND org_id = :oid"
+                " AND task_id = :tid AND status = 'logged'"
+            ),
+            {"iid": interaction_id, "oid": self.ctx.org.id, "tid": task_id},
+        )
+        if not linked:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"closing_interaction_id": "errors.tasks_closing_interaction_not_linked"},
+            )
+
     def _resolve_status(
         self, statuses: list[TaskStatusDef], key: str | None, *, allow_default: bool
     ) -> str:
@@ -630,10 +651,32 @@ class TaskService:
         terminal = terminal_keys(statuses)
         old_status = task.status
         new_status = values.get("status", old_status)
+
+        # A designated closing contact moment (#157) — GitHub's "close with comment", but a
+        # contactmoment. It must be linked to *this* task and team-visible; a status flagged
+        # ``requires_interaction`` cannot be entered without one.
+        if values.get("closing_interaction_id") is not None:
+            await self._closing_interaction_or_422(task.id, values["closing_interaction_id"])
+        requires_keys = {s.key for s in statuses if s.requires_interaction}
+        if (
+            new_status != old_status
+            and new_status in requires_keys
+            and not (values.get("closing_interaction_id") or task.closing_interaction_id)
+        ):
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"status": "errors.tasks_closing_interaction_required"},
+            )
+
         if old_status not in terminal and new_status in terminal:
             values["completed_at"] = datetime.now(UTC)
         elif old_status in terminal and new_status not in terminal:
             values["completed_at"] = None
+            # Reopening clears the designation: the next close picks its own moment, so the
+            # gate can never be satisfied by last year's phone call.
+            values.setdefault("closing_interaction_id", None)
 
         if "recurrence" in values or "due_date" in values:
             values["recurrence_next_run"] = rec_mod.compute_next_run(
@@ -655,9 +698,17 @@ class TaskService:
         task = await self.repo.update(task, **values)
 
         if status_changed:
-            await self._record(
-                task.id, "status_changed", {"from": old_status, "to": new_status}
-            )
+            status_payload: dict[str, Any] = {"from": old_status, "to": new_status}
+            if task.closing_interaction_id is not None and "closing_interaction_id" in values:
+                # The trail says *what justified* the close, not only that it happened.
+                status_payload["closing_interaction_id"] = str(task.closing_interaction_id)
+                status_payload["closing_subject"] = await self.ctx.session.scalar(
+                    sql_text(
+                        "SELECT subject FROM interactions WHERE id = :iid AND org_id = :oid"
+                    ),
+                    {"iid": task.closing_interaction_id, "oid": self.ctx.org.id},
+                )
+            await self._record(task.id, "status_changed", status_payload)
             await self._emit_task(
                 "task.status_changed",
                 task,

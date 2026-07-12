@@ -65,6 +65,15 @@
                   <input type="checkbox" name="is_default" value="true" checked={status.is_default} />
                   {t("tasks.statuses.default")}
                 </label>
+                <label class="flex items-center gap-1 text-xs text-text-muted">
+                  <input
+                    type="checkbox"
+                    name="requires_interaction"
+                    value="true"
+                    checked={status.requires_interaction}
+                  />
+                  {t("tasks.statuses.requires_interaction")}
+                </label>
                 <button class="rounded-lg bg-brand px-3 py-1 text-xs font-medium text-white"
                   >{t("common.save")}</button
                 >
@@ -91,6 +100,11 @@
                 {#if status.is_terminal}
                   <span class="rounded bg-surface px-1.5 py-0.5 text-[10px] text-text-muted"
                     >{t("tasks.statuses.terminal")}</span
+                  >
+                {/if}
+                {#if status.requires_interaction}
+                  <span class="rounded bg-surface px-1.5 py-0.5 text-[10px] text-text-muted"
+                    >{t("tasks.statuses.requires_interaction")}</span
                   >
                 {/if}
               </span>
@@ -156,6 +170,10 @@
       <label class="flex items-center gap-2 text-sm text-text">
         <input type="checkbox" name="is_default" value="true" />
         {t("tasks.statuses.default_help")}
+      </label>
+      <label class="flex items-center gap-2 text-sm text-text">
+        <input type="checkbox" name="requires_interaction" value="true" />
+        {t("tasks.statuses.requires_interaction_help")}
       </label>
       <button
         class="w-full rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"

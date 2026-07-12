@@ -54,6 +54,9 @@ class TaskUpdate(BaseModel):
     recurrence: Recurrence | None = None
     # Required when the due date moves later (accountability; logged in the activity feed).
     due_change_reason: str | None = Field(default=None, max_length=1000)
+    # The contact moment this close is justified by (#157) — must be linked to this task and
+    # team-visible; required by statuses flagged ``requires_interaction``.
+    closing_interaction_id: uuid.UUID | None = None
 
 
 class TaskRead(TaskBase):
@@ -65,6 +68,7 @@ class TaskRead(TaskBase):
     status: str
     position: float
     completed_at: datetime | None
+    closing_interaction_id: uuid.UUID | None = None
     recurrence: Recurrence | None
     created_at: datetime
     updated_at: datetime
@@ -112,6 +116,8 @@ class StatusBase(BaseModel):
     is_terminal: bool = False
     # The status a new task starts in. At most one per org (the service enforces exactly one).
     is_default: bool = False
+    # Entering this status demands a designated closing contact moment (#157).
+    requires_interaction: bool = False
 
 
 class StatusCreate(StatusBase):
@@ -126,6 +132,7 @@ class StatusUpdate(BaseModel):
     position: int | None = None
     is_terminal: bool | None = None
     is_default: bool | None = None
+    requires_interaction: bool | None = None
 
 
 class StatusRead(StatusBase):

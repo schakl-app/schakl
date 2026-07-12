@@ -152,6 +152,25 @@ export const interactionActions = {
     return { ok: true };
   },
 
+  /**
+   * Close the linked task with this contact moment (#157): sets the picked terminal status
+   * and designates the interaction as the close's justification. The API validates linkage
+   * and the per-status requires_interaction policy.
+   */
+  closeTaskWithInteraction: async (event: RequestEvent) => {
+    const form = await event.request.formData();
+    const task_id = String(form.get("task_id") ?? "");
+    const interaction_id = String(form.get("interaction_id") ?? "");
+    const status = String(form.get("status") ?? "");
+    if (!task_id || !interaction_id || !status) return fail(400, { error: "errors.required" });
+    const { error } = await apiFor(event).PATCH("/api/v1/tasks/{task_id}", {
+      params: { path: { task_id } },
+      body: { status, closing_interaction_id: interaction_id },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { ok: true };
+  },
+
   rejectInteraction: async (event: RequestEvent) => {
     const form = await event.request.formData();
     const id = String(form.get("id") ?? "");
