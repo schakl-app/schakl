@@ -111,6 +111,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/oidc/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Oidc Callback */
+        get: operations["oidc_callback_api_v1_auth_oidc_callback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/oidc/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Oidc Login */
+        get: operations["oidc_login_api_v1_auth_oidc_login_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/register": {
         parameters: {
             query?: never;
@@ -2089,6 +2123,41 @@ export interface paths {
         put?: never;
         /** Test Email Settings */
         post: operations["test_email_settings_api_v1_settings_email_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/sso": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Sso Settings */
+        get: operations["get_sso_settings_api_v1_settings_sso_get"];
+        /** Save Sso Settings */
+        put: operations["save_sso_settings_api_v1_settings_sso_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/sso/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Sso Settings */
+        post: operations["test_sso_settings_api_v1_settings_sso_test_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5548,6 +5617,8 @@ export interface components {
             local_login_enabled: boolean;
             /** Oidc Enabled */
             oidc_enabled: boolean;
+            /** Oidc Name */
+            oidc_name?: string | null;
             /** Supported Locales */
             supported_locales: string[];
         };
@@ -6340,6 +6411,19 @@ export interface components {
              */
             position: number;
         };
+        /**
+         * RoleOption
+         * @description A role the JIT-provisioning default can point at — included here so the picker does not
+         *     require ``settings.roles.manage`` on top of ``settings.auth.manage``.
+         */
+        RoleOption: {
+            /** Key */
+            key: string;
+            /** Name I18N */
+            name_i18n: {
+                [key: string]: string;
+            };
+        };
         /** RoleRead */
         RoleRead: {
             /** Description I18N */
@@ -6463,6 +6547,64 @@ export interface components {
         SetupStatus: {
             /** Needs Setup */
             needs_setup: boolean;
+        };
+        /** SsoSettingsRead */
+        SsoSettingsRead: {
+            /** Auto Provision */
+            auto_provision: boolean;
+            /** Callback Url */
+            callback_url: string;
+            /** Client Id */
+            client_id: string | null;
+            /** Default Role */
+            default_role: string;
+            /** Discovery Url */
+            discovery_url: string | null;
+            /** Enabled */
+            enabled: boolean;
+            /** Enforced */
+            enforced: boolean;
+            /** Name */
+            name: string;
+            /** Role Options */
+            role_options: components["schemas"]["RoleOption"][];
+            /** Secret Configured */
+            secret_configured: boolean;
+            /** Tested */
+            tested: boolean;
+            /** Weak Encryption Key */
+            weak_encryption_key: boolean;
+        };
+        /** SsoSettingsWrite */
+        SsoSettingsWrite: {
+            /**
+             * Auto Provision
+             * @default true
+             */
+            auto_provision: boolean;
+            /** Client Id */
+            client_id?: string | null;
+            /** Client Secret */
+            client_secret?: string | null;
+            /** Default Role */
+            default_role: string;
+            /** Discovery Url */
+            discovery_url?: string | null;
+            /** Enabled */
+            enabled: boolean;
+            /** Enforced */
+            enforced: boolean;
+            /** Name */
+            name: string;
+        };
+        /** SsoTestResult */
+        SsoTestResult: {
+            /** Error */
+            error?: string | null;
+            /** Issuer */
+            issuer?: string | null;
+            /** Ok */
+            ok: boolean;
         };
         /** StatusCreate */
         StatusCreate: {
@@ -8217,6 +8359,46 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    oidc_callback_api_v1_auth_oidc_callback_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    oidc_login_api_v1_auth_oidc_login_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
             };
         };
     };
@@ -13238,6 +13420,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EmailTestResult"];
+                };
+            };
+        };
+    };
+    get_sso_settings_api_v1_settings_sso_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SsoSettingsRead"];
+                };
+            };
+        };
+    };
+    save_sso_settings_api_v1_settings_sso_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SsoSettingsWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SsoSettingsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_sso_settings_api_v1_settings_sso_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SsoTestResult"];
                 };
             };
         };

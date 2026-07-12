@@ -50,6 +50,7 @@
       t("settings.service_accounts.title"),
       t("settings.service_accounts.subtitle"),
     )}
+    {@render card("/settings/sso", t("settings.sso.title"), t("settings.sso.subtitle"))}
   </div>
 
   <h3 class="mb-2 text-sm font-medium text-text">{t("settings.group.brand_platform")}</h3>

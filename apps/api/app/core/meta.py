@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.config import settings
+from app.core.auth import sso
 from app.core.auth.models import User
 from app.core.currency import DEFAULT_CURRENCY, is_valid_currency
 from app.core.customfields import customizable_entity_types
@@ -80,11 +81,15 @@ class ModulesMeta(BaseModel):
     customizable_entity_types: list[str]
     default_locale: str
     supported_locales: list[str]
+    # Per-org, resolved from the hostname at request time (issue #76): false when the resolved
+    # org *enforces* OIDC (unless the SCHAKL_FORCE_LOCAL_LOGIN break-glass is set).
     local_login_enabled: bool
-    # True iff the OIDC routes are actually mounted (settings.oidc_configured, issue #6) —
-    # the login page renders its SSO button from this, so it must never say "enabled" while
-    # /auth/oidc/login would 404.
+    # True iff the resolved org's stored SSO config is enabled **and** complete (issue #6, now
+    # per org) — the login page renders its SSO button from this, so it must never say
+    # "enabled" while /auth/oidc/login would refuse.
     oidc_enabled: bool
+    # The org's display name for the SSO button ("Inloggen met <name>"); set iff oidc_enabled.
+    oidc_name: str | None = None
     # Instance config, not a secret (it is in every tenant URL): lets the instance-admin UI
     # compute an org's address as <slug>.<base_domain> when no custom domain is set.
     base_domain: str
@@ -308,13 +313,28 @@ async def update_tenant_branding(
         no_permission_required("instance capabilities; the login screen renders from it")
     ],
 )
-async def modules() -> ModulesMeta:
+async def modules(request: Request) -> ModulesMeta:
+    # The auth flags are tenant data (issue #76): resolve the org from the hostname — the same
+    # pre-auth read /meta/tenant does — and reflect its *stored* SSO config at request time.
+    # An unknown host gets the defaults; the login page shows its own unknown-host message.
+    local_login_enabled = True
+    oidc_enabled = False
+    oidc_name: str | None = None
+    async with async_session_maker() as session:
+        org = await resolve_org(session, request_hostname(request))
+        if org is not None:
+            await set_current_org(session, org.id)
+            row = await sso.sso_row(session, org.id)
+            oidc_enabled = sso.sso_configured(row)
+            oidc_name = row.oidc_name if row is not None and oidc_enabled else None
+            local_login_enabled = sso.local_login_enabled_for(row)
     return ModulesMeta(
         enabled_modules=[m.name for m in registry.enabled(settings.enabled_modules)],
         customizable_entity_types=customizable_entity_types(),
         default_locale=settings.default_locale,
         supported_locales=settings.supported_locales,
-        local_login_enabled=settings.local_login_enabled,
-        oidc_enabled=settings.oidc_configured,
+        local_login_enabled=local_login_enabled,
+        oidc_enabled=oidc_enabled,
+        oidc_name=oidc_name,
         base_domain=settings.base_domain,
     )

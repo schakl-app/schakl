@@ -2,10 +2,54 @@
 
 > How to point an external identity provider (Google, Entra ID, Authentik, Keycloak, …) at a
 > schakl install, and how to get the **redirect URI** right — the one thing that trips up every
-> first setup. The environment variables themselves are tabulated in
-> [`DEPLOY.md` → Single sign-on](DEPLOY.md#single-sign-on-oidc-off-by-default); this file is
-> the operator's how-to and troubleshooting guide. Design boundaries for *Google Workspace*
+> first setup. Since issue #76 SSO is configured **in the app, per organization** — Instellingen
+> → Single sign-on — not with environment variables. Design boundaries for *Google Workspace*
 > (login vs API access) live in [`GOOGLE.md`](GOOGLE.md).
+
+## Where SSO is configured
+
+**Instellingen → Single sign-on** (permission: `settings.auth.manage`; admins and owners hold
+it by default). The page holds everything the flow needs:
+
+- **Discovery URL** — the IdP's `…/.well-known/openid-configuration` address.
+- **Client ID** and **client secret** — from the app registration at the IdP. The secret is
+  stored **encrypted at rest** (key derived from `SCHAKL_ENCRYPTION_KEY`, falling back to
+  `SCHAKL_SECRET_KEY`) and is **write-only**: the API accepts a new value and only ever reports
+  "configured / not configured". Leave the field empty on later saves to keep the stored one.
+  If the secret key is still the shipped default, the page warns — set a real
+  `SCHAKL_SECRET_KEY` before storing a client secret in production.
+- **Display name** — what the login button says ("Inloggen met &lt;name&gt;").
+- **Role for new users** + **auto-provision** — whether a first SSO login creates a
+  membership, and with which role. With auto-provision off, only people who already have
+  access can sign in through SSO.
+- **Callback URL** — displayed read-only, derived from the org's verified custom domain (or
+  `<slug>.<base_domain>`). Copy it into the IdP; see below for why it must match exactly.
+- **Test connection** — fetches and validates the discovery document server-side.
+- **Enable** shows the SSO button; **Require single sign-on** (enforce) turns password login
+  off for the org.
+
+Changes apply immediately — no restart, no redeploy. The old `SCHAKL_OIDC_*` env vars are
+retired: the #76 migration read them once at upgrade time and seeded each org's row from them
+(secret already encrypted); after that release they are ignored and can be removed from the
+compose file.
+
+## The bootstrap order (no chicken-and-egg)
+
+A fresh install never needs SSO to exist first: `/setup` always creates a **local** owner
+account. The owner then signs in with a password, configures SSO in Instellingen, runs **Test
+connection**, tries the SSO button, and only then flips **Require single sign-on**. Enforcement
+is a post-setup, per-org setting — the boot-time deadlock of issue #75 no longer exists.
+
+## Never locked out: the two guardrails
+
+1. **Enforce requires a successful test.** The API refuses to store `enforced` until the
+   *current* connection fields (discovery URL, client id, secret) have passed a Test
+   connection; changing any of them clears that marker and demands a new test. Enforcing an
+   untested config would kill password login with nothing proven to replace it.
+2. **Break-glass:** `SCHAKL_FORCE_LOCAL_LOGIN=true` (environment, API container) re-enables
+   local password login regardless of any org's enforce setting. When the IdP is down,
+   misconfigured, or the enforce toggle was flipped in error: set the variable, restart the
+   API, sign in locally, fix or disable SSO in Instellingen → Single sign-on, then unset it.
 
 ## The redirect URI is fixed by the code
 
@@ -29,9 +73,10 @@ Providers match this string **exactly** — scheme, host, port, and path all hav
 `https://host/api/v1/auth/oidc/callback` and `https://host/api/v1/auth/oidc/callback/`
 are two different URIs to Google.
 
-The app **builds** this URL at request time from `request.url_for("oidc_callback")` — there is
-no env var that overrides it. So the host and scheme the app *sees* are what get sent to the
-provider. Getting those right is entirely about the reverse proxy (next section).
+The settings page displays this exact URL (built from the org's domain) so you can copy it.
+At runtime the app **builds** it from the request (`request.url_for("oidc_callback")`) — there
+is no env var that overrides it. So the host and scheme the app *sees* are what get sent to
+the provider. Getting those right is entirely about the reverse proxy (next section).
 
 ## The scheme rule: the app must know it is behind HTTPS
 
@@ -60,12 +105,12 @@ HTTPS. It is not what causes the mismatch, but it belongs to the same "we are be
 
 1. Register an application / OAuth client of type **web / confidential** (it has a client
    secret and does a server-side code exchange).
-2. Set the **redirect URI** to `https://<your-host>/api/v1/auth/oidc/callback`.
+2. Set the **redirect URI** to the callback URL shown on Instellingen → Single sign-on
+   (`https://<your-host>/api/v1/auth/oidc/callback`).
 3. Grant the scopes `openid email profile` (schakl requests exactly these; `email` is required —
    the callback rejects a login with no email).
-4. Note the **discovery URL** (`…/.well-known/openid-configuration`), the **client id**, and the
-   **client secret**, and set the `SCHAKL_OIDC_*` variables from
-   [`DEPLOY.md`](DEPLOY.md#single-sign-on-oidc-off-by-default).
+4. Enter the **discovery URL** (`…/.well-known/openid-configuration`), the **client id** and
+   the **client secret** on Instellingen → Single sign-on, save, and run **Test connection**.
 
 ### Google as the login provider
 
@@ -82,13 +127,9 @@ Using "Sign in with Google" as the OIDC IdP (distinct from Google *Workspace API
    client to your own domain and avoids Google's verification for the login scopes.
 4. You do **not** need an "Authorized JavaScript origin" — this is a server-side redirect flow,
    not a browser (GIS/implicit) one.
-5. Configure schakl:
-   ```
-   SCHAKL_OIDC_ENABLED=true
-   SCHAKL_OIDC_DISCOVERY_URL=https://accounts.google.com/.well-known/openid-configuration
-   SCHAKL_OIDC_CLIENT_ID=<client id>.apps.googleusercontent.com
-   SCHAKL_OIDC_CLIENT_SECRET=<client secret>
-   ```
+5. On Instellingen → Single sign-on, set the discovery URL to
+   `https://accounts.google.com/.well-known/openid-configuration`, enter the client id
+   (`….apps.googleusercontent.com`) and secret, save, and run **Test connection**.
 
 Changes to Google redirect URIs can take a few minutes to propagate.
 
@@ -117,19 +158,26 @@ byte-for-byte with what is registered. Usual culprits: a trailing slash, `http` 
 
 ### The login page shows no SSO button
 
-`SCHAKL_OIDC_ENABLED=true` alone is not enough — discovery URL, client id, **and** client secret
-must all be set, or the routes and the button are withheld (and a startup `WARNING` names what
-is missing). See [`DEPLOY.md`](DEPLOY.md#single-sign-on-oidc-off-by-default).
+The button appears only when the org's stored config is **enabled and complete** — discovery
+URL, client id *and* client secret all set (Instellingen → Single sign-on). A half-configured
+org never advertises a login that would refuse; the save itself rejects "enabled" with missing
+fields, so check the org's settings page rather than the environment.
 
-### The API refuses to start
+### "Single sign-on is not set up for this organization" on `/auth/oidc/login`
 
-`SCHAKL_OIDC_ENFORCED=true` with OIDC not fully configured is a deliberate boot failure —
-enforced OIDC turns off local login, so booting anyway would lock everyone out. Finish the OIDC
-config or unset `SCHAKL_OIDC_ENFORCED`.
+The routes are always mounted, but they answer per org: the org the *hostname* resolves to has
+SSO disabled or incomplete. Multi-org installs: make sure you are on the right host — each org
+brings its own IdP config.
+
+### Locked out after enabling "Require single sign-on"
+
+Set `SCHAKL_FORCE_LOCAL_LOGIN=true` on the API container and restart it — local password login
+works again regardless of the stored setting. Sign in, fix or disable SSO in Instellingen →
+Single sign-on, then remove the variable.
 
 ### Logged in via SSO but immediately 403 / "no access"
 
-A JIT-provisioned SSO user needs a membership in the resolved org. With
-`SCHAKL_OIDC_AUTO_PROVISION_MEMBERSHIP=true` (default) the first login grants one at
-`SCHAKL_OIDC_DEFAULT_ROLE`. With it `false`, invite the user first. If the host doesn't resolve
-to an org at all, no membership can be granted — check the tenant's custom domain / slug.
+A JIT-provisioned SSO user needs a membership in the resolved org. With **auto-provision** on
+(the default) the first login grants one at the configured default role. With it off, invite
+the user first. If the host doesn't resolve to an org at all, no membership can be granted —
+check the tenant's custom domain / slug.

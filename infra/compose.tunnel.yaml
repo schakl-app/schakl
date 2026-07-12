@@ -20,7 +20,9 @@ x-api-env: &api-env
   # Daily, unauthenticated GET to the GitHub Releases API; sends nothing about this instance.
   # Set false to disable all outbound update traffic (docs/DEPLOY.md).
   SCHAKL_UPDATE_CHECK_ENABLED: ${SCHAKL_UPDATE_CHECK_ENABLED:-true}
-  # --- OIDC single sign-on (optional; CLAUDE.md §3) ---
+  # --- Single sign-on (#76): configured IN THE APP (Instellingen -> Single sign-on). The
+  # SCHAKL_OIDC_* pass-through is retired and kept ONE release only, so the #76 upgrade
+  # migration can seed the database from an existing install's env. Remove next release. ---
   SCHAKL_OIDC_ENABLED: ${SCHAKL_OIDC_ENABLED:-false}
   SCHAKL_OIDC_ENFORCED: ${SCHAKL_OIDC_ENFORCED:-false}
   SCHAKL_OIDC_NAME: ${SCHAKL_OIDC_NAME:-sso}
@@ -29,6 +31,9 @@ x-api-env: &api-env
   SCHAKL_OIDC_CLIENT_SECRET: ${SCHAKL_OIDC_CLIENT_SECRET:-}
   SCHAKL_OIDC_AUTO_PROVISION_MEMBERSHIP: ${SCHAKL_OIDC_AUTO_PROVISION_MEMBERSHIP:-true}
   SCHAKL_OIDC_DEFAULT_ROLE: ${SCHAKL_OIDC_DEFAULT_ROLE:-member}
+  # Break-glass (docs/SSO.md): true re-enables local password login regardless of any org's
+  # "require SSO" setting. Use it to recover from a broken IdP, then unset it.
+  SCHAKL_FORCE_LOCAL_LOGIN: ${SCHAKL_FORCE_LOCAL_LOGIN:-false}
 
 services:
   db:

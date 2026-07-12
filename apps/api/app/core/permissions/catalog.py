@@ -106,6 +106,9 @@ CORE_PERMISSIONS: tuple[PermissionSpec, ...] = (
     PermissionSpec("settings.providers.manage", group="settings", position=100),
     # Org e-mail transport (issue #17): embeds API keys / SMTP credentials, admin-only.
     PermissionSpec("settings.email.manage", group="settings", position=110),
+    # Single sign-on (issue #76): embeds the IdP client secret and its "enforce" toggle can
+    # turn password login off for the whole org — admin-only (owner via the wildcard).
+    PermissionSpec("settings.auth.manage", group="settings", position=120),
     # --- dashboard (personal My Day layout) ------------------------------- #
     PermissionSpec("dashboard.prefs.read", group="dashboard", position=10, default_roles=_ALL),
     PermissionSpec("dashboard.prefs.write", group="dashboard", position=20, default_roles=_ALL),

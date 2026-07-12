@@ -80,7 +80,7 @@
         href="/api/v1/auth/oidc/login"
         class="mt-4 block w-full rounded-lg border border-border px-4 py-2 text-center text-sm font-medium text-text hover:bg-surface"
       >
-        {t("auth.sign_in_with_oidc")}
+        {t("auth.sign_in_with_sso", { name: data.oidcName || "SSO" })}
       </a>
     {/if}
   </div>

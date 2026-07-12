@@ -45,7 +45,7 @@ other identifiers; the dot appears solely when the official product name is disp
 | Typed client  | `openapi-typescript` client generated from the API's OpenAPI spec |
 | Database      | PostgreSQL (with Row-Level Security) |
 | Jobs & cache  | Redis + ARQ |
-| Auth          | App-native at the API: FastAPI Users (local username/password, verification, reset) + Authlib (OIDC relying-party, optional & toggleable) · Google OAuth for Workspace scopes |
+| Auth          | App-native at the API: FastAPI Users (local username/password, verification, reset) + Authlib (OIDC relying-party, configured **per org in the DB** — Instellingen → SSO, #76; encrypted secret, runtime toggles, `SCHAKL_FORCE_LOCAL_LOGIN` break-glass) · Google OAuth for Workspace scopes |
 | Infra         | Docker Compose · Traefik · deployed on Hetzner · Cloudflare Zero Trust |
 | MCP / AI       | MCP server over Streamable HTTP (OAuth 2.1 resource server) via the official Python MCP SDK / FastMCP; mounted on the API app; tools contributed per module, read-first |
 

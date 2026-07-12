@@ -53,6 +53,7 @@ export function hasPermission(
 export const SETTINGS_SCREEN_PERMISSIONS = [
   "settings.roles.manage",
   "settings.branding.write",
+  "settings.auth.manage",
   "settings.customfields.write",
   "settings.dashboard.manage",
   "settings.system.read",

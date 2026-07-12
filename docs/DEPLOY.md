@@ -121,29 +121,24 @@ release** (imports across schema revisions are rejected).
 
 ## Single sign-on (OIDC, off by default)
 
-Federates login to an external IdP (Authentik, Keycloak, Entra ID, Google, …). Register the app
-there with callback URL `https://<your-host>/api/v1/auth/oidc/callback`, then set the variables
-below. Provider walkthroughs, the exact-match rules for that callback URL, and the
-`redirect_uri_mismatch` fix live in [`SSO.md`](SSO.md).
+Federates login to an external IdP (Authentik, Keycloak, Entra ID, Google, …). Since #76 this
+is **configured in the app, per organization** — Instellingen → Single sign-on — not with
+environment variables: client id, discovery URL, display name, JIT-provisioning policy, the
+enabled/enforced toggles, and the client secret (encrypted at rest with a key derived from
+`SCHAKL_ENCRYPTION_KEY`, falling back to `SCHAKL_SECRET_KEY`). Changes apply immediately, no
+restart. The settings page shows the exact callback URL to register at the IdP and offers a
+**Test connection**; "require SSO" cannot be switched on until a test has succeeded. Provider
+walkthroughs, the exact-match rules for the callback URL, and the `redirect_uri_mismatch` fix
+live in [`SSO.md`](SSO.md).
+
+The old `SCHAKL_OIDC_*` variables are retired: the migration that ships #76 reads them **once**
+at upgrade time and seeds each org's row from them (secret stored encrypted), after which the
+app ignores them — remove them from your compose file at leisure. One auth-related variable
+remains:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `SCHAKL_OIDC_ENABLED` | `false` | Mount the SSO routes and show the SSO button on the login page. |
-| `SCHAKL_OIDC_DISCOVERY_URL` | — | The IdP's `/.well-known/openid-configuration` URL. **Required when enabled.** |
-| `SCHAKL_OIDC_CLIENT_ID` | — | Client id registered at the IdP. **Required when enabled.** |
-| `SCHAKL_OIDC_CLIENT_SECRET` | — | Client secret. **Required when enabled.** |
-| `SCHAKL_OIDC_ENFORCED` | `false` | Disable local username/password login; SSO becomes the only way in. |
-| `SCHAKL_OIDC_NAME` | `sso` | Internal client name; cosmetic. |
-| `SCHAKL_OIDC_AUTO_PROVISION_MEMBERSHIP` | `true` | First SSO login auto-grants a membership in the resolved org. Set `false` to require an explicit invite first. |
-| `SCHAKL_OIDC_DEFAULT_ROLE` | `member` | Role granted by auto-provisioning. |
-
-All three of discovery URL, client id and client secret must be set (non-empty) for OIDC
-to be considered configured — one gate covers both the routes and the login-page button,
-so a half-configured instance never shows an SSO button that 404s (issue #6). If
-`SCHAKL_OIDC_ENABLED=true` with any of them missing, the API logs a startup `WARNING`
-naming the missing variables and runs with local login only. If `SCHAKL_OIDC_ENFORCED=true`
-with any of them missing, the API **refuses to start** — enforced OIDC turns local login
-off, so booting anyway would lock every user out.
+| `SCHAKL_FORCE_LOCAL_LOGIN` | `false` | **Break-glass.** Re-enables local password login regardless of any org's "require SSO" setting — for when the IdP is broken or misconfigured and nobody can sign in. Set it, sign in locally, fix or disable SSO in Instellingen → Single sign-on, then unset it. |
 
 ## File storage (the second stateful thing)
 

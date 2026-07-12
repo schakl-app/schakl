@@ -108,19 +108,13 @@ class Settings(BaseSettings):
     auth_cookie_secure: bool = False  # True behind HTTPS in production
     auth_token_lifetime_seconds: int = 60 * 60 * 24 * 7
     allow_registration: bool = True
-
-    # --- OIDC (optional; when enforced, local login is disabled — CLAUDE.md §3, P0) ---
-    oidc_enabled: bool = False
-    oidc_enforced: bool = False
-    oidc_name: str = "sso"
-    oidc_discovery_url: str | None = None
-    oidc_client_id: str | None = None
-    oidc_client_secret: str | None = None
-    # On SSO login, auto-grant a membership in the resolved org so JIT-provisioned users aren't
-    # locked out (they'd otherwise have an identity but no org access). Disable to require an
-    # explicit invite first.
-    oidc_auto_provision_membership: bool = True
-    oidc_default_role: str = "member"
+    # OIDC / SSO is **per-org tenant data** (issue #76): everything lives on the RLS-forced
+    # ``org_auth_settings`` row and is managed under Instellingen → SSO — the old
+    # ``SCHAKL_OIDC_*`` env vars are retired (the #76 migration seeded them into the DB once).
+    # This one flag remains: the operator break-glass that re-enables local password login
+    # regardless of any org's "enforce SSO" toggle, so a broken IdP can never lock a tenant
+    # out of its own instance (docs/SSO.md).
+    force_local_login: bool = False
 
     # --- Google Workspace OAuth (stub for P3) ---
     google_client_id: str | None = None
@@ -142,32 +136,6 @@ class Settings(BaseSettings):
     instance_admin_enabled: bool = False
     # Upper bound for a single impersonation grant; every grant is audited and time-boxed.
     impersonation_max_minutes: int = 60
-
-    @property
-    def local_login_enabled(self) -> bool:
-        """Local username/password login is on unless OIDC is *enforced*."""
-        return not self.oidc_enforced
-
-    @property
-    def oidc_missing_settings(self) -> list[str]:
-        """The env vars the OIDC flow needs but that are unset (empty string counts as unset)."""
-        required = {
-            "SCHAKL_OIDC_ENABLED": self.oidc_enabled,
-            "SCHAKL_OIDC_DISCOVERY_URL": self.oidc_discovery_url,
-            "SCHAKL_OIDC_CLIENT_ID": self.oidc_client_id,
-            "SCHAKL_OIDC_CLIENT_SECRET": self.oidc_client_secret,
-        }
-        return [name for name, value in required.items() if not value]
-
-    @property
-    def oidc_configured(self) -> bool:
-        """Single gate for the whole OIDC surface (issue #6).
-
-        Both the route mount (``build_oidc_router``) and the login page's SSO button
-        (``/meta/modules``) key off this one property, so the button can never point at a
-        route that was not mounted.
-        """
-        return not self.oidc_missing_settings
 
     @property
     def is_production(self) -> bool:
