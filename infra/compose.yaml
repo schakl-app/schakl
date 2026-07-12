@@ -26,6 +26,8 @@ x-api-env: &api-env
   SCHAKL_OIDC_CLIENT_SECRET: ${SCHAKL_OIDC_CLIENT_SECRET:-}
   SCHAKL_OIDC_AUTO_PROVISION_MEMBERSHIP: ${SCHAKL_OIDC_AUTO_PROVISION_MEMBERSHIP:-true}
   SCHAKL_OIDC_DEFAULT_ROLE: ${SCHAKL_OIDC_DEFAULT_ROLE:-member}
+  # File storage (issue #123): the named volume below; back it up alongside the DB.
+  SCHAKL_STORAGE_PATH: /data/storage
 
 services:
   db:
@@ -97,6 +99,9 @@ services:
       context: ..
       dockerfile: apps/api/Dockerfile
     environment: *api-env
+    volumes:
+      # Uploaded files (issue #123) — stateful like db-data; back up both together.
+      - storage-data:/data/storage
     depends_on:
       # Not `db: service_healthy` — the app role must exist before `alembic upgrade head`
       # connects as it. db-init already waits on db being healthy.
@@ -118,6 +123,9 @@ services:
       dockerfile: apps/api/Dockerfile
     command: ["worker"]
     environment: *api-env
+    volumes:
+      # The worker shares the files volume (image variants / processing land here, #123).
+      - storage-data:/data/storage
     depends_on:
       api:
         condition: service_healthy   # ensures migrations have run
@@ -154,3 +162,4 @@ services:
 
 volumes:
   db-data:
+  storage-data:

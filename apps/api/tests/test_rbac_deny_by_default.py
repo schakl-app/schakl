@@ -46,6 +46,9 @@ _EXEMPT_OPERATIONS = frozenset(
         ("get", "/api/v1/members/lookup"),
         # The code-defined registry. Holds no tenant data — it ships in the open-source repo.
         ("get", "/api/v1/permissions/catalog"),
+        # Any signed-in member may fetch their tenant's files (#123); the row is RLS-scoped,
+        # so a random id 404s here rather than 403s.
+        ("get", "/api/v1/files/{file_id}"),
     }
 )
 

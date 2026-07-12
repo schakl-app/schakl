@@ -124,6 +124,15 @@ CORE_PERMISSIONS: tuple[PermissionSpec, ...] = (
         default_roles=(ROLE_ADMIN, ROLE_MEMBER),
     ),
     PermissionSpec("apikeys.service_account.manage", group="apikeys", position=20),
+    # --- file storage (issue #123) ----------------------------------------- #
+    # Uploading is a staff act (avatars, attachments, logos); reading is any member — the
+    # serve route is RLS-scoped and declares no permission on purpose.
+    PermissionSpec(
+        "files.file.write",
+        group="files",
+        position=10,
+        default_roles=(ROLE_ADMIN, ROLE_MEMBER),
+    ),
 )
 
 

@@ -145,6 +145,21 @@ naming the missing variables and runs with local login only. If `SCHAKL_OIDC_ENF
 with any of them missing, the API **refuses to start** — enforced OIDC turns local login
 off, so booting anyway would lock every user out.
 
+## File storage (the second stateful thing)
+
+Uploaded files (issue #123 — avatars, task attachments, branding assets) live on the named
+volume **`storage-data`**, mounted into `api` and `worker` at `SCHAKL_STORAGE_PATH`
+(`/data/storage`). Postgres is no longer the only state on the box:
+
+- **Back up `storage-data` alongside the database.** A restored DB without the volume leaves
+  `files` rows whose bytes are gone (the API then serves 404 for them); a restored volume
+  without the DB leaves orphaned bytes. Snapshot both together.
+- **Node-local by design.** A single volume is right for the one-host Compose deploy; a future
+  multi-node/cloud deploy swaps the storage backend (`SCHAKL_STORAGE_BACKEND`), not the callers.
+- **Limits are instance config:** `SCHAKL_UPLOAD_MAX_BYTES` (default 10 MB) and
+  `SCHAKL_UPLOAD_ALLOWED_TYPES` (a JSON list; defaults to images, PDF, text, zip and office
+  documents). The API refuses anything outside them with `413`/`422`.
+
 ## Releases and image tags
 
 Images are built **only** when a `v*` tag is pushed (`.github/workflows/release.yml`). Pushing

@@ -51,6 +51,25 @@ class Settings(BaseSettings):
     update_check_enabled: bool = True
     update_check_repo: str = "schakl-app/schakl"
 
+    # --- File storage (issue #123) ---
+    # "local" writes under storage_path (a named volume in Compose); "gdrive"/"s3" are the
+    # future backends the seam exists for. Callers depend on the interface, never the path.
+    storage_backend: str = "local"
+    storage_path: str = "/data/storage"
+    # Upload guardrails: bytes, and an allow-list of content types (images, pdf, plain text,
+    # archives, office docs — the practical attachment set; extend per deployment via env).
+    upload_max_bytes: int = 10 * 1024 * 1024
+    upload_allowed_types: list[str] = Field(
+        default_factory=lambda: [
+            "image/png", "image/jpeg", "image/webp", "image/gif", "image/svg+xml",
+            "application/pdf", "text/plain", "text/csv",
+            "application/zip",
+            "application/msword", "application/vnd.ms-excel",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ]
+    )
+
     # --- Database / cache ---
     # Async SQLAlchemy URL (asyncpg driver). The app connects as a NON-superuser role so
     # Postgres RLS is enforced (superusers bypass RLS) — see infra/db init and CLAUDE.md §5.

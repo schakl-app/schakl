@@ -21,8 +21,8 @@ from app.core.apikeys.router import router as apikeys_router
 from app.core.auth.router import build_auth_router
 from app.core.customfields.router import router as customfields_router
 from app.core.dashboard import router as dashboard_router
-from app.core.email.router import router as email_settings_router
 from app.core.domains import router as domains_router
+from app.core.email.router import router as email_settings_router
 from app.core.instance.router import router as instance_router
 from app.core.members import router as members_router
 from app.core.meta import router as meta_router
@@ -30,6 +30,7 @@ from app.core.permissions.reconcile import reconcile_permission_defaults
 from app.core.permissions.router import permissions_router, roles_router
 from app.core.providers.router import router as providers_router
 from app.core.setup import router as setup_router
+from app.core.storage.router import router as files_router
 from app.core.system import readiness
 from app.core.system import router as system_router
 from app.core.userprefs import router as userprefs_router
@@ -80,6 +81,7 @@ def create_app() -> FastAPI:
     api.include_router(customfields_router)
     api.include_router(activity_router)
     api.include_router(providers_router)
+    api.include_router(files_router)
     api.include_router(email_settings_router)
     api.include_router(dashboard_router)
     api.include_router(userprefs_router)

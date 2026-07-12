@@ -499,6 +499,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload File
+         * @description Multipart upload. Size and content type are bounded by instance config.
+         */
+        post: operations["upload_file_api_v1_files_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/{file_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Serve File
+         * @description Stream the bytes. Cross-tenant ids read as 404 (tenant-scoped row lookup).
+         */
+        get: operations["serve_file_api_v1_files__file_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hosting": {
         parameters: {
             query?: never;
@@ -3014,6 +3054,11 @@ export interface components {
             password: string;
             /** Token */
             token: string;
+        };
+        /** Body_upload_file_api_v1_files_post */
+        Body_upload_file_api_v1_files_post: {
+            /** File */
+            file: string;
         };
         /** Body_verify_request_token_api_v1_auth_request_verify_token_post */
         Body_verify_request_token_api_v1_auth_request_verify_token_post: {
@@ -6212,6 +6257,36 @@ export interface components {
             /** Position */
             position?: number | null;
         };
+        /** StoredFileRead */
+        StoredFileRead: {
+            /** Content Type */
+            content_type: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By User Id */
+            created_by_user_id: string | null;
+            /** Entity Id */
+            entity_id: string | null;
+            /** Entity Type */
+            entity_type: string | null;
+            /** Filename */
+            filename: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /** Size Bytes */
+            size_bytes: number;
+        };
         /** SystemInfo */
         SystemInfo: {
             build: components["schemas"]["BuildInfo"];
@@ -8764,6 +8839,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DomainRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_file_api_v1_files_post: {
+        parameters: {
+            query?: {
+                entity_type?: string | null;
+                entity_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_file_api_v1_files_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoredFileRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    serve_file_api_v1_files__file_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

@@ -53,7 +53,7 @@ _DOMAIN_TABLES = (
     "websites, hosting, domains, providers, "
     "time_entry_drafts, time_entries, tasks, projects, contacts, contact_types, "
     "custom_field_definitions, "
-    "activity_log, dashboard_prefs, user_prefs, companies, "
+    "files, activity_log, dashboard_prefs, user_prefs, companies, "
     "api_keys, service_accounts, "
     "email_settings, "
     "role_audit_log, membership_roles, role_permissions, roles, memberships, org_settings, "
