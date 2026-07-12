@@ -56,7 +56,13 @@ export interface CompanyPanelSpec {
   /** Matches the API PanelSpec.key it renders (e.g. "companies.details"). */
   key: string;
   module: string;
-  component: Component<{ companyId: string; data: Record<string, unknown> }>;
+  /** `members` is optional context the host already holds (mention candidates, #151) —
+   *  a panel that doesn't take the prop simply never reads it. */
+  component: Component<{
+    companyId: string;
+    data: Record<string, unknown>;
+    members?: PanelMember[];
+  }>;
   position?: number;
 }
 

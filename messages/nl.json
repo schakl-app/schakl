@@ -1360,6 +1360,7 @@
   "notifications.event_label.time.entry_approved": "Mijn uren worden goedgekeurd",
   "notifications.event_label.time.timesheet_reminder": "Mijn urenregistratie is nog leeg",
   "notifications.event_label.interactions.email_pending": "Een e-mail wacht op mijn beoordeling",
+  "notifications.event_label.interactions.mentioned": "Ik word genoemd in een contactmoment",
   "notifications.group.task": "Taken",
   "notifications.group.project": "Projecten",
   "notifications.group.company": "Klanten",
@@ -1977,6 +1978,7 @@
   "errors.google_upload_failed": "Het uploaden is mislukt. Probeer het opnieuw.",
   "errors.google_no_automation_connection": "Er is geen automatiseringsaccount ingesteld onder Instellingen, Google Workspace.",
   "notifications.event.interactions.email_pending": "Nieuwe e-mail vastgelegd: “{subject}”. Keur goed om de inhoud met het team te delen.",
+  "notifications.event.interactions.mentioned": "noemde je in een contactmoment: “{subject}”",
   "notifications.entity.interaction": "Contactmoment",
   "ai.time.parsed": "Concept ingevuld: {summary}. Controleer het formulier en sla op.",
   "ai.time.parse_empty": "Kon hier geen registratie uit afleiden; voeg een tijd, duur of klantnaam toe en probeer opnieuw."

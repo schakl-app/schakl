@@ -19,7 +19,7 @@ from sqlalchemy import text as sql_text
 from app.core.auth.models import User
 from app.core.events import emit
 from app.core.models import Membership
-from app.core.richtext import markdown_to_plaintext, sanitize_markdown
+from app.core.richtext import extract_mention_ids, markdown_to_plaintext, sanitize_markdown
 from app.core.sorting import apply_sort, user_sort_name
 from app.core.tenancy import RequestContext
 from app.errors import AppError
@@ -122,23 +122,9 @@ def _display_name(user: User | None) -> str | None:
     return user.full_name or user.email
 
 
-# `@[Display Name](mention:<uuid>)` — the marker the composer writes and this extracts (issue #63).
-# The name is display-only; the id is the truth, so a rename never breaks who was mentioned.
-_MENTION_RE = re.compile(
-    r"@\[[^\]]+\]\(mention:([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
-    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\)"
-)
-
-
-def _extract_mentions(body: str) -> list[uuid.UUID]:
-    """The distinct user ids mentioned in a comment body, in first-seen order."""
-    seen: dict[uuid.UUID, None] = {}
-    for match in _MENTION_RE.finditer(body):
-        try:
-            seen.setdefault(uuid.UUID(match.group(1)), None)
-        except ValueError:
-            continue
-    return list(seen)
+# The `@[Name](mention:<uuid>)` marker lives in core (`richtext.extract_mention_ids`) since
+# #151 — interactions parse the same syntax, and two copies of the regex would drift.
+_extract_mentions = extract_mention_ids
 
 
 def _attribution(live: User | None, snapshot: str | None) -> tuple[str | None, bool]:

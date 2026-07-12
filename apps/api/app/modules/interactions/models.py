@@ -144,6 +144,13 @@ class Interaction(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Auditable
         JSONB, nullable=False, default=list, server_default="[]"
     )
 
+    #: Users @mentioned in a manual note body (#151), captured structurally like
+    #: ``TaskComment.mentioned_user_ids`` (#63): extracted from the ``@[Name](mention:<uuid>)``
+    #: markers and validated against org membership by the service.
+    mentioned_user_ids: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+
     source: Mapped[str] = mapped_column(
         String(10), nullable=False, default=InteractionSource.MANUAL.value
     )

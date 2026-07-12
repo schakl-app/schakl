@@ -55,6 +55,9 @@ TIME_TIMESHEET_REMINDER = "time.timesheet_reminder"
 # owner can retune cadence/channels, immediate by default (a review queue is not tomorrow's
 # news). The constant in ``google/gmail/service.py`` (``PENDING_EVENT``) must match.
 INTERACTION_EMAIL_PENDING = "interactions.email_pending"
+# @mentioned in a contactmoment note (#151, like task.mentioned). Emitted by the interactions
+# service (``MENTIONED_EVENT`` there must match), recipients = the newly mentioned users.
+INTERACTION_MENTIONED = "interactions.mentioned"
 # automation (issue #27): a rule's ``notification.send`` action. Not in EVENT_TYPES — it is
 # ingested directly through this module's published service (its entity type varies per run,
 # so the static subscribe/ENTITY_FOR_EVENT path cannot carry it), and it has no place in the
@@ -82,6 +85,7 @@ EVENT_TYPES: tuple[str, ...] = (
     TIME_ENTRY_APPROVED,
     TIME_TIMESHEET_REMINDER,
     INTERACTION_EMAIL_PENDING,
+    INTERACTION_MENTIONED,
 )
 
 #: Which entity type each event attaches to (for the activity feed grouping + link target).
@@ -105,6 +109,7 @@ ENTITY_FOR_EVENT: dict[str, str] = {
     TIME_ENTRY_APPROVED: ENTITY_TIMESHEET,
     TIME_TIMESHEET_REMINDER: ENTITY_TIMESHEET,
     INTERACTION_EMAIL_PENDING: ENTITY_INTERACTION,
+    INTERACTION_MENTIONED: ENTITY_INTERACTION,
 }
 
 # --- channels ---------------------------------------------------------------------------- #

@@ -136,7 +136,7 @@
       <h2 class="mb-4 text-sm font-semibold text-text">{t(panel.title_key)}</h2>
       {#if spec}
         {@const PanelComponent = spec.component}
-        <PanelComponent companyId={company.id} data={panel.data} />
+        <PanelComponent companyId={company.id} data={panel.data} members={data.members} />
       {:else}
         <pre class="overflow-x-auto text-xs text-text-muted">{JSON.stringify(
             panel.data,

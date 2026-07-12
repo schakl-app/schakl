@@ -34,12 +34,19 @@
     items,
     total,
     prefill = {},
+    members = [],
   }: {
     items: InteractionItem[];
     total: number;
     /** The host entity's link, stamped on rows added from this panel. */
     prefill?: Record<string, string | null | undefined>;
+    /** Org members, for the note editor's @mention autocomplete (#151). */
+    members?: { user_id: string; full_name: string | null; email: string }[];
   } = $props();
+
+  const mentionCandidates = $derived(
+    members.map((m) => ({ id: m.user_id, name: m.full_name || m.email })),
+  );
 
   const me = $derived(page.data.user?.id ?? null);
   const canWrite = $derived(can(page.data.user, "interactions.interaction.write"));
@@ -216,13 +223,17 @@
 {/if}
 
 <Modal bind:open={showCreate} title={t("interactions.add")}>
-  <InteractionForm {prefill} onsaved={() => (showCreate = false)} />
+  <InteractionForm {prefill} mentions={mentionCandidates} onsaved={() => (showCreate = false)} />
 </Modal>
 
 <Modal bind:open={showEdit} title={t("interactions.edit")}>
   {#if editing}
     {#key editing.id}
-      <InteractionForm interaction={editing} onsaved={() => (showEdit = false)} />
+      <InteractionForm
+        interaction={editing}
+        mentions={mentionCandidates}
+        onsaved={() => (showEdit = false)}
+      />
     {/key}
   {/if}
 </Modal>

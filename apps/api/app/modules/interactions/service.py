@@ -19,6 +19,8 @@ from app.core.activity import ActivityService
 from app.core.activity.service import snapshot
 from app.core.auth.models import User
 from app.core.events import emit
+from app.core.models import Membership
+from app.core.richtext import extract_mention_ids, sanitize_markdown
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_zoneinfo
 from app.errors import AppError
@@ -53,6 +55,10 @@ _LINK_TABLES = {
     "task_id": "tasks",
     "contact_id": "contacts",
 }
+
+#: Must match ``notifications.events.INTERACTION_MENTIONED`` (#151) — a string on the bus,
+#: like the gmail feed's ``PENDING_EVENT``, never a cross-module import (CLAUDE.md §6).
+MENTIONED_EVENT = "interactions.mentioned"
 
 
 class InteractionService:
@@ -135,20 +141,24 @@ class InteractionService:
             }
         )
         user = self.ctx.user
+        body = sanitize_markdown(data.body_text)
+        mentioned = await self._valid_mentions(extract_mention_ids(body))
         row = await self.repo.create(
             kind=data.kind.value,
             status=InteractionStatus.LOGGED.value,
             occurred_at=await self._as_instant(data.occurred_at),
             subject=data.subject.strip(),
-            body_text=data.body_text,
+            body_text=body,
             direction=data.direction.value,
             owner_user_id=user.id,
             owner_name=user.full_name or user.email,
             participants=[p.model_dump() for p in data.participants],
+            mentioned_user_ids=[str(uid) for uid in mentioned],
             source=InteractionSource.MANUAL.value,
             **links,
         )
         await ActivityService(self.ctx).record_created(ENTITY_TYPE, row.id)
+        await self._notify_mentions(row, mentioned)
         return await self._present_one(row)
 
     async def update(self, interaction_id: uuid.UUID, data: InteractionUpdate) -> dict[str, Any]:
@@ -176,11 +186,22 @@ class InteractionService:
             values["participants"] = [p.model_dump() for p in data.participants or []]
         if values.get("occurred_at") is not None:
             values["occurred_at"] = await self._as_instant(values["occurred_at"])
+        # An edited body re-extracts its mentions (#151); only people mentioned for the first
+        # time are notified — re-saving a note must not re-ping everyone already in it.
+        newly_mentioned: list[uuid.UUID] = []
+        if "body_text" in values:
+            already = set(row.mentioned_user_ids or [])
+            body = sanitize_markdown(values["body_text"])
+            values["body_text"] = body
+            mentioned = await self._valid_mentions(extract_mention_ids(body))
+            values["mentioned_user_ids"] = [str(uid) for uid in mentioned]
+            newly_mentioned = [uid for uid in mentioned if str(uid) not in already]
         values.update(await self._resolve_links(link_updates, partial=True))
         row = await self.repo.update(row, **values)
         await ActivityService(self.ctx).record_update(
             ENTITY_TYPE, row.id, before, snapshot(row, _AUDITED_FIELDS)
         )
+        await self._notify_mentions(row, newly_mentioned)
         return await self._present_one(row)
 
     async def delete(self, interaction_id: uuid.UUID) -> None:
@@ -237,6 +258,41 @@ class InteractionService:
         return await self._present_one(row)
 
     # --- helpers ---------------------------------------------------------------- #
+    async def _valid_mentions(self, ids: list[uuid.UUID]) -> list[uuid.UUID]:
+        """Keep only the mentioned ids that are members of this org (#151, like #63)."""
+        if not ids:
+            return []
+        members = set(
+            (
+                await self.ctx.session.execute(
+                    select(Membership.user_id).where(
+                        Membership.org_id == self._org_id, Membership.user_id.in_(ids)
+                    )
+                )
+            ).scalars()
+        )
+        return [uid for uid in ids if uid in members]
+
+    async def _notify_mentions(self, row: Interaction, mentioned: list[uuid.UUID]) -> None:
+        """Tell the people newly @mentioned in this note — never the author themselves."""
+        recipients = [uid for uid in mentioned if uid != self.ctx.user.id]
+        if not recipients:
+            return
+        await emit(
+            MENTIONED_EVENT,
+            self.ctx,
+            {
+                "interaction_id": row.id,
+                "subject": row.subject,
+                # Link targets for the notification (format.ts): the host the note hangs on.
+                "task_id": row.task_id,
+                "project_id": row.project_id,
+                "company_id": row.company_id,
+                "contact_id": row.contact_id,
+                "_recipients": recipients,
+            },
+        )
+
     async def _as_instant(self, value: datetime) -> datetime:
         """A naive datetime is the org's wall clock (§8): attach the tenant zone, store an instant.
 

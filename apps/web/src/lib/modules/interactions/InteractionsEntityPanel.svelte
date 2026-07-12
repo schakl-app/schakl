@@ -12,7 +12,6 @@
   let {
     data,
     context,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     lookups,
   }: { data: unknown; context: EntityPanelContext; lookups: EntityPanelLookups } = $props();
 
@@ -29,4 +28,5 @@
   items={panel.items}
   total={panel.total}
   prefill={{ [panel.entityField]: context.entityId }}
+  members={lookups.members}
 />

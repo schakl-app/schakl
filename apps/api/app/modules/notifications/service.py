@@ -87,6 +87,7 @@ ENTITY_ID_KEY: dict[str, str] = {
     "time.timesheet_reminder": "user_id",
     # Ingested directly by the gmail feed (#146); the bus handler exists for completeness.
     "interactions.email_pending": "interaction_id",
+    "interactions.mentioned": "interaction_id",
 }
 
 SORTABLE: dict[str, Any] = {"created_at": Notification.created_at}

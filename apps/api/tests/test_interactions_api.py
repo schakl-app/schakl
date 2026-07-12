@@ -316,3 +316,53 @@ async def _member(client, headers, email: str) -> User:
     return User(
         id=uuid.UUID(res.json()["user_id"]), email=email, hashed_password="", is_active=True
     )
+
+
+async def test_mentions_in_note_validate_store_and_notify(client_for) -> None:
+    """#151: `@[Name](mention:<uuid>)` markers in a manual note are membership-validated,
+    stored structurally, and notify the mentioned member — a foreign uuid does nothing, an
+    edit only pings people mentioned for the first time."""
+    from tests.test_notifications_fanout import _member
+
+    t = await make_tenant("inter-mentions")
+    colleague = await _member(t, "collega@example.com")
+    stranger_id = uuid.uuid4()  # nobody in this org — must be dropped, never notified
+    headers = await auth_cookie(t.user)
+    colleague_headers = await auth_cookie(colleague)
+
+    def marker(uid) -> str:
+        return f"@[Collega](mention:{uid})"
+
+    async with client_for(t.host) as c:
+        created = await c.post(
+            "/api/v1/interactions",
+            json={
+                "kind": "note",
+                "occurred_at": _NOW.isoformat(),
+                "subject": "Notitie",
+                "body_text": f"Afgestemd met {marker(colleague.id)} en {marker(stranger_id)}.",
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        row = created.json()
+
+        inbox = (await c.get("/api/v1/notifications", headers=colleague_headers)).json()
+        mention_rows = [
+            n for n in inbox["items"] if n["event_type"] == "interactions.mentioned"
+        ]
+        assert len(mention_rows) == 1
+        assert mention_rows[0]["payload"]["subject"] == "Notitie"
+
+        # Re-saving the same body must not re-notify the same person.
+        updated = await c.patch(
+            f"/api/v1/interactions/{row['id']}",
+            json={"body_text": f"Afgestemd met {marker(colleague.id)}. Bijgewerkt."},
+            headers=headers,
+        )
+        assert updated.status_code == 200, updated.text
+        inbox = (await c.get("/api/v1/notifications", headers=colleague_headers)).json()
+        assert (
+            len([n for n in inbox["items"] if n["event_type"] == "interactions.mentioned"])
+            == 1
+        )
