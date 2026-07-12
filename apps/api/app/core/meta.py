@@ -15,6 +15,7 @@ from sqlalchemy import select
 
 from app.config import settings
 from app.core.auth.models import User
+from app.core.currency import DEFAULT_CURRENCY, is_valid_currency
 from app.core.customfields import customizable_entity_types
 from app.core.models import OrgSettings, OrgStatus
 from app.core.permissions.deps import no_permission_required, require_permission
@@ -39,6 +40,8 @@ class TenantBranding(BaseModel):
     # IANA zone the tenant's local calendar runs in (CLAUDE.md §8); the web renders event
     # timestamps in it. Public so the login screen and SSR have it before anyone signs in.
     timezone: str
+    # ISO 4217 code money renders in (#124) — per-org, like the timezone.
+    currency: str
     enabled_modules: list[str]
     # Suspended orgs still expose branding (the login screen needs it) but every
     # authenticated request is blocked with errors.org_suspended.
@@ -60,6 +63,8 @@ class TenantBrandingUpdate(BaseModel):
     default_locale: str | None = None
     # An IANA zone name; validated against the zoneinfo database in the handler, not by pattern.
     timezone: str | None = Field(default=None, max_length=64)
+    # ISO 4217; validated against the known-codes list in the handler.
+    currency: str | None = Field(default=None, min_length=3, max_length=3)
     # Which modules this org runs; must stay a subset of the instance's mounted modules
     # and always include the hub module (companies).
     enabled_modules: list[str] | None = None
@@ -191,6 +196,7 @@ async def tenant_branding(request: Request) -> TenantBranding:
             accent_color=s.accent_color if s else "#0ea5e9",
             default_locale=s.default_locale if s else settings.default_locale,
             timezone=s.timezone if s else settings.default_timezone,
+            currency=s.currency if s else DEFAULT_CURRENCY,
             enabled_modules=list(s.enabled_modules)
             if s and s.enabled_modules
             else list(settings.enabled_modules),
@@ -222,6 +228,15 @@ async def update_tenant_branding(
             status_code=422,
             fields={"timezone": "errors.validation"},
         )
+    if "currency" in data and data["currency"] is not None:
+        data["currency"] = data["currency"].upper()
+        if not is_valid_currency(data["currency"]):
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"currency": "errors.validation"},
+            )
     if data.get("enabled_modules") is not None:
         modules = data["enabled_modules"]
         available = set(settings.enabled_modules)
@@ -256,6 +271,7 @@ async def update_tenant_branding(
         accent_color=s.accent_color,
         default_locale=s.default_locale,
         timezone=s.timezone,
+        currency=s.currency,
         enabled_modules=list(s.enabled_modules) if s.enabled_modules else [],
     )
 

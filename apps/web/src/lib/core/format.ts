@@ -4,6 +4,7 @@
  * day-month ordering and 24-hour clocks. Date-only ISO strings are wall-clock values and
  * are formatted in UTC so they never shift a day.
  */
+import { getCurrency } from "$lib/core/currency";
 import { getClock, getDateFormat } from "$lib/core/dateformat";
 import { getTimeZone } from "$lib/core/timezone";
 import { getLocale } from "$lib/paraglide/runtime";
@@ -149,11 +150,17 @@ export function fmtNumber(value: number, maximumFractionDigits = 2): string {
   return new Intl.NumberFormat(dateLocale(), { maximumFractionDigits }).format(value);
 }
 
+/**
+ * "€ 1.234" / "€ 87,50" — money in the tenant's currency (#124, per-org like the timezone).
+ * Whole amounts drop their fraction (a budget reads "€ 1.234", not "€ 1.234,00"); an amount
+ * with cents keeps the currency's own fraction digits, so an € 87,50 hourly rate no longer
+ * rounds to € 88 the way the old `maximumFractionDigits: 0` forced it to.
+ */
 export function fmtMoney(amount: number): string {
   return new Intl.NumberFormat(dateLocale(), {
     style: "currency",
-    currency: "EUR",
-    maximumFractionDigits: 0,
+    currency: getCurrency(),
+    trailingZeroDisplay: "stripIfInteger",
   }).format(amount);
 }
 

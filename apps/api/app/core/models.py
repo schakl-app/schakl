@@ -109,6 +109,11 @@ class OrgSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
         default=settings.default_timezone,
         server_default=settings.default_timezone,
     )
+    # ISO 4217 code every money figure renders in (#124) — a business fact of the org, like the
+    # timezone; validated against app.core.currency.ISO_4217 on write.
+    currency: Mapped[str] = mapped_column(
+        String(3), nullable=False, default="EUR", server_default="EUR"
+    )
     enabled_modules: Mapped[list[str]] = mapped_column(
         ARRAY(String), nullable=False, default=list
     )

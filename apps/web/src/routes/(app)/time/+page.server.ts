@@ -205,7 +205,7 @@ export const actions: Actions = {
         company_id: String(form.get("company_id") ?? "").trim() || null,
         status: "active",
         budget_period: "total",
-        currency: "EUR",
+        currency: event.locals.theme.currency,
         billable_default: form.get("billable_default") === "on",
         hourly_rate: Number.isFinite(rate) && rate > 0 ? rate : null,
         custom: parseCustom(form.get("custom")),

@@ -1,7 +1,9 @@
 <script lang="ts">
   import { enhance } from "$app/forms";
+  import { currencyLabel } from "$lib/core/currencies";
   import { localeLabel, t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
+  import { getLocale } from "$lib/paraglide/runtime";
 
   let { data, form } = $props();
 
@@ -87,6 +89,28 @@
             </optgroup>
           </select>
           <p class="mt-1 text-xs text-text-muted">{t("settings.branding.timezone_help")}</p>
+        </div>
+        <div>
+          <label for="currency" class="mb-1 block text-sm font-medium text-text"
+            >{t("settings.branding.currency")}</label
+          >
+          <select id="currency" name="currency" class={inputClass}>
+            <optgroup label={t("settings.branding.timezone_common")}>
+              {#each data.commonCurrencies as code (code)}
+                <option value={code} selected={branding.currency === code}
+                  >{currencyLabel(code, getLocale())}</option
+                >
+              {/each}
+            </optgroup>
+            <optgroup label={t("settings.branding.currency_other")}>
+              {#each data.otherCurrencies as code (code)}
+                <option value={code} selected={branding.currency === code}
+                  >{currencyLabel(code, getLocale())}</option
+                >
+              {/each}
+            </optgroup>
+          </select>
+          <p class="mt-1 text-xs text-text-muted">{t("settings.branding.currency_help")}</p>
         </div>
         <div>
           <label for="logo_url" class="mb-1 block text-sm font-medium text-text"

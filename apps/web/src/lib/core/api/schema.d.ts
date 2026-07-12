@@ -6513,6 +6513,8 @@ export interface components {
             accent_color: string;
             /** Brand Name */
             brand_name: string;
+            /** Currency */
+            currency: string;
             /** Default Locale */
             default_locale: string;
             /** Enabled Modules */
@@ -6544,6 +6546,8 @@ export interface components {
             accent_color?: string | null;
             /** Brand Name */
             brand_name?: string | null;
+            /** Currency */
+            currency?: string | null;
             /** Default Locale */
             default_locale?: string | null;
             /** Enabled Modules */

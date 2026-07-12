@@ -15,9 +15,11 @@ import type { Handle } from "@sveltejs/kit";
 
 import "$lib/core/paraglide-strategy.server"; // register custom locale strategy (server)
 import "$lib/core/timezone-context.server"; // register the server timezone resolver
+import "$lib/core/currency-context.server"; // register the server currency resolver
 import "$lib/core/dateformat-context.server"; // register the server format resolver
 import "$lib/modules"; // self-register web modules
 
+import { withRequestCurrency } from "$lib/core/currency-context.server";
 import { parseFormatCookie } from "$lib/core/dateformat";
 import { withRequestFormat } from "$lib/core/dateformat-context.server";
 import { asLocale, LOCALE_COOKIE, LOCALE_COOKIE_OPTIONS, parseLocaleCookie } from "$lib/core/i18n";
@@ -79,20 +81,23 @@ const handleContext: Handle = async ({ event, resolve }) => {
   // per-browser cache read here so SSR needs no extra `/prefs` round-trip (docs/PERFORMANCE.md).
   // The Settings → Account page reconciles it against the persisted value when visited.
   const format = parseFormatCookie(event.request.headers.get("cookie"));
-  // The tenant zone and the format choice each ride an AsyncLocalStorage store (for the synchronous
-  // SSR read seams in `format.ts`) and are stamped on <html> for their client halves.
+  // The tenant zone/currency and the format choice each ride an AsyncLocalStorage store (for the
+  // synchronous SSR read seams in `format.ts`) and are stamped on <html> for their client halves.
   return withRequestTimezone(theme.timezone, () =>
-    withRequestFormat(format, () =>
-      withRequestLocale(locale, () =>
-        resolve(event, {
-          transformPageChunk: ({ html }) =>
-            html
-              .replace("%theme%", () => style)
-              .replace("%colorScheme%", () => colorScheme)
-              .replace("%timezone%", () => theme.timezone)
-              .replace("%clock%", () => format.clock)
-              .replace("%dateFormat%", () => format.date),
-        }),
+    withRequestCurrency(theme.currency, () =>
+      withRequestFormat(format, () =>
+        withRequestLocale(locale, () =>
+          resolve(event, {
+            transformPageChunk: ({ html }) =>
+              html
+                .replace("%theme%", () => style)
+                .replace("%colorScheme%", () => colorScheme)
+                .replace("%timezone%", () => theme.timezone)
+                .replace("%currency%", () => theme.currency)
+                .replace("%clock%", () => format.clock)
+                .replace("%dateFormat%", () => format.date),
+          }),
+        ),
       ),
     ),
   );

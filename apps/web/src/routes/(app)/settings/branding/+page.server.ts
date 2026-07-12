@@ -1,5 +1,6 @@
 import { fail, redirect } from "@sveltejs/kit";
 
+import { COMMON_CURRENCIES, otherCurrencies } from "$lib/core/currencies";
 import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
@@ -20,6 +21,8 @@ export const load: PageServerLoad = async (event) => {
     locales: ["nl", "en"],
     commonTimezones: [...COMMON_EUROPEAN_TIMEZONES],
     otherTimezones: otherTimeZones(),
+    commonCurrencies: [...COMMON_CURRENCIES],
+    otherCurrencies: otherCurrencies(),
   };
 };
 
@@ -38,6 +41,7 @@ export const actions: Actions = {
         accent_color: String(form.get("accent_color") ?? "").trim() || undefined,
         default_locale: String(form.get("default_locale") ?? "").trim() || undefined,
         timezone: String(form.get("timezone") ?? "").trim() || undefined,
+        currency: String(form.get("currency") ?? "").trim() || undefined,
       },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
