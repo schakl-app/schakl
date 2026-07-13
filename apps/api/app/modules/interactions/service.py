@@ -289,6 +289,13 @@ class InteractionService:
             ENTITY_TYPE, row.id, before, snapshot(row, _AUDITED_FIELDS)
         )
         await self._record_link_moves(row, old_links)
+        # Remapping is the owner engaging with the row — enough to retire the "waiting on
+        # your review" notification about it (#170). Bus-only, like approve/reject.
+        await emit(
+            "interaction.remapped",
+            self.ctx,
+            {"interaction_id": row.id, "owner_user_id": row.owner_user_id},
+        )
         return await self._present_one(row)
 
     # --- helpers ---------------------------------------------------------------- #
