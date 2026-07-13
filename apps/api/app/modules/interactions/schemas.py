@@ -9,10 +9,37 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.modules.interactions.models import (
     InteractionDirection,
-    InteractionKind,
     InteractionSource,
     InteractionStatus,
 )
+
+
+class InteractionKindDefBase(BaseModel):
+    """A tenant-configurable interaction kind (#174) — the contact-types shape."""
+
+    key: str = Field(min_length=1, max_length=50, pattern=r"^[a-z0-9_]+$")
+    label_i18n: dict[str, str] = Field(default_factory=dict)
+    position: int = 0
+    active: bool = True
+
+
+class InteractionKindDefCreate(InteractionKindDefBase):
+    pass
+
+
+class InteractionKindDefUpdate(BaseModel):
+    label_i18n: dict[str, str] | None = None
+    position: int | None = None
+    active: bool | None = None
+
+
+class InteractionKindDefRead(InteractionKindDefBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    org_id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
 
 
 class Participant(BaseModel):
@@ -35,7 +62,8 @@ class InteractionRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    kind: InteractionKind
+    #: A key into the org's kind list (#174) — no longer a closed enum.
+    kind: str
     status: InteractionStatus
     occurred_at: datetime
     subject: str | None = None
@@ -67,7 +95,8 @@ class InteractionRead(BaseModel):
 class InteractionCreate(BaseModel):
     """A manually logged touchpoint — meetings, calls, notes. Emails only arrive via gmail."""
 
-    kind: InteractionKind
+    #: Validated by the service against the org's active kinds; ``email`` is never manual.
+    kind: str = Field(min_length=1, max_length=50, pattern=r"^[a-z0-9_]+$")
     occurred_at: datetime
     subject: str = Field(..., min_length=1, max_length=500)
     body_text: str | None = None
@@ -80,7 +109,7 @@ class InteractionCreate(BaseModel):
 
 
 class InteractionUpdate(BaseModel):
-    kind: InteractionKind | None = None
+    kind: str | None = Field(None, min_length=1, max_length=50, pattern=r"^[a-z0-9_]+$")
     occurred_at: datetime | None = None
     subject: str | None = Field(None, min_length=1, max_length=500)
     body_text: str | None = None

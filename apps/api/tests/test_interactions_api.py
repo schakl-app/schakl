@@ -67,7 +67,7 @@ async def test_manual_crud_derives_company_and_filters(client_for) -> None:
         created = await c.post(
             "/api/v1/interactions",
             json={
-                "kind": "meeting",
+                "kind": "physical_meeting",
                 "occurred_at": _NOW.isoformat(),
                 "subject": "Kick-off",
                 "body_text": "Besproken: planning en scope.",
@@ -116,6 +116,95 @@ async def test_manual_crud_derives_company_and_filters(client_for) -> None:
         assert (
             await c.delete(f"/api/v1/interactions/{row['id']}", headers=headers)
         ).status_code == 204
+
+
+async def test_interaction_kinds_tenant_configurable(client_for) -> None:
+    """#174: kinds seed lazily per org (meeting split into online/physical), custom kinds
+    become loggable, the retired plain "meeting" no longer validates, email is protected,
+    an in-use kind refuses deletion, and the catalog is tenant-isolated."""
+    t = await make_tenant("inter-kinds-a")
+    other = await make_tenant("inter-kinds-b")
+    headers = await auth_cookie(t.user)
+    other_headers = await auth_cookie(other.user)
+    async with client_for(t.host) as c:
+        kinds = (await c.get("/api/v1/interactions/kinds", headers=headers)).json()
+        assert {k["key"] for k in kinds} == {
+            "email", "online_meeting", "physical_meeting", "call", "note",
+        }
+
+        # The retired hardcoded kind is gone; the split halves and custom kinds work.
+        base = {"occurred_at": _NOW.isoformat(), "subject": "Soorten"}
+        assert (
+            await c.post("/api/v1/interactions", json={"kind": "meeting", **base}, headers=headers)
+        ).status_code == 422
+        assert (
+            await c.post(
+                "/api/v1/interactions", json={"kind": "online_meeting", **base}, headers=headers
+            )
+        ).status_code == 201
+        created_kind = (
+            await c.post(
+                "/api/v1/interactions/kinds",
+                json={"key": "site_visit", "label_i18n": {"nl": "Locatiebezoek", "en": "Site visit"}},
+                headers=headers,
+            )
+        )
+        assert created_kind.status_code == 201, created_kind.text
+        row = await c.post("/api/v1/interactions", json={"kind": "site_visit", **base}, headers=headers)
+        assert row.status_code == 201
+
+        # In use → deletion refused; deactivation hides it from new writes.
+        kind_id = created_kind.json()["id"]
+        assert (
+            await c.delete(f"/api/v1/interactions/kinds/{kind_id}", headers=headers)
+        ).status_code == 409
+        assert (
+            await c.patch(
+                f"/api/v1/interactions/kinds/{kind_id}", json={"active": False}, headers=headers
+            )
+        ).status_code == 200
+        assert (
+            await c.post("/api/v1/interactions", json={"kind": "site_visit", **base}, headers=headers)
+        ).status_code == 422
+        # Editing an existing row while keeping its now-deactivated kind still works.
+        assert (
+            await c.patch(
+                f"/api/v1/interactions/{row.json()['id']}",
+                json={"kind": "site_visit", "subject": "Nog steeds"},
+                headers=headers,
+            )
+        ).status_code == 200
+
+        # email is system-owned: relabel fine, deactivate/delete refused.
+        email_kind = next(k for k in kinds if k["key"] == "email")
+        assert (
+            await c.patch(
+                f"/api/v1/interactions/kinds/{email_kind['id']}",
+                json={"label_i18n": {"nl": "Mail", "en": "Mail"}},
+                headers=headers,
+            )
+        ).status_code == 200
+        assert (
+            await c.patch(
+                f"/api/v1/interactions/kinds/{email_kind['id']}",
+                json={"active": False},
+                headers=headers,
+            )
+        ).status_code == 409
+        assert (
+            await c.delete(f"/api/v1/interactions/kinds/{email_kind['id']}", headers=headers)
+        ).status_code == 409
+
+    # Tenant isolation: the other org seeds its own defaults, never sees site_visit.
+    async with client_for(other.host) as cb:
+        other_kinds = (await cb.get("/api/v1/interactions/kinds", headers=other_headers)).json()
+        assert "site_visit" not in {k["key"] for k in other_kinds}
+        assert (
+            await cb.patch(
+                f"/api/v1/interactions/kinds/{kind_id}", json={"active": True},
+                headers=other_headers,
+            )
+        ).status_code == 404
 
 
 async def test_manual_email_kind_refused(client_for) -> None:
@@ -514,7 +603,7 @@ async def test_participants_resolve_to_org_contacts_at_read_time(client_for) -> 
             await c.post(
                 "/api/v1/interactions",
                 json={
-                    "kind": "meeting",
+                    "kind": "physical_meeting",
                     "occurred_at": _NOW.isoformat(),
                     "subject": "Kennismaking",
                     "participants": [
@@ -558,7 +647,7 @@ async def test_participants_resolve_to_org_members_at_read_time(client_for) -> N
             await c.post(
                 "/api/v1/interactions",
                 json={
-                    "kind": "meeting",
+                    "kind": "physical_meeting",
                     "occurred_at": _NOW.isoformat(),
                     "subject": "Interne afstemming met klant erbij",
                     "participants": [

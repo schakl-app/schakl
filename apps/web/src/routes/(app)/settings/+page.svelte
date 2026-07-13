@@ -87,6 +87,11 @@
       t("settings.contact_types.subtitle"),
     )}
     {@render card(
+      "/settings/interaction-kinds",
+      t("settings.interaction_kinds.title"),
+      t("settings.interaction_kinds.subtitle"),
+    )}
+    {@render card(
       "/settings/providers",
       t("settings.providers.title"),
       t("settings.providers.subtitle"),

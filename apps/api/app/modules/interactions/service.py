@@ -25,15 +25,19 @@ from app.core.tenancy import RequestContext
 from app.core.timezone import org_zoneinfo
 from app.errors import AppError
 from app.modules.interactions.models import (
+    DEFAULT_KINDS,
     ENTITY_TYPE,
     HOST_ENTITY,
-    MANUAL_KINDS,
+    PROTECTED_KIND,
     Interaction,
+    InteractionKindDef,
     InteractionSource,
     InteractionStatus,
 )
 from app.modules.interactions.schemas import (
     InteractionCreate,
+    InteractionKindDefCreate,
+    InteractionKindDefUpdate,
     InteractionRemap,
     InteractionUpdate,
 )
@@ -151,13 +155,7 @@ class InteractionService:
     # --- manual writes ---------------------------------------------------------- #
     async def create(self, data: InteractionCreate) -> dict[str, Any]:
         self.ctx.require("interactions.interaction.write")
-        if data.kind not in MANUAL_KINDS:
-            raise AppError(
-                "validation",
-                "errors.validation",
-                status_code=422,
-                fields={"kind": "errors.interactions_kind_not_manual"},
-            )
+        await self._require_manual_kind(data.kind)
         links = await self._resolve_links(
             {
                 "company_id": data.company_id,
@@ -170,7 +168,7 @@ class InteractionService:
         body = sanitize_markdown(data.body_text)
         mentioned = await self._valid_mentions(extract_mention_ids(body))
         row = await self.repo.create(
-            kind=data.kind.value,
+            kind=data.kind,
             status=InteractionStatus.LOGGED.value,
             occurred_at=await self._as_instant(data.occurred_at),
             subject=data.subject.strip(),
@@ -193,20 +191,16 @@ class InteractionService:
         self._manual_only(row)
         before = snapshot(row, _AUDITED_FIELDS)
         sent = data.model_dump(exclude_unset=True)
-        if "kind" in sent and data.kind not in MANUAL_KINDS:
-            raise AppError(
-                "validation",
-                "errors.validation",
-                status_code=422,
-                fields={"kind": "errors.interactions_kind_not_manual"},
-            )
+        # Keeping the row's own kind is always allowed — a deactivated kind must not brick
+        # editing the rows that already carry it (#174).
+        if sent.get("kind") is not None and sent["kind"] != row.kind:
+            await self._require_manual_kind(sent["kind"])
         link_updates = {k: sent[k] for k in _LINK_TABLES if k in sent}
         values: dict[str, Any] = {
             k: v for k, v in sent.items() if k not in _LINK_TABLES and k != "participants"
         }
-        for enum_field in ("kind", "direction"):
-            if enum_field in values and values[enum_field] is not None:
-                values[enum_field] = values[enum_field].value
+        if values.get("direction") is not None:
+            values["direction"] = values["direction"].value
         if "subject" in values and values["subject"]:
             values["subject"] = values["subject"].strip()
         if "participants" in sent:
@@ -372,6 +366,20 @@ class InteractionService:
         if value.tzinfo is None:
             return value.replace(tzinfo=await org_zoneinfo(self.ctx.session, self.ctx.org.id))
         return value
+
+    async def _require_manual_kind(self, kind: str) -> None:
+        """A manual row's kind must be one of the org's active kinds — and never ``email``,
+        which only the gmail feed writes (#174)."""
+        if kind != PROTECTED_KIND:
+            active = await InteractionKindService(self.ctx).active_keys()
+            if kind in active:
+                return
+        raise AppError(
+            "validation",
+            "errors.validation",
+            status_code=422,
+            fields={"kind": "errors.interactions_kind_not_manual"},
+        )
 
     def _manual_only(self, row: Interaction) -> None:
         """Gmail rows change through the review flow, never through plain edit/delete."""
@@ -593,6 +601,91 @@ class InteractionService:
             "deep_link": row.deep_link,
             "created_at": row.created_at,
         }
+
+
+class InteractionKindService:
+    """CRUD for tenant-configurable interaction kinds (#174), gated on
+    ``interactions.kind.manage`` — the contact-types / leave-types shape.
+
+    Defaults seed lazily, once per org, the way leave types do: the first list (or manual
+    write) by someone who can log interactions creates the five system kinds. ``email`` is
+    protected — relabel it, never delete or deactivate it, because the gmail feed keeps
+    writing rows of that kind regardless of what the tenant configures.
+    """
+
+    def __init__(self, ctx: RequestContext) -> None:
+        self.ctx = ctx
+        self.repo = ctx.repo(InteractionKindDef)
+
+    @property
+    def _org_id(self) -> uuid.UUID:
+        return self.ctx.org.id
+
+    async def list(self, *, include_inactive: bool = False) -> list[InteractionKindDef]:
+        await self._ensure_defaults()
+        stmt = self.repo.scoped_select().order_by(
+            InteractionKindDef.position, InteractionKindDef.key
+        )
+        if not include_inactive:
+            stmt = stmt.where(InteractionKindDef.active.is_(True))
+        return list((await self.ctx.session.execute(stmt)).scalars().all())
+
+    async def active_keys(self) -> set[str]:
+        await self._ensure_defaults()
+        stmt = select(InteractionKindDef.key).where(
+            InteractionKindDef.org_id == self._org_id, InteractionKindDef.active.is_(True)
+        )
+        return set((await self.ctx.session.execute(stmt)).scalars())
+
+    async def _ensure_defaults(self) -> None:
+        """Seed the system kinds once per org (idempotent; skipped for read-only roles)."""
+        if not self.ctx.can("interactions.interaction.write"):
+            return
+        if await self.repo.count() > 0:
+            return
+        for spec in DEFAULT_KINDS:
+            await self.repo.create(**spec)
+
+    async def create(self, data: InteractionKindDefCreate) -> InteractionKindDef:
+        self.ctx.require("interactions.kind.manage")
+        await self._ensure_defaults()
+        existing = await self.ctx.session.scalar(
+            select(InteractionKindDef.id).where(
+                InteractionKindDef.org_id == self._org_id, InteractionKindDef.key == data.key
+            )
+        )
+        if existing is not None:
+            raise AppError(
+                "conflict", "errors.conflict", status_code=409, fields={"key": "errors.conflict"}
+            )
+        return await self.repo.create(**data.model_dump(mode="json"))
+
+    async def update(
+        self, kind_id: uuid.UUID, data: InteractionKindDefUpdate
+    ) -> InteractionKindDef:
+        self.ctx.require("interactions.kind.manage")
+        row = await self.repo.get_or_404(kind_id)
+        values = data.model_dump(mode="json", exclude_unset=True)
+        if row.key == PROTECTED_KIND and values.get("active") is False:
+            # The gmail feed writes `email` rows whatever the tenant configures — a kind that
+            # keeps occurring cannot be switched off, only relabelled.
+            raise AppError("conflict", "errors.interactions_kind_protected", status_code=409)
+        return await self.repo.update(row, **values)
+
+    async def delete(self, kind_id: uuid.UUID) -> None:
+        """Hard-delete only unused kinds; ones with history deactivate instead."""
+        self.ctx.require("interactions.kind.manage")
+        row = await self.repo.get_or_404(kind_id)
+        if row.key == PROTECTED_KIND:
+            raise AppError("conflict", "errors.interactions_kind_protected", status_code=409)
+        in_use = await self.ctx.session.scalar(
+            select(func.count())
+            .select_from(Interaction)
+            .where(Interaction.org_id == self._org_id, Interaction.kind == row.key)
+        )
+        if int(in_use or 0) > 0:
+            raise AppError("conflict", "errors.interactions_kind_in_use", status_code=409)
+        await self.repo.delete(row)
 
 
 async def count_for_entity(

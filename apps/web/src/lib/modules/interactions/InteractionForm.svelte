@@ -8,12 +8,19 @@
    * a hand-typed 14:00 lands on the same timeline instant the reader sees.
    */
   import { enhance } from "$app/forms";
+  import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import TimeInput from "$lib/core/ui/TimeInput.svelte";
 
-  import { type InteractionItem, instantToLocal } from "./format";
+  import {
+    type InteractionItem,
+    type InteractionKindDef,
+    instantToLocal,
+    kindLabel,
+    manualKinds,
+  } from "./format";
 
   let {
     interaction = null,
@@ -31,12 +38,24 @@
   } = $props();
 
   const local = interaction ? instantToLocal(interaction.occurred_at) : null;
-  let kind = $state(interaction?.kind ?? "meeting");
+  let kind = $state(interaction?.kind ?? "");
   let date = $state(local?.date ?? new Date().toISOString().slice(0, 10));
   let time = $state(local?.time ?? "");
   let error = $state("");
 
-  const KINDS = ["meeting", "call", "note"] as const;
+  // Kinds are tenant-defined (#174), fetched once per session (module-level cache). The
+  // list shows the active ones, plus the row's own kind when editing — a deactivated kind
+  // must stay pickable on the rows that already carry it.
+  const locale = $derived((page.data.locale as string | undefined) ?? "nl");
+  let allKinds = $state<InteractionKindDef[]>([]);
+  $effect(() => {
+    void manualKinds().then((fetched) => {
+      allKinds = fetched;
+      if (!kind) kind = fetched.find((k) => k.active)?.key ?? "";
+    });
+  });
+  const kinds = $derived(allKinds.filter((k) => k.active || k.key === kind));
+
   const DIRECTIONS = ["none", "inbound", "outbound"] as const;
 
   const links = $derived(
@@ -78,8 +97,8 @@
         bind:value={kind}
         class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
       >
-        {#each KINDS as option (option)}
-          <option value={option}>{t(`interactions.kind.${option}`)}</option>
+        {#each kinds as option (option.key)}
+          <option value={option.key}>{kindLabel(option, locale)}</option>
         {/each}
       </select>
     </label>

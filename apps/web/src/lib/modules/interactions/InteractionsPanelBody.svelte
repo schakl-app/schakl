@@ -44,7 +44,7 @@
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
 
   import CloseTaskDialog from "./CloseTaskDialog.svelte";
-  import { type InteractionItem, KIND_ICONS } from "./format";
+  import { type InteractionItem, kindIcon } from "./format";
   import InteractionForm from "./InteractionForm.svelte";
   import InteractionMoveDialog from "./InteractionMoveDialog.svelte";
 
@@ -239,7 +239,7 @@
 {:else}
   <ul class="divide-y divide-border">
     {#each items as item (item.id)}
-      {@const Icon = KIND_ICONS[item.kind] ?? KIND_ICONS.note}
+      {@const Icon = kindIcon(item.kind)}
       {@const open = expanded === item.id}
       {@const chips = linkChips(item)}
       <li class="py-2.5">

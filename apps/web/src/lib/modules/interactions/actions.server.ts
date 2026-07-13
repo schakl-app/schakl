@@ -42,7 +42,7 @@ export const interactionActions = {
     if (!occurred) return fail(400, { error: "errors.required" });
     const { error } = await apiFor(event).POST("/api/v1/interactions", {
       body: {
-        kind: String(form.get("kind") ?? "note") as "note",
+        kind: String(form.get("kind") ?? "note"),
         occurred_at: occurred,
         subject: String(form.get("subject") ?? "").trim(),
         body_text: String(form.get("body_text") ?? "").trim() || null,
@@ -62,7 +62,7 @@ export const interactionActions = {
     const { error } = await apiFor(event).PATCH("/api/v1/interactions/{interaction_id}", {
       params: { path: { interaction_id: id } },
       body: {
-        kind: String(form.get("kind") ?? "note") as "note",
+        kind: String(form.get("kind") ?? "note"),
         ...(occurred ? { occurred_at: occurred } : {}),
         subject: String(form.get("subject") ?? "").trim(),
         body_text: String(form.get("body_text") ?? "").trim() || null,

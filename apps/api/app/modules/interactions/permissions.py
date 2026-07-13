@@ -36,4 +36,12 @@ INTERACTION_PERMISSIONS: list[PermissionSpec] = [
         position=40,
         default_roles=(ROLE_ADMIN, ROLE_MEMBER),
     ),
+    # Tenant-configurable interaction kinds (#174): everyone who logs needs the list; managing
+    # the catalog under Instellingen is admin-only, like contacts.type.manage.
+    PermissionSpec(
+        "interactions.kind.read",
+        position=50,
+        default_roles=(ROLE_ADMIN, ROLE_MEMBER),
+    ),
+    PermissionSpec("interactions.kind.manage", position=60),
 ]

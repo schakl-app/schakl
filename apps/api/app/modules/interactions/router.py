@@ -10,15 +10,73 @@ from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
 from app.modules.interactions.schemas import (
     InteractionCreate,
+    InteractionKindDefCreate,
+    InteractionKindDefRead,
+    InteractionKindDefUpdate,
     InteractionRead,
     InteractionReject,
     InteractionRemap,
     InteractionUpdate,
 )
-from app.modules.interactions.service import InteractionService
+from app.modules.interactions.service import InteractionKindService, InteractionService
 from app.schemas import Page
 
 router = APIRouter(prefix="/interactions", tags=["interactions"])
+
+
+# --- interaction kinds (#174) ------------------------------------------------ #
+# Declared before ``/{interaction_id}`` so "kinds" never matches the id path param.
+@router.get(
+    "/kinds",
+    response_model=list[InteractionKindDefRead],
+    dependencies=[require_permission("interactions.kind.read")],
+)
+async def list_interaction_kinds(
+    include_inactive: bool = Query(False),
+    ctx: RequestContext = Depends(require_context),
+) -> list[InteractionKindDefRead]:
+    items = await InteractionKindService(ctx).list(include_inactive=include_inactive)
+    return [InteractionKindDefRead.model_validate(k) for k in items]
+
+
+@router.post(
+    "/kinds",
+    response_model=InteractionKindDefRead,
+    status_code=201,
+    dependencies=[require_permission("interactions.kind.manage")],
+)
+async def create_interaction_kind(
+    payload: InteractionKindDefCreate,
+    ctx: RequestContext = Depends(require_context),
+) -> InteractionKindDefRead:
+    return InteractionKindDefRead.model_validate(await InteractionKindService(ctx).create(payload))
+
+
+@router.patch(
+    "/kinds/{kind_id}",
+    response_model=InteractionKindDefRead,
+    dependencies=[require_permission("interactions.kind.manage")],
+)
+async def update_interaction_kind(
+    kind_id: uuid.UUID,
+    payload: InteractionKindDefUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> InteractionKindDefRead:
+    return InteractionKindDefRead.model_validate(
+        await InteractionKindService(ctx).update(kind_id, payload)
+    )
+
+
+@router.delete(
+    "/kinds/{kind_id}",
+    status_code=204,
+    dependencies=[require_permission("interactions.kind.manage")],
+)
+async def delete_interaction_kind(
+    kind_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> None:
+    await InteractionKindService(ctx).delete(kind_id)
 
 
 @router.get(
@@ -31,7 +89,7 @@ async def list_interactions(
     project_id: uuid.UUID | None = Query(None),
     task_id: uuid.UUID | None = Query(None),
     contact_id: uuid.UUID | None = Query(None),
-    kind: str | None = Query(None, max_length=10),
+    kind: str | None = Query(None, max_length=50),
     status: str | None = Query(None, max_length=10),
     owner_user_id: uuid.UUID | None = Query(None),
     mine: bool = Query(False, description="Only my own rows — the review queue's filter"),

@@ -1713,6 +1713,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/interactions/kinds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Interaction Kinds */
+        get: operations["list_interaction_kinds_api_v1_interactions_kinds_get"];
+        put?: never;
+        /** Create Interaction Kind */
+        post: operations["create_interaction_kind_api_v1_interactions_kinds_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/interactions/kinds/{kind_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Interaction Kind */
+        delete: operations["delete_interaction_kind_api_v1_interactions_kinds__kind_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Interaction Kind */
+        patch: operations["update_interaction_kind_api_v1_interactions_kinds__kind_id__patch"];
+        trace?: never;
+    };
     "/api/v1/interactions/{interaction_id}": {
         parameters: {
             query?: never;
@@ -6175,7 +6211,8 @@ export interface components {
             contact_id?: string | null;
             /** @default none */
             direction: components["schemas"]["InteractionDirection"];
-            kind: components["schemas"]["InteractionKind"];
+            /** Kind */
+            kind: string;
             /**
              * Occurred At
              * Format: date-time
@@ -6195,11 +6232,75 @@ export interface components {
          * @enum {string}
          */
         InteractionDirection: "inbound" | "outbound" | "none";
-        /**
-         * InteractionKind
-         * @enum {string}
-         */
-        InteractionKind: "email" | "meeting" | "call" | "note";
+        /** InteractionKindDefCreate */
+        InteractionKindDefCreate: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Key */
+            key: string;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            };
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+        };
+        /** InteractionKindDefRead */
+        InteractionKindDefRead: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Key */
+            key: string;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            };
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** InteractionKindDefUpdate */
+        InteractionKindDefUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            } | null;
+            /** Position */
+            position?: number | null;
+        };
         /** InteractionRead */
         InteractionRead: {
             /** Body Text */
@@ -6227,7 +6328,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            kind: components["schemas"]["InteractionKind"];
+            /** Kind */
+            kind: string;
             /**
              * Occurred At
              * Format: date-time
@@ -6300,7 +6402,8 @@ export interface components {
             /** Contact Id */
             contact_id?: string | null;
             direction?: components["schemas"]["InteractionDirection"] | null;
-            kind?: components["schemas"]["InteractionKind"] | null;
+            /** Kind */
+            kind?: string | null;
             /** Occurred At */
             occurred_at?: string | null;
             /** Participants */
@@ -7686,6 +7789,8 @@ export interface components {
              * @default to
              */
             role: string;
+            /** User Id */
+            user_id?: string | null;
         };
         /**
          * PartyReadRef
@@ -14470,6 +14575,134 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InteractionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_interaction_kinds_api_v1_interactions_kinds_get: {
+        parameters: {
+            query?: {
+                include_inactive?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InteractionKindDefRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_interaction_kind_api_v1_interactions_kinds_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InteractionKindDefCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InteractionKindDefRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_interaction_kind_api_v1_interactions_kinds__kind_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_interaction_kind_api_v1_interactions_kinds__kind_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InteractionKindDefUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InteractionKindDefRead"];
                 };
             };
             /** @description Validation Error */
