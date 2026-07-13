@@ -18,14 +18,20 @@
       "en": "See the live demo"
     }
   },
+  "forms": {
+    "turnstileSiteKey": ""
+  },
   "nav": [
     { "href": "/#features", "nl": "Functies", "en": "Features" },
     { "href": "/#selfhost", "nl": "Hosting", "en": "Hosting" },
-    { "href": "/docs/", "nl": "Documentatie", "en": "Docs" }
+    { "href": "/docs/", "nl": "Documentatie", "en": "Docs" },
+    { "href": "/contact/", "nl": "Contact", "en": "Contact" }
   ],
   "footerLinks": [
     { "href": "/docs/", "nl": "Documentatie", "en": "Documentation" },
     { "href": "/docs/admin/installation/", "nl": "Installeren", "en": "Install" },
+    { "href": "/contact/", "nl": "Contact", "en": "Contact" },
+    { "href": "/interest/", "nl": "Interesse", "en": "Interest" },
     { "href": "https://github.com/schakl-app/schakl", "nl": "GitHub", "en": "GitHub" }
   ],
   "footerNote": {

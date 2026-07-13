@@ -1,0 +1,38 @@
+{
+  "slug": "interest",
+  "order": 20,
+  "title": {
+    "nl": "Interesse in schakl?",
+    "en": "Interested in schakl?"
+  },
+  "intro": {
+    "nl": "Laat je gegevens achter, dan houden we je op de hoogte en denken we mee over jouw bureau.",
+    "en": "Leave your details and we'll keep you posted and think along about your agency."
+  },
+  "submitLabel": {
+    "nl": "Houd me op de hoogte",
+    "en": "Keep me posted"
+  },
+  "successMessage": {
+    "nl": "Bedankt voor je interesse, we houden je op de hoogte.",
+    "en": "Thanks for your interest, we'll keep you posted."
+  },
+  "recipient": "team@breik.nl",
+  "fields": [
+    { "name": "name", "type": "text", "required": true, "label": { "nl": "Naam", "en": "Name" } },
+    { "name": "email", "type": "email", "required": true, "label": { "nl": "E-mailadres", "en": "Email address" } },
+    { "name": "company", "type": "text", "required": false, "label": { "nl": "Bureau", "en": "Agency" } },
+    {
+      "name": "size",
+      "type": "select",
+      "required": false,
+      "label": { "nl": "Teamgrootte", "en": "Team size" },
+      "options": [
+        { "value": "1-5", "label": { "nl": "1–5 mensen", "en": "1–5 people" } },
+        { "value": "6-20", "label": { "nl": "6–20 mensen", "en": "6–20 people" } },
+        { "value": "21+", "label": { "nl": "21+ mensen", "en": "21+ people" } }
+      ]
+    },
+    { "name": "message", "type": "textarea", "required": false, "label": { "nl": "Waar loop je tegenaan?", "en": "What are you running into?" } }
+  ]
+}

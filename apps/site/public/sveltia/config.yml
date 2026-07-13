@@ -72,6 +72,16 @@ collections:
                 fields:
                   - { name: nl, label: NL, widget: string }
                   - { name: en, label: EN, widget: string }
+          - name: forms
+            label: Formulieren
+            widget: object
+            required: false
+            fields:
+              - name: turnstileSiteKey
+                label: Cloudflare Turnstile site key (publiek)
+                widget: string
+                required: false
+                hint: 'Publieke site key. Laat leeg tot de anti-spamwidget is ingericht. De secret key staat als omgevingsvariabele bij de Cloudflare-functie, niet hier.'
           - name: nav
             label: Hoofdnavigatie
             widget: list
@@ -239,6 +249,73 @@ collections:
                 fields:
                   - { name: nl, label: NL, widget: list, field: { name: item, widget: string }, required: false }
                   - { name: en, label: EN, widget: list, field: { name: item, widget: string }, required: false }
+
+  - name: forms
+    label: Formulieren
+    icon: mail
+    folder: apps/site/src/data/forms
+    extension: json
+    create: true
+    identifier_field: slug
+    summary: '{{slug}}'
+    fields:
+      - { name: slug, label: 'Slug (URL /<slug>/)', widget: string }
+      - { name: order, label: Volgorde, widget: number, value_type: int }
+      - name: title
+        label: Titel
+        widget: object
+        fields:
+          - { name: nl, label: NL, widget: string }
+          - { name: en, label: EN, widget: string }
+      - name: intro
+        label: Intro
+        widget: object
+        fields:
+          - { name: nl, label: NL, widget: text }
+          - { name: en, label: EN, widget: text }
+      - name: submitLabel
+        label: Verzendknop
+        widget: object
+        fields:
+          - { name: nl, label: NL, widget: string }
+          - { name: en, label: EN, widget: string }
+      - name: successMessage
+        label: Bevestigingstekst
+        widget: object
+        fields:
+          - { name: nl, label: NL, widget: text }
+          - { name: en, label: EN, widget: text }
+      - { name: recipient, label: 'Ontvanger (e-mailadres)', widget: string }
+      - name: fields
+        label: Velden
+        label_singular: veld
+        widget: list
+        fields:
+          - { name: name, label: 'Naam (technisch, geen spaties)', widget: string }
+          - name: type
+            label: Type
+            widget: select
+            options: [text, email, tel, textarea, select]
+            default: text
+          - { name: required, label: Verplicht, widget: boolean, default: false }
+          - name: label
+            label: Label
+            widget: object
+            fields:
+              - { name: nl, label: NL, widget: string }
+              - { name: en, label: EN, widget: string }
+          - name: options
+            label: 'Opties (alleen bij type keuzelijst)'
+            widget: list
+            required: false
+            fields:
+              - { name: value, label: Waarde, widget: string }
+              - name: label
+                label: Label
+                widget: object
+                fields:
+                  - { name: nl, label: NL, widget: string }
+                  - { name: en, label: EN, widget: string }
 
   - name: pages
     label: "Pagina's"

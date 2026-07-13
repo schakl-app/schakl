@@ -1,0 +1,27 @@
+{
+  "slug": "contact",
+  "order": 10,
+  "title": {
+    "nl": "Neem contact op",
+    "en": "Get in touch"
+  },
+  "intro": {
+    "nl": "Vragen over schakl, een demo of zelf hosten? Stuur een bericht, we reageren snel.",
+    "en": "Questions about schakl, a demo or self-hosting? Send a message and we'll get back to you soon."
+  },
+  "submitLabel": {
+    "nl": "Verstuur bericht",
+    "en": "Send message"
+  },
+  "successMessage": {
+    "nl": "Bedankt, je bericht is verstuurd. We nemen snel contact op.",
+    "en": "Thanks, your message has been sent. We'll be in touch soon."
+  },
+  "recipient": "team@breik.nl",
+  "fields": [
+    { "name": "name", "type": "text", "required": true, "label": { "nl": "Naam", "en": "Name" } },
+    { "name": "email", "type": "email", "required": true, "label": { "nl": "E-mailadres", "en": "Email address" } },
+    { "name": "company", "type": "text", "required": false, "label": { "nl": "Bedrijf", "en": "Company" } },
+    { "name": "message", "type": "textarea", "required": true, "label": { "nl": "Bericht", "en": "Message" } }
+  ]
+}
