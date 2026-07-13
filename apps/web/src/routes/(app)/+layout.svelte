@@ -35,7 +35,9 @@
 
   const theme = $derived(page.data.theme);
   const user = $derived(page.data.user);
-  const nav = $derived(navItemsFor(theme?.enabledModules ?? [], user));
+  const nav = $derived(
+    navItemsFor(theme?.enabledModules ?? [], user, page.data.navPref?.items ?? null),
+  );
   const path = $derived(page.url.pathname);
   const showOverview = $derived(can(user, "time.report.read"));
   const showSettings = $derived(canAccessSettings(user?.permissions));

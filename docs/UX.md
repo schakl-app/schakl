@@ -104,6 +104,11 @@
 - **Drag-and-drop with graceful fallback**: reorder tasks and dashboard tiles by dragging
   (fractional `position` midpoints — never renumber); keep an arrow/menu alternative where
   dragging is impractical.
+- **Every dashboard widget is a bordered card, via `core/ui/DashboardWidgetCard`** (#166). The
+  dashboard grid wraps each tile in a bare `<div>` — the card chrome (border, `bg-surface-raised`,
+  padding, title row with an optional "show all" link) is the widget's own responsibility, and the
+  shared wrapper is how it stops being re-typed per widget. Both the empty and the populated state
+  render inside the card; a bare `<p>` sitting naked in the grid is the bug this rule exists for.
 - **Record actions live behind the ⋯ menu, never as bare buttons.** Every record-level
   **Edit** and **Delete** (on a list row, a card, or a detail header) is reached through the
   shared overflow menu (`core/ui/ActionsMenu`, the ⋯ / three-dots kebab) — never a standalone
@@ -288,10 +293,17 @@
 
 ## Navigation
 
-- Sidebar: Dashboard → Agenda → **Relaties** (Klanten / Projecten / Contactpersonen as a
-  collapsible group) → Taken → Uren → Verlof → Overzicht (managers) → Instellingen
-  (managers). Icons from lucide; collapsible to an icon rail; on mobile it is a drawer
-  behind the hamburger.
+- Sidebar: Dashboard and Agenda open it, Overzicht (managers) and Instellingen (managers)
+  close it — those four are fixed core items. Everything between is **module-contributed**
+  (Klanten, Contactpersonen, Interacties, Projecten, Taken, Uren, Verlof, …), ordered by each
+  module's declared `position` **as the default only** (#169): an org admin sets a team-wide
+  order/visibility under Instellingen → Navigatie, and each person can override it for
+  themselves (Account → Mijn zijbalk) — resolution is own row → org default → declared
+  positions, `DashboardPref`'s model exactly (`NavPref`). Hiding applies to module items
+  only; the fixed core items are not anyone's to hide. A module enabled after a layout was
+  saved still appears (fallback to its declared position), so a pref can never make new
+  functionality invisible. Icons from lucide; collapsible to an icon rail; on mobile it is a
+  drawer behind the hamburger — the saved order carries over unchanged.
 - **Agenda is a core surface like the dashboard**: the month view composes event feeds that
   modules contribute via the registry (`calendarSources`) — today the team's approved/pending
   leave; Google Calendar plugs into the same seam in P3. Pending items render muted with a

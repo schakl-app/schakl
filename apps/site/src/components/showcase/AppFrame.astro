@@ -1,0 +1,85 @@
+---
+// The shared app chrome: a browser window holding the real app's sidebar + top bar, with
+// the demo's screen in the slot. Mirrors apps/web/src/routes/(app)/+layout.svelte — sidebar
+// on --surface-raised with a bordered brand header, active nav item on --surface with the
+// brand-tinted icon, a top bar with the AI spark, notification bell and the user avatar.
+import Icon from './Icon.astro';
+import { labels, type Locale } from './labels.ts';
+
+interface Props {
+  locale: Locale;
+  active: string;
+  brandName?: string;
+  brandInitial?: string;
+  url?: string;
+  /** Extra class + inline style on the .appui root (white-label demo morphs --b here). */
+  class?: string;
+  style?: string;
+}
+const {
+  locale,
+  active,
+  brandName = 'Atlas',
+  brandInitial = 'A',
+  url = 'app.atlas.nl',
+  class: cls = '',
+  style,
+} = Astro.props;
+const l = labels[locale];
+
+const nav = [
+  { key: 'dashboard', icon: 'dashboard', label: l.navDashboard },
+  { key: 'companies', icon: 'clients', label: l.navCompanies },
+  { key: 'contacts', icon: 'contacts', label: l.navContacts },
+  { key: 'projects', icon: 'projects', label: l.navProjects },
+  { key: 'tasks', icon: 'tasks', label: l.navTasks },
+  { key: 'time', icon: 'time', label: l.navTime },
+  { key: 'leave', icon: 'leave', label: l.navLeave },
+];
+---
+
+<div class={`appui ${cls}`} style={style} aria-hidden="true">
+  <div class="win">
+    <div class="win__bar">
+      <span class="win__dot"></span>
+      <span class="win__dot"></span>
+      <span class="win__dot"></span>
+      <span class="win__url">
+        <Icon name="search" size={0.85} />
+        <span class="win__url-host">{url}</span>
+      </span>
+    </div>
+
+    <div class="app">
+      <aside class="side">
+        <div class="side__brand">
+          <span class="side__logo">{brandInitial}</span>
+          <span class="side__name">{brandName}</span>
+        </div>
+        {
+          nav.map((item) => (
+            <span class={`nav ${item.key === active ? 'is-active' : ''}`}>
+              <Icon name={item.icon} size={1.15} />
+              <span class="nav__label">{item.label}</span>
+            </span>
+          ))
+        }
+        <span class="nav" style="margin-top:auto">
+          <Icon name="settings" size={1.15} />
+          <span class="nav__label">{l.navSettings}</span>
+        </span>
+      </aside>
+
+      <div class="main">
+        <div class="topbar">
+          <span class="topbar__icon"><Icon name="sparkles" size={1.1} /></span>
+          <span class="topbar__icon topbar__bell"><Icon name="bell" size={1.1} /></span>
+          <span class="avatar avatar--a">SV</span>
+        </div>
+        <div class="screen">
+          <slot />
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

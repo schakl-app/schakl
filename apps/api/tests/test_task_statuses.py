@@ -126,7 +126,9 @@ async def test_closing_interaction_gate_and_designation(client_for) -> None:
         assert flagged.status_code == 200 and flagged.json()["requires_interaction"] is True
 
         task = (await c.post("/api/v1/tasks", json={"title": "Bel klant"}, headers=headers)).json()
-        other_task = (await c.post("/api/v1/tasks", json={"title": "Andere"}, headers=headers)).json()
+        other_task = (
+            await c.post("/api/v1/tasks", json={"title": "Andere"}, headers=headers)
+        ).json()
 
         # No contact moment: the gate refuses.
         refused = await c.patch(

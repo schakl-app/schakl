@@ -287,6 +287,11 @@ class TaskComment(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     mentioned_user_ids: Mapped[list[str]] = mapped_column(
         JSONB, nullable=False, default=list, server_default="[]"
     )
+    # Contacts @mentioned (#165) — parallel to, never folded into, the user list: contacts are
+    # references into the CRM, not notification recipients, so the fan-out stays unambiguous.
+    mentioned_contact_ids: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
     edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 

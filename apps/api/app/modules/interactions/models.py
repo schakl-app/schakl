@@ -33,7 +33,17 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text, text
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -46,14 +56,65 @@ ENTITY_TYPE = "interaction"
 
 
 class InteractionKind(StrEnum):
+    """The system kinds every org starts with (#174). ``Interaction.kind`` is a free key
+    into the org's ``interaction_kinds`` list now, not this enum — the enum survives for the
+    protected ``EMAIL`` constant and the seeded defaults."""
+
     EMAIL = "email"
-    MEETING = "meeting"
+    ONLINE_MEETING = "online_meeting"
+    PHYSICAL_MEETING = "physical_meeting"
     CALL = "call"
     NOTE = "note"
 
 
-#: Kinds a person may log by hand; ``email`` rows are only ever written by the gmail feed.
-MANUAL_KINDS = (InteractionKind.MEETING, InteractionKind.CALL, InteractionKind.NOTE)
+#: The one kind a person may never log by hand — only the gmail feed writes ``email`` rows,
+#: and the kind can be relabelled but never deleted or deactivated (#174).
+PROTECTED_KIND = InteractionKind.EMAIL.value
+
+#: Seeded per org (lazily, on first use — the leave-types pattern). ``meeting`` split into
+#: online/physical (#174); existing rows were remapped to ``physical_meeting`` by migration.
+DEFAULT_KINDS: tuple[dict[str, Any], ...] = (
+    {
+        "key": InteractionKind.EMAIL.value,
+        "label_i18n": {"en": "Email", "nl": "E-mail"},
+        "position": 10,
+    },
+    {
+        "key": InteractionKind.ONLINE_MEETING.value,
+        "label_i18n": {"en": "Online meeting", "nl": "Online afspraak"},
+        "position": 20,
+    },
+    {
+        "key": InteractionKind.PHYSICAL_MEETING.value,
+        "label_i18n": {"en": "On-site meeting", "nl": "Afspraak op locatie"},
+        "position": 30,
+    },
+    {
+        "key": InteractionKind.CALL.value,
+        "label_i18n": {"en": "Call", "nl": "Telefoongesprek"},
+        "position": 40,
+    },
+    {
+        "key": InteractionKind.NOTE.value,
+        "label_i18n": {"en": "Note", "nl": "Notitie"},
+        "position": 50,
+    },
+)
+
+
+class InteractionKindDef(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """A tenant-configurable interaction kind (#174) — the contact-types / leave-types shape:
+    ``key + label_i18n + position + active``, CRUD under Instellingen. ``Interaction.kind``
+    stores the ``key``; deactivating a kind hides it from the form without touching history."""
+
+    __tablename__ = "interaction_kinds"
+    __table_args__ = (UniqueConstraint("org_id", "key", name="uq_interaction_kinds_org_key"),)
+
+    key: Mapped[str] = mapped_column(String(50), nullable=False)
+    # Per-locale labels ({"nl": ..., "en": ...}) — tenant data, like custom-field labels.
+    label_i18n: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 #: Which activity-log entity type each link FK mirrors onto (#152): a contactmoment's
 #: milestones show on the records it hangs on, in the writing transaction (§16).
@@ -100,7 +161,9 @@ class Interaction(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Auditable
         Index("ix_interactions_org_thread", "org_id", "gmail_thread_id"),
     )
 
-    kind: Mapped[str] = mapped_column(String(10), nullable=False)
+    #: A key into the org's ``interaction_kinds`` (#174) — validated by the service on manual
+    #: writes; no FK, so relabelling/removing a kind never rewrites history.
+    kind: Mapped[str] = mapped_column(String(50), nullable=False)
     status: Mapped[str] = mapped_column(
         String(10), nullable=False, default=InteractionStatus.LOGGED.value
     )
@@ -157,6 +220,12 @@ class Interaction(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Auditable
     #: ``TaskComment.mentioned_user_ids`` (#63): extracted from the ``@[Name](mention:<uuid>)``
     #: markers and validated against org membership by the service.
     mentioned_user_ids: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+
+    #: Contacts @mentioned (#165) — references into the CRM, never notification recipients;
+    #: kept parallel to ``mentioned_user_ids`` so the mention fan-out stays unambiguous.
+    mentioned_contact_ids: Mapped[list[str]] = mapped_column(
         JSONB, nullable=False, default=list, server_default="[]"
     )
 

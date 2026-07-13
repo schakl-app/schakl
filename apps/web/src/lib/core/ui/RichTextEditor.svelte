@@ -51,8 +51,9 @@
     placeholder?: string;
     required?: boolean;
     class?: string;
-    /** @mention candidates (issue #63): typing `@` autocompletes against these org members. */
-    mentions?: { id: string; name: string }[];
+    /** @mention candidates (issue #63). Two kinds since #165: org members (default) and
+     *  contacts, the latter with a subtitle (their company) and a distinct chip. */
+    mentions?: { id: string; name: string; kind?: "user" | "contact"; subtitle?: string }[];
     onchange?: (value: string) => void;
   } = $props();
 
@@ -64,21 +65,29 @@
   // serializes into a real mention; two members sharing one display name resolve to one of them —
   // the price of showing names instead of ids.
   const UUID_RE = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
-  const known = new Map<string, string>();
+  // A known display name maps back to its id *and* kind (#165): a contact's marker carries a
+  // `contact:` prefix, a colleague's stays bare so pre-#165 bodies round-trip unchanged.
+  const known = new Map<string, { id: string; kind: "user" | "contact" }>();
 
   function toDisplay(source: string): string {
     return source.replace(
-      new RegExp(`@\\[([^\\]]+)\\]\\(mention:(${UUID_RE})\\)`, "g"),
-      (_all, mentionName: string, id: string) => {
-        known.set(mentionName, id);
+      new RegExp(`@\\[([^\\]]+)\\]\\(mention:(?:(user|contact):)?(${UUID_RE})\\)`, "g"),
+      (_all, mentionName: string, kind: string | undefined, id: string) => {
+        known.set(mentionName, { id, kind: kind === "contact" ? "contact" : "user" });
         return `@${mentionName}`;
       },
     );
   }
 
+  function marker(entry: { id: string; kind: "user" | "contact" }): string {
+    return entry.kind === "contact" ? `mention:contact:${entry.id}` : `mention:${entry.id}`;
+  }
+
   function toSource(display: string): string {
-    const ids = new Map(mentions.map((m) => [m.name, m.id]));
-    for (const [n, id] of known) ids.set(n, id);
+    const ids = new Map(
+      mentions.map((m) => [m.name, { id: m.id, kind: (m.kind ?? "user") as "user" | "contact" }]),
+    );
+    for (const [n, entry] of known) ids.set(n, entry);
     if (ids.size === 0) return display;
     // Longest name first so "Jan van Dam" beats "Jan"; same word-boundary rules as detectMention.
     const alternation = [...ids.keys()]
@@ -88,7 +97,7 @@
     return display.replace(
       new RegExp(`(^|\\s)@(${alternation})(?!\\w)`, "g"),
       (_all, pre: string, mentionName: string) =>
-        `${pre}@[${mentionName}](mention:${ids.get(mentionName)})`,
+        `${pre}@[${mentionName}](${marker(ids.get(mentionName)!)})`,
     );
   }
 
@@ -149,11 +158,11 @@
     mentionOpen = true;
   }
 
-  function pickMention(member: { id: string; name: string }) {
+  function pickMention(member: { id: string; name: string; kind?: "user" | "contact" }) {
     const el = textarea;
     if (!el) return;
     const caret = el.selectionStart;
-    known.set(member.name, member.id);
+    known.set(member.name, { id: member.id, kind: member.kind === "contact" ? "contact" : "user" });
     const token = `@${member.name} `;
     change(content.slice(0, mentionStart) + token + content.slice(caret));
     mentionOpen = false;
@@ -509,18 +518,31 @@
     <ul
       class="absolute left-0 right-0 top-full z-30 mt-1 max-h-52 overflow-auto rounded-lg border border-border bg-surface-raised py-1 shadow-lg"
     >
-      {#each mentionMatches as member, i (member.id)}
+      {#each mentionMatches as member, i ((member.kind ?? "user") + member.id)}
         <li>
           <button
             type="button"
-            class="flex w-full items-center px-3 py-1.5 text-left text-sm hover:bg-surface
+            class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-surface
               {i === mentionIndex ? 'bg-surface text-brand' : 'text-text'}"
             onmousedown={(e) => {
               e.preventDefault();
               pickMention(member);
             }}
           >
-            @{member.name}
+            <span class="min-w-0 flex-1">
+              <span class="block truncate">@{member.name}</span>
+              {#if member.subtitle}
+                <!-- A contact's company (#165): the list itself says which kind you're picking. -->
+                <span class="block truncate text-xs text-text-muted">{member.subtitle}</span>
+              {/if}
+            </span>
+            {#if member.kind === "contact"}
+              <span
+                class="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium text-text-muted ring-1 ring-inset ring-border"
+              >
+                {t("common.mention_contact")}
+              </span>
+            {/if}
           </button>
         </li>
       {/each}

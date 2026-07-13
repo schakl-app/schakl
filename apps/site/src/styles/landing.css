@@ -187,26 +187,49 @@ section h2 {
   margin-top: 2rem;
 }
 
+/* Feature cards are links to their feature page. */
 .feature-card {
+  display: flex;
+  flex-direction: column;
   border: 1px solid var(--border);
   border-radius: 0.8rem;
   padding: 1.4rem 1.3rem;
   background: var(--bg);
+  color: var(--text);
+  transition: border-color 0.15s ease;
+}
+
+.feature-card:hover {
+  border-color: var(--accent);
 }
 
 .feature-icon {
-  font-size: 1.5rem;
+  display: inline-flex;
+  color: var(--accent);
+  font-size: 1.45rem;
 }
 
 .feature-card h3 {
   font-size: 1.05rem;
-  margin-top: 0.7rem;
+  margin-top: 0.9rem;
+  color: var(--text);
+}
+
+.feature-card:hover h3 {
+  color: var(--accent);
 }
 
 .feature-card p {
   color: var(--muted);
   font-size: 0.94rem;
   margin: 0;
+  flex: 1;
+}
+
+.feature-more {
+  display: inline-flex;
+  color: var(--accent);
+  margin-top: 1rem;
 }
 
 /* Self-host band */
@@ -368,4 +391,50 @@ section h2 {
 
 .site-footer nav a:hover {
   color: var(--text);
+}
+
+/* "Used and made with open-source love ♥ by [b]reik." */
+.footer-credit {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+
+.footer-credit p {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4ch;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.footer-heart {
+  width: 1.05em;
+  height: 1.05em;
+  color: #f43f5e;
+  transform-origin: center 65%;
+  animation: heartbeat 1.7s ease-in-out infinite;
+}
+
+@keyframes heartbeat {
+  0%, 40%, 100% { transform: scale(1); }
+  12% { transform: scale(1.25); }
+  24% { transform: scale(1.05); }
+  32% { transform: scale(1.18); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .footer-heart { animation: none; }
+}
+
+.footer-breik {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.footer-breik:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }

@@ -1,0 +1,261 @@
+---
+// The site's "Functies" mega-menu: a wide dropdown listing every feature page grouped by
+// theme, each with its Lucide icon and a short tagline. Opens on hover (pointer devices) and
+// on click/tap (all devices), closes on outside-click, Escape or navigation.
+import Icon from './showcase/Icon.astro';
+import { grouped, taglines, type Locale } from '../lib/features.ts';
+import { localizeHref } from '../lib/links';
+
+interface Props {
+  locale: Locale;
+}
+const { locale } = Astro.props;
+const href = (h: string) => localizeHref(locale, h);
+const cols = grouped();
+const label = locale === 'nl' ? 'Functies' : 'Features';
+const allLabel = locale === 'nl' ? 'Alle functies bekijken' : 'See all features';
+---
+
+<div class="mega" data-mega>
+  <button
+    type="button"
+    class="mega__btn"
+    aria-expanded="false"
+    aria-haspopup="true"
+    aria-controls="mega-panel"
+    data-mega-btn
+  >
+    {label}
+    <svg class="mega__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+  </button>
+
+  <div class="mega__panel" id="mega-panel" role="menu" data-mega-panel>
+    <div class="mega__grid">
+      {
+        cols.map((g) => (
+          <div class="mega__col">
+            <p class="mega__col-title">{locale === 'nl' ? g.nl : g.en}</p>
+            <ul class="mega__list">
+              {g.items.map((f: any) => (
+                <li>
+                  <a class="mega__item" href={href(`/features/${f.slug}`)} role="menuitem">
+                    <span class="mega__icon"><Icon name={f.lucide} size={1.2} /></span>
+                    <span class="mega__text">
+                      <span class="mega__name">{f.title[locale]}</span>
+                      <span class="mega__tag">{taglines[f.slug]?.[locale]}</span>
+                    </span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))
+      }
+    </div>
+    <a class="mega__all" href={href('/features/')}>
+      {allLabel}
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
+    </a>
+  </div>
+</div>
+
+<style>
+  .mega {
+    position: relative;
+    display: inline-flex;
+  }
+  .mega__btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    font-size: 0.95rem;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .mega__btn:hover,
+  .mega.is-open .mega__btn {
+    color: var(--text);
+  }
+  .mega__chev {
+    width: 0.9em;
+    height: 0.9em;
+    transition: transform 0.18s ease;
+  }
+  .mega.is-open .mega__chev {
+    transform: rotate(180deg);
+  }
+
+  .mega__panel {
+    position: absolute;
+    top: calc(100% + 0.85rem);
+    right: 0;
+    width: min(56rem, 94vw);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+    box-shadow:
+      0 1px 2px rgba(16, 24, 40, 0.06),
+      0 24px 48px -24px rgba(16, 24, 40, 0.4);
+    padding: 1.4rem;
+    z-index: 60;
+    opacity: 0;
+    transform: translateY(-0.4rem);
+    pointer-events: none;
+    transition:
+      opacity 0.16s ease,
+      transform 0.16s ease;
+  }
+  @media (prefers-color-scheme: dark) {
+    .mega__panel {
+      box-shadow:
+        0 1px 2px rgba(0, 0, 0, 0.4),
+        0 24px 48px -20px rgba(0, 0, 0, 0.7);
+    }
+  }
+  .mega.is-open .mega__panel {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+  @media (hover: hover) {
+    .mega:hover .mega__panel,
+    .mega:focus-within .mega__panel {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .mega__panel,
+    .mega__chev {
+      transition: none;
+    }
+  }
+
+  .mega__grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem 1.75rem;
+  }
+  .mega__col-title {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 0.5rem;
+    padding: 0 0.6rem;
+  }
+  .mega__list {
+    list-style: none;
+    margin: 0 0 0.5rem;
+    padding: 0;
+  }
+  .mega__item {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.5rem 0.6rem;
+    border-radius: 0.6rem;
+    color: var(--text);
+  }
+  .mega__item:hover {
+    background: var(--bg-soft);
+  }
+  .mega__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    flex: none;
+    border-radius: 0.5rem;
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent);
+  }
+  .mega__text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .mega__name {
+    font-weight: 600;
+    font-size: 0.92rem;
+    line-height: 1.2;
+  }
+  .mega__tag {
+    color: var(--muted);
+    font-size: 0.8rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .mega__all {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.85rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 0.92rem;
+    width: 100%;
+  }
+  .mega__all svg {
+    width: 1em;
+    height: 1em;
+  }
+  .mega__all:hover {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  @media (max-width: 720px) {
+    .mega__panel {
+      position: fixed;
+      left: 0.75rem;
+      right: 0.75rem;
+      width: auto;
+      max-height: 70vh;
+      overflow-y: auto;
+      padding: 1.1rem;
+    }
+    .mega__grid {
+      grid-template-columns: 1fr;
+      gap: 0.25rem;
+    }
+    .mega__col-title {
+      margin-top: 0.5rem;
+    }
+  }
+</style>
+
+<script>
+  // Click/tap toggles the menu (essential on touch, where there is no hover); outside-click,
+  // Escape and navigating all close it. Hover is handled in CSS on pointer devices.
+  for (const mega of document.querySelectorAll<HTMLElement>('[data-mega]')) {
+    const btn = mega.querySelector<HTMLButtonElement>('[data-mega-btn]');
+    if (!btn) continue;
+    const close = () => {
+      mega.classList.remove('is-open');
+      btn.setAttribute('aria-expanded', 'false');
+    };
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const open = mega.classList.toggle('is-open');
+      btn.setAttribute('aria-expanded', String(open));
+    });
+    document.addEventListener('click', (e) => {
+      if (!mega.contains(e.target as Node)) close();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') close();
+    });
+    mega.querySelectorAll('a').forEach((a) => a.addEventListener('click', close));
+  }
+</script>

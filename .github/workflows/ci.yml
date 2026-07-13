@@ -10,8 +10,87 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Decide which downstream jobs are relevant to *this* change, so a web-only, site-only,
+  # messages-only or docs-only commit doesn't pay for the ~9-minute API test job (and vice
+  # versa). Runs in a few seconds. On `main` every job runs regardless (release integrity):
+  # a merge commit's diff can be large and we never want a release gated on a partial matrix.
+  # There is no branch protection, so a skipped job blocks no merge.
+  changes:
+    name: Detect changed areas
+    runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      web: ${{ steps.filter.outputs.web }}
+      i18n: ${{ steps.filter.outputs.i18n }}
+      client: ${{ steps.filter.outputs.client }}
+      run_all: ${{ steps.gate.outputs.run_all }}
+    steps:
+      # Full history so the gate can diff this push against its own previous commit. With a
+      # shallow clone dorny/paths-filter can't see `github.event.before` and silently falls
+      # back to diffing dev against main's merge-base — the whole release, i.e. every filter.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: gate
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "run_all=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_all=false" >> "$GITHUB_OUTPUT"
+          fi
+          # Base for the diff: on a push, exactly the commit before it; empty otherwise (a new
+          # branch's all-zero SHA, or a pull_request) so dorny uses its own correct default.
+          before="${{ github.event.before }}"
+          if [ "${{ github.event_name }}" = "push" ] && [ -n "$before" ] \
+             && [ "$before" != "0000000000000000000000000000000000000000" ]; then
+            echo "base=$before" >> "$GITHUB_OUTPUT"
+          else
+            echo "base=" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          # Diff only what this push changed (steps.gate.outputs.base); on pull_request this is
+          # empty and dorny compares against the PR base branch.
+          base: ${{ steps.gate.outputs.base }}
+          # A change to the workflow itself, or to shared build/lint tooling, runs everything.
+          filters: |
+            api:
+              - 'apps/api/**'
+              # The API loads the repo-root message catalogs at import (app/i18n.py), so a
+              # catalog change can affect API behaviour/tests — never skip the API on it.
+              - 'messages/**'
+              - '.github/workflows/ci.yml'
+            web:
+              - 'apps/web/**'
+              - 'messages/**'
+              - 'project.inlang/**'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'package.json'
+              # `pnpm install --frozen-lockfile` validates the lockfile against every workspace
+              # member (apps/web + apps/site), so a desynced apps/site manifest must run it too.
+              - 'apps/site/package.json'
+              - '.github/workflows/ci.yml'
+            i18n:
+              - 'messages/**'
+              - 'scripts/i18n-check.mjs'
+              - '.github/workflows/ci.yml'
+            client:
+              - 'apps/api/**'
+              - 'apps/web/src/lib/core/api/schema.d.ts'
+              - 'apps/web/package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              # Same frozen-lockfile reason as the web job: this job also runs pnpm install.
+              - 'apps/site/package.json'
+              - 'scripts/gen-client.sh'
+              - '.github/workflows/ci.yml'
+
   i18n:
     name: i18n key drift
+    needs: changes
+    if: ${{ needs.changes.outputs.i18n == 'true' || needs.changes.outputs.run_all == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,6 +101,8 @@ jobs:
 
   api:
     name: API (ruff + migrations + pytest)
+    needs: changes
+    if: ${{ needs.changes.outputs.api == 'true' || needs.changes.outputs.run_all == 'true' }}
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -77,6 +158,8 @@ jobs:
 
   web:
     name: Web (svelte-check + build)
+    needs: changes
+    if: ${{ needs.changes.outputs.web == 'true' || needs.changes.outputs.run_all == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -95,6 +178,8 @@ jobs:
 
   client-drift:
     name: Typed client is up to date
+    needs: changes
+    if: ${{ needs.changes.outputs.client == 'true' || needs.changes.outputs.run_all == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -67,7 +67,7 @@ async def test_manual_crud_derives_company_and_filters(client_for) -> None:
         created = await c.post(
             "/api/v1/interactions",
             json={
-                "kind": "meeting",
+                "kind": "physical_meeting",
                 "occurred_at": _NOW.isoformat(),
                 "subject": "Kick-off",
                 "body_text": "Besproken: planning en scope.",
@@ -116,6 +116,148 @@ async def test_manual_crud_derives_company_and_filters(client_for) -> None:
         assert (
             await c.delete(f"/api/v1/interactions/{row['id']}", headers=headers)
         ).status_code == 204
+
+
+async def test_interaction_kinds_tenant_configurable(client_for) -> None:
+    """#174: kinds seed lazily per org (meeting split into online/physical), custom kinds
+    become loggable, the retired plain "meeting" no longer validates, email is protected,
+    an in-use kind refuses deletion, and the catalog is tenant-isolated."""
+    t = await make_tenant("inter-kinds-a")
+    other = await make_tenant("inter-kinds-b")
+    headers = await auth_cookie(t.user)
+    other_headers = await auth_cookie(other.user)
+    async with client_for(t.host) as c:
+        kinds = (await c.get("/api/v1/interactions/kinds", headers=headers)).json()
+        assert {k["key"] for k in kinds} == {
+            "email", "online_meeting", "physical_meeting", "call", "note",
+        }
+
+        # The retired hardcoded kind is gone; the split halves and custom kinds work.
+        base = {"occurred_at": _NOW.isoformat(), "subject": "Soorten"}
+        assert (
+            await c.post("/api/v1/interactions", json={"kind": "meeting", **base}, headers=headers)
+        ).status_code == 422
+        assert (
+            await c.post(
+                "/api/v1/interactions", json={"kind": "online_meeting", **base}, headers=headers
+            )
+        ).status_code == 201
+        created_kind = (
+            await c.post(
+                "/api/v1/interactions/kinds",
+                json={
+                    "key": "site_visit",
+                    "label_i18n": {"nl": "Locatiebezoek", "en": "Site visit"},
+                },
+                headers=headers,
+            )
+        )
+        assert created_kind.status_code == 201, created_kind.text
+        row = await c.post(
+            "/api/v1/interactions", json={"kind": "site_visit", **base}, headers=headers
+        )
+        assert row.status_code == 201
+
+        # In use → deletion refused; deactivation hides it from new writes.
+        kind_id = created_kind.json()["id"]
+        assert (
+            await c.delete(f"/api/v1/interactions/kinds/{kind_id}", headers=headers)
+        ).status_code == 409
+        assert (
+            await c.patch(
+                f"/api/v1/interactions/kinds/{kind_id}", json={"active": False}, headers=headers
+            )
+        ).status_code == 200
+        assert (
+            await c.post(
+                "/api/v1/interactions", json={"kind": "site_visit", **base}, headers=headers
+            )
+        ).status_code == 422
+        # Editing an existing row while keeping its now-deactivated kind still works.
+        assert (
+            await c.patch(
+                f"/api/v1/interactions/{row.json()['id']}",
+                json={"kind": "site_visit", "subject": "Nog steeds"},
+                headers=headers,
+            )
+        ).status_code == 200
+
+        # email is system-owned: relabel fine, deactivate/delete refused.
+        email_kind = next(k for k in kinds if k["key"] == "email")
+        assert (
+            await c.patch(
+                f"/api/v1/interactions/kinds/{email_kind['id']}",
+                json={"label_i18n": {"nl": "Mail", "en": "Mail"}},
+                headers=headers,
+            )
+        ).status_code == 200
+        assert (
+            await c.patch(
+                f"/api/v1/interactions/kinds/{email_kind['id']}",
+                json={"active": False},
+                headers=headers,
+            )
+        ).status_code == 409
+        assert (
+            await c.delete(f"/api/v1/interactions/kinds/{email_kind['id']}", headers=headers)
+        ).status_code == 409
+
+    # Tenant isolation: the other org seeds its own defaults, never sees site_visit.
+    async with client_for(other.host) as cb:
+        other_kinds = (await cb.get("/api/v1/interactions/kinds", headers=other_headers)).json()
+        assert "site_visit" not in {k["key"] for k in other_kinds}
+        assert (
+            await cb.patch(
+                f"/api/v1/interactions/kinds/{kind_id}", json={"active": True},
+                headers=other_headers,
+            )
+        ).status_code == 404
+
+
+async def test_log_time_creates_linked_entry_that_survives_deletion(client_for) -> None:
+    """#175: `log_time` on a manual interaction creates a time entry in the same request,
+    carrying the interaction's links and subject; deleting the interaction later detaches
+    the link (SET NULL) and never deletes the logged hours."""
+    t = await make_tenant("inter-logtime")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Klant BV"}, headers=headers)
+        ).json()
+        created = await c.post(
+            "/api/v1/interactions",
+            json={
+                "kind": "call",
+                "occurred_at": _NOW.isoformat(),
+                "subject": "Belafspraak",
+                "company_id": company["id"],
+                "log_time": {
+                    "started_at": "2026-07-10T14:00:00Z",
+                    "ended_at": "2026-07-10T14:45:00Z",
+                },
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        row = created.json()
+
+        entries = (await c.get("/api/v1/time/entries", headers=headers)).json()
+        assert entries["total"] == 1
+        entry = entries["items"][0]
+        assert entry["interaction_id"] == row["id"]
+        assert entry["company_id"] == company["id"]
+        assert entry["description"] == "Belafspraak"
+        assert entry["minutes"] == 45
+        # No org entry type matches "call", so the entry stays untyped (#176 tie-in).
+        assert entry["entry_type_key"] is None
+
+        # Deleting the interaction detaches, never deletes, the logged hours.
+        assert (
+            await c.delete(f"/api/v1/interactions/{row['id']}", headers=headers)
+        ).status_code == 204
+        entries = (await c.get("/api/v1/time/entries", headers=headers)).json()
+        assert entries["total"] == 1
+        assert entries["items"][0]["interaction_id"] is None
 
 
 async def test_manual_email_kind_refused(client_for) -> None:
@@ -174,6 +316,90 @@ async def test_member_edits_own_admin_edits_any(client_for) -> None:
                 headers=owner_headers,
             )
         ).status_code == 200
+
+
+async def test_pending_rows_private_to_owner_until_approved(client_for) -> None:
+    """#172: a pending gmail row is invisible — not just body-redacted — to anyone but its
+    mailbox owner; #168: the owner filter needs read_all, and a wildcard/admin viewer may
+    still audit another mailbox's pending queue. Approval restores team visibility."""
+    t = await make_tenant("inter-pending-priv")
+    owner_headers = await auth_cookie(t.user)  # org owner: "*" satisfies read_all
+    async with client_for(t.host) as c:
+        mailbox = await _member(c, owner_headers, "mailbox@priv.example")
+        colleague = await _member(c, owner_headers, "collega@priv.example")
+        mailbox_headers = await auth_cookie(mailbox)
+        colleague_headers = await auth_cookie(colleague)
+        row_id = await _seed_gmail_row(t, mailbox.id, pending=True)
+
+        # The owner of the mailbox sees their pending row; a plain colleague sees nothing.
+        assert (
+            await c.get("/api/v1/interactions", params={"mine": True, "status": "pending"},
+                        headers=mailbox_headers)
+        ).json()["total"] == 1
+        assert (
+            await c.get("/api/v1/interactions", params={"status": "pending"},
+                        headers=colleague_headers)
+        ).json()["total"] == 0
+        assert (await c.get("/api/v1/interactions", headers=colleague_headers)).json()[
+            "total"
+        ] == 0
+        assert (
+            await c.get(f"/api/v1/interactions/{row_id}", headers=colleague_headers)
+        ).status_code == 404
+
+        # Someone else's queue is not a filter a plain member may use (#168)...
+        assert (
+            await c.get(
+                "/api/v1/interactions",
+                params={"owner_user_id": str(mailbox.id)},
+                headers=colleague_headers,
+            )
+        ).status_code == 403
+        # ...but a read_all holder may audit it, pending rows included.
+        assert (
+            await c.get(
+                "/api/v1/interactions",
+                params={"owner_user_id": str(mailbox.id), "status": "pending"},
+                headers=owner_headers,
+            )
+        ).json()["total"] == 1
+
+        # Approval makes it team-visible, exactly as before.
+        assert (
+            await c.post(f"/api/v1/interactions/{row_id}/approve", headers=mailbox_headers)
+        ).status_code == 200
+        assert (await c.get("/api/v1/interactions", headers=colleague_headers)).json()[
+            "total"
+        ] == 1
+
+
+async def test_list_free_text_search(client_for) -> None:
+    """#168: `q` matches subject, snippet and body, case-insensitively."""
+    t = await make_tenant("inter-search")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        for subject, body in (("Offerte besproken", "Alles akkoord"), ("Storing", "DNS lag om")):
+            assert (
+                await c.post(
+                    "/api/v1/interactions",
+                    json={
+                        "kind": "call",
+                        "occurred_at": _NOW.isoformat(),
+                        "subject": subject,
+                        "body_text": body,
+                    },
+                    headers=headers,
+                )
+            ).status_code == 201
+        assert (
+            await c.get("/api/v1/interactions", params={"q": "offerte"}, headers=headers)
+        ).json()["total"] == 1
+        assert (
+            await c.get("/api/v1/interactions", params={"q": "dns"}, headers=headers)
+        ).json()["total"] == 1
+        assert (
+            await c.get("/api/v1/interactions", params={"q": "niets"}, headers=headers)
+        ).json()["total"] == 0
 
 
 async def test_gmail_review_is_strictly_owner_only(client_for) -> None:
@@ -514,7 +740,7 @@ async def test_participants_resolve_to_org_contacts_at_read_time(client_for) -> 
             await c.post(
                 "/api/v1/interactions",
                 json={
-                    "kind": "meeting",
+                    "kind": "physical_meeting",
                     "occurred_at": _NOW.isoformat(),
                     "subject": "Kennismaking",
                     "participants": [
@@ -543,6 +769,80 @@ async def test_participants_resolve_to_org_contacts_at_read_time(client_for) -> 
         by_email = {p["email"].lower(): p for p in fetched["participants"]}
         assert by_email["anna@klant.nl"]["contact_id"] == contact["id"]
         assert by_email["cc@elders.example"]["contact_id"] is None
+
+
+async def test_contact_mentions_validate_and_store(client_for) -> None:
+    """#165: `@[Name](mention:contact:<uuid>)` markers store structurally in
+    mentioned_contact_ids, org-validated — a contact id from another org never survives —
+    and untyped markers keep meaning colleagues (no reinterpretation of stored bodies)."""
+    other = await make_tenant("inter-cmention-b")
+    t = await make_tenant("inter-cmention-a")
+    headers = await auth_cookie(t.user)
+    other_headers = await auth_cookie(other.user)
+    async with client_for(other.host) as cb:
+        foreign_contact = (
+            await cb.post("/api/v1/contacts", json={"first_name": "Vreemd"}, headers=other_headers)
+        ).json()
+    async with client_for(t.host) as c:
+        contact = (
+            await c.post("/api/v1/contacts", json={"first_name": "Anna"}, headers=headers)
+        ).json()
+        body = (
+            f"Gesproken met @[Anna](mention:contact:{contact['id']}) "
+            f"en @[Vreemd](mention:contact:{foreign_contact['id']}) "
+            f"en @[Ik](mention:{t.user.id})"
+        )
+        created = await c.post(
+            "/api/v1/interactions",
+            json={
+                "kind": "call",
+                "occurred_at": _NOW.isoformat(),
+                "subject": "Vermeldingen",
+                "body_text": body,
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            from app.modules.interactions.models import Interaction
+
+            row = await session.get(Interaction, uuid.UUID(created.json()["id"]))
+            assert row.mentioned_contact_ids == [contact["id"]]
+            assert row.mentioned_user_ids == [str(t.user.id)]
+
+
+async def test_participants_resolve_to_org_members_at_read_time(client_for) -> None:
+    """#167: a participant address belonging to an org employee resolves as ``user_id`` —
+    a colleague, never a "create a contact" prompt — and only within the own org: another
+    tenant's member email stays unresolved here."""
+    other = await make_tenant("inter-members-b")  # their owner's email must not resolve in A
+    t = await make_tenant("inter-members-a")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        colleague = await _member(c, headers, "collega@bureau.example")
+        row = (
+            await c.post(
+                "/api/v1/interactions",
+                json={
+                    "kind": "physical_meeting",
+                    "occurred_at": _NOW.isoformat(),
+                    "subject": "Interne afstemming met klant erbij",
+                    "participants": [
+                        {"email": "Collega@Bureau.example", "name": "Collega", "role": "to"},
+                        {"email": other.user.email, "role": "cc"},
+                        {"email": "klant@elders.example", "role": "from"},
+                    ],
+                },
+                headers=headers,
+            )
+        ).json()
+        fetched = (await c.get(f"/api/v1/interactions/{row['id']}", headers=headers)).json()
+        by_email = {p["email"].lower(): p for p in fetched["participants"]}
+        assert by_email["collega@bureau.example"]["user_id"] == str(colleague.id)
+        assert by_email[other.user.email.lower()]["user_id"] is None
+        assert by_email["klant@elders.example"]["user_id"] is None
 
 
 async def test_thread_followup_inherits_all_links_including_task(client_for) -> None:

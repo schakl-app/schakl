@@ -1,0 +1,278 @@
+---
+// HERO demo — "Add time" (/time). Reproduces the workweek day-tab strip, the day list and
+// the EntryForm panel (apps/web/src/lib/modules/time/EntryForm.svelte). Loop: fill Van/Tot/
+// Pauze → worked flips to "3h gewerkt" → pick Klant + Project (burn bar fills) → Opslaan →
+// entry row slides into the day → Monday tab total ·→3h → weekly total 31h 30m → 34h 30m.
+// Base frame = the saved state: the completed entry in the list, totals ticked up.
+import AppFrame from './AppFrame.astro';
+import Icon from './Icon.astro';
+import { labels, num, type Locale } from './labels.ts';
+
+interface Props {
+  locale: Locale;
+}
+const { locale } = Astro.props;
+const l = labels[locale];
+const week = locale === 'nl' ? '7 jul – 13 jul' : '7 Jul – 13 Jul';
+const days = [
+  { d: locale === 'nl' ? 'ma' : 'mo', n: '7', today: true },
+  { d: locale === 'nl' ? 'di' : 'tu', n: '8' },
+  { d: 'wo', n: '9' },
+  { d: locale === 'nl' ? 'do' : 'th', n: '10' },
+  { d: locale === 'nl' ? 'vr' : 'fr', n: '11' },
+];
+---
+
+<AppFrame locale={locale} active="time" class="demo-time">
+  <div class="screen__head">
+    <div class="at-weeknav">
+      <div class="screen__title">{l.navTime}</div>
+      <span class="at-week"><Icon name="chevronDown" size={0.8} class="at-rot" />{week}</span>
+      <span class="chip chip--brand">{l.today}</span>
+    </div>
+  </div>
+
+  <!-- day-tab strip -->
+  <div class="at-tabs">
+    {
+      days.map((d) => (
+        <span class={`at-tab ${d.today ? 'is-sel' : ''}`}>
+          <span class="at-tab__d">{d.d}</span>
+          <span class="at-tab__n">{d.n}</span>
+          <span class="at-tab__t">
+            {d.today ? (
+              <span class="at-mon"><span class="at-mon__a">·</span><span class="at-mon__b">3h</span></span>
+            ) : (
+              <span class="muted">{['8h', '8h', '7h 30m', '8h'][days.indexOf(d) - 1] ?? '·'}</span>
+            )}
+          </span>
+        </span>
+      ))
+    }
+  </div>
+
+  <div class="at-body">
+    <!-- day list -->
+    <div class="at-list">
+      <div class="at-empty">
+        <div class="strong">{locale === 'nl' ? 'Nog niks geregistreerd' : 'Nothing logged yet'}</div>
+        <div class="muted">{locale === 'nl' ? 'Voeg registraties toe via het paneel.' : 'Add a registration using the panel.'}</div>
+      </div>
+      <div class="at-entry">
+        <div class="at-entry__r1">
+          <span class="at-entry__title">Jansen BV · Website</span>
+          <span class="at-entry__total tnum">3h</span>
+        </div>
+        <div class="at-entry__r2">
+          <span class="tnum">09:00–12:15</span>
+          <span>·</span>
+          <span>{locale === 'nl' ? '15m pauze' : '15m break'}</span>
+          <span class="chip chip--ok">{l.billable}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- form panel -->
+    <aside class="at-form card">
+      <div class="at-form__h">{locale === 'nl' ? 'Nieuwe registratie' : 'New registration'}</div>
+      <div class="at-times">
+        <div>
+          <span class="field__label">{l.fStart}</span>
+          <span class="input"><span class="at-tv" data-v="0900">09:00</span></span>
+        </div>
+        <div>
+          <span class="field__label">{l.fEnd}</span>
+          <span class="input"><span class="at-tv" data-v="1215">12:15</span></span>
+        </div>
+        <div>
+          <span class="field__label">{l.fBreak}</span>
+          <span class="input"><span class="at-tv" data-v="15">15</span></span>
+        </div>
+      </div>
+      <div class="at-dur">
+        <div class="at-dur__f">
+          <span class="field__label">{l.fDuration}</span>
+          <span class="input"><span class="at-tv">3:00</span></span>
+        </div>
+        <div class="at-worked">
+          <span class="at-worked__a muted">—</span>
+          <span class="at-worked__b brand-ink strong">{l.worked('3h')}</span>
+        </div>
+      </div>
+      <div class="toggle2 at-billable">
+        <span>{l.notBillable}</span>
+        <span class="is-on">{l.billable}</span>
+      </div>
+      <div class="at-proj">
+        <span class="field__label">{l.fProject}</span>
+        <span class="input select">
+          <span class="at-projval"><span class="input__ph at-projval__ph">{l.fProject}</span><span class="at-projval__v">Jansen BV · Website</span></span>
+          <Icon name="chevronDown" size={0.9} />
+        </span>
+        <div class="at-burn">
+          <div class="at-burn__row muted tnum">{l.budgetSpent(num(locale, 12, 1), num(locale, 40, 1))}</div>
+          <div class="burn"><div class="burn__fill at-burn__fill"></div></div>
+        </div>
+      </div>
+      <span class="btn btn--brand at-save">{l.save}</span>
+    </aside>
+  </div>
+
+  <div class="at-week-total">
+    <span class="at-wt__label">{l.timesheet} · {l.total}</span>
+    <span class="at-wt__val tnum">
+      <span class="at-wt__a">31h 30m</span><span class="at-wt__b">34h 30m</span>
+    </span>
+  </div>
+
+  <div class="stagefade"></div>
+</AppFrame>
+
+<style is:global>
+  .demo-time .at-weeknav { display: flex; align-items: center; gap: 0.6em; }
+  .demo-time .at-week {
+    display: inline-flex; align-items: center; gap: 0.3em;
+    font-size: 0.9em; color: var(--tx); font-weight: 550;
+    border: 1px solid var(--bd); border-radius: 0.5em; padding: 0.2em 0.55em;
+  }
+  .demo-time .at-week .at-rot { transform: rotate(-90deg); color: var(--mu); }
+
+  .demo-time .at-tabs {
+    display: grid; grid-template-columns: repeat(5, 1fr);
+    border: 1px solid var(--bd); border-radius: 0.7em; overflow: hidden;
+    background: var(--rz); margin-bottom: 0.85em;
+  }
+  .demo-time .at-tab {
+    display: flex; flex-direction: column; align-items: center; gap: 0.1em;
+    padding: 0.4em 0.2em; border-right: 1px solid var(--bd); font-size: 0.85em;
+  }
+  .demo-time .at-tab:last-child { border-right: 0; }
+  .demo-time .at-tab__d { font-size: 0.82em; text-transform: uppercase; color: var(--mu); letter-spacing: 0.03em; }
+  .demo-time .at-tab__n { font-weight: 650; }
+  .demo-time .at-tab__t { font-size: 0.82em; }
+  .demo-time .at-tab.is-sel { background: color-mix(in srgb, var(--b) 6%, transparent); }
+  .demo-time .at-tab.is-sel .at-tab__d,
+  .demo-time .at-tab.is-sel .at-tab__n { color: var(--b); }
+  .demo-time .at-mon { position: relative; display: inline-block; min-width: 1.5em; height: 1.1em; }
+  .demo-time .at-mon__a,
+  .demo-time .at-mon__b { position: absolute; left: 50%; transform: translateX(-50%); top: 0; }
+  .demo-time .at-mon__a { opacity: 0; color: var(--mu); }
+  .demo-time .at-mon__b { opacity: 1; color: var(--tx); font-weight: 600; }
+
+  .demo-time .at-body {
+    display: grid; grid-template-columns: minmax(0, 1fr) 13.2em; gap: 0.8em; align-items: start;
+  }
+  @container (max-width: 33em) {
+    .demo-time .at-body { grid-template-columns: 1fr; }
+    .demo-time .at-form { display: none; } /* keep the story readable on the rail */
+  }
+
+  .demo-time .at-list { position: relative; min-width: 0; min-height: 7.5em; }
+  .demo-time .at-empty {
+    position: absolute; top: 0; left: 0; right: 0;
+    border: 1px dashed var(--bd); border-radius: 0.7em; padding: 1.1em;
+    text-align: center; opacity: 0;
+  }
+  .demo-time .at-entry {
+    display: flex; flex-direction: column; gap: 0.3em;
+    border: 1px solid var(--bd); border-radius: 0.7em; padding: 0.6em 0.75em;
+    background: var(--rz);
+  }
+  .demo-time .at-entry__r1 { display: flex; align-items: center; justify-content: space-between; gap: 0.5em; }
+  .demo-time .at-entry__title { font-weight: 550; font-size: 0.92em; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .demo-time .at-entry__total { font-weight: 650; flex: none; }
+  .demo-time .at-entry__r2 { display: flex; align-items: center; gap: 0.4em; font-size: 0.85em; color: var(--mu); }
+  .demo-time .at-form { min-width: 0; }
+
+  .demo-time .at-form { padding: 0.85em; }
+  .demo-time .at-form__h { font-weight: 650; font-size: 0.95em; margin-bottom: 0.65em; }
+  .demo-time .at-times { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4em; margin-bottom: 0.55em; }
+  .demo-time .at-times .input { padding: 0 0.5em; font-size: 0.85em; }
+  .demo-time .at-tv { clip-path: inset(0 0 0 0); overflow: hidden; white-space: nowrap; }
+  .demo-time .at-dur { display: flex; align-items: flex-end; gap: 0.5em; margin-bottom: 0.55em; }
+  .demo-time .at-dur__f { flex: 1; }
+  .demo-time .at-worked { position: relative; padding-bottom: 0.55em; font-size: 0.9em; min-width: 5em; }
+  .demo-time .at-worked__a,
+  .demo-time .at-worked__b { position: absolute; right: 0; bottom: 0.55em; white-space: nowrap; }
+  .demo-time .at-worked__a { opacity: 0; }
+  .demo-time .at-worked__b { opacity: 1; }
+  .demo-time .at-billable { margin-bottom: 0.55em; }
+  .demo-time .at-proj { margin-bottom: 0.7em; }
+  .demo-time .at-projval { position: relative; flex: 1; overflow: hidden; }
+  .demo-time .at-projval__ph { opacity: 0; }
+  .demo-time .at-projval__v { position: absolute; left: 0; top: 0; opacity: 1; white-space: nowrap; }
+  .demo-time .at-burn { margin-top: 0.45em; }
+  .demo-time .at-burn__row { font-size: 0.82em; margin-bottom: 0.25em; }
+  .demo-time .at-burn__fill { width: 30%; }
+  .demo-time .at-save { width: 100%; justify-content: center; }
+
+  .demo-time .at-week-total {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-top: 0.85em; padding: 0.5em 0.8em;
+    background: var(--sf); border: 1px solid var(--bd); border-radius: 0.6em;
+    font-size: 0.85em;
+  }
+  .demo-time .at-wt__label { text-transform: uppercase; letter-spacing: 0.04em; color: var(--mu); font-weight: 600; font-size: 0.85em; }
+  .demo-time .at-wt__val { position: relative; display: inline-block; min-width: 5em; height: 1.2em; text-align: right; font-weight: 700; }
+  .demo-time .at-wt__a, .demo-time .at-wt__b { position: absolute; right: 0; top: 0; }
+  .demo-time .at-wt__a { opacity: 0; }
+  .demo-time .at-wt__b { opacity: 1; }
+
+  .demo-time .stagefade { position: absolute; inset: 0; background: var(--sf); opacity: 0; pointer-events: none; z-index: 30; }
+
+  /* ---------------- motion ---------------- */
+  @media (prefers-reduced-motion: no-preference) {
+    .demo-time.is-playing .at-empty { animation: t-empty 11s infinite; }
+    .demo-time.is-playing .at-entry { animation: t-entry 11s infinite; }
+    .demo-time.is-playing .at-tv { animation: t-clip 11s infinite; }
+    .demo-time.is-playing .at-tv[data-v='1215'] { animation: t-clip 11s infinite; animation-delay: -0.33s; }
+    .demo-time.is-playing .at-tv[data-v='15'] { animation: t-clip 11s infinite; animation-delay: -0.66s; }
+    .demo-time.is-playing .at-worked__a { animation: t-workedA 11s infinite; }
+    .demo-time.is-playing .at-worked__b { animation: t-workedB 11s infinite; }
+    .demo-time.is-playing .at-projval__v { animation: t-projV 11s infinite; }
+    .demo-time.is-playing .at-projval__ph { animation: t-projPh 11s infinite; }
+    .demo-time.is-playing .at-burn__fill { animation: t-burn 11s infinite; }
+    .demo-time.is-playing .at-save { animation: t-press 11s infinite; }
+    .demo-time.is-playing .at-mon__a { animation: t-monA 11s infinite; }
+    .demo-time.is-playing .at-mon__b { animation: t-monB 11s infinite; }
+    .demo-time.is-playing .at-wt__a { animation: t-wtA 11s infinite; }
+    .demo-time.is-playing .at-wt__b { animation: t-wtB 11s infinite; }
+    .demo-time.is-playing .stagefade { animation: t-veil 11s infinite; }
+  }
+
+  /* empty box shown until entry appears */
+  @keyframes t-empty { 0%, 33% { opacity: 1; } 36%, 100% { opacity: 0; } }
+  /* entry row appears at ~36% with a flash, holds, recedes at seam */
+  @keyframes t-entry {
+    0%, 33% { opacity: 0; transform: translateY(-0.4em); }
+    37% { opacity: 1; transform: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--b) 30%, transparent); }
+    44% { box-shadow: 0 0 0 2px transparent; }
+    92% { opacity: 1; transform: none; }
+    100% { opacity: 0; transform: translateY(-0.4em); }
+  }
+  /* base clip closed until each field's beat (Van 8-11%, others delayed) */
+  @keyframes t-clip {
+    0%, 8% { clip-path: inset(0 100% 0 0); }
+    12%, 92% { clip-path: inset(0 0 0 0); }
+    100% { clip-path: inset(0 100% 0 0); }
+  }
+  @keyframes t-workedA { 0%, 17% { opacity: 1; } 20%, 100% { opacity: 0; } }
+  @keyframes t-workedB { 0%, 17% { opacity: 0; } 20%, 92% { opacity: 1; } 100% { opacity: 0; } }
+  @keyframes t-projV { 0%, 24% { opacity: 0; } 28%, 92% { opacity: 1; } 100% { opacity: 0; } }
+  @keyframes t-projPh { 0%, 24% { opacity: 1; } 28%, 100% { opacity: 0; } }
+  @keyframes t-burn {
+    0%, 26% { width: 0%; }
+    32%, 92% { width: 30%; }
+    100% { width: 0%; }
+  }
+  @keyframes t-press {
+    0%, 30% { transform: none; filter: none; }
+    32% { transform: scale(0.98); filter: brightness(0.92); }
+    35%, 100% { transform: none; filter: none; }
+  }
+  @keyframes t-monA { 0%, 39% { opacity: 1; } 43%, 100% { opacity: 0; } }
+  @keyframes t-monB { 0%, 39% { opacity: 0; } 43%, 92% { opacity: 1; } 100% { opacity: 0; } }
+  @keyframes t-wtA { 0%, 41% { opacity: 1; } 45%, 100% { opacity: 0; } }
+  @keyframes t-wtB { 0%, 41% { opacity: 0; } 45%, 100% { opacity: 1; } }
+  @keyframes t-veil { 0%, 92% { opacity: 0; } 96%, 100% { opacity: 1; } }
+</style>

@@ -162,20 +162,70 @@ collections:
     summary: '{{name}}'
     fields:
       - { name: name, label: Naam (intern), widget: string }
+      - { name: slug, label: 'Slug (URL /features/<slug>/)', widget: string }
       - { name: order, label: Volgorde, widget: number, value_type: int }
-      - { name: icon, label: Icoon (emoji), widget: string }
+      - { name: lucide, label: 'Icoon (Lucide-naam, zie Icon.astro)', widget: string }
+      - { name: icon, label: 'Icoon (emoji, legacy — niet meer getoond)', widget: string, required: false }
+      - { name: demo, label: 'Demo (optioneel: createClient/addTime/budget/tasks/leave/whiteLabel)', widget: string, required: false }
       - name: title
-        label: Titel
+        label: Titel (kaart)
         widget: object
         fields:
           - { name: nl, label: NL, widget: string }
           - { name: en, label: EN, widget: string }
       - name: description
-        label: Omschrijving
+        label: Omschrijving (kaart)
         widget: object
         fields:
           - { name: nl, label: NL, widget: text }
           - { name: en, label: EN, widget: text }
+      - name: page
+        label: Functiepagina
+        widget: object
+        required: false
+        fields:
+          - name: eyebrow
+            label: Eyebrow
+            widget: object
+            fields:
+              - { name: nl, label: NL, widget: string }
+              - { name: en, label: EN, widget: string }
+          - name: title
+            label: Titel (pagina)
+            widget: object
+            fields:
+              - { name: nl, label: NL, widget: string }
+              - { name: en, label: EN, widget: string }
+          - name: lead
+            label: Lead
+            widget: object
+            fields:
+              - { name: nl, label: NL, widget: text }
+              - { name: en, label: EN, widget: text }
+          - name: sections
+            label: Secties
+            label_singular: sectie
+            widget: list
+            fields:
+              - name: heading
+                label: Kop
+                widget: object
+                fields:
+                  - { name: nl, label: NL, widget: string }
+                  - { name: en, label: EN, widget: string }
+              - name: body
+                label: Tekst
+                widget: object
+                fields:
+                  - { name: nl, label: NL, widget: text }
+                  - { name: en, label: EN, widget: text }
+              - name: bullets
+                label: Punten (optioneel)
+                widget: object
+                required: false
+                fields:
+                  - { name: nl, label: NL, widget: list, field: { name: item, widget: string }, required: false }
+                  - { name: en, label: EN, widget: list, field: { name: item, widget: string }, required: false }
 
   - name: pages
     label: "Pagina's"

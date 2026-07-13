@@ -29,4 +29,12 @@ TIME_PERMISSIONS: list[PermissionSpec] = [
     PermissionSpec("time.entry.approve", position=30),
     PermissionSpec("time.entry.invoice", position=40),
     PermissionSpec("time.report.read", position=50),
+    # Tenant-configurable time-entry types (#176): everyone who logs needs the list; managing
+    # the catalog under Instellingen is admin-only, like interactions.kind.manage.
+    PermissionSpec(
+        "time.entry_type.read",
+        position=60,
+        default_roles=(ROLE_ADMIN, ROLE_MEMBER),
+    ),
+    PermissionSpec("time.entry_type.manage", position=70),
 ]

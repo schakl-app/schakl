@@ -166,6 +166,39 @@ class DashboardPref(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     )
 
 
+class NavPref(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """Sidebar navigation layout (#169) — DashboardPref's shape, one problem over.
+
+    One row per user, plus at most one row with ``user_id IS NULL`` — the org's default that
+    admins curate (Instellingen → Navigatie). A user without their own row inherits the
+    default; nobody's row hides the fixed core items (Dashboard, Agenda, Instellingen), only
+    module-contributed nav is customizable.
+    """
+
+    __tablename__ = "nav_prefs"
+    __table_args__ = (
+        UniqueConstraint("org_id", "user_id"),
+        # Postgres treats NULLs as distinct, so the template row needs its own partial guard.
+        Index(
+            "uq_nav_prefs_org_default",
+            "org_id",
+            unique=True,
+            postgresql_where=text("user_id IS NULL"),
+        ),
+    )
+
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    # Ordered ``{"key": ..., "hidden": bool}`` entries; unknown keys are ignored, and a nav
+    # item absent from the list (a module enabled later) falls back to its declared position.
+    items: Mapped[list[dict]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+
+
 class UserPref(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     """Per-user personal preferences — a free JSONB blob keyed by feature namespace
     (e.g. ``{"time": {"week_view": "work"}}``). One row per (org, user). Personal, in-view

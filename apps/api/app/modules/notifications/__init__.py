@@ -20,7 +20,7 @@ from app.modules.notifications.external import EmailChannel, ExternalChannel
 from app.modules.notifications.jobs import dispatch_notification_deliveries
 from app.modules.notifications.permissions import NOTIFICATION_PERMISSIONS
 from app.modules.notifications.router import router
-from app.modules.notifications.service import make_handler
+from app.modules.notifications.service import RESOLVING_EVENTS, make_handler, make_resolver
 from app.registry import ModuleDescriptor, registry
 
 # External transports (SMTP, Slack, Teams, Google Chat via Apprise — #17) register here, behind
@@ -44,3 +44,8 @@ registry.register(module)
 
 for _event_type in EVENT_TYPES:
     subscribe(_event_type, make_handler(_event_type))
+
+# Resolving the underlying item resolves the notification about it (#170): a decided leave
+# request or a reviewed email stops asking, for every recipient who never opened it.
+for _trigger in RESOLVING_EVENTS:
+    subscribe(_trigger, make_resolver(_trigger))

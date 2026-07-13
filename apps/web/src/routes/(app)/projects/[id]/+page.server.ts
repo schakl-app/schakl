@@ -52,8 +52,7 @@ export const load: PageServerLoad = async (event) => {
   // Cost from employee rates (#111) is salary-derived: fetched only for someone the API would
   // let see it (the guard is UX; the API stays the boundary), and only inside the same flight.
   const canSeeCost =
-    can(event.locals.user, "time.report.read") &&
-    can(event.locals.user, "leave.rate.read", "any");
+    can(event.locals.user, "time.report.read") && can(event.locals.user, "leave.rate.read", "any");
 
   // Every call in one flight. `projects` is a name-only lookup: the panel's edit modal needs the
   // picker, and `count=false` skips the COUNT(*) it would throw away.
@@ -247,6 +246,7 @@ export const actions: Actions = {
         project_id: String(form.get("project_id") ?? "").trim() || null,
         task_id: String(form.get("task_id") ?? "").trim() || null,
         billable: form.get("billable") !== "false",
+        entry_type_key: String(form.get("entry_type_key") ?? "").trim() || null,
       },
     });
     if (apiError) return fail(400, { error: apiErrorKey(apiError).key });

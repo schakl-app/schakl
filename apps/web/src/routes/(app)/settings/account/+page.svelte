@@ -7,6 +7,8 @@
   import Avatar from "$lib/core/ui/Avatar.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import GoogleAccountCard from "$lib/modules/google/GoogleAccountCard.svelte";
+  import NavPrefEditor from "$lib/core/ui/NavPrefEditor.svelte";
+  import { navItemsFor } from "$lib/core/registry";
 
   let { data, form } = $props();
 
@@ -24,6 +26,14 @@
         : "17-01-2026",
   );
   const sampleTime = $derived(data.currentFormat.clock === "12h" ? "2:05 PM" : "14:05");
+
+  // Personal sidebar layout (#169): the module items this person can see, in effective order.
+  const navCandidates = $derived(
+    navItemsFor(page.data.theme?.enabledModules ?? [], page.data.user).map((item) => ({
+      key: item.key,
+      label: item.label(),
+    })),
+  );
 </script>
 
 <svelte:head>
@@ -339,4 +349,22 @@
       </form>
     </section>
   {/if}
+
+  <!-- Personal sidebar layout (#169): my own order/visibility, never the org's (UX §6). -->
+  <section class="rounded-xl border border-border bg-surface-raised p-5">
+    <h2 class="text-sm font-semibold text-text">{t("settings.account.nav_title")}</h2>
+    <p class="mb-4 mt-1 text-sm text-text-muted">{t("settings.account.nav_subtitle")}</p>
+    {#if form?.navSaved || form?.navReset}
+      <p class="mb-3 text-sm text-green-700 dark:text-green-400">{t("settings.account.saved")}</p>
+    {/if}
+    {#key data.personalNavItems}
+      <NavPrefEditor
+        candidates={navCandidates}
+        initial={data.personalNavItems}
+        action="?/saveNav"
+        resetAction="?/resetNav"
+        showReset={data.hasPersonalNav}
+      />
+    {/key}
+  </section>
 </div>

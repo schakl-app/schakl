@@ -30,25 +30,39 @@ import nh3
 # The name is display-only; the id is the truth, so a rename never breaks who was mentioned.
 # Shared here because more than one module parses it (task comments, contactmoment notes #151);
 # two drifting copies of this regex would disagree about who got mentioned.
+# An optional kind prefix (#165) — `mention:contact:<uuid>` — discriminates contact mentions;
+# an absent prefix means a colleague, so every marker stored before #165 keeps parsing as one.
 MENTION_RE = re.compile(
-    r"@\[[^\]]+\]\(mention:([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"@\[[^\]]+\]\(mention:(?:(user|contact):)?([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
     r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\)"
 )
 
 
+def _mention_ids(body: str | None, kind: str) -> list[uuid.UUID]:
+    seen: dict[uuid.UUID, None] = {}
+    for match in MENTION_RE.finditer(body or ""):
+        if (match.group(1) or "user") != kind:
+            continue
+        try:
+            seen.setdefault(uuid.UUID(match.group(2)), None)
+        except ValueError:
+            continue
+    return list(seen)
+
+
 def extract_mention_ids(body: str | None) -> list[uuid.UUID]:
-    """The distinct user ids mentioned in a body, in first-seen order.
+    """The distinct *user* ids mentioned in a body, in first-seen order.
 
     Purely syntactic — the caller still validates the ids against org membership, so a stray
     or cross-tenant uuid can never notify anyone (issue #63).
     """
-    seen: dict[uuid.UUID, None] = {}
-    for match in MENTION_RE.finditer(body or ""):
-        try:
-            seen.setdefault(uuid.UUID(match.group(1)), None)
-        except ValueError:
-            continue
-    return list(seen)
+    return _mention_ids(body, "user")
+
+
+def extract_contact_mention_ids(body: str | None) -> list[uuid.UUID]:
+    """The distinct *contact* ids mentioned in a body (#165) — same syntactic-only contract;
+    callers validate against the org's contacts."""
+    return _mention_ids(body, "contact")
 
 
 def sanitize_markdown(value: str | None) -> str | None:

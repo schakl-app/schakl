@@ -20,7 +20,10 @@
     ArrowRightLeft,
     ArrowUpRight,
     CheckCircle2,
+    ChevronDown,
+    ChevronRight,
     ExternalLink,
+    Paperclip,
     Pencil,
     Plus,
     Trash2,
@@ -42,7 +45,7 @@
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
 
   import CloseTaskDialog from "./CloseTaskDialog.svelte";
-  import { type InteractionItem, KIND_ICONS } from "./format";
+  import { type InteractionItem, kindIcon } from "./format";
   import InteractionForm from "./InteractionForm.svelte";
   import InteractionMoveDialog from "./InteractionMoveDialog.svelte";
 
@@ -127,13 +130,30 @@
     }
     showParticipantCreate = true;
   }
+  // An approved email's stored attachments (#180), fetched lazily when a row expands —
+  // the list render must not cost a files call per row.
+  interface AttachmentFile {
+    id: string;
+    filename: string;
+    size_bytes: number;
+  }
+  let attachmentsFor = $state<Record<string, AttachmentFile[]>>({});
+  async function loadAttachments(id: string) {
+    if (attachmentsFor[id]) return;
+    const response = await fetch(`/api/v1/files?entity_type=interaction&entity_id=${id}`, {
+      headers: { accept: "application/json" },
+    });
+    attachmentsFor = { ...attachmentsFor, [id]: response.ok ? await response.json() : [] };
+  }
+
   let deleteId = $state("");
   let confirmDelete = $state(false);
   let showReject = $state(false);
   let rejecting = $state<InteractionItem | null>(null);
   let expanded = $state<string | null>(null);
 
-  const isOwner = (item: InteractionItem) => item.owner_user_id !== null && item.owner_user_id === me;
+  const isOwner = (item: InteractionItem) =>
+    item.owner_user_id !== null && item.owner_user_id === me;
   const mayEdit = (item: InteractionItem) =>
     item.source === "manual" &&
     (isOwner(item)
@@ -237,18 +257,31 @@
 {:else}
   <ul class="divide-y divide-border">
     {#each items as item (item.id)}
-      {@const Icon = KIND_ICONS[item.kind] ?? KIND_ICONS.note}
+      {@const Icon = kindIcon(item.kind)}
       {@const open = expanded === item.id}
       {@const chips = linkChips(item)}
       <li class="py-2.5">
         <div class="flex items-start gap-3">
           <Icon size={16} class="mt-0.5 shrink-0 text-text-muted" aria-hidden="true" />
+          <!-- Expand/collapse reads like the DataTable's group toggle and the sidebar's
+               disclosure (#179): chevron swap + aria-expanded + a visible hover state. -->
           <button
             type="button"
-            class="min-w-0 flex-1 text-left"
-            onclick={() => (expanded = open ? null : item.id)}
+            class="-mx-1.5 -my-1 min-w-0 flex-1 rounded-lg px-1.5 py-1 text-left hover:bg-surface"
+            aria-expanded={open}
+            onclick={() => {
+              expanded = open ? null : item.id;
+              if (!open && item.source === "gmail" && item.status === "logged") {
+                void loadAttachments(item.id);
+              }
+            }}
           >
             <span class="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+              {#if open}
+                <ChevronDown size={14} class="shrink-0 text-text-muted" aria-hidden="true" />
+              {:else}
+                <ChevronRight size={14} class="shrink-0 text-text-muted" aria-hidden="true" />
+              {/if}
               <span class="text-sm font-medium text-text">
                 {item.subject || t(`interactions.kind.${item.kind}`)}
               </span>
@@ -330,6 +363,20 @@
                         ({t(`interactions.role.${p.role ?? "to"}`)})</span
                       >
                     </a>
+                  {:else if p.user_id}
+                    <!-- A colleague (#167): recognized, nothing to create, nowhere to link —
+                         a plain neutral pill, distinct from both contact and unknown. -->
+                    <span
+                      title={p.email}
+                      class="rounded-full px-2 py-0.5 text-[11px] ring-1 ring-inset ring-border {cc
+                        ? 'bg-surface text-text-muted'
+                        : 'bg-surface text-text'}"
+                    >
+                      {p.name || p.email}<span class="sr-only">
+                        ({t("interactions.participant_colleague")},
+                        {t(`interactions.role.${p.role ?? "to"}`)})</span
+                      >
+                    </span>
                   {:else}
                     <button
                       type="button"
@@ -362,6 +409,22 @@
                 <!-- Approved seconds ago: the body fetch is on its way (docs/GOOGLE.md §6). -->
                 <p class="text-xs text-text-muted">{t("interactions.body_loading")}</p>
               {/if}
+            {/if}
+            {#if attachmentsFor[item.id]?.length}
+              <!-- Stored on approval (#180); each chip opens/downloads via the files endpoint. -->
+              <div class="flex flex-wrap gap-1">
+                {#each attachmentsFor[item.id] as file (file.id)}
+                  <a
+                    href={`/api/v1/files/${file.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="inline-flex items-center gap-1 rounded-full bg-surface px-2 py-0.5 text-[11px] text-text ring-1 ring-inset ring-border hover:text-brand"
+                  >
+                    <Paperclip size={11} aria-hidden="true" />
+                    {file.filename}
+                  </a>
+                {/each}
+              </div>
             {/if}
             {#if item.deep_link}
               <a

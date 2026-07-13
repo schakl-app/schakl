@@ -43,6 +43,7 @@ export const load: PageServerLoad = async (event) => {
     date_from: q.get("date_from") ?? monthStartIso(),
     date_to: q.get("date_to") ?? "",
     status: q.get("status") ?? "",
+    entry_type: q.get("entry_type") || "",
   };
 
   // The saved layout comes from the /overview layout load, which does not rerun on filter or sort
@@ -63,6 +64,7 @@ export const load: PageServerLoad = async (event) => {
         project_id: filters.project_id || undefined,
         date_from: filters.date_from || undefined,
         date_to: filters.date_to || undefined,
+        entry_type: filters.entry_type || undefined,
         sort,
         ...statusFlags(filters.status),
       },
@@ -129,6 +131,7 @@ export const actions: Actions = {
         project_id: String(form.get("project_id") ?? "").trim() || null,
         task_id: String(form.get("task_id") ?? "").trim() || null,
         billable: form.get("billable") !== "false",
+        entry_type_key: String(form.get("entry_type_key") ?? "").trim() || null,
       },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });

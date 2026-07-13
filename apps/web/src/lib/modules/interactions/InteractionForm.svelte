@@ -8,12 +8,25 @@
    * a hand-typed 14:00 lands on the same timeline instant the reader sees.
    */
   import { enhance } from "$app/forms";
+  import { page } from "$app/state";
+  import type { CustomFieldDefinition } from "$lib/core/customfields/types";
   import { t } from "$lib/core/i18n";
+  import Combobox from "$lib/core/ui/Combobox.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import TimeInput from "$lib/core/ui/TimeInput.svelte";
+  import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
 
-  import { type InteractionItem, instantToLocal } from "./format";
+  import { minutesBetween } from "$lib/modules/time/duration";
+  import { formatMinutes } from "$lib/modules/time/format";
+
+  import {
+    type InteractionItem,
+    type InteractionKindDef,
+    instantToLocal,
+    kindLabel,
+    manualKinds,
+  } from "./format";
 
   let {
     interaction = null,
@@ -31,21 +44,130 @@
   } = $props();
 
   const local = interaction ? instantToLocal(interaction.occurred_at) : null;
-  let kind = $state(interaction?.kind ?? "meeting");
+  let kind = $state(interaction?.kind ?? "");
   let date = $state(local?.date ?? new Date().toISOString().slice(0, 10));
   let time = $state(local?.time ?? "");
   let error = $state("");
 
-  const KINDS = ["meeting", "call", "note"] as const;
+  // Kinds are tenant-defined (#174), fetched once per session (module-level cache). The
+  // list shows the active ones, plus the row's own kind when editing — a deactivated kind
+  // must stay pickable on the rows that already carry it.
+  const locale = $derived((page.data.locale as string | undefined) ?? "nl");
+  let allKinds = $state<InteractionKindDef[]>([]);
+  $effect(() => {
+    void manualKinds().then((fetched) => {
+      allKinds = fetched;
+      if (!kind) kind = fetched.find((k) => k.active)?.key ?? "";
+    });
+  });
+  const kinds = $derived(allKinds.filter((k) => k.active || k.key === kind));
+
   const DIRECTIONS = ["none", "inbound", "outbound"] as const;
 
+  // contact_id is a visible picker now (#173), so it leaves the hidden-prefill spread.
   const links = $derived(
     interaction
       ? {}
       : Object.fromEntries(
-          Object.entries(prefill).filter(([, v]) => typeof v === "string" && v.length > 0),
+          Object.entries(prefill).filter(
+            ([field, v]) => field !== "contact_id" && typeof v === "string" && v.length > 0,
+          ),
         ),
   );
+
+  // --- contact person (#173): pick, clear, or inline-create — never leave the form ------- //
+  const hostCompanyId = $derived(
+    interaction?.company_id ?? (typeof prefill.company_id === "string" ? prefill.company_id : null),
+  );
+  // Deliberate initial capture: the host keys this form per row, so props never swap in place.
+  // svelte-ignore state_referenced_locally
+  let contactId = $state(
+    interaction?.contact_id ??
+      (typeof prefill.contact_id === "string" ? prefill.contact_id : "") ??
+      "",
+  );
+  let contactOptions = $state<{ value: string; label: string; hint?: string; company?: string }[]>(
+    [],
+  );
+  $effect(() => {
+    // Host company's roster first; an org without links there falls back to all contacts.
+    const scope = hostCompanyId ? `&company_id=${hostCompanyId}` : "";
+    void (async () => {
+      let response = await fetch(`/api/v1/contacts?limit=200${scope}`, {
+        headers: { accept: "application/json" },
+      });
+      interface ContactRow {
+        id: string;
+        first_name: string;
+        last_name?: string | null;
+        email?: string | null;
+        companies?: { name: string }[];
+      }
+      let items: ContactRow[] = response.ok ? ((await response.json()).items ?? []) : [];
+      if (items.length === 0 && scope) {
+        response = await fetch("/api/v1/contacts?limit=200", {
+          headers: { accept: "application/json" },
+        });
+        items = response.ok ? ((await response.json()).items ?? []) : [];
+      }
+      contactOptions = items.map((c) => ({
+        value: c.id,
+        label: `${c.first_name} ${c.last_name ?? ""}`.trim(),
+        hint: c.email ?? undefined,
+        company: c.companies?.[0]?.name,
+      }));
+      // The row's own contact stays pickable even when outside the fetched scope.
+      if (contactId && interaction?.contact_name && !items.some((c) => c.id === contactId)) {
+        contactOptions = [{ value: contactId, label: interaction.contact_name }, ...contactOptions];
+      }
+    })();
+  });
+
+  // The note's @ autocomplete offers both kinds (#165): colleagues (the host's members) and
+  // the same host-scoped contacts the picker above already fetched — one fetch serves both.
+  const editorMentions = $derived([
+    ...mentions.map((m) => ({ ...m, kind: "user" as const })),
+    ...contactOptions.map((c) => ({
+      id: c.value,
+      name: c.label,
+      kind: "contact" as const,
+      subtitle: c.company ?? c.hint,
+    })),
+  ]);
+
+  // --- "Voeg aan mijn uren toe" (#175): a linked time entry, saved with the interaction.
+  // Create-only (an existing row's hours live on the timesheet) and not for notes, which
+  // have no time-spent concept. Times use the time page's own control and live readout.
+  const canLogTime = $derived(!interaction && kind !== "note");
+  let logTime = $state(false);
+  let logStart = $state("");
+  let logEnd = $state("");
+  const logMinutes = $derived(logStart && logEnd ? minutesBetween(logStart, logEnd) : null);
+
+  let qcOpen = $state(false);
+  let qcName = $state("");
+  let contactDefinitions = $state<CustomFieldDefinition[] | null>(null);
+  async function quickCreateContact(query: string) {
+    qcName = query;
+    if (contactDefinitions === null) {
+      const response = await fetch("/api/v1/custom-fields/definitions?entity_type=contact", {
+        headers: { accept: "application/json" },
+      });
+      contactDefinitions = response.ok ? await response.json() : [];
+    }
+    qcOpen = true;
+  }
+  // The quick-create action answers with the new contact's id; auto-select it (docs/UX.md).
+  let handledCreate = $state("");
+  $effect(() => {
+    const created = page.form?.inlineCreated as { slot: string; id: string } | undefined;
+    if (created?.slot !== "interaction_contact" || created.id === handledCreate) return;
+    handledCreate = created.id;
+    if (!contactOptions.some((c) => c.value === created.id)) {
+      contactOptions = [...contactOptions, { value: created.id, label: qcName || "—" }];
+    }
+    contactId = created.id;
+  });
 </script>
 
 <form
@@ -78,8 +200,8 @@
         bind:value={kind}
         class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
       >
-        {#each KINDS as option (option)}
-          <option value={option}>{t(`interactions.kind.${option}`)}</option>
+        {#each kinds as option (option.key)}
+          <option value={option.key}>{kindLabel(option, locale)}</option>
         {/each}
       </select>
     </label>
@@ -106,6 +228,17 @@
     />
   </label>
 
+  <div class="block text-sm">
+    <span class="mb-1 block font-medium text-text">{t("interactions.field.contact")}</span>
+    <Combobox
+      items={contactOptions}
+      name="contact_id"
+      bind:value={contactId}
+      placeholder={t("interactions.field.contact_placeholder")}
+      oncreate={(query) => void quickCreateContact(query)}
+    />
+  </div>
+
   {#if kind === "call"}
     <label class="block text-sm">
       <span class="mb-1 block font-medium text-text">{t("interactions.field.direction")}</span>
@@ -123,8 +256,45 @@
 
   <div class="text-sm">
     <span class="mb-1 block font-medium text-text">{t("interactions.field.notes")}</span>
-    <RichTextEditor name="body_text" value={interaction?.body_text ?? ""} rows={4} {mentions} />
+    <RichTextEditor
+      name="body_text"
+      value={interaction?.body_text ?? ""}
+      rows={4}
+      mentions={editorMentions}
+    />
   </div>
+
+  {#if canLogTime}
+    <div class="rounded-lg border border-border p-3">
+      <label class="flex items-center gap-2 text-sm text-text">
+        <input type="checkbox" name="log_time" value="1" bind:checked={logTime} />
+        {t("interactions.log_time")}
+      </label>
+      {#if logTime}
+        <div class="mt-3 flex items-end gap-3">
+          <label class="block text-sm">
+            <span class="mb-1 block text-xs font-medium text-text-muted"
+              >{t("time.field.start")}</span
+            >
+            <TimeInput name="log_start" bind:value={logStart} required />
+          </label>
+          <label class="block text-sm">
+            <span class="mb-1 block text-xs font-medium text-text-muted">{t("time.field.end")}</span
+            >
+            <TimeInput name="log_end" bind:value={logEnd} required />
+          </label>
+          <span
+            class="pb-2 text-sm font-semibold tabular-nums {logMinutes
+              ? 'text-brand'
+              : 'text-text-muted'}"
+          >
+            {logMinutes != null ? t("time.worked", { duration: formatMinutes(logMinutes) }) : "—"}
+          </span>
+        </div>
+        <p class="mt-2 text-xs text-text-muted">{t("interactions.log_time_hint")}</p>
+      {/if}
+    </div>
+  {/if}
 
   {#if error}
     <p class="text-sm text-red-600">{t(error)}</p>
@@ -139,3 +309,13 @@
     </button>
   </div>
 </form>
+
+<ContactQuickCreate
+  bind:open={qcOpen}
+  name={qcName}
+  definitions={contactDefinitions ?? []}
+  locale={(page.data.locale as string | undefined) ?? "nl"}
+  action="?/createInteractionContact"
+  pickerSlot="interaction_contact"
+  error={(page.form?.qcError as string | undefined) ?? null}
+/>

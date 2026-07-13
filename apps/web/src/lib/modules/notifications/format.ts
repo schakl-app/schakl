@@ -114,7 +114,7 @@ export function notificationHref(item: NotificationLike): string | null {
       return "/time";
     case "interaction": {
       // A pending email opens on the review queue (#156) — the place built for deciding.
-      if (item.event_type === "interactions.email_pending") return "/interactions/review";
+      if (item.event_type === "interactions.email_pending") return "/interactions?status=pending";
       // Anything else opens where its timeline lives: the most specific host it hangs on
       // (#151 mentions carry task/project links too).
       const payload = item.payload ?? {};

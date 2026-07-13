@@ -1,0 +1,93 @@
+{
+  "name": "Rollen en rechten",
+  "slug": "roles",
+  "order": 100,
+  "icon": "🛡️",
+  "lucide": "roles",
+  "title": {
+    "nl": "Rollen & rechten",
+    "en": "Roles & permissions"
+  },
+  "description": {
+    "nl": "Rollen met precies de rechten die je toekent, per organisatie. Alles staat standaard dicht; jij bepaalt wie wat mag.",
+    "en": "Roles carrying exactly the permissions you grant, per organisation. Everything is closed by default; you decide who may do what."
+  },
+  "page": {
+    "eyebrow": {
+      "nl": "Rollen & rechten",
+      "en": "Roles & permissions"
+    },
+    "title": {
+      "nl": "Wie wat mag, bepaal jij",
+      "en": "You decide who can do what"
+    },
+    "lead": {
+      "nl": "Rollen zijn van jou: geef elke rol precies de rechten die passen bij hoe jouw bureau werkt. Elke handeling in het platform vraagt om een recht, dus wie niets heeft gekregen, kan ook niets. Standaard dicht.",
+      "en": "Roles are yours to shape: give each one exactly the permissions that match how your agency works. Every action in the platform asks for a permission, so anyone granted nothing can do nothing. Closed by default."
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Rollen die je zelf samenstelt",
+          "en": "Roles you compose yourself"
+        },
+        "body": {
+          "nl": "Je maakt zoveel rollen als je nodig hebt en geeft elke rol precies de rechten die je kiest uit een vaste catalogus. Iemand kan meerdere rollen dragen; wat die persoon mag, is de optelsom van al zijn rollen samen. Rechten heten overal hetzelfde (module.resource.actie), zodat de lijst leesbaar blijft terwijl hij groeit.",
+          "en": "Create as many roles as you need and give each one exactly the permissions you pick from a fixed catalog. A person can hold several roles; what they may do is the sum of all their roles together. Permissions are named the same way everywhere (module.resource.action), so the list stays readable as it grows."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Standaard dicht",
+          "en": "Closed by default"
+        },
+        "body": {
+          "nl": "Elke route in het platform vraagt om een recht. Een route die er geen opeist, haalt de build niet: er is geen deur die per ongeluk open blijft staan. Het scherm toont je alleen wat je mag, maar de echte grens ligt bij de API, niet bij de knop die je verbergt.",
+          "en": "Every route in the platform asks for a permission. A route that declares none fails the build, so no door is ever left accidentally open. The interface shows you only what you may do, but the real boundary is the API, not a hidden button."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Eigen of alles",
+          "en": "Own or any"
+        },
+        "body": {
+          "nl": "Sommige rechten hebben een bereik: eigen of alles. Zo schrijft iemand zijn eigen uren (time.entry.write:own) zonder bij die van een collega te kunnen. 'Eigen' betekent dat de rij van die persoon is; bij een taak is dat degene aan wie hij is toegewezen. Wie het recht op alles heeft, heeft daarmee ook het recht op eigen.",
+          "en": "Some permissions carry a scope: own or any. Someone writes their own hours (time.entry.write:own) without touching a colleague's. 'Own' means the row belongs to that person; for a task, that is whoever it is assigned to. A permission for 'any' always covers 'own' as well."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Vier rollen om op te bouwen",
+          "en": "Four roles to build on"
+        },
+        "body": {
+          "nl": "Vier rollen staan er vanaf het begin: owner, admin, member en client. Owner houdt alle rechten en is niet te wijzigen of te verwijderen, zodat een fout ergens anders altijd te herstellen blijft. De andere drie pas je vrij aan of dupliceer je; admin heeft een volledige, expliciete lijst in plaats van een wildcard, juist zodat je hem kunt inperken.",
+          "en": "Four roles are there from the start: owner, admin, member and client. Owner holds every permission and can be neither edited nor deleted, so a mistake made anywhere else stays fixable. The other three are freely editable or duplicable; admin carries a full, explicit list rather than a wildcard, precisely so you can narrow it."
+        },
+        "bullets": {
+          "nl": [
+            "owner: alle rechten, vast en onverwijderbaar",
+            "admin, member en client: sleutel vast, rechten vrij aan te passen",
+            "De laatste rol die het bureau kan beheren, laat zich niet verwijderen"
+          ],
+          "en": [
+            "owner: every permission, fixed and undeletable",
+            "admin, member and client: key locked, permissions open",
+            "The last role that can manage the agency cannot be removed"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Op één plek beheerd",
+          "en": "Managed in one place"
+        },
+        "body": {
+          "nl": "Je regelt alles onder Instellingen → Rollen: rollen maken, rechten aanvinken, toewijzen aan mensen. Zet je later een module aan, dan brengt die zijn eigen rechten mee en worden ze eenmalig aan je systeemrollen toegekend. Elke wijziging aan een rol wordt vastgelegd, zodat je terug kunt zien wie wat veranderde.",
+          "en": "You set everything up under Settings → Roles: create roles, tick permissions, assign them to people. Turn on a module later and it brings its own permissions, granted to your system roles once. Every change to a role is recorded, so you can see who changed what."
+        }
+      }
+    ]
+  }
+}

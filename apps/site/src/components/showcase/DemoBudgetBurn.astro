@@ -1,0 +1,144 @@
+---
+// Demo — "Budgets you can trust" (/projects/[id]). The budget burn bar climbs through the
+// real core/burn.ts scale (brand <75% → amber <100% → red ≥100%, width clamps but the number
+// doesn't) and the Uren panel below proves "every number opens". Base frame = the over state.
+import AppFrame from './AppFrame.astro';
+import Icon from './Icon.astro';
+import { labels, num, eur, type Locale } from './labels.ts';
+
+interface Props {
+  locale: Locale;
+}
+const { locale } = Astro.props;
+const l = labels[locale];
+const u = l.hoursUnit;
+const rows = [
+  { t: 'Website review', d: '7-7 · 13:00', h: '2h 15m', pill: locale === 'nl' ? 'Goed te keuren' : 'To approve', cls: 'chip--pending' },
+  { t: 'Sprint call', d: '6-7 · 10:30', h: '1h', pill: l.lApproved, cls: 'chip--ok' },
+  { t: 'Bugfixes', d: '5-7 · 09:15', h: '3h 30m', pill: locale === 'nl' ? 'Te factureren' : 'To invoice', cls: 'chip--brand' },
+];
+---
+
+<AppFrame locale={locale} active="projects" class="demo-burn">
+  <div class="bn-back muted"><Icon name="chevronDown" size={0.8} class="bn-rot" />{l.navProjects}</div>
+  <div class="screen__head">
+    <div>
+      <div class="screen__title">Website Jansen BV</div>
+      <div class="screen__sub">Jansen BV · {l.projActive}</div>
+    </div>
+  </div>
+
+  <div class="card bn-card">
+    <div class="bn-card__h">{l.budget}</div>
+    <div class="bn-dl">
+      <div><span class="muted">{locale === 'nl' ? 'Budget (uren)' : 'Budget (hours)'}</span><b>40 {u}</b></div>
+      <div><span class="muted">{l.hourlyRate}</span><b>{eur(locale, 87.5, 2)}</b></div>
+      <div><span class="muted">{locale === 'nl' ? 'Geplande waarde' : 'Planned value'}</span><b>{eur(locale, 3500)}</b></div>
+      <div><span class="muted">{locale === 'nl' ? 'Standaard facturabel' : 'Billable by default'}</span><b>{locale === 'nl' ? 'Ja' : 'Yes'}</b></div>
+    </div>
+    <div class="bn-logged">
+      <span class="muted">{locale === 'nl' ? 'Geboekt deze maand' : 'Logged this month'}</span>
+      <span class="bn-num tnum">
+        <span class="bn-num__x">
+          <span class="bn-x0">0</span><span class="bn-x1">{num(locale, 12.5, 1)}</span><span class="bn-x2">35</span><span class="bn-x3 over-ink">46</span>
+        </span>
+        <span class="muted"> / 40 {u}</span>
+      </span>
+    </div>
+    <div class="burn bn-track"><div class="burn__fill bn-fill"></div></div>
+    <div class="bn-money">
+      <div><span class="muted">{l.billableValue}</span><b>{eur(locale, 4025)}</b></div>
+      <div><span class="muted">{l.margin}</span><b class="over-ink">− {eur(locale, 525)}</b></div>
+    </div>
+  </div>
+
+  <div class="card bn-uren">
+    <div class="bn-uren__h">
+      <span class="strong">{locale === 'nl' ? 'Uren' : 'Hours'}</span>
+      <span class="muted tnum">{locale === 'nl' ? '12 registraties' : '12 registrations'}</span>
+    </div>
+    {
+      rows.map((r) => (
+        <div class="bn-row">
+          <div class="bn-row__l">
+            <div class="strong">Jansen BV · {r.t}</div>
+            <div class="muted tnum">{r.d}</div>
+          </div>
+          <div class="bn-row__r">
+            <span class="tnum strong">{r.h}</span>
+            <span class={`chip ${r.cls}`}>{r.pill}</span>
+          </div>
+        </div>
+      ))
+    }
+    <div class="bn-foot">
+      <span class="muted">{locale === 'nl' ? 'De 8 meest recente van 12 worden getoond.' : 'Showing the 8 most recent of 12.'}</span>
+      <span class="brand-ink">{locale === 'nl' ? 'Alles bekijken' : 'View all'}</span>
+    </div>
+  </div>
+
+  <div class="stagefade"></div>
+</AppFrame>
+
+<style is:global>
+  .demo-burn .app { height: 30.5em; }
+  .demo-burn .bn-back { display: inline-flex; align-items: center; gap: 0.25em; font-size: 0.85em; margin-bottom: 0.5em; }
+  .demo-burn .bn-back .bn-rot { transform: rotate(90deg); }
+  .demo-burn .bn-card { padding: 0.95em 1.05em; }
+  .demo-burn .bn-card__h { font-weight: 650; margin-bottom: 0.6em; }
+  .demo-burn .bn-dl { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45em 0.9em; font-size: 0.88em; margin-bottom: 0.75em; }
+  .demo-burn .bn-dl > div { display: flex; justify-content: space-between; gap: 0.5em; }
+  .demo-burn .bn-logged { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.9em; padding-top: 0.7em; border-top: 1px solid var(--bd); }
+  .demo-burn .bn-num__x { position: relative; display: inline-block; min-width: 2.6em; height: 1.2em; text-align: right; font-weight: 650; }
+  .demo-burn .bn-num__x > span { position: absolute; right: 0; top: 0; opacity: 0; }
+  .demo-burn .bn-num__x > .bn-x3 { opacity: 1; } /* base = over */
+  .demo-burn .bn-track { height: 0.55em; margin: 0.5em 0 0.85em; }
+  .demo-burn .bn-fill { width: 100%; background: var(--over); } /* base = over */
+  .demo-burn .bn-money { display: grid; grid-template-columns: 1fr 1fr; gap: 0.9em; font-size: 0.88em; }
+  .demo-burn .bn-money > div { display: flex; justify-content: space-between; }
+
+  .demo-burn .bn-uren { margin-top: 0.9em; padding: 0.85em 1.05em; }
+  .demo-burn .bn-uren__h { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.3em; }
+  .demo-burn .bn-row { display: flex; align-items: center; justify-content: space-between; gap: 0.6em; padding: 0.5em 0; border-top: 1px solid var(--bd); }
+  /* the header div (.bn-uren__h) is the first div sibling, so the first .bn-row is nth-of-type(2) */
+  .demo-burn .bn-row:nth-of-type(2) { border-top: 0; }
+  .demo-burn .bn-row__l { min-width: 0; font-size: 0.9em; }
+  .demo-burn .bn-row__r { display: flex; align-items: center; gap: 0.55em; font-size: 0.9em; flex: none; }
+  .demo-burn .bn-foot { display: flex; justify-content: space-between; gap: 0.6em; font-size: 0.82em; padding-top: 0.55em; margin-top: 0.15em; border-top: 1px solid var(--bd); }
+  .demo-burn .stagefade { position: absolute; inset: 0; background: var(--sf); opacity: 0; pointer-events: none; z-index: 30; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .demo-burn.is-playing .bn-fill { animation: bn-fill 11s infinite; }
+    .demo-burn.is-playing .bn-x0 { animation: bn-x0 11s infinite; }
+    .demo-burn.is-playing .bn-x1 { animation: bn-x1 11s infinite; }
+    .demo-burn.is-playing .bn-x2 { animation: bn-x2 11s infinite; }
+    .demo-burn.is-playing .bn-x3 { animation: bn-x3 11s infinite; }
+    .demo-burn.is-playing .bn-uren { animation: bn-panel 11s infinite; }
+    .demo-burn.is-playing .bn-row { animation: bn-rowin 11s infinite; }
+    .demo-burn.is-playing .bn-row:nth-of-type(3) { animation-delay: -10.7s; }
+    .demo-burn.is-playing .bn-row:nth-of-type(4) { animation-delay: -10.4s; }
+    .demo-burn.is-playing .stagefade { animation: bn-veil 11s infinite; }
+  }
+  @keyframes bn-fill {
+    0%, 5% { width: 0%; background: var(--b); }
+    22% { width: 31%; background: var(--b); }
+    40% { width: 87%; background: var(--warn); }
+    58%, 90% { width: 100%; background: var(--over); }
+    100% { width: 0%; background: var(--b); }
+  }
+  @keyframes bn-x0 { 0%, 6% { opacity: 1; } 12%, 100% { opacity: 0; } }
+  @keyframes bn-x1 { 0%, 12% { opacity: 0; } 18%, 32% { opacity: 1; } 38%, 100% { opacity: 0; } }
+  @keyframes bn-x2 { 0%, 32% { opacity: 0; } 40%, 50% { opacity: 1; } 56%, 100% { opacity: 0; } }
+  @keyframes bn-x3 { 0%, 52% { opacity: 0; } 58%, 92% { opacity: 1; } 100% { opacity: 0; } }
+  @keyframes bn-panel {
+    0%, 40% { opacity: 0; transform: translateY(0.6em); }
+    52%, 92% { opacity: 1; transform: none; }
+    100% { opacity: 0; transform: translateY(0.6em); }
+  }
+  @keyframes bn-rowin {
+    0%, 46% { opacity: 0; transform: translateY(0.3em); }
+    56%, 92% { opacity: 1; transform: none; }
+    100% { opacity: 0; transform: translateY(0.3em); }
+  }
+  @keyframes bn-veil { 0%, 92% { opacity: 0; } 96%, 100% { opacity: 1; } }
+</style>

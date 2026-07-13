@@ -1,0 +1,138 @@
+---
+// Demo — "Tasks & checklists" (/tasks/[id]). Ticking the last checklist item fills the
+// progress bar and flips it from indigo to green, the counter rolls 4/5 → 5/5, and a line
+// lands in the activity feed. Base frame = the complete state.
+import AppFrame from './AppFrame.astro';
+import Icon from './Icon.astro';
+import { labels, sample, type Locale } from './labels.ts';
+
+interface Props {
+  locale: Locale;
+}
+const { locale } = Astro.props;
+const l = labels[locale];
+const done = [
+  { nl: 'Kick-off gepland', en: 'Kick-off scheduled' },
+  { nl: 'Wireframes akkoord', en: 'Wireframes approved' },
+  { nl: 'Copy ontvangen', en: 'Copy received' },
+  { nl: 'Ontwerp opgeleverd', en: 'Design delivered' },
+];
+const lastItem = locale === 'nl' ? 'Content aanleveren' : 'Deliver content';
+const activity = locale === 'nl'
+  ? ['Sanne', ` vinkte checklistpunt “${lastItem}” af`]
+  : ['Sanne', ` checked off “${lastItem}”`];
+---
+
+<AppFrame locale={locale} active="tasks" class="demo-tasks">
+  <div class="tk-back muted"><Icon name="chevronDown" size={0.8} class="tk-rot" />{l.tasks}</div>
+  <div class="screen__head">
+    <div>
+      <div class="screen__title">{sample.taskName[locale]}</div>
+      <div class="screen__sub">Website Jansen BV · <span class="chip chip--brand" style="font-size:0.82em">{l.stInProgress}</span></div>
+    </div>
+    <span class="chip chip--pending">{l.today}</span>
+  </div>
+
+  <div class="card tk-card">
+    <div class="tk-head">
+      <span class="tk-title">Checklist</span>
+      <span class="tk-count tnum">
+        <span class="tk-count__a">4/5</span><span class="tk-count__b">5/5</span>
+      </span>
+    </div>
+    <div class="progress tk-prog"><div class="progress__fill tk-fill"></div></div>
+    <div class="tk-items">
+      {
+        done.map((it) => (
+          <div class="check is-done">
+            <span class="check__box"><Icon name="check" size={0.85} /></span>
+            <span class="check__text">{it[locale]}</span>
+          </div>
+        ))
+      }
+      <div class="check is-done tk-last">
+        <span class="check__box tk-box"><Icon name="check" size={0.85} class="tk-tick" /></span>
+        <span class="check__text tk-last__txt">{lastItem}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card tk-act">
+    <div class="tk-act__h strong">{locale === 'nl' ? 'Activiteit' : 'Activity'}</div>
+    <div class="tk-act__line">
+      <span class="avatar avatar--a" style="width:1.5em;height:1.5em;font-size:0.66em">SN</span>
+      <span class="tk-act__txt"><b>{activity[0]}</b><span class="muted">{activity[1]}</span></span>
+      <span class="muted tnum tk-act__time">09:41</span>
+    </div>
+  </div>
+
+  <div class="stagefade"></div>
+</AppFrame>
+
+<style is:global>
+  .demo-tasks .tk-back { display: inline-flex; align-items: center; gap: 0.25em; font-size: 0.85em; margin-bottom: 0.5em; }
+  .demo-tasks .tk-back .tk-rot { transform: rotate(90deg); }
+  .demo-tasks .app { height: 28em; }
+  .demo-tasks .screen__head { margin-bottom: 0.7em; }
+  .demo-tasks .tk-card { padding: 0.8em 1em; }
+  .demo-tasks .check { padding: 0.2em 0; font-size: 0.9em; }
+  .demo-tasks .tk-head { display: flex; align-items: center; gap: 0.5em; margin-bottom: 0.5em; }
+  .demo-tasks .tk-title { text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.78em; font-weight: 700; color: var(--mu); }
+  .demo-tasks .tk-count { position: relative; display: inline-block; width: 2em; height: 1.1em; font-size: 0.82em; color: var(--mu); font-weight: 600; }
+  .demo-tasks .tk-count__a, .demo-tasks .tk-count__b { position: absolute; left: 0; top: 0; }
+  .demo-tasks .tk-count__a { opacity: 0; }
+  .demo-tasks .tk-count__b { opacity: 1; }
+  .demo-tasks .tk-prog { margin-bottom: 0.7em; }
+  .demo-tasks .tk-fill { width: 100%; background: var(--done); } /* base = complete */
+  .demo-tasks .tk-items { display: flex; flex-direction: column; gap: 0.1em; }
+
+  /* last item strike via a growing underline pseudo (animatable, unlike text-decoration) */
+  .demo-tasks .tk-last__txt { position: relative; }
+  .demo-tasks .check.is-done .tk-last__txt { text-decoration: none; }
+  .demo-tasks .tk-last__txt::after {
+    content: ''; position: absolute; left: 0; top: 50%; height: 1px; width: 100%;
+    background: currentColor; transform: scaleX(1); transform-origin: left;
+  }
+
+  .demo-tasks .tk-act { margin-top: 0.7em; padding: 0.7em 1em; }
+  .demo-tasks .tk-act__h { font-size: 0.9em; margin-bottom: 0.55em; }
+  .demo-tasks .tk-act__line { display: flex; align-items: center; gap: 0.5em; font-size: 0.88em; }
+  .demo-tasks .tk-act__txt { flex: 1; min-width: 0; }
+  .demo-tasks .tk-act__time { flex: none; font-size: 0.88em; }
+  .demo-tasks .stagefade { position: absolute; inset: 0; background: var(--sf); opacity: 0; pointer-events: none; z-index: 30; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    /* the last box starts empty, then fills */
+    .demo-tasks.is-playing .tk-box { animation: tk-box 8s infinite; }
+    .demo-tasks.is-playing .tk-tick { animation: tk-tick 8s infinite; }
+    .demo-tasks.is-playing .tk-last__txt { animation: tk-txt 8s infinite; }
+    .demo-tasks.is-playing .tk-last__txt::after { animation: tk-strike 8s infinite; }
+    .demo-tasks.is-playing .tk-fill { animation: tk-fill 8s infinite; }
+    .demo-tasks.is-playing .tk-count__a { animation: tk-cA 8s infinite; }
+    .demo-tasks.is-playing .tk-count__b { animation: tk-cB 8s infinite; }
+    .demo-tasks.is-playing .tk-act__line { animation: tk-actin 8s infinite; }
+    .demo-tasks.is-playing .stagefade { animation: tk-veil 8s infinite; }
+  }
+  /* box empty 0..14%, then brand fills */
+  @keyframes tk-box {
+    0%, 14% { background: var(--rz); border-color: var(--bd); }
+    22%, 100% { background: var(--done); border-color: var(--done); }
+  }
+  @keyframes tk-tick {
+    0%, 15% { opacity: 0; transform: scale(0.5); }
+    24%, 100% { opacity: 1; transform: scale(1); }
+  }
+  @keyframes tk-txt { 0%, 18% { color: var(--tx); } 26%, 100% { color: var(--mu); } }
+  @keyframes tk-strike { 0%, 18% { transform: scaleX(0); } 30%, 100% { transform: scaleX(1); } }
+  @keyframes tk-fill {
+    0%, 16% { width: 80%; background: var(--b); }
+    34%, 100% { width: 100%; background: var(--done); }
+  }
+  @keyframes tk-cA { 0%, 24% { opacity: 1; } 30%, 100% { opacity: 0; } }
+  @keyframes tk-cB { 0%, 24% { opacity: 0; } 30%, 100% { opacity: 1; } }
+  @keyframes tk-actin {
+    0%, 30% { opacity: 0; transform: translateY(-0.4em); }
+    40%, 100% { opacity: 1; transform: none; }
+  }
+  @keyframes tk-veil { 0%, 92% { opacity: 0; } 96%, 100% { opacity: 1; } }
+</style>

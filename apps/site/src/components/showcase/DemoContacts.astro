@@ -1,0 +1,88 @@
+---
+// Demo — "Contacts". One primary contact and N others; the primary is marked by the brand
+// colour and nothing else (docs/UX.md). Clicking another chip promotes it: the brand colour
+// moves to it and the old primary goes neutral. Base frame = Tom is primary.
+import AppFrame from './AppFrame.astro';
+import Icon from './Icon.astro';
+import { labels, type Locale } from './labels.ts';
+
+interface Props {
+  locale: Locale;
+}
+const { locale } = Astro.props;
+const l = labels[locale];
+const addLabel = locale === 'nl' ? 'Contactpersoon' : 'Contact';
+const hint =
+  locale === 'nl'
+    ? 'De primaire contactpersoon staat in de merkkleur. Klik een ander om te wisselen.'
+    : 'The primary contact is in the brand colour. Click another to switch.';
+---
+
+<AppFrame locale={locale} active="contacts" class="demo-contacts">
+  <div class="ct-back muted"><Icon name="chevronDown" size={0.8} class="ct-rot" />{l.clients}</div>
+  <div class="screen__head"><span class="screen__title">Studio Noord</span></div>
+
+  <div class="card ct-card">
+    <div class="ct-card__h strong">{locale === 'nl' ? 'Contactpersonen' : 'Contacts'}</div>
+    <div class="ct-chips">
+      <span class="ct-chip ct-a">
+        <span class="avatar avatar--c" style="width:1.4em;height:1.4em;font-size:0.6em">SG</span>Sanne de Groot
+      </span>
+      <span class="ct-chip ct-b">
+        <span class="avatar avatar--b" style="width:1.4em;height:1.4em;font-size:0.6em">TW</span>Tom Willems
+      </span>
+      <span class="ct-chip">
+        <span class="avatar avatar--d" style="width:1.4em;height:1.4em;font-size:0.6em">AJ</span>Aisha Jansen
+      </span>
+      <span class="ct-add"><Icon name="plus" size={0.85} />{addLabel}</span>
+    </div>
+    <p class="ct-hint muted">{hint}</p>
+  </div>
+
+  <div class="stagefade"></div>
+</AppFrame>
+
+<style is:global>
+  .demo-contacts .ct-back { display: inline-flex; align-items: center; gap: 0.25em; font-size: 0.85em; margin-bottom: 0.5em; }
+  .demo-contacts .ct-back .ct-rot { transform: rotate(90deg); }
+  .demo-contacts .ct-card { padding: 0.95em 1.05em; }
+  .demo-contacts .ct-card__h { margin-bottom: 0.75em; }
+  .demo-contacts .ct-chips { display: flex; flex-wrap: wrap; gap: 0.45em; align-items: center; }
+  .demo-contacts .ct-chip {
+    display: inline-flex; align-items: center; gap: 0.4em;
+    padding: 0.28em 0.7em 0.28em 0.3em; border-radius: 999px;
+    border: 1px solid var(--bd); background: var(--rz); color: var(--mu);
+    font-size: 0.88em; font-weight: 550;
+  }
+  /* primary look */
+  .demo-contacts .ct-b { /* base = Tom primary */
+    border-color: color-mix(in srgb, var(--b) 35%, transparent);
+    background: color-mix(in srgb, var(--b) 12%, transparent);
+    color: var(--b);
+  }
+  .demo-contacts .ct-add {
+    display: inline-flex; align-items: center; gap: 0.25em;
+    padding: 0.28em 0.7em; border-radius: 999px;
+    border: 1px dashed var(--bd); color: var(--mu); font-size: 0.85em;
+  }
+  .demo-contacts .ct-hint { font-size: 0.82em; margin: 0.85em 0 0; }
+  .demo-contacts .stagefade { position: absolute; inset: 0; background: var(--sf); opacity: 0; pointer-events: none; z-index: 30; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .demo-contacts.is-playing .ct-a { animation: cta-primary 9s infinite; }
+    .demo-contacts.is-playing .ct-b { animation: ctb-primary 9s infinite; }
+    .demo-contacts.is-playing .stagefade { animation: ctc-veil 9s infinite; }
+  }
+  /* Sanne: primary 0..32%, then neutral */
+  @keyframes cta-primary {
+    0%, 32% { border-color: color-mix(in srgb, var(--b) 35%, transparent); background: color-mix(in srgb, var(--b) 12%, transparent); color: var(--b); }
+    42%, 100% { border-color: var(--bd); background: var(--rz); color: var(--mu); }
+  }
+  /* Tom: neutral 0..32%, then primary with a little pop */
+  @keyframes ctb-primary {
+    0%, 32% { border-color: var(--bd); background: var(--rz); color: var(--mu); transform: scale(1); }
+    38% { transform: scale(1.06); }
+    42%, 100% { border-color: color-mix(in srgb, var(--b) 35%, transparent); background: color-mix(in srgb, var(--b) 12%, transparent); color: var(--b); transform: scale(1); }
+  }
+  @keyframes ctc-veil { 0%, 92% { opacity: 0; } 96%, 100% { opacity: 1; } }
+</style>

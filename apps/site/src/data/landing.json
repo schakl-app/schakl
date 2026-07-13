@@ -22,6 +22,50 @@
         "intro": "Elke functie is een module. Zet aan wat je gebruikt; de rest blijft uit de weg."
       },
       {
+        "type": "showcase",
+        "anchor": "tour",
+        "title": "Zie het in actie",
+        "intro": "Van een nieuwe klant tot geboekte uren: een paar klikken, live meegerekend door de API. Alles hieronder is de echte interface, nagebouwd en geanimeerd, geen video.",
+        "items": [
+          {
+            "demo": "createClient",
+            "overline": "Klanten",
+            "title": "Een nieuwe klant in seconden",
+            "body": "Klanten staan centraal. Vul de kaart in, kies een status en je klant verschijnt bovenaan de lijst, klaar om projecten, uren en contactpersonen aan te hangen."
+          },
+          {
+            "demo": "addTime",
+            "overline": "Uren",
+            "title": "Uren boeken zonder frictie",
+            "body": "Typ de tijden, kies project en klant, klaar. De weekstaat en het projectbudget tellen meteen mee, met één blik op wat er nog over is."
+          },
+          {
+            "demo": "budget",
+            "overline": "Projecten",
+            "title": "Budgetten die je vertrouwt",
+            "body": "De balk kleurt mee: groen, oranje, rood. Elk getal is te openen tot op de registratie erachter, dus je weet altijd waar het budget heen ging."
+          },
+          {
+            "demo": "tasks",
+            "overline": "Taken",
+            "title": "Taken en checklists",
+            "body": "Vink af wat af is; de voortgang loopt mee en springt op groen als alles klaar is. Elke wijziging landt in de activiteit, met wie en wanneer."
+          },
+          {
+            "demo": "leave",
+            "overline": "Verlof",
+            "title": "Verlof, live berekend",
+            "body": "De API rekent, niet de browser. Feestdagen kosten geen uren, roosters tellen mee, en een aanvraag boven het saldo mag: een manager beslist."
+          },
+          {
+            "demo": "whiteLabel",
+            "overline": "Wit-label",
+            "title": "Jouw merk, jouw kleur",
+            "body": "Logo, kleur en domein zijn instellingen, geen rebuild. De hele app kleurt mee, in het licht of donker, in het Nederlands of Engels."
+          }
+        ]
+      },
+      {
         "type": "textBullets",
         "anchor": "selfhost",
         "title": "Draai het waar jij wilt",
@@ -66,6 +110,50 @@
         "anchor": "features",
         "title": "Everything that keeps an agency running",
         "intro": "Every capability is a module. Enable what you use — the rest stays out of the way."
+      },
+      {
+        "type": "showcase",
+        "anchor": "tour",
+        "title": "See it in action",
+        "intro": "From a new client to logged hours: a few clicks, computed live by the API. Everything below is the real interface, rebuilt and animated — not a video.",
+        "items": [
+          {
+            "demo": "createClient",
+            "overline": "Clients",
+            "title": "A new client in seconds",
+            "body": "Clients are the hub. Fill in the card, pick a status, and the client appears at the top of the list — ready to attach projects, hours and contacts."
+          },
+          {
+            "demo": "addTime",
+            "overline": "Time",
+            "title": "Log time without friction",
+            "body": "Type the times, pick a project and client, done. The weekly timesheet and project budget update at once, with a single glance at what's left."
+          },
+          {
+            "demo": "budget",
+            "overline": "Projects",
+            "title": "Budgets you can trust",
+            "body": "The bar changes colour: green, amber, red. Every number opens down to the entry behind it, so you always know where the budget went."
+          },
+          {
+            "demo": "tasks",
+            "overline": "Tasks",
+            "title": "Tasks and checklists",
+            "body": "Tick off what's done; the progress bar follows and turns green when everything's complete. Every change lands in the activity feed, with who and when."
+          },
+          {
+            "demo": "leave",
+            "overline": "Leave",
+            "title": "Leave, computed live",
+            "body": "The API does the math, not the browser. Public holidays cost no hours, work schedules count, and a request over balance still submits — a manager decides."
+          },
+          {
+            "demo": "whiteLabel",
+            "overline": "White-label",
+            "title": "Your brand, your color",
+            "body": "Logo, color and domain are settings, not a rebuild. The whole app recolors — in light or dark, in Dutch or English."
+          }
+        ]
       },
       {
         "type": "textBullets",

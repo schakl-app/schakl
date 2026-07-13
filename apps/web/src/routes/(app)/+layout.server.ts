@@ -19,14 +19,17 @@ export const load: LayoutServerLoad = async (event) => {
   const api = apiFor(event);
 
   const notificationsEnabled = event.locals.theme?.enabledModules?.includes("notifications");
-  const [prefs, unread] = await Promise.all([
+  const [prefs, unread, navPrefs] = await Promise.all([
     api.GET("/api/v1/prefs"),
     notificationsEnabled ? api.GET("/api/v1/notifications/unread-count") : undefined,
+    // The saved sidebar layout (#169): own row → org default → none, resolved by the API.
+    api.GET("/api/v1/nav/prefs"),
   ]);
 
   return {
     user: event.locals.user,
     prefs: prefs.data?.prefs ?? {},
     unreadCount: unread?.data?.count ?? 0,
+    navPref: navPrefs.data ?? { items: null, source: "none" },
   };
 };

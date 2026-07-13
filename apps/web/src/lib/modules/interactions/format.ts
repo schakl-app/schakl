@@ -1,16 +1,56 @@
 /** Shared presentation helpers for contactmomenten rows. */
-import { Mail, Phone, StickyNote, Users } from "@lucide/svelte";
+import { Mail, MapPin, MessageSquare, Phone, StickyNote, Users, Video } from "@lucide/svelte";
 import type { Component } from "svelte";
 
+import { fmtLongDay } from "$lib/core/format";
+import { t } from "$lib/core/i18n";
 import { getTimeZone } from "$lib/core/timezone";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const KIND_ICONS: Record<string, Component<any>> = {
   email: Mail,
-  meeting: Users,
+  meeting: Users, // pre-#174 rows on a rolled-back schema; the split kinds carry their own
+  online_meeting: Video,
+  physical_meeting: MapPin,
   call: Phone,
   note: StickyNote,
 };
+
+/** Kinds are tenant-defined (#174): known keys keep their icon, new ones get a generic one. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function kindIcon(key: string): Component<any> {
+  return KIND_ICONS[key] ?? MessageSquare;
+}
+
+/** One tenant-configurable interaction kind, as `/api/v1/interactions/kinds` returns it. */
+export interface InteractionKindDef {
+  id: string;
+  key: string;
+  label_i18n?: Record<string, string>;
+  position: number;
+  active: boolean;
+}
+
+/** A kind's label in the viewer's locale — tenant data first, seeded locales as fallback. */
+export function kindLabel(def: InteractionKindDef, locale: string): string {
+  return def.label_i18n?.[locale] || def.label_i18n?.nl || def.label_i18n?.en || def.key;
+}
+
+let kindsCache: InteractionKindDef[] | null = null;
+
+/** The org's manual kinds (email excluded; inactive included so an edited row can keep its
+ *  deactivated kind), fetched once per session and shared by every form instance — the
+ *  create modal must not cost every host page an SSR call. */
+export async function manualKinds(): Promise<InteractionKindDef[]> {
+  if (kindsCache === null) {
+    const response = await fetch("/api/v1/interactions/kinds?include_inactive=true", {
+      headers: { accept: "application/json" },
+    });
+    const all: InteractionKindDef[] = response.ok ? await response.json() : [];
+    kindsCache = all.filter((k) => k.key !== "email");
+  }
+  return kindsCache;
+}
 
 export interface InteractionItem {
   id: string;
@@ -38,9 +78,46 @@ export interface InteractionItem {
     role?: string;
     /** The org contact this address resolves to, matched by the API at read time (#160). */
     contact_id?: string | null;
+    /** The org member (colleague) this address resolves to (#167) — never a contact-create. */
+    user_id?: string | null;
   }[];
   source: string;
   deep_link: string | null;
+}
+
+const _dayFmt = new Map<string, Intl.DateTimeFormat>();
+
+function dayFormatter(): Intl.DateTimeFormat {
+  const tz = getTimeZone();
+  let formatter = _dayFmt.get(tz);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: tz,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    _dayFmt.set(tz, formatter);
+  }
+  return formatter;
+}
+
+/** An instant's local calendar day (`yyyy-mm-dd`) in the org zone — the day-group key. */
+export function localDay(isoDateTime: string): string {
+  return dayFormatter().format(new Date(isoDateTime));
+}
+
+function previousDay(day: string): string {
+  const [year, month, date] = day.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, date - 1)).toISOString().slice(0, 10);
+}
+
+/** "Today" / "Yesterday" / "maandag 7 juli" — the heading over a day's interactions. */
+export function dayLabel(day: string): string {
+  const today = localDay(new Date().toISOString());
+  if (day === today) return t("common.today");
+  if (day === previousDay(today)) return t("common.yesterday");
+  return fmtLongDay(day);
 }
 
 /**

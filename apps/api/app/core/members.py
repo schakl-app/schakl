@@ -22,6 +22,8 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy import func, select
 
 from app.core.auth.models import User
+from app.core.auth.users import get_user_manager
+from app.core.email.service import get_row as email_settings_row
 from app.core.models import Membership
 from app.core.permissions import audit
 from app.core.permissions.catalog import PRIVILEGE_ORDER, permission_keys
@@ -39,8 +41,6 @@ from app.core.permissions.service import (
     role_manager_count,
     set_membership_roles,
 )
-from app.core.auth.users import get_user_manager
-from app.core.email.service import get_row as email_settings_row
 from app.core.tenancy import RequestContext, require_context
 from app.errors import AppError
 

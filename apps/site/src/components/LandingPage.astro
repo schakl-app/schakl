@@ -2,6 +2,8 @@
 // The landing page is a list of CMS-managed blocks (hero, feature grid, text+bullets,
 // CTA band) — add, remove or reorder sections in Keystatic without touching code.
 import SiteShell from './SiteShell.astro';
+import Showcase from './showcase/Showcase.astro';
+import Icon from './showcase/Icon.astro';
 import settings from '../data/settings/site.json';
 import landing from '../data/landing.json';
 import { localizeHref } from '../lib/links';
@@ -49,11 +51,14 @@ const title = hero ? `${settings.brandName} · ${hero.title}` : settings.brandNa
               <p class="section-intro">{v.intro}</p>
               <div class="feature-grid">
                 {features.map((f: any) => (
-                  <article class="feature-card">
-                    <span class="feature-icon" aria-hidden="true">{f.icon}</span>
+                  <a class="feature-card" href={href(`/features/${f.slug}`)}>
+                    <span class="feature-icon"><Icon name={f.lucide} size={1.4} /></span>
                     <h3>{f.title[locale]}</h3>
                     <p>{f.description[locale]}</p>
-                  </article>
+                    <span class="feature-more" aria-hidden="true">
+                      <Icon name="arrowRight" size={0.95} />
+                    </span>
+                  </a>
                 ))}
               </div>
             </section>
@@ -71,6 +76,16 @@ const title = hero ? `${settings.brandName} · ${hero.title}` : settings.brandNa
                 </ul>
               </div>
             </section>
+          );
+        case 'showcase':
+          return (
+            <Showcase
+              locale={locale}
+              anchor={v.anchor || undefined}
+              title={v.title}
+              intro={v.intro}
+              items={v.items}
+            />
           );
         case 'cta':
           return (

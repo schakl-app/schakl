@@ -31,6 +31,7 @@ from app.core.impex.router import build_impex_router
 from app.core.instance.router import router as instance_router
 from app.core.members import router as members_router
 from app.core.meta import router as meta_router
+from app.core.nav import router as nav_router
 from app.core.permissions.reconcile import reconcile_permission_defaults
 from app.core.permissions.router import permissions_router, roles_router
 from app.core.providers.router import router as providers_router
@@ -98,6 +99,7 @@ def create_app() -> FastAPI:
     api.include_router(email_settings_router)
     api.include_router(sso_settings_router)
     api.include_router(dashboard_router)
+    api.include_router(nav_router)
     api.include_router(userprefs_router)
     api.include_router(system_router)
     api.include_router(instance_router)

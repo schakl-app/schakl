@@ -20,20 +20,24 @@ from app.core.activity.service import snapshot
 from app.core.auth.models import User
 from app.core.events import emit
 from app.core.models import Membership
-from app.core.richtext import extract_mention_ids, sanitize_markdown
+from app.core.richtext import extract_contact_mention_ids, extract_mention_ids, sanitize_markdown
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_zoneinfo
 from app.errors import AppError
 from app.modules.interactions.models import (
+    DEFAULT_KINDS,
     ENTITY_TYPE,
     HOST_ENTITY,
-    MANUAL_KINDS,
+    PROTECTED_KIND,
     Interaction,
+    InteractionKindDef,
     InteractionSource,
     InteractionStatus,
 )
 from app.modules.interactions.schemas import (
     InteractionCreate,
+    InteractionKindDefCreate,
+    InteractionKindDefUpdate,
     InteractionRemap,
     InteractionUpdate,
 )
@@ -85,9 +89,22 @@ class InteractionService:
         status: str | None = None,
         owner_user_id: uuid.UUID | None = None,
         include: str | None = None,
+        q: str | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
         include_set = {part.strip() for part in (include or "").split(",") if part.strip()}
         conditions = []
+        if not self.ctx.can("interactions.interaction.read_all"):
+            # Someone else's queue is not a filter you may use (#168)...
+            if owner_user_id is not None and owner_user_id != self.ctx.user.id:
+                raise AppError("forbidden", "errors.forbidden", status_code=403)
+            # ...and a pending row is private to its mailbox owner until approved (#172):
+            # every panel and list simply omits other people's pending rows.
+            conditions.append(
+                or_(
+                    Interaction.status != InteractionStatus.PENDING.value,
+                    Interaction.owner_user_id == self.ctx.user.id,
+                )
+            )
         if company_id is not None:
             # The client timeline is already complete without a roll-up: a task/project link
             # derives ``company_id`` on write (``_resolve_links``), so filtering the FK is it.
@@ -118,6 +135,15 @@ class InteractionService:
             conditions.append(Interaction.status == status)
         if owner_user_id is not None:
             conditions.append(Interaction.owner_user_id == owner_user_id)
+        if q:
+            like = f"%{q}%"
+            conditions.append(
+                or_(
+                    Interaction.subject.ilike(like),
+                    Interaction.snippet.ilike(like),
+                    Interaction.body_text.ilike(like),
+                )
+            )
         stmt = (
             select(Interaction, User.full_name, User.email)
             .outerjoin(User, User.id == Interaction.owner_user_id)
@@ -138,25 +164,28 @@ class InteractionService:
         plain_rows = [row for row, _, _ in rows]
         names = await self._link_names(plain_rows)
         contacts_by_email = await self._participant_contacts(plain_rows)
+        members_by_email = await self._participant_members(plain_rows)
         return [
-            self._present(row, full_name, email, names, contacts_by_email)
+            self._present(row, full_name, email, names, contacts_by_email, members_by_email)
             for row, full_name, email in rows
         ], total
 
     async def get(self, interaction_id: uuid.UUID) -> dict[str, Any]:
         row = await self.repo.get_or_404(interaction_id)
+        # A pending row is its owner's alone until approved (#172) — absent, not forbidden,
+        # so the id leaks nothing (§15).
+        if (
+            row.status == InteractionStatus.PENDING.value
+            and row.owner_user_id != self.ctx.user.id
+            and not self.ctx.can("interactions.interaction.read_all")
+        ):
+            raise AppError("not_found", "errors.not_found", status_code=404)
         return await self._present_one(row)
 
     # --- manual writes ---------------------------------------------------------- #
     async def create(self, data: InteractionCreate) -> dict[str, Any]:
         self.ctx.require("interactions.interaction.write")
-        if data.kind not in MANUAL_KINDS:
-            raise AppError(
-                "validation",
-                "errors.validation",
-                status_code=422,
-                fields={"kind": "errors.interactions_kind_not_manual"},
-            )
+        await self._require_manual_kind(data.kind)
         links = await self._resolve_links(
             {
                 "company_id": data.company_id,
@@ -168,8 +197,9 @@ class InteractionService:
         user = self.ctx.user
         body = sanitize_markdown(data.body_text)
         mentioned = await self._valid_mentions(extract_mention_ids(body))
+        mentioned_contacts = await self._valid_contact_mentions(extract_contact_mention_ids(body))
         row = await self.repo.create(
-            kind=data.kind.value,
+            kind=data.kind,
             status=InteractionStatus.LOGGED.value,
             occurred_at=await self._as_instant(data.occurred_at),
             subject=data.subject.strip(),
@@ -179,33 +209,54 @@ class InteractionService:
             owner_name=user.full_name or user.email,
             participants=[p.model_dump() for p in data.participants],
             mentioned_user_ids=[str(uid) for uid in mentioned],
+            mentioned_contact_ids=[str(cid) for cid in mentioned_contacts],
             source=InteractionSource.MANUAL.value,
             **links,
         )
         await ActivityService(self.ctx).record_created(ENTITY_TYPE, row.id)
         await self._record_on_hosts(row, "interaction.logged")
         await self._notify_mentions(row, mentioned)
+        if data.log_time is not None:
+            await self._log_time(row, data.log_time)
         return await self._present_one(row)
+
+    async def _log_time(self, row: Interaction, log_time: Any) -> None:
+        """The "Voeg aan mijn uren toe" ride-along (#175): a linked time entry, in this same
+        transaction, through the time module's published surface (§6) — never its internals.
+        Carries the interaction's own links and subject; typed after the interaction's kind
+        when the org has an entry type of the same key (#176), untyped otherwise."""
+        self.ctx.require("time.entry.write")
+        from app.modules.time import system as time_system
+
+        entry_type_key = await time_system.active_type_key(self.ctx, row.kind)
+        await time_system.record_entry(
+            self.ctx,
+            user_id=self.ctx.user.id,
+            started_at=log_time.started_at,
+            ended_at=log_time.ended_at,
+            company_id=row.company_id,
+            project_id=row.project_id,
+            task_id=row.task_id,
+            description=row.subject,
+            entry_type_key=entry_type_key,
+            interaction_id=row.id,
+        )
 
     async def update(self, interaction_id: uuid.UUID, data: InteractionUpdate) -> dict[str, Any]:
         row = await self._writable_or_404(interaction_id, "interactions.interaction.write")
         self._manual_only(row)
         before = snapshot(row, _AUDITED_FIELDS)
         sent = data.model_dump(exclude_unset=True)
-        if "kind" in sent and data.kind not in MANUAL_KINDS:
-            raise AppError(
-                "validation",
-                "errors.validation",
-                status_code=422,
-                fields={"kind": "errors.interactions_kind_not_manual"},
-            )
+        # Keeping the row's own kind is always allowed — a deactivated kind must not brick
+        # editing the rows that already carry it (#174).
+        if sent.get("kind") is not None and sent["kind"] != row.kind:
+            await self._require_manual_kind(sent["kind"])
         link_updates = {k: sent[k] for k in _LINK_TABLES if k in sent}
         values: dict[str, Any] = {
             k: v for k, v in sent.items() if k not in _LINK_TABLES and k != "participants"
         }
-        for enum_field in ("kind", "direction"):
-            if enum_field in values and values[enum_field] is not None:
-                values[enum_field] = values[enum_field].value
+        if values.get("direction") is not None:
+            values["direction"] = values["direction"].value
         if "subject" in values and values["subject"]:
             values["subject"] = values["subject"].strip()
         if "participants" in sent:
@@ -221,6 +272,10 @@ class InteractionService:
             values["body_text"] = body
             mentioned = await self._valid_mentions(extract_mention_ids(body))
             values["mentioned_user_ids"] = [str(uid) for uid in mentioned]
+            values["mentioned_contact_ids"] = [
+                str(cid)
+                for cid in await self._valid_contact_mentions(extract_contact_mention_ids(body))
+            ]
             newly_mentioned = [uid for uid in mentioned if str(uid) not in already]
         values.update(await self._resolve_links(link_updates, partial=True))
         old_links = {field: getattr(row, field) for field in HOST_ENTITY}
@@ -288,6 +343,13 @@ class InteractionService:
             ENTITY_TYPE, row.id, before, snapshot(row, _AUDITED_FIELDS)
         )
         await self._record_link_moves(row, old_links)
+        # Remapping is the owner engaging with the row — enough to retire the "waiting on
+        # your review" notification about it (#170). Bus-only, like approve/reject.
+        await emit(
+            "interaction.remapped",
+            self.ctx,
+            {"interaction_id": row.id, "owner_user_id": row.owner_user_id},
+        )
         return await self._present_one(row)
 
     # --- helpers ---------------------------------------------------------------- #
@@ -335,6 +397,20 @@ class InteractionService:
         )
         return [uid for uid in ids if uid in members]
 
+    async def _valid_contact_mentions(self, ids: list[uuid.UUID]) -> list[uuid.UUID]:
+        """Keep only the mentioned contact ids that belong to this org (#165) — a reference
+        into the CRM, never a notification: contacts have no inbox here."""
+        if not ids:
+            return []
+        stmt = text(
+            "SELECT id FROM contacts WHERE org_id = :oid AND id IN :ids"
+        ).bindparams(bindparam("ids", expanding=True))
+        found = set(
+            (await self.ctx.session.execute(stmt, {"oid": self._org_id, "ids": list(ids)}))
+            .scalars()
+        )
+        return [cid for cid in ids if cid in found]
+
     async def _notify_mentions(self, row: Interaction, mentioned: list[uuid.UUID]) -> None:
         """Tell the people newly @mentioned in this note — never the author themselves."""
         recipients = [uid for uid in mentioned if uid != self.ctx.user.id]
@@ -364,6 +440,20 @@ class InteractionService:
         if value.tzinfo is None:
             return value.replace(tzinfo=await org_zoneinfo(self.ctx.session, self.ctx.org.id))
         return value
+
+    async def _require_manual_kind(self, kind: str) -> None:
+        """A manual row's kind must be one of the org's active kinds — and never ``email``,
+        which only the gmail feed writes (#174)."""
+        if kind != PROTECTED_KIND:
+            active = await InteractionKindService(self.ctx).active_keys()
+            if kind in active:
+                return
+        raise AppError(
+            "validation",
+            "errors.validation",
+            status_code=422,
+            fields={"kind": "errors.interactions_kind_not_manual"},
+        )
 
     def _manual_only(self, row: Interaction) -> None:
         """Gmail rows change through the review flow, never through plain edit/delete."""
@@ -482,12 +572,14 @@ class InteractionService:
         )
         names = await self._link_names([row])
         contacts_by_email = await self._participant_contacts([row])
+        members_by_email = await self._participant_members([row])
         return self._present(
             row,
             owner[0] if owner else None,
             owner[1] if owner else None,
             names,
             contacts_by_email,
+            members_by_email,
         )
 
     async def _participant_contacts(self, rows: list[Interaction]) -> dict[str, uuid.UUID]:
@@ -510,6 +602,26 @@ class InteractionService:
         )
         return dict(result.all())
 
+    async def _participant_members(self, rows: list[Interaction]) -> dict[str, uuid.UUID]:
+        """Which participant addresses belong to org employees (#167) — the same batched,
+        read-time pass as ``_participant_contacts``, joined through ``memberships`` so a user
+        record from another org never resolves here. Display data, never authz."""
+        emails: set[str] = set()
+        for row in rows:
+            for participant in row.participants or []:
+                email = (participant.get("email") or "").lower()
+                if email:
+                    emails.add(email)
+        if not emails:
+            return {}
+        stmt = (
+            select(func.lower(User.email), User.id)
+            .join(Membership, Membership.user_id == User.id)
+            .where(Membership.org_id == self._org_id, func.lower(User.email).in_(emails))
+        )
+        result = await self.ctx.session.execute(stmt)
+        return dict(result.all())
+
     def _present(
         self,
         row: Interaction,
@@ -517,6 +629,7 @@ class InteractionService:
         live_email: str | None,
         names: dict[tuple[str, uuid.UUID], str] | None = None,
         contacts_by_email: dict[str, uuid.UUID] | None = None,
+        members_by_email: dict[str, uuid.UUID] | None = None,
     ) -> dict[str, Any]:
         """Owner resolved like the activity trail (issue #64): live account wins, snapshot after."""
         if live_email is not None:
@@ -551,6 +664,9 @@ class InteractionService:
                     "contact_id": (contacts_by_email or {}).get(
                         (participant.get("email") or "").lower()
                     ),
+                    "user_id": (members_by_email or {}).get(
+                        (participant.get("email") or "").lower()
+                    ),
                 }
                 for participant in (row.participants or [])
             ],
@@ -559,6 +675,91 @@ class InteractionService:
             "deep_link": row.deep_link,
             "created_at": row.created_at,
         }
+
+
+class InteractionKindService:
+    """CRUD for tenant-configurable interaction kinds (#174), gated on
+    ``interactions.kind.manage`` — the contact-types / leave-types shape.
+
+    Defaults seed lazily, once per org, the way leave types do: the first list (or manual
+    write) by someone who can log interactions creates the five system kinds. ``email`` is
+    protected — relabel it, never delete or deactivate it, because the gmail feed keeps
+    writing rows of that kind regardless of what the tenant configures.
+    """
+
+    def __init__(self, ctx: RequestContext) -> None:
+        self.ctx = ctx
+        self.repo = ctx.repo(InteractionKindDef)
+
+    @property
+    def _org_id(self) -> uuid.UUID:
+        return self.ctx.org.id
+
+    async def list(self, *, include_inactive: bool = False) -> list[InteractionKindDef]:
+        await self._ensure_defaults()
+        stmt = self.repo.scoped_select().order_by(
+            InteractionKindDef.position, InteractionKindDef.key
+        )
+        if not include_inactive:
+            stmt = stmt.where(InteractionKindDef.active.is_(True))
+        return list((await self.ctx.session.execute(stmt)).scalars().all())
+
+    async def active_keys(self) -> set[str]:
+        await self._ensure_defaults()
+        stmt = select(InteractionKindDef.key).where(
+            InteractionKindDef.org_id == self._org_id, InteractionKindDef.active.is_(True)
+        )
+        return set((await self.ctx.session.execute(stmt)).scalars())
+
+    async def _ensure_defaults(self) -> None:
+        """Seed the system kinds once per org (idempotent; skipped for read-only roles)."""
+        if not self.ctx.can("interactions.interaction.write"):
+            return
+        if await self.repo.count() > 0:
+            return
+        for spec in DEFAULT_KINDS:
+            await self.repo.create(**spec)
+
+    async def create(self, data: InteractionKindDefCreate) -> InteractionKindDef:
+        self.ctx.require("interactions.kind.manage")
+        await self._ensure_defaults()
+        existing = await self.ctx.session.scalar(
+            select(InteractionKindDef.id).where(
+                InteractionKindDef.org_id == self._org_id, InteractionKindDef.key == data.key
+            )
+        )
+        if existing is not None:
+            raise AppError(
+                "conflict", "errors.conflict", status_code=409, fields={"key": "errors.conflict"}
+            )
+        return await self.repo.create(**data.model_dump(mode="json"))
+
+    async def update(
+        self, kind_id: uuid.UUID, data: InteractionKindDefUpdate
+    ) -> InteractionKindDef:
+        self.ctx.require("interactions.kind.manage")
+        row = await self.repo.get_or_404(kind_id)
+        values = data.model_dump(mode="json", exclude_unset=True)
+        if row.key == PROTECTED_KIND and values.get("active") is False:
+            # The gmail feed writes `email` rows whatever the tenant configures — a kind that
+            # keeps occurring cannot be switched off, only relabelled.
+            raise AppError("conflict", "errors.interactions_kind_protected", status_code=409)
+        return await self.repo.update(row, **values)
+
+    async def delete(self, kind_id: uuid.UUID) -> None:
+        """Hard-delete only unused kinds; ones with history deactivate instead."""
+        self.ctx.require("interactions.kind.manage")
+        row = await self.repo.get_or_404(kind_id)
+        if row.key == PROTECTED_KIND:
+            raise AppError("conflict", "errors.interactions_kind_protected", status_code=409)
+        in_use = await self.ctx.session.scalar(
+            select(func.count())
+            .select_from(Interaction)
+            .where(Interaction.org_id == self._org_id, Interaction.kind == row.key)
+        )
+        if int(in_use or 0) > 0:
+            raise AppError("conflict", "errors.interactions_kind_in_use", status_code=409)
+        await self.repo.delete(row)
 
 
 async def count_for_entity(

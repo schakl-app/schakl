@@ -1,0 +1,150 @@
+---
+// The product tour: alternating rows of an animated, pixel-faithful app demo beside its
+// narration. The section framing (title/intro) and each row's narration come from the CMS
+// (landing.json "showcase" block); the demos themselves are code (they reproduce the real
+// app UI, so they aren't editable content). Demos animate with CSS only — no video — and a
+// tiny IntersectionObserver plays just the ones on screen, honouring reduced-motion.
+import './showcase.css';
+import type { Locale } from './labels.ts';
+import DemoCreateClient from './DemoCreateClient.astro';
+import DemoAddTime from './DemoAddTime.astro';
+import DemoBudgetBurn from './DemoBudgetBurn.astro';
+import DemoTasks from './DemoTasks.astro';
+import DemoLeave from './DemoLeave.astro';
+import DemoWhiteLabel from './DemoWhiteLabel.astro';
+
+interface Item {
+  demo: string;
+  overline: string;
+  title: string;
+  body: string;
+}
+interface Props {
+  locale: Locale;
+  anchor?: string;
+  title: string;
+  intro: string;
+  items: Item[];
+}
+const { locale, anchor, title, intro, items } = Astro.props;
+
+const demos: Record<string, any> = {
+  createClient: DemoCreateClient,
+  addTime: DemoAddTime,
+  budget: DemoBudgetBurn,
+  tasks: DemoTasks,
+  leave: DemoLeave,
+  whiteLabel: DemoWhiteLabel,
+};
+const rows = items.filter((it) => demos[it.demo]);
+---
+
+<section id={anchor} class="tour">
+  <div class="container">
+    <div class="tour__head">
+      <h2>{title}</h2>
+      <p class="section-intro">{intro}</p>
+    </div>
+
+    <div class="tour__rows">
+      {
+        rows.map((item, i) => {
+          const Demo = demos[item.demo];
+          return (
+            <div class={`tour__row ${i % 2 === 1 ? 'is-rev' : ''}`}>
+              <div class="tour__demo">
+                <Demo locale={locale} />
+              </div>
+              <div class="tour__copy">
+                <p class="tour__eyebrow">{item.overline}</p>
+                <h3>{item.title}</h3>
+                <p class="tour__body">{item.body}</p>
+              </div>
+            </div>
+          );
+        })
+      }
+    </div>
+  </div>
+</section>
+
+<style>
+  .tour {
+    padding-block: 4rem;
+  }
+  .tour__head {
+    text-align: center;
+    max-width: 42rem;
+    margin-inline: auto;
+    margin-bottom: 3rem;
+  }
+  .tour__head h2 {
+    font-size: clamp(1.6rem, 4vw, 2.2rem);
+  }
+  .tour__head .section-intro {
+    margin-inline: auto;
+  }
+  .tour__rows {
+    display: grid;
+    gap: 3.75rem;
+  }
+  .tour__row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.25rem 2.75rem;
+    align-items: center;
+  }
+  @media (min-width: 820px) {
+    .tour__row {
+      grid-template-columns: 1fr 1fr;
+    }
+    /* alternate sides on desktop; mobile keeps demo-first from source order */
+    .tour__row.is-rev .tour__demo {
+      order: 2;
+    }
+  }
+  .tour__demo {
+    min-width: 0;
+  }
+  .tour__copy {
+    max-width: 30rem;
+  }
+  .tour__eyebrow {
+    color: var(--accent);
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin: 0 0 0.5rem;
+  }
+  .tour__copy h3 {
+    font-size: clamp(1.25rem, 2.5vw, 1.5rem);
+    letter-spacing: -0.01em;
+  }
+  .tour__body {
+    color: var(--muted);
+    margin-top: 0.6rem;
+  }
+</style>
+
+<script>
+  // Play only the demos that are on screen, and never when the visitor asked for less motion.
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const stages = Array.from(document.querySelectorAll<HTMLElement>('.tour .appui'));
+  if (stages.length && !reduce.matches && 'IntersectionObserver' in window) {
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) e.target.classList.toggle('is-playing', e.isIntersecting);
+      },
+      { threshold: 0.3 },
+    );
+    stages.forEach((s) => io.observe(s));
+    // If the visitor flips reduced-motion on mid-session, stop everything.
+    reduce.addEventListener('change', (ev) => {
+      if (ev.matches) {
+        io.disconnect();
+        stages.forEach((s) => s.classList.remove('is-playing'));
+      }
+    });
+  }
+</script>

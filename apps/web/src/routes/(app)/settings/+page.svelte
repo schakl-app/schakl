@@ -23,11 +23,7 @@
     {t("settings.section_personal")}
   </h2>
   <div class="grid gap-4 sm:grid-cols-2">
-    {@render card(
-      "/settings/account",
-      t("settings.account.title"),
-      t("settings.account.subtitle"),
-    )}
+    {@render card("/settings/account", t("settings.account.title"), t("settings.account.subtitle"))}
     {@render card(
       "/settings/notifications",
       t("settings.notifications.title"),
@@ -62,16 +58,8 @@
       t("settings.branding.title"),
       t("settings.branding.subtitle"),
     )}
-    {@render card(
-      "/settings/modules",
-      t("settings.modules.title"),
-      t("settings.modules.subtitle"),
-    )}
-    {@render card(
-      "/settings/google",
-      t("settings.google.title"),
-      t("settings.google.subtitle"),
-    )}
+    {@render card("/settings/modules", t("settings.modules.title"), t("settings.modules.subtitle"))}
+    {@render card("/settings/google", t("settings.google.title"), t("settings.google.subtitle"))}
   </div>
 
   <h3 class="mb-2 text-sm font-medium text-text">{t("settings.group.customization")}</h3>
@@ -87,15 +75,21 @@
       t("settings.contact_types.subtitle"),
     )}
     {@render card(
+      "/settings/interaction-kinds",
+      t("settings.interaction_kinds.title"),
+      t("settings.interaction_kinds.subtitle"),
+    )}
+    {@render card(
+      "/settings/time-entry-types",
+      t("settings.time_entry_types.title"),
+      t("settings.time_entry_types.subtitle"),
+    )}
+    {@render card(
       "/settings/providers",
       t("settings.providers.title"),
       t("settings.providers.subtitle"),
     )}
-    {@render card(
-      "/settings/impex",
-      t("impex.settings.title"),
-      t("impex.settings.subtitle"),
-    )}
+    {@render card("/settings/impex", t("impex.settings.title"), t("impex.settings.subtitle"))}
   </div>
 
   <h3 class="mb-2 text-sm font-medium text-text">{t("settings.group.workflows")}</h3>
@@ -125,6 +119,11 @@
       "/settings/dashboard",
       t("settings.dashboard.title"),
       t("settings.dashboard.subtitle"),
+    )}
+    {@render card(
+      "/settings/navigation",
+      t("settings.navigation.title"),
+      t("settings.navigation.subtitle"),
     )}
     {@render card(
       "/settings/notification-defaults",

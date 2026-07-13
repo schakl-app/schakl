@@ -1,7 +1,10 @@
 {
   "name": "Wit-label en meertalig",
-  "order": 60,
+  "slug": "whitelabel",
+  "order": 120,
   "icon": "🎨",
+  "lucide": "palette",
+  "demo": "whiteLabel",
   "title": {
     "nl": "Wit-label & meertalig",
     "en": "White-label & multilingual"
@@ -9,5 +12,89 @@
   "description": {
     "nl": "Jouw logo, kleuren en domein door de hele app, zonder rebuild. Nederlands als standaard, Engels ingebouwd, meer talen zijn één bestand.",
     "en": "Your logo, colors and domain throughout the app — no rebuild. Dutch by default, English built in, more languages are one file away."
+  },
+  "page": {
+    "eyebrow": {
+      "nl": "Wit-label",
+      "en": "White-label"
+    },
+    "title": {
+      "nl": "Jouw merk, jouw taal, jouw domein",
+      "en": "Your brand, your language, your domain"
+    },
+    "lead": {
+      "nl": "Het hele platform draagt jouw naam, kleuren en domein, ingesteld op runtime zonder rebuild. Nederlands is de standaard, Engels zit ingebouwd, en een extra taal is één bestand.",
+      "en": "The whole platform carries your name, colours and domain, applied at runtime without a rebuild. Dutch is the default, English is built in, and another language is one file away."
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Merk als instelling, niet als build",
+          "en": "Brand as a setting, not a build"
+        },
+        "body": {
+          "nl": "Je merknaam, logo, favicon en kleuren staan in Instellingen en worden op de eerste render toegepast via CSS-variabelen. Verander een kleur en de hele app kleurt mee: de zijbalk, de primaire knop, de telchip, de burn-balk, de focusring. Er is niets te compileren en niets te deployen; je klanten zien jouw studio, niet ons.",
+          "en": "Your brand name, logo, favicon and colours live in Settings and apply on first render through CSS variables. Change a colour and the whole app follows: the sidebar mark, the primary button, the count chip, the burn bar, the focus ring. Nothing compiles and nothing deploys; your clients see your studio, not ours."
+        },
+        "bullets": {
+          "nl": [
+            "Merknaam, logo en favicon per organisatie",
+            "Primaire en accentkleur sturen de hele interface aan",
+            "Semantische kleuren blijven staan: te-laat blijft rood, ook onder jouw merk",
+            "Standaardtaal en tijdzone horen bij dezelfde instellingen"
+          ],
+          "en": [
+            "Brand name, logo and favicon per organisation",
+            "Primary and accent colour drive the entire interface",
+            "Semantic colours hold: overdue stays red, even under your brand",
+            "Default language and timezone sit in the same settings"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Op je eigen domein",
+          "en": "On your own domain"
+        },
+        "body": {
+          "nl": "Draai op een subdomein of koppel je eigen domein; het platform herkent de klant aan de hostname. Een eigen domein gaat pas live nadat het via een DNS TXT-record is geverifieerd, zodat niemand een adres kan claimen dat niet van hem is. Zo landt iedereen, jij en je klanten, op een adres dat helemaal het jouwe is.",
+          "en": "Run on a subdomain or connect your own domain; the platform resolves the tenant from the hostname. A custom domain only goes live once it is verified with a DNS TXT record, so no one can claim an address that isn't theirs. Everyone, you and your clients, lands on an address that is entirely yours."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Nederlands standaard, Engels ingebouwd",
+          "en": "Dutch by default, English built in"
+        },
+        "body": {
+          "nl": "De app is Nederlandstalig van huis uit en Engels zit er volwaardig in; geen enkele tekst staat hardcoded. Elke zin loopt door de vertaallaag, met datums, getallen en bedragen in euro's netjes lokaal genoteerd. Een derde taal toevoegen is één JSON-bestand naast het bestaande zetten, zonder een regel code.",
+          "en": "The app is Dutch out of the box and fully English alongside it; no string is hardcoded. Every sentence runs through the translation layer, with dates, numbers and euro amounts formatted for the locale. Adding a third language is one JSON file next to the existing ones, without a line of code."
+        },
+        "bullets": {
+          "nl": [
+            "Nederlands is de standaard weergavetaal, per organisatie in te stellen",
+            "Engels is de brontaal en altijd volledig vertaald",
+            "Notatie van datum, getal en valuta volgt de gekozen taal",
+            "Een nieuwe taal is één bestand, geen release"
+          ],
+          "en": [
+            "Dutch is the default display language, configurable per organisation",
+            "English is the source locale and always fully translated",
+            "Date, number and currency formatting follow the chosen language",
+            "A new language is one file, not a release"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Ook in de e-mail en de PDF",
+          "en": "In the email and the PDF too"
+        },
+        "body": {
+          "nl": "Wit-label stopt niet bij het scherm. Uitnodigingen, meldingen en gegenereerde PDF's dragen hetzelfde logo en dezelfde kleuren als de app. Tijdstempels verschijnen in de tijdzone van jouw organisatie, zodat een rapport of een afspraak leest zoals jij hem bedoelt.",
+          "en": "White-label doesn't stop at the screen. Invitations, notifications and generated PDFs carry the same logo and colours as the app. Timestamps show in your organisation's timezone, so a report or an appointment reads exactly as you meant it."
+        }
+      }
+    ]
   }
 }

@@ -247,3 +247,78 @@ async def test_timesheet_rows_keyed_by_company_project_task(client_for) -> None:
         assert len(sheet["rows"]) == 2
         assert {row["project_id"] for row in sheet["rows"]} == {p1["id"], p2["id"]}
         assert sheet["total"] == 90
+
+
+async def test_entry_types_tenant_configurable(client_for) -> None:
+    """#176: types seed lazily per org (work, email), an entry can optionally carry one,
+    an unknown/inactive key is refused, an in-use type refuses deletion, the list filters
+    by type, and the catalog is tenant-isolated."""
+    t = await make_tenant("time-types-a")
+    other = await make_tenant("time-types-b")
+    headers = await auth_cookie(t.user)
+    other_headers = await auth_cookie(other.user)
+    base = {
+        "started_at": "2026-07-06T09:00:00Z",
+        "ended_at": "2026-07-06T10:00:00Z",
+    }
+    async with client_for(t.host) as c:
+        types = (await c.get("/api/v1/time/entry-types", headers=headers)).json()
+        assert {et["key"] for et in types} == {"work", "email"}
+
+        typed = await c.post(
+            "/api/v1/time/entries", json={**base, "entry_type_key": "email"}, headers=headers
+        )
+        assert typed.status_code == 201, typed.text
+        assert typed.json()["entry_type_key"] == "email"
+        untyped = await c.post("/api/v1/time/entries", json=base, headers=headers)
+        assert untyped.status_code == 201
+        assert untyped.json()["entry_type_key"] is None
+        assert (
+            await c.post(
+                "/api/v1/time/entries", json={**base, "entry_type_key": "nope"}, headers=headers
+            )
+        ).status_code == 422
+
+        # The list filters by type.
+        filtered = (
+            await c.get("/api/v1/time/entries", params={"entry_type": "email"}, headers=headers)
+        ).json()
+        assert filtered["total"] == 1
+
+        # In use → deletion refused; deactivation hides it from new writes but an entry
+        # keeps its retired type through edits.
+        email_type = next(et for et in types if et["key"] == "email")
+        assert (
+            await c.delete(f"/api/v1/time/entry-types/{email_type['id']}", headers=headers)
+        ).status_code == 409
+        assert (
+            await c.patch(
+                f"/api/v1/time/entry-types/{email_type['id']}",
+                json={"active": False},
+                headers=headers,
+            )
+        ).status_code == 200
+        assert (
+            await c.post(
+                "/api/v1/time/entries", json={**base, "entry_type_key": "email"}, headers=headers
+            )
+        ).status_code == 422
+        assert (
+            await c.patch(
+                f"/api/v1/time/entries/{typed.json()['id']}",
+                json={"entry_type_key": "email", "description": "nog steeds"},
+                headers=headers,
+            )
+        ).status_code == 200
+
+    # Tenant isolation: the other org seeds its own defaults; ids never cross.
+    async with client_for(other.host) as cb:
+        other_types = (await cb.get("/api/v1/time/entry-types", headers=other_headers)).json()
+        assert {et["key"] for et in other_types} == {"work", "email"}
+        assert (
+            await cb.patch(
+                f"/api/v1/time/entry-types/{email_type['id']}",
+                json={"active": True},
+                headers=other_headers,
+            )
+        ).status_code == 404

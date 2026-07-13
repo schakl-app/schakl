@@ -269,11 +269,37 @@ export function enabledWebModules(enabled: string[]): WebModule[] {
   return enabled.map((name) => _modules.get(name)).filter((m): m is WebModule => Boolean(m));
 }
 
-export function navItemsFor(enabled: string[], user?: SessionUser | null): NavItem[] {
-  return enabledWebModules(enabled)
+/** One saved sidebar entry (#169): a module nav key, optionally hidden. */
+export interface NavPrefItem {
+  key: string;
+  hidden?: boolean;
+}
+
+export function navItemsFor(
+  enabled: string[],
+  user?: SessionUser | null,
+  pref?: NavPrefItem[] | null,
+): NavItem[] {
+  const base = enabledWebModules(enabled)
     .flatMap((m) => m.nav ?? [])
-    .filter((item) => !item.requiresPermission || can(user, item.requiresPermission))
-    .sort((a, b) => (a.position ?? 100) - (b.position ?? 100));
+    .filter((item) => !item.requiresPermission || can(user, item.requiresPermission));
+  if (!pref || pref.length === 0) {
+    return base.sort((a, b) => (a.position ?? 100) - (b.position ?? 100));
+  }
+  // A saved layout (#169) orders and hides *module* items; anything the pref doesn't know —
+  // a module enabled after it was saved — falls back to its declared position, after the
+  // ordered ones, so a new nav item always appears.
+  const order = new Map(pref.map((item, index) => [item.key, index]));
+  const hidden = new Set(pref.filter((item) => item.hidden).map((item) => item.key));
+  return base
+    .filter((item) => !hidden.has(item.key))
+    .sort((a, b) => {
+      const ia = order.get(a.key);
+      const ib = order.get(b.key);
+      if (ia !== undefined && ib !== undefined) return ia - ib;
+      if (ia !== undefined || ib !== undefined) return ia !== undefined ? -1 : 1;
+      return (a.position ?? 100) - (b.position ?? 100);
+    });
 }
 
 export function companyPanelComponent(

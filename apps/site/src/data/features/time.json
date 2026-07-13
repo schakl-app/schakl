@@ -1,7 +1,10 @@
 {
   "name": "Uren zonder frictie",
+  "slug": "time",
   "order": 30,
   "icon": "⏱️",
+  "lucide": "time",
+  "demo": "addTime",
   "title": {
     "nl": "Uren zonder frictie",
     "en": "Frictionless time tracking"
@@ -9,5 +12,87 @@
   "description": {
     "nl": "Timer, weekstaat en rapportages. Goedkeuren, uurtarieven en factureerbaar markeren zitten erbij in.",
     "en": "Timer, weekly timesheet and reports. Approval, hourly rates and billable flags included."
+  },
+  "page": {
+    "eyebrow": {
+      "nl": "Uren",
+      "en": "Time"
+    },
+    "title": {
+      "nl": "Van timer tot factuur",
+      "en": "From timer to invoice"
+    },
+    "lead": {
+      "nl": "Een lopende timer, een handmatige regel of de hele weekstaat in één keer: uren komen binnen zoals het jou uitkomt. Goedkeuren, factureerbaar markeren en het budget bewaken doe je op dezelfde plek, zonder ergens over te typen.",
+      "en": "A running timer, a single manual line or the whole weekly timesheet at once: hours go in however it suits you. Approving, flagging billable and watching the budget all happen in one place, with nothing retyped."
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Registreren zoals het uitkomt",
+          "en": "However the work happens"
+        },
+        "body": {
+          "nl": "Start de timer en laat hem lopen, of typ achteraf een regel bij. De weekstaat toont je hele week in één raster, klaar om per dag in te vullen. Wat je typt terwijl je nog bezig bent wordt na een seconde als concept bewaard, dus een half ingevulde regel raak je nooit kwijt.",
+          "en": "Start the timer and let it run, or type a line in afterwards. The weekly timesheet lays your whole week out as one grid, ready to fill day by day. Anything you type while you're still working is saved as a draft after a second, so a half-finished line is never lost."
+        },
+        "bullets": {
+          "nl": [
+            "Eén lopende timer per persoon, met start, stop en de stand van nu.",
+            "Handmatige regels met datum, duur, klant, project en taak.",
+            "De weekstaat als raster: de hele week in één beeld.",
+            "Werksoorten (Werk, E-mail) die je zelf inricht in Instellingen."
+          ],
+          "en": [
+            "One running timer per person, with start, stop and the current total.",
+            "Manual lines with date, duration, client, project and task.",
+            "The weekly timesheet as a grid: the whole week in one view.",
+            "Work types (Work, Email) you configure yourself in Instellingen."
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Budget terwijl je boekt",
+          "en": "Budget as you log"
+        },
+        "body": {
+          "nl": "Kies een project en je ziet meteen hoeveel budget er nog in zit, vóór je opslaat en niet op een ander scherm achteraf. De burn-kleuren lopen mee: groen onder 75%, amber tot 100%, rood zodra het budget vol is (en hoever eroverheen je gaat). Het resterende bedrag in euro's staat ernaast voor wie de tarieven mag zien.",
+          "en": "Pick a project and you see how much budget is left right away, before you save rather than on some screen afterwards. The burn colours track it: green under 75%, amber up to 100%, red once the budget is full (and how far past it you go). The amount left in euros sits alongside for anyone allowed to see the rates."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Goedkeuren en vastzetten",
+          "en": "Approve and lock"
+        },
+        "body": {
+          "nl": "Een manager keurt uren goed, in bulk vanuit het overzicht. Goedgekeurde uren zijn ondertekend: ze staan vast en alleen wie mag goedkeuren kan ze daarna nog aanpassen, de indiener zelf niet meer. Zo blijft een factureerbare week precies zoals hij is afgetekend.",
+          "en": "A manager approves hours in bulk from the overview. Approved hours are signed off: they hold, and from then on only someone who may approve can still change them, not the person who logged them. A billable week stays exactly as it was signed off."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Van uren naar factuur",
+          "en": "From hours to invoice"
+        },
+        "body": {
+          "nl": "Het Urenoverzicht bundelt alle uren van het team met filters op medewerker, klant, project, periode en status. De status van elke regel volgt uit drie dingen samen: factureerbaar, goedgekeurd, gefactureerd. Onderaan lopen de totalen mee en wat klaarstaat markeer je in één keer als gefactureerd.",
+          "en": "The hours overview (Urenoverzicht) gathers the whole team's time with filters on employee, client, project, period and status. Each line's status follows from three things together: billable, approved, invoiced. The totals run along the bottom and whatever is ready you mark as invoiced in one go."
+        },
+        "bullets": {
+          "nl": [
+            "Filter op medewerker, klant, project, periode en status.",
+            "Totalen: factureerbaar, goedgekeurd, nog te factureren, gefactureerd.",
+            "Markeer een selectie in bulk als gefactureerd."
+          ],
+          "en": [
+            "Filter by employee, client, project, period and status.",
+            "Totals: billable, approved, still to invoice, invoiced.",
+            "Mark a selection as invoiced in bulk."
+          ]
+        }
+      }
+    ]
   }
 }

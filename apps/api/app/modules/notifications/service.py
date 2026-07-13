@@ -42,7 +42,11 @@ from app.errors import AppError
 from app.modules.notifications.events import (
     DEDUP_KEY,
     ENTITY_FOR_EVENT,
+    ENTITY_INTERACTION,
+    ENTITY_LEAVE,
     ENTITY_TYPES,
+    INTERACTION_EMAIL_PENDING,
+    LEAVE_REQUESTED,
     PROJECT_BUDGET_THRESHOLD,
     RECIPIENTS_KEY,
     TASK_COMMENTED,
@@ -91,6 +95,20 @@ ENTITY_ID_KEY: dict[str, str] = {
 }
 
 SORTABLE: dict[str, Any] = {"created_at": Notification.created_at}
+
+#: Acting on the underlying item resolves the "pending your action" notifications about it
+#: (#170): trigger event → (entity_type, payload id key, event types to mark read). Scoped to
+#: the *actionable* event types only — the outcome events (``leave.approved`` etc.) that tell
+#: the requester are new, unread, and deliberately untouched. The interaction triggers are the
+#: bus names ``InteractionService`` emits — strings on the bus, never a cross-module import.
+RESOLVING_EVENTS: dict[str, tuple[str, str, tuple[str, ...]]] = {
+    "leave.approved": (ENTITY_LEAVE, "leave_request_id", (LEAVE_REQUESTED,)),
+    "leave.rejected": (ENTITY_LEAVE, "leave_request_id", (LEAVE_REQUESTED,)),
+    "leave.cancelled": (ENTITY_LEAVE, "leave_request_id", (LEAVE_REQUESTED,)),
+    "interaction.approved": (ENTITY_INTERACTION, "interaction_id", (INTERACTION_EMAIL_PENDING,)),
+    "interaction.rejected": (ENTITY_INTERACTION, "interaction_id", (INTERACTION_EMAIL_PENDING,)),
+    "interaction.remapped": (ENTITY_INTERACTION, "interaction_id", (INTERACTION_EMAIL_PENDING,)),
+}
 
 
 def _jsonable(value: Any) -> Any:
@@ -446,6 +464,34 @@ class NotificationService:
         await self.session.flush()
         return self._read(row)
 
+    async def resolve(
+        self, entity_type: str, entity_id: uuid.UUID, *, event_types: Sequence[str]
+    ) -> int:
+        """Mark every unread notification about one entity read, for every recipient (#170).
+
+        ``mark_all_read``'s shape, filtered by event ids instead of by user: deciding a leave
+        request clears the *other* approvers' "pending your approval" rows too, not only the
+        decider's. Narrowed to ``event_types`` so unrelated notifications about the same
+        entity (a mention, an outcome message) stay untouched.
+        """
+        event_ids = select(NotificationEvent.id).where(
+            NotificationEvent.org_id == self.org_id,
+            NotificationEvent.entity_type == entity_type,
+            NotificationEvent.entity_id == entity_id,
+            NotificationEvent.event_type.in_(event_types),
+        )
+        result = await self.session.execute(
+            update(Notification)
+            .where(
+                Notification.org_id == self.org_id,
+                Notification.event_id.in_(event_ids),
+                Notification.read_at.is_(None),
+            )
+            .values(read_at=datetime.now(UTC))
+        )
+        await self.session.flush()
+        return int(result.rowcount or 0)
+
     async def mark_all_read(self) -> int:
         result = await self.session.execute(
             update(Notification)
@@ -545,6 +591,22 @@ class NotificationService:
 # --------------------------------------------------------------------------- #
 # Subscription
 # --------------------------------------------------------------------------- #
+def make_resolver(trigger: str):  # noqa: ANN201 - returns an EventHandler
+    """One resolver per trigger event (#170): the underlying item was acted on, so the
+    "pending your action" notifications about it stop asking. Runs in the emitter's
+    transaction, like the fan-out — the decision and the clearing commit together."""
+    entity_type, id_key, event_types = RESOLVING_EVENTS[trigger]
+
+    async def handler(ctx: EmitContext, payload: dict[str, Any]) -> None:
+        entity_id = _as_uuid(payload.get(id_key))
+        if entity_id is None:
+            return
+        await NotificationService(ctx).resolve(entity_type, entity_id, event_types=event_types)
+
+    handler.__name__ = f"resolve_on_{trigger.replace('.', '_')}"
+    return handler
+
+
 def make_handler(event_type: str):  # noqa: ANN201 - returns an EventHandler
     """One generic handler per event: locate the subject, hand the rest to the fan-out."""
     entity_type = ENTITY_FOR_EVENT[event_type]

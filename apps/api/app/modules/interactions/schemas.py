@@ -9,10 +9,37 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.modules.interactions.models import (
     InteractionDirection,
-    InteractionKind,
     InteractionSource,
     InteractionStatus,
 )
+
+
+class InteractionKindDefBase(BaseModel):
+    """A tenant-configurable interaction kind (#174) — the contact-types shape."""
+
+    key: str = Field(min_length=1, max_length=50, pattern=r"^[a-z0-9_]+$")
+    label_i18n: dict[str, str] = Field(default_factory=dict)
+    position: int = 0
+    active: bool = True
+
+
+class InteractionKindDefCreate(InteractionKindDefBase):
+    pass
+
+
+class InteractionKindDefUpdate(BaseModel):
+    label_i18n: dict[str, str] | None = None
+    position: int | None = None
+    active: bool | None = None
+
+
+class InteractionKindDefRead(InteractionKindDefBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    org_id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
 
 
 class Participant(BaseModel):
@@ -26,13 +53,17 @@ class ParticipantRead(Participant):
     time so a contact created *after* the email was logged still links up."""
 
     contact_id: uuid.UUID | None = None
+    #: The org member this address resolves to (#167) — a colleague, not a contact, so the
+    #: web never offers to "create a contact" for them. Read-time match, like ``contact_id``.
+    user_id: uuid.UUID | None = None
 
 
 class InteractionRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    kind: InteractionKind
+    #: A key into the org's kind list (#174) — no longer a closed enum.
+    kind: str
     status: InteractionStatus
     occurred_at: datetime
     subject: str | None = None
@@ -61,10 +92,20 @@ class InteractionRead(BaseModel):
     created_at: datetime
 
 
+class InteractionLogTime(BaseModel):
+    """The "Voeg aan mijn uren toe" ride-along (#175): a linked time entry created in the
+    same transaction as the interaction. Times follow the *time* module's convention
+    (wall-clock-as-UTC), unlike ``occurred_at`` — the entry must round-trip the timesheet."""
+
+    started_at: datetime
+    ended_at: datetime
+
+
 class InteractionCreate(BaseModel):
     """A manually logged touchpoint — meetings, calls, notes. Emails only arrive via gmail."""
 
-    kind: InteractionKind
+    #: Validated by the service against the org's active kinds; ``email`` is never manual.
+    kind: str = Field(min_length=1, max_length=50, pattern=r"^[a-z0-9_]+$")
     occurred_at: datetime
     subject: str = Field(..., min_length=1, max_length=500)
     body_text: str | None = None
@@ -74,10 +115,12 @@ class InteractionCreate(BaseModel):
     task_id: uuid.UUID | None = None
     contact_id: uuid.UUID | None = None
     participants: list[Participant] = Field(default_factory=list)
+    #: Optional: also log this touchpoint on my timesheet (#175).
+    log_time: InteractionLogTime | None = None
 
 
 class InteractionUpdate(BaseModel):
-    kind: InteractionKind | None = None
+    kind: str | None = Field(None, min_length=1, max_length=50, pattern=r"^[a-z0-9_]+$")
     occurred_at: datetime | None = None
     subject: str | None = Field(None, min_length=1, max_length=500)
     body_text: str | None = None

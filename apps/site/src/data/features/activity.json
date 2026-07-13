@@ -1,0 +1,94 @@
+{
+  "name": "Activiteit en audit",
+  "slug": "activity",
+  "order": 110,
+  "icon": "🕓",
+  "lucide": "activity",
+  "demo": "activity",
+  "title": {
+    "nl": "Activiteit & audit",
+    "en": "Activity & audit"
+  },
+  "description": {
+    "nl": "Elk gewijzigd record houdt bij wat er veranderde, door wie en wanneer. Het spoor blijft, ook als iemand vertrekt.",
+    "en": "Every changed record keeps what changed, by whom and when. The trail stays, even after someone leaves."
+  },
+  "page": {
+    "eyebrow": {
+      "nl": "Activiteit & audit",
+      "en": "Activity & audit"
+    },
+    "title": {
+      "nl": "Elk record houdt zijn eigen geschiedenis bij",
+      "en": "Every record keeps its own history"
+    },
+    "lead": {
+      "nl": "Alles wat kan veranderen draagt een zichtbaar logboek: wat er veranderde, door wie, en wanneer. Automatisch bijgehouden, op de pagina van het record zelf.",
+      "en": "Everything that can change carries a visible paper trail: what changed, by whom, and when. Recorded automatically, right on the record's own page."
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Wat, door wie, wanneer",
+          "en": "What, by whom, when"
+        },
+        "body": {
+          "nl": "Aangemaakt en gewijzigd worden vastgelegd in dezelfde transactie als de wijziging zelf: het spoor en de verandering committen samen, of samen niet. Er komt nooit een lege regel bij; is er niets veranderd, dan is er niets te melden. Je leest de geschiedenis van nieuw naar oud, zonder ernaar te zoeken.",
+          "en": "Created and changed are written in the same transaction as the change itself: the trail entry and the edit commit together, or not at all. An empty edit never produces a line; if nothing changed, there is nothing to record. You read the history newest first, without going looking for it."
+        }
+      },
+      {
+        "heading": {
+          "nl": "De persoon blijft staan",
+          "en": "The person stays named"
+        },
+        "body": {
+          "nl": "De naam van wie iets deed wordt bij het schrijven vastgelegd, niet pas bij het lezen opgezocht. Zolang het account bestaat wint de actuele naam; vertrekt iemand, dan lees je 'Naam (verwijderd)' in plaats van dat het werk stilletjes 'het systeem' wordt. Een auditspoor waarvan de actor verdampt is geen auditspoor.",
+          "en": "The name of whoever acted is captured at write time, not looked up later when you read the trail. While the account exists, its live name wins; once someone leaves, you read 'Name (deleted)' rather than the work quietly becoming 'the system'. An audit trail whose actor evaporates is not an audit trail."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Van, naar",
+          "en": "From, to"
+        },
+        "body": {
+          "nl": "Bij een wijziging staat per veld de oude en de nieuwe waarde: van, naar. Het gaat om de eigen velden van het record, niet om vrije notities of maatwerkvelden. Zo lees je precies wat er is veranderd, en niet meer dan dat.",
+          "en": "For an edit, each changed field shows its old and new value: from, to. It tracks the record's own definition fields, not freeform notes or custom fields. So you read exactly what changed, and nothing beyond it."
+        },
+        "bullets": {
+          "nl": [
+            "Alleen velden die echt veranderden komen in de regel",
+            "Statussen, datums en bedragen leesbaar weergegeven, niet als ruwe code",
+            "Geen vrije tekst of maatwerkvelden in het spoor"
+          ],
+          "en": [
+            "Only fields that actually changed make the entry",
+            "Statuses, dates and amounts rendered readably, not as raw code",
+            "No freeform text or custom fields in the trail"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Onder het record zelf",
+          "en": "Right under the record"
+        },
+        "body": {
+          "nl": "Het spoor verschijnt als paneel op de detailpagina, onder de werkende onderdelen: eerst het werk, dan de geschiedenis. Het paneel is een samenvatting van de laatste regels en zegt het eerlijk wanneer er meer is. Op de klant als middelpunt, op projecten en op contactpersonen leest elk hetzelfde centrale spoor.",
+          "en": "The trail appears as a panel on the detail page, below the working surfaces: the work first, the history under it. The panel is a summary of the most recent entries and says so plainly when there is more. On the client hub, on projects and on contacts, each reads the same central trail."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Audit, geen meldingen",
+          "en": "Audit, not notifications"
+        },
+        "body": {
+          "nl": "Het activiteitenlogboek staat los van meldingen: notificaties gaan over bezorgen, het auditspoor over wat er veranderde. Alles is per organisatie afgeschermd en met RLS afgedwongen, net als elke andere tabel. Het spoor lezen vraagt een expliciet recht; het vastleggen is een bijproduct van een wijziging die je toch al mocht maken.",
+          "en": "The activity log is separate from notifications: notifications are about delivery, the audit trail about what changed. Everything is scoped per organisation and enforced with RLS, like every other table. Reading the trail takes an explicit permission; recording it is a side effect of a change you were already allowed to make."
+        }
+      }
+    ]
+  }
+}

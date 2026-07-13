@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Pre-commit hook — run the API's ruff lint locally so lint drift never reaches CI.
+#
+# Mirrors the CI step exactly (.github/workflows/ci.yml → API job → "Ruff"):
+#     cd apps/api && uv run ruff check app tests
+# Because it runs the repo's own `uv run ruff`, the hook and CI use the same ruff
+# version and the same pyproject config — they can never disagree.
+#
+# Activation is automatic after `pnpm install` (root package.json "prepare"), or once by hand:
+#     git config core.hooksPath .githooks
+#
+# Scope: only fires when the commit stages Python files under apps/api. A web/site/docs-only
+# commit skips it and needs no uv. Emergency bypass: `git commit --no-verify`.
+set -euo pipefail
+
+# Staged (Added/Copied/Modified) Python files under apps/api. `|| true` so "no match" (grep
+# exit 1) doesn't trip `set -e`.
+staged_py=$(git diff --cached --name-only --diff-filter=ACM -- apps/api | grep '\.py$' || true)
+[ -z "$staged_py" ] && exit 0
+
+if ! command -v uv >/dev/null 2>&1; then
+  echo "pre-commit: 'uv' not found but apps/api Python files are staged." >&2
+  echo "            Install uv, or bypass with: git commit --no-verify" >&2
+  exit 1
+fi
+
+echo "pre-commit: ruff check (apps/api)…"
+if ! ( cd apps/api && uv run ruff check app tests ); then
+  echo >&2
+  echo "pre-commit: ruff found problems — this would go red in CI." >&2
+  echo "            Fix:    (cd apps/api && uv run ruff check --fix app tests)" >&2
+  echo "            then re-stage and commit. Bypass (not recommended): git commit --no-verify" >&2
+  exit 1
+fi
