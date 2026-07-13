@@ -7,7 +7,6 @@ a Trello-style history.
 
 from __future__ import annotations
 
-import re
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta

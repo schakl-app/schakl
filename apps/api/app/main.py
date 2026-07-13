@@ -23,7 +23,6 @@ from app.core.auth.router import build_auth_router
 from app.core.auth.sso_router import router as sso_settings_router
 from app.core.customfields.router import router as customfields_router
 from app.core.dashboard import router as dashboard_router
-from app.core.nav import router as nav_router
 from app.core.domains import router as domains_router
 from app.core.email.router import router as email_settings_router
 from app.core.entitlements.router import router as license_router
@@ -32,6 +31,7 @@ from app.core.impex.router import build_impex_router
 from app.core.instance.router import router as instance_router
 from app.core.members import router as members_router
 from app.core.meta import router as meta_router
+from app.core.nav import router as nav_router
 from app.core.permissions.reconcile import reconcile_permission_defaults
 from app.core.permissions.router import permissions_router, roles_router
 from app.core.providers.router import router as providers_router

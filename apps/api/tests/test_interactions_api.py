@@ -145,12 +145,17 @@ async def test_interaction_kinds_tenant_configurable(client_for) -> None:
         created_kind = (
             await c.post(
                 "/api/v1/interactions/kinds",
-                json={"key": "site_visit", "label_i18n": {"nl": "Locatiebezoek", "en": "Site visit"}},
+                json={
+                    "key": "site_visit",
+                    "label_i18n": {"nl": "Locatiebezoek", "en": "Site visit"},
+                },
                 headers=headers,
             )
         )
         assert created_kind.status_code == 201, created_kind.text
-        row = await c.post("/api/v1/interactions", json={"kind": "site_visit", **base}, headers=headers)
+        row = await c.post(
+            "/api/v1/interactions", json={"kind": "site_visit", **base}, headers=headers
+        )
         assert row.status_code == 201
 
         # In use → deletion refused; deactivation hides it from new writes.
@@ -164,7 +169,9 @@ async def test_interaction_kinds_tenant_configurable(client_for) -> None:
             )
         ).status_code == 200
         assert (
-            await c.post("/api/v1/interactions", json={"kind": "site_visit", **base}, headers=headers)
+            await c.post(
+                "/api/v1/interactions", json={"kind": "site_visit", **base}, headers=headers
+            )
         ).status_code == 422
         # Editing an existing row while keeping its now-deactivated kind still works.
         assert (
