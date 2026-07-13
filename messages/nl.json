@@ -1918,6 +1918,8 @@
   "interactions.direction.inbound": "Inkomend",
   "interactions.direction.outbound": "Uitgaand",
   "interactions.field.kind": "Type",
+  "interactions.field.contact": "Contactpersoon",
+  "interactions.field.contact_placeholder": "Zoek of voeg een contactpersoon toe",
   "interactions.field.date": "Datum",
   "interactions.field.time": "Tijd",
   "interactions.field.subject": "Onderwerp",

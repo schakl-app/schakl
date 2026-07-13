@@ -67,6 +67,8 @@ export const interactionActions = {
         subject: String(form.get("subject") ?? "").trim(),
         body_text: String(form.get("body_text") ?? "").trim() || null,
         direction: String(form.get("direction") ?? "none") as "none",
+        // The form carries a contact picker now (#173): an edit may set or clear the link.
+        contact_id: String(form.get("contact_id") ?? "").trim() || null,
       },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
@@ -150,6 +152,33 @@ export const interactionActions = {
     });
     if (error) return fail(400, { qcError: apiErrorKey(error).key });
     return { ok: true };
+  },
+
+  /**
+   * Inline-create behind the form's contact picker (#173): creates the contact immediately
+   * and answers with `inlineCreated` so the picker that asked auto-selects it (docs/UX.md).
+   * Distinct from `createParticipantContact`, whose chip flow has no picker to select into.
+   */
+  createInteractionContact: async (event: RequestEvent) => {
+    const form = await event.request.formData();
+    const first_name = String(form.get("first_name") ?? "").trim();
+    if (!first_name) return fail(400, { qcError: "errors.required" });
+    const company_id = String(form.get("company_id") ?? "").trim();
+    const { data, error } = await apiFor(event).POST("/api/v1/contacts", {
+      body: {
+        first_name,
+        last_name: String(form.get("last_name") ?? "").trim() || null,
+        email: String(form.get("email") ?? "").trim() || null,
+        phone: String(form.get("phone") ?? "").trim() || null,
+        job_title: String(form.get("job_title") ?? "").trim() || null,
+        company_ids: company_id ? [company_id] : undefined,
+        custom: parseCustom(form.get("custom")),
+      },
+    });
+    if (error || !data) return fail(400, { qcError: apiErrorKey(error).key });
+    return {
+      inlineCreated: { slot: String(form.get("slot") ?? "") || "interaction_contact", id: data.id },
+    };
   },
 
   /**

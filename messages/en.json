@@ -1918,6 +1918,8 @@
   "interactions.direction.inbound": "Incoming",
   "interactions.direction.outbound": "Outgoing",
   "interactions.field.kind": "Type",
+  "interactions.field.contact": "Contact person",
+  "interactions.field.contact_placeholder": "Search or add a contact",
   "interactions.field.date": "Date",
   "interactions.field.time": "Time",
   "interactions.field.subject": "Subject",
