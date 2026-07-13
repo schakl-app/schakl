@@ -94,6 +94,18 @@ const allLabel = locale === 'nl' ? 'Alle functies bekijken' : 'See all features'
     top: calc(100% + 0.85rem);
     right: 0;
     width: min(56rem, 94vw);
+    /* the panel sits a gap below the trigger; bridge that gap so moving the pointer from the
+       button into the panel never leaves the hover area (which would close it). */
+  }
+  .mega__panel::before {
+    content: '';
+    position: absolute;
+    top: -0.85rem;
+    left: 0;
+    right: 0;
+    height: 0.85rem;
+  }
+  .mega__panel {
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 1rem;
