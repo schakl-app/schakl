@@ -3,6 +3,7 @@
    * Mobile-first per-day agenda list, shared by every calendar view (docs/UX.md: small
    * screens get a list instead of cramped grid cells).
    */
+  import { eventLinkAttrs } from "$lib/core/calendar";
   import { fmtLongDay } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { labelDotClass } from "$lib/core/ui/colors";
@@ -51,6 +52,7 @@
               {:else}
                 <a
                   href={event.href ?? "#"}
+                  {...eventLinkAttrs(event.href)}
                   class="flex items-center gap-2 text-sm text-text {event.tentative
                     ? 'opacity-60'
                     : ''}"

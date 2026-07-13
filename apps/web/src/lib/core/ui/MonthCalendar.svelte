@@ -9,7 +9,13 @@
    * module's move handler. Clicking the chip (the deep link into the edit form) stays the
    * keyboard/touch alternative, so dragging is an accelerator, never the only way (docs/UX.md).
    */
-  import { eventChipClass, eventsByDayMap, isoDiffDays, monthGrid } from "$lib/core/calendar";
+  import {
+    eventChipClass,
+    eventLinkAttrs,
+    eventsByDayMap,
+    isoDiffDays,
+    monthGrid,
+  } from "$lib/core/calendar";
   import { fmtWeekdayShort } from "$lib/core/format";
   import AgendaList from "$lib/core/ui/AgendaList.svelte";
   import type { CalendarEvent } from "$lib/core/registry";
@@ -96,6 +102,7 @@
             {#if event.href}
               <a
                 href={event.href}
+                {...eventLinkAttrs(event.href)}
                 class="{chipClass(event)} {event.draggable && onmove ? 'cursor-grab' : ''}"
                 title={event.title}
                 draggable={Boolean(event.draggable && onmove)}

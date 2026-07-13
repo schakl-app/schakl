@@ -155,6 +155,17 @@ export function aggregateEventsByDay(
  * colour and never becomes one more coloured pill next to three people's vakantie. It gets a
  * quiet, dashed, uncoloured band instead.
  */
+/**
+ * Anchor attrs for an event's link, decided in one place (#177): an absolute external URL
+ * (a Google-sourced event's htmlLink) opens in a new tab so the app stays put; internal
+ * deep links (leave's `/leave?request=…`) keep same-tab in-app navigation.
+ */
+export function eventLinkAttrs(
+  href: string | undefined,
+): { target: "_blank"; rel: "noopener noreferrer" } | Record<string, never> {
+  return href && /^https?:\/\//i.test(href) ? { target: "_blank", rel: "noopener noreferrer" } : {};
+}
+
 export function eventChipClass(event: CalendarEvent): string {
   if (event.kind === "holiday") {
     return "border border-dashed border-border bg-surface text-text-muted";
