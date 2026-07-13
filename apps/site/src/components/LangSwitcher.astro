@@ -1,0 +1,210 @@
+---
+// Language switcher: a flag + abbreviation button that opens a small dropdown of the available
+// languages, each linking to the same page in that locale (English at the root, Dutch at /nl).
+// Choosing one is remembered (localStorage `schakl:lang`) so the auto-router honours it.
+import { altHref } from '../lib/links';
+
+interface Props {
+  locale: 'nl' | 'en';
+}
+const { locale } = Astro.props;
+const path = Astro.url.pathname;
+
+const langs = [
+  { code: 'en', label: 'English', abbr: 'EN', href: altHref(path, 'en') },
+  { code: 'nl', label: 'Nederlands', abbr: 'NL', href: altHref(path, 'nl') },
+] as const;
+const current = langs.find((l) => l.code === locale)!;
+---
+
+<div class="lang" data-lang>
+  <button
+    type="button"
+    class="lang__btn"
+    aria-haspopup="menu"
+    aria-expanded="false"
+    aria-label={locale === 'nl' ? 'Taal wijzigen' : 'Change language'}
+    data-lang-btn
+  >
+    <span class="lang__flag">
+      {current.code === 'nl' ? (
+        <svg viewBox="0 0 20 15" aria-hidden="true"><rect width="20" height="5" fill="#AE1C28" /><rect y="5" width="20" height="5" fill="#fff" /><rect y="10" width="20" height="5" fill="#21468B" /></svg>
+      ) : (
+        <svg viewBox="0 0 20 15" aria-hidden="true"><rect width="20" height="15" fill="#012169" /><path d="M0 0l20 15M20 0L0 15" stroke="#fff" stroke-width="3" /><path d="M0 0l20 15M20 0L0 15" stroke="#C8102E" stroke-width="1.6" /><path d="M10 0v15M0 7.5h20" stroke="#fff" stroke-width="5" /><path d="M10 0v15M0 7.5h20" stroke="#C8102E" stroke-width="3" /></svg>
+      )}
+    </span>
+    <span class="lang__abbr">{current.abbr}</span>
+    <svg class="lang__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+  </button>
+
+  <div class="lang__menu" role="menu" data-lang-menu>
+    {
+      langs.map((l) => (
+        <a
+          class={`lang__item ${l.code === locale ? 'is-current' : ''}`}
+          href={l.href}
+          role="menuitem"
+          hreflang={l.code}
+          lang={l.code}
+          data-lang-choose={l.code}
+        >
+          <span class="lang__flag">
+            {l.code === 'nl' ? (
+              <svg viewBox="0 0 20 15" aria-hidden="true"><rect width="20" height="5" fill="#AE1C28" /><rect y="5" width="20" height="5" fill="#fff" /><rect y="10" width="20" height="5" fill="#21468B" /></svg>
+            ) : (
+              <svg viewBox="0 0 20 15" aria-hidden="true"><rect width="20" height="15" fill="#012169" /><path d="M0 0l20 15M20 0L0 15" stroke="#fff" stroke-width="3" /><path d="M0 0l20 15M20 0L0 15" stroke="#C8102E" stroke-width="1.6" /><path d="M10 0v15M0 7.5h20" stroke="#fff" stroke-width="5" /><path d="M10 0v15M0 7.5h20" stroke="#C8102E" stroke-width="3" /></svg>
+            )}
+          </span>
+          <span class="lang__name">{l.label}</span>
+          {l.code === locale && (
+            <svg class="lang__check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>
+          )}
+        </a>
+      ))
+    }
+  </div>
+</div>
+
+<style>
+  .lang {
+    position: relative;
+    display: inline-flex;
+  }
+  .lang__btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 550;
+    cursor: pointer;
+  }
+  .lang__btn:hover,
+  .lang.is-open .lang__btn {
+    border-color: var(--accent);
+  }
+  .lang__flag {
+    display: inline-block;
+    width: 1.2rem;
+    height: 0.9rem;
+    border-radius: 2px;
+    overflow: hidden;
+    flex: none;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
+  }
+  .lang__flag svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  .lang__abbr {
+    letter-spacing: 0.02em;
+  }
+  .lang__chev {
+    width: 0.85em;
+    height: 0.85em;
+    color: var(--muted);
+    transition: transform 0.18s ease;
+  }
+  .lang.is-open .lang__chev {
+    transform: rotate(180deg);
+  }
+
+  .lang__menu {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    right: 0;
+    min-width: 12rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 0.7rem;
+    box-shadow:
+      0 1px 2px rgba(16, 24, 40, 0.06),
+      0 16px 32px -16px rgba(16, 24, 40, 0.35);
+    padding: 0.35rem;
+    z-index: 60;
+    opacity: 0;
+    transform: translateY(-0.35rem);
+    pointer-events: none;
+    transition:
+      opacity 0.15s ease,
+      transform 0.15s ease;
+  }
+  .lang.is-open .lang__menu {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+  @media (prefers-color-scheme: dark) {
+    .lang__menu {
+      box-shadow:
+        0 1px 2px rgba(0, 0, 0, 0.4),
+        0 16px 32px -14px rgba(0, 0, 0, 0.7);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .lang__menu,
+    .lang__chev {
+      transition: none;
+    }
+  }
+
+  .lang__item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem 0.6rem;
+    border-radius: 0.5rem;
+    color: var(--text);
+    font-size: 0.92rem;
+  }
+  .lang__item:hover {
+    background: var(--bg-soft);
+  }
+  .lang__name {
+    flex: 1;
+  }
+  .lang__item.is-current {
+    font-weight: 600;
+  }
+  .lang__check {
+    width: 1rem;
+    height: 1rem;
+    color: var(--accent);
+  }
+</style>
+
+<script>
+  for (const lang of document.querySelectorAll<HTMLElement>('[data-lang]')) {
+    const btn = lang.querySelector<HTMLButtonElement>('[data-lang-btn]');
+    if (!btn) continue;
+    const close = () => {
+      lang.classList.remove('is-open');
+      btn.setAttribute('aria-expanded', 'false');
+    };
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const open = lang.classList.toggle('is-open');
+      btn.setAttribute('aria-expanded', String(open));
+    });
+    document.addEventListener('click', (e) => {
+      if (!lang.contains(e.target as Node)) close();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') close();
+    });
+    // Remember an explicit choice so the auto-router doesn't override it later.
+    lang.querySelectorAll<HTMLAnchorElement>('[data-lang-choose]').forEach((a) => {
+      a.addEventListener('click', () => {
+        try {
+          localStorage.setItem('schakl:lang', a.dataset.langChoose!);
+        } catch {}
+      });
+    });
+  }
+</script>

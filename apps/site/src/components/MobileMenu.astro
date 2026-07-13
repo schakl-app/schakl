@@ -6,7 +6,7 @@
 import Icon from './showcase/Icon.astro';
 import DemoButton from './DemoButton.astro';
 import { grouped, taglines, type Locale } from '../lib/features.ts';
-import { localizeHref } from '../lib/links';
+import { localizeHref, altHref } from '../lib/links';
 import settings from '../data/settings/site.json';
 
 interface Props {
@@ -15,13 +15,14 @@ interface Props {
 const { locale } = Astro.props;
 const href = (h: string) => localizeHref(locale, h);
 const cols = grouped();
-const otherLocaleHref = locale === 'nl' ? '/en/' : '/';
+const otherLocale: Locale = locale === 'nl' ? 'en' : 'nl';
+const otherLocaleHref = altHref(Astro.url.pathname, otherLocale);
 const links = settings.nav.filter((item: any) => item.href !== '/#features');
 const t = {
-  menu: locale === 'nl' ? 'Menu' : 'Menu',
+  menu: 'Menu',
   close: locale === 'nl' ? 'Sluiten' : 'Close',
   features: locale === 'nl' ? 'Functies' : 'Features',
-  other: locale === 'nl' ? 'English' : 'Nederlands',
+  other: otherLocale === 'nl' ? 'Nederlands' : 'English',
 };
 ---
 
@@ -69,7 +70,16 @@ const t = {
 
       <div class="mm__foot">
         <DemoButton locale={locale} variant="button" class="mm__demo" />
-        <a class="mm__locale" href={otherLocaleHref} lang={locale === 'nl' ? 'en' : 'nl'}>{t.other}</a>
+        <a class="mm__locale" href={otherLocaleHref} lang={otherLocale} data-lang-choose={otherLocale}>
+          <span class="mm__flag">
+            {otherLocale === 'nl' ? (
+              <svg viewBox="0 0 20 15" aria-hidden="true"><rect width="20" height="5" fill="#AE1C28" /><rect y="5" width="20" height="5" fill="#fff" /><rect y="10" width="20" height="5" fill="#21468B" /></svg>
+            ) : (
+              <svg viewBox="0 0 20 15" aria-hidden="true"><rect width="20" height="15" fill="#012169" /><path d="M0 0l20 15M20 0L0 15" stroke="#fff" stroke-width="3" /><path d="M0 0l20 15M20 0L0 15" stroke="#C8102E" stroke-width="1.6" /><path d="M10 0v15M0 7.5h20" stroke="#fff" stroke-width="5" /><path d="M10 0v15M0 7.5h20" stroke="#C8102E" stroke-width="3" /></svg>
+            )}
+          </span>
+          {t.other}
+        </a>
       </div>
     </div>
   </div>
@@ -263,12 +273,27 @@ const t = {
   .mm__locale {
     display: inline-flex;
     align-items: center;
+    gap: 0.5rem;
     padding: 0.55rem 0.9rem;
     border: 1px solid var(--border);
     border-radius: 999px;
     color: var(--text);
     font-size: 0.9rem;
     flex: none;
+  }
+  .mm__flag {
+    display: inline-block;
+    width: 1.2rem;
+    height: 0.9rem;
+    border-radius: 2px;
+    overflow: hidden;
+    flex: none;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
+  }
+  .mm__flag svg {
+    display: block;
+    width: 100%;
+    height: 100%;
   }
 
   /* Show the hamburger, hide the desktop nav, below the breakpoint. */
@@ -291,6 +316,14 @@ const t = {
     btn?.addEventListener('click', () => set(!mm.classList.contains('is-open')));
     mm.querySelectorAll('[data-mm-close]').forEach((el) => el.addEventListener('click', () => set(false)));
     mm.querySelectorAll('.mm__panel a').forEach((a) => a.addEventListener('click', () => set(false)));
+    // Remember an explicit language choice so the auto-router honours it.
+    mm.querySelectorAll<HTMLAnchorElement>('[data-lang-choose]').forEach((a) => {
+      a.addEventListener('click', () => {
+        try {
+          localStorage.setItem('schakl:lang', a.dataset.langChoose!);
+        } catch {}
+      });
+    });
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') set(false);
     });

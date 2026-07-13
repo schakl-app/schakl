@@ -1,5 +1,5 @@
 ---
-// English feature pages at /en/features/<slug>/. Mirrors the Dutch route.
+// Dutch feature pages at /nl/features/<slug>/. Mirrors the English (root) route.
 import FeaturePage from '../../../components/FeaturePage.astro';
 
 export function getStaticPaths() {
@@ -13,4 +13,4 @@ export function getStaticPaths() {
 const { feature, all } = Astro.props;
 ---
 
-<FeaturePage locale="en" feature={feature} all={all} />
+<FeaturePage locale="nl" feature={feature} all={all} />

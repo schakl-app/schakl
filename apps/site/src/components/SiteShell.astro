@@ -3,20 +3,23 @@
 // CMS-created page. Branding (logo, colors, nav, footer) comes from the Keystatic
 // settings singleton.
 import settings from '../data/settings/site.json';
-import { localizeHref } from '../lib/links';
+import { localizeHref, altHref } from '../lib/links';
 import MegaMenu from './MegaMenu.astro';
 import DemoButton from './DemoButton.astro';
 import MobileMenu from './MobileMenu.astro';
+import LangSwitcher from './LangSwitcher.astro';
 import '../styles/landing.css';
 
 interface Props {
   locale: 'nl' | 'en';
   title: string;
   description?: string;
-  /** Emit hreflang alternates (only pages that exist in both locales, e.g. the landing). */
-  alternates?: boolean;
 }
-const { locale, title, description, alternates = false } = Astro.props;
+const { locale, title, description } = Astro.props;
+
+// hreflang alternates: English is the root, Dutch is under /nl. x-default points at English.
+const enAlt = altHref(Astro.url.pathname, 'en');
+const nlAlt = altHref(Astro.url.pathname, 'nl');
 
 // The logos are CMS-managed: Keystatic writes files into src/assets/site/ and stores their
 // paths in the settings singleton. Resolve through Vite so the build fingerprints them.
@@ -28,8 +31,12 @@ const logoDarkSrc: string | undefined = resolveLogo((settings as any).logoDark);
 
 const href = (h: string) => localizeHref(locale, h);
 
-const otherLocaleHref = locale === 'nl' ? '/en/' : '/';
 const themeCss = `:root{--brand-accent:${settings.colors.accent};--brand-accent-dark:${settings.colors.accentDark};}`;
+
+// Route visitors landing on the homepage to their browser language (English is the root, Dutch
+// is /nl); a stored choice from the switcher always wins. Only the homepage auto-routes, so a
+// shared deep link keeps its explicit locale. Runs in <head> before render to avoid a flash.
+const autoRouteScript = `(function(){try{var p=location.pathname;var enHome=p==='/';var nlHome=p==='/nl'||p==='/nl/';if(!enHome&&!nlHome)return;var s=null;try{s=localStorage.getItem('schakl:lang')}catch(e){}var pn=(navigator.languages||[navigator.language||'']).some(function(l){return l.toLowerCase().indexOf('nl')===0});var w=s||(pn?'nl':'en');if(w==='nl'&&enHome){location.replace('/nl/'+location.search+location.hash)}else if(w==='en'&&nlHome){location.replace('/'+location.search+location.hash)}}catch(e){}})();`;
 ---
 
 <html lang={locale}>
@@ -39,8 +46,10 @@ const themeCss = `:root{--brand-accent:${settings.colors.accent};--brand-accent-
     <title>{title}</title>
     {description && <meta name="description" content={description} />}
     <link rel="icon" href={settings.favicon} type="image/svg+xml" />
-    {alternates && <link rel="alternate" hreflang="nl" href={new URL('/', Astro.site)} />}
-    {alternates && <link rel="alternate" hreflang="en" href={new URL('/en/', Astro.site)} />}
+    <link rel="alternate" hreflang="en" href={new URL(enAlt, Astro.site)} />
+    <link rel="alternate" hreflang="nl" href={new URL(nlAlt, Astro.site)} />
+    <link rel="alternate" hreflang="x-default" href={new URL(enAlt, Astro.site)} />
+    <script is:inline set:html={autoRouteScript} />
     <style set:html={themeCss}></style>
   </head>
   <body>
@@ -62,9 +71,7 @@ const themeCss = `:root{--brand-accent:${settings.colors.accent};--brand-accent-
             .filter((item) => item.href !== '/#features')
             .map((item) => <a href={href(item.href)}>{item[locale]}</a>)}
           <DemoButton locale={locale} variant="header" />
-          <a href={otherLocaleHref} class="locale-switch" lang={locale === 'nl' ? 'en' : 'nl'}>
-            {locale === 'nl' ? 'EN' : 'NL'}
-          </a>
+          <LangSwitcher locale={locale} />
         </nav>
         <MobileMenu locale={locale} />
       </div>

@@ -1,13 +1,13 @@
 ---
-// Renders CMS-created English pages (Keystatic → src/content/pages/en/*) at /en/<slug>/.
+// Renders CMS-created Dutch pages (Keystatic → src/content/pages/nl/*) at /nl/<slug>/.
 import { getCollection, render } from 'astro:content';
 import SiteShell from '../../components/SiteShell.astro';
 import settings from '../../data/settings/site.json';
 
 export async function getStaticPaths() {
-  const pages = await getCollection('pages', (entry) => entry.id.startsWith('en/'));
+  const pages = await getCollection('pages', (entry) => entry.id.startsWith('nl/'));
   return pages.map((entry) => ({
-    params: { slug: entry.id.slice('en/'.length) },
+    params: { slug: entry.id.slice('nl/'.length) },
     props: { entry },
   }));
 }
@@ -17,7 +17,7 @@ const { Content } = await render(entry);
 ---
 
 <SiteShell
-  locale="en"
+  locale="nl"
   title={`${entry.data.title} · ${settings.brandName}`}
   description={entry.data.description}
 >

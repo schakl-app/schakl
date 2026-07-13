@@ -31,7 +31,7 @@ const hero: any = blocks.find((b: any) => b.type === 'hero');
 const title = hero ? `${settings.brandName} · ${hero.title}` : settings.brandName;
 ---
 
-<SiteShell locale={locale} title={title} description={hero?.subtitle} alternates>
+<SiteShell locale={locale} title={title} description={hero?.subtitle}>
   {
     blocks.map((v: any) => {
       const id = v.anchor || undefined;
