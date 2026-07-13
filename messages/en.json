@@ -2094,6 +2094,7 @@
   "google.drive.open_in_drive": "Open in Drive",
   "google.drive.linked_by": "Linked by {name}",
   "google.drive.in_client_folder": "Client folder: {name}",
+  "google.drive.in_project_folder": "Project folder: {name}",
   "google.drive.create_project_folder": "Create project folder",
   "google.drive.work_in_client_folder": "Work in client folder",
   "google.drive.kind.folder": "Folder",

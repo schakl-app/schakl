@@ -1063,3 +1063,37 @@ async def test_interaction_reports_closes_task(client_for) -> None:
         assert (await c.get(f"/api/v1/interactions/{other['id']}", headers=headers)).json()[
             "closes_task"
         ] is False
+
+
+async def test_task_host_activity_readable(client_for) -> None:
+    """#152: a contact moment logged against a task is mirrored onto the core activity log under
+    entity_type=task, and — because tasks now register as auditable — that mirror entry is
+    readable via the activity endpoint (which refuses unregistered entity types). This is what
+    lets the task page show 'contactmoment gelogd' like the company/project/contact panels."""
+    t = await make_tenant("inter-task-activity")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        task = (
+            await c.post("/api/v1/tasks", json={"title": "Bouwen"}, headers=headers)
+        ).json()
+        moment = await c.post(
+            "/api/v1/interactions",
+            json={
+                "kind": "call",
+                "occurred_at": _NOW.isoformat(),
+                "subject": "Kickoff",
+                "task_id": task["id"],
+            },
+            headers=headers,
+        )
+        assert moment.status_code == 201, moment.text
+
+        feed = (
+            await c.get(
+                f"/api/v1/activity?entity_type=task&entity_id={task['id']}", headers=headers
+            )
+        ).json()
+        logged = [a for a in feed if a["action"] == "interaction.logged"]
+        assert logged, "task activity feed should surface the mirrored contact moment"
+        assert logged[0]["payload"]["subject"] == "Kickoff"
+        assert logged[0]["payload"]["interaction_id"] == moment.json()["id"]

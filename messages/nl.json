@@ -2094,6 +2094,7 @@
   "google.drive.open_in_drive": "Openen in Drive",
   "google.drive.linked_by": "Gekoppeld door {name}",
   "google.drive.in_client_folder": "Klantmap: {name}",
+  "google.drive.in_project_folder": "Projectmap: {name}",
   "google.drive.create_project_folder": "Projectmap aanmaken",
   "google.drive.work_in_client_folder": "In klantmap werken",
   "google.drive.kind.folder": "Map",

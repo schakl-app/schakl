@@ -33,14 +33,27 @@
     members: data.members,
     companies: data.companies,
     projects: data.projects,
-    tasks: [],
+    // The current task, so a panel can walk task → project → client (e.g. the Drive panel
+    // roots the browser at the project/client folder rather than the shared-drive root, #150).
+    tasks: task.project_id
+      ? [{ id: task.id, title: task.title, project_id: task.project_id }]
+      : [],
   });
 
   // The activity log grows without bound on a busy task (issue #86): show the most recent few and
   // expand the rest in place. Rows are newest-first, so the head is the newest.
   const ACTIVITY_COLLAPSED = 3;
   let activityExpanded = $state(false);
-  const activities = $derived(task.activities ?? []);
+  // The task's own legacy trail plus the contact-moment milestones mirrored onto its core
+  // activity log (#152) — merged newest-first, so "contactmoment gelogd" shows on the task page
+  // like it already does on company/project/contact. Both rows share the same shape
+  // (action/payload/actor_name/actor_deleted/created_at), so one feed renders both.
+  const activities = $derived(
+    [...(task.activities ?? []), ...(data.hostActivity ?? [])]
+      // Core rows type `payload` as optional; the renderers want it present. Normalise once.
+      .map((a) => ({ ...a, payload: (a.payload ?? {}) as Record<string, unknown> }))
+      .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))),
+  );
   const visibleActivities = $derived(
     activityExpanded || activities.length <= ACTIVITY_COLLAPSED
       ? activities
@@ -196,6 +209,8 @@
       return (task.comments ?? []).some((c) => c.id === commentId) ? `#comment-${commentId}` : null;
     }
     if (a.payload.closing_interaction_id) return `#interaction-${a.payload.closing_interaction_id}`;
+    // A mirrored contact-moment milestone (#152) links to the moment in the interactions panel.
+    if (a.payload.interaction_id) return `#interaction-${a.payload.interaction_id}`;
     return null;
   }
 
@@ -242,6 +257,14 @@
     }
     if (a.action === "attachment_added" || a.action === "attachment_deleted") {
       return t(`tasks.activity.${a.action}`, { filename: String(a.payload.filename ?? "") });
+    }
+    // A contact-moment milestone mirrored onto this task from the core log (#152) — reuse the
+    // shared activity.action.interaction.* strings the company/project panels already read.
+    if (a.action.startsWith("interaction.")) {
+      return t(`activity.action.${a.action}`, {
+        kind: t(`interactions.kind.${String(a.payload.kind ?? "note")}`),
+        subject: String(a.payload.subject ?? ""),
+      });
     }
     if (
       a.action === "link_deleted" ||
