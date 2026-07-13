@@ -1,0 +1,107 @@
+{
+  "name": "Abonnementen",
+  "slug": "subscriptions",
+  "order": 70,
+  "icon": "🔁",
+  "lucide": "subscriptions",
+  "title": {
+    "nl": "Abonnementen",
+    "en": "Subscriptions"
+  },
+  "description": {
+    "nl": "Terugkerende diensten en retainers per klant, met types, status en bulkacties in één overzicht.",
+    "en": "Recurring services and retainers per client, with types, status and bulk actions in one view."
+  },
+  "page": {
+    "eyebrow": {
+      "nl": "Abonnementen",
+      "en": "Subscriptions"
+    },
+    "title": {
+      "nl": "Elke retainer als eigen record",
+      "en": "Every retainer, its own record"
+    },
+    "lead": {
+      "nl": "Een abonnement legt vast wat een klant per periode betaalt voor welke scope: een terugkerende afspraak die aan de klant hangt, met een status, een type en een prijs die zichzelf nooit herschrijft.",
+      "en": "A subscription records what a client pays per period, and for what scope: a recurring agreement attached to the client, with a status, a type and a price that never rewrites itself."
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Aan de klant, niet los",
+          "en": "Attached to the client, not floating"
+        },
+        "body": {
+          "nl": "Een abonnement hangt aan de klant, net als contactpersonen, projecten en domeinen: op de klantpagina zie je in één paneel welke terugkerende afspraken lopen. Het is een omzetbegrip (wat de klant per periode betaalt), los van het uurbudget van een project. De twee verwijzen naar elkaar, ze zijn niet dezelfde regel.",
+          "en": "A subscription hangs off the client, alongside contacts, projects and domains: one panel on the client page shows which recurring agreements are running. It is a revenue concept (what the client pays per period), separate from a project's hour budget. The two reference each other; they are not the same row."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Types en sjablonen die je zelf inricht",
+          "en": "Types and templates you set up yourself"
+        },
+        "body": {
+          "nl": "Hosting, onderhoud, SEO: de categorieën zijn geen code, je richt ze zelf in onder Instellingen → Abonnementen, met labels in elke taal. Een sjabloon als \"Hosting Basis, €25 per maand, 1 uur inbegrepen\" vult het aanmaakformulier voor, zodat een nieuwe afspraak in seconden staat. Zet je een abonnement voor het eerst op actief, dan kan het type de bijbehorende onboardingtaken meteen aanmaken.",
+          "en": "Hosting, maintenance, SEO: the categories are not code. You configure them yourself under Settings → Subscriptions, with labels in every language. A template like \"Hosting Basic, €25 per month, 1 hour included\" prefills the create form, so a new agreement stands up in seconds. The first time you activate a subscription, its type can spawn the matching onboarding tasks."
+        },
+        "bullets": {
+          "nl": [
+            "Tenant-eigen types met labels per taal",
+            "Sjablonen die het formulier voorvullen, geen kopie op de server",
+            "Taaksjablonen die bij de eerste activatie meelopen"
+          ],
+          "en": [
+            "Tenant-owned types with per-language labels",
+            "Templates that prefill the form, no server-side copy",
+            "Task templates that fire on first activation"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Een prijs die zich nooit herschrijft",
+          "en": "A price that never rewrites itself"
+        },
+        "body": {
+          "nl": "De prijs leeft in een append-only historie met een ingangsdatum. Een tariefwijziging voegt een regel toe, hij overschrijft niets, dus het bedrag op een factuur van vorig jaar blijft antwoordbaar. Verhoog je per 1 januari, dan houdt december gewoon zijn oude getal. En een factuur is geen los bedrag: de regels staan er stuk voor stuk onder.",
+          "en": "The price lives in append-only history with an effective date. A rate change appends a row, it overwrites nothing, so the amount on last year's invoice stays answerable. Raise the fee on 1 January and December keeps its old number. And an invoice is not one opaque figure: its lines are spelled out one by one."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Inbegrepen uren, gemeten op het echte werk",
+          "en": "Included hours, measured against real work"
+        },
+        "body": {
+          "nl": "Een abonnement kan uren bevatten. Het verbruik wordt gemeten tegen de uren die op de gekoppelde projecten geboekt staan: precies dezelfde optelling die elke budgetbalk en burn-kleur leest, niet een aparte teller die uit de pas loopt. Ongebruikte uren vervallen of schuiven door volgens een rollover-regel die je zelf instelt, geen wet in code. Overschrijding wordt gesignaleerd, nooit stilletjes doorbelast.",
+          "en": "A subscription can include hours. Consumption is measured against the time logged on the linked projects: exactly the same total every budget bar and burn colour reads, not a separate counter drifting out of step. Unused hours lapse or carry over by a rollover rule you set yourself, not law written in code. Overage is flagged, never silently billed."
+        }
+      },
+      {
+        "heading": {
+          "nl": "De lijst is een werkblad, de omzet één blik",
+          "en": "The list is a worksheet, the revenue one glance"
+        },
+        "body": {
+          "nl": "Alle abonnementen staan in dezelfde DataTable als de rest van het platform: sorteren op naam, status, startdatum of volgende factuur, filteren op klant, status en type, kolommen tonen of verbergen. Selecteer een reeks rijen en zet in één keer de status om of verwijder ze. Een dagelijkse cron kijkt wat toe is aan facturatie, schuift de volgende factuurdatum een periode op en geeft de regels door aan je boekhoudkoppeling; het Omzet-overzicht telt MRR en ARR op en toont wat er de komende maand aankomt.",
+          "en": "Every subscription sits in the same DataTable as the rest of the platform: sort by name, status, start date or next invoice, filter by client, status and type, show or hide columns. Select a run of rows and switch their status or delete them in one move. A daily cron finds what is due, advances the next invoice date by a period and hands the lines to your accounting integration; the Revenue overview sums MRR and ARR and shows what falls due in the coming month."
+        },
+        "bullets": {
+          "nl": [
+            "Filter op klant, status en type",
+            "Bulk: status omzetten of verwijderen",
+            "Vier statussen: Concept, Actief, Gepauzeerd, Opgezegd",
+            "MRR, ARR en aankomende facturen bij elkaar"
+          ],
+          "en": [
+            "Filter by client, status and type",
+            "Bulk: switch status or delete",
+            "Four statuses: Draft, Active, Paused, Cancelled",
+            "MRR, ARR and upcoming invoices in one place"
+          ]
+        }
+      }
+    ]
+  }
+}

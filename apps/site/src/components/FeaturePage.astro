@@ -1,0 +1,242 @@
+---
+// A marketing feature page: hero + (optional) animated demo + prose sections + a cross-link
+// grid of the other features. Driven by one feature data file (src/data/features/<slug>.json);
+// the rich `page` content is optional — without it the hero falls back to the card copy, so a
+// feature is never a dead link. Demos are the same pure-CSS recreations used on the landing.
+import SiteShell from './SiteShell.astro';
+import Icon from './showcase/Icon.astro';
+import { localizeHref } from '../lib/links';
+import settings from '../data/settings/site.json';
+import './showcase/showcase.css';
+import DemoCreateClient from './showcase/DemoCreateClient.astro';
+import DemoAddTime from './showcase/DemoAddTime.astro';
+import DemoBudgetBurn from './showcase/DemoBudgetBurn.astro';
+import DemoTasks from './showcase/DemoTasks.astro';
+import DemoLeave from './showcase/DemoLeave.astro';
+import DemoWhiteLabel from './showcase/DemoWhiteLabel.astro';
+
+interface Props {
+  locale: 'nl' | 'en';
+  feature: any;
+  all: any[];
+}
+const { locale, feature, all } = Astro.props;
+const demos: Record<string, any> = {
+  createClient: DemoCreateClient,
+  addTime: DemoAddTime,
+  budget: DemoBudgetBurn,
+  tasks: DemoTasks,
+  leave: DemoLeave,
+  whiteLabel: DemoWhiteLabel,
+};
+const Demo = feature.demo ? demos[feature.demo] : null;
+
+const page = feature.page ?? {};
+const pick = (o: any) => (o ? o[locale] : undefined);
+const eyebrow = pick(page.eyebrow) ?? feature.title[locale];
+const title = pick(page.title) ?? feature.title[locale];
+const lead = pick(page.lead) ?? feature.description[locale];
+const sections: any[] = page.sections ?? [];
+
+const href = (h: string) => localizeHref(locale, h);
+const others = all.filter((f) => f.slug !== feature.slug);
+const t = {
+  back: locale === 'nl' ? 'Alle functies' : 'All features',
+  more: locale === 'nl' ? 'Meer functies' : 'More features',
+  ctaTitle: locale === 'nl' ? 'Meer weten?' : 'Want to know more?',
+  ctaBody:
+    locale === 'nl'
+      ? 'De documentatie beschrijft elke module tot in de details, van installatie tot rechten.'
+      : 'The documentation describes every module in detail, from installation to permissions.',
+  ctaLabel: locale === 'nl' ? 'Naar de documentatie' : 'Go to the docs',
+};
+---
+
+<SiteShell locale={locale} title={`${settings.brandName} · ${title}`} description={lead}>
+  <article class="feature container">
+    <a class="feature__back" href={href('/#features')}>
+      <Icon name="arrowLeft" size={0.95} />{t.back}
+    </a>
+
+    <header class="feature__hero">
+      <span class="feature__icon"><Icon name={feature.lucide} size={1.7} /></span>
+      <p class="eyebrow">{eyebrow}</p>
+      <h1>{title}</h1>
+      <p class="subtitle">{lead}</p>
+    </header>
+
+    {
+      Demo && (
+        <div class="feature__demo">
+          <Demo locale={locale} />
+        </div>
+      )
+    }
+
+    {
+      sections.length > 0 && (
+        <div class="feature__body">
+          {sections.map((s) => (
+            <section class="feature__section">
+              <h2>{s.heading[locale]}</h2>
+              <p>{s.body[locale]}</p>
+              {s.bullets?.[locale]?.length > 0 && (
+                <ul class="check-list">
+                  {s.bullets[locale].map((b: string) => (
+                    <li>{b}</li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          ))}
+        </div>
+      )
+    }
+
+    <section class="feature__cta">
+      <h2>{t.ctaTitle}</h2>
+      <p class="section-intro">{t.ctaBody}</p>
+      <a class="button primary" href={href('/docs/')}>{t.ctaLabel}</a>
+    </section>
+
+    <section class="feature__more">
+      <h2>{t.more}</h2>
+      <div class="feature__grid">
+        {
+          others.map((f) => (
+            <a class="feature__link" href={href(`/features/${f.slug}`)}>
+              <span class="feature__link-icon"><Icon name={f.lucide} size={1.15} /></span>
+              <span>{f.title[locale]}</span>
+              <Icon name="arrowRight" size={0.9} class="feature__link-arrow" />
+            </a>
+          ))
+        }
+      </div>
+    </section>
+  </article>
+</SiteShell>
+
+<style>
+  .feature {
+    max-width: 60rem;
+    padding-block: 2.5rem 4.5rem;
+  }
+  .feature__back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin-bottom: 2rem;
+  }
+  .feature__back:hover {
+    color: var(--text);
+  }
+  .feature__hero {
+    max-width: 42rem;
+  }
+  .feature__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 3.4rem;
+    height: 3.4rem;
+    border-radius: 0.9rem;
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent);
+    margin-bottom: 1.25rem;
+  }
+  .feature__hero h1 {
+    font-size: clamp(2rem, 5vw, 3rem);
+    font-weight: 700;
+  }
+  .feature__hero .subtitle {
+    margin-left: 0;
+    margin-right: 0;
+  }
+  .feature__demo {
+    margin-block: 3rem;
+    max-width: 42rem;
+  }
+  .feature__body {
+    display: grid;
+    gap: 2.5rem;
+    max-width: 42rem;
+    margin-top: 1rem;
+  }
+  .feature__section h2 {
+    font-size: clamp(1.35rem, 3vw, 1.7rem);
+    margin-bottom: 0.6rem;
+  }
+  .feature__section p {
+    color: var(--text);
+    margin: 0;
+  }
+  .feature__section .check-list {
+    margin-top: 1rem;
+  }
+  .feature__cta {
+    margin-top: 4rem;
+    padding: 2.5rem;
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+    background: var(--bg-soft);
+  }
+  .feature__cta h2 {
+    font-size: 1.5rem;
+  }
+  .feature__cta .button {
+    margin-top: 1.25rem;
+  }
+  .feature__more {
+    margin-top: 4rem;
+  }
+  .feature__more h2 {
+    font-size: 1.3rem;
+    margin-bottom: 1.25rem;
+  }
+  .feature__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    gap: 0.75rem;
+  }
+  .feature__link {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.85rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: 0.7rem;
+    color: var(--text);
+    font-weight: 550;
+    font-size: 0.95rem;
+  }
+  .feature__link:hover {
+    border-color: var(--accent);
+  }
+  .feature__link-icon {
+    display: inline-flex;
+    color: var(--accent);
+  }
+  .feature__link span:nth-of-type(1) {
+    flex: 1;
+  }
+  .feature__link-arrow {
+    color: var(--muted);
+  }
+</style>
+
+<script>
+  // Play only the demo that is on screen, honouring reduced motion (same contract as the tour).
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const stages = Array.from(document.querySelectorAll<HTMLElement>('.feature__demo .appui'));
+  if (stages.length && !reduce.matches && 'IntersectionObserver' in window) {
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) e.target.classList.toggle('is-playing', e.isIntersecting);
+      },
+      { threshold: 0.3 },
+    );
+    stages.forEach((s) => io.observe(s));
+  }
+</script>

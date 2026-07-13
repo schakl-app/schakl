@@ -1,0 +1,93 @@
+{
+  "name": "Contactpersonen",
+  "slug": "contacts",
+  "order": 15,
+  "icon": "👥",
+  "lucide": "contacts",
+  "title": {
+    "nl": "Contactpersonen",
+    "en": "Contacts"
+  },
+  "description": {
+    "nl": "Eén primaire contactpersoon en zoveel anderen als nodig, allemaal aan de klant gekoppeld. Klik om de primaire te wisselen.",
+    "en": "One primary contact and as many others as you need, all attached to the client. Click a chip to switch the primary."
+  },
+  "page": {
+    "eyebrow": {
+      "nl": "Contactpersonen",
+      "en": "Contacts"
+    },
+    "title": {
+      "nl": "De mensen achter de klant",
+      "en": "The people behind the client"
+    },
+    "lead": {
+      "nl": "Elke klant is uiteindelijk een paar mensen. schakl legt ze vast als contactpersonen, koppelt ze aan de juiste klanten en houdt bij wie waarvoor het aanspreekpunt is.",
+      "en": "Every client comes down to a handful of people. schakl records them as contacts, attaches them to the right clients, and keeps track of who is the point of contact for what."
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Mensen, geen accounts",
+          "en": "People, not accounts"
+        },
+        "body": {
+          "nl": "Contactpersonen zijn de mensen bij je klant: de tekenbevoegde, de marketeer, de technisch beheerder. Ze staan los van je eigen team, dat gebruikers met een rol zijn. Elke contactpersoon heeft een naam, e-mail, telefoon, functie en notities, plus alle eigen velden die jouw organisatie zelf heeft gedefinieerd.",
+          "en": "Contacts are the people at your client: the signatory, the marketer, the technical administrator. They are kept separate from your own team, who are users with a role. Every contact carries a name, email, phone, job title and notes, plus any custom fields your organisation has defined."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Eén persoon, meerdere klanten",
+          "en": "One person, many clients"
+        },
+        "body": {
+          "nl": "Een contactpersoon hangt niet aan één klant vast. Dezelfde persoon kan aanspreekpunt zijn bij de ene klant en technisch contact bij de andere; die rol leeft op de koppeling, niet op de persoon. Zo voer je niemand twee keer in, en op de contactpagina zie je meteen aan welke klanten iemand verbonden is.",
+          "en": "A contact isn't locked to a single client. The same person can be the point of contact at one client and the technical contact at another — that role lives on the link, not on the person. So you never enter anyone twice, and a contact's own page shows exactly which clients they belong to."
+        },
+        "bullets": {
+          "nl": [
+            "Elke koppeling draagt zijn eigen type en zijn eigen primair-markering.",
+            "Verwijder je een klant, dan blijft de persoon bestaan; alleen de koppeling vervalt.",
+            "De klantpagina toont de contactpersonen, de contactpagina toont de klanten."
+          ],
+          "en": [
+            "Each link carries its own contact type and its own primary marking.",
+            "Delete a client and the person remains; only the link falls away.",
+            "The client page shows the contacts, the contact page shows the clients."
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Het primaire aanspreekpunt",
+          "en": "The primary contact"
+        },
+        "body": {
+          "nl": "Per klant is er precies één primaire contactpersoon; de rest staat daarnaast als de overige. De primaire herken je aan de merkkleur van de chip en aan niets anders: geen sterretje, geen icoon. Klik een andere chip aan om die tot primair te promoveren; de opslag laat maar één primaire per klant toe, en omdat kleur alleen niet leesbaar is krijgt een screenreader een apart tekstlabel.",
+          "en": "Each client has exactly one primary contact; the rest sit alongside as the others. You recognise the primary by the brand colour of its chip and nothing else — no star, no glyph. Click another chip to promote it to primary; the store allows only one primary per client, and because colour alone can't be read, a screen reader gets its own text label."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Toevoegen waar je werkt",
+          "en": "Add where you work"
+        },
+        "body": {
+          "nl": "Je maakt een contactpersoon aan vanaf de klantpagina zelf. Typ een naam die nog niet bestaat en er verschijnt '＋ toevoegen': dat opent het volledige aanmaakvenster (echte velden plus jouw eigen custom-velden), vult vast in wat je typte, en koppelt de nieuwe persoon meteen aan deze klant. Je verlaat het scherm niet en komt terug met de chip al geselecteerd.",
+          "en": "You create a contact from the client page itself. Type a name that doesn't exist yet and “＋ add” appears — it opens the full create dialog (real fields plus your own custom fields), prefills what you typed, and attaches the new person to this client in one step. You never leave the screen, and you return with the chip already selected."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Types die jij bepaalt",
+          "en": "Types you define"
+        },
+        "body": {
+          "nl": "Wat een contactpersoon precies is (klantcontact, technisch contact, facturatie) bepaal je zelf onder Instellingen → Contacttypen. Types dragen een label in elke taal en zijn per klant instelbaar, want iemand kan bij de ene klant het aanspreekpunt zijn en bij de andere de technisch beheerder. Elke wijziging aan een contactpersoon landt in de activiteitenlijn met wie en wanneer, dus je ziet altijd hoe een gegeven is ontstaan.",
+          "en": "What a contact actually is — client contact, technical contact, billing — is yours to define under Settings → Contact types. Types carry a label in every language and are set per client, because someone can be the point of contact at one client and the technical administrator at another. Every change to a contact lands in the activity trail with who and when, so you can always see how a value came to be."
+        }
+      }
+    ]
+  }
+}

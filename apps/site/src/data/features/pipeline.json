@@ -1,0 +1,85 @@
+{
+  "name": "Deals en pipeline",
+  "slug": "pipeline",
+  "order": 60,
+  "icon": "📈",
+  "lucide": "pipeline",
+  "title": {
+    "nl": "Deals & pipeline",
+    "en": "Deals & pipeline"
+  },
+  "description": {
+    "nl": "Kansen per fase, gekoppeld aan de klant. In één oogopslag zie je wat er speelt en wat het waard is.",
+    "en": "Opportunities by stage, attached to the client. See at a glance what's in play and what it's worth."
+  },
+  "page": {
+    "eyebrow": {
+      "nl": "Pipeline",
+      "en": "Pipeline"
+    },
+    "title": {
+      "nl": "Van lead tot klant",
+      "en": "From lead to client"
+    },
+    "lead": {
+      "nl": "Elke klant in schakl begint als lead. De pipeline zet die leads om in deals met een stage en een waarde, allemaal opgehangen aan de klant waar ze bij horen.",
+      "en": "Every client in schakl starts as a lead. The pipeline turns those leads into deals with a stage and a value, each attached to the client it belongs to."
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Een deal hangt aan de klant",
+          "en": "A deal attaches to the client"
+        },
+        "body": {
+          "nl": "Een deal is een verkoopkans met een stage, een waarde in euro's en een klant. Hij hangt aan de klant zoals contactpersonen, projecten, domeinen en uren dat doen: op de klantpagina staat de lopende deal naast al het andere. Zo zit het gesprek dat nog moet beginnen op dezelfde plek als het werk dat al loopt.",
+          "en": "A deal is a sales opportunity with a stage, a value in euros and a client. It attaches to the client the way contacts, projects, domains and hours do: on the client page the open deal sits beside everything else. The conversation that hasn't started yet lives in the same place as the work already running."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Eén levenscyclus, van begin tot eind",
+          "en": "One lifecycle, start to finish"
+        },
+        "body": {
+          "nl": "De klantstatus loopt van lead via onboarding naar actief. Die statusovergangen sturen nu al automatische taaksjablonen aan: wint een deal, dan schuift de klant door naar onboarding en begint het onthaalwerk vanzelf. De pipeline zit vóór dat punt en levert de lead aan die eraan voorafgaat, zodat je één beeld houdt van prospect tot vaste klant.",
+          "en": "A client's status runs from lead through onboarding to active. Those transitions already drive automatic task templates: win a deal and the client moves on to onboarding, so the welcome work starts on its own. The pipeline sits before that point and supplies the lead that precedes it, keeping one view from prospect to standing client."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Stages die je zelf bepaalt",
+          "en": "Stages you define"
+        },
+        "body": {
+          "nl": "De kolommen van het bord zijn jouw eigen verkoopstappen, niet die van een ander bureau. Een deal schuift van stage naar stage terwijl het gesprek vordert, en de waarde blijft eraan hangen zodat je ziet wat er in elke fase op tafel ligt. Bewust smal gehouden: stages, een bedrag en de klant, zonder ruis eromheen.",
+          "en": "The columns of the board are your own sales steps, not another agency's. A deal moves from stage to stage as the conversation progresses, and the value travels with it so you can see what's on the table in each phase. Kept deliberately narrow: stages, an amount and the client, with no clutter around it."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Wat elk schakl-record krijgt",
+          "en": "What every schakl record gets"
+        },
+        "body": {
+          "nl": "Een deal is een gewoon schakl-record en erft dus alles wat de rest van het platform draagt. Geen apart CRM ernaast: dezelfde rechten, dezelfde taal, hetzelfde merk.",
+          "en": "A deal is an ordinary schakl record, so it inherits everything the rest of the platform carries. No separate CRM alongside it: the same permissions, the same language, the same brand."
+        },
+        "bullets": {
+          "nl": [
+            "Elke wijziging in de activiteitenlog: wie de waarde bijstelde, wie de stage verplaatste, wanneer.",
+            "Eigen velden per deal via Instellingen → Aangepaste velden, in jouw taal.",
+            "Wie deals en bedragen mag zien, bepaal je met rollen en rechten.",
+            "Waarde in euro's, in de taal en tijdzone van je organisatie, onder jouw merk."
+          ],
+          "en": [
+            "Every change in the activity trail: who adjusted the value, who moved the stage, when.",
+            "Custom fields per deal via Instellingen → Custom fields, in your own language.",
+            "Who may see deals and amounts is set with roles and permissions.",
+            "Value in euros, in your organisation's language and timezone, under your brand."
+          ]
+        }
+      }
+    ]
+  }
+}

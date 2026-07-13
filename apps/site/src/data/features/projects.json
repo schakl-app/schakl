@@ -1,7 +1,10 @@
 {
   "name": "Projecten en budgetten",
+  "slug": "projects",
   "order": 20,
   "icon": "📁",
+  "lucide": "projects",
+  "demo": "budget",
   "title": {
     "nl": "Projecten & budgetten",
     "en": "Projects & budgets"
@@ -9,5 +12,83 @@
   "description": {
     "nl": "Uren- en geldbudgetten met burn-kleuren, retainers en maandelijkse limieten; elk getal is te openen tot op de registratie.",
     "en": "Hour and money budgets with burn colours, retainers and monthly caps — every number opens down to the entry behind it."
+  },
+  "page": {
+    "eyebrow": {
+      "nl": "Projecten & budgetten",
+      "en": "Projects & budgets"
+    },
+    "title": {
+      "nl": "Weet waar het budget heen ging",
+      "en": "Know where the budget went"
+    },
+    "lead": {
+      "nl": "Een project hangt aan de klant en draagt een budget in uren en geld. schakl laat in kleur zien hoe hard dat budget brandt, en klapt onder de balk precies de uren open die het opmaakten.",
+      "en": "A project hangs off the client and carries a budget in hours and money. schakl shows in colour how hard that budget is burning, and opens the exact hours that spent it right under the bar."
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Aan de klant, met een budget",
+          "en": "On the client, with a budget"
+        },
+        "body": {
+          "nl": "Een project is een opdracht van een klant: het hangt aan de klantpagina (de hub), naast contactpersonen, domeinen en afspraken. Het draagt een urenbudget (de capaciteit), een geldbudget en een uurtarief, allemaal optioneel, want dit zijn planningsgetallen en geen boekingen. Taken en geregistreerde uren horen bij het project, zodat geboekt versus budget vanzelf blijft kloppen.",
+          "en": "A project is a client engagement: it hangs off the client page (the hub), alongside contacts, domains and appointments. It carries an hour budget (the capacity), a money budget and an hourly rate, all optional, because these are planning figures and not ledger entries. Tasks and logged time belong to the project, so logged-versus-budget stays true on its own."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Retainers die elke maand resetten",
+          "en": "Retainers that reset every month"
+        },
+        "body": {
+          "nl": "Kies of het urenbudget voor het hele project geldt of elke maand, week of dag opnieuw ingaat. Zo leg je een retainer vast als een maandelijkse urencap die op de eerste weer op nul staat. De periodegrens is een echte Amsterdamse kalenderdag die de API bepaalt, niet de browser: een uur dat 's avonds wordt geboekt landt in de juiste maand, ook rond de zomertijdwissel.",
+          "en": "Choose whether the hour budget covers the whole project or refills every month, week or day. That is how you model a retainer: a monthly hour cap that reads zero again on the first. The period boundary is a real Amsterdam calendar day the API decides, not the browser: an hour logged in the evening lands in the right month, even around the daylight-saving switch."
+        },
+        "bullets": {
+          "nl": [
+            "Hele project: één budget voor de looptijd",
+            "Per maand: de retainer die maandelijks ververst",
+            "Per week of per dag: strakkere caps voor doorlopend werk"
+          ],
+          "en": [
+            "Whole project: one budget for the engagement",
+            "Monthly: the retainer that refills each month",
+            "Weekly or daily: tighter caps for ongoing work"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Eén kleurschaal voor verbruik",
+          "en": "One colour scale for burn"
+        },
+        "body": {
+          "nl": "Verbruik heeft precies één schaal: groen onder 75%, amber onder 100%, rood vanaf 100%. Het percentage wordt niet afgekapt, dus een project dat over budget zit leest rood en meldt een negatieve rest; alleen de getekende balk stopt op vol. Een project zonder budget toont een streepje en laat toch zien wat het verbruikte: nooit een verzonnen totaal, nooit een geruststellende nul. Alle geboekte uren tellen mee, facturabel of niet, want intern werk aan een klantproject maakt het budget net zo goed op.",
+          "en": "Burn has exactly one scale: green below 75%, amber below 100%, red from 100%. The percentage is never clamped, so a project over budget reads red and reports a negative remainder; only the drawn bar stops at full. A project with no budget shows an em-dash and still reports what it spent: never a fabricated total, never a reassuring zero. Every logged hour counts, billable or not, because internal work on a client project consumes the budget just the same."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Elk getal gaat open",
+          "en": "Every number opens"
+        },
+        "body": {
+          "nl": "12,5 / 40 u roept één vraag op: welke uren? Onder de budgetbalk klapt het Uren-paneel open met precies de registraties die het getal optelden, in dezelfde periode als de balk, met dezelfde ⋯ om te bewerken of te verwijderen. Vanaf daar loop je voorgefilterd door naar het volledige urenoverzicht, maar dat overzicht is nooit de enige ingang: wie wil weten waar het budget heen ging, is lang niet altijd een manager.",
+          "en": "12.5 / 40 h invites exactly one question: which hours? Under the budget bar the Hours panel opens with precisely the entries that added up to the number, over the same period as the bar, with the same ⋯ to edit or delete. From there you step through to the full hours report, pre-filtered, but that report is never the only way in: the person who wants to know where the budget went often isn't a manager."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Geplande waarde, facturabele waarde, marge",
+          "en": "Planned value, billable value, margin"
+        },
+        "body": {
+          "nl": "Uit het uurtarief en de uren rekent schakl drie getallen af. Geplande waarde is het urenbudget maal het tarief; facturabele waarde is wat de facturabele uren tot nu toe waard zijn tegen datzelfde tarief. Daarnaast staan de kosten: geboekte tijd maal het tarief van de medewerker (het persoonlijke tarief, anders het orgtarief). Marge is facturabele waarde min kosten en kleurt rood zodra ze negatief wordt. Uren van mensen zonder tarief worden apart gemeld, niet stilletjes op nul geprijsd.",
+          "en": "From the hourly rate and the hours, schakl derives three figures. Planned value is the hour budget times the rate; billable value is what the billable hours are worth so far at that same rate. Alongside them sits cost: logged time times the employee's rate (their personal rate, otherwise the org default). Margin is billable value minus cost, and turns red the moment it goes negative. Hours by people with no rate are reported separately, never quietly priced at zero."
+        }
+      }
+    ]
   }
 }

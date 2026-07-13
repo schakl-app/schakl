@@ -1,0 +1,85 @@
+{
+  "name": "Maatwerkvelden",
+  "slug": "customfields",
+  "order": 90,
+  "icon": "🎚️",
+  "lucide": "customfields",
+  "title": {
+    "nl": "Maatwerkvelden",
+    "en": "Custom fields"
+  },
+  "description": {
+    "nl": "Definieer je eigen getypeerde velden op elk entiteitstype, desgewenst verplicht. Ze verschijnen vanzelf in formulieren en lijsten.",
+    "en": "Define your own typed fields on any entity type, required if you like. They appear automatically in forms and lists."
+  },
+  "page": {
+    "eyebrow": {
+      "nl": "Eigen velden",
+      "en": "Custom fields"
+    },
+    "title": {
+      "nl": "Elk veld dat jouw bureau nodig heeft",
+      "en": "Every field your agency needs"
+    },
+    "lead": {
+      "nl": "Geen enkel bureau past in één vast formulier. Definieer je eigen getypte velden op klanten, contactpersonen, projecten, websites en meer, en ze staan overal waar je ze nodig hebt.",
+      "en": "No agency fits a fixed form. Define your own typed fields on clients, contacts, projects, websites and more, and they appear everywhere you need them."
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Velden die jij bepaalt",
+          "en": "Fields you define"
+        },
+        "body": {
+          "nl": "Onder Instellingen → Eigen velden leg je per soort record vast welke extra gegevens je bijhoudt: een KvK-nummer op de klant, een risicoprofiel op het project, een verlengdatum op de website. Elk veld heeft een type, dus een datum is een datum en een keuze is een keuze, geen los tekstvakje waar iedereen iets anders in typt. Nieuwe modules die aan de klant hangen, krijgen dezelfde eigen velden vanzelf.",
+          "en": "Under Settings → Custom fields you decide, per record type, what extra data you keep: a registration number on the client, a risk profile on the project, a renewal date on the website. Every field has a type, so a date is a date and a choice is a choice, not a loose text box everyone fills in differently. New modules that attach to the client inherit the same custom fields automatically."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Twaalf types, verplicht waar het moet",
+          "en": "Twelve types, required where it counts"
+        },
+        "body": {
+          "nl": "Kies het type dat bij het gegeven past en markeer een veld als verplicht wanneer een record zonder dat gegeven niet af is. Per type stel je de regels in: opties voor een keuzelijst, een minimum en maximum voor getallen, een default of een stukje uitleg bij het veld.",
+          "en": "Pick the type that fits the data and mark a field required when a record is not complete without it. Per type you set the rules: options for a select, a minimum and maximum for numbers, a default or a line of help text on the field."
+        },
+        "bullets": {
+          "nl": [
+            "Tekst, lange tekst, getal, ja/nee",
+            "Datum en datum met tijd",
+            "Keuze en meervoudige keuze",
+            "E-mail, URL en telefoon"
+          ],
+          "en": [
+            "Text, long text, number, yes/no",
+            "Date and date-with-time",
+            "Select and multi-select",
+            "Email, URL and phone"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "De API bewaakt de kwaliteit",
+          "en": "The API guards the quality"
+        },
+        "body": {
+          "nl": "Validatie gebeurt bij het opslaan, niet alleen in het scherm. De server leest jouw definities, controleert type, verplichte velden en toegestane opties, en weigert een record dat er niet aan voldoet met een nette foutmelding. Zo blijft je data schoon, ook via de API of een import, en niet alleen als iemand netjes het formulier gebruikt.",
+          "en": "Validation happens on write, not just in the screen. The server reads your definitions, checks type, required fields and allowed options, and rejects a record that does not comply with a clean error. Your data stays clean through the API or an import too, not only when someone politely uses the form."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Overal, in jouw taal",
+          "en": "Everywhere, in your language"
+        },
+        "body": {
+          "nl": "Eén generieke veldweergave rendert je definities in de invoerformulieren, op de detailpagina en als kolom in de lijst; je hoeft nergens code aan te raken. Labels leg je per taal vast, dus een veld heet in het Nederlands anders dan in het Engels zonder dat het een tweede veld wordt. En omdat het gewoon data is, nemen de leestools voor AI je eigen velden mét hun labels mee in het antwoord.",
+          "en": "One generic field view renders your definitions in the input forms, on the detail page and as a column in the list; you touch no code anywhere. Labels are stored per language, so a field reads differently in Dutch and English without becoming a second field. And because it is just data, the read tools for AI carry your custom fields, with their labels, into the answer."
+        }
+      }
+    ]
+  }
+}

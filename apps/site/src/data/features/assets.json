@@ -1,0 +1,105 @@
+{
+  "name": "Websites, domeinen en hosting",
+  "slug": "assets",
+  "order": 80,
+  "icon": "🌐",
+  "lucide": "assets",
+  "title": {
+    "nl": "Websites, domeinen & hosting",
+    "en": "Websites, domains & hosting"
+  },
+  "description": {
+    "nl": "Domeinen, websites en hostingaccounts hangen aan de klant, met registrar en provider die je ter plekke aanmaakt.",
+    "en": "Domains, websites and hosting accounts attach to the client, with registrar and provider you create on the spot."
+  },
+  "page": {
+    "eyebrow": {
+      "nl": "Hosting & domeinen",
+      "en": "Hosting & domains"
+    },
+    "title": {
+      "nl": "Elk domein waar het thuishoort",
+      "en": "Every domain where it belongs"
+    },
+    "lead": {
+      "nl": "Domeinen, websites en hostingaccounts hangen aan de klant, met registrar en provider erbij. Eén keten per klant: het domein, de eventuele website en de hosting waar die op draait.",
+      "en": "Domains, websites and hosting accounts attach to the client, registrar and provider included. One chain per client: the domain, its optional website, and the hosting it runs on."
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "De keten, per klant",
+          "en": "The chain, per client"
+        },
+        "body": {
+          "nl": "De online infrastructuur van een klant is een vaste keten: domein, eventueel een website, en de hosting waarop die draait. Alle drie hangen aan het bedrijf en verschijnen als panelen op de klanthub, zodat je op één pagina ziet wat waar staat. Nieuwe soorten koppelen (denk aan SSL of extra assets) is een module erbij, geen verbouwing van de klantpagina.",
+          "en": "A client's online infrastructure is a fixed chain: domain, optionally a website, and the hosting it runs on. All three attach to the company and surface as panels on the client hub, so one page shows what sits where. Adding new attachable types (SSL, extra assets) is a module, not a rebuild of the client page."
+        },
+        "bullets": {
+          "nl": [
+            "Domein: registrar, DNS-provider, status en registratiecontact",
+            "Website: op de root (@) of op www, wijst naar een hostingaccount",
+            "Hosting: eigen provider, IP-adres en een verantwoordelijke"
+          ],
+          "en": [
+            "Domain: registrar, DNS provider, status and registry contact",
+            "Website: on the root (@) or www, points at a hosting account",
+            "Hosting: its own provider, IP address and a responsible owner"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Registrar en provider erbij",
+          "en": "Registrar and provider, on the spot"
+        },
+        "body": {
+          "nl": "Elk domein wijst naar een registrar en een DNS-provider uit je eigen catalogus; hosting wijst naar zijn provider. Staat een naam er nog niet tussen, dan typ je die in de picker en maak je hem meteen aan (＋ toevoegen), zonder het formulier te verlaten. De catalogus beheer je één keer onder Instellingen, daarna kiest iedereen eruit.",
+          "en": "Every domain points at a registrar and a DNS provider from your own catalogue; hosting points at its provider. If a name isn't there yet, you type it into the picker and create it on the spot (＋ add), without leaving the form. You curate the catalogue once under Instellingen, and everyone picks from it after that."
+        }
+      },
+      {
+        "heading": {
+          "nl": "DNS die zichzelf bijhoudt",
+          "en": "DNS that keeps itself current"
+        },
+        "body": {
+          "nl": "Voor elk domein leest een gewone resolver de publieke DNS uit: nameservers, DNSSEC en MX-records. Dat werkt voor élk domein, niet alleen voor de partijen waarmee we koppelen. Een nieuw domein wordt meteen na aanmaken opgehaald en daarna dagelijks vernieuwd, zodat de pagina klopt zonder dat iemand op verversen drukt. Een onbereikbaar domein leest als 'geen gegevens' en breekt nooit de rest van de batch.",
+          "en": "For every domain a plain resolver reads public DNS: nameservers, DNSSEC and MX records. That works for every domain, not only the registrars we integrate with. A new domain is fetched right after you add it and refreshed daily after that, so the page stays right without anyone pressing refresh. An unreachable domain reads as \"no data\" and never breaks the rest of the batch."
+        },
+        "bullets": {
+          "nl": [
+            "Nameservers, precies zoals ze publiek staan",
+            "DNSSEC: aan, uit, of (nog) onbekend",
+            "MX-records op prioriteit, zodat je ziet waar de mail heen gaat"
+          ],
+          "en": [
+            "Nameservers, exactly as they resolve in public DNS",
+            "DNSSEC: on, off, or not-yet-known",
+            "MX records in priority order, so you see where mail goes"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Websites met een technisch eigenaar",
+          "en": "Websites with a technical owner"
+        },
+        "body": {
+          "nl": "Een domein krijgt hooguit één website, op de root (@) of op www, met een technisch eigenaar: standaard jouw bureau, of een externe partij als een klant het zelf beheert. De website wijst naar de hosting waarop hij draait, zodat de hele keten van naam tot server op één plek klopt. Hosting is bovendien een eigen entiteit: gedeelde infrastructuur laat je zonder klant staan en hangt niet geforceerd aan één bedrijf.",
+          "en": "A domain gets at most one website, on the root (@) or on www, with a technical owner: your agency by default, or an outside party when a client runs it themselves. The website points at the hosting it runs on, so the whole chain from name to server lines up in one place. Hosting is its own entity too: shared infrastructure stays without a client rather than being forced onto one company."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Jouw velden, jouw spoor",
+          "en": "Your fields, your trail"
+        },
+        "body": {
+          "nl": "Domeinen, websites en hosting nemen je eigen extra velden over, per tenant in te stellen, dus wat jouw bureau bijhoudt past er zonder maatwerk in. Elke wijziging landt in de activiteitenlog: wie, wat, wanneer. Alles staat onder jouw merk, met je data onder controle en netjes per organisatie gescheiden, gebundeld in de navigatie onder 'Hosting & domeinen'.",
+          "en": "Domains, websites and hosting inherit your own extra fields, configurable per tenant, so whatever your agency tracks fits without custom code. Every change lands in the activity trail: who, what, when. It all runs under your brand, with your data under your control and cleanly separated per organisation, grouped in the navigation under \"Hosting & domains\"."
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,117 @@
+{
+  "name": "Google, API en AI",
+  "slug": "integrations",
+  "order": 130,
+  "icon": "🔌",
+  "lucide": "integrations",
+  "title": {
+    "nl": "Google, API & AI",
+    "en": "Google, API & AI"
+  },
+  "description": {
+    "nl": "Koppel Google Workspace, spreek de API en webhooks aan, en laat AI-clients via MCP met je data werken.",
+    "en": "Connect Google Workspace, call the API and webhooks, and let AI clients work with your data over MCP."
+  },
+  "page": {
+    "eyebrow": {
+      "nl": "Google, API & AI",
+      "en": "Google, API & AI"
+    },
+    "title": {
+      "nl": "Verbonden zonder de controle te verliezen",
+      "en": "Connected without giving up control"
+    },
+    "lead": {
+      "nl": "Google Workspace, een gedocumenteerde API en een ingebouwde AI-assistent, allemaal onder jouw sleutels en jouw rechten. Je koppelt wat je nodig hebt en niets loopt buiten je tenant om.",
+      "en": "Google Workspace, a documented API and a built-in AI assistant, all on your own keys and your own permissions. You connect what you need, and nothing runs outside your tenant."
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Google, netjes gescheiden",
+          "en": "Google, cleanly separated"
+        },
+        "body": {
+          "nl": "Inloggen met Google en toegang tot Agenda, Drive en Gmail zijn twee aparte toestemmingen, elk met een eigen levensduur. Je koppelt je account er in één klik bij, zonder dat je inlog opeens je mail kan lezen. De OAuth-gegevens staan per organisatie in Instellingen → Google en refresh-tokens liggen versleuteld in de kluis.",
+          "en": "Signing in with Google and access to Calendar, Drive and Gmail are two separate grants, each with its own lifetime. You link your account in one extra click, so your login never quietly gains the right to read your mail. The OAuth credentials live per organisation under Instellingen → Google, and refresh tokens sit encrypted in the vault."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Agenda, Drive en Gmail aan de klant",
+          "en": "Calendar, Drive and Gmail at the client"
+        },
+        "body": {
+          "nl": "Goedgekeurd verlof verschijnt in Google Agenda, en het Drive-paneel van een project opent direct in de map van de klant op de Shared Drive. Gematchte e-mails landen als contactmoment op de tijdlijn, maar staan eerst op 'pending' tot de eigenaar van de mailbox ze goedkeurt. Drive blijft de bron: schakl. linkt en toont je bestanden, maar bewaart ze niet dubbel.",
+          "en": "Approved leave shows up in Google Calendar, and a project's Drive panel opens straight into the client's folder on the Shared Drive. Matched emails land on the timeline as touchpoints, but stay pending until the mailbox owner approves them. Drive stays the source of truth: schakl. links and shows your files, it doesn't keep a second copy."
+        },
+        "bullets": {
+          "nl": [
+            "Agenda: goedgekeurd verlof éénrichtings naar Google, incrementeel gesynct",
+            "Drive: bladeren en koppelen aan klant of project, een nieuwe klantmap uit een sjabloon",
+            "Gmail: alleen mail van bekende contactpersonen, metadata eerst, de tekst pas na goedkeuring"
+          ],
+          "en": [
+            "Calendar: approved leave one-way to Google, synced incrementally",
+            "Drive: browse and attach to a client or project, a new client folder from a template",
+            "Gmail: only mail from known contacts, metadata first, the body only after approval"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Je API is meteen een AI-surface",
+          "en": "Your API is an AI surface by default"
+        },
+        "body": {
+          "nl": "De volledige API draait als MCP-server op /mcp: elk endpoint wordt automatisch een tool voor Claude Code of een andere AI-client, gegenereerd uit de OpenAPI-spec. Elke aanroep gaat in-process door dezelfde poort als het web (hostname naar organisatie, RLS, rechten), dus een AI komt nooit buiten je tenant of buiten de rechten van de sleutel. Je maakt API-sleutels per persoon of als service-account en kiest precies welke rechten meegaan.",
+          "en": "The whole API runs as an MCP server at /mcp: every endpoint becomes a tool for Claude Code or any other AI client, generated from the OpenAPI spec. Each call goes in-process through the same gate as the web app (hostname to organisation, RLS, permissions), so an AI can never reach past your tenant or beyond the key's scopes. You mint API keys per person or as a service account and choose exactly which permissions travel with them."
+        },
+        "bullets": {
+          "nl": [
+            "Sleutels zijn tenant-gebonden, intrekbaar en desgewenst zonder vervaldatum",
+            "Read-first als keuze bij het aanmaken: een voorzichtige sleutel leest alleen",
+            "Aansluiten in één regel: claude mcp add met je Bearer-sleutel"
+          ],
+          "en": [
+            "Keys are tenant-scoped, revocable and optionally non-expiring",
+            "Read-first is a choice at mint time: a cautious key only reads",
+            "Connect in one line: claude mcp add with your Bearer key"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Een assistent die voorstelt, jij beslist",
+          "en": "An assistant that proposes, you decide"
+        },
+        "body": {
+          "nl": "De ingebouwde assistent draait op de AI-aanbieder die jij kiest (Anthropic, OpenAI of een compatibele endpoint), met je eigen sleutel versleuteld per organisatie. Hij leeft in de pagina waar het werk al gebeurt, niet op een los chat-eiland, en antwoordt met bronnen als aanklikbare record-chips. Niets wordt opgeslagen zonder dat jij op toepassen klikt, en elke tool-aanroep blijft binnen jouw rol en tenant. Staat er geen aanbieder ingesteld, dan is er nergens een AI-knop te zien.",
+          "en": "The built-in assistant runs on the AI provider you choose (Anthropic, OpenAI or a compatible endpoint), with your own key encrypted per organisation. It lives in the page where the work already happens, not on a separate chat island, and answers with its sources as clickable record chips. Nothing is saved until you hit apply, and every tool call stays inside your role and tenant. With no provider configured, there's no AI button to be seen anywhere."
+        },
+        "bullets": {
+          "nl": [
+            "Schrijfhulp in de editor, uren sneller invoeren en een hele dag reconstrueren",
+            "Cijfers komen van de services, het model schrijft alleen de tekst",
+            "Klantdigest en een concept-maandrapport, altijd eerst als voorstel"
+          ],
+          "en": [
+            "Writing assist in the editor, faster time entry and reconstructing a whole day",
+            "Numbers come from the services, the model only writes the prose",
+            "A client digest and a drafted monthly report, always as a proposal first"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Open, gedocumenteerd, koppelbaar",
+          "en": "Open, documented, connectable"
+        },
+        "body": {
+          "nl": "Alles loopt via één API met een automatisch getypte client, zodat er geen achterdeur langs de database om is. Daarop komen een gedocumenteerde publieke API, webhooks en een n8n-koppeling voor je eigen automatiseringen, plus geplande PDF-rapporten die vanzelf de deur uitgaan onder jouw merk. De basis is er nu al: elke nieuwe module breidt diezelfde API en dezelfde toolset uit.",
+          "en": "Everything runs on one API with an automatically typed client, so there's no back door around the database. On top of it come a documented public API, webhooks and an n8n connector for your own automations, plus scheduled PDF reports that go out on their own under your brand. The foundation is here today: every new module extends that same API and the same toolset."
+        }
+      }
+    ]
+  }
+}

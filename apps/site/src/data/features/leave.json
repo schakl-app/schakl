@@ -1,7 +1,10 @@
 {
   "name": "Verlof en roosters",
+  "slug": "leave",
   "order": 50,
   "icon": "🌴",
+  "lucide": "leave",
+  "demo": "leave",
   "title": {
     "nl": "Verlof & roosters",
     "en": "Leave & schedules"
@@ -9,5 +12,85 @@
   "description": {
     "nl": "Verloftypen naar jouw beleid, werkroosters per medewerker en feestdagen die geen uren kosten. De API rekent, niemand telt na.",
     "en": "Leave types matching your policy, per-employee work schedules and public holidays that cost no hours. The API does the math."
+  },
+  "page": {
+    "eyebrow": {
+      "nl": "Verlof",
+      "en": "Leave"
+    },
+    "title": {
+      "nl": "Verlof zonder narekenen",
+      "en": "Leave nobody has to recount"
+    },
+    "lead": {
+      "nl": "Verloftypen naar jouw beleid, een werkrooster per medewerker en feestdagen die geen uren kosten. De aanvraagvorm laat live zien welk getal wordt opgeslagen, en waarom.",
+      "en": "Leave types matching your policy, a work schedule per employee and public holidays that cost no hours. The request form shows, live, exactly which number gets stored and why."
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Naar jouw beleid, niet naar de wet in code",
+          "en": "To your policy, not to law written in code"
+        },
+        "body": {
+          "nl": "Verloftypen definieer je zelf: vakantie, ziek, onbetaald, bijzonder verlof, elk met eigen opbouw, carry-over en vervalregels. Niets van een land staat hardgecodeerd, dus je modelleert wettelijke en bovenwettelijke dagen precies zoals jouw cao ze kent. Ziekte is een eigen type en gaat nooit van het vakantiesaldo af.",
+          "en": "You define the leave types yourself: vacation, sick, unpaid, special leave, each with its own accrual, carry-over and expiry rules. No country's law is hardcoded, so you model statutory and extra-statutory days exactly as your collective agreement knows them. Sick leave is its own type and never comes off the vacation balance."
+        }
+      },
+      {
+        "heading": {
+          "nl": "De server rekent, de browser niet",
+          "en": "The server does the math, not the browser"
+        },
+        "body": {
+          "nl": "Elke aanvraag wordt door de API uitgerekend, dag voor dag; de browser toont alleen de uitkomst. De aanvraagvorm laat live zien welk getal wordt opgeslagen: 40 u ≈ 5 werkdagen, met de feestdag zichtbaar op 0 u in de opbouw. Bewerk je de aanvraag naar de kerstweek toe, dan wordt hij vanzelf goedkoper, want de uren worden bij elke wijziging opnieuw berekend.",
+          "en": "Every request is computed by the API, day by day; the browser only shows the result. The request form reveals, live, which number will be stored: 40 h ≈ 5 working days, with the public holiday visible at 0 h in the breakdown. Edit the request into the Christmas week and it gets cheaper on its own, because the hours are recomputed on every change."
+        },
+        "bullets": {
+          "nl": [
+            "Geen geroosterde werkdag: 0 u.",
+            "Actieve feestdag: 0 u.",
+            "Gewone dag: het geroosterde venster doorsneden met het aangevraagde, min elke pauze die erin valt.",
+            "Afronden gebeurt één keer, op de opgetelde minuten."
+          ],
+          "en": [
+            "Not a scheduled working day: 0 h.",
+            "An active public holiday: 0 h.",
+            "An ordinary day: the scheduled window intersected with the requested one, minus every break that falls inside it.",
+            "Rounding happens once, on the summed minutes."
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Roosters per medewerker",
+          "en": "A schedule per employee"
+        },
+        "body": {
+          "nl": "Een rooster is een week per medewerker: per weekdag een werkblok met een willekeurig aantal pauzevensters erin. Een pauze is een venster, geen duur; je trekt geen '30 minuten' van een dag af, je zegt wanneer de pauze valt. Het rooster hoort bij de persoon (Instellingen → Gebruikers), want het is contractgegeven, en de uren per week rollen er automatisch uit. Feestdagen komen uit een generator die ze uit Pasen afleidt, dus 2028 vraagt geen code; werk je Goede Vrijdag door, dan zet je die uit en een herimport brengt hem niet terug.",
+          "en": "A schedule is a week per employee: for each weekday a working block with any number of break windows inside it. A break is a window, not a duration — you don't subtract '30 minutes' from a day, you say when the break falls. The schedule lives on the person (Settings → Users), because it is contract data, and the hours per week roll out of it automatically. Public holidays come from a generator that derives them from Easter, so 2028 needs no code change; if you work Good Friday, you switch it off and a re-import never brings it back."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Saldo dat klopt, ook bij een voorschot",
+          "en": "A balance that holds, even on an advance"
+        },
+        "body": {
+          "nl": "Het saldo is opbouw plus carry-over min opgenomen min openstaand, per medewerker, type en jaar. Vraagt iemand meer dan er staat, dan waarschuwt de vorm maar de aanvraag gaat door: voorschot is de beslissing van de manager, het saldo leest negatief en de goedkeurder ziet het tekort terug op de lijst. Overlappende aanvragen en spannen van nul uur blijven harde fouten. Rechtenpotten voor het lopende en volgende jaar vullen zichzelf, en een cron in december rolt de hele staf door.",
+          "en": "The balance is accrual plus carry-over minus taken minus pending, per employee, type and year. Ask for more than is left and the form warns but the request still goes through: an advance is the manager's call, the balance reads negative, and the approver sees the shortfall again on the pending list. Overlapping requests and zero-hour spans stay hard errors. Entitlement pots for the current and next year seed themselves, and a December cron rolls the whole staff forward."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Goedkeuren, en de rest van het platform",
+          "en": "Approval, and the rest of the platform"
+        },
+        "body": {
+          "nl": "Zelf goedkeuren staat standaard uit: wie mag goedkeuren is op zijn eigen aanvragen een gewone aanvrager, en Instellingen → Verlof zet dat terug voor een vertrouwde goedkeurder. Kan een rooster iets niet uitdrukken (vier uur op een dag waarop niemand gepland stond), dan legt een manager de uren handmatig vast, op zijn naam. Goedgekeurd verlof verschijnt op de urenstaat en valt buiten de factureerbare capaciteit; het wordt nooit een tweede keer als tijdregel geteld.",
+          "en": "Self-approval is off by default: whoever may approve is, on their own requests, an ordinary requester, and Settings → Leave restores that for a trusted approver. When a schedule can't express something (four hours on a day no one was scheduled), a manager sets the hours by hand, recorded against their name. Approved leave shows on the timesheet and falls outside billable capacity; it is never counted a second time as a time entry."
+        }
+      }
+    ]
   }
 }

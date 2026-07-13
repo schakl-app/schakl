@@ -1,0 +1,16 @@
+---
+// Dutch feature pages at /features/<slug>/. One page per src/data/features/*.json.
+import FeaturePage from '../../components/FeaturePage.astro';
+
+export function getStaticPaths() {
+  const mods = import.meta.glob('../../data/features/*.json', { eager: true });
+  const feats = Object.values(mods)
+    .map((m: any) => m.default ?? m)
+    .sort((a: any, b: any) => a.order - b.order);
+  return feats.map((f: any) => ({ params: { slug: f.slug }, props: { feature: f, all: feats } }));
+}
+
+const { feature, all } = Astro.props;
+---
+
+<FeaturePage locale="nl" feature={feature} all={all} />
