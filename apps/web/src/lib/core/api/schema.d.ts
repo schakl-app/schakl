@@ -1152,7 +1152,9 @@ export interface paths {
          *
          *     ``access_type=offline`` + ``prompt=consent`` guarantee a refresh token on every connect;
          *     ``include_granted_scopes`` makes a later reconnect *add* scopes instead of replacing them
-         *     (incremental authorization — the docs/GOOGLE.md §1 bridge).
+         *     (incremental authorization — the docs/GOOGLE.md §1 bridge). The ``include_analytics`` /
+         *     ``include_search_console`` / ``include_ads`` flags are how the marketing module (epic #134)
+         *     walks a connection up to its GA4/GSC/Ads scopes over this same flow — no second OAuth.
          */
         get: operations["oauth_connect_api_v1_google_oauth_connect_get"];
         put?: never;
@@ -2328,6 +2330,121 @@ export interface paths {
         head?: never;
         /** Update Type */
         patch: operations["update_type_api_v1_leave_types__type_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/marketing/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Available Accounts
+         * @description The accounts/properties/sites the caller's Google connection can reach for ``source``.
+         *
+         *     Serves from a short Redis cache; a not-connected / missing-scope / revoked state comes back
+         *     as flags so the picker can *teach* rather than show a silently empty list (#132).
+         */
+        get: operations["available_accounts_api_v1_marketing_accounts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/marketing/companies/{company_id}/drilldown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Drilldown
+         * @description A live tier-2 drill-down (top pages/queries/campaigns), Redis-cached ~1h.
+         */
+        get: operations["drilldown_api_v1_marketing_companies__company_id__drilldown_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/marketing/companies/{company_id}/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Company Metrics */
+        get: operations["company_metrics_api_v1_marketing_companies__company_id__metrics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/marketing/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Links */
+        get: operations["list_links_api_v1_marketing_links_get"];
+        put?: never;
+        /** Create Link */
+        post: operations["create_link_api_v1_marketing_links_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/marketing/links/{link_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Unlink */
+        delete: operations["unlink_api_v1_marketing_links__link_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/marketing/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Overview
+         * @description The morning-coffee grid: one row per linked client, from stored data, server-sorted.
+         */
+        get: operations["overview_api_v1_marketing_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/members": {
@@ -4276,6 +4393,37 @@ export interface components {
             /** Tokens Total */
             tokens_total: number;
         };
+        /**
+         * AccountsResponse
+         * @description A picker's option list plus the state that lets an empty list *teach* (#132).
+         */
+        AccountsResponse: {
+            /** Accounts */
+            accounts?: components["schemas"]["AvailableAccount"][];
+            /**
+             * Configured
+             * @default true
+             */
+            configured: boolean;
+            /**
+             * Connect Flag
+             * @default
+             */
+            connect_flag: string;
+            /**
+             * Connected
+             * @default false
+             */
+            connected: boolean;
+            /** Error */
+            error?: string | null;
+            /**
+             * Has Scope
+             * @default false
+             */
+            has_scope: boolean;
+            source: components["schemas"]["MarketingSource"];
+        };
         /** ActionRead */
         ActionRead: {
             /** Action Type */
@@ -4497,6 +4645,24 @@ export interface components {
             org_slug: string | null;
             /** Target User Id */
             target_user_id: string | null;
+        };
+        /** AvailableAccount */
+        AvailableAccount: {
+            /** Account Hint */
+            account_hint?: string | null;
+            /**
+             * Already Linked
+             * @default false
+             */
+            already_linked: boolean;
+            /** Config */
+            config?: {
+                [key: string]: unknown;
+            };
+            /** Display Name */
+            display_name: string;
+            /** External Id */
+            external_id: string;
         };
         /** Body_auth_cookie_login_api_v1_auth_login_post */
         Body_auth_cookie_login_api_v1_auth_login_post: {
@@ -4984,6 +5150,31 @@ export interface components {
             status: components["schemas"]["CompanyStatus"];
             /** Website */
             website?: string | null;
+        };
+        /**
+         * CompanyMarketing
+         * @description The payload behind the company panel (30d) and the marketing tab (any range).
+         */
+        CompanyMarketing: {
+            /**
+             * Can Manage
+             * @default false
+             */
+            can_manage: boolean;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /**
+             * Needs Connection
+             * @default false
+             */
+            needs_connection: boolean;
+            /** Range Days */
+            range_days: number;
+            /** Sources */
+            sources?: components["schemas"]["SourceMetrics"][];
         };
         /** CompanyRead */
         CompanyRead: {
@@ -5578,6 +5769,39 @@ export interface components {
             registrar_provider_id?: string | null;
             registry_contact?: components["schemas"]["PartyRef"] | null;
             status?: components["schemas"]["DomainStatus-Input"] | null;
+        };
+        /** DrilldownResponse */
+        DrilldownResponse: {
+            /**
+             * Available
+             * @default true
+             */
+            available: boolean;
+            /** Columns */
+            columns?: string[];
+            /**
+             * Deep Link
+             * @default
+             */
+            deep_link: string;
+            /** Kind */
+            kind: string;
+            /** Rows */
+            rows?: components["schemas"]["DrilldownRowOut"][];
+            source: components["schemas"]["MarketingSource"];
+            /** Unavailable Reason */
+            unavailable_reason?: string | null;
+        };
+        /** DrilldownRowOut */
+        DrilldownRowOut: {
+            /** Href */
+            href?: string | null;
+            /** Label */
+            label: string;
+            /** Metrics */
+            metrics?: {
+                [key: string]: number;
+            };
         };
         /** DriveBrowseFolder */
         DriveBrowseFolder: {
@@ -6533,6 +6757,26 @@ export interface components {
             /** Task Id */
             task_id?: string | null;
         };
+        /** KpiValue */
+        KpiValue: {
+            /**
+             * Current
+             * @default 0
+             */
+            current: number;
+            /** Delta Pct */
+            delta_pct?: number | null;
+            /**
+             * Lower Is Better
+             * @default false
+             */
+            lower_is_better: boolean;
+            /**
+             * Previous
+             * @default 0
+             */
+            previous: number;
+        };
         /** LabelCreate */
         LabelCreate: {
             /** Color */
@@ -7347,25 +7591,6 @@ export interface components {
             /** Writable */
             writable: boolean;
         };
-        /** LinkCreate */
-        LinkCreate: {
-            /** Title */
-            title?: string | null;
-            /** Url */
-            url: string;
-        };
-        /** LinkRead */
-        LinkRead: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Title */
-            title: string | null;
-            /** Url */
-            url: string;
-        };
         /**
          * LoggedSummary
          * @description Aggregated logged time for an entity (e.g. a project or company), across the team.
@@ -7381,6 +7606,16 @@ export interface components {
             /** Updated */
             updated: number;
         };
+        /**
+         * MarketingSource
+         * @description A linkable Google marketing data source.
+         *
+         *     Deliberately *not* Tag Manager: GTM deploys tags, it has no marketeer-facing metrics of its
+         *     own (the conversions it fires already come through GA4). A container link would buy a scope
+         *     and a picker for zero data in a client-overview CRM. Extend here for Meta/LinkedIn later.
+         * @enum {string}
+         */
+        MarketingSource: "ga4" | "gsc" | "gads";
         /**
          * MeInfo
          * @description The current user *within the resolved tenant* — including what they may do.
@@ -7734,6 +7969,34 @@ export interface components {
             name?: string | null;
             /** Slug */
             slug?: string | null;
+        };
+        /** OverviewResponse */
+        OverviewResponse: {
+            /** Range Days */
+            range_days: number;
+            /** Rows */
+            rows?: components["schemas"]["OverviewRow"][];
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        };
+        /** OverviewRow */
+        OverviewRow: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Company Name */
+            company_name: string;
+            /** Metrics */
+            metrics?: {
+                [key: string]: components["schemas"]["KpiValue"];
+            };
+            /** Sources Present */
+            sources_present?: components["schemas"]["MarketingSource"][];
         };
         /** Page[CompanyRead] */
         Page_CompanyRead_: {
@@ -8702,6 +8965,15 @@ export interface components {
             /** Trigger Event */
             trigger_event: string;
         };
+        /** SeriesData */
+        SeriesData: {
+            /** Dates */
+            dates?: string[];
+            /** Metrics */
+            metrics?: {
+                [key: string]: number[];
+            };
+        };
         /** ServiceAccountCreate */
         ServiceAccountCreate: {
             /** Name */
@@ -8770,6 +9042,49 @@ export interface components {
         SetupStatus: {
             /** Needs Setup */
             needs_setup: boolean;
+        };
+        /** SourceMetrics */
+        SourceMetrics: {
+            /** Channels */
+            channels?: {
+                [key: string]: number;
+            } | null;
+            /** Currency */
+            currency?: string | null;
+            /**
+             * Deep Link
+             * @default
+             */
+            deep_link: string;
+            /** Display Name */
+            display_name: string;
+            /** External Id */
+            external_id: string;
+            /**
+             * Health
+             * @default pending
+             */
+            health: string;
+            /** Kpis */
+            kpis?: {
+                [key: string]: components["schemas"]["KpiValue"];
+            };
+            /** Last Error */
+            last_error?: string | null;
+            /** Last Synced At */
+            last_synced_at?: string | null;
+            /**
+             * Link Id
+             * Format: uuid
+             */
+            link_id: string;
+            /**
+             * Primary Metric
+             * @default
+             */
+            primary_metric: string;
+            series?: components["schemas"]["SeriesData"];
+            source: components["schemas"]["MarketingSource"];
         };
         /** SsoSettingsRead */
         SsoSettingsRead: {
@@ -9490,7 +9805,7 @@ export interface components {
             /** Labels */
             labels?: components["schemas"]["LabelRead"][];
             /** Links */
-            links?: components["schemas"]["LinkRead"][];
+            links?: components["schemas"]["app__modules__tasks__schemas__LinkRead"][];
             /**
              * Logged Minutes
              * @default 0
@@ -10731,6 +11046,61 @@ export interface components {
          * @enum {string}
          */
         app__modules__domains__models__DomainStatus: "active" | "redirect" | "parked" | "expired" | "inactive";
+        /** LinkCreate */
+        app__modules__marketing__schemas__LinkCreate: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Config */
+            config?: {
+                [key: string]: unknown;
+            };
+            /** Display Name */
+            display_name: string;
+            /** External Id */
+            external_id: string;
+            source: components["schemas"]["MarketingSource"];
+        };
+        /** LinkRead */
+        app__modules__marketing__schemas__LinkRead: {
+            /** Active */
+            active: boolean;
+            /**
+             * Backfill Done
+             * @default false
+             */
+            backfill_done: boolean;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Config */
+            config?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Connection Ok
+             * @default true
+             */
+            connection_ok: boolean;
+            /** Display Name */
+            display_name: string;
+            /** External Id */
+            external_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Error */
+            last_error?: string | null;
+            /** Last Synced At */
+            last_synced_at?: string | null;
+            source: components["schemas"]["MarketingSource"];
+        };
         /**
          * ActivityItem
          * @description One line of a record's activity feed — recipient-independent.
@@ -10761,6 +11131,25 @@ export interface components {
             payload?: {
                 [key: string]: unknown;
             };
+        };
+        /** LinkCreate */
+        app__modules__tasks__schemas__LinkCreate: {
+            /** Title */
+            title?: string | null;
+            /** Url */
+            url: string;
+        };
+        /** LinkRead */
+        app__modules__tasks__schemas__LinkRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string | null;
+            /** Url */
+            url: string;
         };
     };
     responses: never;
@@ -13523,6 +13912,9 @@ export interface operations {
         parameters: {
             query?: {
                 include_gmail?: boolean;
+                include_analytics?: boolean;
+                include_search_console?: boolean;
+                include_ads?: boolean;
             };
             header?: never;
             path?: never;
@@ -16324,6 +16716,231 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LeaveTypeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    available_accounts_api_v1_marketing_accounts_get: {
+        parameters: {
+            query: {
+                source: components["schemas"]["MarketingSource"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    drilldown_api_v1_marketing_companies__company_id__drilldown_get: {
+        parameters: {
+            query: {
+                link_id: string;
+                kind: string;
+                range_days?: number;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DrilldownResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    company_metrics_api_v1_marketing_companies__company_id__metrics_get: {
+        parameters: {
+            query?: {
+                range_days?: number;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyMarketing"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_links_api_v1_marketing_links_get: {
+        parameters: {
+            query: {
+                company_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app__modules__marketing__schemas__LinkRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_link_api_v1_marketing_links_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["app__modules__marketing__schemas__LinkCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app__modules__marketing__schemas__LinkRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unlink_api_v1_marketing_links__link_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    overview_api_v1_marketing_overview_get: {
+        parameters: {
+            query?: {
+                range_days?: number;
+                /** @description company_name | sessions | clicks | position | cost | conversions (- = desc) */
+                sort?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverviewResponse"];
                 };
             };
             /** @description Validation Error */
@@ -19866,7 +20483,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["LinkCreate"];
+                "application/json": components["schemas"]["app__modules__tasks__schemas__LinkCreate"];
             };
         };
         responses: {
@@ -19876,7 +20493,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LinkRead"];
+                    "application/json": components["schemas"]["app__modules__tasks__schemas__LinkRead"];
                 };
             };
             /** @description Validation Error */
