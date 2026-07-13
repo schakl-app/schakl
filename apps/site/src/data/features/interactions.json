@@ -1,0 +1,83 @@
+{
+  "name": "Contactmomenten",
+  "slug": "interactions",
+  "order": 60,
+  "icon": "💬",
+  "lucide": "messages",
+  "title": {
+    "nl": "Contactmomenten",
+    "en": "Interactions"
+  },
+  "description": {
+    "nl": "E-mails, afspraken, telefoontjes en notities op één tijdlijn per klant. Gematchte Gmail-berichten wachten netjes op je beoordeling.",
+    "en": "Emails, meetings, calls and notes on one timeline per client. Matched Gmail messages wait neatly for your review."
+  },
+  "page": {
+    "eyebrow": {
+      "nl": "Contactmomenten",
+      "en": "Interactions"
+    },
+    "title": {
+      "nl": "Alles wat er is gezegd, op één tijdlijn",
+      "en": "Everything that was said, on one timeline"
+    },
+    "lead": {
+      "nl": "E-mails, afspraken, telefoontjes en notities komen samen op de tijdlijn van de klant. Gematcht met Gmail, te beoordelen voordat het meetelt, en met één klik om te zetten in geboekte uren.",
+      "en": "Emails, meetings, calls and notes come together on the client's timeline. Matched with Gmail, reviewed before it counts, and turned into logged hours with one click."
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Elk soort contact, één plek",
+          "en": "Every kind of contact, one place"
+        },
+        "body": {
+          "nl": "Een contactmoment is een e-mail, een afspraak, een telefoongesprek of een notitie, met richting (inkomend of uitgaand), datum, onderwerp en de contactpersoon erbij. Het hangt aan de klant en desgewenst aan een project, zodat de tijdlijn van een klant precies laat zien wat er is besproken en met wie. De soorten zijn per organisatie in te richten; een afspraak splitst bijvoorbeeld in online en op locatie.",
+          "en": "An interaction is an email, a meeting, a call or a note, with a direction (incoming or outgoing), a date, a subject and the contact person attached. It hangs on the client and optionally on a project, so a client's timeline shows exactly what was discussed and with whom. The kinds are configurable per organisation; a meeting, for instance, splits into online and on-site."
+        },
+        "bullets": {
+          "nl": [
+            "E-mail, afspraak (online of op locatie), telefoongesprek en notitie",
+            "Inkomend of uitgaand, met datum, tijd en onderwerp",
+            "Gekoppeld aan de klant, een project en een contactpersoon"
+          ],
+          "en": [
+            "Email, meeting (online or on-site), call and note",
+            "Incoming or outgoing, with date, time and subject",
+            "Linked to the client, a project and a contact person"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Gmail dat zichzelf bijhoudt",
+          "en": "Gmail that keeps itself up to date"
+        },
+        "body": {
+          "nl": "Koppel je Google-account en berichten die bij een klant horen komen vanzelf op de tijdlijn te staan, met de status 'te beoordelen'. Je keurt goed wat blijft en wijst af wat niet meetelt; bij afwijzen kun je meteen het hele gesprek negeren, zodat het niet opnieuw langskomt. Het volledige bericht wordt op verzoek opgehaald, en met één klik open je het in Gmail.",
+          "en": "Connect your Google account and messages that belong to a client land on the timeline on their own, marked 'needs review'. You approve what stays and reject what should not count; on reject you can ignore the whole conversation at once, so it never comes back. The full message is fetched on demand, and one click opens it in Gmail."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Van gesprek naar geboekte uren",
+          "en": "From conversation to logged hours"
+        },
+        "body": {
+          "nl": "Een contactmoment kost vaak tijd, en die tijd is factureerbaar. 'Voeg aan mijn uren toe' zet een urenregistratie op je timesheet, gekoppeld aan dit contactmoment en met de klant, het project en het onderwerp al ingevuld. Zo hoef je hetzelfde gesprek niet twee keer in te voeren.",
+          "en": "An interaction usually takes time, and that time is billable. 'Add to my hours' puts a time entry on your timesheet, linked to this interaction and with the client, the project and the subject already filled in. So you never enter the same conversation twice."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Van jou tot je het deelt",
+          "en": "Yours until you share it"
+        },
+        "body": {
+          "nl": "Wat nog op beoordeling wacht is van jou alleen: te-beoordelen regels zijn privé voor de eigenaar tot ze zijn goedgekeurd, zodat een half gematchte inbox niet meteen het hele team bereikt. Op het klantdossier verschijnt het paneel Contactmomenten met de tijdlijn, en op je dashboard een widget met wat er nog op je wacht.",
+          "en": "What is still awaiting review is yours alone: needs-review rows are private to their owner until approved, so a half-matched inbox does not reach the whole team at once. The client record shows the Interactions panel with the timeline, and your dashboard shows a widget with what is still waiting on you."
+        }
+      }
+    ]
+  }
+}
