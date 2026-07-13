@@ -545,6 +545,38 @@ async def test_participants_resolve_to_org_contacts_at_read_time(client_for) -> 
         assert by_email["cc@elders.example"]["contact_id"] is None
 
 
+async def test_participants_resolve_to_org_members_at_read_time(client_for) -> None:
+    """#167: a participant address belonging to an org employee resolves as ``user_id`` —
+    a colleague, never a "create a contact" prompt — and only within the own org: another
+    tenant's member email stays unresolved here."""
+    other = await make_tenant("inter-members-b")  # their owner's email must not resolve in A
+    t = await make_tenant("inter-members-a")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        colleague = await _member(c, headers, "collega@bureau.example")
+        row = (
+            await c.post(
+                "/api/v1/interactions",
+                json={
+                    "kind": "meeting",
+                    "occurred_at": _NOW.isoformat(),
+                    "subject": "Interne afstemming met klant erbij",
+                    "participants": [
+                        {"email": "Collega@Bureau.example", "name": "Collega", "role": "to"},
+                        {"email": other.user.email, "role": "cc"},
+                        {"email": "klant@elders.example", "role": "from"},
+                    ],
+                },
+                headers=headers,
+            )
+        ).json()
+        fetched = (await c.get(f"/api/v1/interactions/{row['id']}", headers=headers)).json()
+        by_email = {p["email"].lower(): p for p in fetched["participants"]}
+        assert by_email["collega@bureau.example"]["user_id"] == str(colleague.id)
+        assert by_email[other.user.email.lower()]["user_id"] is None
+        assert by_email["klant@elders.example"]["user_id"] is None
+
+
 async def test_thread_followup_inherits_all_links_including_task(client_for) -> None:
     """#157 addendum: a reply in a Gmail thread lands where the original lives — thread
     inheritance copies *all four* links (task and project included), from the newest

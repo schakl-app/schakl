@@ -38,6 +38,8 @@ export interface InteractionItem {
     role?: string;
     /** The org contact this address resolves to, matched by the API at read time (#160). */
     contact_id?: string | null;
+    /** The org member (colleague) this address resolves to (#167) — never a contact-create. */
+    user_id?: string | null;
   }[];
   source: string;
   deep_link: string | null;

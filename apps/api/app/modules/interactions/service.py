@@ -138,8 +138,9 @@ class InteractionService:
         plain_rows = [row for row, _, _ in rows]
         names = await self._link_names(plain_rows)
         contacts_by_email = await self._participant_contacts(plain_rows)
+        members_by_email = await self._participant_members(plain_rows)
         return [
-            self._present(row, full_name, email, names, contacts_by_email)
+            self._present(row, full_name, email, names, contacts_by_email, members_by_email)
             for row, full_name, email in rows
         ], total
 
@@ -482,12 +483,14 @@ class InteractionService:
         )
         names = await self._link_names([row])
         contacts_by_email = await self._participant_contacts([row])
+        members_by_email = await self._participant_members([row])
         return self._present(
             row,
             owner[0] if owner else None,
             owner[1] if owner else None,
             names,
             contacts_by_email,
+            members_by_email,
         )
 
     async def _participant_contacts(self, rows: list[Interaction]) -> dict[str, uuid.UUID]:
@@ -510,6 +513,26 @@ class InteractionService:
         )
         return dict(result.all())
 
+    async def _participant_members(self, rows: list[Interaction]) -> dict[str, uuid.UUID]:
+        """Which participant addresses belong to org employees (#167) — the same batched,
+        read-time pass as ``_participant_contacts``, joined through ``memberships`` so a user
+        record from another org never resolves here. Display data, never authz."""
+        emails: set[str] = set()
+        for row in rows:
+            for participant in row.participants or []:
+                email = (participant.get("email") or "").lower()
+                if email:
+                    emails.add(email)
+        if not emails:
+            return {}
+        stmt = (
+            select(func.lower(User.email), User.id)
+            .join(Membership, Membership.user_id == User.id)
+            .where(Membership.org_id == self._org_id, func.lower(User.email).in_(emails))
+        )
+        result = await self.ctx.session.execute(stmt)
+        return dict(result.all())
+
     def _present(
         self,
         row: Interaction,
@@ -517,6 +540,7 @@ class InteractionService:
         live_email: str | None,
         names: dict[tuple[str, uuid.UUID], str] | None = None,
         contacts_by_email: dict[str, uuid.UUID] | None = None,
+        members_by_email: dict[str, uuid.UUID] | None = None,
     ) -> dict[str, Any]:
         """Owner resolved like the activity trail (issue #64): live account wins, snapshot after."""
         if live_email is not None:
@@ -549,6 +573,9 @@ class InteractionService:
                 {
                     **participant,
                     "contact_id": (contacts_by_email or {}).get(
+                        (participant.get("email") or "").lower()
+                    ),
+                    "user_id": (members_by_email or {}).get(
                         (participant.get("email") or "").lower()
                     ),
                 }

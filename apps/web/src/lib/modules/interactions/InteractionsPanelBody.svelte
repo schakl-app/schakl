@@ -340,6 +340,20 @@
                         ({t(`interactions.role.${p.role ?? "to"}`)})</span
                       >
                     </a>
+                  {:else if p.user_id}
+                    <!-- A colleague (#167): recognized, nothing to create, nowhere to link —
+                         a plain neutral pill, distinct from both contact and unknown. -->
+                    <span
+                      title={p.email}
+                      class="rounded-full px-2 py-0.5 text-[11px] ring-1 ring-inset ring-border {cc
+                        ? 'bg-surface text-text-muted'
+                        : 'bg-surface text-text'}"
+                    >
+                      {p.name || p.email}<span class="sr-only">
+                        ({t("interactions.participant_colleague")},
+                        {t(`interactions.role.${p.role ?? "to"}`)})</span
+                      >
+                    </span>
                   {:else}
                     <button
                       type="button"

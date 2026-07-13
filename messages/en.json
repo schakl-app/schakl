@@ -1916,6 +1916,7 @@
   "interactions.role.to": "To",
   "interactions.role.cc": "CC",
   "interactions.create_contact": "Create contact",
+  "interactions.participant_colleague": "colleague",
   "interactions.close_task": "Close task with this",
   "interactions.close_task_title": "Close task with contact moment",
   "interactions.close_task_message": "The task closes with “{subject}” as its closing contact moment.",

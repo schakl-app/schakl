@@ -26,6 +26,9 @@ class ParticipantRead(Participant):
     time so a contact created *after* the email was logged still links up."""
 
     contact_id: uuid.UUID | None = None
+    #: The org member this address resolves to (#167) — a colleague, not a contact, so the
+    #: web never offers to "create a contact" for them. Read-time match, like ``contact_id``.
+    user_id: uuid.UUID | None = None
 
 
 class InteractionRead(BaseModel):

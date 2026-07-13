@@ -1916,6 +1916,7 @@
   "interactions.role.to": "Aan",
   "interactions.role.cc": "CC",
   "interactions.create_contact": "Contactpersoon aanmaken",
+  "interactions.participant_colleague": "collega",
   "interactions.close_task": "Taak hiermee afronden",
   "interactions.close_task_title": "Taak afronden met contactmoment",
   "interactions.close_task_message": "De taak wordt afgerond met “{subject}” als afsluitend contactmoment.",
