@@ -3789,6 +3789,42 @@ export interface paths {
         patch: operations["update_entry_api_v1_time_entries__entry_id__patch"];
         trace?: never;
     };
+    "/api/v1/time/entry-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Entry Types */
+        get: operations["list_entry_types_api_v1_time_entry_types_get"];
+        put?: never;
+        /** Create Entry Type */
+        post: operations["create_entry_type_api_v1_time_entry_types_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/time/entry-types/{type_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Entry Type */
+        delete: operations["delete_entry_type_api_v1_time_entry_types__type_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Entry Type */
+        patch: operations["update_entry_type_api_v1_time_entry_types__type_id__patch"];
+        trace?: never;
+    };
     "/api/v1/time/logged": {
         parameters: {
             query?: never;
@@ -9802,6 +9838,8 @@ export interface components {
             description?: string | null;
             /** Ended At */
             ended_at?: string | null;
+            /** Entry Type Key */
+            entry_type_key?: string | null;
             /** Minutes */
             minutes?: number | null;
             /** Project Id */
@@ -9886,6 +9924,8 @@ export interface components {
             description?: string | null;
             /** Ended At */
             ended_at: string | null;
+            /** Entry Type Key */
+            entry_type_key?: string | null;
             /**
              * Id
              * Format: uuid
@@ -9922,6 +9962,75 @@ export interface components {
              */
             user_id: string;
         };
+        /** TimeEntryTypeCreate */
+        TimeEntryTypeCreate: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Key */
+            key: string;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            };
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+        };
+        /** TimeEntryTypeRead */
+        TimeEntryTypeRead: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Key */
+            key: string;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            };
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** TimeEntryTypeUpdate */
+        TimeEntryTypeUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            } | null;
+            /** Position */
+            position?: number | null;
+        };
         /** TimeEntryUpdate */
         TimeEntryUpdate: {
             /** Billable */
@@ -9934,6 +10043,8 @@ export interface components {
             description?: string | null;
             /** Ended At */
             ended_at?: string | null;
+            /** Entry Type Key */
+            entry_type_key?: string | null;
             /** Minutes */
             minutes?: number | null;
             /** Project Id */
@@ -10067,6 +10178,8 @@ export interface components {
             company_id?: string | null;
             /** Description */
             description?: string | null;
+            /** Entry Type Key */
+            entry_type_key?: string | null;
             /** Project Id */
             project_id?: string | null;
             /** Task Id */
@@ -19731,6 +19844,8 @@ export interface operations {
                 task_id?: string | null;
                 date_from?: string | null;
                 date_to?: string | null;
+                /** @description Filter by entry type key */
+                entry_type?: string | null;
                 /** @description Filter running timers in/out; unset = both */
                 running?: boolean | null;
                 /** @description The whole team's entries, not just mine. Free to anyone when the query names a company/project/task — those hours already show as a budget bar; managers only when it doesn't. */
@@ -19958,6 +20073,134 @@ export interface operations {
             };
         };
     };
+    list_entry_types_api_v1_time_entry_types_get: {
+        parameters: {
+            query?: {
+                include_inactive?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeEntryTypeRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_entry_type_api_v1_time_entry_types_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TimeEntryTypeCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeEntryTypeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_entry_type_api_v1_time_entry_types__type_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                type_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_entry_type_api_v1_time_entry_types__type_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                type_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TimeEntryTypeUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeEntryTypeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     logged_api_v1_time_logged_get: {
         parameters: {
             query?: {
@@ -20006,6 +20249,8 @@ export interface operations {
                 billable?: boolean | null;
                 approved?: boolean | null;
                 invoiced?: boolean | null;
+                /** @description Filter by entry type key */
+                entry_type?: string | null;
                 /** @description date | employee | company | project | task | minutes | …, '-' desc */
                 sort?: string | null;
             };

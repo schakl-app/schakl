@@ -92,6 +92,11 @@
       t("settings.interaction_kinds.subtitle"),
     )}
     {@render card(
+      "/settings/time-entry-types",
+      t("settings.time_entry_types.title"),
+      t("settings.time_entry_types.subtitle"),
+    )}
+    {@render card(
       "/settings/providers",
       t("settings.providers.title"),
       t("settings.providers.subtitle"),

@@ -31,6 +31,35 @@ export function hoursFromMinutes(minutes: number): number {
   return Math.round((minutes / 60) * 10) / 10;
 }
 
+/** One tenant-configurable time-entry type (#176), as `/api/v1/time/entry-types` returns it. */
+export interface TimeEntryTypeDef {
+  id: string;
+  key: string;
+  label_i18n?: Record<string, string>;
+  position: number;
+  active: boolean;
+}
+
+/** A type's label in the viewer's locale — tenant data first, seeded locales as fallback. */
+export function entryTypeLabel(def: TimeEntryTypeDef, locale: string): string {
+  return def.label_i18n?.[locale] || def.label_i18n?.nl || def.label_i18n?.en || def.key;
+}
+
+let typesCache: TimeEntryTypeDef[] | null = null;
+
+/** The org's entry types (inactive included, so an edited entry keeps its retired type),
+ *  fetched once per session and shared by every form instance — the interaction-kinds
+ *  pattern: the entry modal must not cost every host page an SSR call. */
+export async function entryTypes(): Promise<TimeEntryTypeDef[]> {
+  if (typesCache === null) {
+    const response = await fetch("/api/v1/time/entry-types?include_inactive=true", {
+      headers: { accept: "application/json" },
+    });
+    typesCache = response.ok ? await response.json() : [];
+  }
+  return typesCache ?? [];
+}
+
 /** Where an entry sits in the sign-off chain. Read-only sugar over the three stored columns. */
 export type EntryStatus = "open" | "approved" | "to_invoice" | "invoiced";
 

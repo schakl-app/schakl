@@ -19,7 +19,7 @@
   import EntryForm from "$lib/modules/time/EntryForm.svelte";
   import EntryStatusPill from "$lib/modules/time/EntryStatusPill.svelte";
   import TimeEntryRow from "$lib/modules/time/TimeEntryRow.svelte";
-  import { entryStatus, formatMinutes, formatTime } from "$lib/modules/time/format";
+  import { entryTypeLabel, entryStatus, formatMinutes, formatTime } from "$lib/modules/time/format";
 
   let { data, form } = $props();
 
@@ -45,6 +45,10 @@
   const companyName = (id?: string | null) => data.companies.find((c) => c.id === id)?.name ?? "";
   const projectName = (id?: string | null) => data.projects.find((p) => p.id === id)?.name ?? "";
   const taskTitle = (id?: string | null) => data.tasks.find((tk) => tk.id === id)?.title ?? "";
+  const entryTypeName = (key?: string | null) => {
+    const def = data.entryTypes.find((et) => et.key === key);
+    return def ? entryTypeLabel(def, data.locale ?? "nl") : (key ?? "");
+  };
   function entryLabel(e: {
     company_id?: string | null;
     project_id?: string | null;
@@ -70,6 +74,7 @@
       project: projectCell,
       task: taskCell,
       description: descriptionCell,
+      entry_type: entryTypeCell,
       minutes: minutesCell,
       billable: billableCell,
       status: statusCell,
@@ -187,6 +192,19 @@
       onchange={(v) => setFilter("date_to", v)}
     />
   </div>
+  <div class="w-40">
+    <Combobox
+      items={data.entryTypes.map((et) => ({
+        value: et.key,
+        label: entryTypeLabel(et, data.locale ?? "nl"),
+      }))}
+      name="_f_entry_type"
+      id="f-entry-type"
+      value={data.filters.entry_type}
+      placeholder={t("time.field.entry_type")}
+      onselect={(v) => setFilter("entry_type", v)}
+    />
+  </div>
   {#each statuses as status (status)}
     <button
       class="rounded-full px-3 py-1 text-xs font-medium
@@ -253,6 +271,10 @@
 
 {#snippet descriptionCell(e: Entry)}
   <span class="block truncate text-text-muted">{e.description || "—"}</span>
+{/snippet}
+
+{#snippet entryTypeCell(e: Entry)}
+  <span class="truncate text-text-muted">{e.entry_type_key ? entryTypeName(e.entry_type_key) : "—"}</span>
 {/snippet}
 
 {#snippet minutesCell(e: Entry)}

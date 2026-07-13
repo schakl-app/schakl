@@ -247,6 +247,7 @@ export const actions: Actions = {
         project_id: String(form.get("project_id") ?? "").trim() || null,
         task_id: String(form.get("task_id") ?? "").trim() || null,
         billable: form.get("billable") !== "false",
+        entry_type_key: String(form.get("entry_type_key") ?? "").trim() || null,
       },
     });
     if (apiError) return fail(400, { error: apiErrorKey(apiError).key });

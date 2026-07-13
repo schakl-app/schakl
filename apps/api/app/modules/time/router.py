@@ -27,16 +27,75 @@ from app.modules.time.schemas import (
     TimeEntryDraftPayload,
     TimeEntryDraftRead,
     TimeEntryRead,
+    TimeEntryTypeCreate,
+    TimeEntryTypeRead,
+    TimeEntryTypeUpdate,
     TimeEntryUpdate,
     TimeReport,
     TimerStart,
     Timesheet,
     TimeSummary,
 )
-from app.modules.time.service import TimeService
+from app.modules.time.service import TimeEntryTypeService, TimeService
 from app.schemas import Page
 
 router = APIRouter(prefix="/time", tags=["time"])
+
+
+# --- time-entry types (#176) -------------------------------------------------- #
+# Declared before ``/entries/{entry_id}`` cannot collide (distinct path), but grouped up top
+# like the interaction kinds for symmetry.
+@router.get(
+    "/entry-types",
+    response_model=list[TimeEntryTypeRead],
+    dependencies=[require_permission("time.entry_type.read")],
+)
+async def list_entry_types(
+    include_inactive: bool = Query(False),
+    ctx: RequestContext = Depends(require_context),
+) -> list[TimeEntryTypeRead]:
+    items = await TimeEntryTypeService(ctx).list(include_inactive=include_inactive)
+    return [TimeEntryTypeRead.model_validate(t) for t in items]
+
+
+@router.post(
+    "/entry-types",
+    response_model=TimeEntryTypeRead,
+    status_code=201,
+    dependencies=[require_permission("time.entry_type.manage")],
+)
+async def create_entry_type(
+    payload: TimeEntryTypeCreate,
+    ctx: RequestContext = Depends(require_context),
+) -> TimeEntryTypeRead:
+    return TimeEntryTypeRead.model_validate(await TimeEntryTypeService(ctx).create(payload))
+
+
+@router.patch(
+    "/entry-types/{type_id}",
+    response_model=TimeEntryTypeRead,
+    dependencies=[require_permission("time.entry_type.manage")],
+)
+async def update_entry_type(
+    type_id: uuid.UUID,
+    payload: TimeEntryTypeUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> TimeEntryTypeRead:
+    return TimeEntryTypeRead.model_validate(
+        await TimeEntryTypeService(ctx).update(type_id, payload)
+    )
+
+
+@router.delete(
+    "/entry-types/{type_id}",
+    status_code=204,
+    dependencies=[require_permission("time.entry_type.manage")],
+)
+async def delete_entry_type(
+    type_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> None:
+    await TimeEntryTypeService(ctx).delete(type_id)
 
 
 # --- approval / invoicing overview (managers) -------------------------------- #
@@ -56,6 +115,7 @@ async def time_report(
     billable: bool | None = Query(None),
     approved: bool | None = Query(None),
     invoiced: bool | None = Query(None),
+    entry_type: str | None = Query(None, max_length=50, description="Filter by entry type key"),
     sort: str | None = Query(
         None, description="date | employee | company | project | task | minutes | …, '-' desc"
     ),
@@ -73,6 +133,7 @@ async def time_report(
         billable=billable,
         approved=approved,
         invoiced=invoiced,
+        entry_type=entry_type,
         sort=sort,
     )
     return TimeReport(
@@ -319,6 +380,7 @@ async def list_entries(
     task_id: uuid.UUID | None = Query(None),
     date_from: date | None = Query(None),
     date_to: date | None = Query(None),
+    entry_type: str | None = Query(None, max_length=50, description="Filter by entry type key"),
     running: bool | None = Query(None, description="Filter running timers in/out; unset = both"),
     all_users: bool = Query(
         False,
@@ -345,6 +407,7 @@ async def list_entries(
         running=running,
         all_users=all_users,
         sort=sort,
+        entry_type=entry_type,
     )
     return Page(
         items=[TimeEntryRead.model_validate(e) for e in items],

@@ -37,6 +37,9 @@ export const TIME_REPORT_COLUMNS: ColumnMeta[] = [
     defaultVisible: true,
     width: 260,
   },
+  // Tenant-defined type (#176). Label is tenant data, so the server can't order by what the
+  // column prints — no sortKey (docs/UX.md).
+  { key: "entry_type", labelKey: "time.field.entry_type", width: 150 },
   // Footer: the API's total for the whole filtered set, never a sum of the page (#37).
   {
     key: "minutes",

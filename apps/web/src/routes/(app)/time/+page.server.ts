@@ -114,6 +114,7 @@ export const actions: Actions = {
         company_id: String(form.get("company_id") ?? "").trim() || null,
         project_id: String(form.get("project_id") ?? "").trim() || null,
         billable: form.get("billable") !== "false",
+        entry_type_key: String(form.get("entry_type_key") ?? "").trim() || null,
         break_minutes: 0,
       },
     });
@@ -144,6 +145,7 @@ export const actions: Actions = {
         project_id: String(form.get("project_id") ?? "").trim() || null,
         task_id: String(form.get("task_id") ?? "").trim() || null,
         billable: form.get("billable") !== "false",
+        entry_type_key: String(form.get("entry_type_key") ?? "").trim() || null,
       },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
@@ -169,6 +171,7 @@ export const actions: Actions = {
         project_id: String(form.get("project_id") ?? "").trim() || null,
         task_id: String(form.get("task_id") ?? "").trim() || null,
         billable: form.get("billable") !== "false",
+        entry_type_key: String(form.get("entry_type_key") ?? "").trim() || null,
       },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });

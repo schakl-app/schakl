@@ -22,10 +22,17 @@ from app.core.events import emit
 from app.core.sorting import apply_sort, user_sort_name
 from app.core.tenancy import RequestContext
 from app.errors import AppError
-from app.modules.time.models import TimeEntry, TimeEntryDraft
+from app.modules.time.models import (
+    DEFAULT_ENTRY_TYPES,
+    TimeEntry,
+    TimeEntryDraft,
+    TimeEntryType,
+)
 from app.modules.time.schemas import (
     TimeEntryCreate,
     TimeEntryDraftPayload,
+    TimeEntryTypeCreate,
+    TimeEntryTypeUpdate,
     TimeEntryUpdate,
     TimerStart,
     Timesheet,
@@ -130,6 +137,19 @@ class TimeService:
             raise AppError("not_found", "errors.not_found", status_code=404)
         return entry
 
+    async def _valid_entry_type(self, key: str | None) -> None:
+        """An optional type must be one of the org's active types (#176); None stays untyped."""
+        if key is None:
+            return
+        active = await TimeEntryTypeService(self.ctx).active_keys()
+        if key not in active:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"entry_type_key": "errors.time_entry_type_unknown"},
+            )
+
     def _ensure_not_locked(self, entry: TimeEntry) -> None:
         """Approved hours are signed off; only whoever may approve them may still change them.
 
@@ -158,6 +178,7 @@ class TimeService:
 
     async def start_timer(self, data: TimerStart) -> TimeEntry:
         self.ctx.require("time.entry.write")
+        await self._valid_entry_type(data.entry_type_key)
         # Starting a new timer stops the current one (common time-tracker behaviour).
         current = await self.running()
         if current is not None:
@@ -186,6 +207,7 @@ class TimeService:
     # --- manual entries ------------------------------------------------------ #
     async def create(self, data: TimeEntryCreate) -> TimeEntry:
         self.ctx.require("time.entry.write")
+        await self._valid_entry_type(data.entry_type_key)
         # The entry this draft was for now exists — the draft has served (#44). Times are
         # wall-clock-as-UTC, so the entry's date *is* the form's date field.
         await self._clear_draft(data.started_at.date())
@@ -217,6 +239,9 @@ class TimeService:
         self._ensure_writable(entry)
         self._ensure_not_locked(entry)
         values = data.model_dump(exclude_unset=True)
+        # Keeping the entry's own type stays allowed after a deactivation (#176).
+        if values.get("entry_type_key") not in (None, entry.entry_type_key):
+            await self._valid_entry_type(values["entry_type_key"])
         entry = await self.repo.update(entry, **values)
         # Keep worked minutes / end consistent for stopped entries when time fields change.
         if not entry.is_running:
@@ -452,6 +477,7 @@ class TimeService:
         running: bool | None = None,
         all_users: bool = False,
         sort: str | None = None,
+        entry_type: str | None = None,
     ) -> tuple[Sequence[TimeEntry], int]:
         """Entries, by default the caller's own.
 
@@ -480,6 +506,8 @@ class TimeService:
             conditions.append(TimeEntry.project_id == project_id)
         if task_id is not None:
             conditions.append(TimeEntry.task_id == task_id)
+        if entry_type is not None:
+            conditions.append(TimeEntry.entry_type_key == entry_type)
         if date_from is not None:
             conditions.append(
                 TimeEntry.started_at >= datetime.combine(date_from, time.min, tzinfo=UTC)
@@ -528,8 +556,11 @@ class TimeService:
         billable: bool | None,
         approved: bool | None,
         invoiced: bool | None,
+        entry_type: str | None = None,
     ) -> list:
         conditions = [TimeEntry.ended_at.is_not(None)]  # running timers aren't reviewable
+        if entry_type is not None:
+            conditions.append(TimeEntry.entry_type_key == entry_type)
         if user_id is not None:
             conditions.append(TimeEntry.user_id == user_id)
         if company_id is not None:
@@ -571,6 +602,7 @@ class TimeService:
         approved: bool | None = None,
         invoiced: bool | None = None,
         sort: str | None = None,
+        entry_type: str | None = None,
     ) -> tuple[Sequence[TimeEntry], int, dict[str, int]]:
         """Org-wide entries for the approval/invoicing overview (``time.report.read``)."""
         self.ctx.require("time.report.read")
@@ -583,6 +615,7 @@ class TimeService:
             billable=billable,
             approved=approved,
             invoiced=invoiced,
+            entry_type=entry_type,
         )
         stmt = (
             apply_sort(
@@ -911,3 +944,76 @@ class TimeService:
             # Drafts are the author's alone (#44): another user's sheet never shows yours.
             draft_days=await self.draft_days(week_start) if uid == self.ctx.user.id else [],
         )
+
+
+class TimeEntryTypeService:
+    """CRUD for tenant-configurable time-entry types (#176), gated on
+    ``time.entry_type.manage`` — the interaction-kinds / contact-types shape.
+
+    Defaults (``work``, ``email``) seed lazily, once per org, on first list or first typed
+    write. A type in use refuses deletion (deactivate instead); an entry keeps its
+    deactivated type through edits, so history never breaks.
+    """
+
+    def __init__(self, ctx: RequestContext) -> None:
+        self.ctx = ctx
+        self.repo = ctx.repo(TimeEntryType)
+
+    @property
+    def _org_id(self) -> uuid.UUID:
+        return self.ctx.org.id
+
+    async def list(self, *, include_inactive: bool = False) -> list[TimeEntryType]:
+        await self._ensure_defaults()
+        stmt = self.repo.scoped_select().order_by(TimeEntryType.position, TimeEntryType.key)
+        if not include_inactive:
+            stmt = stmt.where(TimeEntryType.active.is_(True))
+        return list((await self.ctx.session.execute(stmt)).scalars().all())
+
+    async def active_keys(self) -> set[str]:
+        await self._ensure_defaults()
+        stmt = select(TimeEntryType.key).where(
+            TimeEntryType.org_id == self._org_id, TimeEntryType.active.is_(True)
+        )
+        return set((await self.ctx.session.execute(stmt)).scalars())
+
+    async def _ensure_defaults(self) -> None:
+        """Seed the default types once per org (idempotent; skipped for read-only roles)."""
+        if not self.ctx.can("time.entry.write"):
+            return
+        if await self.repo.count() > 0:
+            return
+        for spec in DEFAULT_ENTRY_TYPES:
+            await self.repo.create(**spec)
+
+    async def create(self, data: TimeEntryTypeCreate) -> TimeEntryType:
+        self.ctx.require("time.entry_type.manage")
+        await self._ensure_defaults()
+        existing = await self.ctx.session.scalar(
+            select(TimeEntryType.id).where(
+                TimeEntryType.org_id == self._org_id, TimeEntryType.key == data.key
+            )
+        )
+        if existing is not None:
+            raise AppError(
+                "conflict", "errors.conflict", status_code=409, fields={"key": "errors.conflict"}
+            )
+        return await self.repo.create(**data.model_dump(mode="json"))
+
+    async def update(self, type_id: uuid.UUID, data: TimeEntryTypeUpdate) -> TimeEntryType:
+        self.ctx.require("time.entry_type.manage")
+        row = await self.repo.get_or_404(type_id)
+        return await self.repo.update(row, **data.model_dump(mode="json", exclude_unset=True))
+
+    async def delete(self, type_id: uuid.UUID) -> None:
+        """Hard-delete only unused types; ones with history deactivate instead."""
+        self.ctx.require("time.entry_type.manage")
+        row = await self.repo.get_or_404(type_id)
+        in_use = await self.ctx.session.scalar(
+            select(func.count())
+            .select_from(TimeEntry)
+            .where(TimeEntry.org_id == self._org_id, TimeEntry.entry_type_key == row.key)
+        )
+        if int(in_use or 0) > 0:
+            raise AppError("conflict", "errors.time_entry_type_in_use", status_code=409)
+        await self.repo.delete(row)

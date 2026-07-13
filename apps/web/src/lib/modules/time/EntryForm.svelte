@@ -6,6 +6,7 @@
    */
   import { enhance } from "$app/forms";
   import { beforeNavigate } from "$app/navigation";
+  import { page } from "$app/state";
   import { burnBarClass, burnBarWidth, burnPct } from "$lib/core/burn";
   import { fmtDateTime, fmtMoney, fmtNumber } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
@@ -19,7 +20,12 @@
     minutesBetween,
     parseDurationText,
   } from "$lib/modules/time/duration";
-  import { formatMinutes } from "$lib/modules/time/format";
+  import {
+    entryTypeLabel,
+    entryTypes,
+    formatMinutes,
+    type TimeEntryTypeDef,
+  } from "$lib/modules/time/format";
 
   interface Option {
     id: string;
@@ -49,6 +55,7 @@
     company_id?: string | null;
     project_id?: string | null;
     task_id?: string | null;
+    entry_type_key?: string | null;
   }
 
   let {
@@ -110,6 +117,7 @@
     project_id?: string | null;
     task_id?: string | null;
     description?: string | null;
+    entry_type_key?: string | null;
   } | null;
   let fDate = $state(entry ? entry.started_at.slice(0, 10) : (restored?.date ?? date));
   let fStart = $state(entry ? entry.started_at.slice(11, 16) : (restored?.start ?? ""));
@@ -120,6 +128,17 @@
   let fProject = $state(entry?.project_id ?? restored?.project_id ?? defaultProjectId);
   let fTask = $state(entry?.task_id ?? restored?.task_id ?? "");
   let fDescription = $state(entry?.description ?? restored?.description ?? "");
+  const locale = $derived((page.data.locale as string | undefined) ?? "nl");
+  // Deliberate initial capture, like every f* seed above.
+  // svelte-ignore state_referenced_locally
+  let fType = $state(entry?.entry_type_key ?? restored?.entry_type_key ?? "");
+  // Tenant-defined types (#176), fetched once per session (module-level cache); the list
+  // shows the active ones plus the entry's own type when that has been deactivated.
+  let allTypes = $state<TimeEntryTypeDef[]>([]);
+  $effect(() => {
+    void entryTypes().then((fetched) => (allTypes = fetched));
+  });
+  const typeOptions = $derived(allTypes.filter((et) => et.active || et.key === fType));
   let durationText = $state(restored?.duration_text ?? "");
   let confirmDelete = $state(false);
 
@@ -215,6 +234,7 @@
       project_id: fProject || null,
       task_id: fTask || null,
       description: fDescription || null,
+      entry_type_key: fType || null,
     };
   }
   const pristine = JSON.stringify({
@@ -228,6 +248,7 @@
     project_id: defaultProjectId || null,
     task_id: null,
     description: null,
+    entry_type_key: null,
   });
 
   async function saveDraft(payload: Record<string, unknown>): Promise<void> {
@@ -527,6 +548,24 @@
       class={inputClass}
       bind:value={fDescription}></textarea>
   </div>
+  {#if typeOptions.length > 0}
+    <div>
+      <label for="entry-type-{action}" class="mb-1 block text-xs font-medium text-text-muted"
+        >{t("time.field.entry_type")}</label
+      >
+      <select
+        id="entry-type-{action}"
+        name="entry_type_key"
+        bind:value={fType}
+        class={inputClass}
+      >
+        <option value="">{t("time.entry_type_none")}</option>
+        {#each typeOptions as option (option.key)}
+          <option value={option.key}>{entryTypeLabel(option, locale)}</option>
+        {/each}
+      </select>
+    </div>
+  {/if}
 
   {#if error}<p class="text-sm text-red-600">{t(error)}</p>{/if}
   <div class="flex gap-2">

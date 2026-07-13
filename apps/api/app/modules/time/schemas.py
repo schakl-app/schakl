@@ -8,11 +8,41 @@ from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class TimeEntryTypeBase(BaseModel):
+    """A tenant-configurable time-entry type (#176) — the contact-types shape."""
+
+    key: str = Field(min_length=1, max_length=50, pattern=r"^[a-z0-9_]+$")
+    label_i18n: dict[str, str] = Field(default_factory=dict)
+    position: int = 0
+    active: bool = True
+
+
+class TimeEntryTypeCreate(TimeEntryTypeBase):
+    pass
+
+
+class TimeEntryTypeUpdate(BaseModel):
+    label_i18n: dict[str, str] | None = None
+    position: int | None = None
+    active: bool | None = None
+
+
+class TimeEntryTypeRead(TimeEntryTypeBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    org_id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
+
+
 class TimeEntryBase(BaseModel):
     company_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None
     task_id: uuid.UUID | None = None
     description: str | None = None
+    #: Optional key into the org's time-entry types (#176); NULL stays untyped.
+    entry_type_key: str | None = Field(None, min_length=1, max_length=50, pattern=r"^[a-z0-9_]+$")
     billable: bool = True
     break_minutes: int = Field(default=0, ge=0, le=24 * 60)
 
@@ -34,6 +64,7 @@ class TimeEntryUpdate(BaseModel):
     project_id: uuid.UUID | None = None
     task_id: uuid.UUID | None = None
     description: str | None = None
+    entry_type_key: str | None = Field(None, min_length=1, max_length=50, pattern=r"^[a-z0-9_]+$")
     billable: bool | None = None
     break_minutes: int | None = Field(default=None, ge=0, le=24 * 60)
     started_at: datetime | None = None
