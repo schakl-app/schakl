@@ -1,11 +1,14 @@
 /**
  * interactions web module (CLAUDE.md §6, issue #22) — contactmomenten, mirrors the API module.
  *
- * No nav item: the timeline lives on the records it belongs to. Self-registers the company
- * panel plus entity panels on project, contact and task detail pages. Host pages spread
+ * The timeline lives on the records it belongs to (company/project/contact/task panels), and
+ * since #168 also on its own cross-cutting Interacties page — nav item below. Host pages spread
  * `interactionActions` (./actions.server) into their form actions — that is the whole contract.
  */
+import { MessagesSquare } from "@lucide/svelte";
+
 import { registerWebModule, type EntityPanelSpec } from "$lib/core/registry";
+import { t } from "$lib/core/i18n";
 
 import InteractionsCompanyPanel from "./InteractionsCompanyPanel.svelte";
 import InteractionsEntityPanel from "./InteractionsEntityPanel.svelte";
@@ -55,6 +58,18 @@ const entityPanels: EntityPanelSpec[] = Object.entries(ENTITY_FIELDS).map(
 
 registerWebModule({
   name: "interactions",
+  nav: [
+    {
+      // Cross-cutting like Contactpersonen, not owned by one group (#168, after #117's order).
+      key: "interactions",
+      href: "/interactions",
+      label: () => t("nav.interactions"),
+      module: "interactions",
+      icon: MessagesSquare,
+      position: 27,
+      requiresPermission: "interactions.interaction.read",
+    },
+  ],
   companyPanels: [
     {
       key: "interactions.company",

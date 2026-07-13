@@ -98,6 +98,7 @@ async def list_interactions(
         max_length=30,
         description="Roll-up: 'tasks' with project_id also returns the project's tasks' rows",
     ),
+    q: str | None = Query(None, max_length=200, description="Free text over subject/snippet/body"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     ctx: RequestContext = Depends(require_context),
@@ -113,6 +114,7 @@ async def list_interactions(
         status=status,
         owner_user_id=ctx.user.id if mine else owner_user_id,
         include=include,
+        q=q,
     )
     return Page(
         items=[InteractionRead.model_validate(i) for i in items],

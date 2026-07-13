@@ -265,6 +265,90 @@ async def test_member_edits_own_admin_edits_any(client_for) -> None:
         ).status_code == 200
 
 
+async def test_pending_rows_private_to_owner_until_approved(client_for) -> None:
+    """#172: a pending gmail row is invisible — not just body-redacted — to anyone but its
+    mailbox owner; #168: the owner filter needs read_all, and a wildcard/admin viewer may
+    still audit another mailbox's pending queue. Approval restores team visibility."""
+    t = await make_tenant("inter-pending-priv")
+    owner_headers = await auth_cookie(t.user)  # org owner: "*" satisfies read_all
+    async with client_for(t.host) as c:
+        mailbox = await _member(c, owner_headers, "mailbox@priv.example")
+        colleague = await _member(c, owner_headers, "collega@priv.example")
+        mailbox_headers = await auth_cookie(mailbox)
+        colleague_headers = await auth_cookie(colleague)
+        row_id = await _seed_gmail_row(t, mailbox.id, pending=True)
+
+        # The owner of the mailbox sees their pending row; a plain colleague sees nothing.
+        assert (
+            await c.get("/api/v1/interactions", params={"mine": True, "status": "pending"},
+                        headers=mailbox_headers)
+        ).json()["total"] == 1
+        assert (
+            await c.get("/api/v1/interactions", params={"status": "pending"},
+                        headers=colleague_headers)
+        ).json()["total"] == 0
+        assert (await c.get("/api/v1/interactions", headers=colleague_headers)).json()[
+            "total"
+        ] == 0
+        assert (
+            await c.get(f"/api/v1/interactions/{row_id}", headers=colleague_headers)
+        ).status_code == 404
+
+        # Someone else's queue is not a filter a plain member may use (#168)...
+        assert (
+            await c.get(
+                "/api/v1/interactions",
+                params={"owner_user_id": str(mailbox.id)},
+                headers=colleague_headers,
+            )
+        ).status_code == 403
+        # ...but a read_all holder may audit it, pending rows included.
+        assert (
+            await c.get(
+                "/api/v1/interactions",
+                params={"owner_user_id": str(mailbox.id), "status": "pending"},
+                headers=owner_headers,
+            )
+        ).json()["total"] == 1
+
+        # Approval makes it team-visible, exactly as before.
+        assert (
+            await c.post(f"/api/v1/interactions/{row_id}/approve", headers=mailbox_headers)
+        ).status_code == 200
+        assert (await c.get("/api/v1/interactions", headers=colleague_headers)).json()[
+            "total"
+        ] == 1
+
+
+async def test_list_free_text_search(client_for) -> None:
+    """#168: `q` matches subject, snippet and body, case-insensitively."""
+    t = await make_tenant("inter-search")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        for subject, body in (("Offerte besproken", "Alles akkoord"), ("Storing", "DNS lag om")):
+            assert (
+                await c.post(
+                    "/api/v1/interactions",
+                    json={
+                        "kind": "call",
+                        "occurred_at": _NOW.isoformat(),
+                        "subject": subject,
+                        "body_text": body,
+                    },
+                    headers=headers,
+                )
+            ).status_code == 201
+        assert (
+            await c.get("/api/v1/interactions", params={"q": "offerte"}, headers=headers)
+        ).json()["total"] == 1
+        assert (
+            await c.get("/api/v1/interactions", params={"q": "dns"}, headers=headers)
+        ).json()["total"] == 1
+        assert (
+            await c.get("/api/v1/interactions", params={"q": "niets"}, headers=headers)
+        ).json()["total"] == 0
+
+
 async def test_gmail_review_is_strictly_owner_only(client_for) -> None:
     t = await make_tenant("inter-review")  # t.user = owner, holds "*"
     owner_headers = await auth_cookie(t.user)

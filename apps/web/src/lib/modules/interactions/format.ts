@@ -2,6 +2,8 @@
 import { Mail, MapPin, MessageSquare, Phone, StickyNote, Users, Video } from "@lucide/svelte";
 import type { Component } from "svelte";
 
+import { fmtLongDay } from "$lib/core/format";
+import { t } from "$lib/core/i18n";
 import { getTimeZone } from "$lib/core/timezone";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -81,6 +83,41 @@ export interface InteractionItem {
   }[];
   source: string;
   deep_link: string | null;
+}
+
+const _dayFmt = new Map<string, Intl.DateTimeFormat>();
+
+function dayFormatter(): Intl.DateTimeFormat {
+  const tz = getTimeZone();
+  let formatter = _dayFmt.get(tz);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: tz,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    _dayFmt.set(tz, formatter);
+  }
+  return formatter;
+}
+
+/** An instant's local calendar day (`yyyy-mm-dd`) in the org zone — the day-group key. */
+export function localDay(isoDateTime: string): string {
+  return dayFormatter().format(new Date(isoDateTime));
+}
+
+function previousDay(day: string): string {
+  const [year, month, date] = day.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, date - 1)).toISOString().slice(0, 10);
+}
+
+/** "Today" / "Yesterday" / "maandag 7 juli" — the heading over a day's interactions. */
+export function dayLabel(day: string): string {
+  const today = localDay(new Date().toISOString());
+  if (day === today) return t("common.today");
+  if (day === previousDay(today)) return t("common.yesterday");
+  return fmtLongDay(day);
 }
 
 /**

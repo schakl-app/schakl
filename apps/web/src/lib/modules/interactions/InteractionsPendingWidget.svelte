@@ -54,7 +54,7 @@
 
 <DashboardWidgetCard
   title={t("dashboard.widget.interactions.pending_email")}
-  href={payload.total > 0 ? "/interactions/review" : undefined}
+  href={payload.total > 0 ? "/interactions?status=pending" : undefined}
   linkLabel={t("interactions.widget.review_all", { count: payload.total })}
 >
   {#if payload.total === 0}
@@ -63,7 +63,7 @@
     <ul class="divide-y divide-border">
       {#each payload.items as row (row.id)}
         <li class="py-1.5">
-          <a href="/interactions/review" class="block min-w-0 hover:text-brand">
+          <a href="/interactions?status=pending" class="block min-w-0 hover:text-brand">
             <span class="block truncate text-sm text-text">{row.subject || "—"}</span>
             <span class="block truncate text-xs text-text-muted">
               {sender(row)}{#if row.company_name}&nbsp;· {row.company_name}{/if}

@@ -14526,6 +14526,8 @@ export interface operations {
                 mine?: boolean;
                 /** @description Roll-up: 'tasks' with project_id also returns the project's tasks' rows */
                 include?: string | null;
+                /** @description Free text over subject/snippet/body */
+                q?: string | null;
                 limit?: number;
                 offset?: number;
             };
