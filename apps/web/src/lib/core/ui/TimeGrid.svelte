@@ -13,7 +13,7 @@
    * on the month grid; timed blocks are not draggable (in v1 only Google events carry times,
    * and we never write to Google).
    */
-  import { eventChipClass, eventsByDayMap, isoDiffDays } from "$lib/core/calendar";
+  import { eventChipClass, eventLinkAttrs, eventsByDayMap, isoDiffDays } from "$lib/core/calendar";
   import { fmtWeekdayShort } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { getTimeZone } from "$lib/core/timezone";
@@ -180,7 +180,7 @@
       <!-- Mouse-only accelerator; the chip link stays the accessible path (see MonthCalendar). -->
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div
-        class="min-h-9 space-y-1 border-l border-border p-1.5"
+        class="min-h-9 min-w-0 space-y-1 border-l border-border p-1.5"
         ondragover={(e) => {
           if (dragging) e.preventDefault();
         }}
@@ -193,6 +193,7 @@
           {#if event.href}
             <a
               href={event.href}
+              {...eventLinkAttrs(event.href)}
               class="{chipClass(event)} {event.draggable && onmove ? 'cursor-grab' : ''}"
               title={event.title}
               draggable={Boolean(event.draggable && onmove)}
@@ -255,6 +256,7 @@
             {#if block.event.href}
               <a
                 href={block.event.href}
+                {...eventLinkAttrs(block.event.href)}
                 class={blockClass(block.event)}
                 style="top: {top}px; height: {height}px; left: {block.lane * width}%; width: {width}%"
                 title={block.event.title}
