@@ -50,15 +50,8 @@ export const load: PageServerLoad = async (event) => {
     date: asDateFormat(format?.date) ?? DEFAULT_DATE_FORMAT,
   };
   const cookieFormat = parseFormatCookie(event.request.headers.get("cookie"));
-  if (
-    persistedFormat.clock !== cookieFormat.clock ||
-    persistedFormat.date !== cookieFormat.date
-  ) {
-    event.cookies.set(
-      FORMAT_COOKIE,
-      serializeFormatCookie(persistedFormat),
-      FORMAT_COOKIE_OPTIONS,
-    );
+  if (persistedFormat.clock !== cookieFormat.clock || persistedFormat.date !== cookieFormat.date) {
+    event.cookies.set(FORMAT_COOKIE, serializeFormatCookie(persistedFormat), FORMAT_COOKIE_OPTIONS);
   }
 
   // Personal API keys (#20). A member may hold apikeys.personal.manage; the offerable scopes are

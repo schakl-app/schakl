@@ -23,11 +23,7 @@
     {t("settings.section_personal")}
   </h2>
   <div class="grid gap-4 sm:grid-cols-2">
-    {@render card(
-      "/settings/account",
-      t("settings.account.title"),
-      t("settings.account.subtitle"),
-    )}
+    {@render card("/settings/account", t("settings.account.title"), t("settings.account.subtitle"))}
     {@render card(
       "/settings/notifications",
       t("settings.notifications.title"),
@@ -62,16 +58,8 @@
       t("settings.branding.title"),
       t("settings.branding.subtitle"),
     )}
-    {@render card(
-      "/settings/modules",
-      t("settings.modules.title"),
-      t("settings.modules.subtitle"),
-    )}
-    {@render card(
-      "/settings/google",
-      t("settings.google.title"),
-      t("settings.google.subtitle"),
-    )}
+    {@render card("/settings/modules", t("settings.modules.title"), t("settings.modules.subtitle"))}
+    {@render card("/settings/google", t("settings.google.title"), t("settings.google.subtitle"))}
   </div>
 
   <h3 class="mb-2 text-sm font-medium text-text">{t("settings.group.customization")}</h3>
@@ -101,11 +89,7 @@
       t("settings.providers.title"),
       t("settings.providers.subtitle"),
     )}
-    {@render card(
-      "/settings/impex",
-      t("impex.settings.title"),
-      t("impex.settings.subtitle"),
-    )}
+    {@render card("/settings/impex", t("impex.settings.title"), t("impex.settings.subtitle"))}
   </div>
 
   <h3 class="mb-2 text-sm font-medium text-text">{t("settings.group.workflows")}</h3>

@@ -118,7 +118,8 @@
     const st = selectedStatuses;
     const anyInvoiced = st.some((s) => s === "invoiced");
     const out: { action: string; label: string }[] = [];
-    if (st.some((s) => s === "open")) out.push({ action: "approve", label: t("time.overview.approve") });
+    if (st.some((s) => s === "open"))
+      out.push({ action: "approve", label: t("time.overview.approve") });
     if (st.some((s) => s !== "open"))
       // Unapproving an invoiced row also clears its invoice (`set_approval`'s cascade) — say so up
       // front rather than surprise the approver, since "unapprove" only shows when the selection
@@ -274,7 +275,9 @@
 {/snippet}
 
 {#snippet entryTypeCell(e: Entry)}
-  <span class="truncate text-text-muted">{e.entry_type_key ? entryTypeName(e.entry_type_key) : "—"}</span>
+  <span class="truncate text-text-muted"
+    >{e.entry_type_key ? entryTypeName(e.entry_type_key) : "—"}</span
+  >
 {/snippet}
 
 {#snippet minutesCell(e: Entry)}

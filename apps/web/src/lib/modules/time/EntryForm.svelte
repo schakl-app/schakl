@@ -508,7 +508,9 @@
             })}
           </span>
           {#if pickedMoneyLeft != null}
-            <span class="tabular-nums {pickedMoneyLeft < 0 ? 'text-red-600 dark:text-red-400' : ''}">
+            <span
+              class="tabular-nums {pickedMoneyLeft < 0 ? 'text-red-600 dark:text-red-400' : ''}"
+            >
               {t("time.budget.money_left", { amount: fmtMoney(pickedMoneyLeft) })}
             </span>
           {/if}
@@ -553,12 +555,7 @@
       <label for="entry-type-{action}" class="mb-1 block text-xs font-medium text-text-muted"
         >{t("time.field.entry_type")}</label
       >
-      <select
-        id="entry-type-{action}"
-        name="entry_type_key"
-        bind:value={fType}
-        class={inputClass}
-      >
+      <select id="entry-type-{action}" name="entry_type_key" bind:value={fType} class={inputClass}>
         <option value="">{t("time.entry_type_none")}</option>
         {#each typeOptions as option (option.key)}
           <option value={option.key}>{entryTypeLabel(option, locale)}</option>

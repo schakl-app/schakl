@@ -152,7 +152,8 @@
   let rejecting = $state<InteractionItem | null>(null);
   let expanded = $state<string | null>(null);
 
-  const isOwner = (item: InteractionItem) => item.owner_user_id !== null && item.owner_user_id === me;
+  const isOwner = (item: InteractionItem) =>
+    item.owner_user_id !== null && item.owner_user_id === me;
   const mayEdit = (item: InteractionItem) =>
     item.source === "manual" &&
     (isOwner(item)

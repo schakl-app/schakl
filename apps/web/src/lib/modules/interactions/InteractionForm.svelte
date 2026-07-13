@@ -77,8 +77,7 @@
 
   // --- contact person (#173): pick, clear, or inline-create — never leave the form ------- //
   const hostCompanyId = $derived(
-    interaction?.company_id ??
-      (typeof prefill.company_id === "string" ? prefill.company_id : null),
+    interaction?.company_id ?? (typeof prefill.company_id === "string" ? prefill.company_id : null),
   );
   // Deliberate initial capture: the host keys this form per row, so props never swap in place.
   // svelte-ignore state_referenced_locally
@@ -87,9 +86,9 @@
       (typeof prefill.contact_id === "string" ? prefill.contact_id : "") ??
       "",
   );
-  let contactOptions = $state<
-    { value: string; label: string; hint?: string; company?: string }[]
-  >([]);
+  let contactOptions = $state<{ value: string; label: string; hint?: string; company?: string }[]>(
+    [],
+  );
   $effect(() => {
     // Host company's roster first; an org without links there falls back to all contacts.
     const scope = hostCompanyId ? `&company_id=${hostCompanyId}` : "";
@@ -143,9 +142,7 @@
   let logTime = $state(false);
   let logStart = $state("");
   let logEnd = $state("");
-  const logMinutes = $derived(
-    logStart && logEnd ? minutesBetween(logStart, logEnd) : null,
-  );
+  const logMinutes = $derived(logStart && logEnd ? minutesBetween(logStart, logEnd) : null);
 
   let qcOpen = $state(false);
   let qcName = $state("");
@@ -282,8 +279,7 @@
             <TimeInput name="log_start" bind:value={logStart} required />
           </label>
           <label class="block text-sm">
-            <span class="mb-1 block text-xs font-medium text-text-muted"
-              >{t("time.field.end")}</span
+            <span class="mb-1 block text-xs font-medium text-text-muted">{t("time.field.end")}</span
             >
             <TimeInput name="log_end" bind:value={logEnd} required />
           </label>

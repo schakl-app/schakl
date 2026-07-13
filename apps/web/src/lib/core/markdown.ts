@@ -89,8 +89,7 @@ function ensureConfigured(): void {
         },
         tokenizer(src: string) {
           const m = _MENTION_RE.exec(src);
-          if (m)
-            return { type: "mention", raw: m[0], name: m[1], kind: m[2] ?? "user", id: m[3] };
+          if (m) return { type: "mention", raw: m[0], name: m[1], kind: m[2] ?? "user", id: m[3] };
         },
         renderer(token: Tokens.Generic) {
           const name = escapeHtml(String(token.name ?? ""));

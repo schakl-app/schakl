@@ -153,7 +153,10 @@
 <div class="overflow-hidden rounded-xl border border-border bg-surface-raised">
   <!-- Column headers (week view); the day view's single date lives in the page toolbar. -->
   {#if days.length > 1}
-    <div class="grid border-b border-border" style="grid-template-columns: 3rem repeat({days.length}, 1fr)">
+    <div
+      class="grid border-b border-border"
+      style="grid-template-columns: 3rem repeat({days.length}, 1fr)"
+    >
       <div></div>
       {#each days as day (day)}
         <p
@@ -258,7 +261,8 @@
                 href={block.event.href}
                 {...eventLinkAttrs(block.event.href)}
                 class={blockClass(block.event)}
-                style="top: {top}px; height: {height}px; left: {block.lane * width}%; width: {width}%"
+                style="top: {top}px; height: {height}px; left: {block.lane *
+                  width}%; width: {width}%"
                 title={block.event.title}
               >
                 {#if block.event.tentative}?{/if}
@@ -267,7 +271,8 @@
             {:else}
               <span
                 class={blockClass(block.event)}
-                style="top: {top}px; height: {height}px; left: {block.lane * width}%; width: {width}%"
+                style="top: {top}px; height: {height}px; left: {block.lane *
+                  width}%; width: {width}%"
                 title={block.event.title}
               >
                 {#if block.event.tentative}?{/if}
