@@ -98,6 +98,8 @@ CORE_PERMISSIONS: tuple[PermissionSpec, ...] = (
     ),
     PermissionSpec("settings.customfields.write", group="settings", position=60),
     PermissionSpec("settings.dashboard.manage", group="settings", position=70),
+    # The org-wide sidebar default everyone without a personal layout inherits (#169).
+    PermissionSpec("settings.nav.manage", group="settings", position=75),
     PermissionSpec("settings.system.read", group="settings", position=80),
     # Provider catalog (issue #89): all staff read it to fill pickers; managing it is admin-only.
     PermissionSpec(
@@ -112,6 +114,9 @@ CORE_PERMISSIONS: tuple[PermissionSpec, ...] = (
     # --- dashboard (personal My Day layout) ------------------------------- #
     PermissionSpec("dashboard.prefs.read", group="dashboard", position=10, default_roles=_ALL),
     PermissionSpec("dashboard.prefs.write", group="dashboard", position=20, default_roles=_ALL),
+    # --- nav (personal sidebar layout, #169) ------------------------------ #
+    PermissionSpec("nav.prefs.read", group="dashboard", position=30, default_roles=_ALL),
+    PermissionSpec("nav.prefs.write", group="dashboard", position=40, default_roles=_ALL),
     # --- activity trail (issue #67) --------------------------------------- #
     # Every role that can reach a record's detail page may read its paper trail; the rows are
     # org-scoped (RLS), so this never crosses a tenant. Recording is not a permission — it is a

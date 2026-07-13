@@ -13,6 +13,7 @@ import {
   serializeFormatCookie,
 } from "$lib/core/dateformat";
 import { apiErrorKey } from "$lib/core/errors";
+import { parseNavItems } from "$lib/core/navpref";
 import { LOCALES } from "$lib/core/i18n";
 import { can } from "$lib/core/permissions";
 import { apiBaseUrl } from "$lib/core/api/client";
@@ -84,7 +85,14 @@ export const load: PageServerLoad = async (event) => {
     }
   }
 
+  // The personal sidebar layout (#169): the (app) layout already resolved the effective pref.
+  const { navPref } = (await event.parent()) as {
+    navPref?: { items: { key: string; hidden?: boolean }[] | null; source: string };
+  };
+
   return {
+    personalNavItems: navPref?.source === "user" ? (navPref.items ?? null) : null,
+    hasPersonalNav: navPref?.source === "user",
     account: event.locals.user,
     locales: LOCALES,
     currentLocale: event.locals.locale,
@@ -101,6 +109,22 @@ export const load: PageServerLoad = async (event) => {
 };
 
 export const actions: Actions = {
+  /** Personal sidebar layout (#169) — only touches the caller's own view (UX §6). */
+  saveNav: async (event) => {
+    const form = await event.request.formData();
+    const { error } = await apiFor(event).PUT("/api/v1/nav/prefs", {
+      body: { items: parseNavItems(form.get("items")) },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { navSaved: true };
+  },
+
+  resetNav: async (event) => {
+    const { error } = await apiFor(event).DELETE("/api/v1/nav/prefs");
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { navReset: true };
+  },
+
   updateProfile: async (event) => {
     const form = await event.request.formData();
     const full_name = String(form.get("full_name") ?? "").trim();

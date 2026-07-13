@@ -137,6 +137,11 @@
       t("settings.dashboard.subtitle"),
     )}
     {@render card(
+      "/settings/navigation",
+      t("settings.navigation.title"),
+      t("settings.navigation.subtitle"),
+    )}
+    {@render card(
       "/settings/notification-defaults",
       t("settings.notification_defaults.title"),
       t("settings.notification_defaults.subtitle"),

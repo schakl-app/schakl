@@ -23,6 +23,7 @@ from app.core.auth.router import build_auth_router
 from app.core.auth.sso_router import router as sso_settings_router
 from app.core.customfields.router import router as customfields_router
 from app.core.dashboard import router as dashboard_router
+from app.core.nav import router as nav_router
 from app.core.domains import router as domains_router
 from app.core.email.router import router as email_settings_router
 from app.core.entitlements.router import router as license_router
@@ -98,6 +99,7 @@ def create_app() -> FastAPI:
     api.include_router(email_settings_router)
     api.include_router(sso_settings_router)
     api.include_router(dashboard_router)
+    api.include_router(nav_router)
     api.include_router(userprefs_router)
     api.include_router(system_router)
     api.include_router(instance_router)

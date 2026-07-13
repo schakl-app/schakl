@@ -293,10 +293,17 @@
 
 ## Navigation
 
-- Sidebar: Dashboard → Agenda → **Relaties** (Klanten / Projecten / Contactpersonen as a
-  collapsible group) → Taken → Uren → Verlof → Overzicht (managers) → Instellingen
-  (managers). Icons from lucide; collapsible to an icon rail; on mobile it is a drawer
-  behind the hamburger.
+- Sidebar: Dashboard and Agenda open it, Overzicht (managers) and Instellingen (managers)
+  close it — those four are fixed core items. Everything between is **module-contributed**
+  (Klanten, Contactpersonen, Interacties, Projecten, Taken, Uren, Verlof, …), ordered by each
+  module's declared `position` **as the default only** (#169): an org admin sets a team-wide
+  order/visibility under Instellingen → Navigatie, and each person can override it for
+  themselves (Account → Mijn zijbalk) — resolution is own row → org default → declared
+  positions, `DashboardPref`'s model exactly (`NavPref`). Hiding applies to module items
+  only; the fixed core items are not anyone's to hide. A module enabled after a layout was
+  saved still appears (fallback to its declared position), so a pref can never make new
+  functionality invisible. Icons from lucide; collapsible to an icon rail; on mobile it is a
+  drawer behind the hamburger — the saved order carries over unchanged.
 - **Agenda is a core surface like the dashboard**: the month view composes event feeds that
   modules contribute via the registry (`calendarSources`) — today the team's approved/pending
   leave; Google Calendar plugs into the same seam in P3. Pending items render muted with a

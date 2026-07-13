@@ -2555,6 +2555,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/nav/prefs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Prefs
+         * @description The effective layout for the current user: own row → org default → none.
+         */
+        get: operations["get_prefs_api_v1_nav_prefs_get"];
+        /** Set Prefs */
+        put: operations["set_prefs_api_v1_nav_prefs_put"];
+        post?: never;
+        /**
+         * Reset Prefs
+         * @description Drop the personal layout; the user falls back to the org default.
+         */
+        delete: operations["reset_prefs_api_v1_nav_prefs_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nav/prefs/default": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Default Prefs
+         * @description The org-wide default that members inherit (``settings.nav.manage``).
+         */
+        put: operations["set_default_prefs_api_v1_nav_prefs_default_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/notifications": {
         parameters: {
             query?: never;
@@ -7512,6 +7557,28 @@ export interface components {
             gmail_excluded_label?: string | null;
             /** Gmail Sync Enabled */
             gmail_sync_enabled?: boolean | null;
+        };
+        /** NavPrefItem */
+        NavPrefItem: {
+            /**
+             * Hidden
+             * @default false
+             */
+            hidden: boolean;
+            /** Key */
+            key: string;
+        };
+        /** NavPrefs */
+        NavPrefs: {
+            /** Items */
+            items: components["schemas"]["NavPrefItem"][] | null;
+            /** Source */
+            source: string;
+        };
+        /** NavPrefsUpdate */
+        NavPrefsUpdate: {
+            /** Items */
+            items: components["schemas"]["NavPrefItem"][];
         };
         /** NotificationRead */
         NotificationRead: {
@@ -16680,6 +16747,110 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["app__core__domains__DomainStatus"];
+                };
+            };
+        };
+    };
+    get_prefs_api_v1_nav_prefs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NavPrefs"];
+                };
+            };
+        };
+    };
+    set_prefs_api_v1_nav_prefs_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NavPrefsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NavPrefs"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_prefs_api_v1_nav_prefs_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    set_default_prefs_api_v1_nav_prefs_default_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NavPrefsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NavPrefs"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
