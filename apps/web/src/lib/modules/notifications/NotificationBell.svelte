@@ -14,7 +14,7 @@
   import { untrack } from "svelte";
 
   import { invalidateAll } from "$app/navigation";
-  import { Bell, CheckCheck } from "@lucide/svelte";
+  import { Bell, CheckCheck, Settings } from "@lucide/svelte";
 
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
@@ -58,6 +58,29 @@
     // The /notifications page, if that is where we are, must not keep showing them unread.
     // The reload also hands the bell a fresh `count`, which retires the cache above.
     await invalidateAll();
+  }
+
+  /**
+   * Clicking a popover row marks *that* one read (issue #164) — the bell only ever lists unread
+   * items, so a click always decrements. Optimistic first so the badge and list update now, not
+   * on the next 60s poll: reassign a new `polled` (Svelte 5 reactivity) with the same `basedOn`
+   * stamp so `fresh` still derives from the decremented cache. The PATCH is fire-and-forget so a
+   * linked row's navigation is never blocked; the next refresh() reconciles against the server.
+   * Runs for both branches — a linkless system item now dismisses+marks read instead of no-op.
+   */
+  function markRead(item: BellItem): void {
+    if (polled) {
+      polled = {
+        basedOn: polled.basedOn,
+        count: Math.max(0, polled.count - 1),
+        items: polled.items.filter((i) => i.id !== item.id),
+      };
+    }
+    void fetch("/notifications/bell", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: item.id }),
+    });
   }
 
   $effect(() => {
@@ -113,16 +136,30 @@
     >
       <div class="flex items-center justify-between gap-2 border-b border-border px-4 py-2.5">
         <p class="text-sm font-semibold text-text">{t("notifications.bell.title")}</p>
-        {#if unread > 0}
-          <button
-            type="button"
-            class="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-xs text-text-muted hover:text-brand"
-            onclick={markAllRead}
+        <div class="flex items-center gap-1">
+          {#if unread > 0}
+            <button
+              type="button"
+              class="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-xs text-text-muted hover:text-brand"
+              onclick={markAllRead}
+            >
+              <CheckCheck size={14} />
+              {t("notifications.bell.mark_all_read")}
+            </button>
+          {/if}
+          <!-- Personal notification preferences (issue #163). Ungated by settings permissions,
+               same visibility as the bell itself — the only nav route to /settings/notifications
+               a member without settings.* has, now the profile-menu entry is gone. -->
+          <a
+            href="/settings/notifications"
+            class="rounded p-1 text-text-muted hover:text-brand"
+            title={t("notifications.bell.settings")}
+            aria-label={t("notifications.bell.settings")}
+            onclick={() => (open = false)}
           >
-            <CheckCheck size={14} />
-            {t("notifications.bell.mark_all_read")}
-          </button>
-        {/if}
+            <Settings size={16} />
+          </a>
+        </div>
       </div>
 
       {#if loading}
@@ -139,8 +176,11 @@
               <svelte:element
                 this={href ? "a" : "div"}
                 {href}
-                class="block px-4 py-2.5 hover:bg-surface"
-                onclick={() => (open = false)}
+                class="block cursor-pointer px-4 py-2.5 hover:bg-surface"
+                onclick={() => {
+                  markRead(item);
+                  open = false;
+                }}
                 role={href ? undefined : "presentation"}
               >
                 <p class="break-words text-sm text-text">

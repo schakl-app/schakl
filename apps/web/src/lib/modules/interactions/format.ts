@@ -72,6 +72,8 @@ export interface InteractionItem {
   contact_name?: string | null;
   owner_user_id: string | null;
   owner_name: string | null;
+  /** This moment is a task's designated closing contact moment (#157) — the API resolves it. */
+  closes_task?: boolean;
   participants?: {
     email: string;
     name?: string | null;

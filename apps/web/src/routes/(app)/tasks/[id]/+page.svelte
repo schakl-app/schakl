@@ -188,17 +188,30 @@
     return c.author_deleted ? t("common.deleted_user", { name: c.author_name }) : c.author_name;
   }
 
-  /** Comments the feed can still link to; a deleted one keeps its excerpt but has nowhere to go. */
+  /** Where an activity entry deep-links: a comment (`#comment-…`), or the contact moment a close
+   *  was justified with (#157) — the interactions panel row carries `#interaction-…`. */
   function activityHref(a: { payload: Record<string, unknown> }): string | null {
-    const id = a.payload.comment_id ? String(a.payload.comment_id) : null;
-    if (!id) return null;
-    return (task.comments ?? []).some((c) => c.id === id) ? `#comment-${id}` : null;
+    const commentId = a.payload.comment_id ? String(a.payload.comment_id) : null;
+    if (commentId) {
+      return (task.comments ?? []).some((c) => c.id === commentId) ? `#comment-${commentId}` : null;
+    }
+    if (a.payload.closing_interaction_id) return `#interaction-${a.payload.closing_interaction_id}`;
+    return null;
   }
 
   function activityText(a: { action: string; payload: Record<string, unknown> }): string {
     if (a.action === "status_changed") {
       // Statuses are tenant data now (issue #62): name them from the configured list, not an i18n
       // key. A status deleted since the change falls back to the stored key.
+      // A close designated a contact moment (#157): say it was *afgerond met* that moment, not
+      // only that the status moved — the trail must record what justified the close.
+      if (a.payload.closing_subject) {
+        return t("tasks.activity.status_closed_with_interaction", {
+          from: statusName(String(a.payload.from)),
+          to: statusName(String(a.payload.to)),
+          subject: String(a.payload.closing_subject),
+        });
+      }
       return t("tasks.activity.status_changed", {
         from: statusName(String(a.payload.from)),
         to: statusName(String(a.payload.to)),

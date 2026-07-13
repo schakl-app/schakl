@@ -11,6 +11,7 @@ from the hostname alone — and reaches *only* rows tagged with a public entity 
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, Request, UploadFile
@@ -26,13 +27,13 @@ from app.core.tenancy import RequestContext, request_hostname, require_context, 
 from app.db import async_session_maker, set_current_org
 from app.errors import AppError
 
+logger = logging.getLogger("schakl.storage")
+
 router = APIRouter(prefix="/files", tags=["files"])
 
 #: Types a browser may render inline; anything else downloads. SVG is deliberately NOT inline —
 #: an inline SVG executes script in the serving origin, which would be a stored-XSS hole.
-_INLINE_TYPES = frozenset(
-    {"image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf"}
-)
+_INLINE_TYPES = frozenset({"image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf"})
 
 
 def _file_response(stored: StoredFile, request: Request, *, public: bool = False) -> Response:
@@ -44,8 +45,22 @@ def _file_response(stored: StoredFile, request: Request, *, public: bool = False
     try:
         stream = get_storage().open(stored.storage_key)
     except FileNotFoundError:
-        # A row without bytes: the backend lost them (restored DB without the volume).
-        raise AppError("not_found", "errors.not_found", status_code=404) from None
+        # The row exists but its bytes are gone — the DB and the file store have drifted apart.
+        # On a standard single-host deploy api + worker share the storage volume, so this is a
+        # misconfiguration, not a bad link (#180): the worker that saved the attachment wrote to a
+        # different filesystem than the API is serving from (e.g. api run outside Docker while the
+        # worker ran in it), or the storage volume was recreated while the DB persisted. Log it
+        # loudly and distinctly — a generic 404 read as "bad id" and hid a fixable ops problem.
+        logger.warning(
+            "stored file %s has no bytes at backend=%s key=%s (entity=%s/%s) — storage volume "
+            "not co-located with the writer, or lost; the DB row is intact",
+            stored.id,
+            stored.backend,
+            stored.storage_key,
+            stored.entity_type,
+            stored.entity_id,
+        )
+        raise AppError("not_found", "errors.file_bytes_missing", status_code=404) from None
     filename = stored.filename.replace('"', "")
     cache = "public, max-age=3600" if public else "private, max-age=3600"
     return StreamingResponse(

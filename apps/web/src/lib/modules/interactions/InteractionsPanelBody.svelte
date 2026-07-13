@@ -20,8 +20,6 @@
     ArrowRightLeft,
     ArrowUpRight,
     CheckCircle2,
-    ExternalLink,
-    Paperclip,
     Pencil,
     Plus,
     Trash2,
@@ -30,20 +28,16 @@
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
-  import ActivityFeed from "$lib/core/activity/ActivityFeed.svelte";
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
-  import Markdown from "$lib/core/ui/Markdown.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
-
-  import type { CustomFieldDefinition } from "$lib/core/customfields/types";
-  import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
 
   import CloseTaskDialog from "./CloseTaskDialog.svelte";
   import { type InteractionItem, kindIcon } from "./format";
+  import InteractionDetailModal from "./InteractionDetailModal.svelte";
   import InteractionForm from "./InteractionForm.svelte";
   import InteractionMoveDialog from "./InteractionMoveDialog.svelte";
 
@@ -67,28 +61,6 @@
 
   const me = $derived(page.data.user?.id ?? null);
   const canWrite = $derived(can(page.data.user, "interactions.interaction.write"));
-  const canReadActivity = $derived(can(page.data.user, "activity.read"));
-
-  // The interaction's own recorded trail (#152): written since #22, rendered nowhere until
-  // now — an entity without a detail page shows its history inside the detail modal (#184).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let trail = $state<any[] | null>(null);
-  let trailFor = $state<string | null>(null);
-
-  async function toggleTrail(id: string) {
-    if (trailFor === id) {
-      trailFor = null;
-      return;
-    }
-    trailFor = id;
-    trail = null;
-    const response = await fetch(
-      `/api/v1/activity?entity_type=interaction&entity_id=${id}&limit=50`,
-      { headers: { accept: "application/json" } },
-    );
-    if (trailFor !== id) return; // the user toggled away while we were fetching
-    trail = response.ok ? await response.json() : [];
-  }
 
   let showCreate = $state(false);
   let showEdit = $state(false);
@@ -98,66 +70,18 @@
   let showCloseTask = $state(false);
   let closingWith = $state<InteractionItem | null>(null);
 
-  // Creating a contact from an unknown email participant (#160). Contact custom-field
-  // definitions load once, on first use — not every host page holds them.
-  let showParticipantCreate = $state(false);
-  let participantDraft = $state<{
-    name: string;
-    email: string;
-    company: { id: string; name: string } | null;
-  } | null>(null);
-  let contactDefinitions = $state<CustomFieldDefinition[] | null>(null);
-
-  async function createFromParticipant(
-    item: InteractionItem,
-    participant: { email: string; name?: string | null },
-  ) {
-    participantDraft = {
-      name: participant.name ?? "",
-      email: participant.email,
-      company:
-        item.company_id && item.company_name
-          ? { id: item.company_id, name: item.company_name }
-          : null,
-    };
-    if (contactDefinitions === null) {
-      const response = await fetch("/api/v1/custom-fields/definitions?entity_type=contact", {
-        headers: { accept: "application/json" },
-      });
-      contactDefinitions = response.ok ? await response.json() : [];
-    }
-    showParticipantCreate = true;
-  }
-  // An approved email's stored attachments (#180), fetched lazily when a row expands —
-  // the list render must not cost a files call per row.
-  interface AttachmentFile {
-    id: string;
-    filename: string;
-    size_bytes: number;
-  }
-  let attachmentsFor = $state<Record<string, AttachmentFile[]>>({});
-  async function loadAttachments(id: string) {
-    if (attachmentsFor[id]) return;
-    const response = await fetch(`/api/v1/files?entity_type=interaction&entity_id=${id}`, {
-      headers: { accept: "application/json" },
-    });
-    attachmentsFor = { ...attachmentsFor, [id]: response.ok ? await response.json() : [] };
-  }
-
   let deleteId = $state("");
   let confirmDelete = $state(false);
   let showReject = $state(false);
   let rejecting = $state<InteractionItem | null>(null);
 
-  // Clicking a row opens a detail modal (#184) rather than expanding inline — a long email
-  // no longer stretches the panel or scrolls it sideways, and its line breaks survive.
+  // Clicking a row opens the shared detail modal (#184) rather than expanding inline — a long
+  // email no longer stretches the panel or scrolls it sideways, and its line breaks survive.
   let showDetail = $state(false);
   let detailItem = $state<InteractionItem | null>(null);
   function openDetail(item: InteractionItem) {
     detailItem = item;
     showDetail = true;
-    trailFor = null;
-    if (item.source === "gmail" && item.status === "logged") void loadAttachments(item.id);
   }
 
   // A busy record's timeline grows without bound: show the newest few, reveal the rest in
@@ -170,13 +94,6 @@
 
   const isOwner = (item: InteractionItem) =>
     item.owner_user_id !== null && item.owner_user_id === me;
-  // A pending gmail row I own is reviewed (assign + approve/reject) inside the detail modal.
-  const detailPending = $derived(
-    detailItem != null &&
-      detailItem.source === "gmail" &&
-      detailItem.status === "pending" &&
-      isOwner(detailItem),
-  );
   const mayEdit = (item: InteractionItem) =>
     item.source === "manual" &&
     (isOwner(item)
@@ -284,7 +201,8 @@
     {#each shown as item (item.id)}
       {@const Icon = kindIcon(item.kind)}
       {@const chips = linkChips(item)}
-      <li class="py-2.5">
+      <!-- id anchor: a task's "afgerond met contactmoment" trail entry deep-links here (#157). -->
+      <li id="interaction-{item.id}" class="scroll-mt-20 py-2.5">
         <div class="flex items-start gap-3">
           <Icon size={16} class="mt-0.5 shrink-0 text-text-muted" aria-hidden="true" />
           <!-- The row opens a detail modal (#184); the preview is a short, wrapped teaser. -->
@@ -311,6 +229,14 @@
                   class="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-400"
                 >
                   {t("interactions.pending")}
+                </span>
+              {/if}
+              {#if item.closes_task}
+                <!-- This moment closed its linked task (#157). -->
+                <span
+                  class="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-800 dark:bg-green-500/15 dark:text-green-400"
+                >
+                  {t("interactions.closed_task")}
                 </span>
               {/if}
             </span>
@@ -391,19 +317,6 @@
   {/if}
 </Modal>
 
-{#if participantDraft}
-  <ContactQuickCreate
-    bind:open={showParticipantCreate}
-    name={participantDraft.name}
-    email={participantDraft.email}
-    linkCompany={participantDraft.company}
-    definitions={contactDefinitions ?? []}
-    locale={(page.data.locale as string | undefined) ?? "nl"}
-    action="?/createParticipantContact"
-    error={(page.form?.qcError as string | undefined) ?? null}
-  />
-{/if}
-
 <Modal bind:open={showCloseTask} title={t("interactions.close_task_title")}>
   {#if closingWith}
     {#key closingWith.id}
@@ -429,155 +342,10 @@
   {/if}
 </Modal>
 
-<!-- The full contact moment (#184): the email reads properly here — line breaks kept, long
-     tokens wrapped, no sideways scroll — and a pending email is reviewed (assign + approve /
-     reject) in the same place. -->
-<Modal bind:open={showDetail} title={detailItem?.subject || t("interactions.detail_title")}>
-  {#if detailItem}
-    {#key detailItem.id}
-      {@const di = detailItem}
-      <div class="space-y-3 text-sm">
-        <p class="text-xs text-text-muted">
-          {fmtDateTime(di.occurred_at)}{#if di.owner_name}&nbsp;· {di.owner_name}{/if}
-        </p>
-
-        {#if di.participants?.length}
-          <div class="flex flex-wrap gap-1">
-            {#each di.participants as p ((p.role ?? "to") + p.email)}
-              {@const cc = p.role === "cc"}
-              {#if p.contact_id}
-                <a
-                  href="/contacts/{p.contact_id}"
-                  title={p.email}
-                  class="rounded-full px-2 py-0.5 text-[11px] ring-1 ring-inset {cc
-                    ? 'bg-surface text-text-muted ring-border'
-                    : 'bg-brand/10 text-brand ring-brand/30'} hover:underline"
-                >
-                  {p.name || p.email}<span class="sr-only">
-                    ({t(`interactions.role.${p.role ?? "to"}`)})</span
-                  >
-                </a>
-              {:else if p.user_id}
-                <span
-                  title={p.email}
-                  class="rounded-full px-2 py-0.5 text-[11px] ring-1 ring-inset ring-border {cc
-                    ? 'bg-surface text-text-muted'
-                    : 'bg-surface text-text'}"
-                >
-                  {p.name || p.email}<span class="sr-only">
-                    ({t("interactions.participant_colleague")},
-                    {t(`interactions.role.${p.role ?? "to"}`)})</span
-                  >
-                </span>
-              {:else}
-                <button
-                  type="button"
-                  title={p.email}
-                  onclick={() => createFromParticipant(di, p)}
-                  class="inline-flex items-center gap-0.5 rounded-full border border-dashed border-border px-2 py-0.5 text-[11px] {cc
-                    ? 'text-text-muted'
-                    : 'text-text'} hover:border-brand hover:text-brand"
-                >
-                  {p.name || p.email}
-                  <Plus size={10} aria-hidden="true" />
-                  <span class="sr-only">
-                    {t("interactions.create_contact")}
-                    ({t(`interactions.role.${p.role ?? "to"}`)})</span
-                  >
-                </button>
-              {/if}
-            {/each}
-          </div>
-        {/if}
-
-        {#if di.body_text}
-          {#if di.source === "gmail"}
-            <!-- break-words so a lone long URL can't scroll the modal sideways (#184). -->
-            <p class="whitespace-pre-wrap break-words text-sm text-text">{di.body_text}</p>
-          {:else}
-            <Markdown value={di.body_text} />
-          {/if}
-        {:else if di.snippet}
-          <p class="text-sm text-text-muted">{di.snippet}</p>
-          {#if di.source === "gmail" && di.status === "logged"}
-            <p class="text-xs text-text-muted">{t("interactions.body_loading")}</p>
-          {/if}
-        {/if}
-
-        {#if attachmentsFor[di.id]?.length}
-          <div class="flex flex-wrap gap-1">
-            {#each attachmentsFor[di.id] as file (file.id)}
-              <a
-                href={`/api/v1/files/${file.id}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                class="inline-flex items-center gap-1 rounded-full bg-surface px-2 py-0.5 text-[11px] text-text ring-1 ring-inset ring-border hover:text-brand"
-              >
-                <Paperclip size={11} aria-hidden="true" />
-                {file.filename}
-              </a>
-            {/each}
-          </div>
-        {/if}
-
-        {#if di.deep_link}
-          <a
-            href={di.deep_link}
-            target="_blank"
-            rel="noopener noreferrer"
-            class="inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline"
-          >
-            <ExternalLink size={12} aria-hidden="true" />
-            {t("interactions.open_in_gmail")}
-          </a>
-        {/if}
-
-        {#if detailPending}
-          <!-- Review in place (#184): assign a client/project/task and approve, or reject. -->
-          <div class="border-t border-border pt-3">
-            <InteractionMoveDialog
-              interaction={di}
-              approveAction="?/approveInteraction"
-              onsaved={() => (showDetail = false)}
-            />
-            <button
-              type="button"
-              class="mt-2 text-xs font-medium text-red-600 hover:underline dark:text-red-400"
-              onclick={() => {
-                rejecting = di;
-                showDetail = false;
-                showReject = true;
-              }}
-            >
-              {t("interactions.reject")}
-            </button>
-          </div>
-        {/if}
-
-        {#if canReadActivity}
-          <div class="border-t border-border pt-3">
-            <button
-              type="button"
-              class="text-xs font-medium text-text-muted hover:text-brand"
-              onclick={() => toggleTrail(di.id)}
-            >
-              {trailFor === di.id ? t("interactions.history_hide") : t("interactions.history")}
-            </button>
-            {#if trailFor === di.id}
-              <div class="mt-2 border-l-2 border-border pl-3">
-                {#if trail === null}
-                  <p class="text-xs text-text-muted">{t("common.loading")}</p>
-                {:else}
-                  <ActivityFeed items={trail} limit={50} />
-                {/if}
-              </div>
-            {/if}
-          </div>
-        {/if}
-      </div>
-    {/key}
-  {/if}
-</Modal>
+<!-- The full contact moment (#184): shared with the Interacties list page — the email reads
+     properly (line breaks kept, long tokens wrapped, no sideways scroll) and a pending gmail
+     row the viewer owns is reviewed (assign + approve / reject) in the same place. -->
+<InteractionDetailModal bind:open={showDetail} item={detailItem} />
 
 <ConfirmDialog
   bind:open={confirmDelete}

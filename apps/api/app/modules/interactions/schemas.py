@@ -81,6 +81,9 @@ class InteractionRead(BaseModel):
     project_name: str | None = None
     task_title: str | None = None
     contact_name: str | None = None
+    #: This moment is a task's designated closing contact moment (#157) — resolved in one
+    #: batched query over the page, so the web can mark it as the one that closed the task.
+    closes_task: bool = False
     owner_user_id: uuid.UUID | None = None
     #: Resolved at read time: the live account wins, a departed one keeps its snapshot.
     owner_name: str | None = None

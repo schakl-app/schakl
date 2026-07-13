@@ -31,6 +31,7 @@
     kindLabel,
     localDay,
   } from "$lib/modules/interactions/format";
+  import InteractionDetailModal from "$lib/modules/interactions/InteractionDetailModal.svelte";
   import InteractionForm from "$lib/modules/interactions/InteractionForm.svelte";
   import InteractionMoveDialog from "$lib/modules/interactions/InteractionMoveDialog.svelte";
 
@@ -117,6 +118,16 @@
   let showReject = $state(false);
   let rejecting = $state<InteractionItem | null>(null);
 
+  // Clicking a row opens the shared detail modal (#184): the email reads with its line breaks,
+  // no sideways scroll, and a pending gmail row is assigned + approved (or rejected) in place —
+  // the exact review flow the per-record panels use, now on the standalone list too.
+  let showDetail = $state(false);
+  let detailItem = $state<InteractionItem | null>(null);
+  function openDetail(item: InteractionItem) {
+    detailItem = item;
+    showDetail = true;
+  }
+
   function menuItems(item: InteractionItem) {
     const entries = [];
     if (mayEdit(item)) {
@@ -163,15 +174,6 @@
       });
     }
     return entries;
-  }
-
-  /** The record this row lives on — where clicking it takes you. */
-  function rowHref(item: InteractionItem): string {
-    if (item.company_id) return `/companies/${item.company_id}`;
-    if (item.project_id) return `/projects/${item.project_id}`;
-    if (item.task_id) return `/tasks/${item.task_id}`;
-    if (item.contact_id) return `/contacts/${item.contact_id}`;
-    return "";
   }
 
   function linkChips(item: InteractionItem): { href: string; label: string }[] {
@@ -314,15 +316,15 @@
 {#snippet rowActions(item: InteractionItem)}
   <span class="relative z-10 flex items-center justify-end gap-1.5">
     {#if item.status === "pending" && isOwner(item)}
-      <form method="POST" action="?/approveInteraction" use:enhance>
-        <input type="hidden" name="id" value={item.id} />
-        <button
-          type="submit"
-          class="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-text hover:bg-surface"
-        >
-          {t("interactions.approve")}
-        </button>
-      </form>
+      <!-- Review-and-approve, not a bare approve: open the detail modal so the email can be read
+           and a client/project/task assigned before it is shared with the team (#184). -->
+      <button
+        type="button"
+        onclick={() => openDetail(item)}
+        class="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-text hover:bg-surface"
+      >
+        {t("interactions.review")}
+      </button>
     {/if}
     {#if menuItems(item).length > 0}
       <ActionsMenu compact items={menuItems(item)} />
@@ -365,7 +367,7 @@
   sort={table.sort}
   widths={table.widths}
   locale={data.locale}
-  rowHref={(item) => rowHref(item)}
+  onRowClick={(item) => openDetail(item)}
   actions={rowActions}
   {mobileRow}
   {empty}
@@ -482,3 +484,8 @@
     </form>
   {/if}
 </Modal>
+
+<!-- The full contact moment (#184): the same detail modal the per-record panels use — the email
+     reads with its line breaks and no sideways scroll, and a pending gmail row is assigned +
+     approved (or rejected) here instead of a bare one-click approve. -->
+<InteractionDetailModal bind:open={showDetail} item={detailItem} />

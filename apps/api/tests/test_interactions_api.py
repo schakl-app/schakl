@@ -129,7 +129,11 @@ async def test_interaction_kinds_tenant_configurable(client_for) -> None:
     async with client_for(t.host) as c:
         kinds = (await c.get("/api/v1/interactions/kinds", headers=headers)).json()
         assert {k["key"] for k in kinds} == {
-            "email", "online_meeting", "physical_meeting", "call", "note",
+            "email",
+            "online_meeting",
+            "physical_meeting",
+            "call",
+            "note",
         }
 
         # The retired hardcoded kind is gone; the split halves and custom kinds work.
@@ -142,15 +146,13 @@ async def test_interaction_kinds_tenant_configurable(client_for) -> None:
                 "/api/v1/interactions", json={"kind": "online_meeting", **base}, headers=headers
             )
         ).status_code == 201
-        created_kind = (
-            await c.post(
-                "/api/v1/interactions/kinds",
-                json={
-                    "key": "site_visit",
-                    "label_i18n": {"nl": "Locatiebezoek", "en": "Site visit"},
-                },
-                headers=headers,
-            )
+        created_kind = await c.post(
+            "/api/v1/interactions/kinds",
+            json={
+                "key": "site_visit",
+                "label_i18n": {"nl": "Locatiebezoek", "en": "Site visit"},
+            },
+            headers=headers,
         )
         assert created_kind.status_code == 201, created_kind.text
         row = await c.post(
@@ -208,7 +210,8 @@ async def test_interaction_kinds_tenant_configurable(client_for) -> None:
         assert "site_visit" not in {k["key"] for k in other_kinds}
         assert (
             await cb.patch(
-                f"/api/v1/interactions/kinds/{kind_id}", json={"active": True},
+                f"/api/v1/interactions/kinds/{kind_id}",
+                json={"active": True},
                 headers=other_headers,
             )
         ).status_code == 404
@@ -379,16 +382,18 @@ async def test_pending_rows_private_to_owner_until_approved(client_for) -> None:
 
         # The owner of the mailbox sees their pending row; a plain colleague sees nothing.
         assert (
-            await c.get("/api/v1/interactions", params={"mine": True, "status": "pending"},
-                        headers=mailbox_headers)
+            await c.get(
+                "/api/v1/interactions",
+                params={"mine": True, "status": "pending"},
+                headers=mailbox_headers,
+            )
         ).json()["total"] == 1
         assert (
-            await c.get("/api/v1/interactions", params={"status": "pending"},
-                        headers=colleague_headers)
+            await c.get(
+                "/api/v1/interactions", params={"status": "pending"}, headers=colleague_headers
+            )
         ).json()["total"] == 0
-        assert (await c.get("/api/v1/interactions", headers=colleague_headers)).json()[
-            "total"
-        ] == 0
+        assert (await c.get("/api/v1/interactions", headers=colleague_headers)).json()["total"] == 0
         assert (
             await c.get(f"/api/v1/interactions/{row_id}", headers=colleague_headers)
         ).status_code == 404
@@ -414,9 +419,7 @@ async def test_pending_rows_private_to_owner_until_approved(client_for) -> None:
         assert (
             await c.post(f"/api/v1/interactions/{row_id}/approve", headers=mailbox_headers)
         ).status_code == 200
-        assert (await c.get("/api/v1/interactions", headers=colleague_headers)).json()[
-            "total"
-        ] == 1
+        assert (await c.get("/api/v1/interactions", headers=colleague_headers)).json()["total"] == 1
 
 
 async def test_list_free_text_search(client_for) -> None:
@@ -440,12 +443,12 @@ async def test_list_free_text_search(client_for) -> None:
         assert (
             await c.get("/api/v1/interactions", params={"q": "offerte"}, headers=headers)
         ).json()["total"] == 1
-        assert (
-            await c.get("/api/v1/interactions", params={"q": "dns"}, headers=headers)
-        ).json()["total"] == 1
-        assert (
-            await c.get("/api/v1/interactions", params={"q": "niets"}, headers=headers)
-        ).json()["total"] == 0
+        assert (await c.get("/api/v1/interactions", params={"q": "dns"}, headers=headers)).json()[
+            "total"
+        ] == 1
+        assert (await c.get("/api/v1/interactions", params={"q": "niets"}, headers=headers)).json()[
+            "total"
+        ] == 0
 
 
 async def test_gmail_review_is_strictly_owner_only(client_for) -> None:
@@ -479,15 +482,11 @@ async def test_gmail_review_is_strictly_owner_only(client_for) -> None:
             await c.post(f"/api/v1/interactions/{row_id}/approve", headers=owner_headers)
         ).status_code == 403
         assert (
-            await c.post(
-                f"/api/v1/interactions/{row_id}/remap", json={}, headers=owner_headers
-            )
+            await c.post(f"/api/v1/interactions/{row_id}/remap", json={}, headers=owner_headers)
         ).status_code == 403
 
         # The mailbox owner approves: status flips and the body-fetch event fires.
-        approved = await c.post(
-            f"/api/v1/interactions/{row_id}/approve", headers=member_headers
-        )
+        approved = await c.post(f"/api/v1/interactions/{row_id}/approve", headers=member_headers)
         assert approved.status_code == 200, approved.text
         assert approved.json()["status"] == "logged"
         assert len(approved_events) == 1
@@ -670,9 +669,7 @@ async def test_mentions_in_note_validate_store_and_notify(client_for) -> None:
         row = created.json()
 
         inbox = (await c.get("/api/v1/notifications", headers=colleague_headers)).json()
-        mention_rows = [
-            n for n in inbox["items"] if n["event_type"] == "interactions.mentioned"
-        ]
+        mention_rows = [n for n in inbox["items"] if n["event_type"] == "interactions.mentioned"]
         assert len(mention_rows) == 1
         assert mention_rows[0]["payload"]["subject"] == "Notitie"
 
@@ -684,10 +681,7 @@ async def test_mentions_in_note_validate_store_and_notify(client_for) -> None:
         )
         assert updated.status_code == 200, updated.text
         inbox = (await c.get("/api/v1/notifications", headers=colleague_headers)).json()
-        assert (
-            len([n for n in inbox["items"] if n["event_type"] == "interactions.mentioned"])
-            == 1
-        )
+        assert len([n for n in inbox["items"] if n["event_type"] == "interactions.mentioned"]) == 1
 
 
 async def test_logging_and_moving_mirror_onto_host_trails(client_for) -> None:
@@ -989,3 +983,83 @@ async def test_thread_followup_inherits_all_links_including_task(client_for) -> 
         assert inherited["task_id"] == uuid.UUID(task["id"])
         assert inherited["project_id"] == uuid.UUID(project["id"])
         assert inherited["company_id"] == uuid.UUID(company["id"])
+
+
+async def test_kind_defaults_reconciled_for_existing_org(client_for) -> None:
+    """#184: an org seeded before the online/physical meeting split (or otherwise missing a
+    default kind) gains it on the next kinds fetch — the reconciler inserts missing keys rather
+    than skipping the moment the org already holds *any* kinds. Previously such an org could never
+    offer *Online afspraak* / *Afspraak op locatie*."""
+    from sqlalchemy import delete as sql_delete
+
+    from app.modules.interactions.models import InteractionKindDef
+
+    t = await make_tenant("inter-kind-reconcile")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        # First fetch seeds all five system kinds.
+        assert (await c.get("/api/v1/interactions/kinds", headers=headers)).status_code == 200
+        # Simulate an org stuck without the meeting split.
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            await session.execute(
+                sql_delete(InteractionKindDef).where(
+                    InteractionKindDef.org_id == t.org.id,
+                    InteractionKindDef.key.in_(["online_meeting", "physical_meeting"]),
+                )
+            )
+            await session.commit()
+        # The next fetch reconciles the missing kinds back in — not a one-shot "seed when empty".
+        reconciled = (await c.get("/api/v1/interactions/kinds", headers=headers)).json()
+        keys = {k["key"] for k in reconciled}
+        assert "online_meeting" in keys and "physical_meeting" in keys
+
+
+async def test_interaction_reports_closes_task(client_for) -> None:
+    """#157: an interaction designated as a task's closing contact moment reports
+    ``closes_task=true``; a merely-linked one reports false. The lookup is org-scoped, so a task
+    in another org never flips the flag."""
+    from app.modules.tasks.models import Task
+
+    t = await make_tenant("inter-closes")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Klant BV"}, headers=headers)
+        ).json()
+        task = (
+            await c.post(
+                "/api/v1/tasks",
+                json={"title": "Review", "company_id": company["id"]},
+                headers=headers,
+            )
+        ).json()
+        base = {"occurred_at": _NOW.isoformat(), "task_id": task["id"]}
+        closing = (
+            await c.post(
+                "/api/v1/interactions",
+                json={"kind": "call", "subject": "Besproken", **base},
+                headers=headers,
+            )
+        ).json()
+        other = (
+            await c.post(
+                "/api/v1/interactions",
+                json={"kind": "note", "subject": "Los", **base},
+                headers=headers,
+            )
+        ).json()
+
+        # Designate the closing moment on the task (what CloseTaskDialog does).
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            row = await session.get(Task, uuid.UUID(task["id"]))
+            row.closing_interaction_id = uuid.UUID(closing["id"])
+            await session.commit()
+
+        assert (await c.get(f"/api/v1/interactions/{closing['id']}", headers=headers)).json()[
+            "closes_task"
+        ] is True
+        assert (await c.get(f"/api/v1/interactions/{other['id']}", headers=headers)).json()[
+            "closes_task"
+        ] is False

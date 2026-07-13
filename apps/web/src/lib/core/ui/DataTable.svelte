@@ -33,6 +33,7 @@
     definitions = [],
     locale = "nl",
     rowHref,
+    onRowClick,
     actions,
     mobileRow,
     empty,
@@ -54,6 +55,9 @@
     definitions?: CustomFieldDefinition[];
     locale?: string;
     rowHref?: (row: T) => string;
+    /** Open a row without navigating — e.g. a detail modal (#184). Takes precedence over
+     *  `rowHref` for the whole-row click; inner links/buttons keep their own action. */
+    onRowClick?: (row: T) => void;
     /** Trailing ⋯ cell (docs/UX.md: record actions live behind the overflow menu). */
     actions?: Snippet<[T]>;
     /** Rendered instead of the grid below `sm`. */
@@ -318,7 +322,19 @@
 {/if}
 
 {#snippet bodyRow(row: T)}
-  <tr class="hover:bg-surface {selectedSet.has(row.id) ? 'bg-brand/5' : ''}">
+  <!-- A whole-row click that opens a modal rather than navigating (#184). Ignore clicks that
+       land on an inner link/button/input so chips and the ⋯ menu keep their own action. -->
+  <tr
+    class="hover:bg-surface {onRowClick ? 'cursor-pointer' : ''} {selectedSet.has(row.id)
+      ? 'bg-brand/5'
+      : ''}"
+    onclick={onRowClick
+      ? (e) => {
+          if (!(e.target as HTMLElement).closest("a,button,input,label,select"))
+            onRowClick(row);
+        }
+      : undefined}
+  >
     {#if selectable}
       <td class="px-3 py-2.5">
         <input
@@ -358,7 +374,16 @@
     class="relative flex items-center gap-3 px-4 py-3 first:rounded-t-xl last:rounded-b-xl hover:bg-surface
       {selectedSet.has(row.id) ? 'bg-brand/5' : ''}"
   >
-    {#if href}
+    {#if onRowClick}
+      <!-- Same stretched-overlay trick as the link below, but it opens a modal instead of
+           navigating (#184). Inner controls lifted with `relative z-10` keep their own tap. -->
+      <button
+        type="button"
+        class="absolute inset-0"
+        aria-label={t("table.open_row")}
+        onclick={() => onRowClick(row)}
+      ></button>
+    {:else if href}
       <!-- A `<tr>` can't be wrapped in an `<a>`, but a `<li>` can: on the phone the whole row taps
            through to its record (#59). This is a stretched-link overlay, so plain content is
            covered and navigates, while positioned inline controls — the ⋯ menu (already
