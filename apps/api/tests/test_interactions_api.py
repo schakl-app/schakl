@@ -207,6 +207,52 @@ async def test_interaction_kinds_tenant_configurable(client_for) -> None:
         ).status_code == 404
 
 
+async def test_log_time_creates_linked_entry_that_survives_deletion(client_for) -> None:
+    """#175: `log_time` on a manual interaction creates a time entry in the same request,
+    carrying the interaction's links and subject; deleting the interaction later detaches
+    the link (SET NULL) and never deletes the logged hours."""
+    t = await make_tenant("inter-logtime")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Klant BV"}, headers=headers)
+        ).json()
+        created = await c.post(
+            "/api/v1/interactions",
+            json={
+                "kind": "call",
+                "occurred_at": _NOW.isoformat(),
+                "subject": "Belafspraak",
+                "company_id": company["id"],
+                "log_time": {
+                    "started_at": "2026-07-10T14:00:00Z",
+                    "ended_at": "2026-07-10T14:45:00Z",
+                },
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        row = created.json()
+
+        entries = (await c.get("/api/v1/time/entries", headers=headers)).json()
+        assert entries["total"] == 1
+        entry = entries["items"][0]
+        assert entry["interaction_id"] == row["id"]
+        assert entry["company_id"] == company["id"]
+        assert entry["description"] == "Belafspraak"
+        assert entry["minutes"] == 45
+        # No org entry type matches "call", so the entry stays untyped (#176 tie-in).
+        assert entry["entry_type_key"] is None
+
+        # Deleting the interaction detaches, never deletes, the logged hours.
+        assert (
+            await c.delete(f"/api/v1/interactions/{row['id']}", headers=headers)
+        ).status_code == 204
+        entries = (await c.get("/api/v1/time/entries", headers=headers)).json()
+        assert entries["total"] == 1
+        assert entries["items"][0]["interaction_id"] is None
+
+
 async def test_manual_email_kind_refused(client_for) -> None:
     t = await make_tenant("inter-email-kind")
     headers = await auth_cookie(t.user)

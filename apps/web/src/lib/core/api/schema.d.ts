@@ -6249,6 +6249,7 @@ export interface components {
             direction: components["schemas"]["InteractionDirection"];
             /** Kind */
             kind: string;
+            log_time?: components["schemas"]["InteractionLogTime"] | null;
             /**
              * Occurred At
              * Format: date-time
@@ -6336,6 +6337,24 @@ export interface components {
             } | null;
             /** Position */
             position?: number | null;
+        };
+        /**
+         * InteractionLogTime
+         * @description The "Voeg aan mijn uren toe" ride-along (#175): a linked time entry created in the
+         *     same transaction as the interaction. Times follow the *time* module's convention
+         *     (wall-clock-as-UTC), unlike ``occurred_at`` — the entry must round-trip the timesheet.
+         */
+        InteractionLogTime: {
+            /**
+             * Ended At
+             * Format: date-time
+             */
+            ended_at: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
         };
         /** InteractionRead */
         InteractionRead: {
@@ -9931,6 +9950,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Interaction Id */
+            interaction_id?: string | null;
             /** Invoiced At */
             invoiced_at: string | null;
             /** Is Running */

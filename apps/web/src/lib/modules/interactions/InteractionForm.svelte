@@ -17,6 +17,9 @@
   import TimeInput from "$lib/core/ui/TimeInput.svelte";
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
 
+  import { minutesBetween } from "$lib/modules/time/duration";
+  import { formatMinutes } from "$lib/modules/time/format";
+
   import {
     type InteractionItem,
     type InteractionKindDef,
@@ -111,6 +114,17 @@
       }
     })();
   });
+
+  // --- "Voeg aan mijn uren toe" (#175): a linked time entry, saved with the interaction.
+  // Create-only (an existing row's hours live on the timesheet) and not for notes, which
+  // have no time-spent concept. Times use the time page's own control and live readout.
+  const canLogTime = $derived(!interaction && kind !== "note");
+  let logTime = $state(false);
+  let logStart = $state("");
+  let logEnd = $state("");
+  const logMinutes = $derived(
+    logStart && logEnd ? minutesBetween(logStart, logEnd) : null,
+  );
 
   let qcOpen = $state(false);
   let qcName = $state("");
@@ -226,6 +240,39 @@
     <span class="mb-1 block font-medium text-text">{t("interactions.field.notes")}</span>
     <RichTextEditor name="body_text" value={interaction?.body_text ?? ""} rows={4} {mentions} />
   </div>
+
+  {#if canLogTime}
+    <div class="rounded-lg border border-border p-3">
+      <label class="flex items-center gap-2 text-sm text-text">
+        <input type="checkbox" name="log_time" value="1" bind:checked={logTime} />
+        {t("interactions.log_time")}
+      </label>
+      {#if logTime}
+        <div class="mt-3 flex items-end gap-3">
+          <label class="block text-sm">
+            <span class="mb-1 block text-xs font-medium text-text-muted"
+              >{t("time.field.start")}</span
+            >
+            <TimeInput name="log_start" bind:value={logStart} required />
+          </label>
+          <label class="block text-sm">
+            <span class="mb-1 block text-xs font-medium text-text-muted"
+              >{t("time.field.end")}</span
+            >
+            <TimeInput name="log_end" bind:value={logEnd} required />
+          </label>
+          <span
+            class="pb-2 text-sm font-semibold tabular-nums {logMinutes
+              ? 'text-brand'
+              : 'text-text-muted'}"
+          >
+            {logMinutes != null ? t("time.worked", { duration: formatMinutes(logMinutes) }) : "—"}
+          </span>
+        </div>
+        <p class="mt-2 text-xs text-text-muted">{t("interactions.log_time_hint")}</p>
+      {/if}
+    </div>
+  {/if}
 
   {#if error}
     <p class="text-sm text-red-600">{t(error)}</p>

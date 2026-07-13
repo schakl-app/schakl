@@ -1933,6 +1933,8 @@
   "interactions.field.kind": "Type",
   "interactions.field.contact": "Contactpersoon",
   "interactions.field.contact_placeholder": "Zoek of voeg een contactpersoon toe",
+  "interactions.log_time": "Voeg aan mijn uren toe",
+  "interactions.log_time_hint": "Slaat een urenregistratie op je timesheet op, gekoppeld aan dit contactmoment (met klant, project en onderwerp).",
   "interactions.field.date": "Datum",
   "interactions.field.time": "Tijd",
   "interactions.field.subject": "Onderwerp",

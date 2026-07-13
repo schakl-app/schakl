@@ -1933,6 +1933,8 @@
   "interactions.field.kind": "Type",
   "interactions.field.contact": "Contact person",
   "interactions.field.contact_placeholder": "Search or add a contact",
+  "interactions.log_time": "Add to my hours",
+  "interactions.log_time_hint": "Saves a time entry on your timesheet, linked to this interaction and carrying its client, project and subject.",
   "interactions.field.date": "Date",
   "interactions.field.time": "Time",
   "interactions.field.subject": "Subject",

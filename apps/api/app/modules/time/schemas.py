@@ -89,6 +89,8 @@ class TimeEntryRead(TimeEntryBase):
     approved_at: datetime | None
     approved_by_user_id: uuid.UUID | None
     invoiced_at: datetime | None
+    #: The interaction this entry was logged from (#175), when it still exists.
+    interaction_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
 

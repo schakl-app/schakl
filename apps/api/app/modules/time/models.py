@@ -104,6 +104,14 @@ class TimeEntry(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
         nullable=True,
     )
     invoiced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: The interaction this entry was logged from (#175). SET NULL: deleting/rejecting the
+    #: interaction later detaches the link — it never deletes a record of work performed.
+    interaction_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("interactions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     @property
     def is_running(self) -> bool:

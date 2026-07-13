@@ -40,6 +40,15 @@ export const interactionActions = {
     const form = await event.request.formData();
     const occurred = occurredAt(form);
     if (!occurred) return fail(400, { error: "errors.required" });
+    // "Voeg aan mijn uren toe" (#175): the linked entry rides the same request. Its times
+    // follow the time module's wall-clock-as-UTC convention, on the interaction's date.
+    const date = String(form.get("occurred_date") ?? "").trim();
+    const logStart = String(form.get("log_start") ?? "").trim();
+    const logEnd = String(form.get("log_end") ?? "").trim();
+    const logTime =
+      form.get("log_time") === "1" && date && logStart && logEnd
+        ? { started_at: `${date}T${logStart}:00Z`, ended_at: `${date}T${logEnd}:00Z` }
+        : undefined;
     const { error } = await apiFor(event).POST("/api/v1/interactions", {
       body: {
         kind: String(form.get("kind") ?? "note"),
@@ -47,6 +56,7 @@ export const interactionActions = {
         subject: String(form.get("subject") ?? "").trim(),
         body_text: String(form.get("body_text") ?? "").trim() || null,
         direction: String(form.get("direction") ?? "none") as "none",
+        ...(logTime ? { log_time: logTime } : {}),
         ...links(form),
       },
     });

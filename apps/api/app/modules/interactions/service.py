@@ -214,7 +214,31 @@ class InteractionService:
         await ActivityService(self.ctx).record_created(ENTITY_TYPE, row.id)
         await self._record_on_hosts(row, "interaction.logged")
         await self._notify_mentions(row, mentioned)
+        if data.log_time is not None:
+            await self._log_time(row, data.log_time)
         return await self._present_one(row)
+
+    async def _log_time(self, row: Interaction, log_time: Any) -> None:
+        """The "Voeg aan mijn uren toe" ride-along (#175): a linked time entry, in this same
+        transaction, through the time module's published surface (§6) — never its internals.
+        Carries the interaction's own links and subject; typed after the interaction's kind
+        when the org has an entry type of the same key (#176), untyped otherwise."""
+        self.ctx.require("time.entry.write")
+        from app.modules.time import system as time_system
+
+        entry_type_key = await time_system.active_type_key(self.ctx, row.kind)
+        await time_system.record_entry(
+            self.ctx,
+            user_id=self.ctx.user.id,
+            started_at=log_time.started_at,
+            ended_at=log_time.ended_at,
+            company_id=row.company_id,
+            project_id=row.project_id,
+            task_id=row.task_id,
+            description=row.subject,
+            entry_type_key=entry_type_key,
+            interaction_id=row.id,
+        )
 
     async def update(self, interaction_id: uuid.UUID, data: InteractionUpdate) -> dict[str, Any]:
         row = await self._writable_or_404(interaction_id, "interactions.interaction.write")

@@ -92,6 +92,15 @@ class InteractionRead(BaseModel):
     created_at: datetime
 
 
+class InteractionLogTime(BaseModel):
+    """The "Voeg aan mijn uren toe" ride-along (#175): a linked time entry created in the
+    same transaction as the interaction. Times follow the *time* module's convention
+    (wall-clock-as-UTC), unlike ``occurred_at`` — the entry must round-trip the timesheet."""
+
+    started_at: datetime
+    ended_at: datetime
+
+
 class InteractionCreate(BaseModel):
     """A manually logged touchpoint — meetings, calls, notes. Emails only arrive via gmail."""
 
@@ -106,6 +115,8 @@ class InteractionCreate(BaseModel):
     task_id: uuid.UUID | None = None
     contact_id: uuid.UUID | None = None
     participants: list[Participant] = Field(default_factory=list)
+    #: Optional: also log this touchpoint on my timesheet (#175).
+    log_time: InteractionLogTime | None = None
 
 
 class InteractionUpdate(BaseModel):
