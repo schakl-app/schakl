@@ -25,7 +25,12 @@ jobs:
       client: ${{ steps.filter.outputs.client }}
       run_all: ${{ steps.gate.outputs.run_all }}
     steps:
+      # Full history so the gate can diff this push against its own previous commit. With a
+      # shallow clone dorny/paths-filter can't see `github.event.before` and silently falls
+      # back to diffing dev against main's merge-base — the whole release, i.e. every filter.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - id: gate
         run: |
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
@@ -33,9 +38,21 @@ jobs:
           else
             echo "run_all=false" >> "$GITHUB_OUTPUT"
           fi
+          # Base for the diff: on a push, exactly the commit before it; empty otherwise (a new
+          # branch's all-zero SHA, or a pull_request) so dorny uses its own correct default.
+          before="${{ github.event.before }}"
+          if [ "${{ github.event_name }}" = "push" ] && [ -n "$before" ] \
+             && [ "$before" != "0000000000000000000000000000000000000000" ]; then
+            echo "base=$before" >> "$GITHUB_OUTPUT"
+          else
+            echo "base=" >> "$GITHUB_OUTPUT"
+          fi
       - uses: dorny/paths-filter@v3
         id: filter
         with:
+          # Diff only what this push changed (steps.gate.outputs.base); on pull_request this is
+          # empty and dorny compares against the PR base branch.
+          base: ${{ steps.gate.outputs.base }}
           # A change to the workflow itself, or to shared build/lint tooling, runs everything.
           filters: |
             api:
