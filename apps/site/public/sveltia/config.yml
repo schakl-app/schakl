@@ -59,6 +59,19 @@ collections:
             widget: object
             fields:
               - { name: github, label: GitHub-URL, widget: string }
+          - name: demo
+            label: Live demo (knoppen door de site)
+            widget: object
+            required: false
+            hint: 'Laat de URL leeg om alle "live demo"-knoppen te verbergen.'
+            fields:
+              - { name: url, label: Demo-URL, widget: string, required: false }
+              - name: label
+                label: Knoptekst
+                widget: object
+                fields:
+                  - { name: nl, label: NL, widget: string }
+                  - { name: en, label: EN, widget: string }
           - name: nav
             label: Hoofdnavigatie
             widget: list

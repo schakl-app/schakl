@@ -5,6 +5,7 @@
 // feature is never a dead link. Demos are the same pure-CSS recreations used on the landing.
 import SiteShell from './SiteShell.astro';
 import Icon from './showcase/Icon.astro';
+import DemoButton from './DemoButton.astro';
 import { localizeHref } from '../lib/links';
 import settings from '../data/settings/site.json';
 import './showcase/showcase.css';
@@ -20,6 +21,7 @@ import DemoInteractions from './showcase/DemoInteractions.astro';
 import DemoCustomFields from './showcase/DemoCustomFields.astro';
 import DemoRoles from './showcase/DemoRoles.astro';
 import DemoSubscriptions from './showcase/DemoSubscriptions.astro';
+import DemoAssets from './showcase/DemoAssets.astro';
 
 interface Props {
   locale: 'nl' | 'en';
@@ -40,6 +42,7 @@ const demos: Record<string, any> = {
   customfields: DemoCustomFields,
   roles: DemoRoles,
   subscriptions: DemoSubscriptions,
+  assets: DemoAssets,
 };
 const Demo = feature.demo ? demos[feature.demo] : null;
 
@@ -51,6 +54,7 @@ const lead = pick(page.lead) ?? feature.description[locale];
 const sections: any[] = page.sections ?? [];
 
 const href = (h: string) => localizeHref(locale, h);
+const hasDemo = Boolean((settings as any).demo?.url?.trim());
 const others = all.filter((f) => f.slug !== feature.slug);
 const t = {
   back: locale === 'nl' ? 'Alle functies' : 'All features',
@@ -108,7 +112,10 @@ const t = {
     <section class="feature__cta">
       <h2>{t.ctaTitle}</h2>
       <p class="section-intro">{t.ctaBody}</p>
-      <a class="button primary" href={href('/docs/')}>{t.ctaLabel}</a>
+      <div class="feature__cta-row">
+        <DemoButton locale={locale} variant="button" />
+        <a class={`button ${hasDemo ? '' : 'primary'}`} href={href('/docs/')}>{t.ctaLabel}</a>
+      </div>
     </section>
 
     <section class="feature__more">
@@ -197,7 +204,10 @@ const t = {
   .feature__cta h2 {
     font-size: 1.5rem;
   }
-  .feature__cta .button {
+  .feature__cta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
     margin-top: 1.25rem;
   }
   .feature__more {

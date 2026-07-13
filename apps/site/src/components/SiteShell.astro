@@ -5,6 +5,7 @@
 import settings from '../data/settings/site.json';
 import { localizeHref } from '../lib/links';
 import MegaMenu from './MegaMenu.astro';
+import DemoButton from './DemoButton.astro';
 import '../styles/landing.css';
 
 interface Props {
@@ -59,6 +60,7 @@ const themeCss = `:root{--brand-accent:${settings.colors.accent};--brand-accent-
           {settings.nav
             .filter((item) => item.href !== '/#features')
             .map((item) => <a href={href(item.href)}>{item[locale]}</a>)}
+          <DemoButton locale={locale} variant="header" />
           <a href={otherLocaleHref} class="locale-switch" lang={locale === 'nl' ? 'en' : 'nl'}>
             {locale === 'nl' ? 'EN' : 'NL'}
           </a>

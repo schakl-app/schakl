@@ -11,6 +11,13 @@
   "social": {
     "github": "https://github.com/schakl-app/schakl"
   },
+  "demo": {
+    "url": "https://demo.schakl.app",
+    "label": {
+      "nl": "Bekijk de live demo",
+      "en": "See the live demo"
+    }
+  },
   "nav": [
     { "href": "/#features", "nl": "Functies", "en": "Features" },
     { "href": "/#selfhost", "nl": "Hosting", "en": "Hosting" },
