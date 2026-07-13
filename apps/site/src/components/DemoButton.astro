@@ -1,0 +1,81 @@
+---
+// A "live demo" call-to-action linking to the full CRM demo instance. The URL and label come
+// from the CMS settings singleton (settings.demo); if no URL is set, nothing renders — so an
+// editor turns every demo button on or off from one place.
+import Icon from './showcase/Icon.astro';
+import settings from '../data/settings/site.json';
+
+interface Props {
+  locale: 'nl' | 'en';
+  /** button = filled primary · outline = bordered · header = compact pill */
+  variant?: 'button' | 'outline' | 'header';
+  class?: string;
+}
+const { locale, variant = 'button', class: cls = '' } = Astro.props;
+const demo = (settings as any).demo;
+const url: string = (demo?.url ?? '').trim();
+const label: string = demo?.label?.[locale] ?? (locale === 'nl' ? 'Live demo' : 'Live demo');
+---
+
+{
+  url && (
+    <a
+      class={`demo-cta demo-cta--${variant} ${cls}`}
+      href={url}
+      target="_blank"
+      rel="noopener"
+    >
+      <Icon name="play" size={variant === 'header' ? 0.8 : 0.9} class="demo-cta__play" />
+      {label}
+    </a>
+  )
+}
+
+<style>
+  .demo-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5em;
+    font-weight: 550;
+  }
+  .demo-cta__play {
+    fill: currentColor;
+    stroke: none;
+  }
+
+  /* filled primary — for hero / CTA bands */
+  .demo-cta--button {
+    border: 1px solid var(--accent);
+    border-radius: 0.55rem;
+    padding: 0.65rem 1.25rem;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 550;
+  }
+  .demo-cta--button:hover {
+    filter: brightness(1.08);
+  }
+
+  /* bordered secondary */
+  .demo-cta--outline {
+    border: 1px solid var(--border);
+    border-radius: 0.55rem;
+    padding: 0.65rem 1.25rem;
+    color: var(--text);
+  }
+  .demo-cta--outline:hover {
+    border-color: var(--accent);
+  }
+
+  /* compact pill — for the header */
+  .demo-cta--header {
+    padding: 0.35rem 0.85rem;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.9rem;
+  }
+  .demo-cta--header:hover {
+    filter: brightness(1.08);
+  }
+</style>

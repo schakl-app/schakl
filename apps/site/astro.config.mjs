@@ -21,7 +21,7 @@ export default defineConfig({
   // The docs moved from a root-locale layout to symmetric /nl/ + /en/ folders when the CMS
   // gained per-entry locale switching (translations pair by file path).
   redirects: {
-    '/docs': '/nl/docs',
+    '/docs': '/en/docs',
   },
   integrations: [
     starlight({
@@ -32,10 +32,10 @@ export default defineConfig({
         ? { light: logoSrc, dark: logoDarkSrc, alt: settings.brandName, replacesTitle: true }
         : undefined,
       favicon: settings.favicon || '/favicon.svg',
-      defaultLocale: 'nl',
+      defaultLocale: 'en',
       locales: {
-        nl: { label: 'Nederlands', lang: 'nl' },
         en: { label: 'English', lang: 'en' },
+        nl: { label: 'Nederlands', lang: 'nl' },
       },
       social: settings.social?.github
         ? [{ icon: 'github', label: 'GitHub', href: settings.social.github }]

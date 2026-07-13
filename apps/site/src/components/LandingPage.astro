@@ -4,6 +4,7 @@
 import SiteShell from './SiteShell.astro';
 import Showcase from './showcase/Showcase.astro';
 import Icon from './showcase/Icon.astro';
+import DemoButton from './DemoButton.astro';
 import settings from '../data/settings/site.json';
 import landing from '../data/landing.json';
 import { localizeHref } from '../lib/links';
@@ -22,12 +23,15 @@ const features = Object.values(featureModules)
   .sort((a: any, b: any) => a.order - b.order);
 
 const href = (h: string) => localizeHref(locale, h);
+// When a demo URL is configured, the live-demo button becomes the hero's primary CTA and the
+// CMS primary (usually the docs) steps down to a bordered button.
+const hasDemo = Boolean((settings as any).demo?.url?.trim());
 
 const hero: any = blocks.find((b: any) => b.type === 'hero');
 const title = hero ? `${settings.brandName} · ${hero.title}` : settings.brandName;
 ---
 
-<SiteShell locale={locale} title={title} description={hero?.subtitle} alternates>
+<SiteShell locale={locale} title={title} description={hero?.subtitle}>
   {
     blocks.map((v: any) => {
       const id = v.anchor || undefined;
@@ -39,7 +43,8 @@ const title = hero ? `${settings.brandName} · ${hero.title}` : settings.brandNa
               <h1>{v.title}</h1>
               <p class="subtitle">{v.subtitle}</p>
               <div class="cta-row">
-                <a class="button primary" href={href(v.ctaPrimary.href)}>{v.ctaPrimary.label}</a>
+                <DemoButton locale={locale} variant="button" />
+                <a class={`button ${hasDemo ? '' : 'primary'}`} href={href(v.ctaPrimary.href)}>{v.ctaPrimary.label}</a>
                 <a class="button" href={href(v.ctaSecondary.href)}>{v.ctaSecondary.label}</a>
               </div>
             </section>

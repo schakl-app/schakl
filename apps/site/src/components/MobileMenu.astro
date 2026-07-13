@@ -1,0 +1,335 @@
+---
+// The mobile navigation: a hamburger button (shown below the desktop nav breakpoint) that opens
+// a full-height drawer with every feature grouped by theme, the top-level links, the live-demo
+// CTA and the language switch. The desktop nav (.site-nav) and mega-menu are hidden at that
+// breakpoint, so this is the whole nav on phones/tablets.
+import Icon from './showcase/Icon.astro';
+import DemoButton from './DemoButton.astro';
+import { grouped, taglines, type Locale } from '../lib/features.ts';
+import { localizeHref, altHref } from '../lib/links';
+import settings from '../data/settings/site.json';
+
+interface Props {
+  locale: Locale;
+}
+const { locale } = Astro.props;
+const href = (h: string) => localizeHref(locale, h);
+const cols = grouped();
+const otherLocale: Locale = locale === 'nl' ? 'en' : 'nl';
+const otherLocaleHref = altHref(Astro.url.pathname, otherLocale);
+const links = settings.nav.filter((item: any) => item.href !== '/#features');
+const t = {
+  menu: 'Menu',
+  close: locale === 'nl' ? 'Sluiten' : 'Close',
+  features: locale === 'nl' ? 'Functies' : 'Features',
+  other: otherLocale === 'nl' ? 'Nederlands' : 'English',
+};
+---
+
+<div class="mm" data-mm>
+  <button class="mm__burger" aria-label={t.menu} aria-expanded="false" aria-controls="mm-panel" data-mm-btn>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+      <path d="M4 6h16" /><path d="M4 12h16" /><path d="M4 18h16" />
+    </svg>
+  </button>
+
+  <div class="mm__overlay" data-mm-overlay>
+    <button type="button" class="mm__backdrop" aria-label={t.close} data-mm-close></button>
+    <div class="mm__panel" id="mm-panel" role="dialog" aria-modal="true" aria-label={t.menu}>
+      <div class="mm__head">
+        <span class="mm__brand">{settings.brandName}</span>
+        <button type="button" class="mm__close" aria-label={t.close} data-mm-close>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+        </button>
+      </div>
+
+      <div class="mm__scroll">
+        <p class="mm__section">{t.features}</p>
+        {
+          cols.map((g) => (
+            <div class="mm__group">
+              <p class="mm__group-title">{locale === 'nl' ? g.nl : g.en}</p>
+              {g.items.map((f: any) => (
+                <a class="mm__feature" href={href(`/features/${f.slug}`)}>
+                  <span class="mm__icon"><Icon name={f.lucide} size={1.15} /></span>
+                  <span class="mm__ftext">
+                    <span class="mm__fname">{f.title[locale]}</span>
+                    <span class="mm__ftag">{taglines[f.slug]?.[locale]}</span>
+                  </span>
+                </a>
+              ))}
+            </div>
+          ))
+        }
+
+        <div class="mm__links">
+          <a href={href('/features/')}>{locale === 'nl' ? 'Alle functies' : 'All features'}</a>
+          {links.map((item: any) => <a href={href(item.href)}>{item[locale]}</a>)}
+        </div>
+      </div>
+
+      <div class="mm__foot">
+        <DemoButton locale={locale} variant="button" class="mm__demo" />
+        <a class="mm__locale" href={otherLocaleHref} lang={otherLocale} data-lang-choose={otherLocale}>
+          <span class="mm__flag">
+            {otherLocale === 'nl' ? (
+              <svg viewBox="0 0 20 15" aria-hidden="true"><rect width="20" height="5" fill="#AE1C28" /><rect y="5" width="20" height="5" fill="#fff" /><rect y="10" width="20" height="5" fill="#21468B" /></svg>
+            ) : (
+              <svg viewBox="0 0 20 15" aria-hidden="true"><rect width="20" height="15" fill="#012169" /><path d="M0 0l20 15M20 0L0 15" stroke="#fff" stroke-width="3" /><path d="M0 0l20 15M20 0L0 15" stroke="#C8102E" stroke-width="1.6" /><path d="M10 0v15M0 7.5h20" stroke="#fff" stroke-width="5" /><path d="M10 0v15M0 7.5h20" stroke="#C8102E" stroke-width="3" /></svg>
+            )}
+          </span>
+          {t.other}
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  /* the wrapper is layout-transparent: the burger (below) is the only in-flow child, so the
+     desktop header keeps its exact spacing. */
+  .mm {
+    display: contents;
+  }
+  .mm__burger {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 2.6rem;
+    height: 2.6rem;
+    margin: -0.4rem;
+    border: 0;
+    background: none;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .mm__burger svg {
+    width: 1.6rem;
+    height: 1.6rem;
+  }
+
+  .mm__overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    display: none;
+  }
+  .mm.is-open .mm__overlay {
+    display: block;
+  }
+  .mm__backdrop {
+    position: absolute;
+    inset: 0;
+    border: 0;
+    background: rgba(16, 18, 27, 0.5);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+  .mm.is-open .mm__backdrop {
+    opacity: 1;
+  }
+  .mm__panel {
+    position: absolute;
+    inset: 0 0 0 auto;
+    width: min(23rem, 92vw);
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    box-shadow: -12px 0 40px -20px rgba(0, 0, 0, 0.5);
+    transform: translateX(100%);
+    transition: transform 0.24s ease;
+  }
+  .mm.is-open .mm__panel {
+    transform: translateX(0);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .mm__backdrop,
+    .mm__panel {
+      transition: none;
+    }
+  }
+
+  .mm__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 3.75rem;
+    padding: 0 1.25rem;
+    border-bottom: 1px solid var(--border);
+    flex: none;
+  }
+  .mm__brand {
+    font-weight: 650;
+    font-size: 1.1rem;
+  }
+  .mm__close {
+    display: inline-flex;
+    padding: 0.4rem;
+    margin-right: -0.4rem;
+    border: 0;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .mm__close svg {
+    width: 1.4rem;
+    height: 1.4rem;
+  }
+
+  .mm__scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem 1.25rem;
+    -webkit-overflow-scrolling: touch;
+  }
+  .mm__section {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 0.5rem;
+  }
+  .mm__group {
+    margin-bottom: 1rem;
+  }
+  .mm__group-title {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0.75rem 0 0.35rem;
+  }
+  .mm__feature {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.5rem 0.5rem;
+    border-radius: 0.6rem;
+    color: var(--text);
+  }
+  .mm__feature:hover,
+  .mm__feature:active {
+    background: var(--bg-soft);
+  }
+  .mm__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.9rem;
+    height: 1.9rem;
+    flex: none;
+    border-radius: 0.5rem;
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent);
+  }
+  .mm__ftext {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .mm__fname {
+    font-weight: 600;
+    font-size: 0.95rem;
+    line-height: 1.2;
+  }
+  .mm__ftag {
+    color: var(--muted);
+    font-size: 0.82rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .mm__links {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+    display: grid;
+    gap: 0.15rem;
+  }
+  .mm__links a {
+    padding: 0.55rem 0.5rem;
+    border-radius: 0.5rem;
+    color: var(--text);
+    font-weight: 550;
+  }
+  .mm__links a:hover {
+    background: var(--bg-soft);
+  }
+
+  .mm__foot {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem 1.25rem;
+    border-top: 1px solid var(--border);
+  }
+  .mm__foot :global(.mm__demo) {
+    flex: 1;
+    justify-content: center;
+  }
+  .mm__locale {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 0.9rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--text);
+    font-size: 0.9rem;
+    flex: none;
+  }
+  .mm__flag {
+    display: inline-block;
+    width: 1.2rem;
+    height: 0.9rem;
+    border-radius: 2px;
+    overflow: hidden;
+    flex: none;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
+  }
+  .mm__flag svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Show the hamburger, hide the desktop nav, below the breakpoint. */
+  @media (max-width: 900px) {
+    .mm__burger {
+      display: inline-flex;
+    }
+  }
+</style>
+
+<script>
+  const mm = document.querySelector<HTMLElement>('[data-mm]');
+  if (mm) {
+    const btn = mm.querySelector<HTMLButtonElement>('[data-mm-btn]');
+    const set = (open: boolean) => {
+      mm.classList.toggle('is-open', open);
+      btn?.setAttribute('aria-expanded', String(open));
+      document.body.style.overflow = open ? 'hidden' : '';
+    };
+    btn?.addEventListener('click', () => set(!mm.classList.contains('is-open')));
+    mm.querySelectorAll('[data-mm-close]').forEach((el) => el.addEventListener('click', () => set(false)));
+    mm.querySelectorAll('.mm__panel a').forEach((a) => a.addEventListener('click', () => set(false)));
+    // Remember an explicit language choice so the auto-router honours it.
+    mm.querySelectorAll<HTMLAnchorElement>('[data-lang-choose]').forEach((a) => {
+      a.addEventListener('click', () => {
+        try {
+          localStorage.setItem('schakl:lang', a.dataset.langChoose!);
+        } catch {}
+      });
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') set(false);
+    });
+    // If the viewport grows back to desktop while open, close and restore scrolling.
+    window.matchMedia('(min-width: 901px)').addEventListener('change', (e) => {
+      if (e.matches) set(false);
+    });
+  }
+</script>

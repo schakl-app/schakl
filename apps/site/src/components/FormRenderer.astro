@@ -1,0 +1,139 @@
+---
+// Renders a CMS-defined form (src/data/forms/*.json) as a plain HTML form. No client-side
+// submission yet — it POSTs natively to /api/forms, which a Cloudflare Pages Function will
+// implement (see apps/site/FORMS.md). Spam is handled by Cloudflare Turnstile: the widget
+// renders when a site key is set in the CMS (settings.forms.turnstileSiteKey), and the Pages
+// Function verifies the token server-side.
+import settings from '../data/settings/site.json';
+interface FieldOption {
+  value: string;
+  label: Record<string, string>;
+}
+interface Field {
+  name: string;
+  type: string;
+  required?: boolean;
+  label: Record<string, string>;
+  options?: FieldOption[];
+}
+interface Props {
+  locale: 'nl' | 'en';
+  form: any;
+}
+const { locale, form } = Astro.props;
+
+// The endpoint the CF Pages Function will answer (POST). Until it exists, submitting 404s —
+// the forms are intentionally HTML-only for now.
+const action = '/api/forms';
+const turnstileSiteKey: string = ((settings as any).forms?.turnstileSiteKey ?? '').trim();
+const autocompleteFor: Record<string, string> = {
+  name: 'name',
+  email: 'email',
+  company: 'organization',
+  phone: 'tel',
+};
+const req = (f: Field) => f.required;
+---
+
+<form class="site-form" method="POST" action={action}>
+  <input type="hidden" name="_form" value={form.slug} />
+  <input type="hidden" name="_locale" value={locale} />
+
+  {
+    form.fields.map((f: Field) => (
+      <div class="site-form__field">
+        <label for={`f-${form.slug}-${f.name}`}>
+          {f.label[locale]}
+          {req(f) && <span class="site-form__req" aria-hidden="true">*</span>}
+        </label>
+        {f.type === 'textarea' ? (
+          <textarea
+            id={`f-${form.slug}-${f.name}`}
+            name={f.name}
+            rows="5"
+            required={req(f)}
+          />
+        ) : f.type === 'select' ? (
+          <select id={`f-${form.slug}-${f.name}`} name={f.name} required={req(f)}>
+            <option value="">{locale === 'nl' ? 'Kies…' : 'Choose…'}</option>
+            {(f.options ?? []).map((o) => (
+              <option value={o.value}>{o.label[locale]}</option>
+            ))}
+          </select>
+        ) : (
+          <input
+            id={`f-${form.slug}-${f.name}`}
+            type={f.type}
+            name={f.name}
+            required={req(f)}
+            autocomplete={autocompleteFor[f.name] ?? undefined}
+          />
+        )}
+      </div>
+    ))
+  }
+
+  {
+    turnstileSiteKey && (
+      <div class="cf-turnstile" data-sitekey={turnstileSiteKey} data-theme="auto" data-size="flexible" />
+    )
+  }
+
+  <button type="submit" class="button primary site-form__submit">{form.submitLabel[locale]}</button>
+</form>
+
+{
+  turnstileSiteKey && (
+    <script is:inline async defer src="https://challenges.cloudflare.com/turnstile/v0/api.js" />
+  )
+}
+
+<style>
+  .site-form {
+    display: grid;
+    gap: 1.1rem;
+  }
+  .cf-turnstile {
+    margin-top: 0.25rem;
+  }
+  .site-form__field {
+    display: grid;
+    gap: 0.4rem;
+  }
+  .site-form__field label {
+    font-size: 0.9rem;
+    font-weight: 550;
+    color: var(--text);
+  }
+  .site-form__req {
+    color: var(--accent);
+    margin-left: 0.15rem;
+  }
+  .site-form input,
+  .site-form textarea,
+  .site-form select {
+    width: 100%;
+    font: inherit;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 0.55rem;
+    padding: 0.6rem 0.75rem;
+  }
+  .site-form textarea {
+    resize: vertical;
+    min-height: 6rem;
+  }
+  .site-form input:focus,
+  .site-form textarea:focus,
+  .site-form select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+  .site-form__submit {
+    justify-self: start;
+    margin-top: 0.25rem;
+    cursor: pointer;
+  }
+</style>

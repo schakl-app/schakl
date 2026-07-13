@@ -2,7 +2,7 @@
 // Override of Starlight's SiteTitle (astro.config.mjs → components.SiteTitle).
 //
 // Starlight links the logo to the locale *root* (`/nl`, `/en`). Our marketing landing does
-// not live there: the Dutch landing is at `/` and the English one at `/en/`, so the default
+// not live there: the English landing is at `/` and the Dutch one at `/nl/`, so the default
 // `/nl` target is a 404 and `/en` is only reachable by trailing-slash luck. This override
 // points the logo at the actual landing for the current locale instead — identical markup
 // and styles to the stock component, only the href changes.
@@ -10,7 +10,8 @@ import { logos } from 'virtual:starlight/user-images';
 import config from 'virtual:starlight/user-config';
 
 const { siteTitle, locale } = Astro.locals.starlightRoute;
-const landingHref = locale === 'en' ? '/en/' : '/';
+// English is the root landing, Dutch lives under /nl/.
+const landingHref = locale === 'nl' ? '/nl/' : '/';
 ---
 
 <a href={landingHref} class="site-title sl-flex">

@@ -141,6 +141,17 @@ class InteractionRemap(BaseModel):
     contact_id: uuid.UUID | None = None
 
 
+class InteractionApprove(BaseModel):
+    """Approve a gmail row, optionally assigning it in the same step (#183) — the same link
+    fields as a remap; an absent field leaves the row's current link untouched, ``null``
+    clears it. Approving with no fields is the plain one-click approve."""
+
+    company_id: uuid.UUID | None = None
+    project_id: uuid.UUID | None = None
+    task_id: uuid.UUID | None = None
+    contact_id: uuid.UUID | None = None
+
+
 class InteractionReject(BaseModel):
     #: Also suppress the whole Gmail thread, so follow-ups never get logged either.
     suppress_thread: bool = False

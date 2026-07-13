@@ -130,8 +130,9 @@
       });
     }
     if (mayMove(item)) {
+      const pending = item.source === "gmail" && item.status === "pending";
       entries.push({
-        label: t("interactions.move"),
+        label: pending ? t("interactions.assign") : t("interactions.move"),
         icon: ArrowRightLeft,
         onclick: () => {
           moving = item;
@@ -420,10 +421,19 @@
   {/if}
 </Modal>
 
-<Modal bind:open={showMove} title={t("interactions.move_title")}>
+<Modal
+  bind:open={showMove}
+  title={moving?.source === "gmail" && moving?.status === "pending"
+    ? t("interactions.assign_title")
+    : t("interactions.move_title")}
+>
   {#if moving}
     {#key moving.id}
-      <InteractionMoveDialog interaction={moving} onsaved={() => (showMove = false)} />
+      <InteractionMoveDialog
+        interaction={moving}
+        approveAction="?/approveInteraction"
+        onsaved={() => (showMove = false)}
+      />
     {/key}
   {/if}
 </Modal>

@@ -4,6 +4,7 @@
   "order": 100,
   "icon": "🛡️",
   "lucide": "roles",
+  "demo": "roles",
   "title": {
     "nl": "Rollen & rechten",
     "en": "Roles & permissions"

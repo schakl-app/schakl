@@ -27,6 +27,7 @@
     kindLabel,
     manualKinds,
   } from "./format";
+  import { loadLinkLookups, type LinkOption, type ProjectOption, type TaskOption } from "./lookups";
 
   let {
     interaction = null,
@@ -64,16 +65,75 @@
 
   const DIRECTIONS = ["none", "inbound", "outbound"] as const;
 
-  // contact_id is a visible picker now (#173), so it leaves the hidden-prefill spread.
+  // A dimension is *pinned* when the host page already fixed it (its hidden prefill input);
+  // an unpinned one gets a picker below (#183 follow-up) — all three on the Interacties page,
+  // project+task on a company page, none on a task page. contact_id is always a picker (#173).
+  const pinned = (field: string) =>
+    typeof prefill[field] === "string" && (prefill[field] as string).length > 0;
+  const showCompany = $derived(!interaction && !pinned("company_id"));
+  const showProject = $derived(!interaction && !pinned("project_id"));
+  const showTask = $derived(!interaction && !pinned("task_id"));
+  const showLinkPickers = $derived(showCompany || showProject || showTask);
+
+  // Pinned dims stay hidden inputs; unpinned ones (and contact) are pickers, so no name clash.
   const links = $derived(
     interaction
       ? {}
       : Object.fromEntries(
           Object.entries(prefill).filter(
-            ([field, v]) => field !== "contact_id" && typeof v === "string" && v.length > 0,
+            ([field, v]) =>
+              field !== "contact_id" &&
+              !(field === "company_id" && showCompany) &&
+              !(field === "project_id" && showProject) &&
+              !(field === "task_id" && showTask) &&
+              typeof v === "string" &&
+              v.length > 0,
           ),
         ),
   );
+
+  // --- assign to client / project / task (#183 follow-up) ------------------------------- //
+  let fCompany = $state("");
+  let fProject = $state("");
+  let fTask = $state("");
+  let linkCompanies = $state<LinkOption[]>([]);
+  let linkProjects = $state<ProjectOption[]>([]);
+  let linkTasks = $state<TaskOption[]>([]);
+  $effect(() => {
+    if (!showLinkPickers) return;
+    void loadLinkLookups().then((l) => {
+      linkCompanies = l.companies;
+      linkProjects = l.projects;
+      linkTasks = l.tasks;
+    });
+  });
+  // Cascade the way the move dialog does: a client narrows projects, a project narrows tasks,
+  // and picking deeper backfills above — accounting for a dim the host already pinned.
+  const effCompany = $derived(
+    fCompany || (typeof prefill.company_id === "string" ? prefill.company_id : ""),
+  );
+  const effProject = $derived(
+    fProject || (typeof prefill.project_id === "string" ? prefill.project_id : ""),
+  );
+  const projectOptions = $derived(
+    effCompany
+      ? linkProjects.filter((p) => !p.company_id || p.company_id === effCompany)
+      : linkProjects,
+  );
+  const taskOptions = $derived(
+    effProject ? linkTasks.filter((task) => task.project_id === effProject) : linkTasks,
+  );
+  function onProjectPicked(id: string) {
+    fProject = id;
+    const project = linkProjects.find((p) => p.value === id);
+    if (project?.company_id && showCompany) fCompany = project.company_id;
+    if (fTask && linkTasks.find((task) => task.value === fTask)?.project_id !== id) fTask = "";
+  }
+  function onTaskPicked(id: string) {
+    fTask = id;
+    const task = linkTasks.find((option) => option.value === id);
+    if (task?.project_id) onProjectPicked(task.project_id);
+  }
 
   // --- contact person (#173): pick, clear, or inline-create — never leave the form ------- //
   const hostCompanyId = $derived(
@@ -137,12 +197,12 @@
 
   // --- "Voeg aan mijn uren toe" (#175): a linked time entry, saved with the interaction.
   // Create-only (an existing row's hours live on the timesheet) and not for notes, which
-  // have no time-spent concept. Times use the time page's own control and live readout.
+  // have no time-spent concept. The moment's own time field doubles as the entry's start when
+  // checked (#184), so there's one clock, not two — just add an end and read off the duration.
   const canLogTime = $derived(!interaction && kind !== "note");
   let logTime = $state(false);
-  let logStart = $state("");
   let logEnd = $state("");
-  const logMinutes = $derived(logStart && logEnd ? minutesBetween(logStart, logEnd) : null);
+  const logMinutes = $derived(time && logEnd ? minutesBetween(time, logEnd) : null);
 
   let qcOpen = $state(false);
   let qcName = $state("");
@@ -205,17 +265,45 @@
         {/each}
       </select>
     </label>
-    <div class="grid grid-cols-2 gap-2">
-      <label class="block text-sm">
-        <span class="mb-1 block font-medium text-text">{t("interactions.field.date")}</span>
-        <DateInput name="occurred_date" bind:value={date} required />
-      </label>
-      <label class="block text-sm">
-        <span class="mb-1 block font-medium text-text">{t("interactions.field.time")}</span>
-        <TimeInput name="occurred_time" bind:value={time} />
-      </label>
-    </div>
+    <label class="block text-sm">
+      <span class="mb-1 block font-medium text-text">{t("interactions.field.date")}</span>
+      <DateInput name="occurred_date" bind:value={date} required />
+    </label>
   </div>
+
+  {#if canLogTime}
+    <!-- Above the title (#184): checking it turns the moment's time into the entry's start. -->
+    <label class="flex items-center gap-2 text-sm text-text">
+      <input type="checkbox" name="log_time" value="1" bind:checked={logTime} />
+      {t("interactions.log_time")}
+    </label>
+  {/if}
+
+  <!-- One clock: the moment's time, relabelled Start and paired with an end when logging (#184). -->
+  <div class="flex flex-wrap items-end gap-3">
+    <label class="block text-sm">
+      <span class="mb-1 block font-medium text-text">
+        {logTime ? t("time.field.start") : t("interactions.field.time")}
+      </span>
+      <TimeInput name="occurred_time" bind:value={time} required={logTime} />
+    </label>
+    {#if logTime}
+      <label class="block text-sm">
+        <span class="mb-1 block font-medium text-text">{t("time.field.end")}</span>
+        <TimeInput name="log_end" bind:value={logEnd} required />
+      </label>
+      <span
+        class="pb-2 text-sm font-semibold tabular-nums {logMinutes
+          ? 'text-brand'
+          : 'text-text-muted'}"
+      >
+        {logMinutes != null ? t("time.worked", { duration: formatMinutes(logMinutes) }) : "—"}
+      </span>
+    {/if}
+  </div>
+  {#if logTime}
+    <p class="-mt-2 text-xs text-text-muted">{t("interactions.log_time_hint")}</p>
+  {/if}
 
   <label class="block text-sm">
     <span class="mb-1 block font-medium text-text">{t("interactions.field.subject")}</span>
@@ -227,6 +315,49 @@
       class="w-full min-w-0 rounded-lg border border-border bg-surface px-3 py-2 text-sm"
     />
   </label>
+
+  {#if showLinkPickers}
+    <!-- Assign the moment to a client / project / task while logging (#183 follow-up); only the
+         dimensions the host page hasn't already pinned are offered. -->
+    <div class="grid gap-4 sm:grid-cols-2">
+      {#if showCompany}
+        <label class="block text-sm">
+          <span class="mb-1 block font-medium text-text">{t("interactions.field.company")}</span>
+          <Combobox
+            items={linkCompanies}
+            name="company_id"
+            value={fCompany}
+            placeholder={t("common.none")}
+            onselect={(v) => (fCompany = v)}
+          />
+        </label>
+      {/if}
+      {#if showProject}
+        <label class="block text-sm">
+          <span class="mb-1 block font-medium text-text">{t("interactions.field.project")}</span>
+          <Combobox
+            items={projectOptions}
+            name="project_id"
+            value={fProject}
+            placeholder={t("common.none")}
+            onselect={onProjectPicked}
+          />
+        </label>
+      {/if}
+      {#if showTask}
+        <label class="block text-sm">
+          <span class="mb-1 block font-medium text-text">{t("interactions.field.task")}</span>
+          <Combobox
+            items={taskOptions}
+            name="task_id"
+            value={fTask}
+            placeholder={t("common.none")}
+            onselect={onTaskPicked}
+          />
+        </label>
+      {/if}
+    </div>
+  {/if}
 
   <div class="block text-sm">
     <span class="mb-1 block font-medium text-text">{t("interactions.field.contact")}</span>
@@ -263,38 +394,6 @@
       mentions={editorMentions}
     />
   </div>
-
-  {#if canLogTime}
-    <div class="rounded-lg border border-border p-3">
-      <label class="flex items-center gap-2 text-sm text-text">
-        <input type="checkbox" name="log_time" value="1" bind:checked={logTime} />
-        {t("interactions.log_time")}
-      </label>
-      {#if logTime}
-        <div class="mt-3 flex items-end gap-3">
-          <label class="block text-sm">
-            <span class="mb-1 block text-xs font-medium text-text-muted"
-              >{t("time.field.start")}</span
-            >
-            <TimeInput name="log_start" bind:value={logStart} required />
-          </label>
-          <label class="block text-sm">
-            <span class="mb-1 block text-xs font-medium text-text-muted">{t("time.field.end")}</span
-            >
-            <TimeInput name="log_end" bind:value={logEnd} required />
-          </label>
-          <span
-            class="pb-2 text-sm font-semibold tabular-nums {logMinutes
-              ? 'text-brand'
-              : 'text-text-muted'}"
-          >
-            {logMinutes != null ? t("time.worked", { duration: formatMinutes(logMinutes) }) : "—"}
-          </span>
-        </div>
-        <p class="mt-2 text-xs text-text-muted">{t("interactions.log_time_hint")}</p>
-      {/if}
-    </div>
-  {/if}
 
   {#if error}
     <p class="text-sm text-red-600">{t(error)}</p>

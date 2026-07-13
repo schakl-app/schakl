@@ -1,0 +1,116 @@
+---
+// Demo — "Websites, domains & hosting". Assets attach to the client: a new domain lands in
+// the Domeinen panel (with its registrar and expiry) and a hosting account sits below. Base
+// frame = the new domain in the list.
+import AppFrame from './AppFrame.astro';
+import Icon from './Icon.astro';
+import { labels, type Locale } from './labels.ts';
+
+interface Props {
+  locale: Locale;
+}
+const { locale } = Astro.props;
+const l = labels[locale];
+const t = {
+  domains: locale === 'nl' ? 'Domeinen' : 'Domains',
+  hosting: locale === 'nl' ? 'Hosting' : 'Hosting',
+  add: locale === 'nl' ? 'Domein' : 'Domain',
+  cDomain: locale === 'nl' ? 'Domein' : 'Domain',
+  cRegistrar: 'Registrar',
+  cExpires: locale === 'nl' ? 'Verloopt' : 'Expires',
+  cStatus: 'Status',
+  active: locale === 'nl' ? 'Actief' : 'Active',
+  soon: locale === 'nl' ? 'Verloopt binnenkort' : 'Expiring soon',
+  provider: locale === 'nl' ? 'Provider' : 'Provider',
+  package: locale === 'nl' ? 'Pakket' : 'Plan',
+};
+const rows = [
+  { domain: 'studionoord.nl', reg: 'TransIP', exp: '12-03-2027', soon: false },
+  { domain: 'studionoord.dev', reg: 'Namecheap', exp: '04-08-2026', soon: true },
+];
+---
+
+<AppFrame locale={locale} active="companies" class="demo-assets">
+  <div class="as-back muted"><Icon name="chevronDown" size={0.8} class="as-rot" />{l.clients}</div>
+  <div class="screen__head"><span class="screen__title">Studio Noord</span></div>
+
+  <div class="card as-card">
+    <div class="as-card__h">
+      <span class="strong">{t.domains}</span>
+      <span class="btn btn--brand as-add"><Icon name="plus" size={0.9} />{t.add}</span>
+    </div>
+    <table class="tbl as-tbl">
+      <thead>
+        <tr>
+          <th>{t.cDomain}</th>
+          <th>{t.cRegistrar}</th>
+          <th class="num">{t.cExpires}</th>
+          <th>{t.cStatus}</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="as-newrow">
+          <td><span class="cellname"><Icon name="assets" size={1} class="as-globe" />studionoord.io</span></td>
+          <td class="muted">TransIP</td>
+          <td class="muted tnum num">21-11-2027</td>
+          <td><span class="chip chip--ok">{t.active}</span></td>
+        </tr>
+        {
+          rows.map((r) => (
+            <tr>
+              <td><span class="cellname"><Icon name="assets" size={1} class="as-globe" />{r.domain}</span></td>
+              <td class="muted">{r.reg}</td>
+              <td class="muted tnum num">{r.exp}</td>
+              <td><span class={`chip ${r.soon ? 'chip--warn' : 'chip--ok'}`}>{r.soon ? t.soon : t.active}</span></td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card as-hosting">
+    <div class="strong as-hosting__h">{t.hosting}</div>
+    <div class="as-host-row">
+      <span class="as-host-icon"><Icon name="server" size={1.05} /></span>
+      <div class="as-host-body">
+        <div class="strong">Cloud86 · Plesk</div>
+        <div class="muted">{t.package}: Business · studionoord.nl</div>
+      </div>
+      <span class="chip chip--ok">{t.active}</span>
+    </div>
+  </div>
+
+  <div class="stagefade"></div>
+</AppFrame>
+
+<style is:global>
+  .demo-assets .app { height: 28em; }
+  .demo-assets .as-back { display: inline-flex; align-items: center; gap: 0.25em; font-size: 0.85em; margin-bottom: 0.5em; }
+  .demo-assets .as-back .as-rot { transform: rotate(90deg); }
+  .demo-assets .as-card { padding: 0.85em 1.05em; }
+  .demo-assets .as-card__h { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5em; }
+  .demo-assets .as-add { padding: 0.35em 0.7em; font-size: 0.82em; }
+  .demo-assets .as-globe { color: var(--mu); }
+  .demo-assets .as-tbl th, .demo-assets .as-tbl td { padding: 0.5em 0.55em; }
+
+  .demo-assets .as-hosting { margin-top: 0.9em; padding: 0.85em 1.05em; }
+  .demo-assets .as-hosting__h { margin-bottom: 0.55em; }
+  .demo-assets .as-host-row { display: flex; align-items: center; gap: 0.7em; }
+  .demo-assets .as-host-icon { display: grid; place-items: center; width: 2.1em; height: 2.1em; flex: none; border-radius: 0.5em; background: var(--sf); color: var(--mu); }
+  .demo-assets .as-host-body { flex: 1; min-width: 0; font-size: 0.9em; }
+  .demo-assets .stagefade { position: absolute; inset: 0; background: var(--sf); opacity: 0; pointer-events: none; z-index: 30; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .demo-assets.is-playing .as-newrow { animation: as-rowin 9s infinite; }
+    .demo-assets.is-playing .stagefade { animation: as-veil 9s infinite; }
+  }
+  @keyframes as-rowin {
+    0%, 34% { opacity: 0; transform: translateY(-0.4em); }
+    40% { opacity: 1; transform: none; background: color-mix(in srgb, var(--b) 15%, transparent); }
+    48% { background: color-mix(in srgb, var(--b) 15%, transparent); }
+    56%, 92% { opacity: 1; transform: none; background: transparent; }
+    100% { opacity: 0; transform: translateY(-0.4em); background: transparent; }
+  }
+  @keyframes as-veil { 0%, 92% { opacity: 0; } 96%, 100% { opacity: 1; } }
+</style>

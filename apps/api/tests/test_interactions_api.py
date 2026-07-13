@@ -248,8 +248,14 @@ async def test_log_time_creates_linked_entry_that_survives_deletion(client_for) 
         assert entry["company_id"] == company["id"]
         assert entry["description"] == "Belafspraak"
         assert entry["minutes"] == 45
-        # No org entry type matches "call", so the entry stays untyped (#176 tie-in).
-        assert entry["entry_type_key"] is None
+        # The interaction's kind is mirrored into a time-entry type on first use (#182): the
+        # entry is typed "call", and a matching Uren-type now exists carrying the kind's label.
+        assert entry["entry_type_key"] == "call"
+        types = (await c.get("/api/v1/time/entry-types", headers=headers)).json()
+        call_type = next((et for et in types if et["key"] == "call"), None)
+        assert call_type is not None and call_type["label_i18n"]["nl"] == "Telefoongesprek"
+        # The default work/email types were seeded alongside, not skipped.
+        assert {"work", "email"} <= {et["key"] for et in types}
 
         # Deleting the interaction detaches, never deletes, the logged hours.
         assert (
@@ -258,6 +264,46 @@ async def test_log_time_creates_linked_entry_that_survives_deletion(client_for) 
         entries = (await c.get("/api/v1/time/entries", headers=headers)).json()
         assert entries["total"] == 1
         assert entries["items"][0]["interaction_id"] is None
+
+
+async def test_log_time_respects_a_deactivated_matching_type(client_for) -> None:
+    """#182: mirroring a kind into a time-entry type must not resurrect one an admin
+    deliberately deactivated — the logged entry stays untyped instead."""
+    t = await make_tenant("inter-logtime-deact")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        # Create then deactivate a "call" time-entry type.
+        created_type = (
+            await c.post(
+                "/api/v1/time/entry-types",
+                json={"key": "call", "label_i18n": {"nl": "Bellen", "en": "Call"}},
+                headers=headers,
+            )
+        ).json()
+        assert (
+            await c.patch(
+                f"/api/v1/time/entry-types/{created_type['id']}",
+                json={"active": False},
+                headers=headers,
+            )
+        ).status_code == 200
+
+        created = await c.post(
+            "/api/v1/interactions",
+            json={
+                "kind": "call",
+                "occurred_at": _NOW.isoformat(),
+                "subject": "Belafspraak",
+                "log_time": {
+                    "started_at": "2026-07-10T14:00:00Z",
+                    "ended_at": "2026-07-10T14:30:00Z",
+                },
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        entry = (await c.get("/api/v1/time/entries", headers=headers)).json()["items"][0]
+        assert entry["entry_type_key"] is None  # deactivation respected, not resurrected
 
 
 async def test_manual_email_kind_refused(client_for) -> None:
@@ -503,6 +549,56 @@ async def test_remap_by_owner_moves_links(client_for) -> None:
         assert body["task_id"] == task["id"]
         # The task's company rides along so the client timeline picks the email up.
         assert body["company_id"] == company["id"]
+
+
+async def test_approve_can_assign_links_in_one_step(client_for) -> None:
+    """#183: approving a pending email can optionally set its links in the same request —
+    no approve-then-reopen-and-move. The picked task derives the client, and the row lands
+    logged and team-visible."""
+    t = await make_tenant("inter-approve-assign")
+    headers = await auth_cookie(t.user)
+    row_id = await _seed_gmail_row(t, t.user.id, pending=True, message_id="msg-appr")
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Doelklant"}, headers=headers)
+        ).json()
+        task = (
+            await c.post(
+                "/api/v1/tasks",
+                json={"title": "Opvolgen", "company_id": company["id"]},
+                headers=headers,
+            )
+        ).json()
+        approved = await c.post(
+            f"/api/v1/interactions/{row_id}/approve",
+            json={"task_id": task["id"]},
+            headers=headers,
+        )
+        assert approved.status_code == 200, approved.text
+        body = approved.json()
+        assert body["status"] == "logged"
+        assert body["task_id"] == task["id"]
+        assert body["company_id"] == company["id"]  # derived from the task
+        # The assignment landed on the interaction's own trail alongside the approval.
+        trail = (
+            await c.get(
+                "/api/v1/activity",
+                params={"entity_type": "interaction", "entity_id": row_id},
+                headers=headers,
+            )
+        ).json()
+        assert "updated" in [e["action"] for e in trail]
+
+
+async def test_plain_approve_still_works_without_a_body(client_for) -> None:
+    """#183: the one-click approve (no links) is unchanged."""
+    t = await make_tenant("inter-approve-plain")
+    headers = await auth_cookie(t.user)
+    row_id = await _seed_gmail_row(t, t.user.id, pending=True, message_id="msg-plain")
+    async with client_for(t.host) as c:
+        approved = await c.post(f"/api/v1/interactions/{row_id}/approve", headers=headers)
+        assert approved.status_code == 200, approved.text
+        assert approved.json()["status"] == "logged"
 
 
 async def test_interactions_tenant_isolation(client_for) -> None:

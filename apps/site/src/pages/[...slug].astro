@@ -1,5 +1,5 @@
 ---
-// Renders CMS-created Dutch pages (Keystatic → src/content/pages/nl/*) at /<slug>/.
+// Renders CMS-created English pages (Keystatic → src/content/pages/en/*) at /<slug>/.
 // File-based routes outrank Starlight's injected [...slug], and the two generate
 // disjoint paths, so /docs/… stays Starlight's.
 import { getCollection, render } from 'astro:content';
@@ -7,9 +7,9 @@ import SiteShell from '../components/SiteShell.astro';
 import settings from '../data/settings/site.json';
 
 export async function getStaticPaths() {
-  const pages = await getCollection('pages', (entry) => entry.id.startsWith('nl/'));
+  const pages = await getCollection('pages', (entry) => entry.id.startsWith('en/'));
   return pages.map((entry) => ({
-    params: { slug: entry.id.slice('nl/'.length) },
+    params: { slug: entry.id.slice('en/'.length) },
     props: { entry },
   }));
 }
@@ -19,7 +19,7 @@ const { Content } = await render(entry);
 ---
 
 <SiteShell
-  locale="nl"
+  locale="en"
   title={`${entry.data.title} · ${settings.brandName}`}
   description={entry.data.description}
 >

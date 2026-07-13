@@ -1,7 +1,9 @@
 ---
-// The site's "Functies" mega-menu: a wide dropdown listing every feature page grouped by
-// theme, each with its Lucide icon and a short tagline. Opens on hover (pointer devices) and
-// on click/tap (all devices), closes on outside-click, Escape or navigation.
+// The desktop "Functies" mega-menu: a wide dropdown listing every feature page grouped by
+// theme, each with its Lucide icon and a short tagline. The panel is anchored to the right of
+// the page container (so it never runs off the left edge on narrower desktops) and opens on
+// hover-intent (a small close delay tolerates the gap between the button and the panel) as well
+// as click/tap. On mobile the whole nav collapses to the hamburger menu, so this is hidden.
 import Icon from './showcase/Icon.astro';
 import { grouped, taglines, type Locale } from '../lib/features.ts';
 import { localizeHref } from '../lib/links';
@@ -61,7 +63,9 @@ const allLabel = locale === 'nl' ? 'Alle functies bekijken' : 'See all features'
 
 <style>
   .mega {
-    position: relative;
+    /* static so the panel positions against .site-header (set position:relative there),
+       which lets us right-align it to the page container instead of to this button. */
+    position: static;
     display: inline-flex;
   }
   .mega__btn {
@@ -91,9 +95,12 @@ const allLabel = locale === 'nl' ? 'Alle functies bekijken' : 'See all features'
 
   .mega__panel {
     position: absolute;
-    top: calc(100% + 0.85rem);
-    right: 0;
-    width: min(56rem, 94vw);
+    top: 100%;
+    /* align the panel's right edge to the container's inner right edge, and never exceed the
+       viewport width — so it can't overflow on the left on smaller desktops. */
+    right: max(1.25rem, calc((100vw - 68rem) / 2 + 1.25rem));
+    margin-top: 0.6rem;
+    width: min(56rem, calc(100vw - 2.5rem));
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 1rem;
@@ -116,18 +123,19 @@ const allLabel = locale === 'nl' ? 'Alle functies bekijken' : 'See all features'
         0 24px 48px -20px rgba(0, 0, 0, 0.7);
     }
   }
+  /* bridge the hover gap between the button and the panel so pointer-intent doesn't drop */
+  .mega__panel::before {
+    content: '';
+    position: absolute;
+    top: -0.7rem;
+    left: 0;
+    right: 0;
+    height: 0.7rem;
+  }
   .mega.is-open .mega__panel {
     opacity: 1;
     transform: translateY(0);
     pointer-events: auto;
-  }
-  @media (hover: hover) {
-    .mega:hover .mega__panel,
-    .mega:focus-within .mega__panel {
-      opacity: 1;
-      transform: translateY(0);
-      pointer-events: auto;
-    }
   }
   @media (prefers-reduced-motion: reduce) {
     .mega__panel,
@@ -214,48 +222,49 @@ const allLabel = locale === 'nl' ? 'Alle functies bekijken' : 'See all features'
     text-decoration: underline;
     text-underline-offset: 2px;
   }
-
-  @media (max-width: 720px) {
-    .mega__panel {
-      position: fixed;
-      left: 0.75rem;
-      right: 0.75rem;
-      width: auto;
-      max-height: 70vh;
-      overflow-y: auto;
-      padding: 1.1rem;
-    }
-    .mega__grid {
-      grid-template-columns: 1fr;
-      gap: 0.25rem;
-    }
-    .mega__col-title {
-      margin-top: 0.5rem;
-    }
-  }
 </style>
 
 <script>
-  // Click/tap toggles the menu (essential on touch, where there is no hover); outside-click,
-  // Escape and navigating all close it. Hover is handled in CSS on pointer devices.
+  // Open on hover-intent (a short close delay tolerates the gap between button and panel) and
+  // on click/tap; close on outside-click, Escape or navigation.
   for (const mega of document.querySelectorAll<HTMLElement>('[data-mega]')) {
     const btn = mega.querySelector<HTMLButtonElement>('[data-mega-btn]');
-    if (!btn) continue;
-    const close = () => {
-      mega.classList.remove('is-open');
-      btn.setAttribute('aria-expanded', 'false');
+    const panel = mega.querySelector<HTMLElement>('[data-mega-panel]');
+    if (!btn || !panel) continue;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const set = (v: boolean) => {
+      mega.classList.toggle('is-open', v);
+      btn.setAttribute('aria-expanded', String(v));
     };
+    const open = () => {
+      clearTimeout(timer);
+      set(true);
+    };
+    const closeNow = () => {
+      clearTimeout(timer);
+      set(false);
+    };
+    const closeSoon = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => set(false), 180);
+    };
+
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      const open = mega.classList.toggle('is-open');
-      btn.setAttribute('aria-expanded', String(open));
+      mega.classList.contains('is-open') ? closeNow() : open();
     });
     document.addEventListener('click', (e) => {
-      if (!mega.contains(e.target as Node)) close();
+      if (!mega.contains(e.target as Node)) closeNow();
     });
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') close();
+      if (e.key === 'Escape') closeNow();
     });
-    mega.querySelectorAll('a').forEach((a) => a.addEventListener('click', close));
+    if (window.matchMedia('(hover: hover)').matches) {
+      for (const el of [btn, panel]) {
+        el.addEventListener('pointerenter', open);
+        el.addEventListener('pointerleave', closeSoon);
+      }
+    }
+    panel.querySelectorAll('a').forEach((a) => a.addEventListener('click', closeNow));
   }
 </script>

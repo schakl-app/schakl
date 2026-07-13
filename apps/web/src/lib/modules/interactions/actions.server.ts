@@ -40,10 +40,11 @@ export const interactionActions = {
     const form = await event.request.formData();
     const occurred = occurredAt(form);
     if (!occurred) return fail(400, { error: "errors.required" });
-    // "Voeg aan mijn uren toe" (#175): the linked entry rides the same request. Its times
-    // follow the time module's wall-clock-as-UTC convention, on the interaction's date.
+    // "Voeg aan mijn uren toe" (#175): the linked entry rides the same request. Its start is
+    // the moment's own time field (#184); only the end is extra. Times follow the time module's
+    // wall-clock-as-UTC convention, on the interaction's date.
     const date = String(form.get("occurred_date") ?? "").trim();
-    const logStart = String(form.get("log_start") ?? "").trim();
+    const logStart = String(form.get("occurred_time") ?? "").trim();
     const logEnd = String(form.get("log_end") ?? "").trim();
     const logTime =
       form.get("log_time") === "1" && date && logStart && logEnd
@@ -100,8 +101,17 @@ export const interactionActions = {
     const form = await event.request.formData();
     const id = String(form.get("id") ?? "");
     if (!id) return fail(400, { error: "errors.required" });
+    // Assign links in the same step (#183) only when the approve came from the review dialog
+    // (`assign=1`); the one-click inline approve sends no links and touches none.
+    const body =
+      form.get("assign") === "1"
+        ? Object.fromEntries(
+            LINK_FIELDS.map((field) => [field, String(form.get(field) ?? "").trim() || null]),
+          )
+        : undefined;
     const { error } = await apiFor(event).POST("/api/v1/interactions/{interaction_id}/approve", {
       params: { path: { interaction_id: id } },
+      ...(body ? { body } : {}),
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { ok: true };

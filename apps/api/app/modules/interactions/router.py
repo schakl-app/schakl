@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Query
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
 from app.modules.interactions.schemas import (
+    InteractionApprove,
     InteractionCreate,
     InteractionKindDefCreate,
     InteractionKindDefRead,
@@ -184,9 +185,12 @@ async def delete_interaction(
 )
 async def approve_interaction(
     interaction_id: uuid.UUID,
+    payload: InteractionApprove | None = None,
     ctx: RequestContext = Depends(require_context),
 ) -> InteractionRead:
-    return InteractionRead.model_validate(await InteractionService(ctx).approve(interaction_id))
+    return InteractionRead.model_validate(
+        await InteractionService(ctx).approve(interaction_id, payload)
+    )
 
 
 @router.post(

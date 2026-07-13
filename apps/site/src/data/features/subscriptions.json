@@ -4,6 +4,7 @@
   "order": 70,
   "icon": "🔁",
   "lucide": "subscriptions",
+  "demo": "subscriptions",
   "title": {
     "nl": "Abonnementen",
     "en": "Subscriptions"

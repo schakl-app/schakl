@@ -4,6 +4,7 @@
   "order": 80,
   "icon": "🌐",
   "lucide": "assets",
+  "demo": "assets",
   "title": {
     "nl": "Websites, domeinen & hosting",
     "en": "Websites, domains & hosting"

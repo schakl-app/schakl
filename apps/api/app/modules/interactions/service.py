@@ -35,6 +35,7 @@ from app.modules.interactions.models import (
     InteractionStatus,
 )
 from app.modules.interactions.schemas import (
+    InteractionApprove,
     InteractionCreate,
     InteractionKindDefCreate,
     InteractionKindDefUpdate,
@@ -223,12 +224,20 @@ class InteractionService:
     async def _log_time(self, row: Interaction, log_time: Any) -> None:
         """The "Voeg aan mijn uren toe" ride-along (#175): a linked time entry, in this same
         transaction, through the time module's published surface (§6) — never its internals.
-        Carries the interaction's own links and subject; typed after the interaction's kind
-        when the org has an entry type of the same key (#176), untyped otherwise."""
+        Carries the interaction's own links and subject, and its kind as the entry's *type* —
+        the time module mirrors the kind into a matching type on first use (#182), so a logged
+        call/meeting is typed even though time-entry types seed only work/email."""
         self.ctx.require("time.entry.write")
         from app.modules.time import system as time_system
 
-        entry_type_key = await time_system.active_type_key(self.ctx, row.kind)
+        kind = await self.ctx.session.scalar(
+            select(InteractionKindDef).where(
+                InteractionKindDef.org_id == self._org_id, InteractionKindDef.key == row.kind
+            )
+        )
+        entry_type_key = await time_system.ensure_type_for_kind(
+            self.ctx, row.kind, kind.label_i18n if kind else None
+        )
         await time_system.record_entry(
             self.ctx,
             user_id=self.ctx.user.id,
@@ -293,12 +302,30 @@ class InteractionService:
         await self.repo.delete(row)
 
     # --- gmail review flow (owner-only, no :any escape) ------------------------- #
-    async def approve(self, interaction_id: uuid.UUID) -> dict[str, Any]:
+    async def approve(
+        self, interaction_id: uuid.UUID, data: InteractionApprove | None = None
+    ) -> dict[str, Any]:
         row = await self._owned_gmail_or_404(interaction_id)
         if row.status != InteractionStatus.PENDING.value:
             raise AppError("invalid_state", "errors.interactions_not_pending", status_code=409)
-        row = await self.repo.update(row, status=InteractionStatus.LOGGED.value)
+        # Optionally assign links in the same step as approval (#183) — no need to approve
+        # then reopen and move. Applied before the row goes team-visible, so the "moved"
+        # bookkeeping (unlink from an old host nobody saw) doesn't apply; the host announce
+        # below fires on the *final* links.
+        before = snapshot(row, _AUDITED_FIELDS)
+        link_values: dict[str, Any] = {}
+        if data is not None:
+            sent = data.model_dump(exclude_unset=True)
+            if sent:
+                link_values = await self._resolve_links(sent, partial=True)
+        row = await self.repo.update(
+            row, status=InteractionStatus.LOGGED.value, **link_values
+        )
         await ActivityService(self.ctx).record(ENTITY_TYPE, row.id, "approved")
+        if link_values:
+            await ActivityService(self.ctx).record_update(
+                ENTITY_TYPE, row.id, before, snapshot(row, _AUDITED_FIELDS)
+            )
         # Approval is the moment the email becomes team-visible — that is when the host
         # records hear about it (#152); a pending row must not announce itself.
         await self._record_on_hosts(row, "interaction.logged")

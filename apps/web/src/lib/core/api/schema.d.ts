@@ -6282,6 +6282,22 @@ export interface components {
             row: number;
         };
         /**
+         * InteractionApprove
+         * @description Approve a gmail row, optionally assigning it in the same step (#183) — the same link
+         *     fields as a remap; an absent field leaves the row's current link untouched, ``null``
+         *     clears it. Approving with no fields is the plain one-click approve.
+         */
+        InteractionApprove: {
+            /** Company Id */
+            company_id?: string | null;
+            /** Contact Id */
+            contact_id?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Task Id */
+            task_id?: string | null;
+        };
+        /**
          * InteractionCreate
          * @description A manually logged touchpoint — meetings, calls, notes. Emails only arrive via gmail.
          */
@@ -15025,7 +15041,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["InteractionApprove"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

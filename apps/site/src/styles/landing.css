@@ -57,6 +57,7 @@ h3 {
 
 /* Header */
 .site-header {
+  position: relative; /* positioning context for the mega-menu panel */
   border-bottom: 1px solid var(--border);
 }
 
@@ -99,11 +100,18 @@ h3 {
   color: var(--text);
 }
 
-.locale-switch {
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 0.1rem 0.6rem;
-  font-size: 0.8rem;
+/* The demo button is a filled pill, not a text link — keep its label white against the accent
+   fill (the rule above would otherwise tint it muted, including on hover). */
+.site-nav .demo-cta,
+.site-nav .demo-cta:hover {
+  color: #fff;
+}
+
+/* Below the breakpoint the desktop nav gives way to the hamburger (MobileMenu). */
+@media (max-width: 900px) {
+  .site-nav {
+    display: none;
+  }
 }
 
 /* Hero */
