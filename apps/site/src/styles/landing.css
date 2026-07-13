@@ -392,3 +392,49 @@ section h2 {
 .site-footer nav a:hover {
   color: var(--text);
 }
+
+/* "Used and made with open-source love ♥ by [b]reik." */
+.footer-credit {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+
+.footer-credit p {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4ch;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.footer-heart {
+  width: 1.05em;
+  height: 1.05em;
+  color: #f43f5e;
+  transform-origin: center 65%;
+  animation: heartbeat 1.7s ease-in-out infinite;
+}
+
+@keyframes heartbeat {
+  0%, 40%, 100% { transform: scale(1); }
+  12% { transform: scale(1.25); }
+  24% { transform: scale(1.05); }
+  32% { transform: scale(1.18); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .footer-heart { animation: none; }
+}
+
+.footer-breik {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.footer-breik:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
