@@ -1957,6 +1957,7 @@
   "interactions.field.contact": "Contact person",
   "interactions.move": "Move / link",
   "interactions.move_title": "Move contact moment",
+  "interactions.detail_title": "Contact moment",
   "interactions.assign": "Assign…",
   "interactions.assign_title": "Assign contact moment",
   "interactions.save_pending": "Save (stays pending)",

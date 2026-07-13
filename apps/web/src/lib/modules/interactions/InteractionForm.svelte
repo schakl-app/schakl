@@ -197,12 +197,12 @@
 
   // --- "Voeg aan mijn uren toe" (#175): a linked time entry, saved with the interaction.
   // Create-only (an existing row's hours live on the timesheet) and not for notes, which
-  // have no time-spent concept. Times use the time page's own control and live readout.
+  // have no time-spent concept. The moment's own time field doubles as the entry's start when
+  // checked (#184), so there's one clock, not two — just add an end and read off the duration.
   const canLogTime = $derived(!interaction && kind !== "note");
   let logTime = $state(false);
-  let logStart = $state("");
   let logEnd = $state("");
-  const logMinutes = $derived(logStart && logEnd ? minutesBetween(logStart, logEnd) : null);
+  const logMinutes = $derived(time && logEnd ? minutesBetween(time, logEnd) : null);
 
   let qcOpen = $state(false);
   let qcName = $state("");
@@ -265,17 +265,45 @@
         {/each}
       </select>
     </label>
-    <div class="grid grid-cols-2 gap-2">
-      <label class="block text-sm">
-        <span class="mb-1 block font-medium text-text">{t("interactions.field.date")}</span>
-        <DateInput name="occurred_date" bind:value={date} required />
-      </label>
-      <label class="block text-sm">
-        <span class="mb-1 block font-medium text-text">{t("interactions.field.time")}</span>
-        <TimeInput name="occurred_time" bind:value={time} />
-      </label>
-    </div>
+    <label class="block text-sm">
+      <span class="mb-1 block font-medium text-text">{t("interactions.field.date")}</span>
+      <DateInput name="occurred_date" bind:value={date} required />
+    </label>
   </div>
+
+  {#if canLogTime}
+    <!-- Above the title (#184): checking it turns the moment's time into the entry's start. -->
+    <label class="flex items-center gap-2 text-sm text-text">
+      <input type="checkbox" name="log_time" value="1" bind:checked={logTime} />
+      {t("interactions.log_time")}
+    </label>
+  {/if}
+
+  <!-- One clock: the moment's time, relabelled Start and paired with an end when logging (#184). -->
+  <div class="flex flex-wrap items-end gap-3">
+    <label class="block text-sm">
+      <span class="mb-1 block font-medium text-text">
+        {logTime ? t("time.field.start") : t("interactions.field.time")}
+      </span>
+      <TimeInput name="occurred_time" bind:value={time} required={logTime} />
+    </label>
+    {#if logTime}
+      <label class="block text-sm">
+        <span class="mb-1 block font-medium text-text">{t("time.field.end")}</span>
+        <TimeInput name="log_end" bind:value={logEnd} required />
+      </label>
+      <span
+        class="pb-2 text-sm font-semibold tabular-nums {logMinutes
+          ? 'text-brand'
+          : 'text-text-muted'}"
+      >
+        {logMinutes != null ? t("time.worked", { duration: formatMinutes(logMinutes) }) : "—"}
+      </span>
+    {/if}
+  </div>
+  {#if logTime}
+    <p class="-mt-2 text-xs text-text-muted">{t("interactions.log_time_hint")}</p>
+  {/if}
 
   <label class="block text-sm">
     <span class="mb-1 block font-medium text-text">{t("interactions.field.subject")}</span>
@@ -366,38 +394,6 @@
       mentions={editorMentions}
     />
   </div>
-
-  {#if canLogTime}
-    <div class="rounded-lg border border-border p-3">
-      <label class="flex items-center gap-2 text-sm text-text">
-        <input type="checkbox" name="log_time" value="1" bind:checked={logTime} />
-        {t("interactions.log_time")}
-      </label>
-      {#if logTime}
-        <div class="mt-3 flex items-end gap-3">
-          <label class="block text-sm">
-            <span class="mb-1 block text-xs font-medium text-text-muted"
-              >{t("time.field.start")}</span
-            >
-            <TimeInput name="log_start" bind:value={logStart} required />
-          </label>
-          <label class="block text-sm">
-            <span class="mb-1 block text-xs font-medium text-text-muted">{t("time.field.end")}</span
-            >
-            <TimeInput name="log_end" bind:value={logEnd} required />
-          </label>
-          <span
-            class="pb-2 text-sm font-semibold tabular-nums {logMinutes
-              ? 'text-brand'
-              : 'text-text-muted'}"
-          >
-            {logMinutes != null ? t("time.worked", { duration: formatMinutes(logMinutes) }) : "—"}
-          </span>
-        </div>
-        <p class="mt-2 text-xs text-text-muted">{t("interactions.log_time_hint")}</p>
-      {/if}
-    </div>
-  {/if}
 
   {#if error}
     <p class="text-sm text-red-600">{t(error)}</p>

@@ -20,8 +20,6 @@
     ArrowRightLeft,
     ArrowUpRight,
     CheckCircle2,
-    ChevronDown,
-    ChevronRight,
     ExternalLink,
     Paperclip,
     Pencil,
@@ -72,7 +70,7 @@
   const canReadActivity = $derived(can(page.data.user, "activity.read"));
 
   // The interaction's own recorded trail (#152): written since #22, rendered nowhere until
-  // now — an entity without a detail page shows its history inside the expanded row.
+  // now — an entity without a detail page shows its history inside the detail modal (#184).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let trail = $state<any[] | null>(null);
   let trailFor = $state<string | null>(null);
@@ -150,10 +148,35 @@
   let confirmDelete = $state(false);
   let showReject = $state(false);
   let rejecting = $state<InteractionItem | null>(null);
-  let expanded = $state<string | null>(null);
+
+  // Clicking a row opens a detail modal (#184) rather than expanding inline — a long email
+  // no longer stretches the panel or scrolls it sideways, and its line breaks survive.
+  let showDetail = $state(false);
+  let detailItem = $state<InteractionItem | null>(null);
+  function openDetail(item: InteractionItem) {
+    detailItem = item;
+    showDetail = true;
+    trailFor = null;
+    if (item.source === "gmail" && item.status === "logged") void loadAttachments(item.id);
+  }
+
+  // A busy record's timeline grows without bound: show the newest few, reveal the rest in
+  // place — the activity feed's pattern (docs/UX.md). Server truncation (PANEL_LIMIT) is
+  // reported separately below.
+  const COLLAPSED = 3;
+  let showAll = $state(false);
+  const collapsible = $derived(items.length > COLLAPSED);
+  const shown = $derived(collapsible && !showAll ? items.slice(0, COLLAPSED) : items);
 
   const isOwner = (item: InteractionItem) =>
     item.owner_user_id !== null && item.owner_user_id === me;
+  // A pending gmail row I own is reviewed (assign + approve/reject) inside the detail modal.
+  const detailPending = $derived(
+    detailItem != null &&
+      detailItem.source === "gmail" &&
+      detailItem.status === "pending" &&
+      isOwner(detailItem),
+  );
   const mayEdit = (item: InteractionItem) =>
     item.source === "manual" &&
     (isOwner(item)
@@ -258,32 +281,19 @@
   <p class="py-4 text-sm text-text-muted">{t("interactions.panel.empty")}</p>
 {:else}
   <ul class="divide-y divide-border">
-    {#each items as item (item.id)}
+    {#each shown as item (item.id)}
       {@const Icon = kindIcon(item.kind)}
-      {@const open = expanded === item.id}
       {@const chips = linkChips(item)}
       <li class="py-2.5">
         <div class="flex items-start gap-3">
           <Icon size={16} class="mt-0.5 shrink-0 text-text-muted" aria-hidden="true" />
-          <!-- Expand/collapse reads like the DataTable's group toggle and the sidebar's
-               disclosure (#179): chevron swap + aria-expanded + a visible hover state. -->
+          <!-- The row opens a detail modal (#184); the preview is a short, wrapped teaser. -->
           <button
             type="button"
             class="-mx-1.5 -my-1 min-w-0 flex-1 rounded-lg px-1.5 py-1 text-left hover:bg-surface"
-            aria-expanded={open}
-            onclick={() => {
-              expanded = open ? null : item.id;
-              if (!open && item.source === "gmail" && item.status === "logged") {
-                void loadAttachments(item.id);
-              }
-            }}
+            onclick={() => openDetail(item)}
           >
             <span class="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-              {#if open}
-                <ChevronDown size={14} class="shrink-0 text-text-muted" aria-hidden="true" />
-              {:else}
-                <ChevronRight size={14} class="shrink-0 text-text-muted" aria-hidden="true" />
-              {/if}
               <span class="text-sm font-medium text-text">
                 {item.subject || t(`interactions.kind.${item.kind}`)}
               </span>
@@ -307,8 +317,11 @@
             <span class="mt-0.5 block text-xs text-text-muted">
               {fmtDateTime(item.occurred_at)}{#if item.owner_name}&nbsp;· {item.owner_name}{/if}
             </span>
-            {#if !open && item.snippet}
-              <span class="mt-0.5 block truncate text-xs text-text-muted">{item.snippet}</span>
+            {#if item.snippet}
+              <!-- First couple of lines only, wrapped — never a sideways scroll (#184). -->
+              <span class="mt-0.5 line-clamp-2 break-words text-xs text-text-muted"
+                >{item.snippet}</span
+              >
             {/if}
           </button>
 
@@ -342,130 +355,18 @@
             {/each}
           </div>
         {/if}
-
-        {#if open}
-          <div class="mt-2 space-y-2 pl-7 text-sm">
-            {#if item.participants?.length}
-              <!-- Role-aware participant chips (#160): From/To carry the brand tint, CC is
-                   the muted non-primary look (colour is the marker, sr-only carries it —
-                   docs/UX.md #35). Known addresses link to their contact; unknown ones are
-                   dashed and one click from a prefilled create dialog. -->
-              <div class="flex flex-wrap gap-1">
-                {#each item.participants as p ((p.role ?? "to") + p.email)}
-                  {@const cc = p.role === "cc"}
-                  {#if p.contact_id}
-                    <a
-                      href="/contacts/{p.contact_id}"
-                      title={p.email}
-                      class="rounded-full px-2 py-0.5 text-[11px] ring-1 ring-inset {cc
-                        ? 'bg-surface text-text-muted ring-border'
-                        : 'bg-brand/10 text-brand ring-brand/30'} hover:underline"
-                    >
-                      {p.name || p.email}<span class="sr-only">
-                        ({t(`interactions.role.${p.role ?? "to"}`)})</span
-                      >
-                    </a>
-                  {:else if p.user_id}
-                    <!-- A colleague (#167): recognized, nothing to create, nowhere to link —
-                         a plain neutral pill, distinct from both contact and unknown. -->
-                    <span
-                      title={p.email}
-                      class="rounded-full px-2 py-0.5 text-[11px] ring-1 ring-inset ring-border {cc
-                        ? 'bg-surface text-text-muted'
-                        : 'bg-surface text-text'}"
-                    >
-                      {p.name || p.email}<span class="sr-only">
-                        ({t("interactions.participant_colleague")},
-                        {t(`interactions.role.${p.role ?? "to"}`)})</span
-                      >
-                    </span>
-                  {:else}
-                    <button
-                      type="button"
-                      title={p.email}
-                      onclick={() => createFromParticipant(item, p)}
-                      class="inline-flex items-center gap-0.5 rounded-full border border-dashed border-border px-2 py-0.5 text-[11px] {cc
-                        ? 'text-text-muted'
-                        : 'text-text'} hover:border-brand hover:text-brand"
-                    >
-                      {p.name || p.email}
-                      <Plus size={10} aria-hidden="true" />
-                      <span class="sr-only">
-                        {t("interactions.create_contact")}
-                        ({t(`interactions.role.${p.role ?? "to"}`)})</span
-                      >
-                    </button>
-                  {/if}
-                {/each}
-              </div>
-            {/if}
-            {#if item.body_text}
-              {#if item.source === "gmail"}
-                <p class="whitespace-pre-wrap text-sm text-text">{item.body_text}</p>
-              {:else}
-                <Markdown value={item.body_text} />
-              {/if}
-            {:else if item.snippet}
-              <p class="text-sm text-text-muted">{item.snippet}</p>
-              {#if item.source === "gmail" && item.status === "logged"}
-                <!-- Approved seconds ago: the body fetch is on its way (docs/GOOGLE.md §6). -->
-                <p class="text-xs text-text-muted">{t("interactions.body_loading")}</p>
-              {/if}
-            {/if}
-            {#if attachmentsFor[item.id]?.length}
-              <!-- Stored on approval (#180); each chip opens/downloads via the files endpoint. -->
-              <div class="flex flex-wrap gap-1">
-                {#each attachmentsFor[item.id] as file (file.id)}
-                  <a
-                    href={`/api/v1/files/${file.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="inline-flex items-center gap-1 rounded-full bg-surface px-2 py-0.5 text-[11px] text-text ring-1 ring-inset ring-border hover:text-brand"
-                  >
-                    <Paperclip size={11} aria-hidden="true" />
-                    {file.filename}
-                  </a>
-                {/each}
-              </div>
-            {/if}
-            {#if item.deep_link}
-              <a
-                href={item.deep_link}
-                target="_blank"
-                rel="noopener noreferrer"
-                class="inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline"
-              >
-                <ExternalLink size={12} aria-hidden="true" />
-                {t("interactions.open_in_gmail")}
-              </a>
-            {/if}
-            {#if canReadActivity}
-              <div>
-                <button
-                  type="button"
-                  class="text-xs font-medium text-text-muted hover:text-brand"
-                  onclick={() => toggleTrail(item.id)}
-                >
-                  {trailFor === item.id
-                    ? t("interactions.history_hide")
-                    : t("interactions.history")}
-                </button>
-                {#if trailFor === item.id}
-                  <div class="mt-2 border-l-2 border-border pl-3">
-                    {#if trail === null}
-                      <p class="text-xs text-text-muted">{t("common.loading")}</p>
-                    {:else}
-                      <ActivityFeed items={trail} limit={50} />
-                    {/if}
-                  </div>
-                {/if}
-              </div>
-            {/if}
-          </div>
-        {/if}
       </li>
     {/each}
   </ul>
+  {#if collapsible}
+    <button
+      type="button"
+      class="mt-3 text-xs font-medium text-brand hover:underline"
+      onclick={() => (showAll = !showAll)}
+    >
+      {showAll ? t("common.show_less") : t("common.show_all", { count: items.length })}
+    </button>
+  {/if}
 {/if}
 
 {#if total > items.length}
@@ -524,6 +425,156 @@
         approveAction="?/approveInteraction"
         onsaved={() => (showMove = false)}
       />
+    {/key}
+  {/if}
+</Modal>
+
+<!-- The full contact moment (#184): the email reads properly here — line breaks kept, long
+     tokens wrapped, no sideways scroll — and a pending email is reviewed (assign + approve /
+     reject) in the same place. -->
+<Modal bind:open={showDetail} title={detailItem?.subject || t("interactions.detail_title")}>
+  {#if detailItem}
+    {#key detailItem.id}
+      {@const di = detailItem}
+      <div class="space-y-3 text-sm">
+        <p class="text-xs text-text-muted">
+          {fmtDateTime(di.occurred_at)}{#if di.owner_name}&nbsp;· {di.owner_name}{/if}
+        </p>
+
+        {#if di.participants?.length}
+          <div class="flex flex-wrap gap-1">
+            {#each di.participants as p ((p.role ?? "to") + p.email)}
+              {@const cc = p.role === "cc"}
+              {#if p.contact_id}
+                <a
+                  href="/contacts/{p.contact_id}"
+                  title={p.email}
+                  class="rounded-full px-2 py-0.5 text-[11px] ring-1 ring-inset {cc
+                    ? 'bg-surface text-text-muted ring-border'
+                    : 'bg-brand/10 text-brand ring-brand/30'} hover:underline"
+                >
+                  {p.name || p.email}<span class="sr-only">
+                    ({t(`interactions.role.${p.role ?? "to"}`)})</span
+                  >
+                </a>
+              {:else if p.user_id}
+                <span
+                  title={p.email}
+                  class="rounded-full px-2 py-0.5 text-[11px] ring-1 ring-inset ring-border {cc
+                    ? 'bg-surface text-text-muted'
+                    : 'bg-surface text-text'}"
+                >
+                  {p.name || p.email}<span class="sr-only">
+                    ({t("interactions.participant_colleague")},
+                    {t(`interactions.role.${p.role ?? "to"}`)})</span
+                  >
+                </span>
+              {:else}
+                <button
+                  type="button"
+                  title={p.email}
+                  onclick={() => createFromParticipant(di, p)}
+                  class="inline-flex items-center gap-0.5 rounded-full border border-dashed border-border px-2 py-0.5 text-[11px] {cc
+                    ? 'text-text-muted'
+                    : 'text-text'} hover:border-brand hover:text-brand"
+                >
+                  {p.name || p.email}
+                  <Plus size={10} aria-hidden="true" />
+                  <span class="sr-only">
+                    {t("interactions.create_contact")}
+                    ({t(`interactions.role.${p.role ?? "to"}`)})</span
+                  >
+                </button>
+              {/if}
+            {/each}
+          </div>
+        {/if}
+
+        {#if di.body_text}
+          {#if di.source === "gmail"}
+            <!-- break-words so a lone long URL can't scroll the modal sideways (#184). -->
+            <p class="whitespace-pre-wrap break-words text-sm text-text">{di.body_text}</p>
+          {:else}
+            <Markdown value={di.body_text} />
+          {/if}
+        {:else if di.snippet}
+          <p class="text-sm text-text-muted">{di.snippet}</p>
+          {#if di.source === "gmail" && di.status === "logged"}
+            <p class="text-xs text-text-muted">{t("interactions.body_loading")}</p>
+          {/if}
+        {/if}
+
+        {#if attachmentsFor[di.id]?.length}
+          <div class="flex flex-wrap gap-1">
+            {#each attachmentsFor[di.id] as file (file.id)}
+              <a
+                href={`/api/v1/files/${file.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="inline-flex items-center gap-1 rounded-full bg-surface px-2 py-0.5 text-[11px] text-text ring-1 ring-inset ring-border hover:text-brand"
+              >
+                <Paperclip size={11} aria-hidden="true" />
+                {file.filename}
+              </a>
+            {/each}
+          </div>
+        {/if}
+
+        {#if di.deep_link}
+          <a
+            href={di.deep_link}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline"
+          >
+            <ExternalLink size={12} aria-hidden="true" />
+            {t("interactions.open_in_gmail")}
+          </a>
+        {/if}
+
+        {#if detailPending}
+          <!-- Review in place (#184): assign a client/project/task and approve, or reject. -->
+          <div class="border-t border-border pt-3">
+            <InteractionMoveDialog
+              interaction={di}
+              approveAction="?/approveInteraction"
+              onsaved={() => (showDetail = false)}
+            />
+            <button
+              type="button"
+              class="mt-2 text-xs font-medium text-red-600 hover:underline dark:text-red-400"
+              onclick={() => {
+                rejecting = di;
+                showDetail = false;
+                showReject = true;
+              }}
+            >
+              {t("interactions.reject")}
+            </button>
+          </div>
+        {/if}
+
+        {#if canReadActivity}
+          <div class="border-t border-border pt-3">
+            <button
+              type="button"
+              class="text-xs font-medium text-text-muted hover:text-brand"
+              onclick={() => toggleTrail(di.id)}
+            >
+              {trailFor === di.id ? t("interactions.history_hide") : t("interactions.history")}
+            </button>
+            {#if trailFor === di.id}
+              <div class="mt-2 border-l-2 border-border pl-3">
+                {#if trail === null}
+                  <p class="text-xs text-text-muted">{t("common.loading")}</p>
+                {:else}
+                  <ActivityFeed items={trail} limit={50} />
+                {/if}
+              </div>
+            {/if}
+          </div>
+        {/if}
+      </div>
     {/key}
   {/if}
 </Modal>

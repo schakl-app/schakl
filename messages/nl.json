@@ -1957,6 +1957,7 @@
   "interactions.field.contact": "Contactpersoon",
   "interactions.move": "Verplaatsen / koppelen",
   "interactions.move_title": "Contactmoment verplaatsen",
+  "interactions.detail_title": "Contactmoment",
   "interactions.assign": "Toewijzen…",
   "interactions.assign_title": "Contactmoment toewijzen",
   "interactions.save_pending": "Opslaan (blijft in afwachting)",

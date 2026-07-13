@@ -40,10 +40,11 @@ export const interactionActions = {
     const form = await event.request.formData();
     const occurred = occurredAt(form);
     if (!occurred) return fail(400, { error: "errors.required" });
-    // "Voeg aan mijn uren toe" (#175): the linked entry rides the same request. Its times
-    // follow the time module's wall-clock-as-UTC convention, on the interaction's date.
+    // "Voeg aan mijn uren toe" (#175): the linked entry rides the same request. Its start is
+    // the moment's own time field (#184); only the end is extra. Times follow the time module's
+    // wall-clock-as-UTC convention, on the interaction's date.
     const date = String(form.get("occurred_date") ?? "").trim();
-    const logStart = String(form.get("log_start") ?? "").trim();
+    const logStart = String(form.get("occurred_time") ?? "").trim();
     const logEnd = String(form.get("log_end") ?? "").trim();
     const logTime =
       form.get("log_time") === "1" && date && logStart && logEnd
