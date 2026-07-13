@@ -18,6 +18,14 @@ function occurredAt(form: FormData): string | null {
   return `${date}T${time}:00`;
 }
 
+function parseCustom(raw: FormDataEntryValue | null): Record<string, unknown> {
+  try {
+    return JSON.parse(String(raw ?? "{}"));
+  } catch {
+    return {};
+  }
+}
+
 function links(form: FormData): Record<string, string> {
   const out: Record<string, string> = {};
   for (const field of LINK_FIELDS) {
@@ -82,6 +90,82 @@ export const interactionActions = {
     if (!id) return fail(400, { error: "errors.required" });
     const { error } = await apiFor(event).POST("/api/v1/interactions/{interaction_id}/approve", {
       params: { path: { interaction_id: id } },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { ok: true };
+  },
+
+  /**
+   * Move / re-link (#147). One dialog, two API paths: a manual row changes links through the
+   * ordinary PATCH (own/any write scope); a gmail row goes through the owner-only review
+   * remap. An empty picker posts "" and clears the link (explicit null).
+   */
+  moveInteraction: async (event: RequestEvent) => {
+    const form = await event.request.formData();
+    const id = String(form.get("id") ?? "");
+    if (!id) return fail(400, { error: "errors.required" });
+    const body: Record<string, string | null> = {};
+    for (const field of LINK_FIELDS) {
+      const value = String(form.get(field) ?? "").trim();
+      body[field] = value || null;
+    }
+    const api = apiFor(event);
+    const { error } =
+      String(form.get("source") ?? "") === "gmail"
+        ? await api.POST("/api/v1/interactions/{interaction_id}/remap", {
+            params: { path: { interaction_id: id } },
+            body,
+          })
+        : await api.PATCH("/api/v1/interactions/{interaction_id}", {
+            params: { path: { interaction_id: id } },
+            body,
+          });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { ok: true };
+  },
+
+  /**
+   * Create a contact from an unknown email participant (#160): the chip's ＋ opens the full
+   * contact dialog prefilled with name + address; a checked "link to client" box carries the
+   * interaction's company. Rides on every host page that spreads these actions, so the flow
+   * exists wherever the timeline renders.
+   */
+  createParticipantContact: async (event: RequestEvent) => {
+    const form = await event.request.formData();
+    const first_name = String(form.get("first_name") ?? "").trim();
+    if (!first_name) return fail(400, { qcError: "errors.required" });
+    const company_id = String(form.get("company_id") ?? "").trim();
+    const { error } = await apiFor(event).POST("/api/v1/contacts", {
+      body: {
+        first_name,
+        last_name: String(form.get("last_name") ?? "").trim() || null,
+        email: String(form.get("email") ?? "").trim() || null,
+        phone: String(form.get("phone") ?? "").trim() || null,
+        job_title: String(form.get("job_title") ?? "").trim() || null,
+        // The API links and promotes the first to primary only when the company is new to
+        // the contact; an unchecked box simply creates an unlinked contact.
+        company_ids: company_id ? [company_id] : undefined,
+        custom: parseCustom(form.get("custom")),
+      },
+    });
+    if (error) return fail(400, { qcError: apiErrorKey(error).key });
+    return { ok: true };
+  },
+
+  /**
+   * Close the linked task with this contact moment (#157): sets the picked terminal status
+   * and designates the interaction as the close's justification. The API validates linkage
+   * and the per-status requires_interaction policy.
+   */
+  closeTaskWithInteraction: async (event: RequestEvent) => {
+    const form = await event.request.formData();
+    const task_id = String(form.get("task_id") ?? "");
+    const interaction_id = String(form.get("interaction_id") ?? "");
+    const status = String(form.get("status") ?? "");
+    if (!task_id || !interaction_id || !status) return fail(400, { error: "errors.required" });
+    const { error } = await apiFor(event).PATCH("/api/v1/tasks/{task_id}", {
+      params: { path: { task_id } },
+      body: { status, closing_interaction_id: interaction_id },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { ok: true };

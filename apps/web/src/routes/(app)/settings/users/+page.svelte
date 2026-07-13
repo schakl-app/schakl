@@ -220,6 +220,10 @@
       </div>
     </div>
     {#if form?.error}<p class="mt-2 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
+    <label class="mt-3 flex items-center gap-2 text-sm text-text">
+      <input type="checkbox" name="send_email" checked />
+      {t("settings.users.send_invite_email")}
+    </label>
     <div class="mt-4 flex items-center gap-3">
       <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
         {t("settings.users.send_invite")}
@@ -227,6 +231,15 @@
       <span class="text-xs text-text-muted">{t("settings.users.invited_hint")}</span>
     </div>
   </form>
+{/if}
+
+{#if form?.invited && form?.inviteEmailSent === false}
+  <!-- The invite stood, the mail did not go (#161) — the admin must know, not find out. -->
+  <p
+    class="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+  >
+    {t(form.inviteEmailError ?? "settings.users.invite_email_failed")}
+  </p>
 {/if}
 
 {#if form?.error && !showInvite}

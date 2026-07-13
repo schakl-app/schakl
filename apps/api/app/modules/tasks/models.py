@@ -117,6 +117,13 @@ class Task(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # The contact moment this task was closed with (#157) — GitHub's "close with comment",
+    # but a contactmoment. Deliberately no DB FK: interactions.task_id already points here
+    # and a mutual FK is a circular dependency; the service validates linkage on write, and
+    # reopening the task clears the designation so the next close picks afresh.
+    closing_interaction_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), nullable=True
+    )
     recurrence: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     recurrence_next_run: Mapped[date | None] = mapped_column(Date, nullable=True)
 
@@ -150,6 +157,11 @@ class TaskStatusDef(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     # A finished state: stamping ``completed_at`` and spawning an after-completion recurrence key
     # off this flag, never the literal string "done" (issue #62).
     is_terminal: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    # Entering this status demands a designated closing contact moment (#157) — tenant
+    # policy per status, so "klaar" can be made to mean "besproken met de klant".
+    requires_interaction: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
     # The status a newly created task falls into when none is given.

@@ -113,13 +113,20 @@ export function notificationHref(item: NotificationLike): string | null {
     case "timesheet":
       return "/time";
     case "interaction": {
-      // A pending email opens where its timeline lives: the mapped client, else the matched
-      // contact (a gmail row always has at least one of the two — matching requires it).
+      // A pending email opens on the review queue (#156) — the place built for deciding.
+      if (item.event_type === "interactions.email_pending") return "/interactions/review";
+      // Anything else opens where its timeline lives: the most specific host it hangs on
+      // (#151 mentions carry task/project links too).
       const payload = item.payload ?? {};
-      if (typeof payload.company_id === "string" && payload.company_id)
-        return `/companies/${payload.company_id}`;
-      if (typeof payload.contact_id === "string" && payload.contact_id)
-        return `/contacts/${payload.contact_id}`;
+      for (const [key, prefix] of [
+        ["task_id", "/tasks/"],
+        ["project_id", "/projects/"],
+        ["company_id", "/companies/"],
+        ["contact_id", "/contacts/"],
+      ] as const) {
+        const value = payload[key];
+        if (typeof value === "string" && value) return `${prefix}${value}`;
+      }
       return null;
     }
     default:

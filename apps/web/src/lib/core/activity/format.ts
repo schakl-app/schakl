@@ -77,6 +77,13 @@ export function activityText(item: ActivityLike): string {
       filename: String(item.payload?.filename ?? ""),
     });
   }
+  // A contactmoment milestone mirrored onto its host record (#152): logged / linked / unlinked.
+  if (item.action.startsWith("interaction.")) {
+    return t(`activity.action.${item.action}`, {
+      kind: t(`interactions.kind.${String(item.payload?.kind ?? "note")}`),
+      subject: String(item.payload?.subject ?? ""),
+    });
+  }
   // `created` today; an unknown action falls back to its own key rather than throwing.
   return t(`activity.action.${item.action}`);
 }

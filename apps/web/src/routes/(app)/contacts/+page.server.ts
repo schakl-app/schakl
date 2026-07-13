@@ -21,10 +21,12 @@ export const load: PageServerLoad = async (event) => {
   const resolved = resolveColumns(CONTACT_COLUMNS, pref);
   const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
   const contact_type_id = event.url.searchParams.get("type") || undefined;
+  // Client filter (#154) — applied by the API; the URL keeps it shareable.
+  const company_id = event.url.searchParams.get("company") || undefined;
 
   const [contacts, definitions, companies, types] = await Promise.all([
     api.GET("/api/v1/contacts", {
-      params: { query: { limit: 100, offset: 0, q, sort, contact_type_id } },
+      params: { query: { limit: 100, offset: 0, q, sort, contact_type_id, company_id } },
     }),
     api.GET("/api/v1/custom-fields/definitions", {
       params: { query: { entity_type: "contact" } },
@@ -40,6 +42,7 @@ export const load: PageServerLoad = async (event) => {
     companies: companies.data?.items ?? [],
     types: types.data ?? [],
     typeFilter: contact_type_id ?? "",
+    companyFilter: company_id ?? "",
     table: { pref, sort: sort ?? null, widths: resolved.widths },
     locale: event.locals.locale,
   };

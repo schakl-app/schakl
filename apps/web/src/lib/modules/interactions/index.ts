@@ -9,6 +9,7 @@ import { registerWebModule, type EntityPanelSpec } from "$lib/core/registry";
 
 import InteractionsCompanyPanel from "./InteractionsCompanyPanel.svelte";
 import InteractionsEntityPanel from "./InteractionsEntityPanel.svelte";
+import InteractionsPendingWidget from "./InteractionsPendingWidget.svelte";
 
 /** Mirrors `interactions/panels.py::PANEL_LIMIT` — a panel is a summary, not a log. */
 const PANEL_LIMIT = 8;
@@ -31,7 +32,16 @@ const entityPanels: EntityPanelSpec[] = Object.entries(ENTITY_FIELDS).map(
     position: POSITION,
     load: async (api, { entityId }) => {
       const { data } = await api.GET("/api/v1/interactions", {
-        params: { query: { [field]: entityId, limit: PANEL_LIMIT, offset: 0 } },
+        params: {
+          query: {
+            [field]: entityId,
+            limit: PANEL_LIMIT,
+            offset: 0,
+            // A project's communication is its own plus its tasks' (#147); each rolled-up
+            // row carries a task chip so the reader sees where it lives.
+            ...(entityType === "project" ? { include: "tasks" } : {}),
+          },
+        },
       });
       return {
         items: data?.items ?? [],
@@ -54,4 +64,23 @@ registerWebModule({
     },
   ],
   entityPanels,
+  dashboardWidgets: [
+    {
+      key: "interactions.pending_email",
+      module: "interactions",
+      position: 15,
+      requiresPermission: "interactions.interaction.read",
+      descriptionKey: "dashboard.widget_desc.interactions.pending_email",
+      category: "dashboard.category.review",
+      size: "md",
+      // Strictly the viewer's own mailbox queue (`mine`) — review is owner-only by design.
+      load: (api) =>
+        api
+          .GET("/api/v1/interactions", {
+            params: { query: { status: "pending", mine: true, limit: 5 } },
+          })
+          .then((r) => ({ items: r.data?.items ?? [], total: r.data?.total ?? 0 })),
+      component: InteractionsPendingWidget,
+    },
+  ],
 });

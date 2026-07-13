@@ -316,3 +316,280 @@ async def _member(client, headers, email: str) -> User:
     return User(
         id=uuid.UUID(res.json()["user_id"]), email=email, hashed_password="", is_active=True
     )
+
+
+async def test_mentions_in_note_validate_store_and_notify(client_for) -> None:
+    """#151: `@[Name](mention:<uuid>)` markers in a manual note are membership-validated,
+    stored structurally, and notify the mentioned member — a foreign uuid does nothing, an
+    edit only pings people mentioned for the first time."""
+    from tests.test_notifications_fanout import _member
+
+    t = await make_tenant("inter-mentions")
+    colleague = await _member(t, "collega@example.com")
+    stranger_id = uuid.uuid4()  # nobody in this org — must be dropped, never notified
+    headers = await auth_cookie(t.user)
+    colleague_headers = await auth_cookie(colleague)
+
+    def marker(uid) -> str:
+        return f"@[Collega](mention:{uid})"
+
+    async with client_for(t.host) as c:
+        created = await c.post(
+            "/api/v1/interactions",
+            json={
+                "kind": "note",
+                "occurred_at": _NOW.isoformat(),
+                "subject": "Notitie",
+                "body_text": f"Afgestemd met {marker(colleague.id)} en {marker(stranger_id)}.",
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        row = created.json()
+
+        inbox = (await c.get("/api/v1/notifications", headers=colleague_headers)).json()
+        mention_rows = [
+            n for n in inbox["items"] if n["event_type"] == "interactions.mentioned"
+        ]
+        assert len(mention_rows) == 1
+        assert mention_rows[0]["payload"]["subject"] == "Notitie"
+
+        # Re-saving the same body must not re-notify the same person.
+        updated = await c.patch(
+            f"/api/v1/interactions/{row['id']}",
+            json={"body_text": f"Afgestemd met {marker(colleague.id)}. Bijgewerkt."},
+            headers=headers,
+        )
+        assert updated.status_code == 200, updated.text
+        inbox = (await c.get("/api/v1/notifications", headers=colleague_headers)).json()
+        assert (
+            len([n for n in inbox["items"] if n["event_type"] == "interactions.mentioned"])
+            == 1
+        )
+
+
+async def test_logging_and_moving_mirror_onto_host_trails(client_for) -> None:
+    """#152: a logged contactmoment shows on the host records' activity trails, and a move
+    tells both sides — the interaction's own field-diff trail stays where it was."""
+    t = await make_tenant("inter-host-trail")
+    headers = await auth_cookie(t.user)
+
+    async def trail(c, entity_type: str, entity_id: str) -> list[str]:
+        rows = (
+            await c.get(
+                "/api/v1/activity",
+                params={"entity_type": entity_type, "entity_id": entity_id},
+                headers=headers,
+            )
+        ).json()
+        return [e["action"] for e in rows]
+
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Klant BV"}, headers=headers)
+        ).json()
+        other = (
+            await c.post("/api/v1/companies", json={"name": "Andere BV"}, headers=headers)
+        ).json()
+        project = (
+            await c.post(
+                "/api/v1/projects",
+                json={"name": "Site", "company_id": company["id"]},
+                headers=headers,
+            )
+        ).json()
+
+        row = (
+            await c.post(
+                "/api/v1/interactions",
+                json={
+                    "kind": "call",
+                    "occurred_at": _NOW.isoformat(),
+                    "subject": "Belafspraak",
+                    "project_id": project["id"],
+                },
+                headers=headers,
+            )
+        ).json()
+
+        # Logged on both hosts (company was derived from the project).
+        assert "interaction.logged" in await trail(c, "project", project["id"])
+        assert "interaction.logged" in await trail(c, "company", company["id"])
+
+        # Moving the client link tells both sides.
+        moved = await c.patch(
+            f"/api/v1/interactions/{row['id']}",
+            json={"company_id": other["id"], "project_id": None},
+            headers=headers,
+        )
+        assert moved.status_code == 200, moved.text
+        assert "interaction.unlinked" in await trail(c, "company", company["id"])
+        assert "interaction.linked" in await trail(c, "company", other["id"])
+        assert "interaction.unlinked" in await trail(c, "project", project["id"])
+
+
+async def test_project_rollup_includes_task_interactions_with_labels(client_for) -> None:
+    """#147: `?project_id=X&include=tasks` returns the project's own rows plus its tasks',
+    each carrying the linked record's label so the web can draw chips without lookups."""
+    t = await make_tenant("inter-rollup")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Klant BV"}, headers=headers)
+        ).json()
+        project = (
+            await c.post(
+                "/api/v1/projects",
+                json={"name": "Site", "company_id": company["id"]},
+                headers=headers,
+            )
+        ).json()
+        task = (
+            await c.post(
+                "/api/v1/tasks",
+                json={
+                    "title": "Review",
+                    "project_id": project["id"],
+                    "company_id": company["id"],
+                },
+                headers=headers,
+            )
+        ).json()
+
+        await c.post(
+            "/api/v1/interactions",
+            json={
+                "kind": "call",
+                "occurred_at": _NOW.isoformat(),
+                "subject": "Taakoverleg",
+                "task_id": task["id"],
+            },
+            headers=headers,
+        )
+
+        # Without the roll-up the task-linked row is invisible on the project…
+        flat = (
+            await c.get(
+                "/api/v1/interactions",
+                params={"project_id": project["id"]},
+                headers=headers,
+            )
+        ).json()
+        assert flat["total"] == 0
+
+        # …with it, it shows and names its task and (derived) client.
+        rolled = (
+            await c.get(
+                "/api/v1/interactions",
+                params={"project_id": project["id"], "include": "tasks"},
+                headers=headers,
+            )
+        ).json()
+        assert rolled["total"] == 1
+        row = rolled["items"][0]
+        assert row["task_title"] == "Review"
+        assert row["company_name"] == "Klant BV"
+
+        # Tenant isolation: the same query from another org sees nothing.
+        other = await make_tenant("inter-rollup-b")
+        other_headers = await auth_cookie(other.user)
+        async with client_for(other.host) as c2:
+            foreign = (
+                await c2.get(
+                    "/api/v1/interactions",
+                    params={"project_id": project["id"], "include": "tasks"},
+                    headers=other_headers,
+                )
+            ).json()
+            assert foreign["total"] == 0
+
+
+async def test_participants_resolve_to_org_contacts_at_read_time(client_for) -> None:
+    """#160: participant addresses are matched against org contacts when the row is read —
+    a contact created *after* the email was logged still links up; a stranger stays bare."""
+    t = await make_tenant("inter-participants")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        row = (
+            await c.post(
+                "/api/v1/interactions",
+                json={
+                    "kind": "meeting",
+                    "occurred_at": _NOW.isoformat(),
+                    "subject": "Kennismaking",
+                    "participants": [
+                        {"email": "Anna@Klant.NL", "name": "Anna", "role": "to"},
+                        {"email": "cc@elders.example", "role": "cc"},
+                    ],
+                },
+                headers=headers,
+            )
+        ).json()
+
+        # Not a contact yet: both addresses read unresolved.
+        fetched = (await c.get(f"/api/v1/interactions/{row['id']}", headers=headers)).json()
+        assert all(p["contact_id"] is None for p in fetched["participants"])
+
+        # The contact arrives later (different case): the address now resolves.
+        contact = (
+            await c.post(
+                "/api/v1/contacts",
+                json={"first_name": "Anna", "email": "anna@klant.nl"},
+                headers=headers,
+            )
+        ).json()
+        fetched = (await c.get(f"/api/v1/interactions/{row['id']}", headers=headers)).json()
+        # EmailStr normalises the stored address's domain case — match case-insensitively.
+        by_email = {p["email"].lower(): p for p in fetched["participants"]}
+        assert by_email["anna@klant.nl"]["contact_id"] == contact["id"]
+        assert by_email["cc@elders.example"]["contact_id"] is None
+
+
+async def test_thread_followup_inherits_all_links_including_task(client_for) -> None:
+    """#157 addendum: a reply in a Gmail thread lands where the original lives — thread
+    inheritance copies *all four* links (task and project included), from the newest
+    logged row, so a moved original re-aims future replies."""
+    from app.core.events import SystemContext
+
+    t = await make_tenant("inter-thread-inherit")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Klant BV"}, headers=headers)
+        ).json()
+        project = (
+            await c.post(
+                "/api/v1/projects",
+                json={"name": "Site", "company_id": company["id"]},
+                headers=headers,
+            )
+        ).json()
+        task = (
+            await c.post(
+                "/api/v1/tasks",
+                json={"title": "Review", "project_id": project["id"]},
+                headers=headers,
+            )
+        ).json()
+
+    await _seed_gmail_row(
+        t,
+        t.user.id,
+        pending=False,
+        message_id="orig-1",
+        thread_id="thr-inherit",
+        mappings={
+            "company_id": uuid.UUID(company["id"]),
+            "project_id": uuid.UUID(project["id"]),
+            "task_id": uuid.UUID(task["id"]),
+        },
+    )
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        ctx = SystemContext(org=t.org, session=session)
+        inherited = await interactions_system.thread_mappings(ctx, "thr-inherit")
+        assert inherited is not None
+        assert inherited["task_id"] == uuid.UUID(task["id"])
+        assert inherited["project_id"] == uuid.UUID(project["id"])
+        assert inherited["company_id"] == uuid.UUID(company["id"])

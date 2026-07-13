@@ -12,6 +12,7 @@ import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 
+import httpx
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,6 +38,7 @@ from app.core.ai.schemas import (
 from app.core.crypto import decrypt, encrypt
 from app.core.tenancy import RequestContext
 from app.errors import AppError
+from app.i18n import resolve_locale, translate
 
 logger = logging.getLogger(__name__)
 
@@ -322,11 +324,17 @@ class AISettingsService:
 
     async def test(self) -> AITestResult:
         """Round-trip a tiny completion through the *stored* settings and report the
-        provider's failure verbatim (#126) — the email test-button pattern."""
+        provider's failure verbatim (#126) — the email test-button pattern.
+
+        Success means *the key authenticated and a completion came back* — not that the
+        model chatted. A reasoning model can spend the whole budget thinking and emit no
+        visible text, which used to read as ``ok=False, error=None`` → "Test mislukt: ?"
+        (#158). Usage is only metered for a test reported as passed."""
         self.ctx.require("ai.settings.manage")
         row = await get_row(self.ctx.session, self.ctx.org.id)
         if row is None:
-            return AITestResult(ok=False, error="not configured")
+            locale = resolve_locale(self.ctx.user.locale)
+            return AITestResult(ok=False, error=translate("settings.ai.not_configured", locale))
         try:
             config = ProviderConfig(
                 provider=row.provider,
@@ -334,17 +342,19 @@ class AISettingsService:
                 model=row.default_model,
                 base_url=row.base_url,
             )
-            text, _, done = await providers.complete_chat(
+            _, _, done = await providers.complete_chat(
                 config,
                 system="You are a connection test. Reply with the single word: ok",
                 messages=[ChatMessage(role="user", content="ping")],
-                max_tokens=32,
+                max_tokens=256,
             )
-        except (AIProviderError, ValueError, OSError) as exc:
-            return AITestResult(ok=False, error=str(exc))
+        except (AIProviderError, ValueError, OSError, httpx.HTTPError) as exc:
+            # httpx errors are not OSError subclasses — without the explicit catch a
+            # DNS/timeout failure became a 500 instead of a readable test result.
+            return AITestResult(ok=False, error=str(exc) or exc.__class__.__name__)
         service = AIService(self.ctx)
         await service.record_usage("test", row.default_model, done.tokens_in, done.tokens_out)
-        return AITestResult(ok=bool(text.strip()), model=row.default_model)
+        return AITestResult(ok=True, model=row.default_model)
 
     async def list_models(self, payload: AIModelsRequest) -> AIModelsResult:
         """The provider's live model list, for the settings picker (#126): fetched, so it

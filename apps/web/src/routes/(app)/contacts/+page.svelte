@@ -2,6 +2,7 @@
   import { Download, Pencil, Trash2, Upload, X } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
+  import { goto } from "$app/navigation";
   import { editHref } from "$lib/core/edit-intent";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
@@ -45,10 +46,20 @@
     const params = new URLSearchParams();
     const q = page.url.searchParams.get("q");
     if (q) params.set("q", q);
+    if (data.companyFilter) params.set("company", data.companyFilter);
     if (data.table.sort) params.set("sort", data.table.sort);
     const query = params.toString();
     return `/contacts/export${query ? `?${query}` : ""}`;
   });
+
+  // Client filter (#154) — the tasks page's URL-param shape; the API applies it.
+  const companyFilterItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
+  function setFilter(key: string, value: string) {
+    const url = new URL(page.url);
+    if (value) url.searchParams.set(key, value);
+    else url.searchParams.delete(key);
+    void goto(url, { keepFocus: true, noScroll: true });
+  }
 
   // #80: companies to link while creating the contact. `ContactCreate.company_ids` does the
   // linking server-side (the first becomes that company's primary contact), so the picker only
@@ -204,6 +215,16 @@
      min-content width no phone has. This is the shape `companies` already uses. -->
 <div class="mb-4 flex flex-wrap items-center gap-2">
   <SearchInput />
+  <div class="w-44">
+    <Combobox
+      items={companyFilterItems}
+      name="_filter_company"
+      value={data.companyFilter}
+      placeholder={t("contacts.filter.company")}
+      onselect={(v) => setFilter("company", v)}
+      id="filter-company"
+    />
+  </div>
   <div class="ml-auto flex flex-wrap items-center gap-2">
     <!-- A plain link: the browser downloads through its own session (issue #77). -->
     <a

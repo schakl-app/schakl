@@ -18,12 +18,15 @@
   let {
     interaction = null,
     prefill = {},
+    mentions = [],
     onsaved,
   }: {
     /** Existing row when editing; null for create. */
     interaction?: InteractionItem | null;
     /** The host entity's link, stamped on new rows (e.g. `{ company_id }`). */
     prefill?: Record<string, string | null | undefined>;
+    /** Org members offered by the note editor's @ autocomplete (#151). */
+    mentions?: { id: string; name: string }[];
     onsaved?: () => void;
   } = $props();
 
@@ -120,7 +123,7 @@
 
   <div class="text-sm">
     <span class="mb-1 block font-medium text-text">{t("interactions.field.notes")}</span>
-    <RichTextEditor name="body_text" value={interaction?.body_text ?? ""} rows={4} />
+    <RichTextEditor name="body_text" value={interaction?.body_text ?? ""} rows={4} {mentions} />
   </div>
 
   {#if error}

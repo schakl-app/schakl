@@ -104,3 +104,79 @@ async def test_statuses_are_tenant_isolated(client_for) -> None:
     async with client_for(b.host) as c:
         keys = [s["key"] for s in (await c.get("/api/v1/tasks/statuses", headers=hb)).json()]
         assert "blocked" not in keys
+
+
+async def test_closing_interaction_gate_and_designation(client_for) -> None:
+    """#157: a status flagged requires_interaction cannot be entered without a designated
+    closing contact moment; the moment must be linked to *this* task and team-visible;
+    reopening clears the designation so the next close picks afresh."""
+    from datetime import UTC, datetime
+
+    t = await make_tenant("status-closing")
+    headers = await auth_cookie(t.user)
+    now = datetime(2026, 7, 10, 14, 30, tzinfo=UTC).isoformat()
+    async with client_for(t.host) as c:
+        statuses = (await c.get("/api/v1/tasks/statuses", headers=headers)).json()
+        done = next(s for s in statuses if s["key"] == "done")
+        flagged = await c.patch(
+            f"/api/v1/tasks/statuses/{done['id']}",
+            json={"requires_interaction": True},
+            headers=headers,
+        )
+        assert flagged.status_code == 200 and flagged.json()["requires_interaction"] is True
+
+        task = (await c.post("/api/v1/tasks", json={"title": "Bel klant"}, headers=headers)).json()
+        other_task = (await c.post("/api/v1/tasks", json={"title": "Andere"}, headers=headers)).json()
+
+        # No contact moment: the gate refuses.
+        refused = await c.patch(
+            f"/api/v1/tasks/{task['id']}", json={"status": "done"}, headers=headers
+        )
+        assert refused.status_code == 422
+        assert (
+            refused.json()["error"]["fields"]["status"]
+            == "errors.tasks_closing_interaction_required"
+        )
+
+        moment = (
+            await c.post(
+                "/api/v1/interactions",
+                json={
+                    "kind": "call",
+                    "occurred_at": now,
+                    "subject": "Afgestemd met klant",
+                    "task_id": task["id"],
+                },
+                headers=headers,
+            )
+        ).json()
+
+        # A moment linked to a *different* task never satisfies the gate.
+        wrong = await c.patch(
+            f"/api/v1/tasks/{other_task['id']}",
+            json={"status": "done", "closing_interaction_id": moment["id"]},
+            headers=headers,
+        )
+        assert wrong.status_code == 422
+
+        closed = await c.patch(
+            f"/api/v1/tasks/{task['id']}",
+            json={"status": "done", "closing_interaction_id": moment["id"]},
+            headers=headers,
+        )
+        assert closed.status_code == 200, closed.text
+        body = closed.json()
+        assert body["closing_interaction_id"] == moment["id"]
+        assert body["completed_at"] is not None
+
+        # Reopening clears the designation — last year's phone call can't close it again.
+        reopened = (
+            await c.patch(
+                f"/api/v1/tasks/{task['id']}", json={"status": "open"}, headers=headers
+            )
+        ).json()
+        assert reopened["closing_interaction_id"] is None
+        again = await c.patch(
+            f"/api/v1/tasks/{task['id']}", json={"status": "done"}, headers=headers
+        )
+        assert again.status_code == 422

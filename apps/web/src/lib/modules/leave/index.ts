@@ -12,6 +12,7 @@ import { t } from "$lib/core/i18n";
 import { TreePalm } from "@lucide/svelte";
 
 import LeaveBalanceWidget from "./LeaveBalanceWidget.svelte";
+import LeavePendingWidget from "./LeavePendingWidget.svelte";
 import { holidayName, typeLabel, type LeaveTypeInfo } from "./format";
 
 registerWebModule({
@@ -38,6 +39,35 @@ registerWebModule({
       size: "sm",
       load: (api) => api.GET("/api/v1/leave/summary").then((r) => r.data ?? null),
       component: LeaveBalanceWidget,
+    },
+    {
+      key: "leave.pending_approvals",
+      module: "leave",
+      position: 25,
+      // An approver's queue: work waiting on *you* belongs on My Day (#156).
+      requiresPermission: "leave.request.approve",
+      descriptionKey: "dashboard.widget_desc.leave.pending_approvals",
+      category: "dashboard.category.review",
+      size: "sm",
+      load: async (api) => {
+        const [requests, members] = await Promise.all([
+          api.GET("/api/v1/leave/requests", {
+            params: { query: { status: "pending", all_users: true, limit: 5 } },
+          }),
+          api.GET("/api/v1/members/lookup"),
+        ]);
+        const names = new Map(
+          (members.data ?? []).map((m) => [m.user_id, m.full_name || m.email]),
+        );
+        return {
+          items: (requests.data?.items ?? []).map((request) => ({
+            ...request,
+            user_name: names.get(request.user_id) ?? null,
+          })),
+          total: requests.data?.total ?? 0,
+        };
+      },
+      component: LeavePendingWidget,
     },
   ],
   calendarSources: [

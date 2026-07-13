@@ -15,6 +15,7 @@ ENTITY_PROJECT = "project"
 ENTITY_COMPANY = "company"
 ENTITY_LEAVE = "leave_request"
 ENTITY_TIMESHEET = "timesheet"
+ENTITY_INTERACTION = "interaction"
 
 ENTITY_TYPES: tuple[str, ...] = (
     ENTITY_TASK,
@@ -22,6 +23,7 @@ ENTITY_TYPES: tuple[str, ...] = (
     ENTITY_COMPANY,
     ENTITY_LEAVE,
     ENTITY_TIMESHEET,
+    ENTITY_INTERACTION,
 )
 
 # --- event types ------------------------------------------------------------------------- #
@@ -48,6 +50,14 @@ LEAVE_REJECTED = "leave.rejected"
 # time
 TIME_ENTRY_APPROVED = "time.entry_approved"
 TIME_TIMESHEET_REMINDER = "time.timesheet_reminder"
+# interactions (#146): a matched Gmail message awaiting the mailbox owner's review. The gmail
+# feed ingests it directly (owner-routed, deduped per message) — it sits in the matrix so the
+# owner can retune cadence/channels, immediate by default (a review queue is not tomorrow's
+# news). The constant in ``google/gmail/service.py`` (``PENDING_EVENT``) must match.
+INTERACTION_EMAIL_PENDING = "interactions.email_pending"
+# @mentioned in a contactmoment note (#151, like task.mentioned). Emitted by the interactions
+# service (``MENTIONED_EVENT`` there must match), recipients = the newly mentioned users.
+INTERACTION_MENTIONED = "interactions.mentioned"
 # automation (issue #27): a rule's ``notification.send`` action. Not in EVENT_TYPES — it is
 # ingested directly through this module's published service (its entity type varies per run,
 # so the static subscribe/ENTITY_FOR_EVENT path cannot carry it), and it has no place in the
@@ -74,6 +84,8 @@ EVENT_TYPES: tuple[str, ...] = (
     LEAVE_REJECTED,
     TIME_ENTRY_APPROVED,
     TIME_TIMESHEET_REMINDER,
+    INTERACTION_EMAIL_PENDING,
+    INTERACTION_MENTIONED,
 )
 
 #: Which entity type each event attaches to (for the activity feed grouping + link target).
@@ -96,6 +108,8 @@ ENTITY_FOR_EVENT: dict[str, str] = {
     LEAVE_REJECTED: ENTITY_LEAVE,
     TIME_ENTRY_APPROVED: ENTITY_TIMESHEET,
     TIME_TIMESHEET_REMINDER: ENTITY_TIMESHEET,
+    INTERACTION_EMAIL_PENDING: ENTITY_INTERACTION,
+    INTERACTION_MENTIONED: ENTITY_INTERACTION,
 }
 
 # --- channels ---------------------------------------------------------------------------- #

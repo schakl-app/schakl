@@ -15,8 +15,10 @@ from typing import Any
 
 from sqlalchemy import select
 
+from app.core.activity import ActivityService
 from app.core.events import EmitContext
 from app.modules.interactions.models import (
+    HOST_ENTITY,
     Interaction,
     InteractionKind,
     InteractionSource,
@@ -65,6 +67,16 @@ async def record_email(
     )
     ctx.session.add(row)
     await ctx.session.flush()
+    if not pending:
+        # Auto-approved at birth (trusted thread / auto-approve policy): the host records
+        # hear about it now (#152), attributed to the system — a pending row stays silent
+        # until the owner approves it (the service records that moment).
+        activity = ActivityService(ctx)
+        payload = {"interaction_id": str(row.id), "kind": row.kind, "subject": row.subject}
+        for field, entity_type in HOST_ENTITY.items():
+            target_id = getattr(row, field)
+            if target_id is not None:
+                await activity.record(entity_type, target_id, "interaction.logged", payload)
     return row
 
 

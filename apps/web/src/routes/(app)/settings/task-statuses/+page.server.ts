@@ -38,6 +38,7 @@ export const actions: Actions = {
         position: Number(form.get("position") ?? 0) || 0,
         is_terminal: form.get("is_terminal") === "true",
         is_default: form.get("is_default") === "true",
+        requires_interaction: form.get("requires_interaction") === "true",
       },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
@@ -55,6 +56,7 @@ export const actions: Actions = {
         color: String(form.get("color") ?? "") || undefined,
         is_terminal: form.get("is_terminal") === "true",
         is_default: form.get("is_default") === "true",
+        requires_interaction: form.get("requires_interaction") === "true",
       },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });

@@ -7,13 +7,17 @@
   import { fmtMoney, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
+  import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import DataTable from "$lib/core/ui/DataTable.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
+  import { SUBSCRIPTION_COLUMNS } from "$lib/modules/subscriptions/columns";
   import { subscriptionTypeLabel } from "$lib/modules/subscriptions/types";
 
   let { data, form } = $props();
@@ -59,12 +63,38 @@
   function typeLabel(id: string | null | undefined): string {
     return subscriptionTypeLabel(data.types.find((st) => st.id === id), data.locale);
   }
-  function setTypeFilter(typeId: string) {
+  // All filters ride URL params and the API applies them (#153) — the list is paginated.
+  function setFilter(key: string, value: string) {
     const url = new URL(page.url);
-    if (typeId && typeId !== data.typeFilter) url.searchParams.set("type", typeId);
-    else url.searchParams.delete("type");
+    if (value) url.searchParams.set(key, value);
+    else url.searchParams.delete(key);
     void goto(url, { keepFocus: true, noScroll: true });
   }
+  function setTypeFilter(typeId: string) {
+    setFilter("type", typeId !== data.typeFilter ? typeId : "");
+  }
+
+  // --- the shared DataTable (#153, #24) --------------------------------------
+  const table = createTableLayout<Subscription>({
+    all: () => SUBSCRIPTION_COLUMNS,
+    pref: () => data.table.pref,
+    sort: () => data.table.sort,
+    cells: () => ({
+      name: nameCell,
+      company: companyCell,
+      type: typeCell,
+      amount: amountCell,
+      next_invoice: nextInvoiceCell,
+      status: statusCell,
+      start_date: startCell,
+      included_hours: includedCell,
+    }),
+  });
+
+  // Bulk selection (#153): the bar offers only actions valid for the whole selection (#45).
+  let bulkSelected = $state<string[]>([]);
+  let bulkDeleteOpen = $state(false);
+  let bulkStatusPick = $state("active");
 
   // "Create from template" (#142): prefill, never a server-side copy — the create form stays
   // the single validation path. Rekeys the form so the defaults re-read.
@@ -156,29 +186,62 @@
   </div>
 {/if}
 
-<!-- Type filter pills (#142) — server-side: the list is paginated. -->
-{#if activeTypes.length > 0}
-  <div class="mb-4 flex flex-wrap items-center gap-2">
-    {#each activeTypes as st (st.id)}
-      <button
-        class="rounded-full px-3 py-1 text-xs font-medium
-          {data.typeFilter === st.id
-          ? 'bg-brand/10 text-brand ring-2 ring-brand'
-          : 'bg-surface text-text-muted hover:text-text'}"
-        aria-pressed={data.typeFilter === st.id}
-        onclick={() => setTypeFilter(st.id)}>{subscriptionTypeLabel(st, data.locale)}</button
-      >
-    {/each}
-    {#if data.typeFilter}
-      <button
-        class="text-xs text-text-muted underline hover:text-text"
-        onclick={() => setTypeFilter("")}
-      >
-        {t("tasks.filter.clear")}
-      </button>
-    {/if}
+<!-- Filter row (#153) — all server-side: the list is paginated. Client picker, status
+     pills, type pills (#142) and the personal column picker share one wrapping row. -->
+<div class="mb-4 flex flex-wrap items-center gap-2">
+  <div class="w-44">
+    <Combobox
+      items={companyItems}
+      name="_filter_company"
+      value={data.companyFilter}
+      placeholder={t("subscriptions.filter.company")}
+      onselect={(v) => setFilter("company", v)}
+      id="filter-company"
+    />
   </div>
-{/if}
+  {#each STATUSES as status (status)}
+    <button
+      class="rounded-full px-3 py-1 text-xs font-medium
+        {data.statusFilter === status
+        ? 'bg-brand/10 text-brand ring-2 ring-brand'
+        : 'bg-surface text-text-muted hover:text-text'}"
+      aria-pressed={data.statusFilter === status}
+      onclick={() => setFilter("status", data.statusFilter === status ? "" : status)}
+      >{t(`subscriptions.status.${status}`)}</button
+    >
+  {/each}
+  {#each activeTypes as st (st.id)}
+    <button
+      class="rounded-full px-3 py-1 text-xs font-medium
+        {data.typeFilter === st.id
+        ? 'bg-brand/10 text-brand ring-2 ring-brand'
+        : 'bg-surface text-text-muted hover:text-text'}"
+      aria-pressed={data.typeFilter === st.id}
+      onclick={() => setTypeFilter(st.id)}>{subscriptionTypeLabel(st, data.locale)}</button
+    >
+  {/each}
+  {#if data.typeFilter || data.statusFilter || data.companyFilter}
+    <button
+      class="text-xs text-text-muted underline hover:text-text"
+      onclick={() => {
+        const url = new URL(page.url);
+        url.searchParams.delete("type");
+        url.searchParams.delete("status");
+        url.searchParams.delete("company");
+        void goto(url, { keepFocus: true, noScroll: true });
+      }}
+    >
+      {t("tasks.filter.clear")}
+    </button>
+  {/if}
+  <ColumnPicker
+    all={table.pickerColumns}
+    visible={table.visibleKeys}
+    sort={table.sort}
+    onchange={table.onColumnsChange}
+    onsort={table.onSort}
+  />
+</div>
 
 {#if form?.templateSaved}
   <p class="mb-4 rounded-lg border border-border bg-surface-raised px-4 py-2 text-sm text-text">
@@ -186,78 +249,151 @@
   </p>
 {/if}
 
-<section class="rounded-xl border border-border bg-surface-raised">
-  {#if data.subscriptions.length === 0}
-    <p class="p-6 text-sm text-text-muted">{t("subscriptions.empty")}</p>
-  {:else}
-    <div class="overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead class="border-b border-border text-left text-xs uppercase text-text-muted">
-          <tr>
-            <th class="px-4 py-2 font-medium">{t("subscriptions.field.name")}</th>
-            <th class="px-4 py-2 font-medium">{t("subscriptions.field.company")}</th>
-            <th class="px-4 py-2 font-medium">{t("subscriptions.field.type")}</th>
-            <th class="px-4 py-2 font-medium">{t("subscriptions.field.amount")}</th>
-            <th class="px-4 py-2 font-medium">{t("subscriptions.field.next_invoice")}</th>
-            <th class="px-4 py-2 font-medium">{t("subscriptions.field.status")}</th>
-            <th class="px-4 py-2"></th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-border">
-          {#each data.subscriptions as sub (sub.id)}
-            <tr class="hover:bg-surface">
-              <td class="px-4 py-2 font-medium text-text">{sub.name}</td>
-              <td class="px-4 py-2 text-text-muted">{sub.company_name}</td>
-              <td class="px-4 py-2 text-text-muted">
-                {sub.subscription_type_id ? typeLabel(sub.subscription_type_id) : "—"}
-              </td>
-              <td class="px-4 py-2 tabular-nums text-text">
-                {money(sub.amount)}
-                <span class="text-xs text-text-muted">
-                  · {t(`subscriptions.interval.${sub.interval}`)}</span
-                >
-              </td>
-              <td class="px-4 py-2 tabular-nums text-text-muted">
-                {sub.next_invoice_date ? fmtNumericDate(sub.next_invoice_date) : "—"}
-              </td>
-              <td class="px-4 py-2">
-                <span class="rounded-md bg-surface px-2 py-0.5 text-xs text-text-muted"
-                  >{t(`subscriptions.status.${sub.status}`)}</span
-                >
-              </td>
-              <td class="px-2 py-2 text-right">
-                <ActionsMenu
-                  compact
-                  items={[
-                    { label: t("common.edit"), icon: Pencil, onclick: () => openEdit(sub) },
-                    ...(data.canManageTemplates
-                      ? [
-                          {
-                            label: t("subscriptions.save_template"),
-                            icon: BookmarkPlus,
-                            onclick: () => saveAsTemplate(sub),
-                          },
-                        ]
-                      : []),
-                    {
-                      label: t("common.delete"),
-                      icon: Trash2,
-                      danger: true,
-                      onclick: () => {
-                        deleteId = sub.id;
-                        confirmDelete = true;
-                      },
-                    },
-                  ]}
-                />
-              </td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
-  {/if}
-</section>
+{#snippet nameCell(sub: Subscription)}
+  <button
+    type="button"
+    class="text-left font-medium text-text hover:text-brand"
+    onclick={() => openEdit(sub)}>{sub.name}</button
+  >
+{/snippet}
+
+{#snippet companyCell(sub: Subscription)}
+  {#if sub.company_id}
+    <a href="/companies/{sub.company_id}" class="text-text-muted hover:text-brand"
+      >{sub.company_name}</a
+    >
+  {:else}<span class="text-text-muted">—</span>{/if}
+{/snippet}
+
+{#snippet typeCell(sub: Subscription)}
+  <span class="text-text-muted"
+    >{sub.subscription_type_id ? typeLabel(sub.subscription_type_id) : "—"}</span
+  >
+{/snippet}
+
+{#snippet amountCell(sub: Subscription)}
+  <span class="tabular-nums text-text">{money(sub.amount)}</span>
+  <span class="text-xs text-text-muted">· {t(`subscriptions.interval.${sub.interval}`)}</span>
+{/snippet}
+
+{#snippet nextInvoiceCell(sub: Subscription)}
+  <span class="tabular-nums text-text-muted"
+    >{sub.next_invoice_date ? fmtNumericDate(sub.next_invoice_date) : "—"}</span
+  >
+{/snippet}
+
+{#snippet statusCell(sub: Subscription)}
+  <span class="rounded-md bg-surface px-2 py-0.5 text-xs text-text-muted"
+    >{t(`subscriptions.status.${sub.status}`)}</span
+  >
+{/snippet}
+
+{#snippet startCell(sub: Subscription)}
+  <span class="tabular-nums text-text-muted"
+    >{sub.start_date ? fmtNumericDate(sub.start_date) : "—"}</span
+  >
+{/snippet}
+
+{#snippet includedCell(sub: Subscription)}
+  <span class="tabular-nums text-text-muted">{sub.included_hours ?? "—"}</span>
+{/snippet}
+
+{#snippet rowActions(sub: Subscription)}
+  <ActionsMenu
+    compact
+    items={[
+      { label: t("common.edit"), icon: Pencil, onclick: () => openEdit(sub) },
+      ...(data.canManageTemplates
+        ? [
+            {
+              label: t("subscriptions.save_template"),
+              icon: BookmarkPlus,
+              onclick: () => saveAsTemplate(sub),
+            },
+          ]
+        : []),
+      {
+        label: t("common.delete"),
+        icon: Trash2,
+        danger: true,
+        onclick: () => {
+          deleteId = sub.id;
+          confirmDelete = true;
+        },
+      },
+    ]}
+  />
+{/snippet}
+
+{#snippet mobileRow(sub: Subscription)}
+  <button type="button" class="min-w-0 flex-1 text-left" onclick={() => openEdit(sub)}>
+    <span class="block truncate text-sm font-medium text-text">{sub.name}</span>
+    <span class="mt-0.5 block truncate text-xs text-text-muted">
+      {sub.company_name} · {money(sub.amount)} ·
+      {t(`subscriptions.status.${sub.status}`)}
+    </span>
+  </button>
+{/snippet}
+
+{#snippet emptyState()}
+  <p class="p-6 text-sm text-text-muted">{t("subscriptions.empty")}</p>
+{/snippet}
+
+{#snippet bulkBar(ids: string[])}
+  <span class="text-xs font-medium text-text">{t("table.selected", { count: ids.length })}</span>
+  <form method="POST" action="?/bulkStatus" use:enhance class="flex items-center gap-1.5">
+    {#each ids as id (id)}
+      <input type="hidden" name="ids" value={id} />
+    {/each}
+    <select
+      name="status"
+      bind:value={bulkStatusPick}
+      class="rounded-lg border border-border bg-surface-raised px-2 py-1 text-xs"
+      aria-label={t("subscriptions.field.status")}
+    >
+      {#each STATUSES as status (status)}
+        <option value={status}>{t(`subscriptions.status.${status}`)}</option>
+      {/each}
+    </select>
+    <button
+      class="rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+    >
+      {t("subscriptions.bulk.set_status")}
+    </button>
+  </form>
+  <button
+    type="button"
+    class="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-text hover:border-red-400 hover:text-red-600 dark:hover:border-red-500 dark:hover:text-red-400"
+    onclick={() => (bulkDeleteOpen = true)}
+  >
+    <Trash2 size={13} />
+    {t("common.delete")}
+  </button>
+{/snippet}
+
+<DataTable
+  rows={data.subscriptions}
+  columns={table.columns}
+  sort={table.sort}
+  widths={table.widths}
+  locale={data.locale}
+  actions={rowActions}
+  {mobileRow}
+  empty={emptyState}
+  selectable
+  bind:selected={bulkSelected}
+  selection={bulkBar}
+  onsort={table.onSort}
+  onresize={table.onResize}
+/>
+
+<ConfirmDialog
+  bind:open={bulkDeleteOpen}
+  title={t("subscriptions.delete")}
+  message={t("subscriptions.bulk.delete_confirm")}
+  action="?/bulkDelete"
+  fields={{ ids: bulkSelected.join(",") }}
+/>
 
 <!-- One form for create and edit (use vs edit mode: definition changes live here). -->
 <Modal

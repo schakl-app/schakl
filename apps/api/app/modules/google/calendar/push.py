@@ -19,9 +19,10 @@ import uuid
 from datetime import date, timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth.models import User
 from app.core.events import EmitContext
 from app.core.models import Org, OrgSettings
 from app.i18n import translate
@@ -74,22 +75,34 @@ async def _org_locale(session: AsyncSession, org_id: uuid.UUID) -> str | None:
 
 
 def _event_body(payload: dict[str, Any]) -> dict[str, Any]:
-    """The Google event from the snapshot: timed within one day, else an all-day span."""
+    """The Google event from the snapshot: timed within one day, else an all-day span.
+
+    The event carries its schakl identity in ``extendedProperties.private`` (#148) — that is
+    what lets the Agenda's Google feed drop the mirror of a leave item it already shows
+    natively, and what marks the event as ours for any future reconciliation.
+    """
     start_date = payload["start_date"]
     end_date = payload["end_date"]
+    body: dict[str, Any] = {
+        "summary": payload.get("summary") or "",
+        "extendedProperties": {
+            "private": {
+                "schakl": payload.get("local_type") or LOCAL_TYPE_LEAVE,
+                "schakl_id": payload.get("local_id") or "",
+            }
+        },
+    }
+    if payload.get("description"):
+        body["description"] = payload["description"]
     if payload.get("start_time") and payload.get("end_time") and start_date == end_date:
         zone = payload.get("timezone") or "UTC"
-        return {
-            "summary": payload.get("summary") or "",
-            "start": {"dateTime": f"{start_date}T{payload['start_time']}", "timeZone": zone},
-            "end": {"dateTime": f"{end_date}T{payload['end_time']}", "timeZone": zone},
-        }
+        body["start"] = {"dateTime": f"{start_date}T{payload['start_time']}", "timeZone": zone}
+        body["end"] = {"dateTime": f"{end_date}T{payload['end_time']}", "timeZone": zone}
+        return body
     exclusive_end = (date.fromisoformat(end_date) + timedelta(days=1)).isoformat()
-    return {
-        "summary": payload.get("summary") or "",
-        "start": {"date": start_date},
-        "end": {"date": exclusive_end},
-    }
+    body["start"] = {"date": start_date}
+    body["end"] = {"date": exclusive_end}
+    return body
 
 
 # --------------------------------------------------------------------------- #
@@ -112,9 +125,17 @@ async def handle_leave_approved(ctx: EmitContext, payload: dict[str, Any]) -> No
     ):
         return
 
-    locale = await _org_locale(ctx.session, ctx.org.id)
+    # The event lands on the *requester's* calendar, so their locale words it (#148);
+    # the org default is the fallback, like everywhere (§8).
+    locale = (
+        await ctx.session.scalar(select(User.locale).where(User.id == user_id))
+        or await _org_locale(ctx.session, ctx.org.id)
+    )
     snapshot = {
-        "summary": translate("google.calendar.leave_event_title", locale),
+        "summary": await _leave_summary(ctx.session, ctx.org.id, payload, locale),
+        "description": _leave_description(payload, locale),
+        "local_type": LOCAL_TYPE_LEAVE,
+        "local_id": str(request_id),
         "start_date": str(payload["start_date"]),
         "end_date": str(payload["end_date"]),
         "start_time": str(payload["start_time"]) if payload.get("start_time") else None,
@@ -162,6 +183,47 @@ async def handle_leave_gone(ctx: EmitContext, payload: dict[str, Any]) -> None:
         # Never reached Google (still pending, or requester not connected): just drop it.
         await ctx.session.delete(link)
         await ctx.session.flush()
+
+
+async def _leave_summary(
+    session: AsyncSession, org_id: uuid.UUID, payload: dict[str, Any], locale: str | None
+) -> str:
+    """"Verlof: Vakantie", never a bare "Verlof" (#148). The tenant's own type label
+    (``label_i18n``) is read with org-scoped SQL — the mirror never imports leave internals."""
+    base = translate("google.calendar.leave_event_title", locale)
+    type_id = payload.get("leave_type_id")
+    if not type_id:
+        return base
+    label_i18n = await session.scalar(
+        text("SELECT label_i18n FROM leave_types WHERE id = :tid AND org_id = :oid"),
+        {"tid": type_id, "oid": org_id},
+    )
+    if not isinstance(label_i18n, dict):
+        return base
+    label = label_i18n.get(locale or "") or label_i18n.get("nl") or label_i18n.get("en")
+    if not label:
+        label = next(iter(label_i18n.values()), None)
+    return f"{base}: {label}" if label else base
+
+
+def _leave_description(payload: dict[str, Any], locale: str | None) -> str:
+    """The per-day breakdown, one line per working day (#148) — Google shows a multi-day
+    all-day span without saying which day costs what; this does."""
+    lines = [
+        translate(
+            "google.calendar.leave_event_day",
+            locale,
+            date=_european_day(row["date"]),
+            hours=f"{row['hours']:g}",
+        )
+        for row in payload.get("breakdown") or []
+    ]
+    return "\n".join(lines)
+
+
+def _european_day(iso_day: str) -> str:
+    year, month, day = iso_day.split("-")
+    return f"{day}-{month}-{year}"
 
 
 async def _org_timezone(session: AsyncSession, org_id: uuid.UUID) -> str:

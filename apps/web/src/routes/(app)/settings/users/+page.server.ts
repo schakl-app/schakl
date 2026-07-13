@@ -67,15 +67,21 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const email = String(form.get("email") ?? "").trim();
     if (!email) return fail(400, { error: "errors.required" });
-    const { error } = await apiFor(event).POST("/api/v1/members/invite", {
+    const { data, error } = await apiFor(event).POST("/api/v1/members/invite", {
       body: {
         email,
         full_name: String(form.get("full_name") ?? "").trim() || null,
         role: String(form.get("role") ?? "member") as "member",
+        send_email: form.get("send_email") !== null,
       },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
-    return { invited: true };
+    return {
+      invited: true,
+      // #161: the admin must know when the welcome mail could not go out (no transport).
+      inviteEmailSent: data?.invite_email_sent ?? null,
+      inviteEmailError: data?.invite_email_error ?? null,
+    };
   },
 
   /**

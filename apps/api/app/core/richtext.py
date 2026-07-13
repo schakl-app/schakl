@@ -22,8 +22,33 @@ web (a future email/PDF path, CLAUDE.md §8):
 from __future__ import annotations
 
 import re
+import uuid
 
 import nh3
+
+# `@[Display Name](mention:<uuid>)` — the marker the web's RichTextEditor writes (issue #63).
+# The name is display-only; the id is the truth, so a rename never breaks who was mentioned.
+# Shared here because more than one module parses it (task comments, contactmoment notes #151);
+# two drifting copies of this regex would disagree about who got mentioned.
+MENTION_RE = re.compile(
+    r"@\[[^\]]+\]\(mention:([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\)"
+)
+
+
+def extract_mention_ids(body: str | None) -> list[uuid.UUID]:
+    """The distinct user ids mentioned in a body, in first-seen order.
+
+    Purely syntactic — the caller still validates the ids against org membership, so a stray
+    or cross-tenant uuid can never notify anyone (issue #63).
+    """
+    seen: dict[uuid.UUID, None] = {}
+    for match in MENTION_RE.finditer(body or ""):
+        try:
+            seen.setdefault(uuid.UUID(match.group(1)), None)
+        except ValueError:
+            continue
+    return list(seen)
 
 
 def sanitize_markdown(value: str | None) -> str | None:

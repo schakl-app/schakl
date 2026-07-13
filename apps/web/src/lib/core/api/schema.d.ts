@@ -4569,12 +4569,16 @@ export interface components {
             all_day: boolean;
             /** End */
             end: string;
+            /** Ends At */
+            ends_at?: string | null;
             /** Html Link */
             html_link?: string | null;
             /** Id */
             id: string;
             /** Start */
             start: string;
+            /** Starts At */
+            starts_at?: string | null;
             /**
              * Tentative
              * @default false
@@ -6202,8 +6206,12 @@ export interface components {
             body_text?: string | null;
             /** Company Id */
             company_id?: string | null;
+            /** Company Name */
+            company_name?: string | null;
             /** Contact Id */
             contact_id?: string | null;
+            /** Contact Name */
+            contact_name?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -6235,9 +6243,11 @@ export interface components {
             /** Owner User Id */
             owner_user_id?: string | null;
             /** Participants */
-            participants?: components["schemas"]["Participant"][];
+            participants?: components["schemas"]["ParticipantRead"][];
             /** Project Id */
             project_id?: string | null;
+            /** Project Name */
+            project_name?: string | null;
             /** Snippet */
             snippet?: string | null;
             source: components["schemas"]["InteractionSource"];
@@ -6246,6 +6256,8 @@ export interface components {
             subject?: string | null;
             /** Task Id */
             task_id?: string | null;
+            /** Task Title */
+            task_title?: string | null;
         };
         /** InteractionReject */
         InteractionReject: {
@@ -7210,6 +7222,11 @@ export interface components {
              * @default member
              */
             role: string;
+            /**
+             * Send Email
+             * @default true
+             */
+            send_email: boolean;
         };
         /**
          * MemberLookup
@@ -7233,6 +7250,10 @@ export interface components {
             email: string;
             /** Full Name */
             full_name: string | null;
+            /** Invite Email Error */
+            invite_email_error?: string | null;
+            /** Invite Email Sent */
+            invite_email_sent?: boolean | null;
             /** Is Active */
             is_active: boolean;
             /** Is Self */
@@ -7632,6 +7653,27 @@ export interface components {
         };
         /** Participant */
         Participant: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Name */
+            name?: string | null;
+            /**
+             * Role
+             * @default to
+             */
+            role: string;
+        };
+        /**
+         * ParticipantRead
+         * @description Read shape only (#160): the org contact this address resolves to, matched at read
+         *     time so a contact created *after* the email was logged still links up.
+         */
+        ParticipantRead: {
+            /** Contact Id */
+            contact_id?: string | null;
             /**
              * Email
              * Format: email
@@ -8565,6 +8607,11 @@ export interface components {
              * @default 0
              */
             position: number;
+            /**
+             * Requires Interaction
+             * @default false
+             */
+            requires_interaction: boolean;
         };
         /** StatusRead */
         StatusRead: {
@@ -8594,6 +8641,11 @@ export interface components {
              * @default 0
              */
             position: number;
+            /**
+             * Requires Interaction
+             * @default false
+             */
+            requires_interaction: boolean;
         };
         /** StatusUpdate */
         StatusUpdate: {
@@ -8607,6 +8659,8 @@ export interface components {
             name?: string | null;
             /** Position */
             position?: number | null;
+            /** Requires Interaction */
+            requires_interaction?: boolean | null;
         };
         /** StoredFileRead */
         StoredFileRead: {
@@ -9166,6 +9220,8 @@ export interface components {
             assignee_user_id?: string | null;
             /** Checklists */
             checklists?: components["schemas"]["ChecklistRead"][];
+            /** Closing Interaction Id */
+            closing_interaction_id?: string | null;
             /** Comments */
             comments?: components["schemas"]["CommentRead"][];
             /** Company Id */
@@ -9244,6 +9300,8 @@ export interface components {
              * @default 0
              */
             checklist_total: number;
+            /** Closing Interaction Id */
+            closing_interaction_id?: string | null;
             /**
              * Comment Count
              * @default 0
@@ -9302,6 +9360,8 @@ export interface components {
             allocated_minutes?: number | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
+            /** Closing Interaction Id */
+            closing_interaction_id?: string | null;
             /** Company Id */
             company_id?: string | null;
             /** Completed At */
@@ -9348,6 +9408,8 @@ export interface components {
             allocated_minutes?: number | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
+            /** Closing Interaction Id */
+            closing_interaction_id?: string | null;
             /** Company Id */
             company_id?: string | null;
             /** Description */
@@ -14355,6 +14417,10 @@ export interface operations {
                 kind?: string | null;
                 status?: string | null;
                 owner_user_id?: string | null;
+                /** @description Only my own rows — the review queue's filter */
+                mine?: boolean;
+                /** @description Roll-up: 'tasks' with project_id also returns the project's tasks' rows */
+                include?: string | null;
                 limit?: number;
                 offset?: number;
             };

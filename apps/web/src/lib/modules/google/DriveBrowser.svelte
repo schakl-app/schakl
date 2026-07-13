@@ -13,11 +13,14 @@
    *
    * **Host contract:** the page exposes `?/linkDriveFile` (spread `driveActions`).
    */
-  import { ExternalLink, File, Folder, Link2, RefreshCw, Upload } from "@lucide/svelte";
+  import { ExternalLink, Link2, RefreshCw, Upload } from "@lucide/svelte";
   import { onMount } from "svelte";
 
   import { enhance } from "$app/forms";
+  import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+
+  import { driveKind } from "./mime";
 
   interface BrowseItem {
     id: string;
@@ -190,9 +193,11 @@
     {:else}
       <ul class="max-h-72 divide-y divide-border overflow-y-auto">
         {#each listing.items as item (item.id)}
+          {@const kind = driveKind(item.mime_type, item.is_folder)}
+          {@const KindIcon = kind.icon}
           <li class="flex items-center gap-2 px-3 py-2">
+            <KindIcon size={15} class="shrink-0 text-text-muted" aria-hidden="true" />
             {#if item.is_folder}
-              <Folder size={15} class="shrink-0 text-text-muted" aria-hidden="true" />
               <button
                 type="button"
                 class="min-w-0 flex-1 truncate text-left text-sm text-text hover:underline"
@@ -200,9 +205,24 @@
               >
                 {item.name}
               </button>
+            {:else if item.web_view_link}
+              <!-- A file's name opens it in Drive (#150) — the icon column already says what
+                   it is; making people hunt for the tiny external-link icon was the bug. -->
+              <a
+                href={item.web_view_link}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="min-w-0 flex-1 truncate text-sm text-text hover:underline"
+              >
+                {item.name}
+              </a>
             {:else}
-              <File size={15} class="shrink-0 text-text-muted" aria-hidden="true" />
               <span class="min-w-0 flex-1 truncate text-sm text-text">{item.name}</span>
+            {/if}
+            {#if item.modified_at}
+              <span class="hidden shrink-0 text-xs tabular-nums text-text-muted sm:inline">
+                {fmtNumericDate(item.modified_at.slice(0, 10))}
+              </span>
             {/if}
             {#if canWrite}
               <!-- Link this file/folder to the record the panel hangs off. -->

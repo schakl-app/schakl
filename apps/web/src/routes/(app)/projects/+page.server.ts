@@ -21,6 +21,8 @@ export const load: PageServerLoad = async (event) => {
   const q = event.url.searchParams.get("q") || undefined;
   // "My projects" is filtered by the API (any assignee, not just the primary).
   const mine = event.url.searchParams.get("mine") === "1";
+  // Client filter (#154) — applied by the API; the URL keeps it shareable.
+  const company_id = event.url.searchParams.get("company") || undefined;
 
   // The saved layout decides two things before a row is fetched: how the *server* sorts, and
   // whether the budget burn-down is worth computing at all (#24 — a hidden aggregate costs
@@ -33,7 +35,7 @@ export const load: PageServerLoad = async (event) => {
 
   const [projects, companies, definitions, members] = await Promise.all([
     api.GET("/api/v1/projects", {
-      params: { query: { limit: 200, offset: 0, q, mine, sort, hours } },
+      params: { query: { limit: 200, offset: 0, q, mine, sort, hours, company_id } },
     }),
     api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
     api.GET("/api/v1/custom-fields/definitions", {
@@ -49,6 +51,7 @@ export const load: PageServerLoad = async (event) => {
     members: members.data ?? [],
     table: { pref, sort: sort ?? null, widths: resolved.widths },
     mine,
+    companyFilter: company_id ?? "",
     locale: event.locals.locale,
   };
 };

@@ -13,17 +13,20 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, select, text
+from sqlalchemy import bindparam, func, or_, select, text
 
 from app.core.activity import ActivityService
 from app.core.activity.service import snapshot
 from app.core.auth.models import User
 from app.core.events import emit
+from app.core.models import Membership
+from app.core.richtext import extract_mention_ids, sanitize_markdown
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_zoneinfo
 from app.errors import AppError
 from app.modules.interactions.models import (
     ENTITY_TYPE,
+    HOST_ENTITY,
     MANUAL_KINDS,
     Interaction,
     InteractionSource,
@@ -54,6 +57,10 @@ _LINK_TABLES = {
     "contact_id": "contacts",
 }
 
+#: Must match ``notifications.events.INTERACTION_MENTIONED`` (#151) — a string on the bus,
+#: like the gmail feed's ``PENDING_EVENT``, never a cross-module import (CLAUDE.md §6).
+MENTIONED_EVENT = "interactions.mentioned"
+
 
 class InteractionService:
     def __init__(self, ctx: RequestContext) -> None:
@@ -77,12 +84,30 @@ class InteractionService:
         kind: str | None = None,
         status: str | None = None,
         owner_user_id: uuid.UUID | None = None,
+        include: str | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
+        include_set = {part.strip() for part in (include or "").split(",") if part.strip()}
         conditions = []
         if company_id is not None:
+            # The client timeline is already complete without a roll-up: a task/project link
+            # derives ``company_id`` on write (``_resolve_links``), so filtering the FK is it.
             conditions.append(Interaction.company_id == company_id)
         if project_id is not None:
-            conditions.append(Interaction.project_id == project_id)
+            if "tasks" in include_set:
+                # A project's communication is its own plus its tasks' (#147): one OR over two
+                # indexed FKs, the task ids fetched once — never a per-row lookup.
+                task_ids = (
+                    await self.ctx.session.scalars(
+                        text("SELECT id FROM tasks WHERE org_id = :oid AND project_id = :pid"),
+                        {"oid": self._org_id, "pid": project_id},
+                    )
+                ).all()
+                own = Interaction.project_id == project_id
+                conditions.append(
+                    or_(own, Interaction.task_id.in_(task_ids)) if task_ids else own
+                )
+            else:
+                conditions.append(Interaction.project_id == project_id)
         if task_id is not None:
             conditions.append(Interaction.task_id == task_id)
         if contact_id is not None:
@@ -110,7 +135,13 @@ class InteractionService:
             )
             or 0
         )
-        return [self._present(row, full_name, email) for row, full_name, email in rows], total
+        plain_rows = [row for row, _, _ in rows]
+        names = await self._link_names(plain_rows)
+        contacts_by_email = await self._participant_contacts(plain_rows)
+        return [
+            self._present(row, full_name, email, names, contacts_by_email)
+            for row, full_name, email in rows
+        ], total
 
     async def get(self, interaction_id: uuid.UUID) -> dict[str, Any]:
         row = await self.repo.get_or_404(interaction_id)
@@ -135,20 +166,25 @@ class InteractionService:
             }
         )
         user = self.ctx.user
+        body = sanitize_markdown(data.body_text)
+        mentioned = await self._valid_mentions(extract_mention_ids(body))
         row = await self.repo.create(
             kind=data.kind.value,
             status=InteractionStatus.LOGGED.value,
             occurred_at=await self._as_instant(data.occurred_at),
             subject=data.subject.strip(),
-            body_text=data.body_text,
+            body_text=body,
             direction=data.direction.value,
             owner_user_id=user.id,
             owner_name=user.full_name or user.email,
             participants=[p.model_dump() for p in data.participants],
+            mentioned_user_ids=[str(uid) for uid in mentioned],
             source=InteractionSource.MANUAL.value,
             **links,
         )
         await ActivityService(self.ctx).record_created(ENTITY_TYPE, row.id)
+        await self._record_on_hosts(row, "interaction.logged")
+        await self._notify_mentions(row, mentioned)
         return await self._present_one(row)
 
     async def update(self, interaction_id: uuid.UUID, data: InteractionUpdate) -> dict[str, Any]:
@@ -176,11 +212,24 @@ class InteractionService:
             values["participants"] = [p.model_dump() for p in data.participants or []]
         if values.get("occurred_at") is not None:
             values["occurred_at"] = await self._as_instant(values["occurred_at"])
+        # An edited body re-extracts its mentions (#151); only people mentioned for the first
+        # time are notified — re-saving a note must not re-ping everyone already in it.
+        newly_mentioned: list[uuid.UUID] = []
+        if "body_text" in values:
+            already = set(row.mentioned_user_ids or [])
+            body = sanitize_markdown(values["body_text"])
+            values["body_text"] = body
+            mentioned = await self._valid_mentions(extract_mention_ids(body))
+            values["mentioned_user_ids"] = [str(uid) for uid in mentioned]
+            newly_mentioned = [uid for uid in mentioned if str(uid) not in already]
         values.update(await self._resolve_links(link_updates, partial=True))
+        old_links = {field: getattr(row, field) for field in HOST_ENTITY}
         row = await self.repo.update(row, **values)
         await ActivityService(self.ctx).record_update(
             ENTITY_TYPE, row.id, before, snapshot(row, _AUDITED_FIELDS)
         )
+        await self._record_link_moves(row, old_links)
+        await self._notify_mentions(row, newly_mentioned)
         return await self._present_one(row)
 
     async def delete(self, interaction_id: uuid.UUID) -> None:
@@ -195,6 +244,9 @@ class InteractionService:
             raise AppError("invalid_state", "errors.interactions_not_pending", status_code=409)
         row = await self.repo.update(row, status=InteractionStatus.LOGGED.value)
         await ActivityService(self.ctx).record(ENTITY_TYPE, row.id, "approved")
+        # Approval is the moment the email becomes team-visible — that is when the host
+        # records hear about it (#152); a pending row must not announce itself.
+        await self._record_on_hosts(row, "interaction.logged")
         # The google module fetches the body asynchronously — never inside this transaction.
         await emit(
             "interaction.approved",
@@ -230,13 +282,79 @@ class InteractionService:
         if not sent:
             return await self._present_one(row)
         values = await self._resolve_links(sent, partial=True)
+        old_links = {field: getattr(row, field) for field in HOST_ENTITY}
         row = await self.repo.update(row, **values)
         await ActivityService(self.ctx).record_update(
             ENTITY_TYPE, row.id, before, snapshot(row, _AUDITED_FIELDS)
         )
+        await self._record_link_moves(row, old_links)
         return await self._present_one(row)
 
     # --- helpers ---------------------------------------------------------------- #
+    async def _record_on_hosts(self, row: Interaction, action: str) -> None:
+        """Mirror a milestone onto every linked host record's trail (#152), in the same
+        transaction. A mirror *event* carrying a pointer — the field-level diff stays on the
+        interaction's own trail, so nothing is audited twice."""
+        activity = ActivityService(self.ctx)
+        payload = {"interaction_id": str(row.id), "kind": row.kind, "subject": row.subject}
+        for field, entity_type in HOST_ENTITY.items():
+            target_id = getattr(row, field)
+            if target_id is not None:
+                await activity.record(entity_type, target_id, action, payload)
+
+    async def _record_link_moves(
+        self, row: Interaction, old_links: dict[str, uuid.UUID | None]
+    ) -> None:
+        """A moved contactmoment tells both sides (#152): the host it left and the one it
+        joined. Only team-visible (logged) rows announce themselves."""
+        if row.status != InteractionStatus.LOGGED.value:
+            return
+        activity = ActivityService(self.ctx)
+        payload = {"interaction_id": str(row.id), "kind": row.kind, "subject": row.subject}
+        for field, entity_type in HOST_ENTITY.items():
+            old, new = old_links[field], getattr(row, field)
+            if old == new:
+                continue
+            if old is not None:
+                await activity.record(entity_type, old, "interaction.unlinked", payload)
+            if new is not None:
+                await activity.record(entity_type, new, "interaction.linked", payload)
+
+    async def _valid_mentions(self, ids: list[uuid.UUID]) -> list[uuid.UUID]:
+        """Keep only the mentioned ids that are members of this org (#151, like #63)."""
+        if not ids:
+            return []
+        members = set(
+            (
+                await self.ctx.session.execute(
+                    select(Membership.user_id).where(
+                        Membership.org_id == self._org_id, Membership.user_id.in_(ids)
+                    )
+                )
+            ).scalars()
+        )
+        return [uid for uid in ids if uid in members]
+
+    async def _notify_mentions(self, row: Interaction, mentioned: list[uuid.UUID]) -> None:
+        """Tell the people newly @mentioned in this note — never the author themselves."""
+        recipients = [uid for uid in mentioned if uid != self.ctx.user.id]
+        if not recipients:
+            return
+        await emit(
+            MENTIONED_EVENT,
+            self.ctx,
+            {
+                "interaction_id": row.id,
+                "subject": row.subject,
+                # Link targets for the notification (format.ts): the host the note hangs on.
+                "task_id": row.task_id,
+                "project_id": row.project_id,
+                "company_id": row.company_id,
+                "contact_id": row.contact_id,
+                "_recipients": recipients,
+            },
+        )
+
     async def _as_instant(self, value: datetime) -> datetime:
         """A naive datetime is the org's wall clock (§8): attach the tenant zone, store an instant.
 
@@ -317,6 +435,41 @@ class InteractionService:
                 fields={field_name: "errors.not_found"},
             )
 
+    #: What each linked table calls its label — the batched name lookup below reads these.
+    _LINK_LABELS = {
+        "company_id": ("companies", "name"),
+        "project_id": ("projects", "name"),
+        "task_id": ("tasks", "title"),
+        "contact_id": ("contacts", "trim(concat(first_name, ' ', coalesce(last_name, '')))"),
+    }
+
+    async def _link_names(
+        self, rows: list[Interaction]
+    ) -> dict[tuple[str, uuid.UUID], str]:
+        """Labels for the linked records (#147) — one batched query per referenced table for
+        the whole page, never a per-row lookup (docs/PERFORMANCE.md). Raw ids are worse than
+        saying nothing, and the web should not need four lookup fetches to draw a chip."""
+        wanted: dict[str, set[uuid.UUID]] = {field: set() for field in _LINK_TABLES}
+        for row in rows:
+            for field in _LINK_TABLES:
+                value = getattr(row, field)
+                if value is not None:
+                    wanted[field].add(value)
+        names: dict[tuple[str, uuid.UUID], str] = {}
+        for field, ids in wanted.items():
+            if not ids:
+                continue
+            table, label = self._LINK_LABELS[field]
+            stmt = text(
+                f"SELECT id, {label} FROM {table} WHERE org_id = :oid AND id IN :ids"  # noqa: S608 — fixed table/label names
+            ).bindparams(bindparam("ids", expanding=True))
+            result = await self.ctx.session.execute(
+                stmt, {"oid": self._org_id, "ids": list(ids)}
+            )
+            for target_id, target_label in result:
+                names[(field, target_id)] = target_label
+        return names
+
     async def _present_one(self, row: Interaction) -> dict[str, Any]:
         owner = (
             (
@@ -327,10 +480,43 @@ class InteractionService:
             if row.owner_user_id
             else None
         )
-        return self._present(row, owner[0] if owner else None, owner[1] if owner else None)
+        names = await self._link_names([row])
+        contacts_by_email = await self._participant_contacts([row])
+        return self._present(
+            row,
+            owner[0] if owner else None,
+            owner[1] if owner else None,
+            names,
+            contacts_by_email,
+        )
+
+    async def _participant_contacts(self, rows: list[Interaction]) -> dict[str, uuid.UUID]:
+        """Which participant addresses exist as org contacts (#160) — one batched,
+        org-scoped query over the page's distinct emails, matched at read time so a contact
+        created after the email was logged still links up. Display data, never authz."""
+        emails: set[str] = set()
+        for row in rows:
+            for participant in row.participants or []:
+                email = (participant.get("email") or "").lower()
+                if email:
+                    emails.add(email)
+        if not emails:
+            return {}
+        stmt = text(
+            "SELECT lower(email), id FROM contacts WHERE org_id = :oid AND lower(email) IN :emails"
+        ).bindparams(bindparam("emails", expanding=True))
+        result = await self.ctx.session.execute(
+            stmt, {"oid": self._org_id, "emails": list(emails)}
+        )
+        return dict(result.all())
 
     def _present(
-        self, row: Interaction, live_name: str | None, live_email: str | None
+        self,
+        row: Interaction,
+        live_name: str | None,
+        live_email: str | None,
+        names: dict[tuple[str, uuid.UUID], str] | None = None,
+        contacts_by_email: dict[str, uuid.UUID] | None = None,
     ) -> dict[str, Any]:
         """Owner resolved like the activity trail (issue #64): live account wins, snapshot after."""
         if live_email is not None:
@@ -338,6 +524,7 @@ class InteractionService:
         else:
             owner_name = row.owner_name
             owner_deleted = row.owner_name is not None
+        names = names or {}
         return {
             "id": row.id,
             "kind": row.kind,
@@ -351,10 +538,22 @@ class InteractionService:
             "project_id": row.project_id,
             "task_id": row.task_id,
             "contact_id": row.contact_id,
+            "company_name": names.get(("company_id", row.company_id)),
+            "project_name": names.get(("project_id", row.project_id)),
+            "task_title": names.get(("task_id", row.task_id)),
+            "contact_name": names.get(("contact_id", row.contact_id)),
             "owner_user_id": row.owner_user_id,
             "owner_name": owner_name,
             "owner_deleted": owner_deleted,
-            "participants": row.participants,
+            "participants": [
+                {
+                    **participant,
+                    "contact_id": (contacts_by_email or {}).get(
+                        (participant.get("email") or "").lower()
+                    ),
+                }
+                for participant in (row.participants or [])
+            ],
             "source": row.source,
             "gmail_thread_id": row.gmail_thread_id,
             "deep_link": row.deep_link,
