@@ -1,0 +1,101 @@
+---
+// Demo — "Activity & audit". A status change on the record lands in the activity trail: the
+// status pill flips Lead → Actief and a new feed entry (actor + the field diff + timestamp)
+// slides in at the top. Base frame = the trail after the change.
+import AppFrame from './AppFrame.astro';
+import Icon from './Icon.astro';
+import { labels, type Locale } from './labels.ts';
+
+interface Props {
+  locale: Locale;
+}
+const { locale } = Astro.props;
+const l = labels[locale];
+const older = [
+  { who: 'Tom', what: locale === 'nl' ? 'bewerkte Notities' : 'edited Notes', when: locale === 'nl' ? '1 u' : '1 h', av: 'b' },
+  { who: 'Sanne', what: locale === 'nl' ? 'wijzigde Verantwoordelijke' : 'changed Responsible', when: locale === 'nl' ? '3 u' : '3 h', av: 'a' },
+  { who: 'Sanne', what: locale === 'nl' ? 'maakte de klant aan' : 'created the client', when: locale === 'nl' ? 'gisteren' : 'yesterday', av: 'a' },
+];
+---
+
+<AppFrame locale={locale} active="companies" class="demo-activity">
+  <div class="ac-back muted"><Icon name="chevronDown" size={0.8} class="ac-rot" />{l.clients}</div>
+  <div class="screen__head">
+    <div class="ac-title">
+      <span class="screen__title">Studio Noord</span>
+      <span class="ac-status">
+        <span class="chip chip--warn ac-status__a">{l.stLead}</span>
+        <span class="chip chip--ok ac-status__b">{l.stActive}</span>
+      </span>
+    </div>
+  </div>
+
+  <div class="card ac-card">
+    <div class="ac-card__h strong">{locale === 'nl' ? 'Activiteit' : 'Activity'}</div>
+    <div class="ac-feed">
+      <div class="ac-entry ac-new">
+        <span class="avatar avatar--a" style="width:1.6em;height:1.6em;font-size:0.68em">SV</span>
+        <div class="ac-entry__body">
+          <div class="ac-entry__text">
+            <b>Sanne</b> <span class="muted">{locale === 'nl' ? 'wijzigde' : 'changed'}</span> Status
+            <span class="ac-diff"><span class="muted">{l.stLead}</span><Icon name="arrowRight" size={0.75} /><span class="brand-ink">{l.stActive}</span></span>
+          </div>
+          <div class="ac-entry__when muted tnum">{locale === 'nl' ? 'zojuist' : 'just now'}</div>
+        </div>
+      </div>
+      {
+        older.map((e) => (
+          <div class="ac-entry">
+            <span class={`avatar avatar--${e.av}`} style="width:1.6em;height:1.6em;font-size:0.68em">{e.who.slice(0, 2)}</span>
+            <div class="ac-entry__body">
+              <div class="ac-entry__text"><b>{e.who}</b> <span class="muted">{e.what}</span></div>
+              <div class="ac-entry__when muted tnum">{e.when}</div>
+            </div>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+
+  <div class="stagefade"></div>
+</AppFrame>
+
+<style is:global>
+  .demo-activity .ac-back { display: inline-flex; align-items: center; gap: 0.25em; font-size: 0.85em; margin-bottom: 0.5em; }
+  .demo-activity .ac-back .ac-rot { transform: rotate(90deg); }
+  .demo-activity .ac-title { display: flex; align-items: center; gap: 0.7em; }
+  .demo-activity .ac-status { position: relative; display: inline-block; min-width: 4.5em; height: 1.6em; }
+  .demo-activity .ac-status__a, .demo-activity .ac-status__b { position: absolute; left: 0; top: 0; }
+  .demo-activity .ac-status__a { opacity: 0; }
+  .demo-activity .ac-status__b { opacity: 1; }
+
+  .demo-activity .ac-card { padding: 0.95em 1.05em; }
+  .demo-activity .ac-card__h { margin-bottom: 0.7em; }
+  .demo-activity .ac-feed { display: flex; flex-direction: column; }
+  .demo-activity .ac-entry { display: flex; gap: 0.65em; padding: 0.6em 0; border-top: 1px solid var(--bd); }
+  .demo-activity .ac-entry:first-child { border-top: 0; }
+  .demo-activity .ac-entry__body { flex: 1; min-width: 0; }
+  .demo-activity .ac-entry__text { font-size: 0.9em; }
+  .demo-activity .ac-diff { display: inline-flex; align-items: center; gap: 0.25em; }
+  .demo-activity .ac-diff svg { color: var(--mu); }
+  .demo-activity .ac-entry__when { font-size: 0.82em; margin-top: 0.1em; }
+  .demo-activity .stagefade { position: absolute; inset: 0; background: var(--sf); opacity: 0; pointer-events: none; z-index: 30; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .demo-activity.is-playing .ac-status__a { animation: acv-sA 9s infinite; }
+    .demo-activity.is-playing .ac-status__b { animation: acv-sB 9s infinite; }
+    .demo-activity.is-playing .ac-new { animation: acv-new 9s infinite; }
+    .demo-activity.is-playing .stagefade { animation: acv-veil 9s infinite; }
+  }
+  /* status flips Lead -> Actief early, then the entry lands */
+  @keyframes acv-sA { 0%, 18% { opacity: 1; } 26%, 100% { opacity: 0; } }
+  @keyframes acv-sB { 0%, 18% { opacity: 0; } 26%, 100% { opacity: 1; } }
+  @keyframes acv-new {
+    0%, 30% { opacity: 0; transform: translateY(-0.6em); max-height: 0; }
+    40% { opacity: 1; transform: none; max-height: 4em; box-shadow: inset 2px 0 0 var(--b); }
+    50% { box-shadow: inset 2px 0 0 transparent; }
+    92% { opacity: 1; transform: none; max-height: 4em; }
+    100% { opacity: 0; transform: translateY(-0.6em); max-height: 0; }
+  }
+  @keyframes acv-veil { 0%, 92% { opacity: 0; } 96%, 100% { opacity: 1; } }
+</style>

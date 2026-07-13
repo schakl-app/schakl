@@ -14,6 +14,10 @@ import DemoBudgetBurn from './showcase/DemoBudgetBurn.astro';
 import DemoTasks from './showcase/DemoTasks.astro';
 import DemoLeave from './showcase/DemoLeave.astro';
 import DemoWhiteLabel from './showcase/DemoWhiteLabel.astro';
+import DemoContacts from './showcase/DemoContacts.astro';
+import DemoActivity from './showcase/DemoActivity.astro';
+import DemoInteractions from './showcase/DemoInteractions.astro';
+import DemoCustomFields from './showcase/DemoCustomFields.astro';
 
 interface Props {
   locale: 'nl' | 'en';
@@ -28,6 +32,10 @@ const demos: Record<string, any> = {
   tasks: DemoTasks,
   leave: DemoLeave,
   whiteLabel: DemoWhiteLabel,
+  contacts: DemoContacts,
+  activity: DemoActivity,
+  interactions: DemoInteractions,
+  customfields: DemoCustomFields,
 };
 const Demo = feature.demo ? demos[feature.demo] : null;
 

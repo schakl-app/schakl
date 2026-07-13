@@ -4,6 +4,7 @@
 // settings singleton.
 import settings from '../data/settings/site.json';
 import { localizeHref } from '../lib/links';
+import MegaMenu from './MegaMenu.astro';
 import '../styles/landing.css';
 
 interface Props {
@@ -54,7 +55,10 @@ const themeCss = `:root{--brand-accent:${settings.colors.accent};--brand-accent-
           )}
         </a>
         <nav class="site-nav" aria-label={locale === 'nl' ? 'Hoofdnavigatie' : 'Main navigation'}>
-          {settings.nav.map((item) => <a href={href(item.href)}>{item[locale]}</a>)}
+          <MegaMenu locale={locale} />
+          {settings.nav
+            .filter((item) => item.href !== '/#features')
+            .map((item) => <a href={href(item.href)}>{item[locale]}</a>)}
           <a href={otherLocaleHref} class="locale-switch" lang={locale === 'nl' ? 'en' : 'nl'}>
             {locale === 'nl' ? 'EN' : 'NL'}
           </a>

@@ -4,6 +4,7 @@
   "order": 110,
   "icon": "🕓",
   "lucide": "activity",
+  "demo": "activity",
   "title": {
     "nl": "Activiteit & audit",
     "en": "Activity & audit"

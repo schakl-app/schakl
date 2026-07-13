@@ -4,6 +4,7 @@
   "order": 15,
   "icon": "👥",
   "lucide": "contacts",
+  "demo": "contacts",
   "title": {
     "nl": "Contactpersonen",
     "en": "Contacts"

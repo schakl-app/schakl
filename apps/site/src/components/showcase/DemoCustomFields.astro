@@ -1,0 +1,88 @@
+---
+// Demo — "Custom fields". A tenant defines typed fields on an entity and they appear in the
+// form on their own. Here a "Segment" select (a custom field) slides into the client form
+// under the standard fields, with its type tag. Base frame = the form with the custom fields.
+import AppFrame from './AppFrame.astro';
+import Icon from './Icon.astro';
+import { labels, type Locale } from './labels.ts';
+
+interface Props {
+  locale: Locale;
+}
+const { locale } = Astro.props;
+const l = labels[locale];
+const t = {
+  edit: locale === 'nl' ? 'Klant bewerken' : 'Edit client',
+  own: locale === 'nl' ? 'Eigen velden' : 'Custom fields',
+  clientNo: locale === 'nl' ? 'Klantnummer' : 'Client number',
+  segment: locale === 'nl' ? 'Segment' : 'Segment',
+  typeText: locale === 'nl' ? 'Tekst' : 'Text',
+  typeSelect: locale === 'nl' ? 'Keuzelijst' : 'Select',
+  hint:
+    locale === 'nl'
+      ? 'Gedefinieerd onder Instellingen → Eigen velden; verschijnt vanzelf op formulier en lijst.'
+      : 'Defined under Settings → Custom fields; appears on the form and the list on its own.',
+};
+---
+
+<AppFrame locale={locale} active="companies" class="demo-cf">
+  <div class="cf-back muted"><Icon name="chevronDown" size={0.8} class="cf-rot" />{l.clients}</div>
+  <div class="screen__head"><span class="screen__title">{t.edit}</span></div>
+
+  <div class="card cf-card">
+    <div class="cf-field">
+      <span class="field__label">{l.fName}</span>
+      <span class="input"><span>Bakkerij De Vries</span></span>
+    </div>
+    <div class="cf-field">
+      <span class="field__label">{l.fWebsite}</span>
+      <span class="input"><span>devries.nl</span></span>
+    </div>
+
+    <div class="cf-own">
+      <span class="cf-own__title">{t.own}</span>
+      <span class="muted cf-own__hint">{t.hint}</span>
+    </div>
+
+    <div class="cf-field cf-static">
+      <span class="field__label">{t.clientNo} <span class="cf-tag">{t.typeText}</span></span>
+      <span class="input"><span>KL-2043</span></span>
+    </div>
+    <div class="cf-field cf-new">
+      <span class="field__label">{t.segment} <span class="cf-tag">{t.typeSelect}</span></span>
+      <span class="input select"><span>Horeca</span><Icon name="chevronDown" size={0.9} /></span>
+    </div>
+  </div>
+
+  <div class="stagefade"></div>
+</AppFrame>
+
+<style is:global>
+  .demo-cf .cf-back { display: inline-flex; align-items: center; gap: 0.25em; font-size: 0.85em; margin-bottom: 0.5em; }
+  .demo-cf .cf-back .cf-rot { transform: rotate(90deg); }
+  .demo-cf .cf-card { padding: 0.95em 1.05em; }
+  .demo-cf .cf-field { margin-bottom: 0.65em; }
+  .demo-cf .cf-field .input span { color: var(--tx); }
+  .demo-cf .cf-own { display: flex; align-items: baseline; gap: 0.6em; flex-wrap: wrap; padding-top: 0.7em; margin: 0.3em 0 0.7em; border-top: 1px solid var(--bd); }
+  .demo-cf .cf-own__title { text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.78em; font-weight: 700; color: var(--mu); }
+  .demo-cf .cf-own__hint { font-size: 0.78em; flex: 1; min-width: 8em; }
+  .demo-cf .cf-tag {
+    display: inline-block; margin-left: 0.35em; padding: 0.05em 0.4em; border-radius: 0.35em;
+    font-size: 0.82em; font-weight: 600; text-transform: none; letter-spacing: 0;
+    color: var(--b); background: color-mix(in srgb, var(--b) 12%, transparent);
+  }
+  .demo-cf .stagefade { position: absolute; inset: 0; background: var(--sf); opacity: 0; pointer-events: none; z-index: 30; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .demo-cf.is-playing .cf-new { animation: cf-new 8s infinite; }
+    .demo-cf.is-playing .stagefade { animation: cf-veil 8s infinite; }
+  }
+  @keyframes cf-new {
+    0%, 34% { opacity: 0; transform: translateY(-0.5em); max-height: 0; margin-bottom: 0; }
+    46% { opacity: 1; transform: none; max-height: 5em; box-shadow: 0 0 0 2px color-mix(in srgb, var(--b) 30%, transparent); }
+    54% { box-shadow: 0 0 0 2px transparent; }
+    92% { opacity: 1; transform: none; max-height: 5em; }
+    100% { opacity: 0; transform: translateY(-0.5em); max-height: 0; margin-bottom: 0; }
+  }
+  @keyframes cf-veil { 0%, 92% { opacity: 0; } 96%, 100% { opacity: 1; } }
+</style>

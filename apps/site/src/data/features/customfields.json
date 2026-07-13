@@ -4,6 +4,7 @@
   "order": 90,
   "icon": "🎚️",
   "lucide": "customfields",
+  "demo": "customfields",
   "title": {
     "nl": "Maatwerkvelden",
     "en": "Custom fields"

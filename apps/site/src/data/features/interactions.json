@@ -4,6 +4,7 @@
   "order": 60,
   "icon": "💬",
   "lucide": "messages",
+  "demo": "interactions",
   "title": {
     "nl": "Contactmomenten",
     "en": "Interactions"

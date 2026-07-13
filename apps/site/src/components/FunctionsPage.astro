@@ -1,0 +1,236 @@
+---
+// The /features/ overview: a richer, grouped index of every capability — an icon quick-menu,
+// then themed sections of full cards (icon, title, the card description, a demo badge where a
+// feature has a live animation). More extensive than the home grid, which is one flat list.
+import SiteShell from './SiteShell.astro';
+import Icon from './showcase/Icon.astro';
+import { features, grouped, taglines, type Locale } from '../lib/features.ts';
+import { localizeHref } from '../lib/links';
+import settings from '../data/settings/site.json';
+
+interface Props {
+  locale: Locale;
+}
+const { locale } = Astro.props;
+const href = (h: string) => localizeHref(locale, h);
+const cols = grouped();
+
+const t = {
+  eyebrow: locale === 'nl' ? 'Functies' : 'Features',
+  h1: locale === 'nl' ? 'Zoveel platform als je nodig hebt' : 'As much platform as you need',
+  lead:
+    locale === 'nl'
+      ? 'Elke functie is een module die je per organisatie aan- of uitzet. Hieronder staat alles wat schakl kan, gegroepeerd van klantwerk tot platform. Veel functies laten zich live bekijken.'
+      : 'Every capability is a module you switch on or off per organisation. Below is everything schakl does, grouped from client work to platform. Many of them come with a live demo.',
+  demo: locale === 'nl' ? 'Live demo' : 'Live demo',
+  more: locale === 'nl' ? 'Bekijk functie' : 'View feature',
+  ctaTitle: locale === 'nl' ? 'Klaar om te beginnen?' : 'Ready to get started?',
+  ctaBody:
+    locale === 'nl'
+      ? 'Van installatie tot de losse modules: alles staat in de documentatie.'
+      : 'From installation to every module: it is all in the documentation.',
+  ctaLabel: locale === 'nl' ? 'Naar de documentatie' : 'Go to the docs',
+};
+const title = `${settings.brandName} · ${t.eyebrow}`;
+---
+
+<SiteShell locale={locale} title={title} description={t.lead}>
+  <section class="fx container">
+    <header class="fx__hero">
+      <p class="eyebrow">{t.eyebrow}</p>
+      <h1>{t.h1}</h1>
+      <p class="subtitle">{t.lead}</p>
+    </header>
+
+    <!-- icon quick-menu: every feature, one tap away -->
+    <nav class="fx__index" aria-label={t.eyebrow}>
+      {
+        features.map((f: any) => (
+          <a class="fx__chip" href={href(`/features/${f.slug}`)}>
+            <Icon name={f.lucide} size={1} />
+            <span>{f.title[locale]}</span>
+          </a>
+        ))
+      }
+    </nav>
+
+    {
+      cols.map((g) => (
+        <section class="fx__group">
+          <div class="fx__group-head">
+            <h2>{locale === 'nl' ? g.nl : g.en}</h2>
+            <p class="section-intro">{locale === 'nl' ? g.intro.nl : g.intro.en}</p>
+          </div>
+          <div class="fx__grid">
+            {g.items.map((f: any) => (
+              <a class="fx__card" href={href(`/features/${f.slug}`)}>
+                <span class="fx__icon"><Icon name={f.lucide} size={1.5} /></span>
+                <div class="fx__card-body">
+                  <div class="fx__card-top">
+                    <h3>{f.title[locale]}</h3>
+                    {f.demo && <span class="fx__badge">{t.demo}</span>}
+                  </div>
+                  <p>{f.description[locale]}</p>
+                </div>
+                <span class="fx__more">
+                  {t.more}
+                  <Icon name="arrowRight" size={0.9} />
+                </span>
+              </a>
+            ))}
+          </div>
+        </section>
+      ))
+    }
+
+    <section class="fx__cta">
+      <h2>{t.ctaTitle}</h2>
+      <p class="section-intro">{t.ctaBody}</p>
+      <a class="button primary" href={href('/docs/')}>{t.ctaLabel}</a>
+    </section>
+  </section>
+</SiteShell>
+
+<style>
+  .fx {
+    padding-block: 3rem 5rem;
+  }
+  .fx__hero {
+    max-width: 46rem;
+    margin-bottom: 2rem;
+  }
+  .fx__hero h1 {
+    font-size: clamp(2.2rem, 6vw, 3.4rem);
+    font-weight: 700;
+  }
+  .fx__hero .subtitle {
+    margin-inline: 0;
+  }
+
+  .fx__index {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding-bottom: 2.5rem;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .fx__chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.4rem 0.8rem 0.4rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--text);
+    font-size: 0.9rem;
+    font-weight: 550;
+  }
+  .fx__chip :global(svg) {
+    color: var(--accent);
+  }
+  .fx__chip:hover {
+    border-color: var(--accent);
+    background: var(--bg-soft);
+  }
+
+  .fx__group {
+    margin-top: 3.25rem;
+  }
+  .fx__group-head {
+    max-width: 42rem;
+    margin-bottom: 1.5rem;
+  }
+  .fx__group-head h2 {
+    font-size: clamp(1.5rem, 3.5vw, 2rem);
+  }
+  .fx__group-head .section-intro {
+    margin-top: 0.25rem;
+  }
+
+  .fx__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+    gap: 1rem;
+  }
+  .fx__card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    border-radius: 0.9rem;
+    background: var(--bg);
+    color: var(--text);
+    transition: border-color 0.15s ease;
+  }
+  .fx__card:hover {
+    border-color: var(--accent);
+  }
+  .fx__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 3rem;
+    height: 3rem;
+    flex: none;
+    border-radius: 0.7rem;
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent);
+  }
+  .fx__card-body {
+    flex: 1;
+  }
+  .fx__card-top {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+  }
+  .fx__card h3 {
+    font-size: 1.1rem;
+    margin: 0;
+  }
+  .fx__badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 650;
+    letter-spacing: 0.02em;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+  .fx__card p {
+    color: var(--muted);
+    font-size: 0.94rem;
+    margin: 0.4rem 0 0;
+  }
+  .fx__more {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+
+  .fx__cta {
+    margin-top: 4rem;
+    padding: 3rem 2.5rem;
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+    background: var(--bg-soft);
+    text-align: center;
+  }
+  .fx__cta h2 {
+    font-size: clamp(1.5rem, 4vw, 2rem);
+  }
+  .fx__cta .section-intro {
+    margin-inline: auto;
+  }
+  .fx__cta .button {
+    margin-top: 1.25rem;
+  }
+</style>

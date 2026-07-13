@@ -1,0 +1,113 @@
+---
+// Demo — "Interactions". A Gmail-matched email lands on the client's timeline marked
+// "Te beoordelen"; approving it settles it in, and "add to my hours" turns it into a time
+// entry. Base frame = the email approved with its hours chip.
+import AppFrame from './AppFrame.astro';
+import Icon from './Icon.astro';
+import { labels, type Locale } from './labels.ts';
+
+interface Props {
+  locale: Locale;
+}
+const { locale } = Astro.props;
+const l = labels[locale];
+const t = {
+  panel: locale === 'nl' ? 'Contactmomenten' : 'Interactions',
+  review: locale === 'nl' ? 'Te beoordelen' : 'Needs review',
+  approve: locale === 'nl' ? 'Goedkeuren' : 'Approve',
+  addHours: locale === 'nl' ? 'Toegevoegd aan uren' : 'Added to hours',
+  incoming: locale === 'nl' ? 'Inkomend' : 'Incoming',
+};
+const older = [
+  { icon: 'calendar', subject: locale === 'nl' ? 'Kick-off gepland' : 'Kick-off scheduled', meta: locale === 'nl' ? 'Afspraak · 6 jul' : 'Meeting · 6 Jul', av: 'a' },
+  { icon: 'phone', subject: locale === 'nl' ? 'Nabellen offerte' : 'Follow-up call', meta: locale === 'nl' ? 'Telefoongesprek · 4 jul' : 'Call · 4 Jul', av: 'b' },
+];
+---
+
+<AppFrame locale={locale} active="companies" class="demo-interactions">
+  <div class="in-back muted"><Icon name="chevronDown" size={0.8} class="in-rot" />{l.clients}</div>
+  <div class="screen__head"><span class="screen__title">Studio Noord</span></div>
+
+  <div class="card in-card">
+    <div class="in-card__h strong">{t.panel}</div>
+    <div class="in-feed">
+      <div class="in-entry in-email">
+        <span class="in-icon"><Icon name="mail" size={1} /></span>
+        <div class="in-body">
+          <div class="in-line1">
+            <span class="in-subject">Offerte akkoord</span>
+            <span class="chip chip--pending in-review">{t.review}</span>
+          </div>
+          <div class="in-meta muted">{locale === 'nl' ? 'E-mail' : 'Email'} · {t.incoming} · 09:41</div>
+          <div class="in-actions">
+            <span class="btn btn--brand in-approve">{t.approve}</span>
+            <span class="chip chip--ok in-hours"><Icon name="check" size={0.75} />{t.addHours}</span>
+          </div>
+        </div>
+      </div>
+      {
+        older.map((e) => (
+          <div class="in-entry">
+            <span class={`in-icon in-icon--${e.av}`}><Icon name={e.icon} size={1} /></span>
+            <div class="in-body">
+              <div class="in-line1"><span class="in-subject">{e.subject}</span></div>
+              <div class="in-meta muted">{e.meta}</div>
+            </div>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+
+  <div class="stagefade"></div>
+</AppFrame>
+
+<style is:global>
+  .demo-interactions .in-back { display: inline-flex; align-items: center; gap: 0.25em; font-size: 0.85em; margin-bottom: 0.5em; }
+  .demo-interactions .in-back .in-rot { transform: rotate(90deg); }
+  .demo-interactions .in-card { padding: 0.95em 1.05em; }
+  .demo-interactions .in-card__h { margin-bottom: 0.6em; }
+  .demo-interactions .in-feed { display: flex; flex-direction: column; }
+  .demo-interactions .in-entry { display: flex; gap: 0.7em; padding: 0.7em 0; border-top: 1px solid var(--bd); }
+  .demo-interactions .in-entry:first-child { border-top: 0; }
+  .demo-interactions .in-icon {
+    display: grid; place-items: center; width: 1.9em; height: 1.9em; flex: none;
+    border-radius: 0.5em; background: var(--sf); color: var(--mu);
+  }
+  .demo-interactions .in-email .in-icon { background: color-mix(in srgb, var(--b) 12%, transparent); color: var(--b); }
+  .demo-interactions .in-body { flex: 1; min-width: 0; }
+  .demo-interactions .in-line1 { display: flex; align-items: center; gap: 0.5em; }
+  .demo-interactions .in-subject { font-weight: 600; font-size: 0.92em; }
+  .demo-interactions .in-meta { font-size: 0.82em; margin-top: 0.15em; }
+  .demo-interactions .in-actions { display: flex; align-items: center; gap: 0.5em; margin-top: 0.5em; }
+  .demo-interactions .in-approve { padding: 0.35em 0.7em; font-size: 0.82em; }
+  .demo-interactions .in-hours { font-size: 0.8em; }
+  .demo-interactions .stagefade { position: absolute; inset: 0; background: var(--sf); opacity: 0; pointer-events: none; z-index: 30; }
+
+  /* base = approved: review pill + approve button gone, hours chip shown */
+  .demo-interactions .in-review { opacity: 0; }
+  .demo-interactions .in-approve { display: none; }
+  .demo-interactions .in-hours { opacity: 1; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .demo-interactions.is-playing .in-review { animation: iv-review 9s infinite; }
+    .demo-interactions.is-playing .in-approve { animation: iv-approve 9s infinite; display: inline-flex; }
+    .demo-interactions.is-playing .in-hours { animation: iv-hours 9s infinite; }
+    .demo-interactions.is-playing .in-email { animation: iv-email 9s infinite; }
+    .demo-interactions.is-playing .stagefade { animation: iv-veil 9s infinite; }
+  }
+  /* the email arrives, waits as "needs review", gets approved, then shows its hours chip */
+  @keyframes iv-email {
+    0% { opacity: 0; transform: translateY(-0.5em); }
+    12%, 100% { opacity: 1; transform: none; }
+  }
+  @keyframes iv-review { 0%, 45% { opacity: 1; } 55%, 100% { opacity: 0; } }
+  @keyframes iv-approve {
+    0%, 40% { opacity: 1; transform: none; }
+    46% { transform: scale(0.96); filter: brightness(0.92); }
+    52% { opacity: 1; }
+    56%, 100% { opacity: 0; transform: scale(0.9); pointer-events: none; }
+  }
+  @keyframes iv-hours { 0%, 58% { opacity: 0; transform: translateY(0.3em); } 66%, 100% { opacity: 1; transform: none; } }
+  @keyframes iv-veil { 0%, 92% { opacity: 0; } 96%, 100% { opacity: 1; } }
+</style>
