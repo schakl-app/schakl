@@ -223,12 +223,20 @@ class InteractionService:
     async def _log_time(self, row: Interaction, log_time: Any) -> None:
         """The "Voeg aan mijn uren toe" ride-along (#175): a linked time entry, in this same
         transaction, through the time module's published surface (§6) — never its internals.
-        Carries the interaction's own links and subject; typed after the interaction's kind
-        when the org has an entry type of the same key (#176), untyped otherwise."""
+        Carries the interaction's own links and subject, and its kind as the entry's *type* —
+        the time module mirrors the kind into a matching type on first use (#182), so a logged
+        call/meeting is typed even though time-entry types seed only work/email."""
         self.ctx.require("time.entry.write")
         from app.modules.time import system as time_system
 
-        entry_type_key = await time_system.active_type_key(self.ctx, row.kind)
+        kind = await self.ctx.session.scalar(
+            select(InteractionKindDef).where(
+                InteractionKindDef.org_id == self._org_id, InteractionKindDef.key == row.kind
+            )
+        )
+        entry_type_key = await time_system.ensure_type_for_kind(
+            self.ctx, row.kind, kind.label_i18n if kind else None
+        )
         await time_system.record_entry(
             self.ctx,
             user_id=self.ctx.user.id,

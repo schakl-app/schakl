@@ -248,8 +248,14 @@ async def test_log_time_creates_linked_entry_that_survives_deletion(client_for) 
         assert entry["company_id"] == company["id"]
         assert entry["description"] == "Belafspraak"
         assert entry["minutes"] == 45
-        # No org entry type matches "call", so the entry stays untyped (#176 tie-in).
-        assert entry["entry_type_key"] is None
+        # The interaction's kind is mirrored into a time-entry type on first use (#182): the
+        # entry is typed "call", and a matching Uren-type now exists carrying the kind's label.
+        assert entry["entry_type_key"] == "call"
+        types = (await c.get("/api/v1/time/entry-types", headers=headers)).json()
+        call_type = next((et for et in types if et["key"] == "call"), None)
+        assert call_type is not None and call_type["label_i18n"]["nl"] == "Telefoongesprek"
+        # The default work/email types were seeded alongside, not skipped.
+        assert {"work", "email"} <= {et["key"] for et in types}
 
         # Deleting the interaction detaches, never deletes, the logged hours.
         assert (
@@ -258,6 +264,46 @@ async def test_log_time_creates_linked_entry_that_survives_deletion(client_for) 
         entries = (await c.get("/api/v1/time/entries", headers=headers)).json()
         assert entries["total"] == 1
         assert entries["items"][0]["interaction_id"] is None
+
+
+async def test_log_time_respects_a_deactivated_matching_type(client_for) -> None:
+    """#182: mirroring a kind into a time-entry type must not resurrect one an admin
+    deliberately deactivated — the logged entry stays untyped instead."""
+    t = await make_tenant("inter-logtime-deact")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        # Create then deactivate a "call" time-entry type.
+        created_type = (
+            await c.post(
+                "/api/v1/time/entry-types",
+                json={"key": "call", "label_i18n": {"nl": "Bellen", "en": "Call"}},
+                headers=headers,
+            )
+        ).json()
+        assert (
+            await c.patch(
+                f"/api/v1/time/entry-types/{created_type['id']}",
+                json={"active": False},
+                headers=headers,
+            )
+        ).status_code == 200
+
+        created = await c.post(
+            "/api/v1/interactions",
+            json={
+                "kind": "call",
+                "occurred_at": _NOW.isoformat(),
+                "subject": "Belafspraak",
+                "log_time": {
+                    "started_at": "2026-07-10T14:00:00Z",
+                    "ended_at": "2026-07-10T14:30:00Z",
+                },
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        entry = (await c.get("/api/v1/time/entries", headers=headers)).json()["items"][0]
+        assert entry["entry_type_key"] is None  # deactivation respected, not resurrected
 
 
 async def test_manual_email_kind_refused(client_for) -> None:

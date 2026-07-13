@@ -12,28 +12,79 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timedelta
+from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.events import EmitContext
 from app.errors import AppError
-from app.modules.time.models import TimeEntry, TimeEntryType
+from app.modules.time.models import DEFAULT_ENTRY_TYPES, TimeEntry, TimeEntryType
 
 
-async def active_type_key(ctx: EmitContext, key: str | None) -> str | None:
-    """``key`` when it names one of the org's *active* entry types, else ``None`` — how a
-    caller types an entry after its own vocabulary (an interaction kind, #175/#176) without
-    reading this module's tables."""
+async def ensure_type_for_kind(
+    ctx: EmitContext, key: str | None, label_i18n: dict[str, Any] | None = None
+) -> str | None:
+    """The org's time-entry type matching an interaction kind, provisioned on first use (#182).
+
+    A time entry logged from a call/meeting should carry that kind as its *type* (#175/#176),
+    but the two lists are independent and time-entry types seed only ``work``/``email`` — so a
+    call mapped to nothing and came through untyped. This mirrors the kind into a time-entry
+    type the first time one is logged, keeping the lists in sync without a shared table:
+
+    - an **active** matching type already exists → use it;
+    - a **deactivated** one exists → respect the admin's choice, leave the entry untyped;
+    - none exists → create one from the interaction kind's own ``label_i18n`` (so it reads
+      identically in Uren-typen and the report), appended after the current types.
+
+    Provisioning is a side effect of a write the caller already holds ``time.entry.write`` for
+    (like an activity record), **not** a ``time.entry_type.manage`` action — a member logging a
+    call must still get it typed, and members don't manage the catalog.
+    """
     if key is None:
         return None
-    hit = await ctx.session.scalar(
-        select(TimeEntryType.id).where(
-            TimeEntryType.org_id == ctx.org.id,
-            TimeEntryType.key == key,
-            TimeEntryType.active.is_(True),
+    existing = await ctx.session.scalar(
+        select(TimeEntryType).where(
+            TimeEntryType.org_id == ctx.org.id, TimeEntryType.key == key
         )
     )
-    return key if hit is not None else None
+    if existing is not None:
+        return key if existing.active else None
+
+    # Seed the defaults into a still-empty catalog first: the lazy ``count == 0`` seed would
+    # never fire again once the kind row below is inserted, stranding an org without ``work``.
+    count = int(
+        await ctx.session.scalar(
+            select(func.count())
+            .select_from(TimeEntryType)
+            .where(TimeEntryType.org_id == ctx.org.id)
+        )
+        or 0
+    )
+    if count == 0:
+        for spec in DEFAULT_ENTRY_TYPES:
+            ctx.session.add(TimeEntryType(org_id=ctx.org.id, **spec))
+        await ctx.session.flush()
+        if key in {spec["key"] for spec in DEFAULT_ENTRY_TYPES}:
+            return key
+
+    next_position = int(
+        await ctx.session.scalar(
+            select(func.coalesce(func.max(TimeEntryType.position), 0)).where(
+                TimeEntryType.org_id == ctx.org.id
+            )
+        )
+        or 0
+    )
+    ctx.session.add(
+        TimeEntryType(
+            org_id=ctx.org.id,
+            key=key,
+            label_i18n=dict(label_i18n or {}),
+            position=next_position + 10,
+        )
+    )
+    await ctx.session.flush()
+    return key
 
 
 async def record_entry(
