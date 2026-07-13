@@ -20,6 +20,8 @@
     ArrowRightLeft,
     ArrowUpRight,
     CheckCircle2,
+    ChevronDown,
+    ChevronRight,
     ExternalLink,
     Pencil,
     Plus,
@@ -243,12 +245,20 @@
       <li class="py-2.5">
         <div class="flex items-start gap-3">
           <Icon size={16} class="mt-0.5 shrink-0 text-text-muted" aria-hidden="true" />
+          <!-- Expand/collapse reads like the DataTable's group toggle and the sidebar's
+               disclosure (#179): chevron swap + aria-expanded + a visible hover state. -->
           <button
             type="button"
-            class="min-w-0 flex-1 text-left"
+            class="-mx-1.5 -my-1 min-w-0 flex-1 rounded-lg px-1.5 py-1 text-left hover:bg-surface"
+            aria-expanded={open}
             onclick={() => (expanded = open ? null : item.id)}
           >
             <span class="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+              {#if open}
+                <ChevronDown size={14} class="shrink-0 text-text-muted" aria-hidden="true" />
+              {:else}
+                <ChevronRight size={14} class="shrink-0 text-text-muted" aria-hidden="true" />
+              {/if}
               <span class="text-sm font-medium text-text">
                 {item.subject || t(`interactions.kind.${item.kind}`)}
               </span>
