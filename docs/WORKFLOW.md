@@ -48,6 +48,23 @@ Their commit stays local, theirs to push. If the push is rejected as non-fast-fo
 someone landed first: `git fetch`, rebase your commit onto `origin/dev`, re-run the checks,
 and try again. **Never force-push a shared branch.**
 
+## Local checks (pre-commit hook)
+
+A repo hook runs the API's ruff lint before each commit — the same
+`uv run ruff check app tests` the CI API job runs — so lint drift can't reach `dev` and
+turn it red. It fires only when the commit stages Python under `apps/api` (web/site/docs-only
+commits skip it and need no `uv`).
+
+It activates automatically the first time you run `pnpm install` (root `package.json`
+`prepare`). If you only work in `apps/api` and never install the JS deps, enable it once:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Fix a failure with `(cd apps/api && uv run ruff check --fix app tests)`, then re-stage. Bypass
+only in a genuine emergency with `git commit --no-verify` (CI still enforces it).
+
 ## Commits
 
 Conventional, small, scoped: `feat(time): add weekly timesheet grid`,
