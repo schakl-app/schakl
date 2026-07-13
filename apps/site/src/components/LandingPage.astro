@@ -2,6 +2,7 @@
 // The landing page is a list of CMS-managed blocks (hero, feature grid, text+bullets,
 // CTA band) — add, remove or reorder sections in Keystatic without touching code.
 import SiteShell from './SiteShell.astro';
+import Showcase from './showcase/Showcase.astro';
 import settings from '../data/settings/site.json';
 import landing from '../data/landing.json';
 import { localizeHref } from '../lib/links';
@@ -71,6 +72,16 @@ const title = hero ? `${settings.brandName} · ${hero.title}` : settings.brandNa
                 </ul>
               </div>
             </section>
+          );
+        case 'showcase':
+          return (
+            <Showcase
+              locale={locale}
+              anchor={v.anchor || undefined}
+              title={v.title}
+              intro={v.intro}
+              items={v.items}
+            />
           );
         case 'cta':
           return (

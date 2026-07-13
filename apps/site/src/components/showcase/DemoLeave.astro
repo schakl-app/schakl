@@ -1,0 +1,133 @@
+---
+// Demo — "Leave, computed live" (/leave). The API — not the browser — computes the hours:
+// after a debounce ("…") the box resolves to 40 u ≈ 5 werkdagen, the breakdown shows the two
+// public-holiday days costing 0 u, and the over-request warning informs without blocking.
+// Base frame = the computed result.
+import AppFrame from './AppFrame.astro';
+import Icon from './Icon.astro';
+import { labels, type Locale } from './labels.ts';
+
+interface Props {
+  locale: Locale;
+}
+const { locale } = Astro.props;
+const l = labels[locale];
+const holiday = l.leaveHolidayNote;
+const u = l.hoursUnit;
+// Span Mon 21 Dec – Mon 28 Dec 2026: five 8 h working days (21, 22, 23, 24, 28) = 40 u; the
+// 25 Dec holiday and the weekend cost nothing. So "40 u ≈ 5 werkdagen" reconciles exactly.
+const rows = [
+  { day: locale === 'nl' ? 'ma 21 dec' : 'Mon 21 Dec', h: `8 ${u}`, muted: false },
+  { day: locale === 'nl' ? 'vr 25 dec' : 'Fri 25 Dec', tag: holiday, h: `0 ${u}`, muted: true },
+];
+---
+
+<AppFrame locale={locale} active="leave" class="demo-leave">
+  <div class="lv-modal card">
+    <div class="lv-modal__h">
+      <span class="strong">{l.requestLeave}</span>
+      <span class="muted">✕</span>
+    </div>
+
+    <div class="lv-field">
+      <span class="field__label">{l.lType}</span>
+      <span class="input select">
+        <span class="lv-type"><span class="lv-dot"></span>{l.leaveVacation}</span>
+        <Icon name="chevronDown" size={0.9} />
+      </span>
+      <span class="lv-remaining muted">{l.lRemaining('32')}</span>
+    </div>
+
+    <div class="lv-dates">
+      <div>
+        <span class="field__label">{l.lFirstDay}</span>
+        <span class="input"><span class="lv-rev tnum" style="--d:0s">21-12-2026</span></span>
+      </div>
+      <div>
+        <span class="field__label">{l.lLastDay}</span>
+        <span class="input"><span class="lv-rev tnum" style="--d:-0.4s">28-12-2026</span></span>
+      </div>
+    </div>
+
+    <div class="lv-box">
+      <div class="lv-box__top">
+        <span class="muted">{l.lHours}</span>
+        <span class="lv-hours">
+          <span class="lv-h__dots muted">…</span>
+          <span class="lv-h__val strong tnum">40 {u}</span>
+        </span>
+      </div>
+      <div class="lv-days muted">{l.lDaysEquiv('5')}</div>
+      <ul class="lv-break">
+        {
+          rows.map((r) => (
+            <li class={r.muted ? 'muted' : ''}>
+              <span>{r.day}{r.tag ? <span class="lv-tag"> · {r.tag}</span> : ''}</span>
+              <span class="tnum">{r.h}</span>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+
+    <div class="lv-warn">{locale === 'nl'
+      ? 'Dit is 8 u meer dan het resterende saldo. Indienen kan; een manager beslist.'
+      : 'This is 8 h more than the remaining balance — you can still submit; a manager decides.'}</div>
+
+    <div class="lv-actions">
+      <span class="btn btn--brand">{l.lSubmit}</span>
+    </div>
+  </div>
+
+  <div class="stagefade"></div>
+</AppFrame>
+
+<style is:global>
+  .demo-leave .app { height: 31em; }
+  .demo-leave .screen { display: flex; align-items: flex-start; justify-content: center; }
+  .demo-leave .lv-modal { width: 100%; max-width: 24em; padding: 0.85em 1em; }
+  .demo-leave .lv-modal__h { display: flex; justify-content: space-between; align-items: center; font-size: 0.98em; margin-bottom: 0.6em; }
+  .demo-leave .lv-field { margin-bottom: 0.6em; }
+  .demo-leave .lv-type { display: inline-flex; align-items: center; gap: 0.45em; }
+  .demo-leave .lv-dot { width: 0.6em; height: 0.6em; border-radius: 50%; background: var(--done); flex: none; }
+  .demo-leave .lv-remaining { display: block; font-size: 0.8em; margin-top: 0.3em; }
+  .demo-leave .lv-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 0.7em; margin-bottom: 0.6em; }
+  .demo-leave .lv-rev { display: inline-block; clip-path: inset(0 0 0 0); }
+
+  .demo-leave .lv-box { border: 1px solid var(--bd); border-radius: 0.55em; background: var(--sf); padding: 0.6em 0.75em; }
+  .demo-leave .lv-box__top { display: flex; justify-content: space-between; align-items: baseline; }
+  .demo-leave .lv-hours { position: relative; display: inline-block; min-width: 3em; height: 1.35em; text-align: right; }
+  .demo-leave .lv-h__dots, .demo-leave .lv-h__val { position: absolute; right: 0; top: 0; }
+  .demo-leave .lv-h__val { font-size: 1.25em; }
+  .demo-leave .lv-h__dots { opacity: 0; font-size: 1.1em; }
+  .demo-leave .lv-days { text-align: right; font-size: 0.8em; margin-top: 0.1em; }
+  .demo-leave .lv-break { list-style: none; margin: 0.55em 0 0; padding: 0.55em 0 0; border-top: 1px solid var(--bd); display: flex; flex-direction: column; gap: 0.32em; overflow: hidden; }
+  .demo-leave .lv-break li { display: flex; justify-content: space-between; font-size: 0.85em; }
+  .demo-leave .lv-tag { font-style: normal; }
+
+  .demo-leave .lv-warn {
+    margin-top: 0.6em; border-radius: 0.5em; padding: 0.45em 0.65em; font-size: 0.82em;
+    background: var(--amber-bg); color: var(--amber-ink);
+  }
+  .demo-leave .lv-actions { display: flex; justify-content: flex-end; margin-top: 0.65em; }
+  .demo-leave .stagefade { position: absolute; inset: 0; background: var(--sf); opacity: 0; pointer-events: none; z-index: 30; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .demo-leave.is-playing .lv-rev { animation: lv-rev 11s var(--d, 0s) infinite; }
+    .demo-leave.is-playing .lv-h__dots { animation: lv-dots 11s infinite; }
+    .demo-leave.is-playing .lv-h__val { animation: lv-val 11s infinite; }
+    .demo-leave.is-playing .lv-days { animation: lv-days 11s infinite; }
+    .demo-leave.is-playing .lv-break { animation: lv-break 11s infinite; }
+    .demo-leave.is-playing .lv-warn { animation: lv-warn 11s infinite; }
+    .demo-leave.is-playing .stagefade { animation: lv-veil 11s infinite; }
+  }
+  /* dates reveal early (the --d stagger differentiates the two) */
+  @keyframes lv-rev { 0%, 8% { clip-path: inset(0 100% 0 0); } 16%, 92% { clip-path: inset(0 0 0 0); } 100% { clip-path: inset(0 100% 0 0); } }
+  /* debounce "…" then the resolved value — the tell that the server computes it */
+  @keyframes lv-dots { 0%, 24% { opacity: 0; } 28%, 34% { opacity: 1; } 38%, 100% { opacity: 0; } }
+  @keyframes lv-val { 0%, 38% { opacity: 0; transform: translateY(0.2em); } 44%, 92% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(0.2em); } }
+  @keyframes lv-days { 0%, 42% { opacity: 0; } 50%, 92% { opacity: 1; } 100% { opacity: 0; } }
+  @keyframes lv-break { 0%, 46% { max-height: 0; opacity: 0; } 58%, 92% { max-height: 8em; opacity: 1; } 100% { max-height: 0; opacity: 0; } }
+  @keyframes lv-warn { 0%, 62% { opacity: 0; transform: translateY(0.4em); } 72%, 92% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(0.4em); } }
+  @keyframes lv-veil { 0%, 92% { opacity: 0; } 96%, 100% { opacity: 1; } }
+</style>

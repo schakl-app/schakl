@@ -1,0 +1,272 @@
+---
+// HERO demo — "Create a new client" (/companies). Reproduces the real Klanten DataTable and
+// the inline expanding create panel (docs/UX.md: create is an inline panel above the table,
+// NOT a modal). Loop: click Nieuwe klant → panel expands → type name → status → assignee →
+// Opslaan → panel collapses → new row appears + total ticks 42→43. Base frame (JS off /
+// reduced motion) = the saved result: the new "Acme Studio" row on top, total 43.
+import AppFrame from './AppFrame.astro';
+import Icon from './Icon.astro';
+import { labels, sample, num, type Locale } from './labels.ts';
+
+interface Props {
+  locale: Locale;
+}
+const { locale } = Astro.props;
+const l = labels[locale];
+const u = l.hoursUnit;
+const seed = sample.existingClients;
+// Mirror the real Klanten list's available-hours column (columns.ts #25): remaining / budget.
+const seedHours = [`${num(locale, 12.5, 1)} / 40 ${u}`, '—', `${num(locale, 38, 1)} / 40 ${u}`];
+---
+
+<AppFrame locale={locale} active="companies" class="demo-client">
+  <div class="screen__head">
+    <div>
+      <div class="screen__title">{l.clients}</div>
+      <div class="screen__sub cc-count">
+        <span class="cc-count__a">{locale === 'nl' ? 'Totaal: 42' : 'Total: 42'}</span>
+        <span class="cc-count__b">{locale === 'nl' ? 'Totaal: 43' : 'Total: 43'}</span>
+      </div>
+    </div>
+    <span class="btn btn--brand cc-new"><Icon name="plus" size={1} />{l.newClient}</span>
+  </div>
+
+  <!-- toolbar furniture -->
+  <div class="cc-toolbar">
+    <span class="input cc-search"><Icon name="search" size={0.9} /><span class="input__ph"
+        >{locale === 'nl' ? 'Klanten zoeken…' : 'Search clients…'}</span></span>
+    <span class="chip chip--brand">{l.stActive}</span>
+    <span class="chip">{l.stLead}</span>
+    <span class="chip">{l.stOnboarding}</span>
+  </div>
+
+  <!-- inline create panel (expands between toolbar and table) -->
+  <div class="cc-panel card">
+    <div class="cc-grid">
+      <div class="cc-col2">
+        <span class="field__label">{l.fName}</span>
+        <span class="input"><span class="cc-name"><span class="cc-name__txt">Acme Studio</span
+            ><span class="caret cc-caret"></span></span></span>
+      </div>
+      <div>
+        <span class="field__label">{l.fWebsite}</span>
+        <span class="input"><span class="input__ph">https://…</span></span>
+      </div>
+      <div>
+        <span class="field__label">{l.fStatus}</span>
+        <span class="input select cc-status">
+          <span class="cc-status__wrap">
+            <span class="cc-status__a">{l.stActive}</span>
+            <span class="cc-status__b">{l.stOnboarding}</span>
+          </span>
+          <Icon name="chevronDown" size={0.9} />
+        </span>
+      </div>
+      <div class="cc-col2">
+        <span class="field__label">{l.fAssignees}</span>
+        <span class="input cc-assignees">
+          <span class="chip cc-chip"><span class="avatar avatar--b" style="width:1.3em;height:1.3em;font-size:0.62em">AS</span>Anne Smit</span>
+          <span class="input__ph cc-assignees__ph">{locale === 'nl' ? 'Medewerker toevoegen' : 'Add employee'}</span>
+        </span>
+      </div>
+    </div>
+    <div class="cc-actions">
+      <span class="btn btn--brand cc-save">{l.save}</span>
+      <span class="btn">{l.cancel}</span>
+    </div>
+  </div>
+
+  <!-- table — the real Klanten default columns: Naam · Status · Toegewezen medewerkers · Beschikbare uren -->
+  <table class="tbl cc-tbl">
+    <thead>
+      <tr>
+        <th>{l.fName}</th>
+        <th>{l.fStatus}</th>
+        <th class="cc-th-wrap">{l.fAssignees}</th>
+        <th class="num cc-th-wrap">{locale === 'nl' ? 'Beschikbare uren' : 'Available hours'}</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="cc-newrow">
+        <td class="cc-nm">Acme Studio</td>
+        <td><span class="chip chip--sky">{l.stOnboarding}</span></td>
+        <td><span class="avatar avatar--b" style="width:1.55em;height:1.55em;font-size:0.72em">AS</span></td>
+        <td class="muted num">—</td>
+      </tr>
+      {
+        seed.map((c, i) => (
+          <tr>
+            <td class="cc-nm">{c.name}</td>
+            <td><span class={`chip ${['chip--ok', 'chip--warn', 'chip--sky'][i]}`}>{[l.stActive, l.stLead, l.stOnboarding][i]}</span></td>
+            <td><span class={`avatar avatar--${['c', 'd', 'a'][i]}`} style="width:1.55em;height:1.55em;font-size:0.72em">{c.initials}</span></td>
+            <td class="num tnum">{seedHours[i]}</td>
+          </tr>
+        ))
+      }
+    </tbody>
+  </table>
+
+  <div class="stagefade"></div>
+</AppFrame>
+
+<style is:global>
+  /* chip--sky (Onboarding) — defined here so the kit stays lean */
+  .chip--sky {
+    color: #0369a1;
+    border-color: color-mix(in srgb, #0ea5e9 45%, transparent);
+    background: #e0f2fe;
+  }
+  @media (prefers-color-scheme: dark) {
+    .chip--sky { color: #7dd3fc; background: #082f49; }
+  }
+
+  .demo-client .cc-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    margin-bottom: 0.85em;
+  }
+  .demo-client .cc-search {
+    width: 12em;
+    gap: 0.45em;
+    color: var(--mu);
+  }
+  .demo-client .cc-search svg { color: var(--mu); }
+
+  /* keep the 4-col table inside the frame: tighten cells, let the long headers wrap */
+  .demo-client .cc-tbl th,
+  .demo-client .cc-tbl td { padding: 0.45em 0.5em; }
+  .demo-client .cc-tbl { font-size: 0.85em; }
+  .demo-client .cc-th-wrap { white-space: normal; line-height: 1.1; }
+  .demo-client .cc-nm { color: var(--b); font-weight: 550; } /* company name reads as a link */
+
+  /* the two total spans stack */
+  .demo-client .cc-count { position: relative; display: inline-block; min-height: 1.2em; }
+  .demo-client .cc-count__a,
+  .demo-client .cc-count__b { position: absolute; left: 0; top: 0; white-space: nowrap; }
+  .demo-client .cc-count__a { opacity: 0; }
+  .demo-client .cc-count__b { opacity: 1; }
+
+  /* inline panel — base (final) collapsed/hidden */
+  .demo-client .cc-panel {
+    overflow: hidden;
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    opacity: 0;
+    margin-bottom: 0;
+    border-width: 0;
+  }
+  .demo-client .cc-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.7em 0.8em;
+  }
+  .demo-client .cc-col2 { grid-column: 1 / -1; }
+  .demo-client .cc-actions { display: flex; gap: 0.5em; margin-top: 0.9em; }
+
+  /* typed name */
+  .demo-client .cc-name { display: inline-flex; align-items: center; }
+  .demo-client .cc-name__txt {
+    clip-path: inset(0 0 0 0);
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .demo-client .cc-caret { opacity: 0; }
+
+  /* status crossfade */
+  .demo-client .cc-status__wrap { position: relative; display: inline-block; min-width: 6em; }
+  .demo-client .cc-status__a,
+  .demo-client .cc-status__b { position: absolute; left: 0; top: 0; }
+  .demo-client .cc-status__a { opacity: 0; }
+  .demo-client .cc-status__b { opacity: 1; }
+
+  /* assignee: base shows the chip, placeholder hidden */
+  .demo-client .cc-assignees { gap: 0.4em; }
+  .demo-client .cc-chip { opacity: 1; }
+  .demo-client .cc-assignees__ph { opacity: 0; }
+
+  /* new row — base present */
+  .demo-client .cc-newrow { }
+  .demo-client .stagefade {
+    position: absolute;
+    inset: 0;
+    background: var(--sf);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 30;
+  }
+
+  /* ---------------- motion ---------------- */
+  @media (prefers-reduced-motion: no-preference) {
+    .demo-client.is-playing .cc-count__a { animation: cc-fadeOutLate 11s infinite; }
+    .demo-client.is-playing .cc-count__b { animation: cc-fadeInLate 11s infinite; }
+    .demo-client.is-playing .cc-new { animation: cc-press 11s infinite; }
+    .demo-client.is-playing .cc-panel { animation: cc-panel 11s infinite; }
+    .demo-client.is-playing .cc-name__txt { animation: cc-type 11s infinite; }
+    .demo-client.is-playing .cc-caret { animation: cc-caret 11s infinite; }
+    .demo-client.is-playing .cc-status__a { animation: cc-statusA 11s infinite; }
+    .demo-client.is-playing .cc-status__b { animation: cc-statusB 11s infinite; }
+    .demo-client.is-playing .cc-chip { animation: cc-chipIn 11s infinite; }
+    .demo-client.is-playing .cc-save { animation: cc-press2 11s infinite; }
+    .demo-client.is-playing .cc-newrow { animation: cc-rowIn 11s infinite; }
+    .demo-client.is-playing .stagefade { animation: cc-veil 11s infinite; }
+  }
+
+  /* count: 42 shown 0..42%, then 43 */
+  @keyframes cc-fadeOutLate { 0%, 40% { opacity: 1; } 44%, 100% { opacity: 0; } }
+  @keyframes cc-fadeInLate { 0%, 40% { opacity: 0; } 44%, 100% { opacity: 1; } }
+
+  @keyframes cc-press {
+    0%, 6% { transform: none; filter: none; }
+    8% { transform: scale(0.97); filter: brightness(0.92); }
+    11%, 100% { transform: none; filter: none; }
+  }
+  @keyframes cc-press2 {
+    0%, 30% { transform: none; filter: none; }
+    32% { transform: scale(0.97); filter: brightness(0.92); }
+    35%, 100% { transform: none; filter: none; }
+  }
+
+  /* panel: hidden 0..9%, expands to 11..34%, collapses by 40% */
+  @keyframes cc-panel {
+    0%, 9% { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; margin-bottom: 0; border-width: 0; }
+    16%, 34% { max-height: 16em; opacity: 1; padding-top: 0.95em; padding-bottom: 0.95em; margin-bottom: 1.1em; border-width: 1px; }
+    40%, 100% { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; margin-bottom: 0; border-width: 0; }
+  }
+  /* name types 17..23%, cleared with panel */
+  @keyframes cc-type {
+    0%, 16% { clip-path: inset(0 100% 0 0); }
+    23%, 34% { clip-path: inset(0 0 0 0); }
+    40%, 100% { clip-path: inset(0 100% 0 0); }
+  }
+  @keyframes cc-caret {
+    0%, 15% { opacity: 0; }
+    16%, 23% { opacity: 1; }
+    24%, 100% { opacity: 0; }
+  }
+  /* status Actief 0..24%, Onboarding after */
+  @keyframes cc-statusA { 0%, 24% { opacity: 1; } 27%, 100% { opacity: 0; } }
+  @keyframes cc-statusB { 0%, 24% { opacity: 0; } 27%, 34% { opacity: 1; } 40%, 100% { opacity: 0; } }
+  /* assignee chip appears 27..30%, gone with panel */
+  @keyframes cc-chipIn {
+    0%, 26% { opacity: 0; transform: translateY(0.3em); }
+    30%, 34% { opacity: 1; transform: none; }
+    40%, 100% { opacity: 0; transform: translateY(0.3em); }
+  }
+  /* new row: absent 0..37%, appears 40% with flash, holds */
+  @keyframes cc-rowIn {
+    0% { opacity: 0; transform: translateY(-0.4em); background: transparent; }
+    37% { opacity: 0; transform: translateY(-0.4em); background: transparent; }
+    41% { opacity: 1; transform: none; background: color-mix(in srgb, var(--b) 15%, transparent); }
+    48% { background: color-mix(in srgb, var(--b) 15%, transparent); }
+    56%, 92% { opacity: 1; transform: none; background: transparent; }
+    100% { opacity: 0; transform: translateY(-0.4em); background: transparent; }
+  }
+  /* seam veil masks the reset: opaque AT the loop boundary (100%), so the content snap from
+     "after" back to "before" happens under cover; transparent at 0% so the start frame shows. */
+  @keyframes cc-veil {
+    0%, 92% { opacity: 0; }
+    96%, 100% { opacity: 1; }
+  }
+</style>

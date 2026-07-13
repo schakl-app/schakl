@@ -1,0 +1,147 @@
+---
+// Demo — "White-label & multilingual". Branding and theme are runtime CSS variables, not a
+// rebuild: the loop morphs --b (brand) and the six surface/text/border tokens, and every
+// consuming element — the sidebar mark, the primary button, the count chip, the burn bar, the
+// focus ring — recolours in lockstep, while the fixed red "overdue" stays put (it is semantic,
+// not brand). Base frame = a static frame in the viewer's own theme with the default indigo.
+import Icon from './Icon.astro';
+import { labels, type Locale } from './labels.ts';
+
+interface Props {
+  locale: Locale;
+}
+const { locale } = Astro.props;
+const l = labels[locale];
+const nav = [
+  { icon: 'dashboard', label: l.navDashboard },
+  { icon: 'clients', label: l.navCompanies, active: true },
+  { icon: 'projects', label: l.navProjects },
+  { icon: 'time', label: l.navTime },
+];
+---
+
+<div class="appui demo-wl" aria-hidden="true">
+  <div class="win">
+    <div class="win__bar">
+      <span class="win__dot"></span><span class="win__dot"></span><span class="win__dot"></span>
+      <span class="win__url"><Icon name="search" size={0.85} />
+        <span class="wl-url">
+          <span class="wl-url__a">app.studionoord.nl</span>
+          <span class="wl-url__b">app.groenveld.nl</span>
+          <span class="wl-url__c">app.roosendaal.nl</span>
+        </span>
+      </span>
+    </div>
+    <div class="app">
+      <aside class="side">
+        <div class="side__brand">
+          <span class="side__logo wl-logo">
+            <span class="wl-logo__a">S</span><span class="wl-logo__b">G</span><span class="wl-logo__c">R</span>
+          </span>
+          <span class="side__name wl-name">
+            <span class="wl-name__a">Studio Noord</span>
+            <span class="wl-name__b">Groenveld &amp; Co</span>
+            <span class="wl-name__c">Roosendaal</span>
+          </span>
+        </div>
+        {
+          nav.map((n) => (
+            <span class={`nav ${n.active ? 'is-active' : ''}`}>
+              <Icon name={n.icon} size={1.15} />
+              <span class="nav__label">{n.label}</span>
+            </span>
+          ))
+        }
+        <span class="nav" style="margin-top:auto"><Icon name="settings" size={1.15} /><span class="nav__label">{l.navSettings}</span></span>
+      </aside>
+      <div class="main">
+        <div class="topbar">
+          <span class="topbar__icon"><Icon name="sparkles" size={1.1} /></span>
+          <span class="topbar__icon topbar__bell"><Icon name="bell" size={1.1} /></span>
+          <span class="avatar avatar--a">SV</span>
+        </div>
+        <div class="screen">
+          <div class="screen__head">
+            <div class="screen__title">{l.clients}</div>
+            <span class="btn btn--brand"><Icon name="plus" size={1} />{l.newClient}</span>
+          </div>
+          <div class="wl-chips">
+            <span class="chip chip--brand">{l.stActive} · 12</span>
+            <span class="chip">{l.stLead} · 3</span>
+          </div>
+          <div class="wl-inputwrap">
+            <span class="field__label">{l.fName}</span>
+            <span class="input is-focus"><span>Studio Noord</span><span class="caret"></span></span>
+          </div>
+          <div class="wl-burnwrap">
+            <div class="wl-burn__lbl"><span class="muted">{l.budget}</span><span class="muted tnum">24 / 40 {l.hoursUnit}</span></div>
+            <div class="burn"><div class="burn__fill" style="width:60%"></div></div>
+          </div>
+          <div class="wl-fixed">
+            <span class="muted">{locale === 'nl' ? 'Deadline' : 'Deadline'}</span>
+            <span class="wl-over tnum">{locale === 'nl' ? '13 jul · over tijd' : '13 Jul · overdue'}</span>
+          </div>
+          <div class="wl-caption muted">{l.brandLabel} · {locale === 'nl' ? 'jouw kleur, logo en domein, zonder rebuild' : 'your color, logo and domain, no rebuild'}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style is:global>
+  /* Register the animated tokens as <color> so they INTERPOLATE (a plain custom property
+     would jump). Global, but harmless for the other demos where these stay static. */
+  @property --b { syntax: '<color>'; inherits: true; initial-value: #4f46e5; }
+  @property --sf { syntax: '<color>'; inherits: true; initial-value: #fafafa; }
+  @property --rz { syntax: '<color>'; inherits: true; initial-value: #ffffff; }
+  @property --tx { syntax: '<color>'; inherits: true; initial-value: #171717; }
+  @property --mu { syntax: '<color>'; inherits: true; initial-value: #737373; }
+  @property --bd { syntax: '<color>'; inherits: true; initial-value: #e5e5e5; }
+
+  .demo-wl .wl-chips { display: flex; gap: 0.45em; margin-bottom: 0.85em; }
+  .demo-wl .wl-inputwrap { margin-bottom: 0.85em; }
+  .demo-wl .wl-burnwrap { margin-bottom: 0.9em; }
+  .demo-wl .wl-burn__lbl { display: flex; justify-content: space-between; font-size: 0.82em; margin-bottom: 0.35em; }
+  .demo-wl .wl-fixed { display: flex; justify-content: space-between; font-size: 0.88em; padding: 0.5em 0; border-top: 1px solid var(--bd); }
+  /* fixed semantic red — NOT part of the brand, so it never morphs */
+  .demo-wl .wl-over { color: #dc2626; font-weight: 600; }
+  .demo-wl .wl-caption { font-size: 0.82em; margin-top: 0.7em; }
+
+  /* crossfade stacks for the morphing brand identity */
+  .demo-wl .wl-url { position: relative; display: inline-block; }
+  .demo-wl .wl-url > span { position: absolute; left: 0; top: 0; white-space: nowrap; opacity: 0; }
+  .demo-wl .wl-url > .wl-url__a { opacity: 1; position: static; }
+  .demo-wl .wl-logo { position: relative; }
+  .demo-wl .wl-logo > span { position: absolute; inset: 0; display: grid; place-items: center; opacity: 0; }
+  .demo-wl .wl-logo > .wl-logo__a { opacity: 1; }
+  .demo-wl .wl-name { position: relative; display: inline-block; min-width: 8em; }
+  .demo-wl .wl-name > span { position: absolute; left: 0; top: 0; white-space: nowrap; opacity: 0; }
+  .demo-wl .wl-name > .wl-name__a { opacity: 1; position: static; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    /* both morphs on the root: the tokens are inherited, so every var() consumer below
+       re-resolves each frame — one variable change cascades through the whole frame. */
+    .demo-wl.is-playing { animation: wl-brand 12s infinite, wl-theme 12s infinite; }
+    .demo-wl.is-playing .wl-name__a, .demo-wl.is-playing .wl-logo__a, .demo-wl.is-playing .wl-url__a { animation: wl-idA 12s infinite; }
+    .demo-wl.is-playing .wl-name__b, .demo-wl.is-playing .wl-logo__b, .demo-wl.is-playing .wl-url__b { animation: wl-idB 12s infinite; }
+    .demo-wl.is-playing .wl-name__c, .demo-wl.is-playing .wl-logo__c, .demo-wl.is-playing .wl-url__c { animation: wl-idC 12s infinite; }
+  }
+
+  /* brand hue morph: indigo → emerald → rose → indigo */
+  @keyframes wl-brand {
+    0%, 14% { --b: #4f46e5; }
+    22%, 40% { --b: #059669; }
+    50%, 60% { --b: #e11d48; }
+    70%, 100% { --b: #4f46e5; }
+  }
+  /* theme flip: light → dark → light. Drive the token vars on the frame containers so every
+     descendant that reads them (surfaces, borders, text) crosses together. */
+  @keyframes wl-theme {
+    0%, 26% { --sf: #fafafa; --rz: #ffffff; --tx: #171717; --mu: #737373; --bd: #e5e5e5; }
+    36%, 48% { --sf: #171717; --rz: #262626; --tx: #fafafa; --mu: #a3a3a3; --bd: #404040; }
+    58%, 100% { --sf: #fafafa; --rz: #ffffff; --tx: #171717; --mu: #737373; --bd: #e5e5e5; }
+  }
+  @keyframes wl-idA { 0%, 16% { opacity: 1; } 20%, 66% { opacity: 0; } 72%, 100% { opacity: 1; } }
+  @keyframes wl-idB { 0%, 18% { opacity: 0; } 24%, 42% { opacity: 1; } 48%, 100% { opacity: 0; } }
+  @keyframes wl-idC { 0%, 46% { opacity: 0; } 52%, 62% { opacity: 1; } 68%, 100% { opacity: 0; } }
+</style>
