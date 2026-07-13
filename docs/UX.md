@@ -104,6 +104,11 @@
 - **Drag-and-drop with graceful fallback**: reorder tasks and dashboard tiles by dragging
   (fractional `position` midpoints — never renumber); keep an arrow/menu alternative where
   dragging is impractical.
+- **Every dashboard widget is a bordered card, via `core/ui/DashboardWidgetCard`** (#166). The
+  dashboard grid wraps each tile in a bare `<div>` — the card chrome (border, `bg-surface-raised`,
+  padding, title row with an optional "show all" link) is the widget's own responsibility, and the
+  shared wrapper is how it stops being re-typed per widget. Both the empty and the populated state
+  render inside the card; a bare `<p>` sitting naked in the grid is the bug this rule exists for.
 - **Record actions live behind the ⋯ menu, never as bare buttons.** Every record-level
   **Edit** and **Delete** (on a list row, a card, or a detail header) is reached through the
   shared overflow menu (`core/ui/ActionsMenu`, the ⋯ / three-dots kebab) — never a standalone
