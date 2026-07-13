@@ -99,6 +99,13 @@ h3 {
   color: var(--text);
 }
 
+/* The demo button is a filled pill, not a text link — keep its label white against the accent
+   fill (the rule above would otherwise tint it muted, including on hover). */
+.site-nav .demo-cta,
+.site-nav .demo-cta:hover {
+  color: #fff;
+}
+
 .locale-switch {
   border: 1px solid var(--border);
   border-radius: 999px;
