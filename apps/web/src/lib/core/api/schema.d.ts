@@ -4866,6 +4866,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Mentioned Contact Ids */
+            mentioned_contact_ids?: string[];
             /** Mentioned User Ids */
             mentioned_user_ids?: string[];
         };

@@ -55,10 +55,46 @@
   const statusName = (key: string) =>
     statuses.find((s) => s.key === key)?.name ?? key;
   const isDone = $derived(statuses.find((s) => s.key === task.status)?.is_terminal ?? false);
-  // @mention candidates for the comment composer (issue #63): the org members already loaded.
-  const mentionCandidates = $derived(
-    data.members.map((m) => ({ id: m.user_id, name: m.full_name || m.email })),
-  );
+  // @mention candidates for the comment composer (issue #63): the org members already loaded,
+  // plus — since #165 — the task's company's contacts, fetched lazily in the browser so the
+  // SSR load pays nothing for them (docs/PERFORMANCE.md).
+  let contactCandidates = $state<
+    { id: string; name: string; kind: "contact"; subtitle?: string }[]
+  >([]);
+  $effect(() => {
+    const companyId = task.company_id;
+    if (!companyId) {
+      contactCandidates = [];
+      return;
+    }
+    void (async () => {
+      const response = await fetch(`/api/v1/contacts?limit=200&company_id=${companyId}`, {
+        headers: { accept: "application/json" },
+      });
+      if (!response.ok) return;
+      interface ContactRow {
+        id: string;
+        first_name: string;
+        last_name?: string | null;
+        companies?: { name: string }[];
+      }
+      const items: ContactRow[] = (await response.json()).items ?? [];
+      contactCandidates = items.map((c) => ({
+        id: c.id,
+        name: `${c.first_name} ${c.last_name ?? ""}`.trim(),
+        kind: "contact" as const,
+        subtitle: c.companies?.[0]?.name,
+      }));
+    })();
+  });
+  const mentionCandidates = $derived([
+    ...data.members.map((m) => ({
+      id: m.user_id,
+      name: m.full_name || m.email,
+      kind: "user" as const,
+    })),
+    ...contactCandidates,
+  ]);
   const priorities = ["low", "normal", "high"] as const;
   const freqs = ["daily", "weekly", "monthly", "quarterly", "yearly"] as const;
 

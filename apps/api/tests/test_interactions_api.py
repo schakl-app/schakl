@@ -764,6 +764,48 @@ async def test_participants_resolve_to_org_contacts_at_read_time(client_for) -> 
         assert by_email["cc@elders.example"]["contact_id"] is None
 
 
+async def test_contact_mentions_validate_and_store(client_for) -> None:
+    """#165: `@[Name](mention:contact:<uuid>)` markers store structurally in
+    mentioned_contact_ids, org-validated — a contact id from another org never survives —
+    and untyped markers keep meaning colleagues (no reinterpretation of stored bodies)."""
+    other = await make_tenant("inter-cmention-b")
+    t = await make_tenant("inter-cmention-a")
+    headers = await auth_cookie(t.user)
+    other_headers = await auth_cookie(other.user)
+    async with client_for(other.host) as cb:
+        foreign_contact = (
+            await cb.post("/api/v1/contacts", json={"first_name": "Vreemd"}, headers=other_headers)
+        ).json()
+    async with client_for(t.host) as c:
+        contact = (
+            await c.post("/api/v1/contacts", json={"first_name": "Anna"}, headers=headers)
+        ).json()
+        body = (
+            f"Gesproken met @[Anna](mention:contact:{contact['id']}) "
+            f"en @[Vreemd](mention:contact:{foreign_contact['id']}) "
+            f"en @[Ik](mention:{t.user.id})"
+        )
+        created = await c.post(
+            "/api/v1/interactions",
+            json={
+                "kind": "call",
+                "occurred_at": _NOW.isoformat(),
+                "subject": "Vermeldingen",
+                "body_text": body,
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            from app.modules.interactions.models import Interaction
+
+            row = await session.get(Interaction, uuid.UUID(created.json()["id"]))
+            assert row.mentioned_contact_ids == [contact["id"]]
+            assert row.mentioned_user_ids == [str(t.user.id)]
+
+
 async def test_participants_resolve_to_org_members_at_read_time(client_for) -> None:
     """#167: a participant address belonging to an org employee resolves as ``user_id`` —
     a colleague, never a "create a contact" prompt — and only within the own org: another

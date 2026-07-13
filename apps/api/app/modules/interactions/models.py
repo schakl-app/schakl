@@ -223,6 +223,12 @@ class Interaction(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Auditable
         JSONB, nullable=False, default=list, server_default="[]"
     )
 
+    #: Contacts @mentioned (#165) — references into the CRM, never notification recipients;
+    #: kept parallel to ``mentioned_user_ids`` so the mention fan-out stays unambiguous.
+    mentioned_contact_ids: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+
     source: Mapped[str] = mapped_column(
         String(10), nullable=False, default=InteractionSource.MANUAL.value
     )

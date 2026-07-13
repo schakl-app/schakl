@@ -20,7 +20,7 @@ from app.core.activity.service import snapshot
 from app.core.auth.models import User
 from app.core.events import emit
 from app.core.models import Membership
-from app.core.richtext import extract_mention_ids, sanitize_markdown
+from app.core.richtext import extract_contact_mention_ids, extract_mention_ids, sanitize_markdown
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_zoneinfo
 from app.errors import AppError
@@ -197,6 +197,7 @@ class InteractionService:
         user = self.ctx.user
         body = sanitize_markdown(data.body_text)
         mentioned = await self._valid_mentions(extract_mention_ids(body))
+        mentioned_contacts = await self._valid_contact_mentions(extract_contact_mention_ids(body))
         row = await self.repo.create(
             kind=data.kind,
             status=InteractionStatus.LOGGED.value,
@@ -208,6 +209,7 @@ class InteractionService:
             owner_name=user.full_name or user.email,
             participants=[p.model_dump() for p in data.participants],
             mentioned_user_ids=[str(uid) for uid in mentioned],
+            mentioned_contact_ids=[str(cid) for cid in mentioned_contacts],
             source=InteractionSource.MANUAL.value,
             **links,
         )
@@ -270,6 +272,10 @@ class InteractionService:
             values["body_text"] = body
             mentioned = await self._valid_mentions(extract_mention_ids(body))
             values["mentioned_user_ids"] = [str(uid) for uid in mentioned]
+            values["mentioned_contact_ids"] = [
+                str(cid)
+                for cid in await self._valid_contact_mentions(extract_contact_mention_ids(body))
+            ]
             newly_mentioned = [uid for uid in mentioned if str(uid) not in already]
         values.update(await self._resolve_links(link_updates, partial=True))
         old_links = {field: getattr(row, field) for field in HOST_ENTITY}
@@ -390,6 +396,20 @@ class InteractionService:
             ).scalars()
         )
         return [uid for uid in ids if uid in members]
+
+    async def _valid_contact_mentions(self, ids: list[uuid.UUID]) -> list[uuid.UUID]:
+        """Keep only the mentioned contact ids that belong to this org (#165) — a reference
+        into the CRM, never a notification: contacts have no inbox here."""
+        if not ids:
+            return []
+        stmt = text(
+            "SELECT id FROM contacts WHERE org_id = :oid AND id IN :ids"
+        ).bindparams(bindparam("ids", expanding=True))
+        found = set(
+            (await self.ctx.session.execute(stmt, {"oid": self._org_id, "ids": list(ids)}))
+            .scalars()
+        )
+        return [cid for cid in ids if cid in found]
 
     async def _notify_mentions(self, row: Interaction, mentioned: list[uuid.UUID]) -> None:
         """Tell the people newly @mentioned in this note — never the author themselves."""

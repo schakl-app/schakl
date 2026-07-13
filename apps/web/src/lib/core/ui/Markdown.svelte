@@ -60,6 +60,12 @@
     font-weight: 500;
     color: var(--color-brand);
   }
+  /* A contact mention (#165): a reference into the CRM, visually distinct from a colleague. */
+  .markdown-body :global(.mention-contact) {
+    background: transparent;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-brand) 45%, transparent);
+    color: var(--color-text);
+  }
   .markdown-body :global(ul) {
     list-style: disc;
     padding-left: 1.25rem;

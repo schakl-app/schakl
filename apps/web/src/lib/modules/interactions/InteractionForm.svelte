@@ -87,7 +87,9 @@
       (typeof prefill.contact_id === "string" ? prefill.contact_id : "") ??
       "",
   );
-  let contactOptions = $state<{ value: string; label: string; hint?: string }[]>([]);
+  let contactOptions = $state<
+    { value: string; label: string; hint?: string; company?: string }[]
+  >([]);
   $effect(() => {
     // Host company's roster first; an org without links there falls back to all contacts.
     const scope = hostCompanyId ? `&company_id=${hostCompanyId}` : "";
@@ -95,8 +97,14 @@
       let response = await fetch(`/api/v1/contacts?limit=200${scope}`, {
         headers: { accept: "application/json" },
       });
-      let items: { id: string; first_name: string; last_name?: string | null; email?: string | null }[] =
-        response.ok ? ((await response.json()).items ?? []) : [];
+      interface ContactRow {
+        id: string;
+        first_name: string;
+        last_name?: string | null;
+        email?: string | null;
+        companies?: { name: string }[];
+      }
+      let items: ContactRow[] = response.ok ? ((await response.json()).items ?? []) : [];
       if (items.length === 0 && scope) {
         response = await fetch("/api/v1/contacts?limit=200", {
           headers: { accept: "application/json" },
@@ -107,6 +115,7 @@
         value: c.id,
         label: `${c.first_name} ${c.last_name ?? ""}`.trim(),
         hint: c.email ?? undefined,
+        company: c.companies?.[0]?.name,
       }));
       // The row's own contact stays pickable even when outside the fetched scope.
       if (contactId && interaction?.contact_name && !items.some((c) => c.id === contactId)) {
@@ -114,6 +123,18 @@
       }
     })();
   });
+
+  // The note's @ autocomplete offers both kinds (#165): colleagues (the host's members) and
+  // the same host-scoped contacts the picker above already fetched — one fetch serves both.
+  const editorMentions = $derived([
+    ...mentions.map((m) => ({ ...m, kind: "user" as const })),
+    ...contactOptions.map((c) => ({
+      id: c.value,
+      name: c.label,
+      kind: "contact" as const,
+      subtitle: c.company ?? c.hint,
+    })),
+  ]);
 
   // --- "Voeg aan mijn uren toe" (#175): a linked time entry, saved with the interaction.
   // Create-only (an existing row's hours live on the timesheet) and not for notes, which
@@ -238,7 +259,12 @@
 
   <div class="text-sm">
     <span class="mb-1 block font-medium text-text">{t("interactions.field.notes")}</span>
-    <RichTextEditor name="body_text" value={interaction?.body_text ?? ""} rows={4} {mentions} />
+    <RichTextEditor
+      name="body_text"
+      value={interaction?.body_text ?? ""}
+      rows={4}
+      mentions={editorMentions}
+    />
   </div>
 
   {#if canLogTime}

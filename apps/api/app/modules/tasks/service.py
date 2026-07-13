@@ -13,13 +13,18 @@ from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import case, func, select
+from sqlalchemy import bindparam, case, func, select
 from sqlalchemy import text as sql_text
 
 from app.core.auth.models import User
 from app.core.events import emit
 from app.core.models import Membership
-from app.core.richtext import extract_mention_ids, markdown_to_plaintext, sanitize_markdown
+from app.core.richtext import (
+    extract_contact_mention_ids,
+    extract_mention_ids,
+    markdown_to_plaintext,
+    sanitize_markdown,
+)
 from app.core.sorting import apply_sort, user_sort_name
 from app.core.tenancy import RequestContext
 from app.errors import AppError
@@ -1084,6 +1089,23 @@ class TaskService:
         )
         return [uid for uid in ids if uid in members]
 
+    async def _valid_contact_mentions(self, ids: list[uuid.UUID]) -> list[uuid.UUID]:
+        """Keep only the mentioned contact ids that belong to this org (#165) — a reference
+        into the CRM, never a notification: contacts have no inbox here."""
+        if not ids:
+            return []
+        stmt = sql_text(
+            "SELECT id FROM contacts WHERE org_id = :oid AND id IN :ids"
+        ).bindparams(bindparam("ids", expanding=True))
+        found = set(
+            (
+                await self.ctx.session.execute(
+                    stmt, {"oid": self.ctx.org.id, "ids": list(ids)}
+                )
+            ).scalars()
+        )
+        return [cid for cid in ids if cid in found]
+
     async def add_comment(self, task_id: uuid.UUID, data: CommentCreate) -> CommentRead:
         self.ctx.require("tasks.comment.write")
         task = await self.repo.get_or_404(task_id)
@@ -1092,12 +1114,14 @@ class TaskService:
         # Mentions are captured structurally from the `@[Name](mention:<uuid>)` markers, validated
         # against org membership so a stray id can't notify someone in another tenant (issue #63).
         mentioned = await self._valid_mentions(_extract_mentions(body))
+        mentioned_contacts = await self._valid_contact_mentions(extract_contact_mention_ids(body))
         comment = await self.ctx.repo(TaskComment).create(
             task_id=task_id,
             author_user_id=self.ctx.user.id,
             author_name=_display_name(self.ctx.user),
             body=body,
             mentioned_user_ids=[str(uid) for uid in mentioned],
+            mentioned_contact_ids=[str(cid) for cid in mentioned_contacts],
         )
         # The excerpt the notification has always carried belongs in the trail too, with the id
         # to reach the comment by — "commented", on its own, sends you hunting for what (#61).
@@ -1156,10 +1180,12 @@ class TaskService:
         # Keep the stored mention set in step with the edited body (issue #63). Editing does not
         # re-notify — a mention notifies once, when it is first written, like the comment itself.
         mentioned = await self._valid_mentions(_extract_mentions(body))
+        mentioned_contacts = await self._valid_contact_mentions(extract_contact_mention_ids(body))
         comment = await self.ctx.repo(TaskComment).update(
             comment,
             body=body,
             mentioned_user_ids=[str(uid) for uid in mentioned],
+            mentioned_contact_ids=[str(cid) for cid in mentioned_contacts],
             edited_at=datetime.now(UTC),
         )
         await self._record(

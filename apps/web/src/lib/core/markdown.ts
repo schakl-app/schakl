@@ -42,10 +42,11 @@ const ALLOWED_TAGS = [
   // The @mention chip (issue #63): a fixed-class span this module's own extension emits.
   "span",
 ];
-const ALLOWED_ATTR = ["href", "title", "class", "data-user-id"];
+const ALLOWED_ATTR = ["href", "title", "class", "data-user-id", "data-contact-id"];
 
 const _UUID = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
-const _MENTION_RE = new RegExp(`^@\\[([^\\]]+)\\]\\(mention:(${_UUID})\\)`);
+// Optional kind prefix (#165): `mention:contact:<uuid>`; absent = a colleague (pre-#165 bodies).
+const _MENTION_RE = new RegExp(`^@\\[([^\\]]+)\\]\\(mention:(?:(user|contact):)?(${_UUID})\\)`);
 // AI answers cite records as `[Name](crm://<type>/<id>)` (epic #131): the type/id resolve to the
 // app route here, so the model never has to know web paths and a bad reference degrades to text.
 const _CRM_RE = new RegExp(`^\\[([^\\]]+)\\]\\(crm://([a-z_]+)/(${_UUID})\\)`);
@@ -88,11 +89,18 @@ function ensureConfigured(): void {
         },
         tokenizer(src: string) {
           const m = _MENTION_RE.exec(src);
-          if (m) return { type: "mention", raw: m[0], name: m[1], id: m[2] };
+          if (m)
+            return { type: "mention", raw: m[0], name: m[1], kind: m[2] ?? "user", id: m[3] };
         },
         renderer(token: Tokens.Generic) {
           const name = escapeHtml(String(token.name ?? ""));
-          return `<span class="mention" data-user-id="${String(token.id ?? "")}">@${name}</span>`;
+          const id = String(token.id ?? "");
+          // A contact chip reads differently from a colleague chip (#165) — both fixed-class
+          // spans with a UUID-shaped id, so they survive DOMPurify.
+          if (token.kind === "contact") {
+            return `<span class="mention mention-contact" data-contact-id="${id}">@${name}</span>`;
+          }
+          return `<span class="mention" data-user-id="${id}">@${name}</span>`;
         },
       },
       {
