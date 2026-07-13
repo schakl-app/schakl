@@ -62,6 +62,8 @@ export async function fetchTenant(event: ApiEvent): Promise<OrgTheme> {
     currency: data.currency,
     tabTitleTemplate: data.tab_title_template ?? null,
     enabledModules: data.enabled_modules,
+    demoMode: data.demo_mode ?? false,
+    demoResetMinutes: data.demo_reset_minutes ?? 60,
     resolved: true,
     suspended: data.suspended,
   };

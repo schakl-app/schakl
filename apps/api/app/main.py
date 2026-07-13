@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, FastAPI
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 import app.core.activity.panels  # noqa: F401  — registers the core activity panel on import
@@ -23,6 +24,7 @@ from app.core.auth.router import build_auth_router
 from app.core.auth.sso_router import router as sso_settings_router
 from app.core.customfields.router import router as customfields_router
 from app.core.dashboard import router as dashboard_router
+from app.core.demo import demo_guard_middleware
 from app.core.domains import router as domains_router
 from app.core.email.router import router as email_settings_router
 from app.core.entitlements.router import router as license_router
@@ -82,6 +84,10 @@ def create_app() -> FastAPI:
         https_only=settings.auth_cookie_secure,
         same_site="lax",
     )
+    # Public-demo guardrails (issue #141): a no-op unless SCHAKL_DEMO_MODE is on, then it blocks
+    # the catalogued dangerous operations with errors.demo_blocked. Added last so it runs first
+    # (Starlette middleware is LIFO), rejecting before routing/auth.
+    app.add_middleware(BaseHTTPMiddleware, dispatch=demo_guard_middleware)
     register_error_handlers(app)
 
     api = APIRouter(prefix="/api/v1")

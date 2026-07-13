@@ -289,6 +289,16 @@
        loaded zoomed in", and pinch-zooming out revealed the whole (correct-looking) layout. That
        was issue #36. This also lets the inner `overflow-x-auto` wrappers do their job. -->
   <div class="flex min-w-0 flex-1 flex-col">
+    {#if theme?.demoMode}
+      <!-- Public demo (issue #141): persistent, no dismiss control — it re-renders every
+           navigation, so it is dismissal-proof by construction. -->
+      <div
+        class="bg-sky-600 px-4 py-2 text-center text-sm font-medium text-white sm:px-6"
+        role="status"
+      >
+        {t("demo.banner", { minutes: theme.demoResetMinutes })}
+      </div>
+    {/if}
     {#if user?.impersonatedBy}
       <!-- Impersonation is never silent (issue #26): banner on every screen, one-click stop. -->
       <div
