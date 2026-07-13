@@ -130,6 +130,22 @@ def _walk_parts(part: dict[str, Any], mime: str) -> str | None:
     return None
 
 
+def attachment_parts(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """The MIME parts that are real attachments (#180): a filename plus an ``attachmentId``
+    to fetch the bytes by. Inline text/html parts carry no filename and stay out."""
+    found: list[dict[str, Any]] = []
+
+    def walk(part: dict[str, Any]) -> None:
+        body = part.get("body") or {}
+        if part.get("filename") and body.get("attachmentId"):
+            found.append(part)
+        for sub in part.get("parts") or []:
+            walk(sub)
+
+    walk(payload)
+    return found
+
+
 def extract_text(payload: dict[str, Any]) -> str | None:
     """The message body as plain text: the ``text/plain`` part, else stripped ``text/html``."""
     plain = _walk_parts(payload, "text/plain")

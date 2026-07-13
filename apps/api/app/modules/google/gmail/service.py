@@ -14,6 +14,7 @@ imports nothing — connecting a mailbox is opt-in *going forward*, never a retr
 
 from __future__ import annotations
 
+import base64
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -228,7 +229,7 @@ async def _ingest_message(
     else:
         # Logged at birth (auto-approve / trusted thread): the body may load inline — we are
         # already in worker context, no user is waiting.
-        await _fetch_body_with(client, ctx, row.id, message_id)
+        await _fetch_body_with(client, ctx, row.id, message_id, row.owner_user_id)
     return 1
 
 
@@ -345,7 +346,9 @@ async def fetch_body(
         return False
     try:
         async with acting_as(session, org, connection) as client:
-            return await _fetch_body_with(client, ctx, interaction_id, message_id)
+            return await _fetch_body_with(
+                client, ctx, interaction_id, message_id, owner_user_id
+            )
     except Exception as exc:
         from app.modules.google.client import is_oauth_error
 
@@ -355,18 +358,63 @@ async def fetch_body(
         raise
 
 
-async def _fetch_body_with(client, ctx: SystemContext, interaction_id, message_id: str) -> bool:
+async def _fetch_body_with(
+    client, ctx: SystemContext, interaction_id, message_id: str, owner_user_id
+) -> bool:
     response = await client.get(
         f"{GMAIL_API}/messages/{message_id}", params={"format": "full"}
     )
     if response.status_code == 404:
         return False
     response.raise_for_status()
-    body_text = matching.extract_text(response.json().get("payload") or {})
+    payload = response.json().get("payload") or {}
+    body_text = matching.extract_text(payload)
     if body_text is None:
         return False
     await interactions_system.set_body(ctx, interaction_id, body_text)
+    # Attachments ride the same approval-time fetch (#180): the full payload already names
+    # them, so this is one extra call per attachment, never per message. A pending row never
+    # reaches this code — reject must leave no stored bytes anywhere.
+    await _store_attachments(client, ctx, interaction_id, message_id, payload, owner_user_id)
     return True
+
+
+async def _store_attachments(
+    client, ctx: SystemContext, interaction_id, message_id: str, payload: dict, owner_user_id
+) -> None:
+    from app.core.storage import system as storage_system
+
+    parts = matching.attachment_parts(payload)
+    if not parts:
+        return
+    # The bodyless sweep may re-offer a fetch; the same attachments must not store twice.
+    if await storage_system.entity_has_files(ctx, "interaction", interaction_id):
+        return
+    for part in parts:
+        attachment_id = (part.get("body") or {}).get("attachmentId")
+        response = await client.get(
+            f"{GMAIL_API}/messages/{message_id}/attachments/{attachment_id}"
+        )
+        if response.status_code >= 400:
+            logger.warning("gmail attachment fetch failed for %s", interaction_id)
+            continue
+        data = base64.urlsafe_b64decode(response.json().get("data") or "")
+        stored = await storage_system.store_system_file(
+            ctx,
+            filename=str(part.get("filename") or "bijlage"),
+            content_type=str(part.get("mimeType") or "application/octet-stream"),
+            data=data,
+            entity_type="interaction",
+            entity_id=interaction_id,
+            created_by_user_id=owner_user_id,
+        )
+        if stored is None:
+            # Type/size validation skipped it — worth a log line, never a failed body fetch.
+            logger.info(
+                "gmail attachment skipped (type/size) for %s: %s",
+                interaction_id,
+                part.get("filename"),
+            )
 
 
 # --------------------------------------------------------------------------- #

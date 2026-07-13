@@ -553,3 +553,113 @@ async def test_approval_fetches_body_via_worker_path(client_for, monkeypatch) ->
         row = (await session.execute(select(Interaction))).scalar_one()
         assert row.status == "logged" and row.body_text == "De volledige inhoud."
         assert stub.full_fetches == ["msg-f"]
+
+
+async def test_approval_stores_attachments_once(client_for, monkeypatch, tmp_path) -> None:
+    """#180: the approval-time full fetch also saves the message's attachments into the
+    storage backend, entity-linked to the interaction — idempotently (a sweep re-run must
+    not duplicate them), skipping disallowed types, and never before approval (this path
+    only runs on approved rows, so a rejected pending email leaves no stored bytes)."""
+    from app.config import settings
+    from app.core.storage.models import StoredFile
+
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+
+    async def _quiet_enqueue(function: str, *args, **kwargs) -> None:  # noqa: ARG001
+        return None
+
+    monkeypatch.setattr("app.core.jobs.enqueue", _quiet_enqueue)
+    t = await make_tenant("gmail-attach")
+    connection_id = await _seed(t)
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.post(
+            "/api/v1/contacts",
+            json={"first_name": "Klant", "email": "klant@client.nl"},
+            headers=headers,
+        )
+        message = _message("msg-a", sender="klant@client.nl")
+        message["payload"] = {
+            "headers": message["payload"]["headers"],
+            "mimeType": "multipart/mixed",
+            "parts": [
+                {
+                    "mimeType": "text/plain",
+                    "body": {"data": base64.urlsafe_b64encode(b"De inhoud.").decode()},
+                },
+                {
+                    "filename": "offerte.pdf",
+                    "mimeType": "application/pdf",
+                    "body": {"attachmentId": "att-1", "size": 9},
+                },
+                {
+                    "filename": "virus.exe",
+                    "mimeType": "application/x-msdownload",
+                    "body": {"attachmentId": "att-2", "size": 9},
+                },
+            ],
+        }
+        stub = _StubGmail(history=["msg-a"], messages={"msg-a": message}, history_id="9800")
+        # The stub routes by last URL segment, so attachment ids resolve like message ids.
+        stub.messages["att-1"] = {
+            "size": 9,
+            "data": base64.urlsafe_b64encode(b"%PDF-fake").decode(),
+        }
+        stub.messages["att-2"] = {
+            "size": 9,
+            "data": base64.urlsafe_b64encode(b"MZ-nope..").decode(),
+        }
+        assert await _poll(t, connection_id, stub, monkeypatch) == 1
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            row_id = (await session.execute(select(Interaction))).scalar_one().id
+
+        # Pending: nothing stored yet — reject must be able to leave no bytes anywhere.
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            assert (await session.execute(select(StoredFile))).scalars().all() == []
+
+        assert (
+            await c.post(f"/api/v1/interactions/{row_id}/approve", headers=headers)
+        ).status_code == 200
+
+        # The worker path fetches body + attachments; run it twice to prove idempotency.
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            assert await fetch_body(session, t.org, row_id) is True
+            await session.commit()
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            await fetch_body(session, t.org, row_id)
+            await session.commit()
+
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            stored = (await session.execute(select(StoredFile))).scalars().all()
+            # The .exe was skipped by the type allowlist; the PDF stored exactly once.
+            assert [(f.filename, f.entity_type, f.entity_id) for f in stored] == [
+                ("offerte.pdf", "interaction", row_id)
+            ]
+            assert stored[0].size_bytes == len(b"%PDF-fake")
+
+        # Team-visible where the interaction is: the files endpoint lists it...
+        listed = (
+            await c.get(
+                "/api/v1/files",
+                params={"entity_type": "interaction", "entity_id": str(row_id)},
+                headers=headers,
+            )
+        ).json()
+        assert [f["filename"] for f in listed] == ["offerte.pdf"]
+
+    # ...and never across tenants (the row is org-scoped like everything else).
+    other = await make_tenant("gmail-attach-b")
+    other_headers = await auth_cookie(other.user)
+    async with client_for(other.host) as cb:
+        assert (
+            await cb.get(
+                "/api/v1/files",
+                params={"entity_type": "interaction", "entity_id": str(row_id)},
+                headers=other_headers,
+            )
+        ).json() == []
