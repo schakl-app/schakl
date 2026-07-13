@@ -17,10 +17,19 @@
   let {
     interaction,
     onsaved,
+    approveAction = null,
   }: {
     interaction: InteractionItem;
     onsaved?: () => void;
+    /** When set on a pending gmail row (#183), a second "Goedkeuren" button that assigns
+     *  these same links and approves in one step; the plain save just re-links. */
+    approveAction?: string | null;
   } = $props();
+
+  // Assigning-while-approving only applies to a pending gmail row the owner is reviewing.
+  const canApprove = $derived(
+    Boolean(approveAction) && interaction.status === "pending" && interaction.source === "gmail",
+  );
 
   interface Option {
     value: string;
@@ -87,9 +96,10 @@
         get("/api/v1/tasks?limit=200&count=false&meta=false"),
         get("/api/v1/contacts?limit=200"),
       ]);
-      companies = (companiesPage.items ?? []).map(
-        (c: { id: string; name: string }) => ({ value: c.id, label: c.name }),
-      );
+      companies = (companiesPage.items ?? []).map((c: { id: string; name: string }) => ({
+        value: c.id,
+        label: c.name,
+      }));
       projects = (projectsPage.items ?? []).map(
         (p: { id: string; name: string; company_id?: string | null }) => ({
           value: p.id,
@@ -191,13 +201,28 @@
     <p class="text-sm text-red-600">{t(error)}</p>
   {/if}
 
-  <div class="flex justify-end">
+  <div class="flex justify-end gap-2">
     <button
       type="submit"
       disabled={loading}
-      class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+      class="rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 {canApprove
+        ? 'border border-border text-text hover:bg-surface'
+        : 'bg-brand text-white hover:opacity-90'}"
     >
-      {t("common.save")}
+      {canApprove ? t("interactions.save_pending") : t("common.save")}
     </button>
+    {#if canApprove}
+      <!-- Link + approve in one step (#183); `assign=1` tells the action to carry the links. -->
+      <button
+        type="submit"
+        name="assign"
+        value="1"
+        formaction={approveAction}
+        disabled={loading}
+        class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+      >
+        {t("interactions.approve")}
+      </button>
+    {/if}
   </div>
 </form>

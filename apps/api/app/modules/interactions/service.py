@@ -35,6 +35,7 @@ from app.modules.interactions.models import (
     InteractionStatus,
 )
 from app.modules.interactions.schemas import (
+    InteractionApprove,
     InteractionCreate,
     InteractionKindDefCreate,
     InteractionKindDefUpdate,
@@ -301,12 +302,30 @@ class InteractionService:
         await self.repo.delete(row)
 
     # --- gmail review flow (owner-only, no :any escape) ------------------------- #
-    async def approve(self, interaction_id: uuid.UUID) -> dict[str, Any]:
+    async def approve(
+        self, interaction_id: uuid.UUID, data: InteractionApprove | None = None
+    ) -> dict[str, Any]:
         row = await self._owned_gmail_or_404(interaction_id)
         if row.status != InteractionStatus.PENDING.value:
             raise AppError("invalid_state", "errors.interactions_not_pending", status_code=409)
-        row = await self.repo.update(row, status=InteractionStatus.LOGGED.value)
+        # Optionally assign links in the same step as approval (#183) — no need to approve
+        # then reopen and move. Applied before the row goes team-visible, so the "moved"
+        # bookkeeping (unlink from an old host nobody saw) doesn't apply; the host announce
+        # below fires on the *final* links.
+        before = snapshot(row, _AUDITED_FIELDS)
+        link_values: dict[str, Any] = {}
+        if data is not None:
+            sent = data.model_dump(exclude_unset=True)
+            if sent:
+                link_values = await self._resolve_links(sent, partial=True)
+        row = await self.repo.update(
+            row, status=InteractionStatus.LOGGED.value, **link_values
+        )
         await ActivityService(self.ctx).record(ENTITY_TYPE, row.id, "approved")
+        if link_values:
+            await ActivityService(self.ctx).record_update(
+                ENTITY_TYPE, row.id, before, snapshot(row, _AUDITED_FIELDS)
+            )
         # Approval is the moment the email becomes team-visible — that is when the host
         # records hear about it (#152); a pending row must not announce itself.
         await self._record_on_hosts(row, "interaction.logged")

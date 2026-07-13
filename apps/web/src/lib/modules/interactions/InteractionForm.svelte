@@ -27,6 +27,7 @@
     kindLabel,
     manualKinds,
   } from "./format";
+  import { loadLinkLookups, type LinkOption, type ProjectOption, type TaskOption } from "./lookups";
 
   let {
     interaction = null,
@@ -64,16 +65,75 @@
 
   const DIRECTIONS = ["none", "inbound", "outbound"] as const;
 
-  // contact_id is a visible picker now (#173), so it leaves the hidden-prefill spread.
+  // A dimension is *pinned* when the host page already fixed it (its hidden prefill input);
+  // an unpinned one gets a picker below (#183 follow-up) — all three on the Interacties page,
+  // project+task on a company page, none on a task page. contact_id is always a picker (#173).
+  const pinned = (field: string) =>
+    typeof prefill[field] === "string" && (prefill[field] as string).length > 0;
+  const showCompany = $derived(!interaction && !pinned("company_id"));
+  const showProject = $derived(!interaction && !pinned("project_id"));
+  const showTask = $derived(!interaction && !pinned("task_id"));
+  const showLinkPickers = $derived(showCompany || showProject || showTask);
+
+  // Pinned dims stay hidden inputs; unpinned ones (and contact) are pickers, so no name clash.
   const links = $derived(
     interaction
       ? {}
       : Object.fromEntries(
           Object.entries(prefill).filter(
-            ([field, v]) => field !== "contact_id" && typeof v === "string" && v.length > 0,
+            ([field, v]) =>
+              field !== "contact_id" &&
+              !(field === "company_id" && showCompany) &&
+              !(field === "project_id" && showProject) &&
+              !(field === "task_id" && showTask) &&
+              typeof v === "string" &&
+              v.length > 0,
           ),
         ),
   );
+
+  // --- assign to client / project / task (#183 follow-up) ------------------------------- //
+  let fCompany = $state("");
+  let fProject = $state("");
+  let fTask = $state("");
+  let linkCompanies = $state<LinkOption[]>([]);
+  let linkProjects = $state<ProjectOption[]>([]);
+  let linkTasks = $state<TaskOption[]>([]);
+  $effect(() => {
+    if (!showLinkPickers) return;
+    void loadLinkLookups().then((l) => {
+      linkCompanies = l.companies;
+      linkProjects = l.projects;
+      linkTasks = l.tasks;
+    });
+  });
+  // Cascade the way the move dialog does: a client narrows projects, a project narrows tasks,
+  // and picking deeper backfills above — accounting for a dim the host already pinned.
+  const effCompany = $derived(
+    fCompany || (typeof prefill.company_id === "string" ? prefill.company_id : ""),
+  );
+  const effProject = $derived(
+    fProject || (typeof prefill.project_id === "string" ? prefill.project_id : ""),
+  );
+  const projectOptions = $derived(
+    effCompany
+      ? linkProjects.filter((p) => !p.company_id || p.company_id === effCompany)
+      : linkProjects,
+  );
+  const taskOptions = $derived(
+    effProject ? linkTasks.filter((task) => task.project_id === effProject) : linkTasks,
+  );
+  function onProjectPicked(id: string) {
+    fProject = id;
+    const project = linkProjects.find((p) => p.value === id);
+    if (project?.company_id && showCompany) fCompany = project.company_id;
+    if (fTask && linkTasks.find((task) => task.value === fTask)?.project_id !== id) fTask = "";
+  }
+  function onTaskPicked(id: string) {
+    fTask = id;
+    const task = linkTasks.find((option) => option.value === id);
+    if (task?.project_id) onProjectPicked(task.project_id);
+  }
 
   // --- contact person (#173): pick, clear, or inline-create — never leave the form ------- //
   const hostCompanyId = $derived(
@@ -227,6 +287,49 @@
       class="w-full min-w-0 rounded-lg border border-border bg-surface px-3 py-2 text-sm"
     />
   </label>
+
+  {#if showLinkPickers}
+    <!-- Assign the moment to a client / project / task while logging (#183 follow-up); only the
+         dimensions the host page hasn't already pinned are offered. -->
+    <div class="grid gap-4 sm:grid-cols-2">
+      {#if showCompany}
+        <label class="block text-sm">
+          <span class="mb-1 block font-medium text-text">{t("interactions.field.company")}</span>
+          <Combobox
+            items={linkCompanies}
+            name="company_id"
+            value={fCompany}
+            placeholder={t("common.none")}
+            onselect={(v) => (fCompany = v)}
+          />
+        </label>
+      {/if}
+      {#if showProject}
+        <label class="block text-sm">
+          <span class="mb-1 block font-medium text-text">{t("interactions.field.project")}</span>
+          <Combobox
+            items={projectOptions}
+            name="project_id"
+            value={fProject}
+            placeholder={t("common.none")}
+            onselect={onProjectPicked}
+          />
+        </label>
+      {/if}
+      {#if showTask}
+        <label class="block text-sm">
+          <span class="mb-1 block font-medium text-text">{t("interactions.field.task")}</span>
+          <Combobox
+            items={taskOptions}
+            name="task_id"
+            value={fTask}
+            placeholder={t("common.none")}
+            onselect={onTaskPicked}
+          />
+        </label>
+      {/if}
+    </div>
+  {/if}
 
   <div class="block text-sm">
     <span class="mb-1 block font-medium text-text">{t("interactions.field.contact")}</span>

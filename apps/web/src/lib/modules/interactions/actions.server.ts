@@ -100,8 +100,17 @@ export const interactionActions = {
     const form = await event.request.formData();
     const id = String(form.get("id") ?? "");
     if (!id) return fail(400, { error: "errors.required" });
+    // Assign links in the same step (#183) only when the approve came from the review dialog
+    // (`assign=1`); the one-click inline approve sends no links and touches none.
+    const body =
+      form.get("assign") === "1"
+        ? Object.fromEntries(
+            LINK_FIELDS.map((field) => [field, String(form.get(field) ?? "").trim() || null]),
+          )
+        : undefined;
     const { error } = await apiFor(event).POST("/api/v1/interactions/{interaction_id}/approve", {
       params: { path: { interaction_id: id } },
+      ...(body ? { body } : {}),
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { ok: true };

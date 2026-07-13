@@ -551,6 +551,56 @@ async def test_remap_by_owner_moves_links(client_for) -> None:
         assert body["company_id"] == company["id"]
 
 
+async def test_approve_can_assign_links_in_one_step(client_for) -> None:
+    """#183: approving a pending email can optionally set its links in the same request —
+    no approve-then-reopen-and-move. The picked task derives the client, and the row lands
+    logged and team-visible."""
+    t = await make_tenant("inter-approve-assign")
+    headers = await auth_cookie(t.user)
+    row_id = await _seed_gmail_row(t, t.user.id, pending=True, message_id="msg-appr")
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Doelklant"}, headers=headers)
+        ).json()
+        task = (
+            await c.post(
+                "/api/v1/tasks",
+                json={"title": "Opvolgen", "company_id": company["id"]},
+                headers=headers,
+            )
+        ).json()
+        approved = await c.post(
+            f"/api/v1/interactions/{row_id}/approve",
+            json={"task_id": task["id"]},
+            headers=headers,
+        )
+        assert approved.status_code == 200, approved.text
+        body = approved.json()
+        assert body["status"] == "logged"
+        assert body["task_id"] == task["id"]
+        assert body["company_id"] == company["id"]  # derived from the task
+        # The assignment landed on the interaction's own trail alongside the approval.
+        trail = (
+            await c.get(
+                "/api/v1/activity",
+                params={"entity_type": "interaction", "entity_id": row_id},
+                headers=headers,
+            )
+        ).json()
+        assert "updated" in [e["action"] for e in trail]
+
+
+async def test_plain_approve_still_works_without_a_body(client_for) -> None:
+    """#183: the one-click approve (no links) is unchanged."""
+    t = await make_tenant("inter-approve-plain")
+    headers = await auth_cookie(t.user)
+    row_id = await _seed_gmail_row(t, t.user.id, pending=True, message_id="msg-plain")
+    async with client_for(t.host) as c:
+        approved = await c.post(f"/api/v1/interactions/{row_id}/approve", headers=headers)
+        assert approved.status_code == 200, approved.text
+        assert approved.json()["status"] == "logged"
+
+
 async def test_interactions_tenant_isolation(client_for) -> None:
     a = await make_tenant("inter-iso-a")
     b = await make_tenant("inter-iso-b")
