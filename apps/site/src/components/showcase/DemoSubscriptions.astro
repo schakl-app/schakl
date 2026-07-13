@@ -1,0 +1,135 @@
+---
+// Demo — "Subscriptions". Recurring services per client in one DataTable with status filters
+// and bulk actions: select all and a bulk-action bar appears. Base frame = all rows selected
+// with the bar shown.
+import AppFrame from './AppFrame.astro';
+import Icon from './Icon.astro';
+import { labels, eur, type Locale } from './labels.ts';
+
+interface Props {
+  locale: Locale;
+}
+const { locale } = Astro.props;
+const l = labels[locale];
+const per = locale === 'nl' ? '/mnd' : '/mo';
+const t = {
+  title: locale === 'nl' ? 'Abonnementen' : 'Subscriptions',
+  count: locale === 'nl' ? '12 abonnementen' : '12 subscriptions',
+  selected: locale === 'nl' ? '4 geselecteerd' : '4 selected',
+  act1: locale === 'nl' ? 'Status wijzigen' : 'Change status',
+  act2: locale === 'nl' ? 'Exporteren' : 'Export',
+  fAll: locale === 'nl' ? 'Alle' : 'All',
+  fActive: locale === 'nl' ? 'Actief' : 'Active',
+  fPaused: locale === 'nl' ? 'Gepauzeerd' : 'Paused',
+  cClient: locale === 'nl' ? 'Klant' : 'Client',
+  cType: 'Type',
+  cStatus: 'Status',
+  cAmount: locale === 'nl' ? 'Bedrag' : 'Amount',
+};
+const rows = [
+  { client: 'Studio Noord', type: 'Hosting', active: true, amount: 25 },
+  { client: 'Groen & Co', type: locale === 'nl' ? 'Onderhoud' : 'Maintenance', active: true, amount: 150 },
+  { client: 'Meijer Media', type: 'SEO', active: false, amount: 400 },
+  { client: 'Bakkerij De Vries', type: 'Hosting', active: true, amount: 25 },
+];
+---
+
+<AppFrame locale={locale} active="subscriptions" class="demo-subs">
+  <div class="screen__head">
+    <div>
+      <div class="screen__title">{t.title}</div>
+      <div class="screen__sub">{t.count}</div>
+    </div>
+  </div>
+
+  <div class="sb-toolbar">
+    <span class="chip chip--brand">{t.fAll}</span>
+    <span class="chip">{t.fActive}</span>
+    <span class="chip">{t.fPaused}</span>
+  </div>
+
+  <div class="sb-bulk">
+    <span class="sb-bulk__count strong">{t.selected}</span>
+    <span class="sb-bulk__actions">
+      <span class="btn">{t.act1}</span>
+      <span class="btn">{t.act2}</span>
+    </span>
+  </div>
+
+  <table class="tbl sb-tbl">
+    <thead>
+      <tr>
+        <th class="sb-cbcol"><span class="sb-check sb-check-all"><Icon name="check" size={0.8} /></span></th>
+        <th>{t.cClient}</th>
+        <th>{t.cType}</th>
+        <th>{t.cStatus}</th>
+        <th class="num">{t.cAmount}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {
+        rows.map((r) => (
+          <tr class="sb-row">
+            <td><span class="sb-check sb-check-row"><Icon name="check" size={0.8} /></span></td>
+            <td class="cellname">{r.client}</td>
+            <td class="muted">{r.type}</td>
+            <td>
+              <span class={`chip ${r.active ? 'chip--ok' : 'chip--warn'}`}>{r.active ? t.fActive : t.fPaused}</span>
+            </td>
+            <td class="num tnum">{eur(locale, r.amount)} <span class="muted">{per}</span></td>
+          </tr>
+        ))
+      }
+    </tbody>
+  </table>
+
+  <div class="stagefade"></div>
+</AppFrame>
+
+<style is:global>
+  .demo-subs .sb-toolbar { display: flex; gap: 0.45em; margin-bottom: 0.7em; }
+  .demo-subs .sb-tbl th, .demo-subs .sb-tbl td { padding: 0.5em 0.55em; }
+  .demo-subs .sb-cbcol { width: 1.6em; }
+  .demo-subs .sb-check {
+    width: 1.2em; height: 1.2em; border-radius: 0.3em; border: 1.5px solid var(--bd);
+    background: var(--rz); display: grid; place-items: center; color: #fff;
+  }
+  .demo-subs .sb-check svg { opacity: 0; width: 0.8em; height: 0.8em; }
+  /* base = selected */
+  .demo-subs .sb-check { background: var(--b); border-color: var(--b); }
+  .demo-subs .sb-check svg { opacity: 1; }
+
+  /* bulk bar — base shown */
+  .demo-subs .sb-bulk {
+    display: flex; align-items: center; justify-content: space-between; gap: 0.6em;
+    padding: 0.5em 0.75em; margin-bottom: 0.7em; border-radius: 0.6em;
+    background: color-mix(in srgb, var(--b) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--b) 30%, transparent);
+    font-size: 0.88em;
+  }
+  .demo-subs .sb-bulk__count { color: var(--b); }
+  .demo-subs .sb-bulk__actions { display: flex; gap: 0.4em; }
+  .demo-subs .sb-bulk__actions .btn { padding: 0.35em 0.7em; font-size: 0.85em; }
+  .demo-subs .stagefade { position: absolute; inset: 0; background: var(--sf); opacity: 0; pointer-events: none; z-index: 30; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .demo-subs.is-playing .sb-check { animation: sb-check 9s infinite; }
+    .demo-subs.is-playing .sb-check svg { animation: sb-tick 9s infinite; }
+    .demo-subs.is-playing .sb-check-row:nth-of-type(1) { animation-delay: -8.85s; }
+    .demo-subs.is-playing .sb-bulk { animation: sb-bulk 9s infinite; }
+    .demo-subs.is-playing .stagefade { animation: sb-veil 9s infinite; }
+  }
+  /* boxes empty, then fill (header first, then rows) */
+  @keyframes sb-check {
+    0%, 24% { background: var(--rz); border-color: var(--bd); }
+    34%, 100% { background: var(--b); border-color: var(--b); }
+  }
+  @keyframes sb-tick { 0%, 28% { opacity: 0; } 36%, 100% { opacity: 1; } }
+  /* bulk bar slides in once rows are selected */
+  @keyframes sb-bulk {
+    0%, 36% { opacity: 0; transform: translateY(-0.5em); max-height: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0; }
+    46%, 92% { opacity: 1; transform: none; max-height: 4em; margin-bottom: 0.7em; padding-top: 0.5em; padding-bottom: 0.5em; }
+    100% { opacity: 0; transform: translateY(-0.5em); max-height: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0; }
+  }
+  @keyframes sb-veil { 0%, 92% { opacity: 0; } 96%, 100% { opacity: 1; } }
+</style>

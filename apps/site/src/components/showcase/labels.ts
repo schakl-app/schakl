@@ -23,6 +23,7 @@ export interface DemoLabels {
   navTasks: string;
   navTime: string;
   navLeave: string;
+  navSubscriptions: string;
   navCalendar: string;
   navSettings: string;
   search: string;
@@ -112,6 +113,7 @@ export const labels: Record<Locale, DemoLabels> = {
     navTasks: 'Taken',
     navTime: 'Uren',
     navLeave: 'Verlof',
+    navSubscriptions: 'Abonnementen',
     navCalendar: 'Agenda',
     navSettings: 'Instellingen',
     search: 'Zoeken',
@@ -192,6 +194,7 @@ export const labels: Record<Locale, DemoLabels> = {
     navTasks: 'Tasks',
     navTime: 'Time',
     navLeave: 'Leave',
+    navSubscriptions: 'Subscriptions',
     navCalendar: 'Calendar',
     navSettings: 'Settings',
     search: 'Search',

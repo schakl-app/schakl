@@ -18,6 +18,8 @@ import DemoContacts from './showcase/DemoContacts.astro';
 import DemoActivity from './showcase/DemoActivity.astro';
 import DemoInteractions from './showcase/DemoInteractions.astro';
 import DemoCustomFields from './showcase/DemoCustomFields.astro';
+import DemoRoles from './showcase/DemoRoles.astro';
+import DemoSubscriptions from './showcase/DemoSubscriptions.astro';
 
 interface Props {
   locale: 'nl' | 'en';
@@ -36,6 +38,8 @@ const demos: Record<string, any> = {
   activity: DemoActivity,
   interactions: DemoInteractions,
   customfields: DemoCustomFields,
+  roles: DemoRoles,
+  subscriptions: DemoSubscriptions,
 };
 const Demo = feature.demo ? demos[feature.demo] : null;
 

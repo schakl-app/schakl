@@ -1,0 +1,100 @@
+---
+// Demo — "Roles & permissions". A tenant role carries exactly the permissions you grant.
+// Here the "Uren goedkeuren" permission is switched on for the Projectmanager role. Base
+// frame = the toggle on.
+import AppFrame from './AppFrame.astro';
+import Icon from './Icon.astro';
+import { labels, type Locale } from './labels.ts';
+
+interface Props {
+  locale: Locale;
+}
+const { locale } = Astro.props;
+const l = labels[locale];
+const t = {
+  role: locale === 'nl' ? 'Rol: Projectmanager' : 'Role: Project manager',
+  perms: locale === 'nl' ? 'Rechten' : 'Permissions',
+  scope: locale === 'nl' ? 'eigen' : 'own',
+};
+const rows = [
+  { label: locale === 'nl' ? 'Klanten bekijken' : 'View clients', on: true },
+  { label: locale === 'nl' ? 'Klanten bewerken' : 'Edit clients', on: true },
+  { label: locale === 'nl' ? 'Projecten beheren' : 'Manage projects', on: true },
+  { label: locale === 'nl' ? 'Uren bekijken' : 'View time', on: true, scope: true },
+  { label: locale === 'nl' ? 'Rollen beheren' : 'Manage roles', on: false },
+];
+---
+
+<AppFrame locale={locale} active="settings" class="demo-roles">
+  <div class="rl-crumb muted">{locale === 'nl' ? 'Instellingen → Rollen' : 'Settings → Roles'}</div>
+  <div class="screen__head"><span class="screen__title">{t.role}</span></div>
+
+  <div class="card rl-card">
+    <div class="rl-card__h strong">{t.perms}</div>
+    <div class="rl-list">
+      <!-- the permission being granted -->
+      <div class="rl-row rl-grant">
+        <span class="rl-label">{locale === 'nl' ? 'Uren goedkeuren' : 'Approve time'}</span>
+        <span class="rl-toggle rl-grant-tg"><span class="rl-knob"></span></span>
+      </div>
+      {
+        rows.map((r) => (
+          <div class="rl-row">
+            <span class="rl-label">
+              {r.label}
+              {r.scope && <span class="rl-scope">{t.scope}</span>}
+            </span>
+            <span class={`rl-toggle ${r.on ? 'is-on' : ''}`}><span class="rl-knob"></span></span>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+
+  <div class="stagefade"></div>
+</AppFrame>
+
+<style is:global>
+  .demo-roles .app { height: 28em; }
+  .demo-roles .rl-crumb { font-size: 0.85em; margin-bottom: 0.5em; }
+  .demo-roles .rl-card { padding: 0.95em 1.05em; }
+  .demo-roles .rl-card__h { margin-bottom: 0.5em; }
+  .demo-roles .rl-list { display: flex; flex-direction: column; }
+  .demo-roles .rl-row { display: flex; align-items: center; justify-content: space-between; gap: 0.6em; padding: 0.6em 0; border-top: 1px solid var(--bd); }
+  .demo-roles .rl-row:first-child { border-top: 0; }
+  .demo-roles .rl-label { font-size: 0.9em; display: inline-flex; align-items: center; gap: 0.45em; }
+  .demo-roles .rl-scope {
+    padding: 0.05em 0.4em; border-radius: 0.35em; font-size: 0.78em; font-weight: 600;
+    color: var(--mu); background: var(--sf); border: 1px solid var(--bd);
+  }
+  /* toggle switch */
+  .demo-roles .rl-toggle {
+    position: relative; width: 2em; height: 1.15em; border-radius: 999px;
+    background: var(--bd); flex: none; transition: none;
+  }
+  .demo-roles .rl-toggle.is-on { background: var(--b); }
+  .demo-roles .rl-knob {
+    position: absolute; top: 0.15em; left: 0.15em; width: 0.85em; height: 0.85em;
+    border-radius: 50%; background: #fff; transform: translateX(0);
+  }
+  .demo-roles .rl-toggle.is-on .rl-knob { transform: translateX(0.85em); }
+  /* base = granted (on) */
+  .demo-roles .rl-grant-tg { background: var(--b); }
+  .demo-roles .rl-grant-tg .rl-knob { transform: translateX(0.85em); }
+  .demo-roles .stagefade { position: absolute; inset: 0; background: var(--sf); opacity: 0; pointer-events: none; z-index: 30; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .demo-roles.is-playing .rl-grant-tg { animation: rl-track 8s infinite; }
+    .demo-roles.is-playing .rl-grant-tg .rl-knob { animation: rl-knob 8s infinite; }
+    .demo-roles.is-playing .rl-grant { animation: rl-row 8s infinite; }
+    .demo-roles.is-playing .stagefade { animation: rl-veil 8s infinite; }
+  }
+  @keyframes rl-track { 0%, 38% { background: var(--bd); } 48%, 100% { background: var(--b); } }
+  @keyframes rl-knob { 0%, 38% { transform: translateX(0); } 48%, 100% { transform: translateX(0.85em); } }
+  @keyframes rl-row {
+    0%, 40% { background: transparent; }
+    48% { background: color-mix(in srgb, var(--b) 10%, transparent); }
+    62%, 100% { background: transparent; }
+  }
+  @keyframes rl-veil { 0%, 92% { opacity: 0; } 96%, 100% { opacity: 1; } }
+</style>
