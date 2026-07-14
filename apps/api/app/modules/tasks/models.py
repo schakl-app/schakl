@@ -124,6 +124,13 @@ class Task(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     closing_interaction_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True), nullable=True
     )
+    # Per-task policy (#157 extended): this task may only reach a finished (``is_terminal``)
+    # status with a designated closing contact moment — independent of the per-status flag, so a
+    # single task can demand it without the whole status doing so. Carried to the next occurrence
+    # on recurrence and copied from a template item at apply time.
+    requires_interaction: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
     recurrence: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     recurrence_next_run: Mapped[date | None] = mapped_column(Date, nullable=True)
 
@@ -363,6 +370,11 @@ class TaskTemplateItem(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base
     # apply time — an onboarding task follows whoever owns the client, not a person fixed when
     # the template was written. Falls back to ``assignee_user_id``, then unassigned.
     assign_responsible: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    # Instantiated tasks may only be closed with a designated contact moment (#157 extended);
+    # copied onto ``Task.requires_interaction`` at apply time.
+    requires_interaction: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

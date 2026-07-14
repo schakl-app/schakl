@@ -82,6 +82,12 @@ export const actions: Actions = {
       const minutes = Number(String(form.get("allocated_minutes") ?? "").trim());
       body.allocated_minutes = Number.isFinite(minutes) && minutes > 0 ? Math.round(minutes) : null;
     }
+    // Close policy (#157 extended): a hidden "false" precedes the checkbox, so a full edit-form
+    // submit always carries a value (last wins); the status quick-form carries none → untouched.
+    const requiresInteraction = form.getAll("requires_interaction");
+    if (requiresInteraction.length > 0) {
+      body.requires_interaction = requiresInteraction[requiresInteraction.length - 1] === "true";
+    }
     if (form.has("freq")) {
       const freq = String(form.get("freq") ?? "").trim();
       body.recurrence = freq
@@ -96,7 +102,14 @@ export const actions: Actions = {
       params: { path: { task_id: event.params.id } },
       body,
     });
-    if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
+    if (apiError) {
+      // Prefer the field-specific reason (e.g. the closing contact-moment gate, #157) over the
+      // generic "some fields are invalid" — the message is what tells the user what to do.
+      const e = apiErrorKey(apiError);
+      return fail(400, {
+        error: e.fields?.status ?? e.fields?.closing_interaction_id ?? e.key,
+      });
+    }
     return { updated: true };
   },
 

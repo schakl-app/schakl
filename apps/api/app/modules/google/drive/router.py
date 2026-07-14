@@ -66,6 +66,18 @@ class DriveUploadSession(BaseModel):
     session_uri: str
 
 
+class DriveFolderCreate(BaseModel):
+    #: Where the new folder is created — the folder currently being browsed.
+    parent_id: str = Field(..., min_length=1, max_length=128)
+    name: str = Field(..., min_length=1, max_length=255)
+
+
+class DriveFolder(BaseModel):
+    id: str
+    name: str
+    web_view_link: str | None = None
+
+
 class DriveProvisionRequest(BaseModel):
     entity_type: str = Field(..., pattern="^(company|project)$")
     entity_id: uuid.UUID
@@ -152,6 +164,21 @@ async def create_upload_session(
         request.headers.get("origin"),
     )
     return DriveUploadSession(session_uri=session_uri)
+
+
+@router.post(
+    "/folders",
+    response_model=DriveFolder,
+    status_code=201,
+    dependencies=[require_permission("google.drive.write")],
+)
+async def create_folder(
+    payload: DriveFolderCreate,
+    ctx: RequestContext = Depends(require_context),
+) -> DriveFolder:
+    """Create a subfolder inside the folder being browsed, as the viewing user (issue #21)."""
+    folder = await DriveService(ctx).create_folder(payload.parent_id, payload.name)
+    return DriveFolder(**folder)
 
 
 @router.post(

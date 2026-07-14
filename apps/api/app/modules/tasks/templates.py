@@ -58,6 +58,7 @@ class TemplateService:
             allocated_minutes=item.allocated_minutes,
             assignee_user_id=item.assignee_user_id,
             assign_responsible=item.assign_responsible,
+            requires_interaction=item.requires_interaction,
             position=item.position,
             checklist_title=item.checklist_title,
             checklist_items=[
@@ -209,6 +210,8 @@ class TemplateService:
                 priority=item.priority,
                 due_date=due,
                 allocated_minutes=item.allocated_minutes,
+                # Carry the per-item close policy onto the spawned task (#157 extended).
+                requires_interaction=item.requires_interaction,
                 position=max_position + 1024.0 * offset,
             )
             session.add(task)

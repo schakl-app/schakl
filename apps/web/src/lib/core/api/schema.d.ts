@@ -1021,6 +1021,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/google/drive/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Folder
+         * @description Create a subfolder inside the folder being browsed, as the viewing user (issue #21).
+         */
+        post: operations["create_folder_api_v1_google_drive_folders_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/google/drive/links": {
         parameters: {
             query?: never;
@@ -3225,6 +3245,47 @@ export interface paths {
         post?: never;
         /** Delete Email Settings */
         delete: operations["delete_email_settings_api_v1_settings_email_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/email/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Email Templates */
+        get: operations["list_email_templates_api_v1_settings_email_templates_get"];
+        /**
+         * Save Email Template
+         * @description Upsert one ``(kind, locale)`` override; blank subject *and* body resets it to default.
+         */
+        put: operations["save_email_template_api_v1_settings_email_templates_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/email/templates/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Email Template
+         * @description Send a preview of the draft (or stored/default) to the acting admin.
+         */
+        post: operations["test_email_template_api_v1_settings_email_templates_test_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -5917,6 +5978,22 @@ export interface components {
             /** Queued */
             queued: number;
         };
+        /** DriveFolder */
+        DriveFolder: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Web View Link */
+            web_view_link?: string | null;
+        };
+        /** DriveFolderCreate */
+        DriveFolderCreate: {
+            /** Name */
+            name: string;
+            /** Parent Id */
+            parent_id: string;
+        };
         /** DriveLinkCreate */
         DriveLinkCreate: {
             /** Drive File Id */
@@ -6125,6 +6202,68 @@ export interface components {
             security?: ("starttls" | "ssl" | "none") | null;
             /** Username */
             username?: string | null;
+        };
+        /**
+         * EmailTemplateItem
+         * @description One ``(kind, locale)`` slot: the tenant override (``None`` = default) plus the built-in
+         *     default, so the editor can show placeholders and a "reset to default" is just clearing it.
+         */
+        EmailTemplateItem: {
+            /** Body Html */
+            body_html?: string | null;
+            /** Default Body Html */
+            default_body_html: string;
+            /** Default Subject */
+            default_subject: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "reset" | "invite";
+            /** Locale */
+            locale: string;
+            /** Subject */
+            subject?: string | null;
+        };
+        /**
+         * EmailTemplateTest
+         * @description Send a preview of the draft on screen (falls back to the stored/default when omitted).
+         */
+        EmailTemplateTest: {
+            /** Body Html */
+            body_html?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "reset" | "invite";
+            /** Locale */
+            locale: string;
+            /** Subject */
+            subject?: string | null;
+        };
+        /** EmailTemplateWrite */
+        EmailTemplateWrite: {
+            /** Body Html */
+            body_html?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "reset" | "invite";
+            /** Locale */
+            locale: string;
+            /** Subject */
+            subject?: string | null;
+        };
+        /** EmailTemplatesRead */
+        EmailTemplatesRead: {
+            /** Locales */
+            locales: string[];
+            /** Templates */
+            templates: components["schemas"]["EmailTemplateItem"][];
+            /** Variables */
+            variables: string[];
         };
         /** EmailTestResult */
         EmailTestResult: {
@@ -9868,6 +10007,11 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence?: components["schemas"]["Recurrence"] | null;
+            /**
+             * Requires Interaction
+             * @default false
+             */
+            requires_interaction: boolean;
             /** Status */
             status?: string | null;
             /** Title */
@@ -9929,6 +10073,11 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence: components["schemas"]["Recurrence"] | null;
+            /**
+             * Requires Interaction
+             * @default false
+             */
+            requires_interaction: boolean;
             /** Status */
             status: string;
             /** Title */
@@ -10005,6 +10154,11 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence: components["schemas"]["Recurrence"] | null;
+            /**
+             * Requires Interaction
+             * @default false
+             */
+            requires_interaction: boolean;
             /** Status */
             status: string;
             /** Title */
@@ -10058,6 +10212,11 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence: components["schemas"]["Recurrence"] | null;
+            /**
+             * Requires Interaction
+             * @default false
+             */
+            requires_interaction: boolean;
             /** Status */
             status: string;
             /** Title */
@@ -10090,6 +10249,8 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence?: components["schemas"]["Recurrence"] | null;
+            /** Requires Interaction */
+            requires_interaction?: boolean | null;
             /** Status */
             status?: string | null;
             /** Title */
@@ -10204,6 +10365,11 @@ export interface components {
             priority: components["schemas"]["TaskPriority"];
             /** Relative Due Days */
             relative_due_days?: number | null;
+            /**
+             * Requires Interaction
+             * @default false
+             */
+            requires_interaction: boolean;
             /** Title */
             title: string;
         };
@@ -10238,6 +10404,11 @@ export interface components {
             priority: components["schemas"]["TaskPriority"];
             /** Relative Due Days */
             relative_due_days?: number | null;
+            /**
+             * Requires Interaction
+             * @default false
+             */
+            requires_interaction: boolean;
             /** Title */
             title: string;
         };
@@ -13810,6 +13981,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DriveBrowseResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_folder_api_v1_google_drive_folders_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriveFolderCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveFolder"];
                 };
             };
             /** @description Validation Error */
@@ -18958,6 +19162,92 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    list_email_templates_api_v1_settings_email_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailTemplatesRead"];
+                };
+            };
+        };
+    };
+    save_email_template_api_v1_settings_email_templates_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailTemplateWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailTemplateItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_email_template_api_v1_settings_email_templates_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailTemplateTest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailTestResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };

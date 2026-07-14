@@ -34,6 +34,9 @@ class TaskBase(BaseModel):
     priority: TaskPriority = TaskPriority.NORMAL
     due_date: date | None = None
     allocated_minutes: int | None = Field(default=None, ge=0, le=100000)
+    # Per-task close policy (#157 extended): when set, this task can only reach a finished
+    # status once a designated closing contact moment is linked, regardless of the status flag.
+    requires_interaction: bool = False
 
 
 class TaskCreate(TaskBase):
@@ -52,6 +55,8 @@ class TaskUpdate(BaseModel):
     allocated_minutes: int | None = Field(default=None, ge=0, le=100000)
     position: float | None = None
     recurrence: Recurrence | None = None
+    # Toggle the per-task "close only with a contact moment" policy (#157 extended).
+    requires_interaction: bool | None = None
     # Required when the due date moves later (accountability; logged in the activity feed).
     due_change_reason: str | None = Field(default=None, max_length=1000)
     # The contact moment this close is justified by (#157) — must be linked to this task and
@@ -316,6 +321,9 @@ class TemplateItemBase(BaseModel):
     #: Assign to the company's primary responsible at apply time (#28); falls back to
     #: ``assignee_user_id``, then unassigned, when the company has none.
     assign_responsible: bool = False
+    # Tasks spawned from this item may only be closed with a designated contact moment
+    # (#157 extended); copied onto ``Task.requires_interaction`` at apply time.
+    requires_interaction: bool = False
     position: int = 0
     checklist_title: str | None = Field(default=None, max_length=255)
     checklist_items: list[TemplateChecklistItem] = Field(default_factory=list)

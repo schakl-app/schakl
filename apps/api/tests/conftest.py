@@ -62,7 +62,7 @@ _DOMAIN_TABLES = (
     "custom_field_definitions, "
     "files, activity_log, dashboard_prefs, nav_prefs, user_prefs, companies, "
     "api_keys, service_accounts, "
-    "email_settings, org_auth_settings, "
+    "email_settings, org_email_templates, org_auth_settings, "
     "role_audit_log, membership_roles, role_permissions, roles, memberships, org_settings, "
     "instance_audit_log, users, orgs"
 )

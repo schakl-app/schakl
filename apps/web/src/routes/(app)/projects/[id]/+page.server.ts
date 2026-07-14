@@ -134,6 +134,7 @@ export const actions: Actions = {
         priority: "normal",
         project_id: event.params.id,
         company_id: company_id || null,
+        requires_interaction: false,
       },
     });
     if (apiError) return fail(400, { error: apiErrorKey(apiError).key });

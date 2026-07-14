@@ -14,7 +14,7 @@ from app.core.ai.models import AIReport, AISettings, AIUsage  # noqa: F401
 from app.core.apikeys.models import ApiKey, ServiceAccount  # noqa: F401
 from app.core.auth.models import User  # noqa: F401
 from app.core.customfields.models import CustomFieldDefinition  # noqa: F401
-from app.core.email.models import EmailSettings  # noqa: F401
+from app.core.email.models import EmailSettings, OrgEmailTemplate  # noqa: F401
 from app.core.models import InstanceAuditLog, Membership, Org, OrgSettings  # noqa: F401
 from app.core.permissions.models import (  # noqa: F401
     MembershipRole,
