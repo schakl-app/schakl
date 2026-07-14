@@ -30,11 +30,17 @@ from app.errors import AppError
 from app.modules.companies.models import Company
 from app.modules.google import client as google_client
 from app.modules.google.models import ConnectionStatus, GoogleConnection
-from app.modules.marketing.models import MarketingLink, MarketingMetricDaily, MarketingSource
+from app.modules.marketing.models import (
+    MarketingCompanySettings,
+    MarketingLink,
+    MarketingMetricDaily,
+    MarketingSource,
+)
 from app.modules.marketing.schemas import (
     AccountsResponse,
     AvailableAccount,
     CompanyMarketing,
+    CompanySettingsRead,
     DrilldownResponse,
     DrilldownRowOut,
     KpiValue,
@@ -77,6 +83,10 @@ _OVERVIEW_COLUMNS: dict[str, tuple[str, str]] = {
 }
 
 _DRILLDOWN_TTL = 3600  # ~1h, tier-2 lives behind this (issue #133)
+
+#: The GA4 metrics a client's ``show_key_events=False`` withholds — key events and their
+#: display alias. Scoped to GA4: Google Ads keeps its own ``conversions`` (#134).
+_GA4_GATED_METRICS = ("keyEvents", "conversions")
 
 
 def _delta_pct(current: float, previous: float) -> float | None:
@@ -147,6 +157,30 @@ class MarketingService:
                 )
             )
         )
+
+    async def _settings_map(self, company_ids: list[uuid.UUID]) -> dict[uuid.UUID, bool]:
+        """``{company_id: show_key_events}`` for the given companies — one query.
+
+        A company with **no** settings row falls back to the default (``True``): absence means
+        the pre-existing behaviour, so nothing changes until a manager flips the toggle.
+        """
+        if not company_ids:
+            return {}
+        rows = (
+            await self.ctx.session.execute(
+                select(
+                    MarketingCompanySettings.company_id,
+                    MarketingCompanySettings.show_key_events,
+                ).where(
+                    MarketingCompanySettings.org_id == self.ctx.org.id,
+                    MarketingCompanySettings.company_id.in_(company_ids),
+                )
+            )
+        ).all()
+        return {company_id: bool(flag) for company_id, flag in rows}
+
+    async def _show_key_events(self, company_id: uuid.UUID) -> bool:
+        return (await self._settings_map([company_id])).get(company_id, True)
 
     # --- links (#132) --------------------------------------------------------------------- #
     async def list_links_read(self, company_id: uuid.UUID) -> list[LinkRead]:
@@ -254,6 +288,45 @@ class MarketingService:
                 {"source": link.source, "name": link.display_name},
             )
 
+    # --- per-client settings (#134) ------------------------------------------------------- #
+    async def set_company_settings(
+        self, company_id: uuid.UUID, show_key_events: bool
+    ) -> CompanySettingsRead:
+        """Turn GA4 key events / conversions on or off for one client (upsert, one row per org).
+
+        Gated on ``marketing.link.manage`` — it's configuration, like linking. The change lands
+        on the client's activity trail (same entity as link/unlink), only when it actually flips.
+        """
+        self.ctx.require("marketing.link.manage")
+        await self._company_or_404(company_id)
+        row = await self.ctx.session.scalar(
+            select(MarketingCompanySettings).where(
+                MarketingCompanySettings.org_id == self.ctx.org.id,
+                MarketingCompanySettings.company_id == company_id,
+            )
+        )
+        previous = row.show_key_events if row is not None else True
+        if row is None:
+            row = MarketingCompanySettings(
+                org_id=self.ctx.org.id,
+                company_id=company_id,
+                show_key_events=show_key_events,
+            )
+            self.ctx.session.add(row)
+        else:
+            row.show_key_events = show_key_events
+        await self.ctx.session.flush()
+        if previous != show_key_events:
+            await ActivityService(self.ctx).record(
+                "company",
+                company_id,
+                "marketing.key_events_enabled"
+                if show_key_events
+                else "marketing.key_events_disabled",
+                {},
+            )
+        return CompanySettingsRead(company_id=company_id, show_key_events=show_key_events)
+
     # --- pickers (#132) ------------------------------------------------------------------- #
     async def available_accounts(self, source: MarketingSource) -> AccountsResponse:
         self.ctx.require("marketing.link.manage")
@@ -329,6 +402,7 @@ class MarketingService:
         prev_end = cur_start - timedelta(days=1)
         prev_start = prev_end - timedelta(days=range_days - 1)
 
+        show_key_events = await self._show_key_events(company_id)
         links = await self._links(company_id=company_id)
         connections = await self._connections_by_id()
         sources: list[SourceMetrics] = []
@@ -346,6 +420,7 @@ class MarketingService:
                         cur_end,
                         prev_start,
                         prev_end,
+                        show_key_events=show_key_events,
                     )
                 )
         return CompanyMarketing(
@@ -354,6 +429,7 @@ class MarketingService:
             sources=sources,
             needs_connection=not await self._any_connection(),
             can_manage=self.ctx.can("marketing.link.manage"),
+            show_key_events=show_key_events,
         )
 
     async def _metrics_for_links(
@@ -395,12 +471,22 @@ class MarketingService:
         cur_end: date,
         prev_start: date,
         prev_end: date,
+        *,
+        show_key_events: bool = True,
     ) -> SourceMetrics:
         adapter = source_for(link.source)
         current_rows = [m for day, m in daily.items() if cur_start <= day <= cur_end]
         prev_rows = [m for day, m in daily.items() if prev_start <= day <= prev_end]
         cur_agg = aggregate(link.source, current_rows)
         prev_agg = aggregate(link.source, prev_rows)
+        # This client hides GA4 key events / conversions — drop them from the payload entirely
+        # (never a client-side hide), so the panel, tab and every consumer just don't see them.
+        gated = (
+            set(_GA4_GATED_METRICS)
+            if not show_key_events and link.source == MarketingSource.GA4.value
+            else set()
+        )
+        metrics = [m for m in METRICS_BY_SOURCE.get(link.source, []) if m not in gated]
         kpis = {
             metric: KpiValue(
                 current=cur_agg.get(metric, 0.0),
@@ -408,7 +494,7 @@ class MarketingService:
                 delta_pct=_delta_pct(cur_agg.get(metric, 0.0), prev_agg.get(metric, 0.0)),
                 lower_is_better=metric in LOWER_IS_BETTER,
             )
-            for metric in METRICS_BY_SOURCE.get(link.source, [])
+            for metric in metrics
         }
 
         # A gap-free daily series across the current window (0-fill), for sparkline/trend.
@@ -416,7 +502,7 @@ class MarketingService:
         dates = [cur_start + timedelta(days=i) for i in range(span)]
         series_metrics: dict[str, list[float]] = {
             metric: [float(daily.get(day, {}).get(metric, 0) or 0) for day in dates]
-            for metric in METRICS_BY_SOURCE.get(link.source, [])
+            for metric in metrics
         }
 
         channels = None
@@ -578,13 +664,19 @@ class MarketingService:
             for day, m in daily.items():
                 (cur if cur_start <= day <= cur_end else prev).append(m)
 
+        settings = await self._settings_map(list(by_company.keys()))
         rows: list[OverviewRow] = []
         for company_id, per_source in by_company.items():
+            show_key_events = settings.get(company_id, True)
             agg_cur = {s: aggregate(s, buckets[0]) for s, buckets in per_source.items()}
             agg_prev = {s: aggregate(s, buckets[1]) for s, buckets in per_source.items()}
             metrics: dict[str, KpiValue] = {}
             for col, (src, metric) in _OVERVIEW_COLUMNS.items():
                 if src not in per_source:
+                    continue
+                # The conversions column is GA4 key events; a client that hides them shows no
+                # number here either, matching the panel/tab (#134).
+                if col == "conversions" and not show_key_events:
                     continue
                 cur_v = agg_cur[src].get(metric, 0.0)
                 prev_v = agg_prev[src].get(metric, 0.0)
@@ -601,6 +693,7 @@ class MarketingService:
                     company_name=names.get(company_id, ""),
                     sources_present=[MarketingSource(s) for s in present],
                     metrics=metrics,
+                    show_key_events=show_key_events,
                 )
             )
         rows = self._sort_overview(rows, sort)

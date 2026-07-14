@@ -36,6 +36,8 @@ export interface CompanyMarketing {
   sources: SourceMetrics[];
   needs_connection: boolean;
   can_manage: boolean;
+  /** Whether GA4 key events / conversions are shown for this client (#134). */
+  show_key_events: boolean;
   forbidden?: boolean;
 }
 
@@ -78,6 +80,8 @@ export interface OverviewRow {
   company_name: string;
   sources_present: MarketingSource[];
   metrics: Record<string, KpiValue>;
+  /** Whether GA4 key events / conversions are shown for this client — drives the grid toggle. */
+  show_key_events: boolean;
 }
 
 /** The headline metrics each source leads with (panel KPI row + sparkline order). */

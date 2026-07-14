@@ -1,5 +1,6 @@
-import { redirect } from "@sveltejs/kit";
+import { fail, redirect } from "@sveltejs/kit";
 
+import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
@@ -39,6 +40,9 @@ export const load: PageServerLoad = async (event) => {
   return {
     overview: data ?? { range_days, rows: [], total: 0 },
     range,
+    // Managing links (and thus the key-events toggle) is admin config; the grid renders the
+    // switch only for those who hold it, and the API re-checks regardless.
+    canManage: can(event.locals.user, "marketing.link.manage"),
     table: { pref, sort: sort ?? null, widths: resolved.widths },
   };
 };
@@ -49,5 +53,20 @@ export const actions: Actions = {
     const form = await event.request.formData();
     await saveTablePref(event, MARKETING_OVERVIEW_TABLE_ID, parseTablePref(form));
     return { tableSaved: true };
+  },
+
+  /** Show/hide GA4 key events / conversions for one client, straight from the grid (#134). */
+  toggleKeyEvents: async (event) => {
+    if (!can(event.locals.user, "marketing.link.manage")) return fail(403, { error: "errors.forbidden" });
+    const form = await event.request.formData();
+    const company_id = String(form.get("company_id") ?? "").trim();
+    if (!company_id) return fail(400, { error: "errors.required" });
+    const show_key_events = String(form.get("show_key_events") ?? "") === "true";
+    const { error } = await apiFor(event).PUT(
+      "/api/v1/marketing/companies/{company_id}/settings",
+      { params: { path: { company_id } }, body: { show_key_events } },
+    );
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { keyEventsToggled: true };
   },
 };

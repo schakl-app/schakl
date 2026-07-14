@@ -2392,6 +2392,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/marketing/companies/{company_id}/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Company Settings
+         * @description Show or hide GA4 key events / conversions for this client (#134).
+         *
+         *     Visibility is configuration, so it rides ``marketing.link.manage`` like linking. When off,
+         *     the metrics/panel/tab/overview stop returning those numbers for the client until it's back on.
+         */
+        put: operations["set_company_settings_api_v1_marketing_companies__company_id__settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/marketing/links": {
         parameters: {
             query?: never;
@@ -5173,6 +5196,11 @@ export interface components {
             needs_connection: boolean;
             /** Range Days */
             range_days: number;
+            /**
+             * Show Key Events
+             * @default true
+             */
+            show_key_events: boolean;
             /** Sources */
             sources?: components["schemas"]["SourceMetrics"][];
         };
@@ -5217,6 +5245,27 @@ export interface components {
             updated_at: string;
             /** Website */
             website?: string | null;
+        };
+        /**
+         * CompanySettingsRead
+         * @description A client's marketing preferences, echoed back after a change.
+         */
+        CompanySettingsRead: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Show Key Events */
+            show_key_events: boolean;
+        };
+        /**
+         * CompanySettingsUpdate
+         * @description The one per-client marketing preference: show GA4 key events / conversions.
+         */
+        CompanySettingsUpdate: {
+            /** Show Key Events */
+            show_key_events: boolean;
         };
         /**
          * CompanyStatus
@@ -8000,6 +8049,11 @@ export interface components {
             metrics?: {
                 [key: string]: components["schemas"]["KpiValue"];
             };
+            /**
+             * Show Key Events
+             * @default true
+             */
+            show_key_events: boolean;
             /** Sources Present */
             sources_present?: components["schemas"]["MarketingSource"][];
         };
@@ -16830,6 +16884,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CompanyMarketing"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_company_settings_api_v1_marketing_companies__company_id__settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompanySettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanySettingsRead"];
                 };
             };
             /** @description Validation Error */

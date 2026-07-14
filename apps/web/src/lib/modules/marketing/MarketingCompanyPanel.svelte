@@ -23,6 +23,8 @@
   const m = $derived(data as unknown as CompanyMarketing);
   const sources = $derived(m.sources ?? []);
   const canManage = $derived(Boolean(m.can_manage));
+  // Key events / conversions are a GA4 concept, so the toggle only appears once GA4 is linked.
+  const hasGa4 = $derived(sources.some((s) => s.source === "ga4"));
 
   let editing = $state(false);
   const tabHref = $derived(`/companies/${companyId}/marketing`);
@@ -104,6 +106,34 @@
           <MarketingAccountPicker source={s} linkedIds={linkedIdsBySource[s]} />
         {/each}
       </div>
+      {#if hasGa4}
+        <!-- Per-client visibility of GA4 key events / conversions (#134); posts to the host
+             page's marketingSettings action, which the API gates on marketing.link.manage. -->
+        <div class="flex items-center justify-between gap-3 border-t border-border pt-3">
+          <div class="min-w-0">
+            <p class="text-sm font-medium text-text">{t("marketing.settings.key_events_label")}</p>
+            <p class="text-xs text-text-muted">{t("marketing.settings.key_events_hint")}</p>
+          </div>
+          <form method="POST" action="?/marketingSettings" use:enhance class="inline-flex">
+            <input type="hidden" name="show_key_events" value={(!m.show_key_events).toString()} />
+            <button
+              type="submit"
+              role="switch"
+              aria-checked={m.show_key_events}
+              aria-label={t("marketing.settings.key_events_label")}
+              class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors {m.show_key_events
+                ? 'bg-brand'
+                : 'border border-border bg-surface'}"
+            >
+              <span
+                class="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform {m.show_key_events
+                  ? 'translate-x-4'
+                  : 'translate-x-0.5'}"
+              ></span>
+            </button>
+          </form>
+        </div>
+      {/if}
     </div>
   {:else if sources.length === 0}
     <div class="rounded-lg border border-dashed border-border p-4 text-sm text-text-muted">

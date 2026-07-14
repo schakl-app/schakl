@@ -11,6 +11,9 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, date, datetime, timedelta
 
+from sqlalchemy import select
+
+from app.core.activity.models import ActivityLog
 from app.db import async_session_maker, set_current_org
 from app.modules.marketing.models import MarketingLink, MarketingMetricDaily
 from tests.conftest import auth_cookie, make_tenant
@@ -336,3 +339,128 @@ async def test_nightly_resumes_incomplete_backfill(client_for, monkeypatch) -> N
     assert any(
         fn == "marketing_backfill_link" and link["id"] in args for fn, args in calls
     ), "nightly sync should re-enqueue the incomplete backfill"
+
+
+async def test_key_events_visibility_toggle(client_for) -> None:
+    """The per-client toggle hides GA4 key events / conversions from the panel, tab and overview
+    server-side while other metrics stay, records the flip on the client's trail, and round-trips
+    (#134). Default is on, so an untouched client behaves exactly as before."""
+    t = await make_tenant("mktg-keyevents")
+    headers = await auth_cookie(t.user)
+    today = date.today()
+
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "KeyEvents BV"}, headers=headers)
+        ).json()
+        ga4 = (
+            await c.post(
+                "/api/v1/marketing/links",
+                json={
+                    "company_id": company["id"],
+                    "source": "ga4",
+                    "external_id": "properties/42",
+                    "display_name": "KeyEvents — GA4",
+                },
+                headers=headers,
+            )
+        ).json()
+        await _seed_metrics(
+            t.org.id,
+            uuid.UUID(ga4["id"]),
+            {today - timedelta(days=2): {"sessions": 120, "keyEvents": 10, "conversions": 10}},
+        )
+        await _mark_synced(t.org.id, uuid.UUID(ga4["id"]))
+
+        metrics_url = f"/api/v1/marketing/companies/{company['id']}/metrics"
+        overview_url = "/api/v1/marketing/overview"
+
+        # Default on: key events + conversions are visible on the client and in the grid.
+        body = (await c.get(metrics_url, params={"range_days": 30}, headers=headers)).json()
+        assert body["show_key_events"] is True
+        ga4_src = next(s for s in body["sources"] if s["source"] == "ga4")
+        assert ga4_src["kpis"]["keyEvents"]["current"] == 10
+        assert ga4_src["kpis"]["conversions"]["current"] == 10
+        assert "keyEvents" in ga4_src["series"]["metrics"]
+
+        ov = (await c.get(overview_url, params={"range_days": 30}, headers=headers)).json()
+        row = ov["rows"][0]
+        assert row["show_key_events"] is True
+        assert row["metrics"]["conversions"]["current"] == 10
+
+        # Turn it off for this client.
+        put = await c.put(
+            f"/api/v1/marketing/companies/{company['id']}/settings",
+            json={"show_key_events": False},
+            headers=headers,
+        )
+        assert put.status_code == 200, put.text
+        assert put.json()["company_id"] == company["id"]
+        assert put.json()["show_key_events"] is False
+
+        # The panel/tab payload now omits GA4 key events + conversions, but keeps sessions.
+        body = (await c.get(metrics_url, params={"range_days": 30}, headers=headers)).json()
+        assert body["show_key_events"] is False
+        ga4_src = next(s for s in body["sources"] if s["source"] == "ga4")
+        assert "keyEvents" not in ga4_src["kpis"]
+        assert "conversions" not in ga4_src["kpis"]
+        assert "keyEvents" not in ga4_src["series"]["metrics"]
+        assert ga4_src["kpis"]["sessions"]["current"] == 120
+
+        # The overview drops the conversions cell for this client; sessions stays.
+        ov = (await c.get(overview_url, params={"range_days": 30}, headers=headers)).json()
+        row = ov["rows"][0]
+        assert row["show_key_events"] is False
+        assert "conversions" not in row["metrics"]
+        assert row["metrics"]["sessions"]["current"] == 120
+
+        # The flip is on the client's activity trail.
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            actions = (
+                (
+                    await session.execute(
+                        select(ActivityLog.action).where(
+                            ActivityLog.entity_type == "company",
+                            ActivityLog.entity_id == uuid.UUID(company["id"]),
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        assert "marketing.key_events_disabled" in actions
+
+        # Toggling back on restores the metric everywhere.
+        assert (
+            await c.put(
+                f"/api/v1/marketing/companies/{company['id']}/settings",
+                json={"show_key_events": True},
+                headers=headers,
+            )
+        ).status_code == 200
+        body = (await c.get(metrics_url, params={"range_days": 30}, headers=headers)).json()
+        ga4_src = next(s for s in body["sources"] if s["source"] == "ga4")
+        assert ga4_src["kpis"]["conversions"]["current"] == 10
+
+
+async def test_key_events_toggle_tenant_isolation(client_for) -> None:
+    """Org B cannot flip the key-events toggle on org A's company — it 404s, never leaking that
+    the company exists (#134, Golden Rule 1)."""
+    a = await make_tenant("mktg-ke-a")
+    b = await make_tenant("mktg-ke-b")
+    a_headers = await auth_cookie(a.user)
+    b_headers = await auth_cookie(b.user)
+
+    async with client_for(a.host) as ca:
+        company = (
+            await ca.post("/api/v1/companies", json={"name": "Iso BV"}, headers=a_headers)
+        ).json()
+
+    async with client_for(b.host) as cb:
+        leaked = await cb.put(
+            f"/api/v1/marketing/companies/{company['id']}/settings",
+            json={"show_key_events": False},
+            headers=b_headers,
+        )
+        assert leaked.status_code == 404

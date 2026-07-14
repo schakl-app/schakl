@@ -133,3 +133,33 @@ class MarketingMetricDaily(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, 
     #: (#124); the display labels it, never converts it.
     currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
     synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class MarketingCompanySettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """Per-client marketing display preferences (issue #134).
+
+    One row per company, created lazily on first change — **absence means the defaults**, so an
+    install that never touches this table behaves exactly as before. Today it carries a single
+    knob: whether GA4 **key events / conversions** are shown for this client. An agency reports
+    conversions for some clients and not others; flipping this off drops ``keyEvents`` and its
+    ``conversions`` alias from that client's panel, tab and the overview conversions column
+    (gated server-side, so it never leaks in the payload). Scoped to GA4 — Google Ads keeps its
+    own ``conversions``.
+    """
+
+    __tablename__ = "marketing_company_settings"
+    __table_args__ = (
+        UniqueConstraint("org_id", "company_id", name="uq_marketing_company_settings_company"),
+    )
+
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    #: Show GA4 key events / conversions for this client. Default on: it preserves the behaviour
+    #: from before this setting existed (the metric was always visible).
+    show_key_events: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
