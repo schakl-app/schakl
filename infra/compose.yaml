@@ -33,6 +33,14 @@ x-api-env: &api-env
   SCHAKL_FORCE_LOCAL_LOGIN: ${SCHAKL_FORCE_LOCAL_LOGIN:-false}
   # File storage (issue #123): the named volume below; back it up alongside the DB.
   SCHAKL_STORAGE_PATH: /data/storage
+  # Google (Workspace + marketing, epics #22/#134). The OAuth client is normally configured
+  # per-org in Instellingen -> Google (stored encrypted in the DB, read by api AND worker);
+  # these are the documented env fallback. The Google Ads developer token is instance-level
+  # with no per-org field, so the marketing Ads source can ONLY be configured here — it must be
+  # on the shared anchor so the worker's nightly sync sees it too. Empty = unset (safe default).
+  SCHAKL_GOOGLE_CLIENT_ID: ${SCHAKL_GOOGLE_CLIENT_ID:-}
+  SCHAKL_GOOGLE_CLIENT_SECRET: ${SCHAKL_GOOGLE_CLIENT_SECRET:-}
+  SCHAKL_GOOGLE_ADS_DEVELOPER_TOKEN: ${SCHAKL_GOOGLE_ADS_DEVELOPER_TOKEN:-}
 
 services:
   db:
