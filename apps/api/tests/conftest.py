@@ -53,7 +53,7 @@ _DOMAIN_TABLES = (
     "leave_holidays, leave_settings, employment_contracts, "
     "subscription_links, subscription_lines, subscription_prices, subscriptions, "
     "subscription_templates, subscription_types, "
-    "marketing_metrics_daily, marketing_links, "
+    "marketing_metrics_daily, marketing_links, marketing_company_settings, marketing_settings, "
     "interactions, interaction_kinds, "
     "calendar_event_links, google_calendar_events, google_calendar_channels, "
     "drive_links, drive_folder_jobs, gmail_suppressions, google_connections, google_settings, "
@@ -62,7 +62,7 @@ _DOMAIN_TABLES = (
     "custom_field_definitions, "
     "files, activity_log, dashboard_prefs, nav_prefs, user_prefs, companies, "
     "api_keys, service_accounts, "
-    "email_settings, org_auth_settings, "
+    "email_settings, org_email_templates, org_auth_settings, "
     "role_audit_log, membership_roles, role_permissions, roles, memberships, org_settings, "
     "instance_audit_log, users, orgs"
 )

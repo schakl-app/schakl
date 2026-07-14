@@ -19,9 +19,11 @@ from app.core.auth.models import User
 from app.core.auth.sso import org_base_url
 from app.core.email.senders import OutgoingEmail
 from app.core.email.service import send_org_email
+from app.core.email.templates import build_email_content, resolve_template
 from app.core.models import OrgSettings
 from app.core.tenancy import resolve_org
-from app.i18n import resolve_locale, translate
+from app.db import set_current_org
+from app.i18n import resolve_locale
 
 logger = logging.getLogger("schakl.auth")
 
@@ -49,6 +51,11 @@ async def send_password_email(
             token,
         )
         return False, None
+    # Bind the resolved tenant so the RLS-FORCED reads below (org_settings, the tier-2 email
+    # template) actually return this org's rows. The forgot/invite flows may run on a session
+    # that never bound the GUC (a pre-auth reset, or FastAPI Users' own user-db session), and
+    # without this an org's branding *and* its custom template would silently fall back.
+    await set_current_org(session, org.id)
     org_settings = await session.scalar(
         select(OrgSettings).where(OrgSettings.org_id == org.id)
     )
@@ -57,17 +64,18 @@ async def send_password_email(
         user.locale, org_settings.default_locale if org_settings else None
     )
     link = f"{org_base_url(org)}/reset-password?token={token}"
-    message = OutgoingEmail(
-        to=user.email,
-        subject=translate(f"auth.email.{kind}_subject", locale, brand=brand),
-        text=translate(
-            f"auth.email.{kind}_body",
-            locale,
-            name=user.full_name or user.email,
-            brand=brand,
-            link=link,
-        ),
+    values = {"name": user.full_name or user.email, "brand": brand, "link": link}
+    # A tenant override for (kind, locale) wins (#161 tier 2); a missing one falls back to the
+    # catalog default. The plaintext part always carries the link, HTML rides only when set.
+    template = await resolve_template(session, org.id, kind, locale)
+    subject, text, html = build_email_content(
+        kind,
+        locale,
+        template.subject if template else None,
+        template.body_html if template else None,
+        values,
     )
+    message = OutgoingEmail(to=user.email, subject=subject, text=text, html=html)
     sent, error = await send_org_email(session, org.id, message)
     if not sent:
         logger.warning(

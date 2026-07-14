@@ -54,4 +54,15 @@ export const marketingActions = {
     });
     return { marketingUnlinked: true };
   },
+
+  marketingSettings: async (event: RequestEvent) => {
+    const form = await event.request.formData();
+    const show_key_events = String(form.get("show_key_events") ?? "") === "true";
+    const { error } = await apiFor(event).PUT(
+      "/api/v1/marketing/companies/{company_id}/settings",
+      { params: { path: { company_id: event.params.id as string } }, body: { show_key_events } },
+    );
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { marketingSettingsSaved: true };
+  },
 };

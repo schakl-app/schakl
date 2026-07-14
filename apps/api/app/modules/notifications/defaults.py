@@ -31,6 +31,7 @@ from app.modules.notifications.events import (
     TASK_ASSIGNED,
     TASK_MENTIONED,
     TASK_OVERDUE,
+    TASK_SCHEDULED,
 )
 
 #: Daily digest lands here in Europe/Amsterdam local time.
@@ -46,6 +47,8 @@ _IMMEDIATE_EVENTS: frozenset[str] = frozenset(
         PROJECT_ASSIGNED,
         COMPANY_ASSIGNED,
         TASK_OVERDUE,
+        # Being scheduled onto someone's calendar (#188) is news you act on now, not tomorrow.
+        TASK_SCHEDULED,
         LEAVE_REQUESTED,
         LEAVE_APPROVED,
         LEAVE_REJECTED,

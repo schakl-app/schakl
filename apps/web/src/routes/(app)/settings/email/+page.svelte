@@ -20,6 +20,14 @@
 
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand";
+
+  // Tenant auth-mail templates (#161 tier 2): one editor card per (kind, locale).
+  const templateKinds = ["invite", "reset"] as const;
+  const templatesByKind = (kind: string) =>
+    (data.templates?.templates ?? []).filter((tpl) => tpl.kind === kind);
+  const variablesHint = $derived(
+    (data.templates?.variables ?? []).map((v) => `{${v}}`).join("  "),
+  );
 </script>
 
 <svelte:head>
@@ -226,6 +234,128 @@
     </form>
   {/if}
 </section>
+
+{#if data.templates}
+  <!-- Tenant-customisable auth mails (#161 tier 2). Blank = the built-in default. -->
+  <section class="mt-6 max-w-2xl rounded-xl border border-border bg-surface-raised p-5">
+    <h2 class="text-lg font-semibold text-text">{t("settings.email.templates.title")}</h2>
+    <p class="mt-1 text-sm text-text-muted">{t("settings.email.templates.subtitle")}</p>
+
+    {#if !data.settings}
+      <p class="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-200">
+        {t("settings.email.templates.no_transport")}
+      </p>
+    {/if}
+
+    {#each templateKinds as kind (kind)}
+      <div class="mt-5">
+        <h3 class="text-sm font-semibold text-text">{t(`settings.email.templates.kind.${kind}`)}</h3>
+        <div class="mt-2 grid gap-4 md:grid-cols-2">
+          {#each templatesByKind(kind) as tpl (tpl.locale)}
+            <form
+              method="POST"
+              action="?/saveTemplate"
+              use:enhance
+              class="space-y-3 rounded-lg border border-border p-4"
+            >
+              <input type="hidden" name="kind" value={tpl.kind} />
+              <input type="hidden" name="locale" value={tpl.locale} />
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-xs font-semibold uppercase tracking-wide text-text">
+                  {tpl.locale.toUpperCase()}
+                </span>
+                {#if tpl.subject || tpl.body_html}
+                  <span
+                    class="rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand"
+                    >{t("settings.email.templates.customised")}</span
+                  >
+                {:else}
+                  <span class="text-[11px] text-text-muted"
+                    >{t("settings.email.templates.using_default")}</span
+                  >
+                {/if}
+              </div>
+
+              <div>
+                <label
+                  for={`tpl-subject-${tpl.kind}-${tpl.locale}`}
+                  class="mb-1 block text-xs font-medium text-text-muted"
+                  >{t("settings.email.templates.subject")}</label
+                >
+                <input
+                  id={`tpl-subject-${tpl.kind}-${tpl.locale}`}
+                  name="subject"
+                  value={tpl.subject ?? ""}
+                  placeholder={tpl.default_subject}
+                  class={inputClass}
+                />
+              </div>
+
+              <div>
+                <label
+                  for={`tpl-body-${tpl.kind}-${tpl.locale}`}
+                  class="mb-1 block text-xs font-medium text-text-muted"
+                  >{t("settings.email.templates.body")}</label
+                >
+                <textarea
+                  id={`tpl-body-${tpl.kind}-${tpl.locale}`}
+                  name="body_html"
+                  rows="7"
+                  placeholder={t("settings.email.templates.body_placeholder")}
+                  class="{inputClass} font-mono text-xs">{tpl.body_html ?? ""}</textarea
+                >
+              </div>
+
+              <p class="text-[11px] text-text-muted">
+                {t("settings.email.templates.variables")}
+                <code class="rounded bg-surface px-1 py-0.5 text-text">{variablesHint}</code>
+              </p>
+
+              <details class="text-[11px] text-text-muted">
+                <summary class="cursor-pointer hover:text-text"
+                  >{t("settings.email.templates.show_default")}</summary
+                >
+                <pre
+                  class="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-surface p-2 text-text">{tpl.default_body_html}</pre>
+              </details>
+
+              {#if form?.templateSaved?.kind === tpl.kind && form?.templateSaved?.locale === tpl.locale}
+                <p class="text-xs text-green-700 dark:text-green-400">
+                  {t("settings.email.templates.saved")}
+                </p>
+              {/if}
+              {#if form?.templateKind === tpl.kind && form?.templateLocale === tpl.locale && form?.templateTest}
+                {#if form.templateTest.ok}
+                  <p class="text-xs text-green-700 dark:text-green-400">
+                    {t("settings.email.test_ok")}
+                  </p>
+                {:else}
+                  <p class="text-xs text-red-600 dark:text-red-400">
+                    {t("settings.email.test_failed", { error: form.templateTest.error ?? "?" })}
+                  </p>
+                {/if}
+              {/if}
+
+              <div class="flex gap-2">
+                <button
+                  class="rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+                  >{t("common.save")}</button
+                >
+                {#if data.settings}
+                  <button
+                    formaction="?/testTemplate"
+                    class="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-text hover:border-brand"
+                    >{t("settings.email.templates.test")}</button
+                  >
+                {/if}
+              </div>
+            </form>
+          {/each}
+        </div>
+      </div>
+    {/each}
+  </section>
+{/if}
 
 <ConfirmDialog
   bind:open={confirmDelete}

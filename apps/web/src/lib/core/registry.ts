@@ -207,6 +207,12 @@ export interface CalendarEvent {
   draggable?: boolean;
 }
 
+/** A colleague a source can overlay on the calendar (#188) — the per-person feed roster. */
+export interface CalendarPerson {
+  id: string;
+  name: string;
+}
+
 /** What a calendar source's `load` gets to work with. `user` carries the viewer's id +
  *  effective permissions so a source can mark events as its own / draggable (#106). */
 export interface CalendarRange {
@@ -214,6 +220,12 @@ export interface CalendarRange {
   to: string;
   locale: string;
   user?: { id: string; permissions: string[] } | null;
+  /**
+   * The colleagues the viewer chose to overlay for *this* source (#188), from the feeds menu.
+   * A source that offers a `people` roster loads those users' items in addition to the viewer's
+   * own; a source without one ignores this.
+   */
+  people?: string[];
 }
 
 export interface CalendarSourceSpec {
@@ -233,6 +245,13 @@ export interface CalendarSourceSpec {
    * error i18n key, or null on success.
    */
   move?: (api: ApiClient, args: { id: string; deltaDays: number }) => Promise<string | null>;
+  /**
+   * The colleagues this viewer may overlay on the calendar (#188). When present, the feeds menu
+   * renders a per-person checklist under the source, each person persisted per user; the picked
+   * ids arrive back in `range.people` on the next `load`. Returns `[]` when the viewer lacks the
+   * permission to see anyone else (a member sees only their own feed).
+   */
+  people?: (api: ApiClient, range: CalendarRange) => Promise<CalendarPerson[]>;
 }
 
 export interface WebModule {

@@ -118,6 +118,9 @@ async def spawn_next(
         priority=task.priority,
         due_date=due,
         allocated_minutes=task.allocated_minutes,
+        # The "close only with a contact moment" policy is a property of the work, so it rides
+        # to every occurrence (#157 extended); without this it would silently drop on roll-over.
+        requires_interaction=task.requires_interaction,
         position=await _max_position(session, org_id) + 1024.0,
         recurrence=rec,
         recurrence_next_run=(

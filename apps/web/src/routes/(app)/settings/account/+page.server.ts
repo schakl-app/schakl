@@ -60,10 +60,13 @@ export const load: PageServerLoad = async (event) => {
   const canManageKeys = can(event.locals.user, "apikeys.personal.manage");
   // The per-user Google connection card (docs/GOOGLE.md §1) — only when the org runs the module.
   const googleEnabled = (event.locals.theme?.enabledModules ?? []).includes("google");
-  const [keys, catalog, google] = await Promise.all([
+  const [keys, catalog, google, modules] = await Promise.all([
     canManageKeys ? api.GET("/api/v1/api-keys") : Promise.resolve({ data: null }),
     canManageKeys ? api.GET("/api/v1/permissions/catalog") : Promise.resolve({ data: null }),
     googleEnabled ? api.GET("/api/v1/google/connections/me") : Promise.resolve({ data: null }),
+    // Whether this org allows local password login (#161): an SSO-enforced org hides the
+    // change-password card — there is no local password to change.
+    api.GET("/api/v1/meta/modules"),
   ]);
 
   const scopeOptions: { value: string; label_key: string }[] = [];
@@ -98,6 +101,7 @@ export const load: PageServerLoad = async (event) => {
     scopeOptions,
     google: google.data ?? null,
     googleStatus: event.url.searchParams.get("google"),
+    localLogin: modules.data?.local_login_enabled ?? true,
   };
 };
 
@@ -129,6 +133,21 @@ export const actions: Actions = {
       return fail(400, { error: e.key, fields: e.fields });
     }
     return { saved: true };
+  },
+
+  /** Change my password (#161): the API enforces the policy (min 8 / max 128 / not the email)
+   *  on `PATCH /users/me`; we only check the confirm field matches before sending. */
+  changePassword: async (event) => {
+    const form = await event.request.formData();
+    const password = String(form.get("password") ?? "");
+    const confirm = String(form.get("password_confirm") ?? "");
+    if (!password) return fail(400, { passwordError: "errors.required" });
+    if (password !== confirm) return fail(400, { passwordError: "errors.password_mismatch" });
+    const { error } = await apiFor(event).PATCH("/api/v1/users/me", {
+      body: { password },
+    });
+    if (error) return fail(400, { passwordError: apiErrorKey(error).key });
+    return { passwordChanged: true };
   },
 
   createKey: async (event) => {

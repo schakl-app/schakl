@@ -110,6 +110,40 @@ class CompanyMarketing(BaseModel):
     needs_connection: bool = False
     #: A connection exists but the caller may not manage links (a member) — name who can.
     can_manage: bool = False
+    #: Whether GA4 key events / conversions are shown for this client (#134). When False the
+    #: GA4 sources above already omit those metrics; the flag lets the UI render the toggle.
+    show_key_events: bool = True
+
+
+# --- per-client settings (#134) -------------------------------------------------------------- #
+class CompanySettingsUpdate(BaseModel):
+    """The one per-client marketing preference: show GA4 key events / conversions."""
+
+    show_key_events: bool
+
+
+class CompanySettingsRead(BaseModel):
+    """A client's marketing preferences, echoed back after a change."""
+
+    company_id: uuid.UUID
+    show_key_events: bool
+
+
+# --- org-level settings (#134) --------------------------------------------------------------- #
+class MarketingSettingsRead(BaseModel):
+    """The org's marketing settings. The Ads developer token is write-only — like the Google
+    client secret, the API reports only whether one is configured, never the value."""
+
+    ads_developer_token_configured: bool = False
+    #: True when the deprecated ``SCHAKL_GOOGLE_ADS_DEVELOPER_TOKEN`` env var is set — the fallback
+    #: still used when no token is stored, so the UI can say "using the environment value".
+    env_ads_token_configured: bool = False
+
+
+class MarketingSettingsWrite(BaseModel):
+    #: The Google Ads developer token. Empty/omitted keeps the stored one (the Google-client-secret
+    #: rule); the API never plays it back.
+    ads_developer_token: str | None = Field(default=None, max_length=1024)
 
 
 class DrilldownRowOut(BaseModel):
@@ -135,8 +169,11 @@ class OverviewRow(BaseModel):
     company_name: str
     sources_present: list[MarketingSource] = Field(default_factory=list)
     #: Headline metrics with their period-over-period deltas (sessions, clicks, position, cost,
-    #: conversions). Absent when the client has no link feeding that metric.
+    #: conversions). Absent when the client has no link feeding that metric — and ``conversions``
+    #: is also withheld when this client's ``show_key_events`` is off (#134).
     metrics: dict[str, KpiValue] = Field(default_factory=dict)
+    #: Whether GA4 key events / conversions are shown for this client (drives the grid's toggle).
+    show_key_events: bool = True
 
 
 class OverviewResponse(BaseModel):

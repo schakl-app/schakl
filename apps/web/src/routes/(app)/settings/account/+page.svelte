@@ -226,6 +226,61 @@
     </form>
   </section>
 
+  <!-- Change password (#161). Hidden when the org enforces SSO (no local password to change). -->
+  {#if data.localLogin}
+    <section class="rounded-xl border border-border bg-surface-raised p-5">
+      <h2 class="text-sm font-semibold text-text">{t("settings.account.password")}</h2>
+      <p class="mt-1 text-sm text-text-muted">{t("settings.account.password_help")}</p>
+      <form
+        method="POST"
+        action="?/changePassword"
+        use:enhance={() =>
+          ({ update }) => update({ reset: true })}
+        class="mt-4 space-y-4"
+      >
+        <div>
+          <label for="new-password" class="mb-1 block text-sm font-medium text-text">
+            {t("settings.account.new_password")}
+          </label>
+          <input
+            id="new-password"
+            name="password"
+            type="password"
+            autocomplete="new-password"
+            required
+            minlength="8"
+            class="w-full rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+          />
+        </div>
+        <div>
+          <label for="confirm-password" class="mb-1 block text-sm font-medium text-text">
+            {t("settings.account.confirm_password")}
+          </label>
+          <input
+            id="confirm-password"
+            name="password_confirm"
+            type="password"
+            autocomplete="new-password"
+            required
+            minlength="8"
+            class="w-full rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+          />
+        </div>
+        {#if form?.passwordChanged}
+          <p class="text-sm text-green-600 dark:text-green-400">
+            {t("settings.account.password_changed")}
+          </p>
+        {/if}
+        {#if form?.passwordError}
+          <p class="text-sm text-red-600 dark:text-red-400">{t(form.passwordError)}</p>
+        {/if}
+        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+          {t("settings.account.change_password")}
+        </button>
+      </form>
+    </section>
+  {/if}
+
   <!-- Google koppelen (#22): a per-user grant, so it lives on the person (docs/GOOGLE.md). -->
   {#if data.google}
     <GoogleAccountCard data={data.google} status={data.googleStatus} />

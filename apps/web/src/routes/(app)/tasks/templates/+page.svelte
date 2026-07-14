@@ -29,6 +29,7 @@
     relative_due_days: string;
     allocated_minutes: string;
     assignee_user_id: string;
+    requires_interaction: boolean;
     checklist_title: string;
     checklist_text: string;
   }
@@ -46,6 +47,7 @@
       relative_due_days?: number | null;
       assignee_user_id?: string | null;
       assign_responsible?: boolean;
+      requires_interaction?: boolean;
       checklist_title?: string | null;
       checklist_items?: { title: string; description?: string | null }[];
     }[];
@@ -65,6 +67,7 @@
       relative_due_days: "",
       allocated_minutes: "",
       assignee_user_id: "",
+      requires_interaction: false,
       checklist_title: "",
       checklist_text: "",
     };
@@ -87,6 +90,7 @@
       allocated_minutes: item.allocated_minutes == null ? "" : String(item.allocated_minutes),
       // "__responsible__" is the apply-time sentinel (#28), never a real user id.
       assignee_user_id: item.assign_responsible ? "__responsible__" : (item.assignee_user_id ?? ""),
+      requires_interaction: item.requires_interaction ?? false,
       checklist_title: item.checklist_title ?? "",
       checklist_text: (item.checklist_items ?? []).map((c) => c.title).join("\n"),
     }));
@@ -114,6 +118,7 @@
             ? item.assignee_user_id
             : null,
         assign_responsible: item.assignee_user_id === "__responsible__",
+        requires_interaction: item.requires_interaction,
         checklist_title: item.checklist_title,
         checklist_items: item.checklist_text
           .split("\n")
@@ -303,6 +308,15 @@
               rows="2"
               class={inputClass}></textarea>
           </div>
+          <label class="mt-2 flex items-start gap-2 text-sm text-text">
+            <input type="checkbox" bind:checked={item.requires_interaction} class="mt-0.5 shrink-0" />
+            <span>
+              <span class="font-medium">{t("tasks.field.requires_interaction")}</span>
+              <span class="mt-0.5 block text-[11px] leading-snug text-text-muted"
+                >{t("tasks.templates.requires_interaction_hint")}</span
+              >
+            </span>
+          </label>
         </div>
       {/each}
     </div>

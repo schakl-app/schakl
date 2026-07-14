@@ -9,7 +9,12 @@ re-approval then pushes the corrected span).
 from __future__ import annotations
 
 from app.core.events import subscribe
-from app.modules.google.calendar.push import handle_leave_approved, handle_leave_gone
+from app.modules.google.calendar.push import (
+    handle_leave_approved,
+    handle_leave_gone,
+    handle_task_schedule_gone,
+    handle_task_schedule_saved,
+)
 
 subscribe("leave.approved", handle_leave_approved)
 # An approver's in-place edit of approved leave (#148): same handler — the snapshot
@@ -18,3 +23,8 @@ subscribe("leave.updated", handle_leave_approved)
 subscribe("leave.cancelled", handle_leave_gone)
 subscribe("leave.rejected", handle_leave_gone)
 subscribe("leave.requested", handle_leave_gone)
+
+# Task scheduling (#188): a saved block pushes/refreshes; a removed block deletes. The same
+# outbox + worker as leave, keyed by a distinct local_type so the two never collide.
+subscribe("task_schedule.saved", handle_task_schedule_saved)
+subscribe("task_schedule.removed", handle_task_schedule_gone)

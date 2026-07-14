@@ -8,8 +8,17 @@ import type { Actions, PageServerLoad } from "./$types";
 // Org e-mail transport (#17): DB-stored, UI-configured — the official Brevo/SendGrid/SMTP2GO
 // APIs or a plain SMTP relay. Admin-only (the API enforces `settings.email.manage`).
 export const load: PageServerLoad = async (event) => {
-  const { data } = await apiFor(event).GET("/api/v1/settings/email");
-  return { settings: data ?? null, locale: event.locals.locale };
+  const api = apiFor(event);
+  // Transport config + the tenant's auth-mail templates (#161 tier 2), both admin-gated.
+  const [settings, templates] = await Promise.all([
+    api.GET("/api/v1/settings/email"),
+    api.GET("/api/v1/settings/email/templates"),
+  ]);
+  return {
+    settings: settings.data ?? null,
+    templates: templates.data ?? null,
+    locale: event.locals.locale,
+  };
 };
 
 export const actions: Actions = {
@@ -53,5 +62,32 @@ export const actions: Actions = {
     const { data, error } = await apiFor(event).POST("/api/v1/settings/email/test");
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { test: data };
+  },
+
+  // --- tenant auth-mail templates (#161 tier 2) ---------------------------------- //
+  saveTemplate: async (event) => {
+    const form = await event.request.formData();
+    const kind = String(form.get("kind") ?? "") as "reset" | "invite";
+    const locale = String(form.get("locale") ?? "");
+    const subject = String(form.get("subject") ?? "").trim();
+    const body_html = String(form.get("body_html") ?? "").trim();
+    const { error } = await apiFor(event).PUT("/api/v1/settings/email/templates", {
+      body: { kind, locale, subject: subject || null, body_html: body_html || null },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { templateSaved: { kind, locale } };
+  },
+
+  testTemplate: async (event) => {
+    const form = await event.request.formData();
+    const kind = String(form.get("kind") ?? "") as "reset" | "invite";
+    const locale = String(form.get("locale") ?? "");
+    const subject = String(form.get("subject") ?? "").trim();
+    const body_html = String(form.get("body_html") ?? "").trim();
+    const { data, error } = await apiFor(event).POST("/api/v1/settings/email/templates/test", {
+      body: { kind, locale, subject: subject || null, body_html: body_html || null },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { templateTest: data, templateKind: kind, templateLocale: locale };
   },
 };

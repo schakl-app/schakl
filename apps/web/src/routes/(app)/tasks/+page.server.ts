@@ -66,6 +66,8 @@ export const actions: Actions = {
         project_id: String(form.get("project_id") ?? "").trim() || null,
         assignee_user_id: String(form.get("assignee_user_id") ?? "").trim() || null,
         due_date: String(form.get("due_date") ?? "").trim() || null,
+        // New tasks don't demand a closing contact moment; toggled later on the task page (#157).
+        requires_interaction: false,
       },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });

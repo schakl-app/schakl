@@ -10,7 +10,9 @@ import type { LayoutServerLoad } from "./$types";
 export const load: LayoutServerLoad = async (event) => {
   const prefs = await apiFor(event).GET("/api/v1/prefs");
   const calendar = (
-    prefs.data?.prefs as { calendar?: { view?: string; hiddenSources?: unknown } } | undefined
+    prefs.data?.prefs as
+      | { calendar?: { view?: string; hiddenSources?: unknown; people?: unknown } }
+      | undefined
   )?.calendar;
   const storedView = calendar?.view;
   const defaultView: CalendarView = isCalendarView(storedView) ? storedView : "week";
@@ -19,5 +21,13 @@ export const load: LayoutServerLoad = async (event) => {
   const hiddenSources = Array.isArray(storedHidden)
     ? storedHidden.filter((s): s is string => typeof s === "string")
     : [];
-  return { defaultView, hiddenSources };
+  // Per-source colleague overlays (#188): `{ "<sourceKey>": ["<userId>", …] }`. Same prefs read.
+  const rawPeople = calendar?.people;
+  const peopleBySource: Record<string, string[]> = {};
+  if (rawPeople && typeof rawPeople === "object") {
+    for (const [key, ids] of Object.entries(rawPeople as Record<string, unknown>)) {
+      if (Array.isArray(ids)) peopleBySource[key] = ids.filter((v): v is string => typeof v === "string");
+    }
+  }
+  return { defaultView, hiddenSources, peopleBySource };
 };

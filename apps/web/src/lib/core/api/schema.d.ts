@@ -1021,6 +1021,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/google/drive/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Folder
+         * @description Create a subfolder inside the folder being browsed, as the viewing user (issue #21).
+         */
+        post: operations["create_folder_api_v1_google_drive_folders_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/google/drive/links": {
         parameters: {
             query?: never;
@@ -2392,6 +2412,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/marketing/companies/{company_id}/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Company Settings
+         * @description Show or hide GA4 key events / conversions for this client (#134).
+         *
+         *     Visibility is configuration, so it rides ``marketing.link.manage`` like linking. When off,
+         *     the metrics/panel/tab/overview stop returning those numbers for the client until it's back on.
+         */
+        put: operations["set_company_settings_api_v1_marketing_companies__company_id__settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/marketing/links": {
         parameters: {
             query?: never;
@@ -2440,6 +2483,31 @@ export interface paths {
          */
         get: operations["overview_api_v1_marketing_overview_get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/marketing/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Settings
+         * @description The org's marketing settings — reports whether an Ads developer token is configured; the
+         *     token itself is write-only and never returned (the Google client-secret pattern).
+         */
+        get: operations["get_settings_api_v1_marketing_settings_get"];
+        /**
+         * Save Settings
+         * @description Store the encrypted Google Ads developer token (an empty value keeps the stored one).
+         */
+        put: operations["save_settings_api_v1_marketing_settings_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -3182,6 +3250,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/email/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Email Templates */
+        get: operations["list_email_templates_api_v1_settings_email_templates_get"];
+        /**
+         * Save Email Template
+         * @description Upsert one ``(kind, locale)`` override; blank subject *and* body resets it to default.
+         */
+        put: operations["save_email_template_api_v1_settings_email_templates_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/email/templates/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Email Template
+         * @description Send a preview of the draft (or stored/default) to the acting admin.
+         */
+        post: operations["test_email_template_api_v1_settings_email_templates_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/email/test": {
         parameters: {
             query?: never;
@@ -3541,6 +3650,60 @@ export interface paths {
         get: operations["my_open_tasks_api_v1_tasks_mine_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/schedules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Schedules */
+        get: operations["list_schedules_api_v1_tasks_schedules_get"];
+        put?: never;
+        /** Create Schedule */
+        post: operations["create_schedule_api_v1_tasks_schedules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/schedules/{schedule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Schedule */
+        get: operations["get_schedule_api_v1_tasks_schedules__schedule_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Schedule */
+        delete: operations["delete_schedule_api_v1_tasks_schedules__schedule_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Schedule */
+        patch: operations["update_schedule_api_v1_tasks_schedules__schedule_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/tasks/schedules/{schedule_id}/log-time": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Log Schedule Time */
+        post: operations["log_schedule_time_api_v1_tasks_schedules__schedule_id__log_time_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5173,6 +5336,11 @@ export interface components {
             needs_connection: boolean;
             /** Range Days */
             range_days: number;
+            /**
+             * Show Key Events
+             * @default true
+             */
+            show_key_events: boolean;
             /** Sources */
             sources?: components["schemas"]["SourceMetrics"][];
         };
@@ -5217,6 +5385,27 @@ export interface components {
             updated_at: string;
             /** Website */
             website?: string | null;
+        };
+        /**
+         * CompanySettingsRead
+         * @description A client's marketing preferences, echoed back after a change.
+         */
+        CompanySettingsRead: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Show Key Events */
+            show_key_events: boolean;
+        };
+        /**
+         * CompanySettingsUpdate
+         * @description The one per-client marketing preference: show GA4 key events / conversions.
+         */
+        CompanySettingsUpdate: {
+            /** Show Key Events */
+            show_key_events: boolean;
         };
         /**
          * CompanyStatus
@@ -5843,6 +6032,22 @@ export interface components {
             /** Queued */
             queued: number;
         };
+        /** DriveFolder */
+        DriveFolder: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Web View Link */
+            web_view_link?: string | null;
+        };
+        /** DriveFolderCreate */
+        DriveFolderCreate: {
+            /** Name */
+            name: string;
+            /** Parent Id */
+            parent_id: string;
+        };
         /** DriveLinkCreate */
         DriveLinkCreate: {
             /** Drive File Id */
@@ -6051,6 +6256,68 @@ export interface components {
             security?: ("starttls" | "ssl" | "none") | null;
             /** Username */
             username?: string | null;
+        };
+        /**
+         * EmailTemplateItem
+         * @description One ``(kind, locale)`` slot: the tenant override (``None`` = default) plus the built-in
+         *     default, so the editor can show placeholders and a "reset to default" is just clearing it.
+         */
+        EmailTemplateItem: {
+            /** Body Html */
+            body_html?: string | null;
+            /** Default Body Html */
+            default_body_html: string;
+            /** Default Subject */
+            default_subject: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "reset" | "invite";
+            /** Locale */
+            locale: string;
+            /** Subject */
+            subject?: string | null;
+        };
+        /**
+         * EmailTemplateTest
+         * @description Send a preview of the draft on screen (falls back to the stored/default when omitted).
+         */
+        EmailTemplateTest: {
+            /** Body Html */
+            body_html?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "reset" | "invite";
+            /** Locale */
+            locale: string;
+            /** Subject */
+            subject?: string | null;
+        };
+        /** EmailTemplateWrite */
+        EmailTemplateWrite: {
+            /** Body Html */
+            body_html?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "reset" | "invite";
+            /** Locale */
+            locale: string;
+            /** Subject */
+            subject?: string | null;
+        };
+        /** EmailTemplatesRead */
+        EmailTemplatesRead: {
+            /** Locales */
+            locales: string[];
+            /** Templates */
+            templates: components["schemas"]["EmailTemplateItem"][];
+            /** Variables */
+            variables: string[];
         };
         /** EmailTestResult */
         EmailTestResult: {
@@ -7612,6 +7879,28 @@ export interface components {
             updated: number;
         };
         /**
+         * MarketingSettingsRead
+         * @description The org's marketing settings. The Ads developer token is write-only — like the Google
+         *     client secret, the API reports only whether one is configured, never the value.
+         */
+        MarketingSettingsRead: {
+            /**
+             * Ads Developer Token Configured
+             * @default false
+             */
+            ads_developer_token_configured: boolean;
+            /**
+             * Env Ads Token Configured
+             * @default false
+             */
+            env_ads_token_configured: boolean;
+        };
+        /** MarketingSettingsWrite */
+        MarketingSettingsWrite: {
+            /** Ads Developer Token */
+            ads_developer_token?: string | null;
+        };
+        /**
          * MarketingSource
          * @description A linkable Google marketing data source.
          *
@@ -8000,6 +8289,11 @@ export interface components {
             metrics?: {
                 [key: string]: components["schemas"]["KpiValue"];
             };
+            /**
+             * Show Key Events
+             * @default true
+             */
+            show_key_events: boolean;
             /** Sources Present */
             sources_present?: components["schemas"]["MarketingSource"][];
         };
@@ -8970,6 +9264,163 @@ export interface components {
             /** Trigger Event */
             trigger_event: string;
         };
+        /** ScheduleCreate */
+        ScheduleCreate: {
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** Duration Minutes */
+            duration_minutes: number;
+            /** Note */
+            note?: string | null;
+            /**
+             * Start Time
+             * Format: time
+             */
+            start_time: string;
+            /**
+             * Task Id
+             * Format: uuid
+             */
+            task_id: string;
+            /** User Id */
+            user_id?: string | null;
+        };
+        /**
+         * ScheduleItem
+         * @description A block decorated with what the calendar/timesheet needs, so a feed renders without a
+         *     second fetch (docs/PERFORMANCE.md): the local day span (so the browser does no timezone
+         *     math), the person's name and the task's identity.
+         */
+        ScheduleItem: {
+            /** Allocated Minutes */
+            allocated_minutes?: number | null;
+            /** Company Id */
+            company_id?: string | null;
+            /** Created By Name */
+            created_by_name: string | null;
+            /** Created By User Id */
+            created_by_user_id: string | null;
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Note */
+            note: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /** Status */
+            status: string;
+            /**
+             * Task Id
+             * Format: uuid
+             */
+            task_id: string;
+            /** Task Title */
+            task_title: string;
+            /** Time Entry Id */
+            time_entry_id: string | null;
+            /** User Id */
+            user_id: string | null;
+            /** User Name */
+            user_name?: string | null;
+        };
+        /**
+         * ScheduleLogTime
+         * @description Confirm-to-log a passed block as a real time entry (#188). Everything defaults from the
+         *     block; the user may adjust the worked minutes, break, description and billable flag before
+         *     saving. ``minutes`` overrides the block's own duration when the actual work differed.
+         */
+        ScheduleLogTime: {
+            /**
+             * Billable
+             * @default true
+             */
+            billable: boolean;
+            /**
+             * Break Minutes
+             * @default 0
+             */
+            break_minutes: number;
+            /** Description */
+            description?: string | null;
+            /** Entry Type Key */
+            entry_type_key?: string | null;
+            /** Minutes */
+            minutes?: number | null;
+        };
+        /** ScheduleRead */
+        ScheduleRead: {
+            /** Created By Name */
+            created_by_name: string | null;
+            /** Created By User Id */
+            created_by_user_id: string | null;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Note */
+            note: string | null;
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Task Id
+             * Format: uuid
+             */
+            task_id: string;
+            /** Time Entry Id */
+            time_entry_id: string | null;
+            /** User Id */
+            user_id: string | null;
+        };
+        /**
+         * ScheduleUpdate
+         * @description A partial edit / move: any omitted field keeps the block's current local value.
+         */
+        ScheduleUpdate: {
+            /** Day */
+            day?: string | null;
+            /** Duration Minutes */
+            duration_minutes?: number | null;
+            /** Note */
+            note?: string | null;
+            /** Start Time */
+            start_time?: string | null;
+            /** User Id */
+            user_id?: string | null;
+        };
         /** SeriesData */
         SeriesData: {
             /** Dates */
@@ -9767,6 +10218,11 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence?: components["schemas"]["Recurrence"] | null;
+            /**
+             * Requires Interaction
+             * @default false
+             */
+            requires_interaction: boolean;
             /** Status */
             status?: string | null;
             /** Title */
@@ -9828,6 +10284,11 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence: components["schemas"]["Recurrence"] | null;
+            /**
+             * Requires Interaction
+             * @default false
+             */
+            requires_interaction: boolean;
             /** Status */
             status: string;
             /** Title */
@@ -9904,6 +10365,11 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence: components["schemas"]["Recurrence"] | null;
+            /**
+             * Requires Interaction
+             * @default false
+             */
+            requires_interaction: boolean;
             /** Status */
             status: string;
             /** Title */
@@ -9957,6 +10423,11 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence: components["schemas"]["Recurrence"] | null;
+            /**
+             * Requires Interaction
+             * @default false
+             */
+            requires_interaction: boolean;
             /** Status */
             status: string;
             /** Title */
@@ -9989,6 +10460,8 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence?: components["schemas"]["Recurrence"] | null;
+            /** Requires Interaction */
+            requires_interaction?: boolean | null;
             /** Status */
             status?: string | null;
             /** Title */
@@ -10103,6 +10576,11 @@ export interface components {
             priority: components["schemas"]["TaskPriority"];
             /** Relative Due Days */
             relative_due_days?: number | null;
+            /**
+             * Requires Interaction
+             * @default false
+             */
+            requires_interaction: boolean;
             /** Title */
             title: string;
         };
@@ -10137,6 +10615,11 @@ export interface components {
             priority: components["schemas"]["TaskPriority"];
             /** Relative Due Days */
             relative_due_days?: number | null;
+            /**
+             * Requires Interaction
+             * @default false
+             */
+            requires_interaction: boolean;
             /** Title */
             title: string;
         };
@@ -13722,6 +14205,39 @@ export interface operations {
             };
         };
     };
+    create_folder_api_v1_google_drive_folders_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriveFolderCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveFolder"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_links_api_v1_google_drive_links_get: {
         parameters: {
             query: {
@@ -16843,6 +17359,41 @@ export interface operations {
             };
         };
     };
+    set_company_settings_api_v1_marketing_companies__company_id__settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompanySettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanySettingsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_links_api_v1_marketing_links_get: {
         parameters: {
             query: {
@@ -16956,6 +17507,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OverviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_settings_api_v1_marketing_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketingSettingsRead"];
+                };
+            };
+        };
+    };
+    save_settings_api_v1_marketing_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarketingSettingsWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketingSettingsRead"];
                 };
             };
             /** @description Validation Error */
@@ -18772,6 +19376,92 @@ export interface operations {
             };
         };
     };
+    list_email_templates_api_v1_settings_email_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailTemplatesRead"];
+                };
+            };
+        };
+    };
+    save_email_template_api_v1_settings_email_templates_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailTemplateWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailTemplateItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_email_template_api_v1_settings_email_templates_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailTemplateTest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailTestResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     test_email_settings_api_v1_settings_email_test_post: {
         parameters: {
             query?: never;
@@ -19419,6 +20109,10 @@ export interface operations {
                 status?: string | null;
                 label_id?: string | null;
                 due?: ("overdue" | "today" | "week") | null;
+                /** @description Deadline window start (the Agenda feed) */
+                due_from?: string | null;
+                /** @description Deadline window end (inclusive) */
+                due_to?: string | null;
                 q?: string | null;
                 /** @description title | due_date | priority | status | assignee | …, '-' desc */
                 sort?: string | null;
@@ -19738,6 +20432,203 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskListItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_schedules_api_v1_tasks_schedules_get: {
+        parameters: {
+            query?: {
+                date_from?: string | null;
+                date_to?: string | null;
+                user_ids?: string[] | null;
+                task_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_schedule_api_v1_tasks_schedules_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_schedule_api_v1_tasks_schedules__schedule_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schedule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_schedule_api_v1_tasks_schedules__schedule_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schedule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_schedule_api_v1_tasks_schedules__schedule_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schedule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    log_schedule_time_api_v1_tasks_schedules__schedule_id__log_time_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schedule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduleLogTime"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleRead"];
                 };
             };
             /** @description Validation Error */

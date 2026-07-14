@@ -17,14 +17,45 @@ from app.modules.marketing.models import MarketingSource
 from app.modules.marketing.schemas import (
     AccountsResponse,
     CompanyMarketing,
+    CompanySettingsRead,
+    CompanySettingsUpdate,
     DrilldownResponse,
     LinkCreate,
     LinkRead,
+    MarketingSettingsRead,
+    MarketingSettingsWrite,
     OverviewResponse,
 )
-from app.modules.marketing.service import MarketingService
+from app.modules.marketing.service import MarketingService, MarketingSettingsService
 
 router = APIRouter(prefix="/marketing", tags=["marketing"])
+
+
+# --- org settings (#134): the encrypted Google Ads developer token -------------------------- #
+@router.get(
+    "/settings",
+    response_model=MarketingSettingsRead,
+    dependencies=[require_permission("marketing.link.manage")],
+)
+async def get_settings(
+    ctx: RequestContext = Depends(require_context),
+) -> MarketingSettingsRead:
+    """The org's marketing settings — reports whether an Ads developer token is configured; the
+    token itself is write-only and never returned (the Google client-secret pattern)."""
+    return await MarketingSettingsService(ctx).get()
+
+
+@router.put(
+    "/settings",
+    response_model=MarketingSettingsRead,
+    dependencies=[require_permission("marketing.link.manage")],
+)
+async def save_settings(
+    payload: MarketingSettingsWrite,
+    ctx: RequestContext = Depends(require_context),
+) -> MarketingSettingsRead:
+    """Store the encrypted Google Ads developer token (an empty value keeps the stored one)."""
+    return await MarketingSettingsService(ctx).save(payload)
 
 
 # --- links + pickers (#132) ------------------------------------------------------------------ #
@@ -94,6 +125,24 @@ async def company_metrics(
     ctx: RequestContext = Depends(require_context),
 ) -> CompanyMarketing:
     return await MarketingService(ctx).company_marketing(company_id, range_days)
+
+
+@router.put(
+    "/companies/{company_id}/settings",
+    response_model=CompanySettingsRead,
+    dependencies=[require_permission("marketing.link.manage")],
+)
+async def set_company_settings(
+    company_id: uuid.UUID,
+    payload: CompanySettingsUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> CompanySettingsRead:
+    """Show or hide GA4 key events / conversions for this client (#134).
+
+    Visibility is configuration, so it rides ``marketing.link.manage`` like linking. When off,
+    the metrics/panel/tab/overview stop returning those numbers for the client until it's back on.
+    """
+    return await MarketingService(ctx).set_company_settings(company_id, payload.show_key_events)
 
 
 @router.get(

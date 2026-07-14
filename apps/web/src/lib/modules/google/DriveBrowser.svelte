@@ -10,10 +10,19 @@
    *   the (Redis-cached, viewer-scoped) listing fills in.
    * - **Upload bytes go straight to Google**: the API only mints the resumable session URI;
    *   the browser PUTs the file to googleusercontent. File contents never transit our API.
+   * - **Creating a folder** posts to `/api/v1/google/drive/folders` from here (same viewer-scoped
+   *   API, same-origin cookie), then re-lists — it needs no host action and no page data.
    *
    * **Host contract:** the page exposes `?/linkDriveFile` (spread `driveActions`).
    */
-  import { ExternalLink, Link2, RefreshCw, Upload } from "@lucide/svelte";
+  import {
+    ChevronLeft,
+    ExternalLink,
+    FolderPlus,
+    Link2,
+    RefreshCw,
+    Upload,
+  } from "@lucide/svelte";
   import { onMount } from "svelte";
 
   import { enhance } from "$app/forms";
@@ -61,6 +70,11 @@
   let loading = $state(false);
   let errorKey = $state("");
   let uploading = $state(false);
+  // "New folder" affordance: an inline name field, opened from the header (issue #150 follow-up).
+  let creatingFolder = $state(false);
+  let newFolderName = $state("");
+  let savingFolder = $state(false);
+  let folderNameInput = $state<HTMLInputElement | null>(null);
 
   const current = $derived(crumbs[crumbs.length - 1]);
 
@@ -98,6 +112,49 @@
   function jump(index: number) {
     crumbs = crumbs.slice(0, index + 1);
     void load();
+  }
+
+  // Go back to the folder one level up in the trail we descended (the breadcrumb does the same
+  // for any ancestor; this is the explicit one-tap "back" people expect).
+  function goUp() {
+    if (crumbs.length < 2) return;
+    jump(crumbs.length - 2);
+  }
+
+  function toggleCreateFolder() {
+    creatingFolder = !creatingFolder;
+    newFolderName = "";
+    if (creatingFolder) {
+      // Focus after the input renders.
+      void Promise.resolve().then(() => folderNameInput?.focus());
+    }
+  }
+
+  async function createFolder() {
+    const name = newFolderName.trim();
+    const parentId = listing?.folder?.id;
+    if (!name || !parentId || savingFolder) return;
+    savingFolder = true;
+    errorKey = "";
+    try {
+      const response = await fetch("/api/v1/google/drive/folders", {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({ parent_id: parentId, name }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        errorKey = body?.error?.message ?? "errors.google_drive_folder_failed";
+        return;
+      }
+      newFolderName = "";
+      creatingFolder = false;
+      await load(true);
+    } catch {
+      errorKey = "errors.google_drive_folder_failed";
+    } finally {
+      savingFolder = false;
+    }
   }
 
   async function upload(input: HTMLInputElement) {
@@ -143,6 +200,16 @@
 
 <div class="rounded-lg border border-border">
   <div class="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
+    <button
+      type="button"
+      class="shrink-0 rounded-lg border border-border p-1.5 text-text-muted hover:border-brand disabled:opacity-40"
+      onclick={goUp}
+      disabled={crumbs.length < 2}
+      aria-label={t("google.drive.up")}
+      title={t("google.drive.up")}
+    >
+      <ChevronLeft size={13} aria-hidden="true" />
+    </button>
     <nav class="min-w-0 flex-1 truncate text-sm" aria-label={t("google.drive.breadcrumb")}>
       {#each crumbs as crumb, index (index)}
         {#if index > 0}<span class="text-text-muted">/</span>{/if}
@@ -166,6 +233,15 @@
       <button
         type="button"
         class="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-text hover:border-brand disabled:opacity-50"
+        onclick={toggleCreateFolder}
+        disabled={!listing?.folder?.id}
+      >
+        <FolderPlus size={13} aria-hidden="true" />
+        {t("google.drive.new_folder")}
+      </button>
+      <button
+        type="button"
+        class="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-text hover:border-brand disabled:opacity-50"
         onclick={() => fileInput?.click()}
         disabled={uploading || !listing?.folder?.id}
       >
@@ -182,6 +258,42 @@
       <RefreshCw size={13} aria-hidden="true" />
     </button>
   </div>
+
+  {#if canWrite && creatingFolder}
+    <!-- Inline "new folder" row: create inside the folder currently shown. -->
+    <form
+      class="flex items-center gap-2 border-b border-border bg-surface px-3 py-2"
+      onsubmit={(e) => {
+        e.preventDefault();
+        void createFolder();
+      }}
+    >
+      <FolderPlus size={14} class="shrink-0 text-text-muted" aria-hidden="true" />
+      <input
+        bind:this={folderNameInput}
+        bind:value={newFolderName}
+        type="text"
+        maxlength="255"
+        placeholder={t("google.drive.folder_name")}
+        aria-label={t("google.drive.folder_name")}
+        class="min-w-0 flex-1 rounded-lg border border-border px-2.5 py-1 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+      />
+      <button
+        type="submit"
+        class="shrink-0 rounded-lg bg-brand px-3 py-1 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
+        disabled={savingFolder || !newFolderName.trim()}
+      >
+        {savingFolder ? t("common.saving") : t("google.drive.create_folder")}
+      </button>
+      <button
+        type="button"
+        class="shrink-0 rounded-lg border border-border px-3 py-1 text-xs font-medium text-text hover:border-brand"
+        onclick={toggleCreateFolder}
+      >
+        {t("common.cancel")}
+      </button>
+    </form>
+  {/if}
 
   {#if loading && !listing}
     <p class="px-3 py-4 text-sm text-text-muted">{t("common.loading")}</p>

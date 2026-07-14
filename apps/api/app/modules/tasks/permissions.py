@@ -30,6 +30,24 @@ TASK_PERMISSIONS: list[PermissionSpec] = [
         default_own_roles=(ROLE_MEMBER,),
     ),
     PermissionSpec("tasks.task.delete", position=40),
+    # Scheduling a task onto a calendar (#188) is its own capability, distinct from editing the
+    # task: a member may plan their own time (``:own`` — a block for themselves), a manager may
+    # schedule anyone (``:any``). Read is scoped the same way — ``:any`` is what lets a manager
+    # overlay a colleague's schedule feed on the Agenda.
+    PermissionSpec(
+        "tasks.schedule.read",
+        scopes=SCOPES,
+        position=42,
+        default_roles=(ROLE_ADMIN,),
+        default_own_roles=(ROLE_MEMBER,),
+    ),
+    PermissionSpec(
+        "tasks.schedule.write",
+        scopes=SCOPES,
+        position=44,
+        default_roles=(ROLE_ADMIN,),
+        default_own_roles=(ROLE_MEMBER,),
+    ),
     PermissionSpec(
         "tasks.comment.write",
         scopes=SCOPES,

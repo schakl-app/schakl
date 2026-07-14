@@ -16,6 +16,7 @@
   import Modal from "$lib/core/ui/Modal.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import { LABEL_COLORS, labelChipClass, labelDotClass } from "$lib/modules/tasks/labels";
+  import TaskSchedulePanel from "$lib/modules/tasks/TaskSchedulePanel.svelte";
   import { formatMinutes } from "$lib/modules/time/format";
 
   import { entityPanelsFor } from "$lib/core/registry";
@@ -384,6 +385,24 @@
         {/if}
       </div>
     </section>
+
+    <!-- Planned blocks on the calendar (#188) — schedule, move, and log time from a passed one. -->
+    <TaskSchedulePanel
+      schedules={data.schedules}
+      task={{
+        id: task.id,
+        title: task.title,
+        project_id: task.project_id,
+        company_id: task.company_id,
+        assignee_user_id: task.assignee_user_id,
+        allocated_minutes: task.allocated_minutes,
+        due_date: task.due_date,
+      }}
+      members={data.members}
+      currentUserId={page.data.user?.id ?? ""}
+      canWrite={can(page.data.user, "tasks.schedule.write")}
+      canScheduleAny={can(page.data.user, "tasks.schedule.write", "any")}
+    />
 
     <!-- Checklists (always interactive — ticking items is "using") -->
     <section class="rounded-xl border border-border bg-surface-raised p-5">
@@ -1004,6 +1023,27 @@
             />
             <p class="mt-1 text-[11px] text-text-muted">{t("tasks.detail.due_reason_hint")}</p>
           </div>
+          <div>
+            <!-- Per-task close policy (#157 extended). Hidden "false" precedes the checkbox so an
+                 unchecked box still submits a value; the status quick-form never carries it. -->
+            <input type="hidden" name="requires_interaction" value="false" form="task-edit" />
+            <label class="flex items-start gap-2 text-sm text-text">
+              <input
+                type="checkbox"
+                name="requires_interaction"
+                value="true"
+                checked={task.requires_interaction}
+                form="task-edit"
+                class="mt-0.5 shrink-0"
+              />
+              <span>
+                <span class="font-medium">{t("tasks.field.requires_interaction")}</span>
+                <span class="mt-0.5 block text-[11px] leading-snug text-text-muted"
+                  >{t("tasks.field.requires_interaction_hint")}</span
+                >
+              </span>
+            </label>
+          </div>
         {:else}
           <!-- Use mode: compact read-only summary -->
           <dl class="space-y-2 text-sm">
@@ -1045,6 +1085,18 @@
               <dt class="text-xs font-medium text-text-muted">{t("tasks.field.priority")}</dt>
               <dd class="text-text">{t(`tasks.priority.${task.priority}`)}</dd>
             </div>
+            {#if task.requires_interaction}
+              <div class="flex items-center justify-between gap-2">
+                <dt class="text-xs font-medium text-text-muted">
+                  {t("tasks.field.requires_interaction")}
+                </dt>
+                <dd
+                  class="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
+                >
+                  {t("tasks.field.requires_interaction_badge")}
+                </dd>
+              </div>
+            {/if}
           </dl>
         {/if}
       </div>

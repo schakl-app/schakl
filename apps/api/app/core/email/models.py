@@ -29,3 +29,28 @@ class EmailSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     from_email: Mapped[str] = mapped_column(String(320), nullable=False)
     from_name: Mapped[str] = mapped_column(String(255), nullable=False)
     reply_to: Mapped[str | None] = mapped_column(String(320), nullable=True)
+
+
+#: The auth mails a tenant may customise (#161 tier 2). Both ride the reset-token mechanism.
+EMAIL_TEMPLATE_KINDS: tuple[str, ...] = ("reset", "invite")
+
+
+class OrgEmailTemplate(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """A tenant's override of an auth email's subject + HTML body, per ``(kind, locale)``.
+
+    One row per ``(org_id, kind, locale)``; a **missing row means "use the built-in default"**
+    (the catalog-rendered plaintext, #161 tier 1). ``subject``/``body_html`` are tenant-authored
+    text, not secrets, so plain ``Text`` (unlike the encrypted transport config). The HTML is
+    sanitised on write *and* on send (:mod:`app.core.email.templates`); variables ``{brand}``,
+    ``{name}`` and ``{link}`` are substituted at send time.
+    """
+
+    __tablename__ = "org_email_templates"
+    __table_args__ = (
+        UniqueConstraint("org_id", "kind", "locale", name="uq_org_email_templates_kind_locale"),
+    )
+
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    locale: Mapped[str] = mapped_column(String(8), nullable=False)
+    subject: Mapped[str | None] = mapped_column(Text, nullable=True)
+    body_html: Mapped[str | None] = mapped_column(Text, nullable=True)

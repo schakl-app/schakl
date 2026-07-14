@@ -6,8 +6,14 @@ import {
   rangeFor,
   type CalendarView,
 } from "$lib/core/calendar";
-import { calendarSourcesFor, type CalendarEvent } from "$lib/core/registry";
+import { calendarSourcesFor, type CalendarEvent, type CalendarPerson } from "$lib/core/registry";
 import { apiFor } from "$lib/core/session";
+import {
+  createScheduleAction,
+  deleteScheduleAction,
+  logScheduleTimeAction,
+  updateScheduleAction,
+} from "$lib/modules/tasks/schedule-actions.server";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -21,8 +27,8 @@ function isIsoDate(value: string): boolean {
 
 /**
  * The shared calendar (core surface, like the dashboard): composes event feeds contributed
- * by enabled modules via the registry — today the team's leave; Google Calendar joins in P3.
- * One parallel fan of source loads; a failing source degrades to an empty feed.
+ * by enabled modules via the registry — the team's leave, task blocks + deadlines (#188), and
+ * Google Calendar. One parallel fan of source loads; a failing source degrades to an empty feed.
  *
  * `?view=` + `?date=` win over the stored pref (from the layout load) when present, so a
  * shared link is authoritative and back/forward navigate correctly. The year view never
@@ -31,7 +37,7 @@ function isIsoDate(value: string): boolean {
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const today = todayIso();
-  const { defaultView, hiddenSources } = await event.parent();
+  const { defaultView, hiddenSources, peopleBySource } = await event.parent();
 
   const rawDate = event.url.searchParams.get("date") ?? "";
   const date = isIsoDate(rawDate) ? rawDate : today;
@@ -39,9 +45,9 @@ export const load: PageServerLoad = async (event) => {
   const rawView = event.url.searchParams.get("view");
   const view: CalendarView = isCalendarView(rawView) ? rawView : defaultView;
 
-  // The viewer rides along so a source can mark its events as own/draggable (#106) — UX
-  // hints only; every move is re-checked by the API.
-  const range = {
+  // The viewer rides along so a source can mark its events as own/draggable (#106) and decide
+  // which colleagues it may overlay (#188) — UX hints only; every move is re-checked by the API.
+  const baseRange = {
     ...rangeFor(view, date),
     locale: event.locals.locale,
     user: event.locals.user,
@@ -52,29 +58,40 @@ export const load: PageServerLoad = async (event) => {
   // no API call (docs/PERFORMANCE.md).
   const hidden = new Set(hiddenSources);
   const sources = allSources.filter((source) => !hidden.has(source.key));
+  // A per-source range carries that source's own colleague overlay (#188).
   const results = await Promise.all(
-    sources.map((source) => source.load(api, range).catch(() => [] as CalendarEvent[])),
+    sources.map((source) =>
+      source
+        .load(api, { ...baseRange, people: peopleBySource[source.key] ?? [] })
+        .catch(() => [] as CalendarEvent[]),
+    ),
   );
   const events = results.flat();
 
-  const sourceOptions = allSources.map((source) => ({
+  // Rosters for the per-person feed menu (#188): only for sources that offer one, only when
+  // visible, and only if the viewer may overlay anyone (the source returns [] otherwise).
+  const rosters = await Promise.all(
+    allSources.map((source) =>
+      !hidden.has(source.key) && source.people
+        ? source.people(api, baseRange).catch(() => [] as CalendarPerson[])
+        : Promise.resolve([] as CalendarPerson[]),
+    ),
+  );
+
+  const sourceOptions = allSources.map((source, index) => ({
     key: source.key,
     labelKey: source.labelKey,
     color: source.color,
     hidden: hidden.has(source.key),
+    people: rosters[index],
+    selectedPeople: peopleBySource[source.key] ?? [],
   }));
 
+  const base = { view, date, today, sourceOptions };
   if (view === "year") {
-    return {
-      view,
-      date,
-      today,
-      events: [],
-      aggregates: aggregateEventsByDay(events),
-      sourceOptions,
-    };
+    return { ...base, events: [], aggregates: aggregateEventsByDay(events) };
   }
-  return { view, date, today, events, aggregates: null, sourceOptions };
+  return { ...base, events, aggregates: null };
 };
 
 export const actions: Actions = {
@@ -86,6 +103,25 @@ export const actions: Actions = {
       body: { prefs: { calendar: { hiddenSources } } },
     });
     return { sourcesSaved: true };
+  },
+
+  /**
+   * The colleagues this user overlays for one source (#188) — the whole selection for that
+   * source key per save, merged into the `calendar.people` map so other sources keep theirs.
+   */
+  savePeople: async (event) => {
+    const form = await event.request.formData();
+    const sourceKey = String(form.get("source") ?? "");
+    if (!sourceKey) return fail(400, { error: "errors.required" });
+    const ids = form.getAll("person").map(String).filter(Boolean);
+    const prefs = await apiFor(event).GET("/api/v1/prefs");
+    const people =
+      (prefs.data?.prefs as { calendar?: { people?: Record<string, string[]> } } | undefined)
+        ?.calendar?.people ?? {};
+    await apiFor(event).PUT("/api/v1/prefs", {
+      body: { prefs: { calendar: { people: { ...people, [sourceKey]: ids } } } },
+    });
+    return { peopleSaved: true };
   },
 
   // Personal "last used view" preference (saved per user, never in org Settings).
@@ -119,5 +155,24 @@ export const actions: Actions = {
     const error = await source.move(apiFor(event), { id, deltaDays });
     if (error) return fail(400, { error });
     return { moved: true };
+  },
+
+  // Task scheduling from the calendar "+" (#188). The shared modal posts here; the same
+  // helpers back the task detail page's actions so the two can't drift.
+  scheduleTask: async (event) => {
+    const result = await createScheduleAction(event);
+    return result.error ? fail(400, { error: result.error }) : { scheduled: true };
+  },
+  updateSchedule: async (event) => {
+    const result = await updateScheduleAction(event);
+    return result.error ? fail(400, { error: result.error }) : { scheduleUpdated: true };
+  },
+  deleteSchedule: async (event) => {
+    const result = await deleteScheduleAction(event);
+    return result.error ? fail(400, { error: result.error }) : { scheduleDeleted: true };
+  },
+  logScheduleTime: async (event) => {
+    const result = await logScheduleTimeAction(event);
+    return result.error ? fail(400, { error: result.error }) : { timeLogged: true };
   },
 };

@@ -53,4 +53,13 @@ export const MARKETING_OVERVIEW_COLUMNS: ColumnMeta[] = [
     align: "right",
     defaultVisible: true,
   },
+  // Per-client visibility of GA4 key events / conversions (#134). Not sortable (it's a setting,
+  // not a metric the API orders by); a manager flips it here for every client at a glance.
+  {
+    key: "key_events",
+    labelKey: "marketing.overview.column.key_events",
+    align: "right",
+    defaultVisible: true,
+    width: 120,
+  },
 ];

@@ -20,9 +20,12 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.core.activity import ActivityService
 from app.core.cache import get_redis
+from app.core.crypto import decrypt, encrypt
 from app.core.jobs import enqueue
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_zoneinfo
@@ -30,16 +33,25 @@ from app.errors import AppError
 from app.modules.companies.models import Company
 from app.modules.google import client as google_client
 from app.modules.google.models import ConnectionStatus, GoogleConnection
-from app.modules.marketing.models import MarketingLink, MarketingMetricDaily, MarketingSource
+from app.modules.marketing.models import (
+    MarketingCompanySettings,
+    MarketingLink,
+    MarketingMetricDaily,
+    MarketingSettings,
+    MarketingSource,
+)
 from app.modules.marketing.schemas import (
     AccountsResponse,
     AvailableAccount,
     CompanyMarketing,
+    CompanySettingsRead,
     DrilldownResponse,
     DrilldownRowOut,
     KpiValue,
     LinkCreate,
     LinkRead,
+    MarketingSettingsRead,
+    MarketingSettingsWrite,
     OverviewResponse,
     OverviewRow,
     SeriesData,
@@ -52,7 +64,7 @@ from app.modules.marketing.sources.base import (
     METRICS_BY_SOURCE,
     primary_metric,
 )
-from app.modules.marketing.sources.gads import AdsNotConfigured
+from app.modules.marketing.sources.gads import AdsNotConfigured, developer_token_scope
 
 logger = logging.getLogger("schakl.marketing")
 
@@ -77,6 +89,10 @@ _OVERVIEW_COLUMNS: dict[str, tuple[str, str]] = {
 }
 
 _DRILLDOWN_TTL = 3600  # ~1h, tier-2 lives behind this (issue #133)
+
+#: The GA4 metrics a client's ``show_key_events=False`` withholds — key events and their
+#: display alias. Scoped to GA4: Google Ads keeps its own ``conversions`` (#134).
+_GA4_GATED_METRICS = ("keyEvents", "conversions")
 
 
 def _delta_pct(current: float, previous: float) -> float | None:
@@ -104,9 +120,31 @@ def aggregate(source: str, rows: list[dict[str, Any]]) -> dict[str, float]:
     return out
 
 
+async def resolve_ads_developer_token(session: AsyncSession, org_id: uuid.UUID) -> str | None:
+    """The effective Google Ads developer token for ``org_id`` (#134).
+
+    The org's stored (encrypted) token, else the legacy ``SCHAKL_GOOGLE_ADS_DEVELOPER_TOKEN`` env
+    fallback, else ``None``. Callers bind it around the Ads adapter with
+    :func:`developer_token_scope`; the request services and the worker sync share this one resolver
+    so "where does the token come from" has exactly one answer.
+    """
+    row = await session.scalar(
+        select(MarketingSettings).where(MarketingSettings.org_id == org_id)
+    )
+    if row is not None and row.ads_developer_token_encrypted:
+        try:
+            return decrypt(row.ads_developer_token_encrypted)
+        except ValueError:  # key rotated: the stored token is dead — fall through to the env
+            pass
+    return settings.google_ads_developer_token or None
+
+
 class MarketingService:
     def __init__(self, ctx: RequestContext) -> None:
         self.ctx = ctx
+
+    async def _resolve_ads_developer_token(self) -> str | None:
+        return await resolve_ads_developer_token(self.ctx.session, self.ctx.org.id)
 
     # --- shared helpers ------------------------------------------------------------------- #
     async def _today(self) -> date:
@@ -147,6 +185,30 @@ class MarketingService:
                 )
             )
         )
+
+    async def _settings_map(self, company_ids: list[uuid.UUID]) -> dict[uuid.UUID, bool]:
+        """``{company_id: show_key_events}`` for the given companies — one query.
+
+        A company with **no** settings row falls back to the default (``True``): absence means
+        the pre-existing behaviour, so nothing changes until a manager flips the toggle.
+        """
+        if not company_ids:
+            return {}
+        rows = (
+            await self.ctx.session.execute(
+                select(
+                    MarketingCompanySettings.company_id,
+                    MarketingCompanySettings.show_key_events,
+                ).where(
+                    MarketingCompanySettings.org_id == self.ctx.org.id,
+                    MarketingCompanySettings.company_id.in_(company_ids),
+                )
+            )
+        ).all()
+        return {company_id: bool(flag) for company_id, flag in rows}
+
+    async def _show_key_events(self, company_id: uuid.UUID) -> bool:
+        return (await self._settings_map([company_id])).get(company_id, True)
 
     # --- links (#132) --------------------------------------------------------------------- #
     async def list_links_read(self, company_id: uuid.UUID) -> list[LinkRead]:
@@ -230,7 +292,11 @@ class MarketingService:
         if not link.backfill_done and not reactivated:
             try:
                 await enqueue(
-                    "marketing_backfill_link", str(self.ctx.org.id), str(link.id), _defer_by=5
+                    "marketing_backfill_link",
+                    str(self.ctx.org.id),
+                    str(link.id),
+                    _defer_by=5,
+                    _job_id=f"marketing-backfill-{link.id}",
                 )
             except Exception:
                 logger.warning("could not enqueue marketing backfill for link %s", link.id)
@@ -250,6 +316,45 @@ class MarketingService:
                 {"source": link.source, "name": link.display_name},
             )
 
+    # --- per-client settings (#134) ------------------------------------------------------- #
+    async def set_company_settings(
+        self, company_id: uuid.UUID, show_key_events: bool
+    ) -> CompanySettingsRead:
+        """Turn GA4 key events / conversions on or off for one client (upsert, one row per org).
+
+        Gated on ``marketing.link.manage`` — it's configuration, like linking. The change lands
+        on the client's activity trail (same entity as link/unlink), only when it actually flips.
+        """
+        self.ctx.require("marketing.link.manage")
+        await self._company_or_404(company_id)
+        row = await self.ctx.session.scalar(
+            select(MarketingCompanySettings).where(
+                MarketingCompanySettings.org_id == self.ctx.org.id,
+                MarketingCompanySettings.company_id == company_id,
+            )
+        )
+        previous = row.show_key_events if row is not None else True
+        if row is None:
+            row = MarketingCompanySettings(
+                org_id=self.ctx.org.id,
+                company_id=company_id,
+                show_key_events=show_key_events,
+            )
+            self.ctx.session.add(row)
+        else:
+            row.show_key_events = show_key_events
+        await self.ctx.session.flush()
+        if previous != show_key_events:
+            await ActivityService(self.ctx).record(
+                "company",
+                company_id,
+                "marketing.key_events_enabled"
+                if show_key_events
+                else "marketing.key_events_disabled",
+                {},
+            )
+        return CompanySettingsRead(company_id=company_id, show_key_events=show_key_events)
+
     # --- pickers (#132) ------------------------------------------------------------------- #
     async def available_accounts(self, source: MarketingSource) -> AccountsResponse:
         self.ctx.require("marketing.link.manage")
@@ -266,6 +371,17 @@ class MarketingService:
                 source=source, connected=True, has_scope=has_scope, connect_flag=flag
             )
 
+        # Google Ads needs a per-org developer token; with none the picker teaches "not configured"
+        # instead of calling Google (#134). GA4/GSC pass through with token=None.
+        ads_token: str | None = None
+        if source == MarketingSource.GADS:
+            ads_token = await self._resolve_ads_developer_token()
+            if not ads_token:
+                return AccountsResponse(
+                    source=source, connected=True, has_scope=True, configured=False,
+                    connect_flag=flag,
+                )
+
         cache_key = f"schakl:marketing:accounts:{connection.id}:{source.value}"
         redis = get_redis()
         cached = await redis.get(cache_key)
@@ -273,10 +389,11 @@ class MarketingService:
             options = [AvailableAccount(**item) for item in json.loads(cached)]
         else:
             try:
-                async with google_client.acting_as(
-                    self.ctx.session, self.ctx.org, connection
-                ) as gclient:
-                    fetched = await adapter.list_accounts(gclient)
+                with developer_token_scope(ads_token):
+                    async with google_client.acting_as(
+                        self.ctx.session, self.ctx.org, connection
+                    ) as gclient:
+                        fetched = await adapter.list_accounts(gclient)
             except AdsNotConfigured:
                 return AccountsResponse(
                     source=source, connected=True, has_scope=True, configured=False,
@@ -325,6 +442,7 @@ class MarketingService:
         prev_end = cur_start - timedelta(days=1)
         prev_start = prev_end - timedelta(days=range_days - 1)
 
+        show_key_events = await self._show_key_events(company_id)
         links = await self._links(company_id=company_id)
         connections = await self._connections_by_id()
         sources: list[SourceMetrics] = []
@@ -342,6 +460,7 @@ class MarketingService:
                         cur_end,
                         prev_start,
                         prev_end,
+                        show_key_events=show_key_events,
                     )
                 )
         return CompanyMarketing(
@@ -350,6 +469,7 @@ class MarketingService:
             sources=sources,
             needs_connection=not await self._any_connection(),
             can_manage=self.ctx.can("marketing.link.manage"),
+            show_key_events=show_key_events,
         )
 
     async def _metrics_for_links(
@@ -391,12 +511,22 @@ class MarketingService:
         cur_end: date,
         prev_start: date,
         prev_end: date,
+        *,
+        show_key_events: bool = True,
     ) -> SourceMetrics:
         adapter = source_for(link.source)
         current_rows = [m for day, m in daily.items() if cur_start <= day <= cur_end]
         prev_rows = [m for day, m in daily.items() if prev_start <= day <= prev_end]
         cur_agg = aggregate(link.source, current_rows)
         prev_agg = aggregate(link.source, prev_rows)
+        # This client hides GA4 key events / conversions — drop them from the payload entirely
+        # (never a client-side hide), so the panel, tab and every consumer just don't see them.
+        gated = (
+            set(_GA4_GATED_METRICS)
+            if not show_key_events and link.source == MarketingSource.GA4.value
+            else set()
+        )
+        metrics = [m for m in METRICS_BY_SOURCE.get(link.source, []) if m not in gated]
         kpis = {
             metric: KpiValue(
                 current=cur_agg.get(metric, 0.0),
@@ -404,7 +534,7 @@ class MarketingService:
                 delta_pct=_delta_pct(cur_agg.get(metric, 0.0), prev_agg.get(metric, 0.0)),
                 lower_is_better=metric in LOWER_IS_BETTER,
             )
-            for metric in METRICS_BY_SOURCE.get(link.source, [])
+            for metric in metrics
         }
 
         # A gap-free daily series across the current window (0-fill), for sparkline/trend.
@@ -412,7 +542,7 @@ class MarketingService:
         dates = [cur_start + timedelta(days=i) for i in range(span)]
         series_metrics: dict[str, list[float]] = {
             metric: [float(daily.get(day, {}).get(metric, 0) or 0) for day in dates]
-            for metric in METRICS_BY_SOURCE.get(link.source, [])
+            for metric in metrics
         }
 
         channels = None
@@ -496,13 +626,19 @@ class MarketingService:
                 source=source, kind=kind, columns=payload["columns"],
                 rows=[DrilldownRowOut(**row) for row in payload["rows"]], deep_link=deep_link,
             )
+        ads_token = (
+            await self._resolve_ads_developer_token()
+            if source == MarketingSource.GADS
+            else None
+        )
         try:
-            async with google_client.acting_as(
-                self.ctx.session, self.ctx.org, connection
-            ) as gclient:
-                table = await adapter.drilldown(
-                    gclient, link.external_id, kind, start, end, link.config or {}
-                )
+            with developer_token_scope(ads_token):
+                async with google_client.acting_as(
+                    self.ctx.session, self.ctx.org, connection
+                ) as gclient:
+                    table = await adapter.drilldown(
+                        gclient, link.external_id, kind, start, end, link.config or {}
+                    )
         except AdsNotConfigured:
             return DrilldownResponse(
                 source=source, kind=kind, available=False,
@@ -574,13 +710,19 @@ class MarketingService:
             for day, m in daily.items():
                 (cur if cur_start <= day <= cur_end else prev).append(m)
 
+        settings = await self._settings_map(list(by_company.keys()))
         rows: list[OverviewRow] = []
         for company_id, per_source in by_company.items():
+            show_key_events = settings.get(company_id, True)
             agg_cur = {s: aggregate(s, buckets[0]) for s, buckets in per_source.items()}
             agg_prev = {s: aggregate(s, buckets[1]) for s, buckets in per_source.items()}
             metrics: dict[str, KpiValue] = {}
             for col, (src, metric) in _OVERVIEW_COLUMNS.items():
                 if src not in per_source:
+                    continue
+                # The conversions column is GA4 key events; a client that hides them shows no
+                # number here either, matching the panel/tab (#134).
+                if col == "conversions" and not show_key_events:
                     continue
                 cur_v = agg_cur[src].get(metric, 0.0)
                 prev_v = agg_prev[src].get(metric, 0.0)
@@ -597,6 +739,7 @@ class MarketingService:
                     company_name=names.get(company_id, ""),
                     sources_present=[MarketingSource(s) for s in present],
                     metrics=metrics,
+                    show_key_events=show_key_events,
                 )
             )
         rows = self._sort_overview(rows, sort)
@@ -620,6 +763,56 @@ class MarketingService:
         return present + sorted(absent, key=lambda r: r.company_name.lower())
 
 
+class MarketingSettingsService:
+    """Org-level marketing settings (#134): the encrypted Google Ads developer token.
+
+    Mirrors ``GoogleSettingsService`` — the token is write-only (an empty value keeps the stored
+    one) and the read reports only whether one is configured, never the value itself.
+    """
+
+    def __init__(self, ctx: RequestContext) -> None:
+        self.ctx = ctx
+
+    async def _row(self) -> MarketingSettings | None:
+        return await self.ctx.session.scalar(
+            select(MarketingSettings).where(MarketingSettings.org_id == self.ctx.org.id)
+        )
+
+    def _read(self, row: MarketingSettings | None) -> MarketingSettingsRead:
+        return MarketingSettingsRead(
+            ads_developer_token_configured=bool(row and row.ads_developer_token_encrypted),
+            env_ads_token_configured=bool(settings.google_ads_developer_token),
+        )
+
+    async def get(self) -> MarketingSettingsRead:
+        return self._read(await self._row())
+
+    async def save(self, data: MarketingSettingsWrite) -> MarketingSettingsRead:
+        self.ctx.require("marketing.link.manage")
+        row = await self._row()
+        # An empty token keeps the stored one; a resent identical token is not a change (Fernet
+        # would otherwise re-encrypt on every save) — the Google-client-secret rule.
+        token_encrypted = row.ads_developer_token_encrypted if row else None
+        if data.ads_developer_token:
+            stored_plain: str | None = None
+            if token_encrypted:
+                try:
+                    stored_plain = decrypt(token_encrypted)
+                except ValueError:  # rotated key: the stored token is dead anyway
+                    stored_plain = None
+            if stored_plain != data.ads_developer_token:
+                token_encrypted = encrypt(data.ads_developer_token)
+        if row is None:
+            row = MarketingSettings(
+                org_id=self.ctx.org.id, ads_developer_token_encrypted=token_encrypted
+            )
+            self.ctx.session.add(row)
+        else:
+            row.ads_developer_token_encrypted = token_encrypted
+        await self.ctx.session.flush()
+        return self._read(row)
+
+
 # --- sync (worker side, no request) ---------------------------------------------------------- #
 async def sync_link_range(
     session: Any, org: Any, link: MarketingLink, start: date, end: date
@@ -641,11 +834,17 @@ async def sync_link_range(
     if adapter.scope not in set(connection.scopes or []):
         link.last_error = "errors.google_connection_error"
         return
+    ads_token = (
+        await resolve_ads_developer_token(session, org.id)
+        if link.source == MarketingSource.GADS.value
+        else None
+    )
     try:
-        async with google_client.acting_as(session, org, connection) as gclient:
-            daily = await adapter.fetch_daily(
-                gclient, link.external_id, start, end, link.config or {}
-            )
+        with developer_token_scope(ads_token):
+            async with google_client.acting_as(session, org, connection) as gclient:
+                daily = await adapter.fetch_daily(
+                    gclient, link.external_id, start, end, link.config or {}
+                )
     except AdsNotConfigured:
         link.last_error = "marketing.ads_not_configured"
         return

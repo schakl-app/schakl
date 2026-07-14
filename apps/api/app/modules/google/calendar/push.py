@@ -23,8 +23,10 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth.models import User
+from app.core.auth.sso import org_base_url
 from app.core.events import EmitContext
 from app.core.models import Org, OrgSettings
+from app.core.richtext import markdown_to_plaintext
 from app.i18n import translate
 from app.modules.google.calendar.models import CalendarEventLink, LinkStatus
 from app.modules.google.calendar.service import CALENDAR_API
@@ -35,6 +37,7 @@ from app.modules.google.oauth import google_settings_row, has_calendar_write_sco
 logger = logging.getLogger("schakl.google.calendar")
 
 LOCAL_TYPE_LEAVE = "leave_request"
+LOCAL_TYPE_TASK_SCHEDULE = "task_schedule"
 MAX_ATTEMPTS = 5
 
 
@@ -185,6 +188,120 @@ async def handle_leave_gone(ctx: EmitContext, payload: dict[str, Any]) -> None:
         # Never reached Google (still pending, or requester not connected): just drop it.
         await ctx.session.delete(link)
         await ctx.session.flush()
+
+
+# --------------------------------------------------------------------------- #
+# Task-schedule handlers (#188) — same outbox, same worker; a task block ↔ one event
+# --------------------------------------------------------------------------- #
+async def handle_task_schedule_saved(ctx: EmitContext, payload: dict[str, Any]) -> None:
+    """A planned task block → the assigned person's Google Calendar. Guards mirror leave: the
+    org must have calendar sync on, and the person must have personally connected with a
+    calendar-write scope. The snapshot carries everything ``_event_body`` needs — the worker
+    never re-reads a task."""
+    user_id, schedule_id = payload.get("user_id"), payload.get("schedule_id")
+    if not user_id or not schedule_id:
+        return
+    row = await google_settings_row(ctx.session, ctx.org.id)
+    if row is None or not row.calendar_enabled:
+        return
+    connection = await connection_for(ctx.session, ctx.org.id, user_id)
+    if (
+        connection is None
+        or connection.status != ConnectionStatus.ACTIVE.value
+        or not has_calendar_write_scope(connection.scopes)
+    ):
+        return
+
+    locale = (
+        await ctx.session.scalar(select(User.locale).where(User.id == user_id))
+        or await _org_locale(ctx.session, ctx.org.id)
+    )
+    snapshot = {
+        "summary": _task_summary(payload.get("task_title"), locale),
+        "description": _task_description(ctx.org, payload, locale),
+        "local_type": LOCAL_TYPE_TASK_SCHEDULE,
+        "local_id": str(schedule_id),
+        "start_date": str(payload["start_date"]),
+        "end_date": str(payload["end_date"]),
+        "start_time": str(payload["start_time"]) if payload.get("start_time") else None,
+        "end_time": str(payload["end_time"]) if payload.get("end_time") else None,
+        "timezone": payload.get("timezone") or await _org_timezone(ctx.session, ctx.org.id),
+    }
+    link = await _link_for(ctx.session, ctx.org.id, LOCAL_TYPE_TASK_SCHEDULE, schedule_id)
+    if link is not None and link.google_event_id and link.user_id != user_id:
+        # Reassigned to someone else: Google can't move an event between calendars, so tombstone
+        # the old person's event for deletion and let this link recreate fresh on the new one.
+        tombstone = CalendarEventLink(
+            org_id=ctx.org.id,
+            local_type=LOCAL_TYPE_TASK_SCHEDULE,
+            local_id=uuid.uuid4(),
+            user_id=link.user_id,
+            connection_id=link.connection_id,
+            calendar_id=link.calendar_id,
+            google_event_id=link.google_event_id,
+            status=LinkStatus.DELETE_PENDING.value,
+            payload={},
+        )
+        ctx.session.add(tombstone)
+        await ctx.session.flush()
+        await _enqueue_push(ctx.org.id, tombstone.id)
+        link.google_event_id = None
+        link.etag = None
+    if link is None:
+        link = CalendarEventLink(
+            org_id=ctx.org.id,
+            local_type=LOCAL_TYPE_TASK_SCHEDULE,
+            local_id=schedule_id,
+            user_id=user_id,
+            connection_id=connection.id,
+            status=LinkStatus.PENDING.value,
+            payload=snapshot,
+        )
+        ctx.session.add(link)
+    else:
+        link.user_id = user_id
+        link.connection_id = connection.id
+        link.status = LinkStatus.PENDING.value
+        link.payload = snapshot
+        link.attempts = 0
+        link.last_error = None
+    await ctx.session.flush()
+    await _enqueue_push(ctx.org.id, link.id)
+
+
+async def handle_task_schedule_gone(ctx: EmitContext, payload: dict[str, Any]) -> None:
+    """A removed block: delete its pushed event so no ghost is left behind."""
+    schedule_id = payload.get("schedule_id")
+    if not schedule_id:
+        return
+    link = await _link_for(ctx.session, ctx.org.id, LOCAL_TYPE_TASK_SCHEDULE, schedule_id)
+    if link is None:
+        return
+    if link.google_event_id:
+        link.status = LinkStatus.DELETE_PENDING.value
+        link.attempts = 0
+        await ctx.session.flush()
+        await _enqueue_push(ctx.org.id, link.id)
+    else:
+        await ctx.session.delete(link)
+        await ctx.session.flush()
+
+
+def _task_summary(title: str | None, locale: str | None) -> str:
+    """"Taak: Redesign homepage" — the task marker plus its title, in the person's locale."""
+    base = translate("google.calendar.task_event_title", locale)
+    return f"{base}: {title}" if title else base
+
+
+def _task_description(org: Org, payload: dict[str, Any], locale: str | None) -> str:
+    """The task's own description (flattened from markdown) plus a direct deeplink to the task —
+    Google events have no URL field, so the link lives in the notes text (#188)."""
+    parts: list[str] = []
+    desc = payload.get("task_description")
+    if desc:
+        parts.append(markdown_to_plaintext(desc))
+    parts.append(f"{org_base_url(org)}/tasks/{payload['task_id']}")
+    return "\n\n".join(parts)
 
 
 async def _leave_summary(

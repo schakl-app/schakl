@@ -265,6 +265,46 @@ class DriveService:
             raise AppError("google_upload_failed", "errors.google_upload_failed", status_code=502)
         return session_uri
 
+    # --- create a subfolder while browsing (as the viewing user) ------------------- #
+    async def create_folder(self, parent_id: str, name: str) -> dict[str, Any]:
+        """Create a folder named ``name`` inside ``parent_id`` — the browser's "New folder".
+
+        Acts as the *viewing* user (§5, like ``browse``/``upload_session``), never the
+        automation identity: a viewer only makes folders where Drive already lets them write.
+        Name-match first so re-typing an existing name links to it rather than duplicating
+        (issue #21's "link, don't duplicate"); no template structure is copied — that is the
+        entity-provisioning path's job, not an ad-hoc subfolder's.
+        """
+        self.ctx.require("google.drive.write")
+        await self._settings()
+        cleaned = name.strip()
+        if not cleaned:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"name": "errors.required"},
+            )
+        connection = await active_connection_or_409(
+            self.ctx.session, self._org_id, self.ctx.user.id
+        )
+        async with acting_as(self.ctx.session, self.ctx.org, connection) as client:
+            folder = await _find_or_create_folder(
+                client, parent_id, cleaned, template_id=None
+            )
+        # Bust this viewer's cached listing of the parent so the new folder appears at once.
+        try:
+            await get_redis().delete(
+                f"schakl:gdrive:browse:{self._org_id}:{self.ctx.user.id}:{parent_id}"
+            )
+        except Exception:  # noqa: BLE001 — Redis down just means the ~45 s TTL applies
+            pass
+        return {
+            "id": folder["id"],
+            "name": folder.get("name", cleaned),
+            "web_view_link": folder.get("webViewLink"),
+        }
+
     # --- provisioning -------------------------------------------------------------- #
     async def request_provision(self, entity_type: str, entity_id: uuid.UUID) -> None:
         """Queue one entity's folder (the panel's "create folder" button)."""

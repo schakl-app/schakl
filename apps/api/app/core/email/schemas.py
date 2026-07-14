@@ -45,3 +45,44 @@ class EmailSettingsRead(BaseModel):
 class EmailTestResult(BaseModel):
     ok: bool
     error: str | None = None
+
+
+# --------------------------------------------------------------------------- #
+# Tenant-customisable auth email templates (#161 tier 2)
+# --------------------------------------------------------------------------- #
+EmailTemplateKind = Literal["reset", "invite"]
+
+
+class EmailTemplateItem(BaseModel):
+    """One ``(kind, locale)`` slot: the tenant override (``None`` = default) plus the built-in
+    default, so the editor can show placeholders and a "reset to default" is just clearing it."""
+
+    kind: EmailTemplateKind
+    locale: str
+    subject: str | None = None
+    body_html: str | None = None
+    default_subject: str
+    default_body_html: str
+
+
+class EmailTemplatesRead(BaseModel):
+    locales: list[str]
+    variables: list[str]
+    templates: list[EmailTemplateItem]
+
+
+class EmailTemplateWrite(BaseModel):
+    kind: EmailTemplateKind
+    locale: str = Field(min_length=2, max_length=8)
+    #: Blank subject *and* body deletes the override — the built-in default applies again.
+    subject: str | None = Field(default=None, max_length=500)
+    body_html: str | None = Field(default=None, max_length=20000)
+
+
+class EmailTemplateTest(BaseModel):
+    """Send a preview of the draft on screen (falls back to the stored/default when omitted)."""
+
+    kind: EmailTemplateKind
+    locale: str = Field(min_length=2, max_length=8)
+    subject: str | None = Field(default=None, max_length=500)
+    body_html: str | None = Field(default=None, max_length=20000)

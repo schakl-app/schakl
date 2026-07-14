@@ -8,11 +8,28 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.crypto import decrypt, encrypt
-from app.core.email.models import EmailSettings
-from app.core.email.schemas import EmailSettingsRead, EmailSettingsWrite, EmailTestResult
+from app.core.email.models import EMAIL_TEMPLATE_KINDS, EmailSettings, OrgEmailTemplate
+from app.core.email.schemas import (
+    EmailSettingsRead,
+    EmailSettingsWrite,
+    EmailTemplateItem,
+    EmailTemplatesRead,
+    EmailTemplateTest,
+    EmailTemplateWrite,
+    EmailTestResult,
+)
 from app.core.email.senders import OutgoingEmail, Sender, send_email
+from app.core.email.templates import (
+    TEMPLATE_VARIABLES,
+    build_email_content,
+    default_body_html,
+    default_subject,
+    is_supported_locale,
+    sanitize_email_html,
+)
 from app.core.tenancy import RequestContext
 from app.errors import AppError
+from app.i18n import available_locales, resolve_locale
 
 #: Which config keys each provider stores, and which of them is the secret.
 _PROVIDER_FIELDS: dict[str, tuple[tuple[str, ...], str]] = {
@@ -132,6 +149,130 @@ class EmailSettingsService:
             subject=f"{brand}: test",
             text="This is a test email from schakl.",
         )
+        try:
+            ok, error = await send_org_email(self.ctx.session, self.ctx.org.id, message)
+        except Exception as exc:  # noqa: BLE001 - surface the provider failure, don't 500
+            return EmailTestResult(ok=False, error=str(exc))
+        return EmailTestResult(ok=ok, error=error)
+
+
+class OrgEmailTemplateService:
+    """Admin surface for the tenant-customisable auth email templates (#161 tier 2).
+
+    Same permission and page as the transport (``settings.email.manage``, Instellingen ->
+    E-mail): a template can leak nothing a transport config does not, and both are the same
+    "how this tenant emails people" concern.
+    """
+
+    def __init__(self, ctx: RequestContext) -> None:
+        self.ctx = ctx
+
+    def _org_brand(self) -> str:
+        return getattr(self.ctx.org, "name", None) or "schakl"
+
+    async def _stored(self) -> dict[tuple[str, str], OrgEmailTemplate]:
+        rows = (
+            await self.ctx.session.execute(
+                select(OrgEmailTemplate).where(OrgEmailTemplate.org_id == self.ctx.org.id)
+            )
+        ).scalars().all()
+        return {(row.kind, row.locale): row for row in rows}
+
+    def _validate(self, kind: str, locale: str) -> None:
+        if kind not in EMAIL_TEMPLATE_KINDS:
+            raise AppError(
+                "validation", "errors.validation", status_code=422,
+                fields={"kind": "errors.validation"},
+            )
+        if not is_supported_locale(locale):
+            raise AppError(
+                "validation", "errors.validation", status_code=422,
+                fields={"locale": "errors.validation"},
+            )
+
+    async def list(self) -> EmailTemplatesRead:
+        self.ctx.require("settings.email.manage")
+        stored = await self._stored()
+        locales = available_locales()
+        items: list[EmailTemplateItem] = []
+        for kind in EMAIL_TEMPLATE_KINDS:
+            for locale in locales:
+                row = stored.get((kind, locale))
+                items.append(
+                    EmailTemplateItem(
+                        kind=kind,  # type: ignore[arg-type]
+                        locale=locale,
+                        subject=row.subject if row else None,
+                        body_html=row.body_html if row else None,
+                        default_subject=default_subject(kind, locale),
+                        default_body_html=default_body_html(kind, locale),
+                    )
+                )
+        return EmailTemplatesRead(
+            locales=locales, variables=list(TEMPLATE_VARIABLES), templates=items
+        )
+
+    async def save(self, data: EmailTemplateWrite) -> EmailTemplateItem:
+        self.ctx.require("settings.email.manage")
+        self._validate(data.kind, data.locale)
+        subject = (data.subject or "").strip() or None
+        body_html = (data.body_html or "").strip() or None
+        if body_html is not None:
+            # Sanitise on write too, so a stored value (and any preview of it) is already safe.
+            body_html = sanitize_email_html(body_html)
+
+        row = await self.ctx.session.scalar(
+            select(OrgEmailTemplate).where(
+                OrgEmailTemplate.org_id == self.ctx.org.id,
+                OrgEmailTemplate.kind == data.kind,
+                OrgEmailTemplate.locale == data.locale,
+            )
+        )
+        if subject is None and body_html is None:
+            # Blank both = reset to the built-in default (delete the override).
+            if row is not None:
+                await self.ctx.session.delete(row)
+                await self.ctx.session.flush()
+        elif row is None:
+            row = OrgEmailTemplate(
+                org_id=self.ctx.org.id,
+                kind=data.kind,
+                locale=data.locale,
+                subject=subject,
+                body_html=body_html,
+            )
+            self.ctx.session.add(row)
+            await self.ctx.session.flush()
+        else:
+            row.subject = subject
+            row.body_html = body_html
+            await self.ctx.session.flush()
+
+        return EmailTemplateItem(
+            kind=data.kind,
+            locale=data.locale,
+            subject=subject,
+            body_html=body_html,
+            default_subject=default_subject(data.kind, data.locale),
+            default_body_html=default_body_html(data.kind, data.locale),
+        )
+
+    async def test(self, data: EmailTemplateTest) -> EmailTestResult:
+        """Render the draft (or stored/default) with sample values and send to the acting admin."""
+        self.ctx.require("settings.email.manage")
+        self._validate(data.kind, data.locale)
+        # A realistic-looking preview link on the org's own address; the token is a placeholder.
+        from app.core.auth.sso import org_base_url
+
+        values = {
+            "brand": self._org_brand(),
+            "name": self.ctx.user.full_name or self.ctx.user.email,
+            "link": f"{org_base_url(self.ctx.org)}/reset-password?token=preview",
+        }
+        subject, text, html = build_email_content(
+            data.kind, resolve_locale(data.locale), data.subject, data.body_html, values
+        )
+        message = OutgoingEmail(to=self.ctx.user.email, subject=subject, text=text, html=html)
         try:
             ok, error = await send_org_email(self.ctx.session, self.ctx.org.id, message)
         except Exception as exc:  # noqa: BLE001 - surface the provider failure, don't 500

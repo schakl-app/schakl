@@ -13,6 +13,7 @@ interface ItemDraft {
   allocated_minutes?: unknown;
   assignee_user_id?: unknown;
   assign_responsible?: unknown;
+  requires_interaction?: unknown;
   checklist_title?: unknown;
   checklist_items?: unknown;
 }
@@ -26,6 +27,7 @@ function parseItems(raw: string): {
   allocated_minutes: number | null;
   assignee_user_id: string | null;
   assign_responsible: boolean;
+  requires_interaction: boolean;
   position: number;
   checklist_title: string | null;
   checklist_items: { title: string; description: string | null }[];
@@ -53,6 +55,7 @@ function parseItems(raw: string): {
           Number.isFinite(allocated) && allocated > 0 ? Math.round(allocated) : null,
         assignee_user_id: String(draft.assignee_user_id ?? "").trim() || null,
         assign_responsible: draft.assign_responsible === true,
+        requires_interaction: draft.requires_interaction === true,
         position: index,
         checklist_title: String(draft.checklist_title ?? "").trim() || null,
         // Item titles reshaped to `{title, description}` (issue #66). The bulk editor here enters

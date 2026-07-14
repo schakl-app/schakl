@@ -5,6 +5,7 @@
    * descriptors. Each metric cell carries its period-over-period delta so "who moved" reads at a
    * glance; the client cell opens that client's marketing tab.
    */
+  import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
@@ -35,8 +36,11 @@
       position: positionCell,
       cost: costCell,
       conversions: conversionsCell,
+      key_events: keyEventsCell,
     }),
   });
+
+  const canManage = $derived(Boolean(data.canManage));
 
   const RANGES = ["30d", "month", "quarter", "90d", "yoy"] as const;
   const rangeClass = (active: boolean) =>
@@ -80,6 +84,39 @@
 {#snippet costCell(row: Row)}{@render kpiCell(row.metrics.cost, "cost")}{/snippet}
 {#snippet conversionsCell(row: Row)}{@render kpiCell(row.metrics.conversions, "conversions")}{/snippet}
 
+{#snippet keyEventsCell(row: Row)}
+  {#if !row.sources_present.includes("ga4")}
+    <!-- No GA4 for this client, so key events are not a thing to show or hide. -->
+    <span class="text-text-muted">—</span>
+  {:else if canManage}
+    <!-- Interactive cell is safe here: the grid navigates only via the company cell's own link,
+         never a whole-row click, so this switch keeps its own action. -->
+    <form method="POST" action="?/toggleKeyEvents" use:enhance class="inline-flex">
+      <input type="hidden" name="company_id" value={row.company_id} />
+      <input type="hidden" name="show_key_events" value={(!row.show_key_events).toString()} />
+      <button
+        type="submit"
+        role="switch"
+        aria-checked={row.show_key_events}
+        aria-label={t("marketing.settings.key_events_label")}
+        class="relative z-10 inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors {row.show_key_events
+          ? 'bg-brand'
+          : 'border border-border bg-surface'}"
+      >
+        <span
+          class="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform {row.show_key_events
+            ? 'translate-x-4'
+            : 'translate-x-0.5'}"
+        ></span>
+      </button>
+    </form>
+  {:else}
+    <span class="text-xs {row.show_key_events ? 'text-text' : 'text-text-muted'}">
+      {row.show_key_events ? t("marketing.settings.on") : t("marketing.settings.off")}
+    </span>
+  {/if}
+{/snippet}
+
 {#snippet empty()}
   <p class="text-sm text-text-muted">{t("marketing.overview.empty")}</p>
 {/snippet}
@@ -101,6 +138,12 @@
         <span>{t("marketing.metric.cost")}: {fmtMetric("cost", row.metrics.cost.current)}</span>
       {/if}
     </div>
+    {#if row.sources_present.includes("ga4")}
+      <p class="mt-1 text-xs text-text-muted">
+        {t("marketing.overview.column.key_events")}:
+        {row.show_key_events ? t("marketing.settings.on") : t("marketing.settings.off")}
+      </p>
+    {/if}
   </a>
 {/snippet}
 

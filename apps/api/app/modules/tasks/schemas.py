@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -34,6 +34,9 @@ class TaskBase(BaseModel):
     priority: TaskPriority = TaskPriority.NORMAL
     due_date: date | None = None
     allocated_minutes: int | None = Field(default=None, ge=0, le=100000)
+    # Per-task close policy (#157 extended): when set, this task can only reach a finished
+    # status once a designated closing contact moment is linked, regardless of the status flag.
+    requires_interaction: bool = False
 
 
 class TaskCreate(TaskBase):
@@ -52,6 +55,8 @@ class TaskUpdate(BaseModel):
     allocated_minutes: int | None = Field(default=None, ge=0, le=100000)
     position: float | None = None
     recurrence: Recurrence | None = None
+    # Toggle the per-task "close only with a contact moment" policy (#157 extended).
+    requires_interaction: bool | None = None
     # Required when the due date moves later (accountability; logged in the activity feed).
     due_change_reason: str | None = Field(default=None, max_length=1000)
     # The contact moment this close is justified by (#157) — must be linked to this task and
@@ -316,6 +321,9 @@ class TemplateItemBase(BaseModel):
     #: Assign to the company's primary responsible at apply time (#28); falls back to
     #: ``assignee_user_id``, then unassigned, when the company has none.
     assign_responsible: bool = False
+    # Tasks spawned from this item may only be closed with a designated contact moment
+    # (#157 extended); copied onto ``Task.requires_interaction`` at apply time.
+    requires_interaction: bool = False
     position: int = 0
     checklist_title: str | None = Field(default=None, max_length=255)
     checklist_items: list[TemplateChecklistItem] = Field(default_factory=list)
@@ -354,3 +362,77 @@ class TemplateRead(TemplateBase):
 
 class TemplateApply(BaseModel):
     company_id: uuid.UUID
+
+
+# --------------------------------------------------------------------------- #
+# Scheduling (#188) — planned time blocks for a task on a calendar
+# --------------------------------------------------------------------------- #
+# The client works in the org's *local* calendar — a day, a start time, and a length — and the
+# API owns the timezone: it combines them into ``TIMESTAMPTZ`` instants (§8). This is why a
+# day-drag stays DST-correct (the wall-clock time is preserved across the boundary) and why the
+# browser never does timezone math. ``hours``/instants are never accepted from a client.
+class ScheduleCreate(BaseModel):
+    task_id: uuid.UUID
+    # Omitted → the task's assignee (resolved server-side); an explicit value needs
+    # ``tasks.schedule.write:any``.
+    user_id: uuid.UUID | None = None
+    # ``day`` not ``date``: a field named ``date`` shadows the imported ``date`` type when the
+    # annotation is resolved, so the model won't build.
+    day: date
+    start_time: time
+    duration_minutes: int = Field(ge=1, le=24 * 60)
+    note: str | None = Field(default=None, max_length=500)
+
+
+class ScheduleUpdate(BaseModel):
+    """A partial edit / move: any omitted field keeps the block's current local value."""
+
+    user_id: uuid.UUID | None = None
+    day: date | None = None
+    start_time: time | None = None
+    duration_minutes: int | None = Field(default=None, ge=1, le=24 * 60)
+    note: str | None = Field(default=None, max_length=500)
+
+
+class ScheduleRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    task_id: uuid.UUID
+    user_id: uuid.UUID | None
+    # Instants for the calendar's time grid; the edit form derives local date/time from these.
+    starts_at: datetime
+    ends_at: datetime
+    note: str | None
+    time_entry_id: uuid.UUID | None
+    created_by_user_id: uuid.UUID | None
+    created_by_name: str | None
+
+
+class ScheduleItem(ScheduleRead):
+    """A block decorated with what the calendar/timesheet needs, so a feed renders without a
+    second fetch (docs/PERFORMANCE.md): the local day span (so the browser does no timezone
+    math), the person's name and the task's identity."""
+
+    # Inclusive local-date span for day bucketing, resolved in the org timezone server-side —
+    # exactly like the Google events feed, so the calendar source maps 1:1.
+    start: date
+    end: date
+    user_name: str | None = None
+    task_title: str
+    project_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
+    status: str
+    allocated_minutes: int | None = None
+
+
+class ScheduleLogTime(BaseModel):
+    """Confirm-to-log a passed block as a real time entry (#188). Everything defaults from the
+    block; the user may adjust the worked minutes, break, description and billable flag before
+    saving. ``minutes`` overrides the block's own duration when the actual work differed."""
+
+    minutes: int | None = Field(default=None, ge=0, le=24 * 60)
+    break_minutes: int = Field(default=0, ge=0, le=24 * 60)
+    description: str | None = Field(default=None, max_length=2000)
+    billable: bool = True
+    entry_type_key: str | None = Field(None, min_length=1, max_length=50, pattern=r"^[a-z0-9_]+$")
