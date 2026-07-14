@@ -100,7 +100,7 @@ export const ALL_METRICS: Record<MarketingSource, string[]> = {
 
 /** The tier-2 drill-downs each source offers (mirrors the adapter's `drilldowns`). */
 export const DRILLDOWNS: Record<MarketingSource, string[]> = {
-  ga4: ["top_pages", "channels", "devices"],
+  ga4: ["top_pages", "channels", "devices", "key_events"],
   gsc: ["top_queries", "top_pages", "movers"],
   gads: ["campaigns"],
 };

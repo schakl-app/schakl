@@ -603,6 +603,10 @@ class MarketingService:
         adapter = source_for(link.source)
         if kind not in adapter.drilldowns:
             raise AppError("validation", "errors.validation", status_code=422)
+        # The by-event breakdown obeys the same per-company gate as the keyEvents KPIs (#134):
+        # when this client hides key events, the drill-down does not exist for it either.
+        if kind == "key_events" and not await self._show_key_events(company_id):
+            raise AppError("validation", "errors.validation", status_code=422)
         range_days = max(1, min(range_days, 400))
         today = await self._today()
         end = today - timedelta(days=1)

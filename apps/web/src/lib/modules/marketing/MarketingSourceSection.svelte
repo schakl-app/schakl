@@ -31,7 +31,13 @@
   const selected = $derived(override ?? src.primary_metric);
 
   const metrics = $derived(ALL_METRICS[src.source] ?? []);
-  const drilldowns = $derived(DRILLDOWNS[src.source] ?? []);
+  // The API withholds the keyEvents KPI when this client's key events are hidden (#134);
+  // its absence also hides the by-event drill-down (the endpoint 422s it anyway).
+  const drilldowns = $derived(
+    (DRILLDOWNS[src.source] ?? []).filter(
+      (kind) => kind !== "key_events" || "keyEvents" in (src.kpis ?? {}),
+    ),
+  );
   const values = $derived(src.series?.metrics?.[selected] ?? []);
   const dates = $derived(src.series?.dates ?? []);
 

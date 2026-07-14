@@ -47,7 +47,7 @@ def _parse_ga4_date(value: str) -> date:
 class GA4Adapter:
     source = MarketingSource.GA4.value
     scope = SCOPE_ANALYTICS
-    drilldowns = ("top_pages", "channels", "devices")
+    drilldowns = ("top_pages", "channels", "devices", "key_events")
 
     async def list_accounts(self, client: AsyncOAuth2Client) -> list[AccountOption]:
         options: list[AccountOption] = []
@@ -150,10 +150,14 @@ class GA4Adapter:
             "top_pages": (["screenPageViews", "sessions"], "unifiedScreenName"),
             "channels": (["sessions", "keyEvents"], "sessionDefaultChannelGroup"),
             "devices": (["sessions"], "deviceCategory"),
+            "key_events": (["keyEvents"], "eventName"),
         }.get(kind, (["sessions"], "sessionDefaultChannelGroup"))
         metrics, dimension = spec
         if kind == "top_pages":
             dimension = "pagePath"
+        # eventName × keyEvents returns *every* event, non-key events reading 0 — request a
+        # wider page so the real key events survive the zero-filter below.
+        limit = 50 if kind == "key_events" else 10
         report = await self._run_report(
             client,
             external_id,
@@ -161,7 +165,7 @@ class GA4Adapter:
                 "dateRanges": [date_range],
                 "dimensions": [{"name": dimension}],
                 "metrics": [{"name": m} for m in metrics],
-                "limit": 10,
+                "limit": limit,
                 "orderBys": [{"metric": {"metricName": metrics[0]}, "desc": True}],
             },
         )
@@ -174,6 +178,8 @@ class GA4Adapter:
             )
             for row in report.get("rows", [])
         ]
+        if kind == "key_events":
+            rows = [row for row in rows if row.metrics.get("keyEvents", 0) > 0][:10]
         return DrilldownTable(kind=kind, columns=metrics, rows=rows)
 
     def deep_link(self, external_id: str, config: dict) -> str:
