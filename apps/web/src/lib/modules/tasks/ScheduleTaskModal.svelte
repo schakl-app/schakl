@@ -349,7 +349,7 @@
             id="sched-duration"
             name="duration_minutes"
             type="number"
-            min="1"
+            min="15"
             max="1440"
             step="15"
             bind:value={durationMinutes}
