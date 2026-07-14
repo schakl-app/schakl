@@ -53,6 +53,7 @@ _DOMAIN_TABLES = (
     "leave_holidays, leave_settings, employment_contracts, "
     "subscription_links, subscription_lines, subscription_prices, subscriptions, "
     "subscription_templates, subscription_types, "
+    "marketing_metrics_daily, marketing_links, "
     "interactions, interaction_kinds, "
     "calendar_event_links, google_calendar_events, google_calendar_channels, "
     "drive_links, drive_folder_jobs, gmail_suppressions, google_connections, google_settings, "
@@ -68,7 +69,7 @@ _DOMAIN_TABLES = (
 _ENABLED_MODULES = [
     "companies", "contacts", "tasks", "projects", "time", "leave", "notifications",
     "domains", "hosting", "websites", "subscriptions", "automation", "interactions",
-    "google",
+    "google", "marketing",
 ]
 
 

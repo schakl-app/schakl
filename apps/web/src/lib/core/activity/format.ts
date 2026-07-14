@@ -84,6 +84,13 @@ export function activityText(item: ActivityLike): string {
       subject: String(item.payload?.subject ?? ""),
     });
   }
+  // A marketing account linked/unlinked on the client (#134).
+  if (item.action.startsWith("marketing.")) {
+    return t(`activity.action.${item.action}`, {
+      source: t(`marketing.source.${String(item.payload?.source ?? "")}`),
+      name: String(item.payload?.name ?? ""),
+    });
+  }
   // `created` today; an unknown action falls back to its own key rather than throwing.
   return t(`activity.action.${item.action}`);
 }

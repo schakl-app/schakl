@@ -40,6 +40,18 @@ CALENDAR_WRITE_SCOPES = (SCOPE_CALENDAR, SCOPE_CALENDAR_FULL)
 SCOPE_DRIVE = "https://www.googleapis.com/auth/drive"
 SCOPE_GMAIL = "https://www.googleapis.com/auth/gmail.readonly"
 
+#: Marketing surfaces (the ``marketing`` module, epic #134) ride this one OAuth client too:
+#: read-only Analytics (GA4) and Search Console, plus Google Ads. Ads has **no** read-only
+#: scope — ``adwords`` is the only one, and it additionally needs a per-agency developer token
+#: to actually call the API (the module presents fine while Ads stays unconfigured). These are
+#: added by *incremental* authorization: a connection that already granted Calendar keeps it,
+#: ``include_granted_scopes=true`` unions the new marketing scopes on (docs/GOOGLE.md §1).
+SCOPE_ANALYTICS = "https://www.googleapis.com/auth/analytics.readonly"
+SCOPE_SEARCH_CONSOLE = "https://www.googleapis.com/auth/webmasters.readonly"
+SCOPE_ADS = "https://www.googleapis.com/auth/adwords"
+#: Every marketing scope, so a caller can ask "does this connection carry any marketing grant?"
+MARKETING_SCOPES = (SCOPE_ANALYTICS, SCOPE_SEARCH_CONSOLE, SCOPE_ADS)
+
 
 async def google_settings_row(
     session: AsyncSession, org_id: uuid.UUID
@@ -70,11 +82,24 @@ def has_calendar_write_scope(scopes: list[str] | None) -> bool:
     return any(scope in granted for scope in CALENDAR_WRITE_SCOPES)
 
 
-def scopes_for(row: GoogleSettings | None, *, include_gmail: bool) -> list[str]:
+def scopes_for(
+    row: GoogleSettings | None,
+    *,
+    include_gmail: bool,
+    include_analytics: bool = False,
+    include_search_console: bool = False,
+    include_ads: bool = False,
+) -> list[str]:
     """The consent this install asks for: identity plus exactly the enabled surfaces.
 
     Gmail additionally needs the *user's* opt-in (per-user and privacy-sensitive), so it only
     rides along when they ticked the box — reconnecting later adds it incrementally.
+
+    The marketing scopes (``include_analytics`` / ``include_search_console`` / ``include_ads``)
+    are requested only when the caller asks — the ``marketing`` module's connect deep-link sets
+    the flags for the sources being linked. They are not gated on a ``google_settings`` toggle:
+    marketing enablement is a separate module (``org_settings.enabled_modules``), and requesting
+    a scope the connection already holds is a no-op thanks to ``include_granted_scopes``.
     """
     scopes = list(SCOPE_IDENTITY)
     if row is not None and row.calendar_enabled:
@@ -83,6 +108,12 @@ def scopes_for(row: GoogleSettings | None, *, include_gmail: bool) -> list[str]:
         scopes.append(SCOPE_DRIVE)
     if include_gmail and row is not None and row.gmail_enabled:
         scopes.append(SCOPE_GMAIL)
+    if include_analytics:
+        scopes.append(SCOPE_ANALYTICS)
+    if include_search_console:
+        scopes.append(SCOPE_SEARCH_CONSOLE)
+    if include_ads:
+        scopes.append(SCOPE_ADS)
     return scopes
 
 

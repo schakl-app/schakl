@@ -85,7 +85,7 @@ class Settings(BaseSettings):
         default_factory=lambda: [
             "companies", "contacts", "tasks", "projects", "time", "leave", "notifications",
             "domains", "hosting", "websites", "subscriptions", "automation", "interactions",
-            "google",
+            "google", "marketing",
         ]
     )
     default_locale: str = "nl"
@@ -124,6 +124,10 @@ class Settings(BaseSettings):
     # --- Google Workspace OAuth (stub for P3) ---
     google_client_id: str | None = None
     google_client_secret: str | None = None
+    # Google Ads API (marketing module, epic #134) needs a per-agency developer token on top of
+    # the OAuth grant (Basic access reads your own accounts). Left empty the Ads source stays a
+    # presentable "not configured" state; GA4/GSC need no such token.
+    google_ads_developer_token: str = ""
 
     # --- i18n ---
     # Shared message catalogs (single source of truth with the web app).

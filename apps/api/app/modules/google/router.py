@@ -111,17 +111,28 @@ async def disconnect_my_connection(ctx: RequestContext = Depends(require_context
 async def oauth_connect(
     request: Request,
     include_gmail: bool = Query(False),
+    include_analytics: bool = Query(False),
+    include_search_console: bool = Query(False),
+    include_ads: bool = Query(False),
     ctx: RequestContext = Depends(require_context),
 ):
     """302 to Google's consent screen, asking exactly the enabled surfaces' scopes.
 
     ``access_type=offline`` + ``prompt=consent`` guarantee a refresh token on every connect;
     ``include_granted_scopes`` makes a later reconnect *add* scopes instead of replacing them
-    (incremental authorization — the docs/GOOGLE.md §1 bridge).
+    (incremental authorization — the docs/GOOGLE.md §1 bridge). The ``include_analytics`` /
+    ``include_search_console`` / ``include_ads`` flags are how the marketing module (epic #134)
+    walks a connection up to its GA4/GSC/Ads scopes over this same flow — no second OAuth.
     """
     row = await google_settings_row(ctx.session, ctx.org.id)
     client = connect_client(ctx.org.id, row)
-    scopes = scopes_for(row, include_gmail=include_gmail)
+    scopes = scopes_for(
+        row,
+        include_gmail=include_gmail,
+        include_analytics=include_analytics,
+        include_search_console=include_search_console,
+        include_ads=include_ads,
+    )
     # Whether the user opted their mailbox in — read back on the callback leg.
     request.session[_GMAIL_OPTIN_SESSION_KEY] = "1" if include_gmail else ""
     redirect_uri = str(request.url_for("google_oauth_callback"))
