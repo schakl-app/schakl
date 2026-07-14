@@ -93,11 +93,16 @@ def _token_dict(connection: GoogleConnection) -> dict[str, Any]:
 
 @asynccontextmanager
 async def acting_as(session: AsyncSession, org: Org, connection: GoogleConnection):
-    """An authenticated httpx client for this connection; rotated tokens persist on exit path.
+    """An authenticated httpx client for this connection; rotated tokens are staged on the
+    connection row and persist with the caller's commit.
 
     Callers treat it as a plain ``httpx.AsyncClient`` against ``www.googleapis.com``. An
     ``OAuthError`` out of a call means the grant itself died — run it through
     :func:`mark_connection_error` and stop syncing that connection.
+
+    Request paths (never worker jobs) must make the actual Google calls inside
+    ``ctx.release_db()`` so the awaited round-trips don't pin a pool connection
+    (docs/PERFORMANCE.md). Enter ``acting_as`` *first* — it reads settings — then release.
     """
     row = await google_settings_row(session, org.id)
     client_id, client_secret = client_credentials(row)
@@ -107,6 +112,11 @@ async def acting_as(session: AsyncSession, org: Org, connection: GoogleConnectio
         refresh_token: str | None = None,
         access_token: str | None = None,  # noqa: ARG001 — authlib's signature
     ) -> None:
+        # Memory only — no flush. Authlib fires this mid-call, and request paths make their
+        # Google calls with the session's pool connection released (``ctx.release_db()``,
+        # docs/PERFORMANCE.md): SQL here would check a connection back out without the RLS
+        # GUC and the UPDATE would match nothing. The dirty attributes flush with the
+        # caller's own commit — which is also all the durability the old flush ever had.
         connection.access_token_encrypted = encrypt(token["access_token"])
         expires_at = token.get("expires_at")
         connection.access_token_expires_at = (
@@ -116,7 +126,6 @@ async def acting_as(session: AsyncSession, org: Org, connection: GoogleConnectio
             connection.refresh_token_encrypted = encrypt(token["refresh_token"])
         elif refresh_token:
             connection.refresh_token_encrypted = encrypt(refresh_token)
-        await session.flush()
 
     client = AsyncOAuth2Client(
         client_id=client_id,

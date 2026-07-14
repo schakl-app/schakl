@@ -390,9 +390,13 @@ class MarketingService:
         else:
             try:
                 with developer_token_scope(ads_token):
-                    async with google_client.acting_as(
-                        self.ctx.session, self.ctx.org, connection
-                    ) as gclient:
+                    # Pool connection released during the live account listing
+                    # (docs/PERFORMANCE.md).
+                    async with (
+                        google_client.acting_as(self.ctx.session, self.ctx.org, connection)
+                        as gclient,
+                        self.ctx.release_db(),
+                    ):
                         fetched = await adapter.list_accounts(gclient)
             except AdsNotConfigured:
                 return AccountsResponse(
@@ -633,9 +637,13 @@ class MarketingService:
         )
         try:
             with developer_token_scope(ads_token):
-                async with google_client.acting_as(
-                    self.ctx.session, self.ctx.org, connection
-                ) as gclient:
+                # The live Google fetch runs with the pool connection released — a cold
+                # drill-down takes seconds, and six of them fire per tab (docs/PERFORMANCE.md).
+                async with (
+                    google_client.acting_as(self.ctx.session, self.ctx.org, connection)
+                    as gclient,
+                    self.ctx.release_db(),
+                ):
                     table = await adapter.drilldown(
                         gclient, link.external_id, kind, start, end, link.config or {}
                     )

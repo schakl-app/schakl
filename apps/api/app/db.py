@@ -51,6 +51,13 @@ engine = create_async_engine(
     settings.database_url,
     echo=False,
     pool_pre_ping=True,
+    # Never the SQLAlchemy defaults (5+10, 30 s wait): with one transaction per request a
+    # burst of slow requests drained that pool and every other request queued 30 s on
+    # checkout before 500ing — a sitewide freeze. Sized for the SSR fan-out, failing fast
+    # when saturated; see config.py and docs/PERFORMANCE.md.
+    pool_size=settings.db_pool_size,
+    max_overflow=settings.db_pool_max_overflow,
+    pool_timeout=settings.db_pool_timeout_seconds,
 )
 
 async_session_maker = async_sessionmaker(

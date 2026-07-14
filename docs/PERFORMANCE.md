@@ -64,6 +64,38 @@ The roles and the permission catalog are shared by two Instellingen screens, so 
 `settings/+layout.server.ts` — a layout load does not rerun on tab navigation — and only for a
 user who can actually manage roles.
 
+## Never hold a DB connection across an external call
+
+A tenant request runs as **one transaction on one pooled connection**, held from its first
+query until the response commits — that is what keeps the RLS GUC bound (`app/db.py`). The
+corollary: every second a handler spends awaiting something *other* than the database is a
+second it starves the pool for everyone else.
+
+This melted production down (2026-07-14). The marketing tab's range switch fired six
+cache-miss drill-downs, each awaiting GSC/GA4 for seconds **while pinning a pool
+connection**. With the then-default pool (5 + 10 overflow per process, one uvicorn process)
+a couple of page navigations on top exhausted all 15; every other request — `/prefs`,
+`/meta/me`, everything — queued 30 s on checkout and then 500'd. To a user that is the whole
+app freezing, every couple of minutes, for half a minute.
+
+Two rules follow:
+
+- **Wrap every in-request external HTTP call in `ctx.release_db()`** (`RequestContext`,
+  `app/core/tenancy.py`). It commits the transaction — handing the connection back to the
+  pool — runs your block, and re-binds the RLS GUC on a fresh transaction afterwards. Inside
+  the block the session is off-limits (a query would run without the GUC and fail closed);
+  do your reads before, your writes after. With `acting_as(...)`, enter it *first* (it reads
+  settings), then `release_db()`. Worker jobs don't need this — they run in their own
+  process and pool.
+- **Better still: don't call external services in the request path at all.** A short Redis
+  TTL in front (drive browse, marketing drill-downs) or the ARQ worker + stored rows
+  (marketing metrics, calendar events) keeps request latency ours, not Google's.
+
+The pool itself is sized in `config.py` (`SCHAKL_DB_POOL_SIZE` / `_MAX_OVERFLOW` /
+`_TIMEOUT_SECONDS`, defaults 15/15/5 s) — sized for the SSR fan-out, timing out fast because
+a request that waits the full `pool_timeout` freezes a browser tab for that long before
+failing anyway. Never fall back to the SQLAlchemy defaults (5/10/30 s).
+
 ## Case study: the My Day dashboard
 
 The dashboard composes widgets contributed by modules (`(app)/+page.server.ts`). Fixes applied
@@ -93,4 +125,6 @@ truncation reads as "we showed everything" when we didn't.
 - [ ] Shared lookups are in the layout load, not refetched per navigation.
 - [ ] `count=false` / `meta=false` on anything whose extra work you discard.
 - [ ] No 200-row fetch to show a handful; no heavy aggregate to render a label.
+- [ ] No external HTTP call while holding the request's DB connection — `ctx.release_db()`
+      around it, or move it behind the worker/cache entirely.
 - [ ] Links that lead somewhere preload on hover.
