@@ -2214,7 +2214,7 @@
   "marketing.range.month": "Deze maand",
   "marketing.range.quarter": "Dit kwartaal",
   "marketing.range.90d": "Laatste 90 dagen",
-  "marketing.range.yoy": "Dit jaar",
+  "marketing.range.yoy": "Laatste 12 maanden",
   "marketing.vs_previous": "t.o.v. vorige periode",
   "marketing.open_in": "Openen in {source}",
   "marketing.empty.no_links": "Nog geen marketingaccounts gekoppeld.",

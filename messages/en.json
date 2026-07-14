@@ -2214,7 +2214,7 @@
   "marketing.range.month": "This month",
   "marketing.range.quarter": "This quarter",
   "marketing.range.90d": "Last 90 days",
-  "marketing.range.yoy": "Year to date",
+  "marketing.range.yoy": "Last 12 months",
   "marketing.vs_previous": "vs previous period",
   "marketing.open_in": "Open in {source}",
   "marketing.empty.no_links": "No marketing accounts linked yet.",
