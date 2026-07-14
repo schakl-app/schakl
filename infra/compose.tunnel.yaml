@@ -107,6 +107,12 @@ services:
   api:
     image: ghcr.io/schakl-app/schakl-api:${SCHAKL_TAG:-latest}
     environment: *api-env
+    volumes:
+      # Uploaded files + email attachments (#123/#180): the api WRITES and READS here, and the
+      # worker WRITES here too (Gmail attachment fetch). It MUST be the same shared named volume
+      # on both, or a file the worker stored 404s at the api (errors.file_bytes_missing) and is
+      # lost on restart. Back it up alongside db-data.
+      - storage-data:/data/storage
     depends_on:
       # Not `db: service_healthy` — the app role must exist before `alembic upgrade head`
       # connects as it. db-init already waits on db being healthy.
@@ -129,6 +135,9 @@ services:
     image: ghcr.io/schakl-app/schakl-api:${SCHAKL_TAG:-latest}
     command: ["worker"]
     environment: *api-env
+    volumes:
+      # Same shared volume as the api — the worker writes Gmail attachment bytes the api serves.
+      - storage-data:/data/storage
     depends_on:
       api:
         condition: service_healthy
@@ -151,6 +160,7 @@ services:
 
 volumes:
   db-data:
+  storage-data:
 
 networks:
   schakl:
