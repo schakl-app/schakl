@@ -24,6 +24,7 @@ from app.modules.marketing.models import (
 )
 from app.modules.marketing.service import resolve_ads_developer_token
 from app.modules.marketing.sources import gads
+from app.modules.marketing.sources.ga4 import GA4Adapter
 from tests.conftest import auth_cookie, make_tenant
 
 
@@ -541,3 +542,93 @@ async def test_ads_developer_token_tenant_isolation(client_for) -> None:
     async with async_session_maker() as session:
         await set_current_org(session, b.org.id)
         assert await resolve_ads_developer_token(session, b.org.id) is None
+
+
+class _FakeGA4Response:
+    def __init__(self, payload: dict) -> None:
+        self._payload = payload
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def json(self) -> dict:
+        return self._payload
+
+
+class _FakeGA4Client:
+    """Stands in for the OAuth httpx client; records the runReport body it was sent."""
+
+    def __init__(self, payload: dict) -> None:
+        self._payload = payload
+        self.last_body: dict | None = None
+
+    async def post(self, url: str, json: dict | None = None):  # noqa: ANN201, ARG002
+        self.last_body = json
+        return _FakeGA4Response(self._payload)
+
+
+async def test_ga4_key_events_drilldown_lists_events_and_drops_zero_rows() -> None:
+    """``key_events`` asks the Data API for eventName × keyEvents. Every event comes back and
+    non-key events read 0, so the adapter keeps only the real key events — the by-event breakdown
+    (contact form, purchase, …) that the tiles' total alone cannot show."""
+    payload = {
+        "rows": [
+            {"dimensionValues": [{"value": "generate_lead"}], "metricValues": [{"value": "12"}]},
+            {"dimensionValues": [{"value": "purchase"}], "metricValues": [{"value": "3"}]},
+            {"dimensionValues": [{"value": "page_view"}], "metricValues": [{"value": "0"}]},
+        ]
+    }
+    client = _FakeGA4Client(payload)
+    table = await GA4Adapter().drilldown(
+        client, "properties/42", "key_events", date(2026, 6, 1), date(2026, 6, 30), {}
+    )
+    assert table.columns == ["keyEvents"]
+    assert [(row.label, row.metrics["keyEvents"]) for row in table.rows] == [
+        ("generate_lead", 12.0),
+        ("purchase", 3.0),
+    ]
+    assert client.last_body is not None
+    assert client.last_body["dimensions"] == [{"name": "eventName"}]
+    assert client.last_body["metrics"] == [{"name": "keyEvents"}]
+
+
+async def test_key_events_drilldown_respects_visibility_gate(client_for) -> None:
+    """The by-event drill-down is a valid GA4 kind and obeys the per-client key-events gate:
+    with key events hidden the endpoint refuses the kind outright, same as an unknown one."""
+    t = await make_tenant("mktg-drillgate")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Drill BV"}, headers=headers)
+        ).json()
+        ga4 = (
+            await c.post(
+                "/api/v1/marketing/links",
+                json={
+                    "company_id": company["id"],
+                    "source": "ga4",
+                    "external_id": "properties/42",
+                    "display_name": "Drill — GA4",
+                },
+                headers=headers,
+            )
+        ).json()
+        drill_url = f"/api/v1/marketing/companies/{company['id']}/drilldown"
+        params = {"link_id": ga4["id"], "kind": "key_events", "range_days": 30}
+
+        # Gate on (the default): the kind passes validation — with no Google connection the
+        # response is the labelled unavailable state, never a 422.
+        res = await c.get(drill_url, params=params, headers=headers)
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert body["available"] is False
+        assert body["unavailable_reason"] == "marketing.disconnected"
+
+        # Gate off: the drill-down no longer exists for this client.
+        await c.put(
+            f"/api/v1/marketing/companies/{company['id']}/settings",
+            json={"show_key_events": False},
+            headers=headers,
+        )
+        res = await c.get(drill_url, params=params, headers=headers)
+        assert res.status_code == 422
