@@ -253,3 +253,49 @@ async def test_metrics_needs_connection_when_no_google(client_for) -> None:
         ).json()
         assert body["needs_connection"] is True
         assert body["sources"] == []
+
+
+async def test_backfill_rebinds_rls_across_chunk_commits(client_for, monkeypatch) -> None:
+    """Regression: the 13-month backfill commits per chunk, but the RLS GUC is transaction-local
+    (``set_config(..., is_local=true)``) so each commit clears it. Without re-binding, the second
+    chunk's RLS-scoped UPDATE on ``marketing_links`` matches zero rows and SQLAlchemy raises
+    StaleDataError, crashing the job. A no-op sync (no Google needed) that dirties the link every
+    chunk drives the whole multi-commit loop and must complete cleanly.
+    """
+    from app.modules.marketing.jobs import marketing_backfill_link
+
+    t = await make_tenant("mktg-backfill")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Backfill BV"}, headers=headers)
+        ).json()
+        link = (
+            await c.post(
+                "/api/v1/marketing/links",
+                json={
+                    "company_id": company["id"],
+                    "source": "ga4",
+                    "external_id": "properties/7",
+                    "display_name": "Backfill — GA4",
+                },
+                headers=headers,
+            )
+        ).json()
+
+    async def fake_sync(session, org, lk, start, end):  # noqa: ANN001, ARG001
+        # Succeeds without Google, and marks the link dirty so every chunk's commit issues a
+        # real RLS-scoped UPDATE — the exact statement that crashed before the GUC re-bind.
+        lk.last_synced_at = datetime.now(UTC)
+        lk.last_error = None
+
+    monkeypatch.setattr("app.modules.marketing.jobs.sync_link_range", fake_sync)
+
+    # Must not raise (StaleDataError before the fix) and must run to completion.
+    await marketing_backfill_link({}, str(t.org.id), link["id"])
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        row = await session.get(MarketingLink, uuid.UUID(link["id"]))
+        assert row.backfill_done is True
+        assert row.last_error is None

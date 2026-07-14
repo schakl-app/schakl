@@ -142,14 +142,23 @@ async def marketing_backfill_link(ctx: dict, org_id: str, link_id: str) -> None:
         window_start = end - timedelta(days=_BACKFILL_DAYS - 1)
         chunk_start = window_start
         while chunk_start <= end:
+            # The RLS GUC is transaction-local (``set_config(..., is_local=true)``), so the
+            # previous chunk's commit cleared it. Re-bind before this chunk's reads, its upsert
+            # and its commit — otherwise an RLS-scoped write on ``marketing_links`` matches zero
+            # rows and SQLAlchemy raises StaleDataError (the whole job then crashes and retries).
+            await set_current_org(session, org.id)
             chunk_end = min(chunk_start + timedelta(days=_CHUNK_DAYS - 1), end)
             await sync_link_range(session, org, link, chunk_start, chunk_end)
             await session.commit()
-            # sync_link_range may have flipped the connection to error — stop burning calls.
-            if link.last_error == "errors.google_connection_error":
-                logger.info("marketing backfill halted (connection error) for link %s", link.id)
+            # A persistent auth/config error (revoked grant, no OAuth client, missing scope,
+            # Ads token) won't fix itself across chunks — stop, leave ``backfill_done`` False and
+            # ``last_error`` visible (health = "error"). The nightly sync resumes automatically
+            # once the connection is fixed; a full re-backfill is a relink away.
+            if link.last_error:
+                logger.info("marketing backfill halted (%s) for link %s", link.last_error, link.id)
                 return
             chunk_start = chunk_end + timedelta(days=1)
+        await set_current_org(session, org.id)
         link.backfill_done = True
         await session.commit()
         logger.info("marketing backfill complete for link %s (org %s)", link.id, org.slug)
