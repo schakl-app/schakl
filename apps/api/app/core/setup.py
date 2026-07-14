@@ -70,12 +70,19 @@ class SetupResult(BaseModel):
 
 @router.get("/status", response_model=SetupStatus)
 async def setup_status() -> SetupStatus:
+    # In demo mode the seeder owns org creation (#141) — the wizard must never run, so it must
+    # never present itself as needed either.
+    if settings.demo_mode:
+        return SetupStatus(needs_setup=False)
     async with async_session_maker() as session:
         return SetupStatus(needs_setup=await repo.org_count(session) == 0)
 
 
 @router.post("", response_model=SetupResult, status_code=201)
 async def run_setup(payload: SetupRequest, request: Request) -> SetupResult:
+    if settings.demo_mode:
+        # The demo seeder creates the one org; a visitor must not run the first-run wizard (#141).
+        raise AppError("demo_blocked", "errors.demo_blocked", status_code=403)
     slug = org_service.validate_slug(payload.slug)
     locale = payload.locale or settings.default_locale
     if locale not in settings.supported_locales:

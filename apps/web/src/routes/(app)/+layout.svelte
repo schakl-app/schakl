@@ -3,7 +3,6 @@
   import Avatar from "$lib/core/ui/Avatar.svelte";
   import {
     BarChart3,
-    BellRing,
     CalendarDays,
     Menu,
     ChevronDown,
@@ -290,6 +289,16 @@
        loaded zoomed in", and pinch-zooming out revealed the whole (correct-looking) layout. That
        was issue #36. This also lets the inner `overflow-x-auto` wrappers do their job. -->
   <div class="flex min-w-0 flex-1 flex-col">
+    {#if theme?.demoMode}
+      <!-- Public demo (issue #141): persistent, no dismiss control — it re-renders every
+           navigation, so it is dismissal-proof by construction. -->
+      <div
+        class="bg-sky-600 px-4 py-2 text-center text-sm font-medium text-white sm:px-6"
+        role="status"
+      >
+        {t("demo.banner", { minutes: theme.demoResetMinutes })}
+      </div>
+    {/if}
     {#if user?.impersonatedBy}
       <!-- Impersonation is never silent (issue #26): banner on every screen, one-click stop. -->
       <div
@@ -379,17 +388,9 @@
                 <UserRound size={16} class="text-text-muted" />
                 {t("header.my_settings")}
               </a>
-              {#if hasNotifications}
-                <!-- The settings hub is manager-only, but what reaches *me* is mine (UX §6). -->
-                <a
-                  href="/settings/notifications"
-                  class="flex items-center gap-2 px-4 py-2 text-sm text-text hover:bg-surface"
-                  onclick={() => (profileOpen = false)}
-                >
-                  <BellRing size={16} class="text-text-muted" />
-                  {t("settings.notifications.title")}
-                </a>
-              {/if}
+              <!-- Personal notification preferences moved to the bell popover's gear (#163);
+                   the redundant profile-menu entry is gone. The bell's gear is ungated the same
+                   way this was (tied to hasNotifications, not settings.*). -->
               <form method="POST" action="/logout" class="border-t border-border">
                 <button
                   class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-text hover:bg-surface"

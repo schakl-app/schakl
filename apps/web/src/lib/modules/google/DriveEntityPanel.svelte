@@ -38,29 +38,60 @@
   const canWrite = $derived(can(page.data.user, "google.drive.write"));
 
   const ownFolder = $derived(panel.links.find((link) => link.is_folder) ?? null);
-  // The host already holds the projects lookup — the project's client costs no fetch.
+
+  // A task walks up to its project (the host page hands the current task down in `lookups.tasks`);
+  // both a project and a task then reach their client through `lookups.projects` — no fetch (#150).
+  const projectId = $derived(
+    panel.entityType === "task"
+      ? (lookups.tasks.find((task) => task.id === context.entityId)?.project_id ?? null)
+      : null,
+  );
   const companyId = $derived(
     panel.entityType === "project"
       ? (lookups.projects.find((project) => project.id === context.entityId)?.company_id ?? null)
-      : null,
+      : projectId
+        ? (lookups.projects.find((project) => project.id === projectId)?.company_id ?? null)
+        : null,
   );
 
-  let clientFolder = $state<DriveLinkItem | null>(null);
-  let clientFolderLoaded = $state(false);
+  // Where the browser should start when this entity has no folder of its own: for a task, its
+  // project's folder if provisioned (the work lives there), else the client's; for a project, the
+  // client's. Without this a task opened at the shared-drive **root** instead of the client folder.
+  let parentFolder = $state<DriveLinkItem | null>(null);
+  let parentFolderKind = $state<"project" | "client" | null>(null);
+  let parentLoaded = $state(false);
 
-  async function loadClientFolder() {
-    if (clientFolderLoaded || !companyId) return;
-    clientFolderLoaded = true;
+  async function fetchFolder(entityType: string, entityId: string): Promise<DriveLinkItem | null> {
     try {
       const response = await fetch(
-        `/api/v1/google/drive/links?entity_type=company&entity_id=${companyId}`,
+        `/api/v1/google/drive/links?entity_type=${entityType}&entity_id=${entityId}`,
         { headers: { accept: "application/json" } },
       );
-      if (!response.ok) return;
+      if (!response.ok) return null;
       const links = (await response.json()) as DriveLinkItem[];
-      clientFolder = links.find((link) => link.is_folder) ?? null;
+      return links.find((link) => link.is_folder) ?? null;
     } catch {
-      clientFolder = null;
+      return null;
+    }
+  }
+
+  async function loadParentFolder() {
+    if (parentLoaded) return;
+    parentLoaded = true;
+    if (panel.entityType === "task" && projectId) {
+      const folder = await fetchFolder("project", projectId);
+      if (folder) {
+        parentFolder = folder;
+        parentFolderKind = "project";
+        return;
+      }
+    }
+    if (companyId) {
+      const folder = await fetchFolder("company", companyId);
+      if (folder) {
+        parentFolder = folder;
+        parentFolderKind = "client";
+      }
     }
   }
 
@@ -69,12 +100,15 @@
   let browsing = $state(false);
 
   async function startBrowsing() {
-    if (!ownFolder) await loadClientFolder();
+    if (!ownFolder) await loadParentFolder();
     browsing = true;
   }
 
-  const rootFolderId = $derived(
-    ownFolder?.drive_file_id ?? clientFolder?.drive_file_id ?? null,
+  const rootFolderId = $derived(ownFolder?.drive_file_id ?? parentFolder?.drive_file_id ?? null);
+  // The client-folder actions (create a project folder / work in the client folder) only make
+  // sense on a project sitting in its client's folder. A task just gets told where it landed.
+  const showClientActions = $derived(
+    !ownFolder && parentFolderKind === "client" && panel.entityType === "project",
   );
 </script>
 
@@ -82,11 +116,11 @@
 
 {#if canWrite}
   {#if browsing}
-    {#if !ownFolder && clientFolder && panel.entityType === "project"}
-      <!-- Starting in the client's folder: make the two sensible next steps one click. -->
+    {#if showClientActions && parentFolder}
+      <!-- A project starting in the client's folder: make the two sensible next steps one click. -->
       <div class="mt-3 flex flex-wrap items-center gap-2 text-sm">
         <span class="text-text-muted">
-          {t("google.drive.in_client_folder", { name: clientFolder.name })}
+          {t("google.drive.in_client_folder", { name: parentFolder.name })}
         </span>
         <form method="POST" action="?/provisionDriveFolder" use:enhance>
           <input type="hidden" name="entity_type" value="project" />
@@ -100,7 +134,7 @@
         <form method="POST" action="?/linkDriveFile" use:enhance>
           <input type="hidden" name="entity_type" value="project" />
           <input type="hidden" name="entity_id" value={context.entityId} />
-          <input type="hidden" name="drive_file_id" value={clientFolder.drive_file_id} />
+          <input type="hidden" name="drive_file_id" value={parentFolder.drive_file_id} />
           <button
             class="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-text hover:border-brand"
           >
@@ -108,6 +142,14 @@
           </button>
         </form>
       </div>
+    {:else if !ownFolder && parentFolder && panel.entityType === "task"}
+      <!-- A task with no folder of its own: say where it landed — the project's folder, else the
+           client's — so it's clear the browser isn't at the shared-drive root (#150). -->
+      <p class="mt-3 text-sm text-text-muted">
+        {parentFolderKind === "project"
+          ? t("google.drive.in_project_folder", { name: parentFolder.name })
+          : t("google.drive.in_client_folder", { name: parentFolder.name })}
+      </p>
     {/if}
     <div class="mt-3">
       {#key rootFolderId}
