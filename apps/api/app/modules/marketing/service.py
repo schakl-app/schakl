@@ -230,7 +230,11 @@ class MarketingService:
         if not link.backfill_done and not reactivated:
             try:
                 await enqueue(
-                    "marketing_backfill_link", str(self.ctx.org.id), str(link.id), _defer_by=5
+                    "marketing_backfill_link",
+                    str(self.ctx.org.id),
+                    str(link.id),
+                    _defer_by=5,
+                    _job_id=f"marketing-backfill-{link.id}",
                 )
             except Exception:
                 logger.warning("could not enqueue marketing backfill for link %s", link.id)

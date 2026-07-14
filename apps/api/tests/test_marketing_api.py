@@ -299,3 +299,40 @@ async def test_backfill_rebinds_rls_across_chunk_commits(client_for, monkeypatch
         row = await session.get(MarketingLink, uuid.UUID(link["id"]))
         assert row.backfill_done is True
         assert row.last_error is None
+
+
+async def test_nightly_resumes_incomplete_backfill(client_for, monkeypatch) -> None:
+    """A link whose backfill never completed (backfill_done False) is re-enqueued by the nightly
+    sync, so a backfill interrupted at v0.9.0 self-heals without a manual relink."""
+    from app.modules.marketing import jobs as mjobs
+
+    t = await make_tenant("mktg-resume")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Resume BV"}, headers=headers)
+        ).json()
+        link = (
+            await c.post(
+                "/api/v1/marketing/links",
+                json={
+                    "company_id": company["id"],
+                    "source": "ga4",
+                    "external_id": "properties/3",
+                    "display_name": "Resume — GA4",
+                },
+                headers=headers,
+            )
+        ).json()
+
+    calls: list[tuple] = []
+
+    async def fake_enqueue(fn, *args, **kwargs):  # noqa: ANN001, ANN202
+        calls.append((fn, args))
+
+    monkeypatch.setattr("app.modules.marketing.jobs.enqueue", fake_enqueue)
+    await mjobs.marketing_sync_all({})
+
+    assert any(
+        fn == "marketing_backfill_link" and link["id"] in args for fn, args in calls
+    ), "nightly sync should re-enqueue the incomplete backfill"

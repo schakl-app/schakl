@@ -23,7 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.entitlements.service import license_state
-from app.core.jobs import run_per_org
+from app.core.jobs import enqueue, run_per_org
 from app.core.models import Org, OrgStatus
 from app.core.timezone import org_zoneinfo
 from app.db import async_session_maker, set_current_org
@@ -67,10 +67,32 @@ async def _sync_org(org: Org, session: AsyncSession) -> None:
         .scalars()
         .all()
     )
+    resumed = 0
     for link in links:
+        if not link.backfill_done:
+            # An incomplete backfill (e.g. one interrupted before the RLS-GUC fix, or halted on a
+            # since-fixed connection error) resumes as its own chunked job — which also covers the
+            # trailing window, so skip the direct sync. The deterministic job id dedups, so a
+            # backfill already queued/running is not piled onto every night.
+            try:
+                await enqueue(
+                    "marketing_backfill_link",
+                    str(org.id),
+                    str(link.id),
+                    _job_id=f"marketing-backfill-{link.id}",
+                )
+                resumed += 1
+            except Exception:
+                logger.warning("could not enqueue backfill resume for link %s", link.id)
+            continue
         await sync_link_range(session, org, link, start, end)
     if links:
-        logger.info("marketing: synced %s links for org %s", len(links), org.slug)
+        logger.info(
+            "marketing: synced %s links for org %s (%s backfills resumed)",
+            len(links),
+            org.slug,
+            resumed,
+        )
 
 
 async def marketing_sync_all(ctx: dict) -> None:
