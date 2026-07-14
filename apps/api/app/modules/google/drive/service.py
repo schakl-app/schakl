@@ -101,7 +101,11 @@ class DriveService:
             "supportsAllDrives": "true",
             "includeItemsFromAllDrives": "true",
         }
-        async with acting_as(self.ctx.session, self.ctx.org, connection) as client:
+        # Drive round-trips run with the pool connection released (docs/PERFORMANCE.md).
+        async with (
+            acting_as(self.ctx.session, self.ctx.org, connection) as client,
+            self.ctx.release_db(),
+        ):
             response = await client.get(f"{DRIVE_API}/files", params=params)
             response.raise_for_status()
             body = response.json()
@@ -184,8 +188,12 @@ class DriveService:
             self.ctx.session, self._org_id, self.ctx.user.id
         )
         # Metadata comes from Drive as the caller — authoritative, and it proves they can
-        # actually see the file they are linking.
-        async with acting_as(self.ctx.session, self.ctx.org, connection) as client:
+        # actually see the file they are linking. Fetched with the pool connection
+        # released (docs/PERFORMANCE.md).
+        async with (
+            acting_as(self.ctx.session, self.ctx.org, connection) as client,
+            self.ctx.release_db(),
+        ):
             response = await client.get(
                 f"{DRIVE_API}/files/{drive_file_id}",
                 params={
@@ -252,7 +260,11 @@ class DriveService:
             # Google echoes this origin on the session's CORS headers, which is what lets
             # the browser PUT the bytes straight to googleusercontent (issue #21: no proxying).
             headers["Origin"] = origin
-        async with acting_as(self.ctx.session, self.ctx.org, connection) as client:
+        # Session creation runs with the pool connection released (docs/PERFORMANCE.md).
+        async with (
+            acting_as(self.ctx.session, self.ctx.org, connection) as client,
+            self.ctx.release_db(),
+        ):
             response = await client.post(
                 f"{UPLOAD_API}/files",
                 params={"uploadType": "resumable", "supportsAllDrives": "true"},
@@ -288,7 +300,11 @@ class DriveService:
         connection = await active_connection_or_409(
             self.ctx.session, self._org_id, self.ctx.user.id
         )
-        async with acting_as(self.ctx.session, self.ctx.org, connection) as client:
+        # Find-or-create runs with the pool connection released (docs/PERFORMANCE.md).
+        async with (
+            acting_as(self.ctx.session, self.ctx.org, connection) as client,
+            self.ctx.release_db(),
+        ):
             folder = await _find_or_create_folder(
                 client, parent_id, cleaned, template_id=None
             )

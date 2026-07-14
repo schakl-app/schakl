@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncGenerator, Sequence
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any, Generic, TypeVar
 
@@ -108,6 +109,35 @@ class RequestContext:
     def require(self, permission: str, scope: str | None = None) -> None:
         if not self.can(permission, scope):
             raise AppError("forbidden", "errors.forbidden", status_code=403)
+
+    # --- pool hygiene (docs/PERFORMANCE.md) --------------------------------- #
+    @asynccontextmanager
+    async def release_db(self) -> AsyncGenerator[None, None]:
+        """Hand the pooled DB connection back while awaiting an external service.
+
+        A request runs as **one transaction** with the RLS GUC bound (``app/db.py``), so its
+        session pins one pool connection from its first query until the response commits.
+        Held across a slow external call — Google APIs take seconds, up to their 20 s
+        timeout — a handful of such requests drains the pool and every other request queues
+        on checkout until ``pool_timeout``, which reads as a sitewide freeze. **Wrap every
+        in-request external HTTP call in this**; background jobs run in their own process
+        and pool and don't need it.
+
+        Entry commits the transaction (returning the connection to the pool); exit re-binds
+        the RLS GUC on a fresh one. Two rules inside the block:
+
+        - **Never touch the session.** A query would check a connection back out *without*
+          the GUC bound and fail closed (RLS: no rows). Mutating already-loaded ORM objects
+          is fine — that is memory, not I/O — and flushes after the block.
+        - **Only pending work you are happy to persist.** The entry commit is a real commit;
+          writes that must roll back together with a later failure belong after the block.
+        """
+        await self.session.commit()
+        try:
+            yield
+        finally:
+            # First statement of the new transaction: bind the GUC before any query runs.
+            await set_current_org(self.session, self.org.id)
 
 
 async def require_context(

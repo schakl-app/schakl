@@ -75,6 +75,14 @@ class Settings(BaseSettings):
     # Async SQLAlchemy URL (asyncpg driver). The app connects as a NON-superuser role so
     # Postgres RLS is enforced (superusers bypass RLS) — see infra/db init and CLAUDE.md §5.
     database_url: str = "postgresql+asyncpg://schakl_app:schakl_app@localhost:5432/schakl"
+    # Connection pool, per process. Every request pins one connection for its lifetime
+    # (one transaction per request — db.py), so size for the SSR fan-out's bursts and time
+    # out fast: a request that waits the full pool_timeout freezes a browser tab for that
+    # long before failing anyway (docs/PERFORMANCE.md, "Never hold a DB connection across
+    # an external call"). Postgres ships max_connections=100 — api + worker fit comfortably.
+    db_pool_size: int = 15
+    db_pool_max_overflow: int = 15
+    db_pool_timeout_seconds: int = 5
     redis_url: str = "redis://localhost:6379/0"
 
     # --- Tenancy / white-label ---
