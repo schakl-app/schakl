@@ -53,7 +53,7 @@ _DOMAIN_TABLES = (
     "leave_holidays, leave_settings, employment_contracts, "
     "subscription_links, subscription_lines, subscription_prices, subscriptions, "
     "subscription_templates, subscription_types, "
-    "marketing_metrics_daily, marketing_links, marketing_company_settings, "
+    "marketing_metrics_daily, marketing_links, marketing_company_settings, marketing_settings, "
     "interactions, interaction_kinds, "
     "calendar_event_links, google_calendar_events, google_calendar_channels, "
     "drive_links, drive_folder_jobs, gmail_suppressions, google_connections, google_settings, "

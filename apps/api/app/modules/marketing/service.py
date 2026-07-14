@@ -20,9 +20,12 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.core.activity import ActivityService
 from app.core.cache import get_redis
+from app.core.crypto import decrypt, encrypt
 from app.core.jobs import enqueue
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_zoneinfo
@@ -34,6 +37,7 @@ from app.modules.marketing.models import (
     MarketingCompanySettings,
     MarketingLink,
     MarketingMetricDaily,
+    MarketingSettings,
     MarketingSource,
 )
 from app.modules.marketing.schemas import (
@@ -46,6 +50,8 @@ from app.modules.marketing.schemas import (
     KpiValue,
     LinkCreate,
     LinkRead,
+    MarketingSettingsRead,
+    MarketingSettingsWrite,
     OverviewResponse,
     OverviewRow,
     SeriesData,
@@ -58,7 +64,7 @@ from app.modules.marketing.sources.base import (
     METRICS_BY_SOURCE,
     primary_metric,
 )
-from app.modules.marketing.sources.gads import AdsNotConfigured
+from app.modules.marketing.sources.gads import AdsNotConfigured, developer_token_scope
 
 logger = logging.getLogger("schakl.marketing")
 
@@ -114,9 +120,31 @@ def aggregate(source: str, rows: list[dict[str, Any]]) -> dict[str, float]:
     return out
 
 
+async def resolve_ads_developer_token(session: AsyncSession, org_id: uuid.UUID) -> str | None:
+    """The effective Google Ads developer token for ``org_id`` (#134).
+
+    The org's stored (encrypted) token, else the legacy ``SCHAKL_GOOGLE_ADS_DEVELOPER_TOKEN`` env
+    fallback, else ``None``. Callers bind it around the Ads adapter with
+    :func:`developer_token_scope`; the request services and the worker sync share this one resolver
+    so "where does the token come from" has exactly one answer.
+    """
+    row = await session.scalar(
+        select(MarketingSettings).where(MarketingSettings.org_id == org_id)
+    )
+    if row is not None and row.ads_developer_token_encrypted:
+        try:
+            return decrypt(row.ads_developer_token_encrypted)
+        except ValueError:  # key rotated: the stored token is dead — fall through to the env
+            pass
+    return settings.google_ads_developer_token or None
+
+
 class MarketingService:
     def __init__(self, ctx: RequestContext) -> None:
         self.ctx = ctx
+
+    async def _resolve_ads_developer_token(self) -> str | None:
+        return await resolve_ads_developer_token(self.ctx.session, self.ctx.org.id)
 
     # --- shared helpers ------------------------------------------------------------------- #
     async def _today(self) -> date:
@@ -343,6 +371,17 @@ class MarketingService:
                 source=source, connected=True, has_scope=has_scope, connect_flag=flag
             )
 
+        # Google Ads needs a per-org developer token; with none the picker teaches "not configured"
+        # instead of calling Google (#134). GA4/GSC pass through with token=None.
+        ads_token: str | None = None
+        if source == MarketingSource.GADS:
+            ads_token = await self._resolve_ads_developer_token()
+            if not ads_token:
+                return AccountsResponse(
+                    source=source, connected=True, has_scope=True, configured=False,
+                    connect_flag=flag,
+                )
+
         cache_key = f"schakl:marketing:accounts:{connection.id}:{source.value}"
         redis = get_redis()
         cached = await redis.get(cache_key)
@@ -350,10 +389,11 @@ class MarketingService:
             options = [AvailableAccount(**item) for item in json.loads(cached)]
         else:
             try:
-                async with google_client.acting_as(
-                    self.ctx.session, self.ctx.org, connection
-                ) as gclient:
-                    fetched = await adapter.list_accounts(gclient)
+                with developer_token_scope(ads_token):
+                    async with google_client.acting_as(
+                        self.ctx.session, self.ctx.org, connection
+                    ) as gclient:
+                        fetched = await adapter.list_accounts(gclient)
             except AdsNotConfigured:
                 return AccountsResponse(
                     source=source, connected=True, has_scope=True, configured=False,
@@ -586,13 +626,19 @@ class MarketingService:
                 source=source, kind=kind, columns=payload["columns"],
                 rows=[DrilldownRowOut(**row) for row in payload["rows"]], deep_link=deep_link,
             )
+        ads_token = (
+            await self._resolve_ads_developer_token()
+            if source == MarketingSource.GADS
+            else None
+        )
         try:
-            async with google_client.acting_as(
-                self.ctx.session, self.ctx.org, connection
-            ) as gclient:
-                table = await adapter.drilldown(
-                    gclient, link.external_id, kind, start, end, link.config or {}
-                )
+            with developer_token_scope(ads_token):
+                async with google_client.acting_as(
+                    self.ctx.session, self.ctx.org, connection
+                ) as gclient:
+                    table = await adapter.drilldown(
+                        gclient, link.external_id, kind, start, end, link.config or {}
+                    )
         except AdsNotConfigured:
             return DrilldownResponse(
                 source=source, kind=kind, available=False,
@@ -717,6 +763,56 @@ class MarketingService:
         return present + sorted(absent, key=lambda r: r.company_name.lower())
 
 
+class MarketingSettingsService:
+    """Org-level marketing settings (#134): the encrypted Google Ads developer token.
+
+    Mirrors ``GoogleSettingsService`` — the token is write-only (an empty value keeps the stored
+    one) and the read reports only whether one is configured, never the value itself.
+    """
+
+    def __init__(self, ctx: RequestContext) -> None:
+        self.ctx = ctx
+
+    async def _row(self) -> MarketingSettings | None:
+        return await self.ctx.session.scalar(
+            select(MarketingSettings).where(MarketingSettings.org_id == self.ctx.org.id)
+        )
+
+    def _read(self, row: MarketingSettings | None) -> MarketingSettingsRead:
+        return MarketingSettingsRead(
+            ads_developer_token_configured=bool(row and row.ads_developer_token_encrypted),
+            env_ads_token_configured=bool(settings.google_ads_developer_token),
+        )
+
+    async def get(self) -> MarketingSettingsRead:
+        return self._read(await self._row())
+
+    async def save(self, data: MarketingSettingsWrite) -> MarketingSettingsRead:
+        self.ctx.require("marketing.link.manage")
+        row = await self._row()
+        # An empty token keeps the stored one; a resent identical token is not a change (Fernet
+        # would otherwise re-encrypt on every save) — the Google-client-secret rule.
+        token_encrypted = row.ads_developer_token_encrypted if row else None
+        if data.ads_developer_token:
+            stored_plain: str | None = None
+            if token_encrypted:
+                try:
+                    stored_plain = decrypt(token_encrypted)
+                except ValueError:  # rotated key: the stored token is dead anyway
+                    stored_plain = None
+            if stored_plain != data.ads_developer_token:
+                token_encrypted = encrypt(data.ads_developer_token)
+        if row is None:
+            row = MarketingSettings(
+                org_id=self.ctx.org.id, ads_developer_token_encrypted=token_encrypted
+            )
+            self.ctx.session.add(row)
+        else:
+            row.ads_developer_token_encrypted = token_encrypted
+        await self.ctx.session.flush()
+        return self._read(row)
+
+
 # --- sync (worker side, no request) ---------------------------------------------------------- #
 async def sync_link_range(
     session: Any, org: Any, link: MarketingLink, start: date, end: date
@@ -738,11 +834,17 @@ async def sync_link_range(
     if adapter.scope not in set(connection.scopes or []):
         link.last_error = "errors.google_connection_error"
         return
+    ads_token = (
+        await resolve_ads_developer_token(session, org.id)
+        if link.source == MarketingSource.GADS.value
+        else None
+    )
     try:
-        async with google_client.acting_as(session, org, connection) as gclient:
-            daily = await adapter.fetch_daily(
-                gclient, link.external_id, start, end, link.config or {}
-            )
+        with developer_token_scope(ads_token):
+            async with google_client.acting_as(session, org, connection) as gclient:
+                daily = await adapter.fetch_daily(
+                    gclient, link.external_id, start, end, link.config or {}
+                )
     except AdsNotConfigured:
         link.last_error = "marketing.ads_not_configured"
         return

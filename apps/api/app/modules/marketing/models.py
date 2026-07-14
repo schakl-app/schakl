@@ -29,6 +29,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     String,
+    Text,
     UniqueConstraint,
     text,
 )
@@ -163,3 +164,23 @@ class MarketingCompanySettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMix
     show_key_events: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("true")
     )
+
+
+class MarketingSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """Org-level (per-instance) marketing configuration — one row per org (issue #134).
+
+    Holds the **Google Ads developer token**: a per-agency secret Google Ads requires on every
+    call (docs/GOOGLE.md), which used to be instance env config
+    (``SCHAKL_GOOGLE_ADS_DEVELOPER_TOKEN``). Like the Google OAuth client secret and the OIDC
+    secret it belongs in the database, encrypted and per-org, so a self-hoster sets it in
+    Instellingen rather than editing the environment (CLAUDE.md §5 — build multi-tenant, deploy
+    single-tenant). The env var stays a read-only fallback so an install that already set it keeps
+    working until it's moved into settings.
+    """
+
+    __tablename__ = "marketing_settings"
+    __table_args__ = (UniqueConstraint("org_id", name="uq_marketing_settings_org"),)
+
+    #: Fernet-encrypted (``app.core.crypto``); never returned to a client — the API only reports
+    #: whether it is configured, mirroring the Google client secret.
+    ads_developer_token_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)

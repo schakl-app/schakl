@@ -2470,6 +2470,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/marketing/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Settings
+         * @description The org's marketing settings — reports whether an Ads developer token is configured; the
+         *     token itself is write-only and never returned (the Google client-secret pattern).
+         */
+        get: operations["get_settings_api_v1_marketing_settings_get"];
+        /**
+         * Save Settings
+         * @description Store the encrypted Google Ads developer token (an empty value keeps the stored one).
+         */
+        put: operations["save_settings_api_v1_marketing_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/members": {
         parameters: {
             query?: never;
@@ -7659,6 +7684,28 @@ export interface components {
         MarkAllResult: {
             /** Updated */
             updated: number;
+        };
+        /**
+         * MarketingSettingsRead
+         * @description The org's marketing settings. The Ads developer token is write-only — like the Google
+         *     client secret, the API reports only whether one is configured, never the value.
+         */
+        MarketingSettingsRead: {
+            /**
+             * Ads Developer Token Configured
+             * @default false
+             */
+            ads_developer_token_configured: boolean;
+            /**
+             * Env Ads Token Configured
+             * @default false
+             */
+            env_ads_token_configured: boolean;
+        };
+        /** MarketingSettingsWrite */
+        MarketingSettingsWrite: {
+            /** Ads Developer Token */
+            ads_developer_token?: string | null;
         };
         /**
          * MarketingSource
@@ -17045,6 +17092,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OverviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_settings_api_v1_marketing_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketingSettingsRead"];
+                };
+            };
+        };
+    };
+    save_settings_api_v1_marketing_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarketingSettingsWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketingSettingsRead"];
                 };
             };
             /** @description Validation Error */

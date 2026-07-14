@@ -11,11 +11,19 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, date, datetime, timedelta
 
+import pytest
 from sqlalchemy import select
 
 from app.core.activity.models import ActivityLog
+from app.core.crypto import decrypt
 from app.db import async_session_maker, set_current_org
-from app.modules.marketing.models import MarketingLink, MarketingMetricDaily
+from app.modules.marketing.models import (
+    MarketingLink,
+    MarketingMetricDaily,
+    MarketingSettings,
+)
+from app.modules.marketing.service import resolve_ads_developer_token
+from app.modules.marketing.sources import gads
 from tests.conftest import auth_cookie, make_tenant
 
 
@@ -464,3 +472,72 @@ async def test_key_events_toggle_tenant_isolation(client_for) -> None:
             headers=b_headers,
         )
         assert leaked.status_code == 404
+
+
+async def test_ads_developer_token_stored_encrypted_not_env(client_for) -> None:
+    """The Google Ads developer token lives in per-org settings, encrypted, write-only — never an
+    env var and never played back — and the Ads adapter reads it via the token scope (#134)."""
+    t = await make_tenant("mktg-adstoken")
+    headers = await auth_cookie(t.user)
+    token = "dev-token-abc123"
+
+    async with client_for(t.host) as c:
+        # Not configured until set (no env token in the test process).
+        before = (await c.get("/api/v1/marketing/settings", headers=headers)).json()
+        assert before["ads_developer_token_configured"] is False
+        assert before["env_ads_token_configured"] is False
+
+        put = await c.put(
+            "/api/v1/marketing/settings", json={"ads_developer_token": token}, headers=headers
+        )
+        assert put.status_code == 200, put.text
+        body = put.json()
+        assert body["ads_developer_token_configured"] is True
+        # The secret is write-only — the response never carries the value back.
+        assert "ads_developer_token" not in body
+
+        # An omitted token keeps the stored one (the Google-client-secret rule).
+        kept = (
+            await c.put("/api/v1/marketing/settings", json={}, headers=headers)
+        ).json()
+        assert kept["ads_developer_token_configured"] is True
+
+    # Stored encrypted at rest, and the shared resolver decrypts it per org.
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        row = await session.scalar(
+            select(MarketingSettings).where(MarketingSettings.org_id == t.org.id)
+        )
+        assert row.ads_developer_token_encrypted not in (None, token)  # not plaintext
+        assert decrypt(row.ads_developer_token_encrypted) == token
+        assert await resolve_ads_developer_token(session, t.org.id) == token
+
+    # The stateless Ads adapter reads the bound per-org token inside the scope, and falls back to
+    # "not configured" (no env token here) outside it.
+    with gads.developer_token_scope(token):
+        assert gads._developer_token() == token
+    with pytest.raises(gads.AdsNotConfigured):
+        gads._developer_token()
+
+
+async def test_ads_developer_token_tenant_isolation(client_for) -> None:
+    """One org's Ads token is invisible to another — settings are org-scoped like every table."""
+    a = await make_tenant("mktg-token-a")
+    b = await make_tenant("mktg-token-b")
+    a_headers = await auth_cookie(a.user)
+    b_headers = await auth_cookie(b.user)
+
+    async with client_for(a.host) as ca:
+        await ca.put(
+            "/api/v1/marketing/settings",
+            json={"ads_developer_token": "a-only-token"},
+            headers=a_headers,
+        )
+
+    async with client_for(b.host) as cb:
+        b_settings = (await cb.get("/api/v1/marketing/settings", headers=b_headers)).json()
+        assert b_settings["ads_developer_token_configured"] is False
+
+    async with async_session_maker() as session:
+        await set_current_org(session, b.org.id)
+        assert await resolve_ads_developer_token(session, b.org.id) is None

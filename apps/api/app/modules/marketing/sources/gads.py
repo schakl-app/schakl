@@ -3,14 +3,16 @@
 Unlike GA4/GSC this one is **not** a plain ``www.googleapis.com`` call: it lives on
 ``googleads.googleapis.com``, needs a per-agency ``developer-token`` header (Basic access reads
 your own accounts), and a ``login-customer-id`` header when the account sits under a manager.
-The OAuth bearer still comes from ``acting_as``; the developer token is instance config
-(``SCHAKL_GOOGLE_ADS_DEVELOPER_TOKEN``). With no token the module stays fully presentable — the
-picker and sync degrade to a labelled "Ads not configured" state instead of erroring (epic #134:
-"keep the module fully presentable with Ads still pending").
+The OAuth bearer still comes from ``acting_as``; the developer token is **per-org settings** the
+service binds around each Ads call via :func:`developer_token_scope` (with the legacy
+``SCHAKL_GOOGLE_ADS_DEVELOPER_TOKEN`` env var as a fallback). With no token the module stays fully
+presentable — the picker and sync degrade to a labelled "Ads not configured" state instead of
+erroring (epic #134: "keep the module fully presentable with Ads still pending").
 """
 
 from __future__ import annotations
 
+import contextvars
 from datetime import date
 from typing import TYPE_CHECKING, Any
 
@@ -35,6 +37,31 @@ class AdsNotConfigured(Exception):
     """Raised when no developer token is set — a presentable state, not a bug."""
 
 
+#: The acting org's Google Ads developer token, bound by the service around each Ads call so this
+#: stateless adapter reads a *per-org* secret without threading it through the shared source
+#: protocol (whose ``list_accounts`` has no ``config`` to carry it). Falls back to the deprecated
+#: env var when unset — the two-way door that keeps existing installs working.
+_developer_token_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "marketing_ads_developer_token", default=None
+)
+
+
+class developer_token_scope:  # noqa: N801 — a context manager, named like `contextlib` ones
+    """Bind ``token`` as the Ads developer token for the adapter calls made inside the block."""
+
+    def __init__(self, token: str | None) -> None:
+        self._token = token
+        self._reset: contextvars.Token[str | None] | None = None
+
+    def __enter__(self) -> developer_token_scope:
+        self._reset = _developer_token_var.set(self._token)
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        if self._reset is not None:
+            _developer_token_var.reset(self._reset)
+
+
 def _num(raw: Any) -> float:
     try:
         return float(raw)
@@ -43,7 +70,8 @@ def _num(raw: Any) -> float:
 
 
 def _developer_token() -> str:
-    token = settings.google_ads_developer_token
+    # The bound per-org token wins; the env var is the fallback for installs not yet migrated.
+    token = _developer_token_var.get() or settings.google_ads_developer_token
     if not token:
         raise AdsNotConfigured
     return token

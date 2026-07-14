@@ -129,6 +129,23 @@ class CompanySettingsRead(BaseModel):
     show_key_events: bool
 
 
+# --- org-level settings (#134) --------------------------------------------------------------- #
+class MarketingSettingsRead(BaseModel):
+    """The org's marketing settings. The Ads developer token is write-only — like the Google
+    client secret, the API reports only whether one is configured, never the value."""
+
+    ads_developer_token_configured: bool = False
+    #: True when the deprecated ``SCHAKL_GOOGLE_ADS_DEVELOPER_TOKEN`` env var is set — the fallback
+    #: still used when no token is stored, so the UI can say "using the environment value".
+    env_ads_token_configured: bool = False
+
+
+class MarketingSettingsWrite(BaseModel):
+    #: The Google Ads developer token. Empty/omitted keeps the stored one (the Google-client-secret
+    #: rule); the API never plays it back.
+    ads_developer_token: str | None = Field(default=None, max_length=1024)
+
+
 class DrilldownRowOut(BaseModel):
     label: str
     href: str | None = None
