@@ -2216,5 +2216,10 @@
   "activity.action.marketing.linked": "koppelde {source}: {name}",
   "activity.action.marketing.unlinked": "ontkoppelde {source}: {name}",
   "common.remove": "Verwijderen",
-  "marketing.loading": "Laden…"
+  "marketing.loading": "Laden…",
+  "nav.marketing": "Marketing",
+  "marketing.page.subtitle": "Analytics, Search Console en Ads, per klant.",
+  "marketing.select_client": "Selecteer een klant",
+  "marketing.page.pick_prompt": "Selecteer hierboven een klant om de Analytics-, Search Console- en Ads-gegevens te bekijken.",
+  "marketing.manage_on_client": "Accounts koppelen op de klantpagina"
 }

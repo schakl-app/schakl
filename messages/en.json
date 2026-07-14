@@ -2216,5 +2216,10 @@
   "activity.action.marketing.linked": "linked {source}: {name}",
   "activity.action.marketing.unlinked": "unlinked {source}: {name}",
   "common.remove": "Remove",
-  "marketing.loading": "Loading…"
+  "marketing.loading": "Loading…",
+  "nav.marketing": "Marketing",
+  "marketing.page.subtitle": "Analytics, Search Console and Ads, per client.",
+  "marketing.select_client": "Select a client",
+  "marketing.page.pick_prompt": "Select a client above to view their Analytics, Search Console and Ads data.",
+  "marketing.manage_on_client": "Link accounts on the client page"
 }
