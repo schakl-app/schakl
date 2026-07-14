@@ -25,7 +25,7 @@ from app.modules.google.calendar.models import (
 from app.modules.google.calendar.push import MAX_ATTEMPTS, push_link
 from app.modules.google.calendar.service import ensure_watch, sync_connection
 from app.modules.google.models import ConnectionStatus, GoogleConnection
-from app.modules.google.oauth import SCOPE_CALENDAR, google_settings_row
+from app.modules.google.oauth import google_settings_row, has_calendar_write_scope
 
 logger = logging.getLogger("schakl.google.calendar")
 
@@ -53,7 +53,9 @@ async def _calendar_connections(session, org_id: uuid.UUID) -> list[GoogleConnec
         .scalars()
         .all()
     )
-    return [c for c in rows if SCOPE_CALENDAR in (c.scopes or [])]
+    # Accept the broad ``calendar`` scope as well as ``calendar.events`` — both read the
+    # Agenda's events; excluding the broader one hid connections from sync entirely (#148).
+    return [c for c in rows if has_calendar_write_scope(c.scopes)]
 
 
 # --------------------------------------------------------------------------- #
@@ -93,9 +95,7 @@ async def google_calendar_poll_fallback(ctx: dict) -> None:  # noqa: ARG001
                 and now - channel.last_synced_at < _STALE_AFTER
             )
             if not fresh:
-                await enqueue(
-                    "google_calendar_sync_connection", str(org.id), str(connection.id)
-                )
+                await enqueue("google_calendar_sync_connection", str(org.id), str(connection.id))
 
     await run_per_org(_poll)
 
@@ -130,9 +130,7 @@ async def google_calendar_sweep_outbox(ctx: dict) -> None:  # noqa: ARG001
 # --------------------------------------------------------------------------- #
 # Worker functions (ModuleDescriptor.worker_functions)
 # --------------------------------------------------------------------------- #
-async def google_calendar_sync_connection(
-    ctx: dict, org_id: str, connection_id: str
-) -> str:  # noqa: ARG001
+async def google_calendar_sync_connection(ctx: dict, org_id: str, connection_id: str) -> str:  # noqa: ARG001
     if not await _licensed():
         return "unlicensed"
     async with async_session_maker() as session:

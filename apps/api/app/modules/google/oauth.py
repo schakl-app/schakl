@@ -26,7 +26,15 @@ GOOGLE_REVOKE_ENDPOINT = "https://oauth2.googleapis.com/revoke"
 #: ``openid email`` names the account (sub + address) — no profile, no login semantics.
 SCOPE_IDENTITY = ("openid", "email")
 #: Read + write events: the Agenda pulls, approved leave pushes (one-way, docs/GOOGLE.md §4).
+#: What a fresh consent asks for — but a connection can legitimately carry the *broader*
+#: ``calendar`` scope instead (Google returns whatever was granted; an account that once granted
+#: full Calendar keeps it). Full Calendar is a superset that also writes events, so gating the
+#: leave push on the narrow ``calendar.events`` alone silently dropped it for those accounts (#148).
 SCOPE_CALENDAR = "https://www.googleapis.com/auth/calendar.events"
+#: The broader Calendar scope, accepted anywhere event-write access is required.
+SCOPE_CALENDAR_FULL = "https://www.googleapis.com/auth/calendar"
+#: Every scope that grants writing events to a calendar.
+CALENDAR_WRITE_SCOPES = (SCOPE_CALENDAR, SCOPE_CALENDAR_FULL)
 #: Full Drive, not ``drive.file``: browsing *existing* client folders is the whole point.
 #: Restricted scope — acceptable only under the per-agency "Internal" OAuth app (§2).
 SCOPE_DRIVE = "https://www.googleapis.com/auth/drive"
@@ -65,6 +73,13 @@ def oauth_configured(row: GoogleSettings | None) -> bool:
     if row is not None and row.client_id and row.client_secret_encrypted:
         return True
     return bool(settings.google_client_id and settings.google_client_secret)
+
+
+def has_calendar_write_scope(scopes: list[str] | None) -> bool:
+    """True when a connection may write calendar events — the narrow ``calendar.events`` *or*
+    the broader ``calendar`` (a superset). Push gating must accept both (#148)."""
+    granted = set(scopes or [])
+    return any(scope in granted for scope in CALENDAR_WRITE_SCOPES)
 
 
 def scopes_for(

@@ -53,6 +53,10 @@ class TenantBranding(BaseModel):
     # Tab-title template (#97): free text with {page} / {brand} tokens; None = built-in format.
     tab_title_template: str | None = None
     enabled_modules: list[str]
+    # Public demo mode (#141): true means the app shows a persistent "this is a demo, data resets
+    # every N minutes" banner and offers one-click role logins. Instance posture, not tenant data.
+    demo_mode: bool = False
+    demo_reset_minutes: int = 60
     # Suspended orgs still expose branding (the login screen needs it) but every
     # authenticated request is blocked with errors.org_suspended.
     suspended: bool = False
@@ -238,6 +242,8 @@ async def tenant_branding(request: Request) -> TenantBranding:
             enabled_modules=list(s.enabled_modules)
             if s and s.enabled_modules
             else list(settings.enabled_modules),
+            demo_mode=settings.demo_mode,
+            demo_reset_minutes=settings.demo_reset_minutes,
             suspended=org.status == OrgStatus.SUSPENDED.value,
         )
 

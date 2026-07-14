@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from arq import cron
 
+from app.core.activity import register_auditable
 from app.core.events import subscribe
 from app.modules.tasks.attachments import on_file_event
 from app.modules.tasks.impex import TASK_IMPEX
@@ -38,6 +39,13 @@ module = ModuleDescriptor(
 )
 
 registry.register(module)
+
+# A task keeps its own legacy TaskActivity trail (the #67 fold-in is still pending), so it does
+# not use ``AuditableMixin``. But contact-moment milestones (#152) are mirrored onto the core
+# activity log under entity_type=task, and the read endpoint refuses any entity_type that is not
+# registered — so register it explicitly, purely to make those mirror entries readable. This does
+# not add a second activity panel (the core panel is wired for project/contact only).
+register_auditable("task")
 
 # Client onboarding automation: instantiate matching templates when a company is created
 # with — or transitions into — a template's trigger status.

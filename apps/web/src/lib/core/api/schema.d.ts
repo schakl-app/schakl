@@ -6647,6 +6647,11 @@ export interface components {
         InteractionRead: {
             /** Body Text */
             body_text?: string | null;
+            /**
+             * Closes Task
+             * @default false
+             */
+            closes_task: boolean;
             /** Company Id */
             company_id?: string | null;
             /** Company Name */
@@ -10183,6 +10188,16 @@ export interface components {
             currency: string;
             /** Default Locale */
             default_locale: string;
+            /**
+             * Demo Mode
+             * @default false
+             */
+            demo_mode: boolean;
+            /**
+             * Demo Reset Minutes
+             * @default 60
+             */
+            demo_reset_minutes: number;
             /** Enabled Modules */
             enabled_modules: string[];
             /** Favicon Url */

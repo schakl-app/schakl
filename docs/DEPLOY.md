@@ -119,6 +119,33 @@ Hard delete refuses to run without an export taken *after* the soft delete — t
 safe; the same file can be imported again on this or another instance running the **same
 release** (imports across schema revisions are rejected).
 
+## Public demo mode (issue #141, off by default)
+
+`SCHAKL_DEMO_MODE=true` turns the instance into a **public, publicly-writable demo**. This is a
+posture, not a feature toggle: when on it **forces** the safe values regardless of the rest of the
+env — registration off, instance admin off (so impersonation off too), and `/setup` locked. On top
+of RLS (tenant isolation) and RBAC (capability), a central **demo-guard** catalog
+(`app/core/demo/guard.py`) rejects the operations that are dangerous specifically because anyone on
+the internet can reach them, with an `errors.demo_blocked` envelope:
+
+- outbound side effects (Google OAuth connect, Drive/Calendar writes);
+- credential surfaces (API-key minting, SSO settings, password/email change);
+- instance identity (the whole `/instance` surface, custom-domain claim/verification);
+- uploads (a public file box is a malware host).
+
+Ordinary tenant editing — companies, contacts, projects, tasks, time, leave — stays fully open, so
+the demo actually demonstrates the product. A persistent, dismissal-proof banner tells visitors it
+is a demo and how often it resets (`SCHAKL_DEMO_RESET_MINUTES`, default 60).
+
+**Never point the open internet at this without hardening it:** put Cloudflare in front, add a
+Traefik per-IP rate-limit middleware, keep **no SMTP credentials on the box** (defence in depth
+behind the email guard), and `noindex` the app host. Resets are cheap (one org's rows), so a small
+box is fine.
+
+> The data lifecycle — a curated seed org, a golden snapshot, and the periodic reset cron that wipes
+> the demo back to it — reuses the #26 export/import format and is tracked as the remaining half of
+> #141; the guard and forced posture above are already in effect whenever the flag is on.
+
 ## Single sign-on (OIDC, off by default)
 
 Federates login to an external IdP (Authentik, Keycloak, Entra ID, Google, …). Since #76 this

@@ -20,7 +20,7 @@ from app.modules.google.calendar.models import (
 from app.modules.google.calendar.push import handle_leave_gone, push_link
 from app.modules.google.calendar.service import sync_connection
 from app.modules.google.models import GoogleConnection, GoogleSettings
-from app.modules.google.oauth import SCOPE_CALENDAR
+from app.modules.google.oauth import SCOPE_CALENDAR, SCOPE_CALENDAR_FULL
 from tests.conftest import auth_cookie, make_tenant
 
 
@@ -135,9 +135,7 @@ async def test_sync_initial_incremental_and_410_reset(monkeypatch) -> None:
             ),
         ]
     )
-    monkeypatch.setattr(
-        "app.modules.google.calendar.service.acting_as", _stub_acting_as(stub)
-    )
+    monkeypatch.setattr("app.modules.google.calendar.service.acting_as", _stub_acting_as(stub))
 
     async with async_session_maker() as session:
         await set_current_org(session, t.org.id)
@@ -177,9 +175,7 @@ async def test_sync_initial_incremental_and_410_reset(monkeypatch) -> None:
                 ),
             ]
         )
-        monkeypatch.setattr(
-            "app.modules.google.calendar.service.acting_as", _stub_acting_as(stub2)
-        )
+        monkeypatch.setattr("app.modules.google.calendar.service.acting_as", _stub_acting_as(stub2))
         connection = await session.get(GoogleConnection, connection_id)
         await sync_connection(session, t.org, connection)
         await session.commit()
@@ -206,9 +202,7 @@ async def test_sync_initial_incremental_and_410_reset(monkeypatch) -> None:
                 ),
             ]
         )
-        monkeypatch.setattr(
-            "app.modules.google.calendar.service.acting_as", _stub_acting_as(stub3)
-        )
+        monkeypatch.setattr("app.modules.google.calendar.service.acting_as", _stub_acting_as(stub3))
         connection = await session.get(GoogleConnection, connection_id)
         await sync_connection(session, t.org, connection)
         await session.commit()
@@ -392,9 +386,7 @@ async def test_leave_approved_pushes_and_cancellation_deletes(monkeypatch) -> No
         assert offered  # handed to the worker
 
         # Worker inserts the event: all-day span with the exclusive Google end.
-        stub = _StubClient(
-            [("POST", _StubResponse(200, {"id": "gev-1", "etag": '"e1"'}))]
-        )
+        stub = _StubClient([("POST", _StubResponse(200, {"id": "gev-1", "etag": '"e1"'}))])
         monkeypatch.setattr("app.modules.google.calendar.push.acting_as", _stub_acting_as(stub))
         await push_link(session, t.org, link)
         await session.commit()
@@ -408,9 +400,7 @@ async def test_leave_approved_pushes_and_cancellation_deletes(monkeypatch) -> No
         await handle_leave_gone(ctx, {"leave_request_id": request_id})
         assert link.status == "delete_pending"
         stub2 = _StubClient([("DELETE", _StubResponse(204))])
-        monkeypatch.setattr(
-            "app.modules.google.calendar.push.acting_as", _stub_acting_as(stub2)
-        )
+        monkeypatch.setattr("app.modules.google.calendar.push.acting_as", _stub_acting_as(stub2))
         await push_link(session, t.org, link)
         await session.commit()
 
@@ -449,6 +439,61 @@ async def test_leave_approved_skips_unconnected_requester() -> None:
         from sqlalchemy import select
 
         assert (await session.execute(select(CalendarEventLink))).first() is None
+
+
+async def test_leave_push_accepts_broad_calendar_scope(monkeypatch) -> None:
+    """#148 regression: a connection granted the broad ``calendar`` scope (a superset of
+    ``calendar.events`` that also writes events) must still push. Gating on the narrow scope
+    alone silently dropped the push — nothing reached the outbox — which read as "push no longer
+    works". The guard now accepts either scope."""
+    t = await make_tenant("gcal-broadscope")
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        session.add(GoogleSettings(org_id=t.org.id, calendar_enabled=True))
+        session.add(
+            GoogleConnection(
+                org_id=t.org.id,
+                user_id=t.user.id,
+                google_sub="sub",
+                email="me@agency.nl",
+                # The broad scope only — NOT calendar.events. This is what the fix must accept.
+                scopes=["openid", "email", SCOPE_CALENDAR_FULL],
+                refresh_token_encrypted=encrypt("rt"),
+            )
+        )
+        await session.commit()
+
+    monkeypatch.setattr(push_mod, "_enqueue_push", _noop_offer)
+    request_id = uuid.uuid4()
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        ctx = SystemContext(org=t.org, session=session)
+        await emit(
+            "leave.approved",
+            ctx,
+            {
+                "leave_request_id": request_id,
+                "user_id": t.user.id,
+                "start_date": date(2026, 11, 2),
+                "end_date": date(2026, 11, 2),
+                "start_time": None,
+                "end_time": None,
+                "hours": 8,
+                "_recipients": [],
+            },
+        )
+        await session.commit()
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        from sqlalchemy import select
+
+        link = (await session.execute(select(CalendarEventLink))).scalar_one()
+        assert link.local_id == request_id and link.status == "pending"
+
+
+async def _noop_offer(org_id, link_id) -> None:  # noqa: ANN001 - test double
+    return None
 
 
 async def test_leave_push_carries_type_breakdown_and_identity(monkeypatch) -> None:

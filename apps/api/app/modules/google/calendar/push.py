@@ -30,7 +30,7 @@ from app.modules.google.calendar.models import CalendarEventLink, LinkStatus
 from app.modules.google.calendar.service import CALENDAR_API
 from app.modules.google.client import acting_as, connection_for, mark_connection_error
 from app.modules.google.models import ConnectionStatus
-from app.modules.google.oauth import SCOPE_CALENDAR, google_settings_row
+from app.modules.google.oauth import google_settings_row, has_calendar_write_scope
 
 logger = logging.getLogger("schakl.google.calendar")
 
@@ -117,11 +117,13 @@ async def handle_leave_approved(ctx: EmitContext, payload: dict[str, Any]) -> No
         return
     connection = await connection_for(ctx.session, ctx.org.id, user_id)
     # No connection, or one without the calendar grant: nothing to push, by design — leave
-    # sync is per-person opt-in via "Google koppelen", never someone else's token.
+    # sync is per-person opt-in via "Google koppelen", never someone else's token. Accept the
+    # broad ``calendar`` scope as well as ``calendar.events`` — both write events, and a
+    # connection carrying only the broader one was silently dropped before (#148).
     if (
         connection is None
         or connection.status != ConnectionStatus.ACTIVE.value
-        or SCOPE_CALENDAR not in (connection.scopes or [])
+        or not has_calendar_write_scope(connection.scopes)
     ):
         return
 

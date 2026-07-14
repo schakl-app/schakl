@@ -22,12 +22,19 @@ export const load: PageServerLoad = async (event) => {
   const panels = entityPanelsFor(enabled, "task");
 
   // Lookups come from the /tasks layout load (data.labels doubles as allLabels).
-  const [{ data: task }, { data: checklistTemplates }, { data: files }, ...panelData] =
+  // The task keeps its own legacy TaskActivity trail, but contact-moment milestones (#152) are
+  // mirrored onto the **core** activity log under entity_type=task — fetch those so the page's
+  // activity feed can show "contactmoment gelogd" like the company/project/contact panels do.
+  // A viewer without activity.read simply gets an empty list (openapi-fetch returns no data).
+  const [{ data: task }, { data: checklistTemplates }, { data: files }, { data: hostActivity }, ...panelData] =
     await Promise.all([
       api.GET("/api/v1/tasks/{task_id}", { params: { path: { task_id } } }),
       api.GET("/api/v1/tasks/checklist-templates"),
       api.GET("/api/v1/files", {
         params: { query: { entity_type: "task", entity_id: task_id } },
+      }),
+      api.GET("/api/v1/activity", {
+        params: { query: { entity_type: "task", entity_id: task_id, limit: 50 } },
       }),
       ...panels.map((panel) => panel.load(api, context)),
     ]);
@@ -37,6 +44,7 @@ export const load: PageServerLoad = async (event) => {
     task,
     checklistTemplates: checklistTemplates ?? [],
     files: files ?? [],
+    hostActivity: hostActivity ?? [],
     context,
     panels: panels.map((panel, index) => ({
       key: panel.key,

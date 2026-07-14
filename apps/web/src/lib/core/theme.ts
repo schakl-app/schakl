@@ -21,6 +21,10 @@ export interface OrgTheme {
   /** Tab-title template with {page}/{brand} tokens (#97); null = the built-in format. */
   tabTitleTemplate: string | null;
   enabledModules: string[];
+  /** Public demo mode (#141): a persistent "this is a demo, data resets" banner + role logins. */
+  demoMode: boolean;
+  /** How often the demo resets, minutes — shown in the banner. */
+  demoResetMinutes: number;
   /** False when the hostname resolved to no org (unknown host, or a fresh install). */
   resolved: boolean;
   /** The org exists but is suspended: branding renders, every signed-in request is blocked. */
@@ -40,6 +44,8 @@ export const DEFAULT_THEME: OrgTheme = {
   currency: "EUR",
   tabTitleTemplate: null,
   enabledModules: ["companies"],
+  demoMode: false,
+  demoResetMinutes: 60,
   resolved: false,
   suspended: false,
 };

@@ -121,9 +121,7 @@ class InteractionService:
                     )
                 ).all()
                 own = Interaction.project_id == project_id
-                conditions.append(
-                    or_(own, Interaction.task_id.in_(task_ids)) if task_ids else own
-                )
+                conditions.append(or_(own, Interaction.task_id.in_(task_ids)) if task_ids else own)
             else:
                 conditions.append(Interaction.project_id == project_id)
         if task_id is not None:
@@ -166,8 +164,11 @@ class InteractionService:
         names = await self._link_names(plain_rows)
         contacts_by_email = await self._participant_contacts(plain_rows)
         members_by_email = await self._participant_members(plain_rows)
+        closing_ids = await self._closing_task_ids(plain_rows)
         return [
-            self._present(row, full_name, email, names, contacts_by_email, members_by_email)
+            self._present(
+                row, full_name, email, names, contacts_by_email, members_by_email, closing_ids
+            )
             for row, full_name, email in rows
         ], total
 
@@ -318,9 +319,7 @@ class InteractionService:
             sent = data.model_dump(exclude_unset=True)
             if sent:
                 link_values = await self._resolve_links(sent, partial=True)
-        row = await self.repo.update(
-            row, status=InteractionStatus.LOGGED.value, **link_values
-        )
+        row = await self.repo.update(row, status=InteractionStatus.LOGGED.value, **link_values)
         await ActivityService(self.ctx).record(ENTITY_TYPE, row.id, "approved")
         if link_values:
             await ActivityService(self.ctx).record_update(
@@ -429,12 +428,13 @@ class InteractionService:
         into the CRM, never a notification: contacts have no inbox here."""
         if not ids:
             return []
-        stmt = text(
-            "SELECT id FROM contacts WHERE org_id = :oid AND id IN :ids"
-        ).bindparams(bindparam("ids", expanding=True))
+        stmt = text("SELECT id FROM contacts WHERE org_id = :oid AND id IN :ids").bindparams(
+            bindparam("ids", expanding=True)
+        )
         found = set(
-            (await self.ctx.session.execute(stmt, {"oid": self._org_id, "ids": list(ids)}))
-            .scalars()
+            (
+                await self.ctx.session.execute(stmt, {"oid": self._org_id, "ids": list(ids)})
+            ).scalars()
         )
         return [cid for cid in ids if cid in found]
 
@@ -560,9 +560,7 @@ class InteractionService:
         "contact_id": ("contacts", "trim(concat(first_name, ' ', coalesce(last_name, '')))"),
     }
 
-    async def _link_names(
-        self, rows: list[Interaction]
-    ) -> dict[tuple[str, uuid.UUID], str]:
+    async def _link_names(self, rows: list[Interaction]) -> dict[tuple[str, uuid.UUID], str]:
         """Labels for the linked records (#147) — one batched query per referenced table for
         the whole page, never a per-row lookup (docs/PERFORMANCE.md). Raw ids are worse than
         saying nothing, and the web should not need four lookup fetches to draw a chip."""
@@ -580,12 +578,24 @@ class InteractionService:
             stmt = text(
                 f"SELECT id, {label} FROM {table} WHERE org_id = :oid AND id IN :ids"  # noqa: S608 — fixed table/label names
             ).bindparams(bindparam("ids", expanding=True))
-            result = await self.ctx.session.execute(
-                stmt, {"oid": self._org_id, "ids": list(ids)}
-            )
+            result = await self.ctx.session.execute(stmt, {"oid": self._org_id, "ids": list(ids)})
             for target_id, target_label in result:
                 names[(field, target_id)] = target_label
         return names
+
+    async def _closing_task_ids(self, rows: list[Interaction]) -> set[uuid.UUID]:
+        """Which of these interactions is a task's designated closing moment (#157) — one
+        batched, org-scoped query over the page's ids, so the web can mark the row that closed
+        a task without a per-row lookup (docs/PERFORMANCE.md)."""
+        ids = [row.id for row in rows]
+        if not ids:
+            return set()
+        stmt = text(
+            "SELECT closing_interaction_id FROM tasks "
+            "WHERE org_id = :oid AND closing_interaction_id IN :ids"
+        ).bindparams(bindparam("ids", expanding=True))
+        result = await self.ctx.session.execute(stmt, {"oid": self._org_id, "ids": ids})
+        return {row[0] for row in result if row[0] is not None}
 
     async def _present_one(self, row: Interaction) -> dict[str, Any]:
         owner = (
@@ -600,6 +610,7 @@ class InteractionService:
         names = await self._link_names([row])
         contacts_by_email = await self._participant_contacts([row])
         members_by_email = await self._participant_members([row])
+        closing_ids = await self._closing_task_ids([row])
         return self._present(
             row,
             owner[0] if owner else None,
@@ -607,6 +618,7 @@ class InteractionService:
             names,
             contacts_by_email,
             members_by_email,
+            closing_ids,
         )
 
     async def _participant_contacts(self, rows: list[Interaction]) -> dict[str, uuid.UUID]:
@@ -624,9 +636,7 @@ class InteractionService:
         stmt = text(
             "SELECT lower(email), id FROM contacts WHERE org_id = :oid AND lower(email) IN :emails"
         ).bindparams(bindparam("emails", expanding=True))
-        result = await self.ctx.session.execute(
-            stmt, {"oid": self._org_id, "emails": list(emails)}
-        )
+        result = await self.ctx.session.execute(stmt, {"oid": self._org_id, "emails": list(emails)})
         return dict(result.all())
 
     async def _participant_members(self, rows: list[Interaction]) -> dict[str, uuid.UUID]:
@@ -657,6 +667,7 @@ class InteractionService:
         names: dict[tuple[str, uuid.UUID], str] | None = None,
         contacts_by_email: dict[str, uuid.UUID] | None = None,
         members_by_email: dict[str, uuid.UUID] | None = None,
+        closing_ids: set[uuid.UUID] | None = None,
     ) -> dict[str, Any]:
         """Owner resolved like the activity trail (issue #64): live account wins, snapshot after."""
         if live_email is not None:
@@ -682,6 +693,7 @@ class InteractionService:
             "project_name": names.get(("project_id", row.project_id)),
             "task_title": names.get(("task_id", row.task_id)),
             "contact_name": names.get(("contact_id", row.contact_id)),
+            "closes_task": row.id in (closing_ids or set()),
             "owner_user_id": row.owner_user_id,
             "owner_name": owner_name,
             "owner_deleted": owner_deleted,
@@ -739,13 +751,27 @@ class InteractionKindService:
         return set((await self.ctx.session.execute(stmt)).scalars())
 
     async def _ensure_defaults(self) -> None:
-        """Seed the system kinds once per org (idempotent; skipped for read-only roles)."""
+        """Ensure the system kinds exist for this org (idempotent; skipped for read-only roles).
+
+        Not "seed once when empty": an org seeded during an intermediate state — a single
+        ``meeting`` default, before the online/physical split (#174) — must still gain the kinds
+        it lacks, or the form never offers *Online afspraak* / *Afspraak op locatie* (#184). So
+        reconcile by key: insert any ``DEFAULT_KINDS`` the org is missing and leave every existing
+        row (and its tenant relabel) untouched. The ``(org_id, key)`` unique constraint keeps a
+        concurrent double-seed from duplicating.
+        """
         if not self.ctx.can("interactions.interaction.write"):
             return
-        if await self.repo.count() > 0:
-            return
+        existing = set(
+            (
+                await self.ctx.session.execute(
+                    select(InteractionKindDef.key).where(InteractionKindDef.org_id == self._org_id)
+                )
+            ).scalars()
+        )
         for spec in DEFAULT_KINDS:
-            await self.repo.create(**spec)
+            if spec["key"] not in existing:
+                await self.repo.create(**spec)
 
     async def create(self, data: InteractionKindDefCreate) -> InteractionKindDef:
         self.ctx.require("interactions.kind.manage")
@@ -789,9 +815,7 @@ class InteractionKindService:
         await self.repo.delete(row)
 
 
-async def count_for_entity(
-    ctx: RequestContext, entity_field: str, entity_id: uuid.UUID
-) -> int:
+async def count_for_entity(ctx: RequestContext, entity_field: str, entity_id: uuid.UUID) -> int:
     """How many interactions attach to one host entity — the panel's truncation counter."""
     column = getattr(Interaction, entity_field)
     return int(

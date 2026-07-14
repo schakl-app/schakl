@@ -9,7 +9,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -155,6 +155,27 @@ class Settings(BaseSettings):
     instance_admin_enabled: bool = False
     # Upper bound for a single impersonation grant; every grant is audited and time-boxed.
     impersonation_max_minutes: int = 60
+
+    # --- Public demo mode (issue #141) ---
+    # An instance posture, like ``instance_admin_enabled``: off by default. When ``true`` this is
+    # a *publicly writable* instance, so it forces the safe values below regardless of the rest of
+    # the env (``_force_demo_posture``), the demo seeder owns org creation (``/setup`` off), and a
+    # central demo-guard catalog blocks outbound/credential/instance ops (``errors.demo_blocked``).
+    demo_mode: bool = False
+    # How often the demo org is wiped back to its golden snapshot (minutes). Hourly by default —
+    # a mid-session reset only costs a visitor their toy edits.
+    demo_reset_minutes: int = 60
+
+    @model_validator(mode="after")
+    def _force_demo_posture(self) -> Settings:
+        """Demo mode is a public instance: force the safe posture no matter what else the env says
+        (#141). Registration would let a visitor mint accounts; the instance-admin surface (and its
+        impersonation) is pure attack surface; ``/setup`` is owned by the seeder. RLS/RBAC are
+        untouched — demo visitors stay ordinary members holding real roles."""
+        if self.demo_mode:
+            self.allow_registration = False
+            self.instance_admin_enabled = False
+        return self
 
     @property
     def is_production(self) -> bool:
