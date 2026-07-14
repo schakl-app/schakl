@@ -36,6 +36,13 @@ module = ModuleDescriptor(
     name="marketing",
     router=router,
     i18n_namespace="marketing",
+    # Licensed module (issue #137): the per-client GA4/GSC/Ads integration is a premium
+    # capability, its own commercial boundary — a distinct sku from the ``google`` core it rides
+    # (a tenant licenses Google Workspace and marketing analytics separately). Past
+    # expiry+grace it goes read-only: linking/unlinking + settings turn 402 at the mount-time
+    # gate and the nightly sync crons stand down (they write on a schedule, so the route gate
+    # alone would not stop them); the panel/tab/overview keep reading the already-synced data.
+    sku="marketing",
     panels=[marketing_company_panel],
     permissions=MARKETING_PERMISSIONS,
     # Nightly, per org, after the platform's other early jobs (subscriptions runs 05:30). The

@@ -22,6 +22,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.entitlements.service import license_state
 from app.core.jobs import run_per_org
 from app.core.models import Org, OrgStatus
 from app.core.timezone import org_zoneinfo
@@ -30,6 +31,13 @@ from app.modules.marketing.models import MarketingLink
 from app.modules.marketing.service import sync_link_range
 
 logger = logging.getLogger("schakl.marketing")
+
+
+async def _licensed() -> bool:
+    """Whether the ``marketing`` sku is still writable (issue #137): the mount-time 402 gate
+    covers requests, but crons write on a schedule — an expired license must stop the background
+    sync too (expired = read-only, not gone; the panel/tab/overview keep reading synced data)."""
+    return (await license_state()).writable("marketing")
 
 #: How many trailing days the nightly run re-pulls (covers GSC's 2-3 day finalization lag and a
 #: few days of GA4/Ads attribution drift).
@@ -67,6 +75,8 @@ async def _sync_org(org: Org, session: AsyncSession) -> None:
 
 async def marketing_sync_all(ctx: dict) -> None:
     """Nightly ARQ entrypoint: re-pull the trailing window for every active org's links."""
+    if not await _licensed():
+        return
     await run_per_org(_sync_org)
 
 
@@ -97,6 +107,8 @@ async def _load_org_and_link(
 
 async def marketing_sync_link(ctx: dict, org_id: str, link_id: str) -> None:
     """One-off trailing sync for a single link. A missing org/link is a quiet no-op."""
+    if not await _licensed():
+        return
     async with async_session_maker() as session:
         loaded = await _load_org_and_link(session, org_id, link_id)
         if loaded is None:
@@ -116,6 +128,8 @@ async def marketing_backfill_link(ctx: dict, org_id: str, link_id: str) -> None:
     flips only after the whole span lands, which is what the panel's "eerste synchronisatie loopt"
     state reads.
     """
+    if not await _licensed():
+        return
     async with async_session_maker() as session:
         loaded = await _load_org_and_link(session, org_id, link_id)
         if loaded is None:
