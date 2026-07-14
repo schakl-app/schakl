@@ -35,6 +35,9 @@ TASK_COMMENTED = "task.commented"
 TASK_MENTIONED = "task.mentioned"
 TASK_DUE_SOON = "task.due_soon"
 TASK_OVERDUE = "task.overdue"
+# A task planned onto someone's calendar (#188). Recipient = the person the block is for; the
+# actor (the scheduler) is auto-excluded, so planning your own task is silent.
+TASK_SCHEDULED = "task.scheduled"
 # projects
 PROJECT_ASSIGNED = "project.assigned"
 PROJECT_STATUS_CHANGED = "project.status_changed"
@@ -73,6 +76,7 @@ EVENT_TYPES: tuple[str, ...] = (
     TASK_MENTIONED,
     TASK_DUE_SOON,
     TASK_OVERDUE,
+    TASK_SCHEDULED,
     PROJECT_ASSIGNED,
     PROJECT_STATUS_CHANGED,
     PROJECT_BUDGET_THRESHOLD,
@@ -97,6 +101,7 @@ ENTITY_FOR_EVENT: dict[str, str] = {
     TASK_MENTIONED: ENTITY_TASK,
     TASK_DUE_SOON: ENTITY_TASK,
     TASK_OVERDUE: ENTITY_TASK,
+    TASK_SCHEDULED: ENTITY_TASK,
     PROJECT_ASSIGNED: ENTITY_PROJECT,
     PROJECT_STATUS_CHANGED: ENTITY_PROJECT,
     PROJECT_BUDGET_THRESHOLD: ENTITY_PROJECT,

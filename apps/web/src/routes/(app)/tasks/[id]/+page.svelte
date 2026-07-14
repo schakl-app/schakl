@@ -16,6 +16,7 @@
   import Modal from "$lib/core/ui/Modal.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import { LABEL_COLORS, labelChipClass, labelDotClass } from "$lib/modules/tasks/labels";
+  import TaskSchedulePanel from "$lib/modules/tasks/TaskSchedulePanel.svelte";
   import { formatMinutes } from "$lib/modules/time/format";
 
   import { entityPanelsFor } from "$lib/core/registry";
@@ -384,6 +385,24 @@
         {/if}
       </div>
     </section>
+
+    <!-- Planned blocks on the calendar (#188) — schedule, move, and log time from a passed one. -->
+    <TaskSchedulePanel
+      schedules={data.schedules}
+      task={{
+        id: task.id,
+        title: task.title,
+        project_id: task.project_id,
+        company_id: task.company_id,
+        assignee_user_id: task.assignee_user_id,
+        allocated_minutes: task.allocated_minutes,
+        due_date: task.due_date,
+      }}
+      members={data.members}
+      currentUserId={page.data.user?.id ?? ""}
+      canWrite={can(page.data.user, "tasks.schedule.write")}
+      canScheduleAny={can(page.data.user, "tasks.schedule.write", "any")}
+    />
 
     <!-- Checklists (always interactive — ticking items is "using") -->
     <section class="rounded-xl border border-border bg-surface-raised p-5">

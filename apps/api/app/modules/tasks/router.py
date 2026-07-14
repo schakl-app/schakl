@@ -7,12 +7,14 @@ before ``/{task_id}`` because Starlette matches in registration order.
 from __future__ import annotations
 
 import uuid
+from datetime import date
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
+from app.modules.tasks.scheduling import scheduling_router
 from app.modules.tasks.schemas import (
     ChecklistCreate,
     ChecklistItemCreate,
@@ -51,6 +53,10 @@ from app.schemas import Page
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
+# Scheduling routes (#188) must register before ``/{task_id}`` — Starlette matches in order, so
+# ``/tasks/schedules`` would otherwise be parsed as a task id and 422 on the UUID.
+router.include_router(scheduling_router)
+
 
 @router.get(
     "",
@@ -66,6 +72,8 @@ async def list_tasks(
     status: str | None = Query(None, max_length=50, description="A configured status key"),
     label_id: uuid.UUID | None = Query(None),
     due: Literal["overdue", "today", "week"] | None = Query(None),
+    due_from: date | None = Query(None, description="Deadline window start (the Agenda feed)"),
+    due_to: date | None = Query(None, description="Deadline window end (inclusive)"),
     q: str | None = Query(None, max_length=200),
     sort: str | None = Query(
         None, description="title | due_date | priority | status | assignee | …, '-' desc"
@@ -83,6 +91,8 @@ async def list_tasks(
         status=status,
         label_id=label_id,
         due=due,
+        due_from=due_from,
+        due_to=due_to,
         q=q,
         sort=sort,
         with_meta=meta,

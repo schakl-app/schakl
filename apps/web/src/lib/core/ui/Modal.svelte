@@ -5,12 +5,22 @@
   let {
     open = $bindable(false),
     title,
+    size = "lg",
     children,
   }: {
     open?: boolean;
     title: string;
+    /** Max width; wider ones exist for surfaces that carry a table (the schedule picker, #188). */
+    size?: "lg" | "xl" | "2xl" | "3xl";
     children: Snippet;
   } = $props();
+
+  const maxWidth = {
+    lg: "max-w-lg",
+    xl: "max-w-xl",
+    "2xl": "max-w-2xl",
+    "3xl": "max-w-3xl",
+  } as const;
 
   function onkeydown(e: KeyboardEvent) {
     if (e.key === "Escape") open = false;
@@ -31,7 +41,7 @@
       role="dialog"
       aria-modal="true"
       aria-label={title}
-      class="relative z-50 mt-8 w-full max-w-lg rounded-xl border border-border bg-surface-raised p-5 shadow-xl"
+      class="relative z-50 mt-8 w-full {maxWidth[size]} rounded-xl border border-border bg-surface-raised p-5 shadow-xl"
     >
       <div class="mb-4 flex items-center justify-between">
         <h2 class="text-base font-semibold text-text">{title}</h2>

@@ -42,7 +42,10 @@
     Object.fromEntries(data.balances.map((b) => [b.leave_type_id, Number(b.remaining_hours)])),
   );
 
-  let createOpen = $state(false);
+  // `?new=1` opens the create modal on arrival — the deep link the calendar "+" points at
+  // (#188), mirroring the `?request=` edit deep link. A `$state` initializer, not a `$derived`:
+  // it opens on load and the user can then close it.
+  let createOpen = $state(page.url.searchParams.get("new") === "1");
   // Recurring free days, self-service (#107): balance-tracked auto-approve types only. The
   // approval requirement keeps vacation a manager's act (generated days are pre-approved);
   // the balance requirement keeps "sick" out — a *recurring sick day* is not a plan, and a

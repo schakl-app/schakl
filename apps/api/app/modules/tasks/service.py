@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import bindparam, case, func, select
@@ -313,6 +313,8 @@ class TaskService:
         status: str | None = None,
         label_id: uuid.UUID | None = None,
         due: str | None = None,
+        due_from: date | None = None,
+        due_to: date | None = None,
         q: str | None = None,
         sort: str | None = None,
         with_meta: bool = True,
@@ -351,6 +353,12 @@ class TaskService:
             stmt = stmt.where(Task.due_date == today)
         elif due == "week":
             stmt = stmt.where(Task.due_date >= today, Task.due_date <= today + timedelta(days=7))
+        # An explicit deadline window (#188): the Agenda's deadline feed asks for the visible
+        # range's due dates. Independent of the ``due`` shortcuts above.
+        if due_from is not None:
+            stmt = stmt.where(Task.due_date >= due_from)
+        if due_to is not None:
+            stmt = stmt.where(Task.due_date <= due_to)
 
         total = 0
         if count:

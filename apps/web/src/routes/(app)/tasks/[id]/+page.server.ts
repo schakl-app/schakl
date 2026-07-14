@@ -8,6 +8,12 @@ import { entityPanelsFor } from "$lib/core/registry";
 import { apiFor } from "$lib/core/session";
 import { driveActions } from "$lib/modules/google/drive-actions.server";
 import { interactionActions } from "$lib/modules/interactions/actions.server";
+import {
+  createScheduleAction,
+  deleteScheduleAction,
+  logScheduleTimeAction,
+  updateScheduleAction,
+} from "$lib/modules/tasks/schedule-actions.server";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -26,18 +32,27 @@ export const load: PageServerLoad = async (event) => {
   // mirrored onto the **core** activity log under entity_type=task — fetch those so the page's
   // activity feed can show "contactmoment gelogd" like the company/project/contact panels do.
   // A viewer without activity.read simply gets an empty list (openapi-fetch returns no data).
-  const [{ data: task }, { data: checklistTemplates }, { data: files }, { data: hostActivity }, ...panelData] =
-    await Promise.all([
-      api.GET("/api/v1/tasks/{task_id}", { params: { path: { task_id } } }),
-      api.GET("/api/v1/tasks/checklist-templates"),
-      api.GET("/api/v1/files", {
-        params: { query: { entity_type: "task", entity_id: task_id } },
-      }),
-      api.GET("/api/v1/activity", {
-        params: { query: { entity_type: "task", entity_id: task_id, limit: 50 } },
-      }),
-      ...panels.map((panel) => panel.load(api, context)),
-    ]);
+  const [
+    { data: task },
+    { data: checklistTemplates },
+    { data: files },
+    { data: hostActivity },
+    { data: schedules },
+    ...panelData
+  ] = await Promise.all([
+    api.GET("/api/v1/tasks/{task_id}", { params: { path: { task_id } } }),
+    api.GET("/api/v1/tasks/checklist-templates"),
+    api.GET("/api/v1/files", {
+      params: { query: { entity_type: "task", entity_id: task_id } },
+    }),
+    api.GET("/api/v1/activity", {
+      params: { query: { entity_type: "task", entity_id: task_id, limit: 50 } },
+    }),
+    // Every planned block for this task (#188) — no date window, the panel wants the lot. A
+    // viewer without schedule.read simply gets an empty list.
+    api.GET("/api/v1/tasks/schedules", { params: { query: { task_id } } }),
+    ...panels.map((panel) => panel.load(api, context)),
+  ]);
   if (!task) throw error(404, { code: "not_found", message: "errors.not_found" });
 
   return {
@@ -45,6 +60,7 @@ export const load: PageServerLoad = async (event) => {
     checklistTemplates: checklistTemplates ?? [],
     files: files ?? [],
     hostActivity: hostActivity ?? [],
+    schedules: schedules ?? [],
     context,
     panels: panels.map((panel, index) => ({
       key: panel.key,
@@ -403,6 +419,25 @@ export const actions: Actions = {
       params: { path: { task_id: event.params.id } },
     });
     throw redirect(303, "/tasks");
+  },
+
+  // Task scheduling (#188) — the same shared helpers the calendar page uses, so the two entry
+  // points can't drift. The schedule modal and the block panel post here.
+  scheduleTask: async (event) => {
+    const result = await createScheduleAction(event);
+    return result.error ? fail(400, { error: result.error }) : { scheduled: true };
+  },
+  updateSchedule: async (event) => {
+    const result = await updateScheduleAction(event);
+    return result.error ? fail(400, { error: result.error }) : { scheduleUpdated: true };
+  },
+  deleteSchedule: async (event) => {
+    const result = await deleteScheduleAction(event);
+    return result.error ? fail(400, { error: result.error }) : { scheduleDeleted: true };
+  },
+  logScheduleTime: async (event) => {
+    const result = await logScheduleTimeAction(event);
+    return result.error ? fail(400, { error: result.error }) : { timeLogged: true };
   },
 
   // Contactmomenten + Drive panel contracts (the panels post to their host page).

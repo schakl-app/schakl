@@ -3656,6 +3656,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tasks/schedules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Schedules */
+        get: operations["list_schedules_api_v1_tasks_schedules_get"];
+        put?: never;
+        /** Create Schedule */
+        post: operations["create_schedule_api_v1_tasks_schedules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/schedules/{schedule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Schedule */
+        get: operations["get_schedule_api_v1_tasks_schedules__schedule_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Schedule */
+        delete: operations["delete_schedule_api_v1_tasks_schedules__schedule_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Schedule */
+        patch: operations["update_schedule_api_v1_tasks_schedules__schedule_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/tasks/schedules/{schedule_id}/log-time": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Log Schedule Time */
+        post: operations["log_schedule_time_api_v1_tasks_schedules__schedule_id__log_time_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tasks/statuses": {
         parameters: {
             query?: never;
@@ -9209,6 +9263,163 @@ export interface components {
             steps: unknown[];
             /** Trigger Event */
             trigger_event: string;
+        };
+        /** ScheduleCreate */
+        ScheduleCreate: {
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** Duration Minutes */
+            duration_minutes: number;
+            /** Note */
+            note?: string | null;
+            /**
+             * Start Time
+             * Format: time
+             */
+            start_time: string;
+            /**
+             * Task Id
+             * Format: uuid
+             */
+            task_id: string;
+            /** User Id */
+            user_id?: string | null;
+        };
+        /**
+         * ScheduleItem
+         * @description A block decorated with what the calendar/timesheet needs, so a feed renders without a
+         *     second fetch (docs/PERFORMANCE.md): the local day span (so the browser does no timezone
+         *     math), the person's name and the task's identity.
+         */
+        ScheduleItem: {
+            /** Allocated Minutes */
+            allocated_minutes?: number | null;
+            /** Company Id */
+            company_id?: string | null;
+            /** Created By Name */
+            created_by_name: string | null;
+            /** Created By User Id */
+            created_by_user_id: string | null;
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Note */
+            note: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /** Status */
+            status: string;
+            /**
+             * Task Id
+             * Format: uuid
+             */
+            task_id: string;
+            /** Task Title */
+            task_title: string;
+            /** Time Entry Id */
+            time_entry_id: string | null;
+            /** User Id */
+            user_id: string | null;
+            /** User Name */
+            user_name?: string | null;
+        };
+        /**
+         * ScheduleLogTime
+         * @description Confirm-to-log a passed block as a real time entry (#188). Everything defaults from the
+         *     block; the user may adjust the worked minutes, break, description and billable flag before
+         *     saving. ``minutes`` overrides the block's own duration when the actual work differed.
+         */
+        ScheduleLogTime: {
+            /**
+             * Billable
+             * @default true
+             */
+            billable: boolean;
+            /**
+             * Break Minutes
+             * @default 0
+             */
+            break_minutes: number;
+            /** Description */
+            description?: string | null;
+            /** Entry Type Key */
+            entry_type_key?: string | null;
+            /** Minutes */
+            minutes?: number | null;
+        };
+        /** ScheduleRead */
+        ScheduleRead: {
+            /** Created By Name */
+            created_by_name: string | null;
+            /** Created By User Id */
+            created_by_user_id: string | null;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Note */
+            note: string | null;
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /**
+             * Task Id
+             * Format: uuid
+             */
+            task_id: string;
+            /** Time Entry Id */
+            time_entry_id: string | null;
+            /** User Id */
+            user_id: string | null;
+        };
+        /**
+         * ScheduleUpdate
+         * @description A partial edit / move: any omitted field keeps the block's current local value.
+         */
+        ScheduleUpdate: {
+            /** Day */
+            day?: string | null;
+            /** Duration Minutes */
+            duration_minutes?: number | null;
+            /** Note */
+            note?: string | null;
+            /** Start Time */
+            start_time?: string | null;
+            /** User Id */
+            user_id?: string | null;
         };
         /** SeriesData */
         SeriesData: {
@@ -19898,6 +20109,10 @@ export interface operations {
                 status?: string | null;
                 label_id?: string | null;
                 due?: ("overdue" | "today" | "week") | null;
+                /** @description Deadline window start (the Agenda feed) */
+                due_from?: string | null;
+                /** @description Deadline window end (inclusive) */
+                due_to?: string | null;
                 q?: string | null;
                 /** @description title | due_date | priority | status | assignee | …, '-' desc */
                 sort?: string | null;
@@ -20217,6 +20432,203 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskListItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_schedules_api_v1_tasks_schedules_get: {
+        parameters: {
+            query?: {
+                date_from?: string | null;
+                date_to?: string | null;
+                user_ids?: string[] | null;
+                task_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_schedule_api_v1_tasks_schedules_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_schedule_api_v1_tasks_schedules__schedule_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schedule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_schedule_api_v1_tasks_schedules__schedule_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schedule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_schedule_api_v1_tasks_schedules__schedule_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schedule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    log_schedule_time_api_v1_tasks_schedules__schedule_id__log_time_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schedule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduleLogTime"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleRead"];
                 };
             };
             /** @description Validation Error */

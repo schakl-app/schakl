@@ -1,11 +1,20 @@
 <script lang="ts">
-  import { ChevronLeft, ChevronRight, SlidersHorizontal } from "@lucide/svelte";
+  import {
+    CalendarClock,
+    ChevronLeft,
+    ChevronRight,
+    Plus,
+    SlidersHorizontal,
+    TreePalm,
+  } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
+  import { page } from "$app/state";
   import { CALENDAR_VIEWS, shiftDate, weekGrid, type CalendarView } from "$lib/core/calendar";
   import { dateLocale, fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { can } from "$lib/core/permissions";
   import { pageTitle } from "$lib/core/title";
   import type { CalendarEvent } from "$lib/core/registry";
   import { labelDotClass } from "$lib/core/ui/colors";
@@ -13,8 +22,41 @@
   import MonthCalendar from "$lib/core/ui/MonthCalendar.svelte";
   import WeekCalendar from "$lib/core/ui/WeekCalendar.svelte";
   import YearCalendar from "$lib/core/ui/YearCalendar.svelte";
+  import ScheduleTaskModal from "$lib/modules/tasks/ScheduleTaskModal.svelte";
 
   let { data, form } = $props();
+
+  // The "+" create menu (#188): schedule a task, or deep-link to request leave.
+  const enabledModules = $derived(page.data.theme?.enabledModules ?? []);
+  const canScheduleWrite = $derived(can(page.data.user, "tasks.schedule.write"));
+  const canScheduleAny = $derived(can(page.data.user, "tasks.schedule.write", "any"));
+  const canScheduleTask = $derived(enabledModules.includes("tasks") && canScheduleWrite);
+  const canRequestLeave = $derived(
+    enabledModules.includes("leave") && can(page.data.user, "leave.request.write"),
+  );
+  const showAdd = $derived(canScheduleTask || canRequestLeave);
+  let addOpen = $state(false);
+  let addRoot: HTMLElement | undefined = $state();
+  let scheduleOpen = $state(false);
+
+  // Per-person feed overlays (#188): a writable derived, following the stored selection per
+  // source until a toggle overwrites it (the `hiddenDraft` pattern below).
+  let peopleDraft = $derived(
+    Object.fromEntries(data.sourceOptions.map((s) => [s.key, s.selectedPeople ?? []])),
+  );
+  let activePeopleSource = $state<string | null>(null);
+  let peopleForm: HTMLFormElement | undefined = $state();
+  function togglePerson(sourceKey: string, personId: string) {
+    const current = peopleDraft[sourceKey] ?? [];
+    peopleDraft = {
+      ...peopleDraft,
+      [sourceKey]: current.includes(personId)
+        ? current.filter((p) => p !== personId)
+        : [...current, personId],
+    };
+    activePeopleSource = sourceKey;
+    setTimeout(() => peopleForm?.requestSubmit(), 0);
+  }
 
   const SHORTCUT_KEY: Record<CalendarView, string> = { day: "d", week: "w", month: "m", year: "y" };
 
@@ -126,6 +168,9 @@
     if (sourcesOpen && sourcesRoot && !sourcesRoot.contains(e.target as Node)) {
       sourcesOpen = false;
     }
+    if (addOpen && addRoot && !addRoot.contains(e.target as Node)) {
+      addOpen = false;
+    }
   }}
 />
 
@@ -159,6 +204,16 @@
   {#each hiddenDraft as key (key)}
     <input type="hidden" name="hidden" value={key} />
   {/each}
+</form>
+
+<!-- Per-person feed overlay (#188): posts one source's whole colleague selection per toggle. -->
+<form method="POST" action="?/savePeople" bind:this={peopleForm} use:enhance class="hidden">
+  <input type="hidden" name="source" value={activePeopleSource ?? ""} />
+  {#if activePeopleSource}
+    {#each peopleDraft[activePeopleSource] ?? [] as pid (pid)}
+      <input type="hidden" name="person" value={pid} />
+    {/each}
+  {/if}
 </form>
 
 <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -243,13 +298,91 @@
                 <span class="h-2 w-2 rounded-full {labelDotClass(source.color)}"></span>
                 {t(source.labelKey)}
               </label>
+              <!-- Per-person overlay (#188): a manager picks whose schedule to lay over their own. -->
+              {#if source.people && source.people.length > 0 && !hiddenDraft.includes(source.key)}
+                <div class="ml-6 border-l border-border pl-1">
+                  <p class="px-2 py-0.5 text-[11px] uppercase tracking-wide text-text-muted">
+                    {t("calendar.people.label")}
+                  </p>
+                  {#each source.people as person (person.id)}
+                    <label
+                      class="flex cursor-pointer items-center gap-2 px-2 py-1 text-sm text-text hover:bg-surface"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={(peopleDraft[source.key] ?? []).includes(person.id)}
+                        onchange={() => togglePerson(source.key, person.id)}
+                        class="h-3.5 w-3.5 rounded border-border"
+                      />
+                      {person.name}
+                    </label>
+                  {/each}
+                </div>
+              {/if}
             {/each}
+          </div>
+        {/if}
+      </div>
+    {/if}
+
+    <!-- The "+" create menu (#188): schedule a task, or deep-link to the request-leave modal. -->
+    {#if showAdd}
+      <div class="relative" bind:this={addRoot}>
+        <button
+          type="button"
+          class="flex items-center gap-1 rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white hover:opacity-90"
+          aria-haspopup="true"
+          aria-expanded={addOpen}
+          aria-label={t("calendar.add.label")}
+          onclick={() => (addOpen = !addOpen)}
+        >
+          <Plus size={16} />
+          <span class="hidden sm:inline">{t("calendar.add.label")}</span>
+        </button>
+        {#if addOpen}
+          <div
+            class="absolute right-0 z-30 mt-1 w-56 rounded-lg border border-border bg-surface-raised py-1 shadow-lg"
+          >
+            {#if canScheduleTask}
+              <button
+                type="button"
+                class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text hover:bg-surface"
+                onclick={() => {
+                  addOpen = false;
+                  scheduleOpen = true;
+                }}
+              >
+                <CalendarClock size={16} />
+                {t("tasks.schedule.action")}
+              </button>
+            {/if}
+            {#if canRequestLeave}
+              <a
+                href="/leave?new=1"
+                class="flex items-center gap-2 px-3 py-2 text-sm text-text hover:bg-surface"
+                onclick={() => (addOpen = false)}
+              >
+                <TreePalm size={16} />
+                {t("leave.request_button")}
+              </a>
+            {/if}
           </div>
         {/if}
       </div>
     {/if}
   </div>
 </div>
+
+{#if canScheduleTask}
+  <ScheduleTaskModal
+    bind:open={scheduleOpen}
+    pickerEndpoint="/calendar/schedulable"
+    currentUserId={page.data.user?.id ?? ""}
+    canScheduleAny={canScheduleAny}
+    defaultDate={data.date}
+    action="?/scheduleTask"
+  />
+{/if}
 
 {#if form?.error}
   <p

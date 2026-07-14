@@ -135,6 +135,63 @@ class Task(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     recurrence_next_run: Mapped[date | None] = mapped_column(Date, nullable=True)
 
 
+class TaskSchedule(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """A planned time block for a task on someone's calendar (#188).
+
+    Distinct from ``Task.due_date`` (a deadline) and ``allocated_minutes`` (a budget): a schedule
+    is *when someone intends to work on the task*. A task may carry **several** blocks — a six-hour
+    task planned as two three-hour sessions — so this is its own row, never a column on ``tasks``.
+
+    ``user_id`` is the person the block is for (defaults to the task's assignee, adjustable by a
+    holder of ``tasks.schedule.write:any``). Instants are ``TIMESTAMPTZ``/UTC; the web renders them
+    in the org timezone, and the Google push words them in the org's local time (like leave, §8).
+
+    ``time_entry_id`` links a block to the time entry it was logged as (#48-style one-click log):
+    a passed block offers "Registreer uren" which creates a real ``TimeEntry`` and stamps it here,
+    so the block reads *logged* and is never counted twice. ``SET NULL`` re-opens the block if the
+    entry is later deleted. The FK is cross-module by table name only — no import of ``time``.
+    """
+
+    __tablename__ = "task_schedules"
+    __table_args__ = (
+        Index("ix_task_schedules_org_user_start", "org_id", "user_id", "starts_at"),
+        Index("ix_task_schedules_org_task", "org_id", "task_id"),
+    )
+
+    task_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("tasks.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    # SET NULL: an orphaned block (its person removed) is a scheduling error to clean up, not a
+    # reason to lose the plan; the service treats a NULL user as unschedulable and hides it.
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # The time entry this block was logged as (#188). Cross-module FK by table name; SET NULL so
+    # deleting the entry re-opens the block instead of stranding a dangling id.
+    time_entry_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("time_entries.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    # Who scheduled it, snapshotted (issue #64) so a departed scheduler still reads as a person,
+    # not "System", in the notification and any future trail.
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_by_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
 class TaskLabel(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     __tablename__ = "task_labels"
     __table_args__ = (UniqueConstraint("org_id", "name"),)
