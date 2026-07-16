@@ -852,3 +852,80 @@ async def test_layout_tenant_isolation(client_for) -> None:
             headers=b_headers,
         )
         assert res.status_code == 404
+
+
+async def test_link_attaches_to_client_website(client_for) -> None:
+    """A link may attach to one of *this* client's websites; the metrics payload carries the
+    website (id + domain name) so panel/tab group per site, and another company's website 404s."""
+    a = await make_tenant("mktg-web")
+    headers = await auth_cookie(a.user)
+
+    async with client_for(a.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Twee Sites BV"}, headers=headers)
+        ).json()
+        other = (
+            await c.post("/api/v1/companies", json={"name": "Ander BV"}, headers=headers)
+        ).json()
+        domain = (
+            await c.post(
+                "/api/v1/domains",
+                json={"name": "tweesites.nl", "company_id": company["id"]},
+                headers=headers,
+            )
+        ).json()
+        website = (
+            await c.post("/api/v1/websites", json={"domain_id": domain["id"]}, headers=headers)
+        ).json()
+        other_domain = (
+            await c.post(
+                "/api/v1/domains",
+                json={"name": "ander.nl", "company_id": other["id"]},
+                headers=headers,
+            )
+        ).json()
+        other_website = (
+            await c.post(
+                "/api/v1/websites", json={"domain_id": other_domain["id"]}, headers=headers
+            )
+        ).json()
+
+        created = await c.post(
+            "/api/v1/marketing/links",
+            json={
+                "company_id": company["id"],
+                "website_id": website["id"],
+                "source": "ga4",
+                "external_id": "properties/111",
+                "display_name": "Twee Sites — GA4",
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        assert created.json()["website_id"] == website["id"]
+        assert created.json()["website_name"] == "tweesites.nl"
+
+        # Another company's website is not a valid attachment point — a non-leaking 404.
+        rejected = await c.post(
+            "/api/v1/marketing/links",
+            json={
+                "company_id": company["id"],
+                "website_id": other_website["id"],
+                "source": "gsc",
+                "external_id": "sc-domain:tweesites.nl",
+                "display_name": "Twee Sites — GSC",
+            },
+            headers=headers,
+        )
+        assert rejected.status_code == 404, rejected.text
+
+        # The metrics payload groups per website: the source carries the website, and the
+        # client's website list rides along for the pickers.
+        metrics = (
+            await c.get(
+                f"/api/v1/marketing/companies/{company['id']}/metrics", headers=headers
+            )
+        ).json()
+        assert [w["name"] for w in metrics["websites"]] == ["tweesites.nl"]
+        assert metrics["sources"][0]["website_id"] == website["id"]
+        assert metrics["sources"][0]["website_name"] == "tweesites.nl"

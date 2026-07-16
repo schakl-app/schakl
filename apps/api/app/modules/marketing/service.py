@@ -19,7 +19,7 @@ from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import bindparam, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -66,6 +66,7 @@ from app.modules.marketing.schemas import (
     OverviewRow,
     SeriesData,
     SourceMetrics,
+    WebsiteRef,
 )
 from app.modules.marketing.sources import source_for
 from app.modules.marketing.sources.base import (
@@ -163,6 +164,41 @@ class MarketingService:
     async def _company_or_404(self, company_id: uuid.UUID) -> Company:
         return await self.ctx.repo(Company).get_or_404(company_id)
 
+    async def _company_websites(self, company_id: uuid.UUID) -> list[WebsiteRef]:
+        """The client's websites (id + domain name), for the link pickers and group labels.
+
+        Raw SQL by table name (the websites module's own `_attach` pattern) — modules never
+        import each other's internals. A website's display name *is* its domain.
+        """
+        rows = (
+            await self.ctx.session.execute(
+                text(
+                    "SELECT w.id, d.name FROM websites w"
+                    " JOIN domains d ON d.id = w.domain_id"
+                    " WHERE w.org_id = :org_id AND d.company_id = :company_id"
+                    " ORDER BY d.name"
+                ),
+                {"org_id": self.ctx.org.id, "company_id": company_id},
+            )
+        ).all()
+        return [WebsiteRef(id=row[0], name=row[1]) for row in rows]
+
+    async def _website_names(self, website_ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
+        """{website_id: domain name} for links that carry one — one query, display-only."""
+        if not website_ids:
+            return {}
+        rows = (
+            await self.ctx.session.execute(
+                text(
+                    "SELECT w.id, d.name FROM websites w"
+                    " JOIN domains d ON d.id = w.domain_id"
+                    " WHERE w.org_id = :org_id AND w.id IN :ids"
+                ).bindparams(bindparam("ids", expanding=True)),
+                {"org_id": self.ctx.org.id, "ids": list(website_ids)},
+            )
+        ).all()
+        return {row[0]: row[1] for row in rows}
+
     async def _links(
         self, *, company_id: uuid.UUID | None = None, include_inactive: bool = False
     ) -> list[MarketingLink]:
@@ -233,15 +269,23 @@ class MarketingService:
         await self._company_or_404(company_id)
         links = await self._links(company_id=company_id, include_inactive=True)
         connections = await self._connections_by_id()
-        return [self._link_read(link, connections) for link in links]
+        website_names = await self._website_names(
+            {link.website_id for link in links if link.website_id is not None}
+        )
+        return [self._link_read(link, connections, website_names) for link in links]
 
     def _link_read(
-        self, link: MarketingLink, connections: dict[uuid.UUID, GoogleConnection]
+        self,
+        link: MarketingLink,
+        connections: dict[uuid.UUID, GoogleConnection],
+        website_names: dict[uuid.UUID, str] | None = None,
     ) -> LinkRead:
         connection = connections.get(link.connection_id) if link.connection_id else None
         return LinkRead(
             id=link.id,
             company_id=link.company_id,
+            website_id=link.website_id,
+            website_name=(website_names or {}).get(link.website_id) if link.website_id else None,
             source=MarketingSource(link.source),
             external_id=link.external_id,
             display_name=link.display_name,
@@ -256,6 +300,14 @@ class MarketingService:
     async def create_link(self, data: LinkCreate) -> LinkRead:
         self.ctx.require("marketing.link.manage")
         await self._company_or_404(data.company_id)
+        # A link may attach to one of *this* client's websites; anything else (another client's
+        # site, a stale id) is a 404 — same non-leaking shape as the company check above.
+        website_names: dict[uuid.UUID, str] = {}
+        if data.website_id is not None:
+            websites = {w.id: w.name for w in await self._company_websites(data.company_id)}
+            if data.website_id not in websites:
+                raise AppError("not_found", "errors.not_found", status_code=404)
+            website_names[data.website_id] = websites[data.website_id]
         # The caller's own connection is what will sync this link (per-user OAuth); listing the
         # picker options already proved it exists and carries the scope.
         connection = await google_client.connection_for(
@@ -277,6 +329,7 @@ class MarketingService:
             existing.active = True
             existing.display_name = data.display_name
             existing.config = data.config
+            existing.website_id = data.website_id
             if connection is not None:
                 existing.connection_id = connection.id
             await self.ctx.session.flush()
@@ -285,6 +338,7 @@ class MarketingService:
             link = MarketingLink(
                 org_id=self.ctx.org.id,
                 company_id=data.company_id,
+                website_id=data.website_id,
                 source=data.source.value,
                 external_id=data.external_id,
                 display_name=data.display_name,
@@ -300,7 +354,15 @@ class MarketingService:
             "company",
             data.company_id,
             "marketing.linked",
-            {"source": link.source, "name": link.display_name},
+            {
+                "source": link.source,
+                "name": link.display_name,
+                **(
+                    {"website": website_names[link.website_id]}
+                    if link.website_id in website_names
+                    else {}
+                ),
+            },
         )
         # Kick off the 13-month backfill so sparklines/YoY work from day one — a one-off worker
         # job, deferred so the create's transaction has committed. A queue miss is not fatal.
@@ -316,7 +378,7 @@ class MarketingService:
             except Exception:
                 logger.warning("could not enqueue marketing backfill for link %s", link.id)
         connections = {connection.id: connection} if connection else {}
-        return self._link_read(link, connections)
+        return self._link_read(link, connections, website_names)
 
     async def deactivate_link(self, link_id: uuid.UUID) -> None:
         self.ctx.require("marketing.link.manage")
@@ -518,6 +580,9 @@ class MarketingService:
         show_key_events, layout = await self._company_settings(company_id)
         links = await self._links(company_id=company_id)
         connections = await self._connections_by_id()
+        # The client's websites: group labels for linked sources + options for the pickers.
+        websites = await self._company_websites(company_id)
+        website_names = {w.id: w.name for w in websites}
         sources: list[SourceMetrics] = []
         if links:
             metrics_by_link = await self._metrics_for_links(
@@ -535,6 +600,7 @@ class MarketingService:
                         prev_end,
                         show_key_events=show_key_events,
                         layout=layout,
+                        website_names=website_names,
                     )
                 )
         can_manage = self.ctx.can("marketing.link.manage")
@@ -548,6 +614,7 @@ class MarketingService:
             # The stored layout feeds the tab's edit mode (#192) — manager-only, like the
             # settings write it configures.
             layout=layout if can_manage else None,
+            websites=websites,
         )
 
     async def _metrics_for_links(
@@ -592,6 +659,7 @@ class MarketingService:
         *,
         show_key_events: bool = True,
         layout: dict | None = None,
+        website_names: dict[uuid.UUID, str] | None = None,
     ) -> SourceMetrics:
         adapter = source_for(link.source)
         current_rows = [m for day, m in daily.items() if cur_start <= day <= cur_end]
@@ -638,6 +706,8 @@ class MarketingService:
             source=MarketingSource(link.source),
             display_name=link.display_name,
             external_id=link.external_id,
+            website_id=link.website_id,
+            website_name=(website_names or {}).get(link.website_id) if link.website_id else None,
             health=self._health(link, connections, bool(daily)),
             last_error=link.last_error,
             last_synced_at=link.last_synced_at,

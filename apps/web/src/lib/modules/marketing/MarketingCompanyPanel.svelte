@@ -29,6 +29,16 @@
   let editing = $state(false);
   const tabHref = $derived(`/companies/${companyId}/marketing`);
 
+  // Per-website linking: new links attach to the chosen site ("" = client-level). A client
+  // with exactly one website gets it preselected — that is where the property belongs.
+  const websites = $derived(m.websites ?? []);
+  // svelte-ignore state_referenced_locally
+  let linkWebsiteId = $state(
+    (data as unknown as CompanyMarketing).websites?.length === 1
+      ? (data as unknown as CompanyMarketing).websites[0].id
+      : "",
+  );
+
   const SOURCE_ORDER: MarketingSource[] = ["ga4", "gsc", "gads"];
   const linkedIdsBySource = $derived(
     Object.fromEntries(
@@ -87,6 +97,9 @@
             >
               <span class="text-text-muted">{sourceLabel(src.source)}:</span>
               <span class="text-text">{src.display_name}</span>
+              {#if src.website_name}
+                <span class="text-xs text-text-muted">· {src.website_name}</span>
+              {/if}
               <form method="POST" action="?/marketingUnlink" use:enhance class="flex">
                 <input type="hidden" name="link_id" value={src.link_id} />
                 <button
@@ -101,9 +114,28 @@
           {/each}
         </ul>
       {/if}
+      {#if websites.length > 0}
+        <!-- New links attach to a specific client website, so a client with several sites keeps
+             each property with its own site; "whole client" stays available. -->
+        <div class="max-w-xs">
+          <label for="marketing-link-website" class="mb-1 block text-xs font-medium text-text-muted"
+            >{t("marketing.link_website")}</label
+          >
+          <select
+            id="marketing-link-website"
+            bind:value={linkWebsiteId}
+            class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text outline-none focus:border-brand"
+          >
+            <option value="">{t("marketing.link_website_all")}</option>
+            {#each websites as site (site.id)}
+              <option value={site.id}>{site.name}</option>
+            {/each}
+          </select>
+        </div>
+      {/if}
       <div class="grid gap-4 sm:grid-cols-3">
         {#each SOURCE_ORDER as s (s)}
-          <MarketingAccountPicker source={s} linkedIds={linkedIdsBySource[s]} />
+          <MarketingAccountPicker source={s} linkedIds={linkedIdsBySource[s]} websiteId={linkWebsiteId} />
         {/each}
       </div>
       {#if hasGa4}
@@ -156,7 +188,9 @@
           <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div class="flex items-center gap-2">
               <span class="text-sm font-semibold text-text">{sourceLabel(src.source)}</span>
-              <span class="truncate text-xs text-text-muted">{src.display_name}</span>
+              <span class="truncate text-xs text-text-muted">
+                {src.display_name}{#if src.website_name}&nbsp;· {src.website_name}{/if}
+              </span>
               <span
                 class="rounded-full px-2 py-0.5 text-[10px] font-medium {healthClass(src.health)}"
               >

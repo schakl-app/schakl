@@ -72,6 +72,16 @@ class MarketingLink(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
         nullable=False,
         index=True,
     )
+    #: The client website this property measures. A client with two sites links each property to
+    #: its own site, and the panel/tab group per website. Nullable — a link may stay client-level
+    #: (no websites module, or a property spanning sites) — and SET NULL, not CASCADE: a removed
+    #: website must not delete the link or its synced history, the link just goes client-level.
+    website_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("websites.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     source: Mapped[str] = mapped_column(String(8), nullable=False)
     #: The provider's own id: GA4 "properties/123456789", GSC "sc-domain:acme.nl" or a URL,
     #: Ads "1234567890" (customer id, no dashes).

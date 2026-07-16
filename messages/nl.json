@@ -2384,5 +2384,8 @@
   "hr.category.bonus": "Bonusafspraken",
   "hr.category.benefits": "Voorwaarden & benefits",
   "hr.category.cao": "CAO",
-  "hr.category.other": "Overig"
+  "hr.category.other": "Overig",
+  "marketing.link_website": "Koppelen aan website",
+  "marketing.link_website_all": "Hele klant",
+  "marketing.website_group_none": "Klantbreed"
 }

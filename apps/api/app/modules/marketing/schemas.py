@@ -11,11 +11,21 @@ from app.modules.marketing.models import MarketingSource
 
 
 # --- links (#132) ---------------------------------------------------------------------------- #
+class WebsiteRef(BaseModel):
+    """A client website a link can attach to — id + display name (the domain), nothing more."""
+
+    id: uuid.UUID
+    name: str
+
+
 class LinkRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
     company_id: uuid.UUID
+    #: The client website this property measures — None = a client-level link.
+    website_id: uuid.UUID | None = None
+    website_name: str | None = None
     source: MarketingSource
     external_id: str
     display_name: str
@@ -31,6 +41,9 @@ class LinkRead(BaseModel):
 
 class LinkCreate(BaseModel):
     company_id: uuid.UUID
+    #: Attach the link to one of the client's websites (validated against the company); omit for
+    #: a client-level link.
+    website_id: uuid.UUID | None = None
     source: MarketingSource
     external_id: str = Field(min_length=1, max_length=512)
     display_name: str = Field(min_length=1, max_length=512)
@@ -86,6 +99,9 @@ class SourceMetrics(BaseModel):
     source: MarketingSource
     display_name: str
     external_id: str
+    #: The client website this link measures (None = client-level) — the tab groups on it.
+    website_id: uuid.UUID | None = None
+    website_name: str | None = None
     #: "ok" (synced), "pending" (backfill running / never synced), "error" (link's sync failed),
     #: "disconnected" (its Google connection is gone/errored).
     health: str = "pending"
@@ -124,6 +140,9 @@ class CompanyMarketing(BaseModel):
     #: The stored layout (#192), for the tab's edit mode — present only for a caller who may
     #: manage it (``can_manage``); ``None`` = no curation.
     layout: dict | None = None
+    #: The client's websites, so the link pickers can attach a new link to one and the tab can
+    #: label its groups. Empty when the client has none (links stay client-level).
+    websites: list[WebsiteRef] = Field(default_factory=list)
 
 
 # --- per-client settings (#134, layout #192) -------------------------------------------------- #

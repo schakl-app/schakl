@@ -2384,5 +2384,8 @@
   "hr.category.bonus": "Bonus agreements",
   "hr.category.benefits": "Benefits",
   "hr.category.cao": "CAO",
-  "hr.category.other": "Other"
+  "hr.category.other": "Other",
+  "marketing.link_website": "Link to website",
+  "marketing.link_website_all": "Whole client",
+  "marketing.website_group_none": "Client-wide"
 }

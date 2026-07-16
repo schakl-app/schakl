@@ -19,6 +19,9 @@ export interface SourceMetrics {
   source: MarketingSource;
   display_name: string;
   external_id: string;
+  /** The client website this link measures (`null` = client-level) — the tab groups on it. */
+  website_id: string | null;
+  website_name: string | null;
   health: "ok" | "pending" | "error" | "disconnected";
   last_error: string | null;
   last_synced_at: string | null;
@@ -58,6 +61,8 @@ export interface CompanyMarketing {
   show_key_events: boolean;
   /** The stored layout (#192), present for a caller who may manage it (`can_manage`). */
   layout?: CompanyLayout | null;
+  /** The client's websites — picker options for new links and the tab's group labels. */
+  websites: { id: string; name: string }[];
   forbidden?: boolean;
 }
 

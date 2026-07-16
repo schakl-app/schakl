@@ -5565,6 +5565,8 @@ export interface components {
             show_key_events: boolean;
             /** Sources */
             sources?: components["schemas"]["SourceMetrics"][];
+            /** Websites */
+            websites?: components["schemas"]["WebsiteRef"][];
         };
         /** CompanyRead */
         CompanyRead: {
@@ -9894,6 +9896,10 @@ export interface components {
             };
             /** Tiles */
             tiles?: string[];
+            /** Website Id */
+            website_id?: string | null;
+            /** Website Name */
+            website_name?: string | null;
         };
         /** SsoSettingsRead */
         SsoSettingsRead: {
@@ -11770,6 +11776,19 @@ export interface components {
              */
             uptime_enabled: boolean;
         };
+        /**
+         * WebsiteRef
+         * @description A client website a link can attach to — id + display name (the domain), nothing more.
+         */
+        WebsiteRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
         /** WebsiteUpdate */
         WebsiteUpdate: {
             /** Custom */
@@ -11943,6 +11962,8 @@ export interface components {
             /** External Id */
             external_id: string;
             source: components["schemas"]["MarketingSource"];
+            /** Website Id */
+            website_id?: string | null;
         };
         /** LinkRead */
         app__modules__marketing__schemas__LinkRead: {
@@ -11981,6 +12002,10 @@ export interface components {
             /** Last Synced At */
             last_synced_at?: string | null;
             source: components["schemas"]["MarketingSource"];
+            /** Website Id */
+            website_id?: string | null;
+            /** Website Name */
+            website_name?: string | null;
         };
         /**
          * ActivityItem
