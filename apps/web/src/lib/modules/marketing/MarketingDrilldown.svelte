@@ -58,7 +58,11 @@
   });
 </script>
 
-<div>
+<!-- min-w-0: this root is a grid item (the drill-down grid in MarketingSourceSection); without
+     it the item's automatic min-width is the table's min-content width, so a wide table grows
+     the page sideways on mobile instead of scrolling inside the overflow-x-auto wrapper below
+     (docs/UX.md, "a flex or grid item without min-w-0", #36 / #195). -->
+<div class="min-w-0">
   <div class="mb-2 flex items-center justify-between gap-2">
     <h4 class="text-sm font-semibold text-text">{drilldownLabel(kind)}</h4>
     {#if data?.deep_link}
