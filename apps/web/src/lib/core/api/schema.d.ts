@@ -538,6 +538,76 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/companies/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Groups */
+        get: operations["list_groups_api_v1_companies_groups_get"];
+        put?: never;
+        /** Create Group */
+        post: operations["create_group_api_v1_companies_groups_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/companies/groups/{group_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Group */
+        delete: operations["delete_group_api_v1_companies_groups__group_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Group */
+        patch: operations["update_group_api_v1_companies_groups__group_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/companies/groups/{group_id}/companies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Group Companies */
+        put: operations["set_group_companies_api_v1_companies_groups__group_id__companies_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/companies/groups/{group_id}/memberships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Group Memberships */
+        put: operations["set_group_memberships_api_v1_companies_groups__group_id__memberships_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/companies/{company_id}": {
         parameters: {
             query?: never;
@@ -2427,10 +2497,11 @@ export interface paths {
         get?: never;
         /**
          * Set Company Settings
-         * @description Show or hide GA4 key events / conversions for this client (#134).
+         * @description Per-client marketing preferences: the curated tab layout (#192) and the legacy
+         *     key-events toggle (#134, expand release).
          *
-         *     Visibility is configuration, so it rides ``marketing.link.manage`` like linking. When off,
-         *     the metrics/panel/tab/overview stop returning those numbers for the client until it's back on.
+         *     Configuration rides ``marketing.link.manage`` like linking. Hidden tiles stop being
+         *     returned for this client — panel, tab and overview — until they're back on.
          */
         put: operations["set_company_settings_api_v1_marketing_companies__company_id__settings_put"];
         post?: never;
@@ -5336,6 +5407,10 @@ export interface components {
              * Format: uuid
              */
             company_id: string;
+            /** Layout */
+            layout?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Needs Connection
              * @default false
@@ -5403,16 +5478,27 @@ export interface components {
              * Format: uuid
              */
             company_id: string;
+            /** Layout */
+            layout?: {
+                [key: string]: unknown;
+            } | null;
             /** Show Key Events */
             show_key_events: boolean;
         };
         /**
          * CompanySettingsUpdate
-         * @description The one per-client marketing preference: show GA4 key events / conversions.
+         * @description Per-client marketing preferences. Both fields optional: send what changes.
+         *
+         *     ``layout`` replaces the stored layout wholesale (``{"sources": {}}`` clears it); the
+         *     legacy ``show_key_events`` keeps working during the expand release (#192).
          */
         CompanySettingsUpdate: {
+            /** Layout */
+            layout?: {
+                [key: string]: unknown;
+            } | null;
             /** Show Key Events */
-            show_key_events: boolean;
+            show_key_events?: boolean | null;
         };
         /**
          * CompanyStatus
@@ -6577,6 +6663,44 @@ export interface components {
             gmail_enabled: boolean;
             /** @default inherit_pending */
             gmail_thread_followup: components["schemas"]["GmailThreadFollowup"];
+        };
+        /** GroupCompanies */
+        GroupCompanies: {
+            /** Company Ids */
+            company_ids: string[];
+        };
+        /** GroupCreate */
+        GroupCreate: {
+            /** Name */
+            name: string;
+        };
+        /** GroupMemberships */
+        GroupMemberships: {
+            /** Membership Ids */
+            membership_ids: string[];
+        };
+        /** GroupRead */
+        GroupRead: {
+            /** Company Ids */
+            company_ids?: string[];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Membership Ids */
+            membership_ids?: string[];
+            /** Name */
+            name: string;
+            /** Position */
+            position: number;
+        };
+        /** GroupUpdate */
+        GroupUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Position */
+            position?: number | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -9521,6 +9645,8 @@ export interface components {
             deep_link: string;
             /** Display Name */
             display_name: string;
+            /** Drilldowns */
+            drilldowns?: string[];
             /** External Id */
             external_id: string;
             /**
@@ -9548,6 +9674,14 @@ export interface components {
             primary_metric: string;
             series?: components["schemas"]["SeriesData"];
             source: components["schemas"]["MarketingSource"];
+            /** Tile Labels */
+            tile_labels?: {
+                [key: string]: {
+                    [key: string]: string;
+                };
+            };
+            /** Tiles */
+            tiles?: string[];
         };
         /** SsoSettingsRead */
         SsoSettingsRead: {
@@ -12906,6 +13040,189 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["CompanyRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_groups_api_v1_companies_groups_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupRead"][];
+                };
+            };
+        };
+    };
+    create_group_api_v1_companies_groups_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_group_api_v1_companies_groups__group_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_group_api_v1_companies_groups__group_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_group_companies_api_v1_companies_groups__group_id__companies_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupCompanies"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_group_memberships_api_v1_companies_groups__group_id__memberships_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupMemberships"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

@@ -44,6 +44,11 @@
     {@render card("/settings/users", t("settings.users.title"), t("settings.users.subtitle"))}
     {@render card("/settings/roles", t("settings.roles.title"), t("settings.roles.subtitle"))}
     {@render card(
+      "/settings/company-groups",
+      t("settings.company_groups.title"),
+      t("settings.company_groups.subtitle"),
+    )}
+    {@render card(
       "/settings/service-accounts",
       t("settings.service_accounts.title"),
       t("settings.service_accounts.subtitle"),

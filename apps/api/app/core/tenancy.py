@@ -93,13 +93,19 @@ class RequestContext:
     #: Effective permissions of this membership — the union over every role it holds, resolved
     #: once in ``require_context``. Never re-query per check (docs/PERFORMANCE.md).
     permissions: PermissionSet = field(default_factory=PermissionSet)
+    #: The company data horizon (issue #191), resolved once alongside the membership:
+    #: ``None`` = unrestricted (the default and the owner's guarantee); a set = this
+    #: membership sees only those companies' rows. Enforced by the repository below.
+    company_scope: frozenset[uuid.UUID] | None = None
     # Set only during an instance-admin impersonation (issue #26): ``user`` is then the
     # impersonated member and ``impersonated_by`` the real, authenticated instance owner.
     impersonated_by: User | None = None
     impersonation_expires_at: Any | None = None
 
     def repo(self, model: type[ModelT]) -> TenantScopedRepository[ModelT]:
-        return TenantScopedRepository(self.session, self.org.id, model)
+        return TenantScopedRepository(
+            self.session, self.org.id, model, company_scope=self.company_scope
+        )
 
     # --- authorization (issue #19) ----------------------------------------- #
     def can(self, permission: str, scope: str | None = None) -> bool:
@@ -215,13 +221,27 @@ async def require_context(
         if row is None:
             raise AppError("forbidden", "errors.forbidden", status_code=403)
         membership, granted = row
+        permissions = PermissionSet.of(granted)
+
+        # Company data horizon (issue #191): one indexed query over the assignment tables,
+        # via the resolver seam (the tables belong to the companies module). A wildcard
+        # holder (owner) is never restricted, whatever rows exist — never lock the tenant
+        # out (§15) — so resolution is skipped entirely for them.
+        from app.core.scope import resolve_company_scope
+
+        company_scope = (
+            None
+            if permissions.wildcard
+            else await resolve_company_scope(session, org.id, membership.id)
+        )
 
         ctx = RequestContext(
             user=user,
             org=org,
             session=session,
             membership_id=membership.id,
-            permissions=PermissionSet.of(granted),
+            permissions=permissions,
+            company_scope=company_scope,
             impersonated_by=impersonator,
             impersonation_expires_at=expires_at,
         )
@@ -241,22 +261,65 @@ class TenantScopedRepository(Generic[ModelT]):
 
     RLS is defence-in-depth; this is the primary guard. Never bypass it with a raw,
     unscoped query (Golden Rule 1 / CLAUDE.md §5).
+
+    It also enforces the **company data horizon** (issue #191): with a restricted
+    ``company_scope``, every model carrying ``company_id`` filters to those companies (rows
+    with no company linkage stay visible — they are not company data), companies themselves
+    filter by ``id``, and writes cannot place a row onto an invisible company. Out-of-horizon
+    reads answer 404, never 403 — a 403 on get-by-id leaks existence (#19's ``_owned_or_404``
+    reasoning).
     """
 
-    def __init__(self, session: AsyncSession, org_id: uuid.UUID, model: type[ModelT]) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        org_id: uuid.UUID,
+        model: type[ModelT],
+        *,
+        company_scope: frozenset[uuid.UUID] | None = None,
+    ) -> None:
         self.session = session
         self.org_id = org_id
         self.model = model
+        self.company_scope = company_scope
+        # Which column anchors the model to a company: `companies` itself declares its pk via
+        # `__company_horizon_attr__`; every other model is matched on a `company_id` column.
+        attr = getattr(model, "__company_horizon_attr__", "company_id")
+        self._horizon_col = getattr(model, attr, None)
+        table_col = getattr(model, "__table__", None)
+        table_col = table_col.c.get(attr) if table_col is not None else None
+        self._horizon_nullable = bool(table_col.nullable) if table_col is not None else False
+
+    def _horizon(self, stmt):
+        """AND the company horizon onto a statement (no-op when unrestricted, #191)."""
+        if self.company_scope is None or self._horizon_col is None:
+            return stmt
+        col = self._horizon_col
+        if self._horizon_nullable:
+            # A row not attached to any company (a company-less task, shared-infra hosting)
+            # is not company data; the horizon governs company rows only.
+            return stmt.where((col.is_(None)) | (col.in_(self.company_scope)))
+        return stmt.where(col.in_(self.company_scope))
+
+    def _guard_company_write(self, values: dict[str, Any]) -> None:
+        """Refuse placing a row onto a company outside the horizon (#191) — as a 404, the
+        same answer reading that company gets, so writes don't leak existence either."""
+        if self.company_scope is None:
+            return
+        company_id = values.get("company_id")
+        if company_id is not None and company_id not in self.company_scope:
+            raise AppError("not_found", "errors.not_found", status_code=404)
 
     def _scoped(self):
-        return select(self.model).where(self.model.org_id == self.org_id)
+        return self._horizon(select(self.model).where(self.model.org_id == self.org_id))
 
     def scoped_select(self):
         """A ``select(model)`` already filtered to this tenant.
 
         Use for reads that need conditions beyond simple equality (date ranges, ``IS NULL``):
         the caller adds ``.where(...)`` but the ``org_id`` filter is always present, so a query
-        built this way can never leak across tenants (Golden Rule 1).
+        built this way can never leak across tenants (Golden Rule 1). The company horizon
+        (#191) rides along the same way.
         """
         return self._scoped()
 
@@ -290,10 +353,12 @@ class TenantScopedRepository(Generic[ModelT]):
         stmt = select(func.count()).select_from(self.model).where(
             self.model.org_id == self.org_id
         )
-        stmt = self._apply_filters(stmt, filters)
+        stmt = self._horizon(self._apply_filters(stmt, filters))
         return int(await self.session.scalar(stmt) or 0)
 
     async def create(self, **values: Any) -> ModelT:
+        # You cannot create a row onto a company you cannot see (#191).
+        self._guard_company_write(values)
         obj = self.model(org_id=self.org_id, **values)
         self.session.add(obj)
         await self.session.flush()
@@ -304,6 +369,8 @@ class TenantScopedRepository(Generic[ModelT]):
     async def update(self, obj: ModelT, **values: Any) -> ModelT:
         if getattr(obj, "org_id") != self.org_id:  # noqa: B009 - defensive cross-tenant guard
             raise AppError("not_found", "errors.not_found", status_code=404)
+        # …nor move one onto a company you cannot see (#191).
+        self._guard_company_write(values)
         for key, value in values.items():
             setattr(obj, key, value)
         await self.session.flush()

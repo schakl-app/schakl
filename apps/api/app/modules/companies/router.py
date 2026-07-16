@@ -11,11 +11,15 @@ from app.config import settings
 from app.core.models import OrgSettings
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
+from app.modules.companies.groups import groups_router
 from app.modules.companies.schemas import CompanyCreate, CompanyRead, CompanyUpdate
 from app.modules.companies.service import CompanyService
 from app.schemas import Page, PanelData
 
 router = APIRouter(prefix="/companies", tags=["companies"])
+# The horizon admin surface (#191) registers *first*: `/companies/groups/...` must match its
+# literal routes, never fall into `/companies/{company_id}` below.
+router.include_router(groups_router)
 
 
 async def _enabled_modules(ctx: RequestContext) -> list[str]:

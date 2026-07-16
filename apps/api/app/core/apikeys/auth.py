@@ -122,12 +122,22 @@ async def _personal_context(session, org, key, RequestContext):  # noqa: ANN001
     # Effective = key.scopes ∩ owner's live permissions, re-evaluated every request: a demoted
     # member's key is demoted with them.
     effective = [s for s in key.scopes if _split_and_check(owner_perms, s)]
+    # The company horizon (#191) rides the owner's membership, exactly like a session —
+    # a personal key must not see further than the person it acts as.
+    from app.core.scope import resolve_company_scope
+
+    company_scope = (
+        None
+        if owner_perms.wildcard
+        else await resolve_company_scope(session, org.id, membership.id)
+    )
     return RequestContext(
         user=owner,
         org=org,
         session=session,
         membership_id=membership.id,
         permissions=PermissionSet.of(effective),
+        company_scope=company_scope,
     )
 
 
