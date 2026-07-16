@@ -23,6 +23,7 @@ from app.core.customfields import CustomFieldsService
 from app.core.events import emit
 from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
+from app.core.urls import reject_dangerous_url
 from app.modules.companies.models import Company, CompanyAssignee
 from app.modules.companies.schemas import CompanyCreate, CompanyUpdate
 from app.schemas import CompanyBudgetHours
@@ -214,6 +215,7 @@ class CompanyService:
     async def create(self, data: CompanyCreate) -> Company:
         self.ctx.require("companies.company.write")
         values = data.model_dump()
+        reject_dangerous_url(values.get("website"), field="website")
         values.pop("assignees", None)
         links = self.assignees.normalize(
             data.assignees, fallback_primary=data.responsible_user_id
@@ -248,6 +250,8 @@ class CompanyService:
         previous_status = company.status
         before_fields = snapshot(company, _AUDITED_FIELDS)
         values = data.model_dump(exclude_unset=True)
+        if "website" in values:
+            reject_dangerous_url(values.get("website"), field="website")
         # ``replace`` is delete-then-insert, so who is *new* has to be read before the write.
         roster_touched = "assignees" in values or "responsible_user_id" in values
         before: set[uuid.UUID] = (

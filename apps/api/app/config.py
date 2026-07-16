@@ -13,6 +13,20 @@ from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+#: Secrets that must never sign tokens or derive the vault key in production. The field default
+#: below and the values shipped in ``infra/.env.example`` / ``infra/compose.yaml`` all live here,
+#: so an operator who forgets to set ``SCHAKL_SECRET_KEY`` cannot boot a production instance on a
+#: publicly-known key (security audit F1 — universal session/token forgery + secret decryption).
+_INSECURE_SECRETS = frozenset(
+    {
+        "",
+        "change-me-in-production-please-32bytes-min",
+        "dev-secret-change-me-in-production",
+        "change-me",
+    }
+)
+
+
 def _default_messages_dir() -> Path:
     """Locate the shared ``messages/`` catalogs without assuming a fixed directory depth.
 
@@ -183,6 +197,31 @@ class Settings(BaseSettings):
         if self.demo_mode:
             self.allow_registration = False
             self.instance_admin_enabled = False
+        return self
+
+    @model_validator(mode="after")
+    def _guard_production_secrets(self) -> Settings:
+        """Refuse to boot a production instance on a default/known/weak signing secret (F1).
+
+        ``secret_key`` is the root of trust: it signs the session JWT, the password-reset and
+        email-verification tokens, the impersonation grant, and (via ``crypto.py``) derives the
+        key that encrypts every secret at rest. A publicly-known value there means anyone can
+        forge a session for any user and decrypt the vault. Development/test are unaffected — this
+        only bites when ``SCHAKL_ENVIRONMENT`` is production and the secret was never set.
+        """
+        if self.is_production:
+            if self.secret_key in _INSECURE_SECRETS or len(self.secret_key) < 32:
+                raise ValueError(
+                    "SCHAKL_SECRET_KEY must be a strong, unique value (>=32 chars) in production; "
+                    "refusing to start on the default/sample secret. Generate one with "
+                    "`openssl rand -hex 32`."
+                )
+            if self.encryption_key is not None and (
+                self.encryption_key in _INSECURE_SECRETS or len(self.encryption_key) < 32
+            ):
+                raise ValueError(
+                    "SCHAKL_ENCRYPTION_KEY, when set, must be a strong value (>=32 chars)."
+                )
         return self
 
     @property

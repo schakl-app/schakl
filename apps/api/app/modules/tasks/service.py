@@ -26,6 +26,7 @@ from app.core.richtext import (
 )
 from app.core.sorting import apply_sort, user_sort_name
 from app.core.tenancy import RequestContext
+from app.core.urls import reject_dangerous_url
 from app.errors import AppError
 from app.modules.tasks import recurrence as rec_mod
 from app.modules.tasks.models import (
@@ -503,6 +504,9 @@ class TaskService:
     async def add_link(self, task_id: uuid.UUID, data: LinkCreate) -> TaskLink:
         await self._writable_task_or_403(task_id)
         url = data.url if "://" in data.url else f"https://{data.url}"
+        # A ``javascript:``/``data:`` URL survives the "://" heuristic and would render as an
+        # executable href (stored XSS). Refuse it at the source (security audit web-XSS-2).
+        reject_dangerous_url(url, field="url")
         return await self.ctx.repo(TaskLink).create(
             task_id=task_id, url=url, title=data.title
         )
