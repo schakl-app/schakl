@@ -20,6 +20,20 @@ export function metricLabel(key: string): string {
   return t(`marketing.metric.${key}`);
 }
 
+/** A tile's display label: the client's override in the viewer's locale (#192), else the
+ *  built-in metric label. Overrides are tenant data ({nl, en}), so fall through sensibly. */
+export function tileLabel(
+  key: string,
+  overrides?: Record<string, Record<string, string>> | null,
+): string {
+  const override = overrides?.[key];
+  if (override) {
+    const locale = dateLocale().startsWith("nl") ? "nl" : "en";
+    return override[locale] || override.nl || override.en || metricLabel(key);
+  }
+  return metricLabel(key);
+}
+
 export function drilldownLabel(kind: string): string {
   return t(`marketing.drilldown.${kind}`);
 }

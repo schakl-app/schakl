@@ -33,6 +33,16 @@ from app.errors import AppError
 from app.modules.companies.models import Company
 from app.modules.google import client as google_client
 from app.modules.google.models import ConnectionStatus, GoogleConnection
+from app.modules.marketing.layout import (
+    GA4_KEY_EVENT_DRILLDOWN,
+    GA4_KEY_EVENT_TILES,
+    CompanyLayout,
+    resolved_drilldowns,
+    resolved_primary,
+    resolved_tiles,
+    source_layout,
+    validate_layout,
+)
 from app.modules.marketing.models import (
     MarketingCompanySettings,
     MarketingLink,
@@ -62,7 +72,6 @@ from app.modules.marketing.sources.base import (
     AVERAGED_METRICS,
     LOWER_IS_BETTER,
     METRICS_BY_SOURCE,
-    primary_metric,
 )
 from app.modules.marketing.sources.gads import AdsNotConfigured, developer_token_scope
 
@@ -186,11 +195,13 @@ class MarketingService:
             )
         )
 
-    async def _settings_map(self, company_ids: list[uuid.UUID]) -> dict[uuid.UUID, bool]:
-        """``{company_id: show_key_events}`` for the given companies — one query.
+    async def _settings_map(
+        self, company_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, tuple[bool, dict | None]]:
+        """``{company_id: (show_key_events, layout)}`` for the given companies — one query.
 
-        A company with **no** settings row falls back to the default (``True``): absence means
-        the pre-existing behaviour, so nothing changes until a manager flips the toggle.
+        A company with **no** settings row falls back to the defaults (``True``, no layout):
+        absence means the pre-existing behaviour, so nothing changes until someone edits.
         """
         if not company_ids:
             return {}
@@ -199,16 +210,20 @@ class MarketingService:
                 select(
                     MarketingCompanySettings.company_id,
                     MarketingCompanySettings.show_key_events,
+                    MarketingCompanySettings.layout,
                 ).where(
                     MarketingCompanySettings.org_id == self.ctx.org.id,
                     MarketingCompanySettings.company_id.in_(company_ids),
                 )
             )
         ).all()
-        return {company_id: bool(flag) for company_id, flag in rows}
+        return {company_id: (bool(flag), layout) for company_id, flag, layout in rows}
+
+    async def _company_settings(self, company_id: uuid.UUID) -> tuple[bool, dict | None]:
+        return (await self._settings_map([company_id])).get(company_id, (True, None))
 
     async def _show_key_events(self, company_id: uuid.UUID) -> bool:
-        return (await self._settings_map([company_id])).get(company_id, True)
+        return (await self._company_settings(company_id))[0]
 
     # --- links (#132) --------------------------------------------------------------------- #
     async def list_links_read(self, company_id: uuid.UUID) -> list[LinkRead]:
@@ -318,12 +333,24 @@ class MarketingService:
 
     # --- per-client settings (#134) ------------------------------------------------------- #
     async def set_company_settings(
-        self, company_id: uuid.UUID, show_key_events: bool
+        self,
+        company_id: uuid.UUID,
+        *,
+        show_key_events: bool | None = None,
+        layout: dict | None = None,
     ) -> CompanySettingsRead:
-        """Turn GA4 key events / conversions on or off for one client (upsert, one row per org).
+        """Per-client marketing preferences (upsert, one row per org+company).
 
-        Gated on ``marketing.link.manage`` — it's configuration, like linking. The change lands
-        on the client's activity trail (same entity as link/unlink), only when it actually flips.
+        Gated on ``marketing.link.manage`` — it's configuration, like linking. Two writers,
+        kept coherent during the expand release (#192):
+
+        * ``layout`` replaces the stored layout wholesale after validation (``{"sources": {}}``
+          clears it back to the defaults); the legacy boolean is rewritten to match the GA4
+          tiles so pre-layout readers keep agreeing with what is actually visible.
+        * ``show_key_events`` (the #134 toggle) keeps working: where a layout with GA4 tiles
+          exists, it edits those tiles (the boolean alone would silently lose the fight).
+
+        Changes land on the client's activity trail (§16), only when something actually flips.
         """
         self.ctx.require("marketing.link.manage")
         await self._company_or_404(company_id)
@@ -333,27 +360,69 @@ class MarketingService:
                 MarketingCompanySettings.company_id == company_id,
             )
         )
-        previous = row.show_key_events if row is not None else True
         if row is None:
+            # Explicit True: the column default only applies at INSERT, and the coherence
+            # math below must see the semantic default, not a pre-flush None.
             row = MarketingCompanySettings(
-                org_id=self.ctx.org.id,
-                company_id=company_id,
-                show_key_events=show_key_events,
+                org_id=self.ctx.org.id, company_id=company_id, show_key_events=True
             )
             self.ctx.session.add(row)
-        else:
+        previous_visible = "keyEvents" in resolved_tiles(
+            "ga4", source_layout(row.layout, "ga4"), bool(row.show_key_events)
+        )
+        previous_layout = row.layout
+
+        if layout is not None:
+            parsed = CompanyLayout.model_validate(layout)
+            validate_layout(parsed)
+            stored = parsed.model_dump(exclude_none=True) if parsed.sources else None
+            row.layout = stored
+
+        if show_key_events is not None:
             row.show_key_events = show_key_events
+            src = source_layout(row.layout, "ga4")
+            if src is not None and src.tiles is not None:
+                # The toggle edits the curated tiles (#192): add the key-event tiles back in
+                # their default place, or take them (and the by-event drill-down) out.
+                tiles = [t for t in src.tiles if t not in GA4_KEY_EVENT_TILES]
+                if show_key_events:
+                    tiles = [
+                        m
+                        for m in METRICS_BY_SOURCE["ga4"]
+                        if m in tiles or m in GA4_KEY_EVENT_TILES
+                    ] + [t for t in tiles if t not in METRICS_BY_SOURCE["ga4"]]
+                src.tiles = tiles
+                if not show_key_events and src.drilldowns is not None:
+                    src.drilldowns = [
+                        d for d in src.drilldowns if d != GA4_KEY_EVENT_DRILLDOWN
+                    ]
+                new_layout = dict(row.layout or {"sources": {}})
+                new_sources = dict(new_layout.get("sources") or {})
+                new_sources["ga4"] = src.model_dump(exclude_none=True)
+                new_layout["sources"] = new_sources
+                row.layout = new_layout
+        # Keep the legacy boolean coherent with the layout for pre-#192 readers.
+        row.show_key_events = "keyEvents" in resolved_tiles(
+            "ga4", source_layout(row.layout, "ga4"), bool(row.show_key_events)
+        )
         await self.ctx.session.flush()
-        if previous != show_key_events:
-            await ActivityService(self.ctx).record(
+
+        now_visible = row.show_key_events
+        activity = ActivityService(self.ctx)
+        if previous_visible != now_visible:
+            await activity.record(
                 "company",
                 company_id,
                 "marketing.key_events_enabled"
-                if show_key_events
+                if now_visible
                 else "marketing.key_events_disabled",
                 {},
             )
-        return CompanySettingsRead(company_id=company_id, show_key_events=show_key_events)
+        if layout is not None and previous_layout != row.layout:
+            await activity.record("company", company_id, "marketing.layout_changed", {})
+        return CompanySettingsRead(
+            company_id=company_id, show_key_events=row.show_key_events, layout=row.layout
+        )
 
     # --- pickers (#132) ------------------------------------------------------------------- #
     async def available_accounts(self, source: MarketingSource) -> AccountsResponse:
@@ -446,7 +515,7 @@ class MarketingService:
         prev_end = cur_start - timedelta(days=1)
         prev_start = prev_end - timedelta(days=range_days - 1)
 
-        show_key_events = await self._show_key_events(company_id)
+        show_key_events, layout = await self._company_settings(company_id)
         links = await self._links(company_id=company_id)
         connections = await self._connections_by_id()
         sources: list[SourceMetrics] = []
@@ -465,15 +534,20 @@ class MarketingService:
                         prev_start,
                         prev_end,
                         show_key_events=show_key_events,
+                        layout=layout,
                     )
                 )
+        can_manage = self.ctx.can("marketing.link.manage")
         return CompanyMarketing(
             company_id=company_id,
             range_days=range_days,
             sources=sources,
             needs_connection=not await self._any_connection(),
-            can_manage=self.ctx.can("marketing.link.manage"),
+            can_manage=can_manage,
             show_key_events=show_key_events,
+            # The stored layout feeds the tab's edit mode (#192) — manager-only, like the
+            # settings write it configures.
+            layout=layout if can_manage else None,
         )
 
     async def _metrics_for_links(
@@ -517,20 +591,18 @@ class MarketingService:
         prev_end: date,
         *,
         show_key_events: bool = True,
+        layout: dict | None = None,
     ) -> SourceMetrics:
         adapter = source_for(link.source)
         current_rows = [m for day, m in daily.items() if cur_start <= day <= cur_end]
         prev_rows = [m for day, m in daily.items() if prev_start <= day <= prev_end]
         cur_agg = aggregate(link.source, current_rows)
         prev_agg = aggregate(link.source, prev_rows)
-        # This client hides GA4 key events / conversions — drop them from the payload entirely
-        # (never a client-side hide), so the panel, tab and every consumer just don't see them.
-        gated = (
-            set(_GA4_GATED_METRICS)
-            if not show_key_events and link.source == MarketingSource.GA4.value
-            else set()
-        )
-        metrics = [m for m in METRICS_BY_SOURCE.get(link.source, []) if m not in gated]
+        # The client's curated layout (#192) — or, where none exists, the legacy key-events
+        # gate (#134) — decides which tiles exist. Hidden tiles are dropped from the payload
+        # entirely (never a client-side hide), so no consumer ever sees them.
+        src_layout = source_layout(layout, link.source)
+        metrics = resolved_tiles(link.source, src_layout, show_key_events)
         kpis = {
             metric: KpiValue(
                 current=cur_agg.get(metric, 0.0),
@@ -571,10 +643,15 @@ class MarketingService:
             last_synced_at=link.last_synced_at,
             currency=currency,
             deep_link=adapter.deep_link(link.external_id, link.config or {}),
-            primary_metric=primary_metric(link.source),
+            primary_metric=resolved_primary(link.source, src_layout, metrics),
             kpis=kpis,
             series=SeriesData(dates=dates, metrics=series_metrics),
             channels=channels,
+            tiles=metrics,
+            tile_labels=(src_layout.labels if src_layout else {}),
+            drilldowns=resolved_drilldowns(
+                link.source, adapter.drilldowns, src_layout, metrics
+            ),
         )
 
     def _health(
@@ -603,9 +680,12 @@ class MarketingService:
         adapter = source_for(link.source)
         if kind not in adapter.drilldowns:
             raise AppError("validation", "errors.validation", status_code=422)
-        # The by-event breakdown obeys the same per-company gate as the keyEvents KPIs (#134):
-        # when this client hides key events, the drill-down does not exist for it either.
-        if kind == "key_events" and not await self._show_key_events(company_id):
+        # The client's layout decides which drill-downs exist (#192) — including the legacy
+        # key-events gate (#134): a hidden keyEvents tile takes its breakdown with it.
+        show_key_events, layout = await self._company_settings(company_id)
+        src_layout = source_layout(layout, link.source)
+        tiles = resolved_tiles(link.source, src_layout, show_key_events)
+        if kind not in resolved_drilldowns(link.source, adapter.drilldowns, src_layout, tiles):
             raise AppError("validation", "errors.validation", status_code=422)
         range_days = max(1, min(range_days, 400))
         today = await self._today()
@@ -725,16 +805,21 @@ class MarketingService:
         settings = await self._settings_map(list(by_company.keys()))
         rows: list[OverviewRow] = []
         for company_id, per_source in by_company.items():
-            show_key_events = settings.get(company_id, True)
+            show_key_events, layout = settings.get(company_id, (True, None))
             agg_cur = {s: aggregate(s, buckets[0]) for s, buckets in per_source.items()}
             agg_prev = {s: aggregate(s, buckets[1]) for s, buckets in per_source.items()}
+            # Which metric keys this client's layout leaves visible, per source (#192) — the
+            # grid respects per-company hidden metrics exactly like the panel/tab.
+            visible = {
+                s: set(resolved_tiles(s, source_layout(layout, s), show_key_events))
+                for s in per_source
+            }
             metrics: dict[str, KpiValue] = {}
             for col, (src, metric) in _OVERVIEW_COLUMNS.items():
                 if src not in per_source:
                     continue
-                # The conversions column is GA4 key events; a client that hides them shows no
-                # number here either, matching the panel/tab (#134).
-                if col == "conversions" and not show_key_events:
+                # A hidden tile shows no number here either, matching the panel/tab (#134/#192).
+                if metric not in visible.get(src, set()):
                     continue
                 cur_v = agg_cur[src].get(metric, 0.0)
                 prev_v = agg_prev[src].get(metric, 0.0)
@@ -745,13 +830,18 @@ class MarketingService:
                     lower_is_better=metric in LOWER_IS_BETTER,
                 )
             present = sorted(sources_present[company_id])
+            # The grid's toggle reflects the *effective* visibility: for a layout-curated
+            # client the tiles decide, not the legacy boolean (#192).
+            key_events_visible = (
+                "keyEvents" in visible["ga4"] if "ga4" in visible else show_key_events
+            )
             rows.append(
                 OverviewRow(
                     company_id=company_id,
                     company_name=names.get(company_id, ""),
                     sources_present=[MarketingSource(s) for s in present],
                     metrics=metrics,
-                    show_key_events=show_key_events,
+                    show_key_events=key_events_visible,
                 )
             )
         rows = self._sort_overview(rows, sort)

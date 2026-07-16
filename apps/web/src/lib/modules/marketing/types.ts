@@ -28,6 +28,24 @@ export interface SourceMetrics {
   kpis: Record<string, KpiValue>;
   series: SeriesData;
   channels: Record<string, number> | null;
+  /** Ordered, visible tile keys after the client's layout applied (#192). */
+  tiles: string[];
+  /** Per-tile label overrides, `{metric: {locale: label}}` — the tenant's naming (#192). */
+  tile_labels: Record<string, Record<string, string>>;
+  /** Enabled drill-down kinds after the layout applied (#192). */
+  drilldowns: string[];
+}
+
+/** One source's stored layout (#192); `null`/absent fields mean "not curated". */
+export interface SourceLayout {
+  tiles?: string[] | null;
+  labels?: Record<string, Record<string, string>>;
+  drilldowns?: string[] | null;
+  chart_metric?: string | null;
+}
+
+export interface CompanyLayout {
+  sources: Record<string, SourceLayout>;
 }
 
 export interface CompanyMarketing {
@@ -38,6 +56,8 @@ export interface CompanyMarketing {
   can_manage: boolean;
   /** Whether GA4 key events / conversions are shown for this client (#134). */
   show_key_events: boolean;
+  /** The stored layout (#192), present for a caller who may manage it (`can_manage`). */
+  layout?: CompanyLayout | null;
   forbidden?: boolean;
 }
 

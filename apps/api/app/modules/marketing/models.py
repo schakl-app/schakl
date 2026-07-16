@@ -161,9 +161,15 @@ class MarketingCompanySettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMix
     )
     #: Show GA4 key events / conversions for this client. Default on: it preserves the behaviour
     #: from before this setting existed (the metric was always visible).
+    #: DEPRECATED (expand/contract, #192): one special case of the layout below. Honoured only
+    #: where the layout has no tiles for GA4; drop the column in the release after next.
     show_key_events: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("true")
     )
+    #: The curated tab layout (#192): per source an ordered tile list (absence = hidden),
+    #: per-tile label_i18n overrides, enabled drill-downs and the default charted metric.
+    #: NULL = no curation, today's behaviour. Shape validated in modules/marketing/layout.py.
+    layout: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
 
 class MarketingSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):

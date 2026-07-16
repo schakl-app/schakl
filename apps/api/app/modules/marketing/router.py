@@ -137,12 +137,15 @@ async def set_company_settings(
     payload: CompanySettingsUpdate,
     ctx: RequestContext = Depends(require_context),
 ) -> CompanySettingsRead:
-    """Show or hide GA4 key events / conversions for this client (#134).
+    """Per-client marketing preferences: the curated tab layout (#192) and the legacy
+    key-events toggle (#134, expand release).
 
-    Visibility is configuration, so it rides ``marketing.link.manage`` like linking. When off,
-    the metrics/panel/tab/overview stop returning those numbers for the client until it's back on.
+    Configuration rides ``marketing.link.manage`` like linking. Hidden tiles stop being
+    returned for this client — panel, tab and overview — until they're back on.
     """
-    return await MarketingService(ctx).set_company_settings(company_id, payload.show_key_events)
+    return await MarketingService(ctx).set_company_settings(
+        company_id, show_key_events=payload.show_key_events, layout=payload.layout
+    )
 
 
 @router.get(

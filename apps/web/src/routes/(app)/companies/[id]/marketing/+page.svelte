@@ -1,6 +1,9 @@
 <script lang="ts">
+  import { Check, Pencil } from "@lucide/svelte";
+
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
+  import MarketingLayoutEditor from "$lib/modules/marketing/MarketingLayoutEditor.svelte";
   import MarketingSourceSection from "$lib/modules/marketing/MarketingSourceSection.svelte";
   import type { CompanyMarketing } from "$lib/modules/marketing/types";
 
@@ -8,6 +11,11 @@
   const company = $derived(data.company);
   const marketing = $derived(data.metrics as CompanyMarketing | null);
   const sources = $derived(marketing?.sources ?? []);
+
+  // Use vs edit mode (docs/UX.md, #192): the pencil turns the curated tab into its editor —
+  // reorder/hide/relabel tiles per source. Gated on marketing.link.manage (can_manage).
+  let editMode = $state(false);
+  let editingSource = $state<string | null>(null);
 
   const RANGES = ["30d", "month", "quarter", "90d", "yoy"] as const;
   const rangeClass = (active: boolean) =>
@@ -24,7 +32,26 @@
   <a href={`/companies/${company.id}`} class="text-sm text-text-muted hover:text-text">
     ← {company.name}
   </a>
-  <h1 class="mt-2 text-xl font-semibold text-text">{t("marketing.tab.title")}</h1>
+  <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
+    <h1 class="text-xl font-semibold text-text">{t("marketing.tab.title")}</h1>
+    {#if marketing?.can_manage && sources.length > 0}
+      <button
+        type="button"
+        class="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-sm text-text hover:border-brand"
+        aria-pressed={editMode}
+        onclick={() => {
+          editMode = !editMode;
+          editingSource = null;
+        }}
+      >
+        {#if editMode}
+          <Check size={14} /> {t("marketing.layout.done")}
+        {:else}
+          <Pencil size={14} /> {t("marketing.layout.edit")}
+        {/if}
+      </button>
+    {/if}
+  </div>
   <p class="mt-1 text-sm text-text-muted">{t("marketing.subtitle")}</p>
 </div>
 
@@ -49,7 +76,28 @@
 {:else}
   <div class="space-y-5">
     {#each sources as src (src.link_id)}
-      <MarketingSourceSection companyId={company.id} {src} rangeDays={data.rangeDays} />
+      {#if editMode && editingSource === src.source}
+        <MarketingLayoutEditor
+          companyId={company.id}
+          source={src.source}
+          layout={marketing.layout}
+          ondone={() => (editingSource = null)}
+        />
+      {:else}
+        <div class="relative">
+          {#if editMode}
+            <button
+              type="button"
+              class="absolute right-4 top-4 z-10 flex items-center gap-1.5 rounded-lg border border-border bg-surface-raised px-2.5 py-1.5 text-sm text-text hover:border-brand"
+              onclick={() => (editingSource = src.source)}
+            >
+              <Pencil size={13} />
+              {t("marketing.layout.edit_source")}
+            </button>
+          {/if}
+          <MarketingSourceSection companyId={company.id} {src} rangeDays={data.rangeDays} />
+        </div>
+      {/if}
     {/each}
   </div>
 {/if}

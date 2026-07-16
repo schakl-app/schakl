@@ -98,6 +98,14 @@ class SourceMetrics(BaseModel):
     series: SeriesData = Field(default_factory=SeriesData)
     #: GA4 only: period sessions by acquisition channel, for the split.
     channels: dict[str, float] | None = None
+    #: The ordered, *visible* tile keys after the client's layout applied (#192). Hidden tiles
+    #: are already absent from ``kpis``/``series`` — this carries the curated order.
+    tiles: list[str] = Field(default_factory=list)
+    #: Per-tile label overrides, ``{metric: {locale: label}}`` (#192) — tenant data, so every
+    #: consumer (web, MCP) shows the client's naming.
+    tile_labels: dict[str, dict[str, str]] = Field(default_factory=dict)
+    #: The enabled drill-down kinds after the layout applied (#192).
+    drilldowns: list[str] = Field(default_factory=list)
 
 
 class CompanyMarketing(BaseModel):
@@ -113,13 +121,21 @@ class CompanyMarketing(BaseModel):
     #: Whether GA4 key events / conversions are shown for this client (#134). When False the
     #: GA4 sources above already omit those metrics; the flag lets the UI render the toggle.
     show_key_events: bool = True
+    #: The stored layout (#192), for the tab's edit mode — present only for a caller who may
+    #: manage it (``can_manage``); ``None`` = no curation.
+    layout: dict | None = None
 
 
-# --- per-client settings (#134) -------------------------------------------------------------- #
+# --- per-client settings (#134, layout #192) -------------------------------------------------- #
 class CompanySettingsUpdate(BaseModel):
-    """The one per-client marketing preference: show GA4 key events / conversions."""
+    """Per-client marketing preferences. Both fields optional: send what changes.
 
-    show_key_events: bool
+    ``layout`` replaces the stored layout wholesale (``{"sources": {}}`` clears it); the
+    legacy ``show_key_events`` keeps working during the expand release (#192).
+    """
+
+    show_key_events: bool | None = None
+    layout: dict | None = None
 
 
 class CompanySettingsRead(BaseModel):
@@ -127,6 +143,7 @@ class CompanySettingsRead(BaseModel):
 
     company_id: uuid.UUID
     show_key_events: bool
+    layout: dict | None = None
 
 
 # --- org-level settings (#134) --------------------------------------------------------------- #

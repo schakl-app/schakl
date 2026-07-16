@@ -11,7 +11,7 @@
   import TrendChart from "$lib/core/ui/charts/TrendChart.svelte";
 
   import MarketingDrilldown from "./MarketingDrilldown.svelte";
-  import { deltaClass, deltaView, fmtMetric, metricLabel, sourceLabel } from "./format";
+  import { deltaClass, deltaView, fmtMetric, sourceLabel, tileLabel } from "./format";
   import { ALL_METRICS, DRILLDOWNS, type SourceMetrics } from "./types";
 
   let {
@@ -30,14 +30,17 @@
   let override = $state<string | null>(null);
   const selected = $derived(override ?? src.primary_metric);
 
-  const metrics = $derived(ALL_METRICS[src.source] ?? []);
-  // The API withholds the keyEvents KPI when this client's key events are hidden (#134);
-  // its absence also hides the by-event drill-down (the endpoint 422s it anyway).
+  // The API resolves the client's curated layout server-side (#192): `tiles` carries the
+  // visible metrics in curated order, `drilldowns` the enabled kinds. The constants are only
+  // the fallback for a payload predating the field.
+  const metrics = $derived(src.tiles?.length ? src.tiles : (ALL_METRICS[src.source] ?? []));
   const drilldowns = $derived(
-    (DRILLDOWNS[src.source] ?? []).filter(
-      (kind) => kind !== "key_events" || "keyEvents" in (src.kpis ?? {}),
-    ),
+    src.drilldowns ??
+      (DRILLDOWNS[src.source] ?? []).filter(
+        (kind) => kind !== "key_events" || "keyEvents" in (src.kpis ?? {}),
+      ),
   );
+  const label = (key: string) => tileLabel(key, src.tile_labels);
   const values = $derived(src.series?.metrics?.[selected] ?? []);
   const dates = $derived(src.series?.dates ?? []);
 
@@ -84,7 +87,7 @@
               ? 'border-brand bg-surface'
               : 'border-border hover:border-brand/50'}"
           >
-            <p class="text-xs text-text-muted">{metricLabel(key)}</p>
+            <p class="text-xs text-text-muted">{label(key)}</p>
             <p class="mt-0.5 text-lg font-semibold tabular-nums text-text">
               {fmtMetric(key, kpi.current, src.currency)}
             </p>
@@ -100,11 +103,11 @@
 
     <!-- Trend of the selected metric. -->
     <div class="mb-5">
-      <p class="mb-1 text-sm font-medium text-text">{metricLabel(selected)}</p>
+      <p class="mb-1 text-sm font-medium text-text">{label(selected)}</p>
       <TrendChart
         {dates}
         {values}
-        label={metricLabel(selected)}
+        label={label(selected)}
         format={(v) => fmtMetric(selected, v, src.currency)}
       />
     </div>
