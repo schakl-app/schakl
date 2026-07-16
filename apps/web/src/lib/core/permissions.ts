@@ -64,6 +64,7 @@ export const SETTINGS_SCREEN_PERMISSIONS = [
   "settings.providers.manage",
   "contacts.type.manage",
   "subscriptions.type.manage",
+  "invoicing.settings.manage",
   "automation.rule.read",
   "ai.settings.manage",
 ] as const;
