@@ -21,7 +21,12 @@ export const load: PageServerLoad = async (event) => {
     const { data: companies } = await api.GET("/api/v1/companies", {
       params: { query: { limit: 50, count: false } },
     });
-    const items = (companies?.items ?? []).map((c) => ({ id: c.id, name: c.name }));
+    const items = (companies?.items ?? []).map((c) => ({
+      id: c.id,
+      name: c.name,
+      // The client's own logo (#196), served tenant+horizon-scoped by the API.
+      logoUrl: c.logo_file_id ? `/api/v1/companies/${c.id}/logo` : null,
+    }));
     const selected = event.url.searchParams.get("company") ?? items[0]?.id ?? null;
     const metrics = selected
       ? (

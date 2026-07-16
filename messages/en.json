@@ -2351,5 +2351,8 @@
   "contacts.portal.disable": "Disable access",
   "contacts.portal.email_not_sent": "Access is set up, but the invite email could not be sent. Configure email under Settings, then resend.",
   "errors.portal_email_required": "This contact needs an email address before they can be invited.",
-  "errors.portal_email_in_use": "This email address already belongs to an existing account. A portal login must have its own address."
+  "errors.portal_email_in_use": "This email address already belongs to an existing account. A portal login must have its own address.",
+  "companies.logo.label": "Logo",
+  "companies.logo.remove": "Remove current logo",
+  "companies.logo.hint": "Shown on this page and on the client's own portal dashboard. This is the client's mark, not your agency branding."
 }

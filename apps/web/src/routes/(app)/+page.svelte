@@ -63,6 +63,25 @@
   <title>{pageTitle(t("dashboard.my_day.title"))}</title>
 </svelte:head>
 
+{#snippet companyLogo(company: { name: string; logoUrl: string | null })}
+  <!-- The company's logo on their own dashboard (#196), initials when unset — the tenant's
+       (agency) branding stays in the shell, untouched. -->
+  {#if company.logoUrl}
+    <img
+      src={company.logoUrl}
+      alt=""
+      class="h-9 w-9 shrink-0 rounded-lg border border-border object-contain"
+    />
+  {:else}
+    <span
+      class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface text-sm font-semibold text-text-muted ring-1 ring-inset ring-border"
+      aria-hidden="true"
+    >
+      {company.name.slice(0, 2).toUpperCase()}
+    </span>
+  {/if}
+{/snippet}
+
 {#if data.portal}
   <!-- The client portal homepage (#193): the marketing dashboard as the agency curated it
        (#192 layouts, enforced by the API) for each company in this contact's horizon. -->
@@ -94,9 +113,21 @@
         {/each}
       </div>
     {:else}
-      <h2 class="mb-4 text-base font-semibold text-text">{data.portal.companies[0].name}</h2>
+      <h2 class="mb-4 flex items-center gap-2.5 text-base font-semibold text-text">
+        {@render companyLogo(data.portal.companies[0])}
+        {data.portal.companies[0].name}
+      </h2>
     {/if}
 
+    {#if data.portal.companies.length > 1}
+      {@const current = data.portal.companies.find((c) => c.id === data.portal?.selected)}
+      {#if current}
+        <h2 class="mb-4 flex items-center gap-2.5 text-base font-semibold text-text">
+          {@render companyLogo(current)}
+          {current.name}
+        </h2>
+      {/if}
+    {/if}
     {#if portalMetrics && portalMetrics.sources.length > 0}
       <div class="space-y-5">
         {#each portalMetrics.sources as src (src.link_id)}

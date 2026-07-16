@@ -157,6 +157,10 @@ async def list_files(
     ctx: RequestContext = Depends(require_context),
 ) -> list[StoredFileRead]:
     """The files attached to one entity (a task's documents, a project's documents)."""
+    if entity_type == "company_logo" and ctx.company_scope is not None:
+        # Same horizon rule as serving one (#191/#196).
+        if entity_id not in ctx.company_scope:
+            return []
     rows = await FileService(ctx).list_for(entity_type, entity_id)
     return [StoredFileRead.model_validate(row) for row in rows]
 
@@ -189,7 +193,20 @@ async def serve_file(
 ) -> Response:
     """Stream the bytes. Cross-tenant ids read as 404 (tenant-scoped row lookup)."""
     stored = await FileService(ctx).get_or_404(file_id)
+    _company_horizon_guard(ctx, stored)
     return await _file_response(stored, request, ctx=ctx)
+
+
+def _company_horizon_guard(ctx: RequestContext, stored: StoredFile) -> None:
+    """A company-rooted file honours the caller's company horizon (#191/#196): a portal
+    login (or a restricted member) must not fetch an invisible company's logo by file id.
+    Same answer the company itself gives — 404, never a leaking 403."""
+    if (
+        stored.entity_type == "company_logo"
+        and ctx.company_scope is not None
+        and stored.entity_id not in ctx.company_scope
+    ):
+        raise AppError("not_found", "errors.not_found", status_code=404)
 
 
 # The size variants the installable-app icon story needs (#198): apple-touch (180) and the

@@ -251,3 +251,95 @@ async def test_unknown_membership_id_is_ignored(client_for) -> None:
         ).status_code == 204
         groups = (await c.get("/api/v1/companies/groups", headers=owner_h)).json()
         assert groups[0]["membership_ids"] == []
+
+
+async def test_company_logo_upload_serve_and_horizon(client_for, tmp_path, monkeypatch) -> None:
+    """Per-client logo (#196): upload/replace/remove via StoredFile, served tenant- and
+    horizon-scoped — a restricted member never fetches an invisible company's logo, not even
+    by raw file id."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    t, member, membership, owner_h, member_h, a, b, group = await _setup(client_for, "logo")
+    png = b"\x89PNG\r\n\x1a\n" + b"0" * 64
+
+    async with client_for(t.host) as c:
+        # Upload onto Beta; the company row now references the stored file.
+        uploaded = await c.post(
+            f"/api/v1/companies/{b['id']}/logo",
+            files={"file": ("logo.png", png, "image/png")},
+            headers=owner_h,
+        )
+        assert uploaded.status_code == 200, uploaded.text
+        logo_id = uploaded.json()["logo_file_id"]
+        assert logo_id
+
+        served = await c.get(f"/api/v1/companies/{b['id']}/logo", headers=owner_h)
+        assert served.status_code == 200 and served.content == png
+
+        # Replace: a second upload swaps the file and cleans the old row up.
+        replaced = await c.post(
+            f"/api/v1/companies/{b['id']}/logo",
+            files={"file": ("logo2.png", png, "image/png")},
+            headers=owner_h,
+        )
+        assert replaced.json()["logo_file_id"] != logo_id
+        assert (await c.get(f"/api/v1/files/{logo_id}", headers=owner_h)).status_code == 404
+        logo_id = replaced.json()["logo_file_id"]
+
+        # Restrict the member to Alpha only: Beta's logo is invisible through every path.
+        assert (
+            await c.put(
+                f"/api/v1/companies/groups/{group['id']}/memberships",
+                json={"membership_ids": [str(membership.id)]},
+                headers=owner_h,
+            )
+        ).status_code == 204
+        assert (
+            await c.get(f"/api/v1/companies/{b['id']}/logo", headers=member_h)
+        ).status_code == 404
+        # …including the generic file route, by raw id.
+        assert (await c.get(f"/api/v1/files/{logo_id}", headers=member_h)).status_code == 404
+        # The owner still sees it, and non-images are refused.
+        assert (
+            await c.get(f"/api/v1/companies/{b['id']}/logo", headers=owner_h)
+        ).status_code == 200
+        refused = await c.post(
+            f"/api/v1/companies/{b['id']}/logo",
+            files={"file": ("x.txt", b"hi", "text/plain")},
+            headers=owner_h,
+        )
+        assert refused.status_code == 422
+
+        # Remove: the reference clears and the trail carries the change.
+        removed = await c.delete(f"/api/v1/companies/{b['id']}/logo", headers=owner_h)
+        assert removed.json()["logo_file_id"] is None
+        trail = (
+            await c.get(
+                f"/api/v1/activity?entity_type=company&entity_id={b['id']}",
+                headers=owner_h,
+            )
+        ).json()
+        actions = {row["action"] for row in trail}
+        assert {"logo_uploaded", "logo_removed"} <= actions
+
+
+async def test_company_logo_is_tenant_scoped(client_for, tmp_path, monkeypatch) -> None:
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    t, member, membership, owner_h, member_h, a, b, group = await _setup(client_for, "logo-iso")
+    other = await make_tenant("logo-iso-other")
+    other_h = await auth_cookie(other.user)
+    png = b"\x89PNG\r\n\x1a\n" + b"0" * 64
+
+    async with client_for(t.host) as c:
+        await c.post(
+            f"/api/v1/companies/{a['id']}/logo",
+            files={"file": ("logo.png", png, "image/png")},
+            headers=owner_h,
+        )
+    async with client_for(other.host) as c:
+        assert (
+            await c.get(f"/api/v1/companies/{a['id']}/logo", headers=other_h)
+        ).status_code == 404

@@ -58,6 +58,14 @@ class Company(
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default=CompanyStatus.ACTIVE.value, index=True
     )
+    # The client's own logo (#196): a StoredFile reference (#123), never a blob column and
+    # never tenant branding (Golden Rule 4 governs the *agency's* brand; this is client data).
+    # SET NULL: deleting the file row simply unsets the logo.
+    logo_file_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("files.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     # Mirror of the primary assignee (see ``CompanyAssignee``), kept in step on every write.
     # It is the expand half of an expand/contract migration (docs/WORKFLOW.md) and will be
     # dropped once no release reads it; write through the assignee links, not this column.

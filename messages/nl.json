@@ -2351,5 +2351,8 @@
   "contacts.portal.disable": "Toegang uitschakelen",
   "contacts.portal.email_not_sent": "De toegang staat klaar, maar de uitnodigingsmail kon niet worden verzonden. Stel e-mail in onder Instellingen en verstuur de uitnodiging opnieuw.",
   "errors.portal_email_required": "Deze contactpersoon heeft een e-mailadres nodig voordat je kunt uitnodigen.",
-  "errors.portal_email_in_use": "Dit e-mailadres hoort al bij een bestaand account. Een portaal-login heeft een eigen adres nodig."
+  "errors.portal_email_in_use": "Dit e-mailadres hoort al bij een bestaand account. Een portaal-login heeft een eigen adres nodig.",
+  "companies.logo.label": "Logo",
+  "companies.logo.remove": "Huidig logo verwijderen",
+  "companies.logo.hint": "Zichtbaar op deze pagina en op het eigen portaaldashboard van de klant. Dit is het beeldmerk van de klant, niet jullie huisstijl."
 }

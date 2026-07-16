@@ -627,6 +627,32 @@ export interface paths {
         patch: operations["update_company_api_v1_companies__company_id__patch"];
         trace?: never;
     };
+    "/api/v1/companies/{company_id}/logo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Serve Company Logo
+         * @description The logo bytes — behind the same tenant + horizon check as the company itself, so a
+         *     portal login only ever sees logos of companies in their horizon (#191/#193).
+         */
+        get: operations["serve_company_logo_api_v1_companies__company_id__logo_get"];
+        put?: never;
+        /**
+         * Upload Company Logo
+         * @description Upload or replace the client's logo. Images only, bounded by the instance caps.
+         */
+        post: operations["upload_company_logo_api_v1_companies__company_id__logo_post"];
+        /** Remove Company Logo */
+        delete: operations["remove_company_logo_api_v1_companies__company_id__logo_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/companies/{company_id}/panels": {
         parameters: {
             query?: never;
@@ -5026,6 +5052,11 @@ export interface components {
             /** Token */
             token: string;
         };
+        /** Body_upload_company_logo_api_v1_companies__company_id__logo_post */
+        Body_upload_company_logo_api_v1_companies__company_id__logo_post: {
+            /** File */
+            file: string;
+        };
         /** Body_upload_file_api_v1_files_post */
         Body_upload_file_api_v1_files_post: {
             /** File */
@@ -5483,6 +5514,8 @@ export interface components {
             id: string;
             /** Invoice Email */
             invoice_email?: string | null;
+            /** Logo File Id */
+            logo_file_id?: string | null;
             /** Name */
             name: string;
             /** Notes */
@@ -13365,6 +13398,103 @@ export interface operations {
                 "application/json": components["schemas"]["CompanyUpdate"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    serve_company_logo_api_v1_companies__company_id__logo_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_company_logo_api_v1_companies__company_id__logo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_company_logo_api_v1_companies__company_id__logo_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_company_logo_api_v1_companies__company_id__logo_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
