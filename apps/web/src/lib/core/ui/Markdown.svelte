@@ -66,6 +66,16 @@
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-brand) 45%, transparent);
     color: var(--color-text);
   }
+  /* A #task reference (#197): a deep link, so it reads as neither a person chip nor a plain
+     underlined link — surface-tinted, no underline, the # is the type marker. */
+  .markdown-body :global(a.mention-task) {
+    background: color-mix(in srgb, var(--color-text) 8%, transparent);
+    color: var(--color-text);
+    text-decoration: none;
+  }
+  .markdown-body :global(a.mention-task:hover) {
+    color: var(--color-brand);
+  }
   .markdown-body :global(ul) {
     list-style: disc;
     padding-left: 1.25rem;

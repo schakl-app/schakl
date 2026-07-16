@@ -265,6 +265,8 @@ class CommentRead(BaseModel):
     mentioned_user_ids: list[uuid.UUID] = Field(default_factory=list)
     # Contacts @mentioned (#165) — CRM references, never notification recipients.
     mentioned_contact_ids: list[uuid.UUID] = Field(default_factory=list)
+    # Tasks #referenced (#197) — deep links into the board, validated org-scoped on write.
+    mentioned_task_ids: list[uuid.UUID] = Field(default_factory=list)
     edited_at: datetime | None
     created_at: datetime
 

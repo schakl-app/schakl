@@ -40,6 +40,7 @@
     required = false,
     class: klass = "",
     mentions = [],
+    tasks = [],
     onchange,
   }: {
     value?: string;
@@ -54,6 +55,9 @@
     /** @mention candidates (issue #63). Two kinds since #165: org members (default) and
      *  contacts, the latter with a subtitle (their company) and a distinct chip. */
     mentions?: { id: string; name: string; kind?: "user" | "contact"; subtitle?: string }[];
+    /** #task reference candidates (#197): a parallel trigger keyed on `#`, matched on the task
+     *  title, stored as `#[Title](mention:task:<uuid>)` and rendered as a deep link. */
+    tasks?: { id: string; name: string; subtitle?: string }[];
     onchange?: (value: string) => void;
   } = $props();
 
@@ -68,19 +72,34 @@
   // A known display name maps back to its id *and* kind (#165): a contact's marker carries a
   // `contact:` prefix, a colleague's stays bare so pre-#165 bodies round-trip unchanged.
   const known = new Map<string, { id: string; kind: "user" | "contact" }>();
+  // #task references (#197) keep their own map: `@Jan` and a task titled "Jan" must never
+  // collide, so the two trigger characters never share a namespace.
+  const knownTasks = new Map<string, string>();
 
   function toDisplay(source: string): string {
-    return source.replace(
-      new RegExp(`@\\[([^\\]]+)\\]\\(mention:(?:(user|contact):)?(${UUID_RE})\\)`, "g"),
-      (_all, mentionName: string, kind: string | undefined, id: string) => {
-        known.set(mentionName, { id, kind: kind === "contact" ? "contact" : "user" });
-        return `@${mentionName}`;
-      },
-    );
+    return source
+      .replace(
+        new RegExp(`@\\[([^\\]]+)\\]\\(mention:(?:(user|contact):)?(${UUID_RE})\\)`, "g"),
+        (_all, mentionName: string, kind: string | undefined, id: string) => {
+          known.set(mentionName, { id, kind: kind === "contact" ? "contact" : "user" });
+          return `@${mentionName}`;
+        },
+      )
+      .replace(
+        new RegExp(`#\\[([^\\]]+)\\]\\(mention:task:(${UUID_RE})\\)`, "g"),
+        (_all, title: string, id: string) => {
+          knownTasks.set(title, id);
+          return `#${title}`;
+        },
+      );
   }
 
   function marker(entry: { id: string; kind: "user" | "contact" }): string {
     return entry.kind === "contact" ? `mention:contact:${entry.id}` : `mention:${entry.id}`;
+  }
+
+  function escapeRe(s: string): string {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
 
   function toSource(display: string): string {
@@ -88,17 +107,33 @@
       mentions.map((m) => [m.name, { id: m.id, kind: (m.kind ?? "user") as "user" | "contact" }]),
     );
     for (const [n, entry] of known) ids.set(n, entry);
-    if (ids.size === 0) return display;
-    // Longest name first so "Jan van Dam" beats "Jan"; same word-boundary rules as detectMention.
-    const alternation = [...ids.keys()]
-      .sort((a, b) => b.length - a.length)
-      .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-      .join("|");
-    return display.replace(
-      new RegExp(`(^|\\s)@(${alternation})(?!\\w)`, "g"),
-      (_all, pre: string, mentionName: string) =>
-        `${pre}@[${mentionName}](${marker(ids.get(mentionName)!)})`,
-    );
+    let source = display;
+    if (ids.size > 0) {
+      // Longest name first so "Jan van Dam" beats "Jan"; same word-boundary rules as detectTrigger.
+      const alternation = [...ids.keys()]
+        .sort((a, b) => b.length - a.length)
+        .map(escapeRe)
+        .join("|");
+      source = source.replace(
+        new RegExp(`(^|\\s)@(${alternation})(?!\\w)`, "g"),
+        (_all, pre: string, mentionName: string) =>
+          `${pre}@[${mentionName}](${marker(ids.get(mentionName)!)})`,
+      );
+    }
+    const taskIds = new Map(tasks.map((task) => [task.name, task.id]));
+    for (const [n, id] of knownTasks) taskIds.set(n, id);
+    if (taskIds.size > 0) {
+      const alternation = [...taskIds.keys()]
+        .sort((a, b) => b.length - a.length)
+        .map(escapeRe)
+        .join("|");
+      source = source.replace(
+        new RegExp(`(^|\\s)#(${alternation})(?!\\w)`, "g"),
+        (_all, pre: string, title: string) =>
+          `${pre}#[${title}](mention:task:${taskIds.get(title)!})`,
+      );
+    }
+    return source;
   }
 
   // SSR keeps raw source in the textarea so a JS-less form still submits the markers verbatim;
@@ -115,17 +150,25 @@
     onchange?.(toSource(next));
   }
 
-  // --- @mention autocomplete (issue #63) -------------------------------------
-  // A picked member is written into the source as `@[Name](mention:<uuid>)`; the API extracts the
-  // id from that marker and the renderer chips it, so nothing depends on fuzzy name matching.
+  // --- @mention / #task autocomplete (issues #63, #197) -----------------------
+  // A picked member is written into the source as `@[Name](mention:<uuid>)`; a picked task as
+  // `#[Title](mention:task:<uuid>)`. The API extracts the id from the marker and the renderer
+  // chips/links it, so nothing depends on fuzzy name matching.
   let mentionOpen = $state(false);
   let mentionQuery = $state("");
   let mentionStart = $state(-1);
   let mentionIndex = $state(0);
+  // Which trigger opened the dropdown: `@` lists people, `#` lists tasks (#197).
+  let mentionTrigger = $state<"@" | "#">("@");
 
-  const mentionMatches = $derived(
+  type Candidate = { id: string; name: string; kind?: "user" | "contact" | "task"; subtitle?: string };
+
+  const mentionMatches = $derived<Candidate[]>(
     mentionOpen
-      ? mentions
+      ? (mentionTrigger === "#"
+          ? tasks.map((task) => ({ ...task, kind: "task" as const }))
+          : mentions
+        )
           .filter((m) => m.name.toLowerCase().includes(mentionQuery.toLowerCase()))
           .slice(0, 6)
       : [],
@@ -133,37 +176,48 @@
 
   function detectMention() {
     const el = textarea;
-    if (!el || mentions.length === 0) {
+    if (!el || (mentions.length === 0 && tasks.length === 0)) {
       mentionOpen = false;
       return;
     }
     const caret = el.selectionStart;
     const before = content.slice(0, caret);
-    const at = before.lastIndexOf("@");
-    if (at < 0) {
+    // The nearer of the two trigger characters owns the dropdown (#197).
+    const at = mentions.length > 0 ? before.lastIndexOf("@") : -1;
+    const hash = tasks.length > 0 ? before.lastIndexOf("#") : -1;
+    const start = Math.max(at, hash);
+    if (start < 0) {
       mentionOpen = false;
       return;
     }
-    // The `@` must open a word (start of line or after whitespace), and the query so far must hold
-    // no whitespace or bracket — otherwise the caret has moved past a mention.
-    const prev = at === 0 ? " " : before[at - 1];
-    const query = before.slice(at + 1);
+    // The trigger must open a word (start of line or after whitespace), and the query so far must
+    // hold no whitespace or bracket — otherwise the caret has moved past a mention.
+    const prev = start === 0 ? " " : before[start - 1];
+    const query = before.slice(start + 1);
     if (!/\s/.test(prev) || /[\s[\]]/.test(query)) {
       mentionOpen = false;
       return;
     }
-    mentionStart = at;
+    mentionTrigger = hash > at ? "#" : "@";
+    mentionStart = start;
     mentionQuery = query;
     mentionIndex = 0;
     mentionOpen = true;
   }
 
-  function pickMention(member: { id: string; name: string; kind?: "user" | "contact" }) {
+  function pickMention(member: Candidate) {
     const el = textarea;
     if (!el) return;
     const caret = el.selectionStart;
-    known.set(member.name, { id: member.id, kind: member.kind === "contact" ? "contact" : "user" });
-    const token = `@${member.name} `;
+    if (member.kind === "task") {
+      knownTasks.set(member.name, member.id);
+    } else {
+      known.set(member.name, {
+        id: member.id,
+        kind: member.kind === "contact" ? "contact" : "user",
+      });
+    }
+    const token = `${member.kind === "task" ? "#" : "@"}${member.name} `;
     change(content.slice(0, mentionStart) + token + content.slice(caret));
     mentionOpen = false;
     queueMicrotask(() => {
@@ -530,9 +584,12 @@
             }}
           >
             <span class="min-w-0 flex-1">
-              <span class="block truncate">@{member.name}</span>
+              <span class="block truncate"
+                >{member.kind === "task" ? "#" : "@"}{member.name}</span
+              >
               {#if member.subtitle}
-                <!-- A contact's company (#165): the list itself says which kind you're picking. -->
+                <!-- A contact's company (#165) / a task's context (#197): the list itself says
+                     which kind you're picking. -->
                 <span class="block truncate text-xs text-text-muted">{member.subtitle}</span>
               {/if}
             </span>
@@ -541,6 +598,12 @@
                 class="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium text-text-muted ring-1 ring-inset ring-border"
               >
                 {t("common.mention_contact")}
+              </span>
+            {:else if member.kind === "task"}
+              <span
+                class="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium text-text-muted ring-1 ring-inset ring-border"
+              >
+                {t("common.mention_task")}
               </span>
             {/if}
           </button>

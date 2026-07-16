@@ -356,6 +356,11 @@ class TaskComment(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     mentioned_contact_ids: Mapped[list[str]] = mapped_column(
         JSONB, nullable=False, default=list, server_default="[]"
     )
+    # Tasks #referenced (#197) — cross-links, validated org-scoped like the other kinds. Stored
+    # structurally so a "referenced in" backlink can be built later without re-parsing bodies.
+    mentioned_task_ids: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
     edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 

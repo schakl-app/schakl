@@ -21,6 +21,7 @@ from app.core.models import Membership
 from app.core.richtext import (
     extract_contact_mention_ids,
     extract_mention_ids,
+    extract_task_mention_ids,
     markdown_to_plaintext,
     sanitize_markdown,
 )
@@ -1122,6 +1123,21 @@ class TaskService:
         )
         return [cid for cid in ids if cid in found]
 
+    async def _valid_task_mentions(self, ids: list[uuid.UUID]) -> list[uuid.UUID]:
+        """Keep only the referenced task ids that belong to this org (#197) — a deep link into
+        the board, never a notification. A cross-tenant uuid silently drops out here, so the
+        stored reference list can never point outside the org."""
+        if not ids:
+            return []
+        found = set(
+            (
+                await self.ctx.session.execute(
+                    select(Task.id).where(Task.org_id == self.ctx.org.id, Task.id.in_(ids))
+                )
+            ).scalars()
+        )
+        return [tid for tid in ids if tid in found]
+
     async def add_comment(self, task_id: uuid.UUID, data: CommentCreate) -> CommentRead:
         self.ctx.require("tasks.comment.write")
         task = await self.repo.get_or_404(task_id)
@@ -1131,6 +1147,7 @@ class TaskService:
         # against org membership so a stray id can't notify someone in another tenant (issue #63).
         mentioned = await self._valid_mentions(_extract_mentions(body))
         mentioned_contacts = await self._valid_contact_mentions(extract_contact_mention_ids(body))
+        mentioned_tasks = await self._valid_task_mentions(extract_task_mention_ids(body))
         comment = await self.ctx.repo(TaskComment).create(
             task_id=task_id,
             author_user_id=self.ctx.user.id,
@@ -1138,6 +1155,7 @@ class TaskService:
             body=body,
             mentioned_user_ids=[str(uid) for uid in mentioned],
             mentioned_contact_ids=[str(cid) for cid in mentioned_contacts],
+            mentioned_task_ids=[str(tid) for tid in mentioned_tasks],
         )
         # The excerpt the notification has always carried belongs in the trail too, with the id
         # to reach the comment by — "commented", on its own, sends you hunting for what (#61).
@@ -1197,11 +1215,13 @@ class TaskService:
         # re-notify — a mention notifies once, when it is first written, like the comment itself.
         mentioned = await self._valid_mentions(_extract_mentions(body))
         mentioned_contacts = await self._valid_contact_mentions(extract_contact_mention_ids(body))
+        mentioned_tasks = await self._valid_task_mentions(extract_task_mention_ids(body))
         comment = await self.ctx.repo(TaskComment).update(
             comment,
             body=body,
             mentioned_user_ids=[str(uid) for uid in mentioned],
             mentioned_contact_ids=[str(cid) for cid in mentioned_contacts],
+            mentioned_task_ids=[str(tid) for tid in mentioned_tasks],
             edited_at=datetime.now(UTC),
         )
         await self._record(

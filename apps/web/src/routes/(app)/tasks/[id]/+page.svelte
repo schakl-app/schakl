@@ -101,6 +101,32 @@
       }));
     })();
   });
+  // #task reference candidates (#197): host-scoped like the contact list — the task's project,
+  // else its company, else the org's recent tasks — fetched lazily in the browser so the SSR
+  // load pays nothing (docs/PERFORMANCE.md: meta=false&count=false skips discarded aggregates).
+  let taskCandidates = $state<{ id: string; name: string; subtitle?: string }[]>([]);
+  $effect(() => {
+    const scope = task.project_id
+      ? `&project_id=${task.project_id}`
+      : task.company_id
+        ? `&company_id=${task.company_id}`
+        : "";
+    void (async () => {
+      const response = await fetch(`/api/v1/tasks?limit=200&meta=false&count=false${scope}`, {
+        headers: { accept: "application/json" },
+      });
+      if (!response.ok) return;
+      interface TaskRow {
+        id: string;
+        title: string;
+        status: string;
+      }
+      const items: TaskRow[] = (await response.json()).items ?? [];
+      taskCandidates = items
+        .filter((row) => row.id !== task.id)
+        .map((row) => ({ id: row.id, name: row.title, subtitle: statusName(row.status) }));
+    })();
+  });
   const mentionCandidates = $derived([
     ...data.members.map((m) => ({
       id: m.user_id,
@@ -742,6 +768,7 @@
             required
             placeholder={t("tasks.comments.placeholder")}
             mentions={mentionCandidates}
+            tasks={taskCandidates}
           />
         {/key}
         <div class="mt-2 flex justify-end">
@@ -813,6 +840,7 @@
                     required
                     value={comment.body}
                     mentions={mentionCandidates}
+                    tasks={taskCandidates}
                   />
                   <div class="mt-1 flex gap-2">
                     <button class="rounded-lg bg-brand px-2 py-1 text-xs font-medium text-white"
