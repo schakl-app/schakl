@@ -124,12 +124,18 @@ async def _personal_context(session, org, key, RequestContext):  # noqa: ANN001
     effective = [s for s in key.scopes if _split_and_check(owner_perms, s)]
     # The company horizon (#191) rides the owner's membership, exactly like a session —
     # a personal key must not see further than the person it acts as.
+    from app.core.portal import portal_user_ids
     from app.core.scope import resolve_company_scope
 
     company_scope = (
         None
         if owner_perms.wildcard
         else await resolve_company_scope(session, org.id, membership.id)
+    )
+    is_portal = (
+        False
+        if owner_perms.wildcard
+        else bool(await portal_user_ids(session, org.id, {owner.id}))
     )
     return RequestContext(
         user=owner,
@@ -138,6 +144,7 @@ async def _personal_context(session, org, key, RequestContext):  # noqa: ANN001
         membership_id=membership.id,
         permissions=PermissionSet.of(effective),
         company_scope=company_scope,
+        is_portal=is_portal,
     )
 
 

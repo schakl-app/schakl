@@ -53,7 +53,9 @@ TASK_PERMISSIONS: list[PermissionSpec] = [
         scopes=SCOPES,
         position=50,
         default_roles=(ROLE_ADMIN,),
-        default_own_roles=(ROLE_MEMBER,),
+        # `client` joined for the portal: commenting on the visible tasks of their own
+        # companies is the collaboration the visibility checkbox exists for.
+        default_own_roles=(ROLE_MEMBER, ROLE_CLIENT),
     ),
     PermissionSpec("tasks.label.write", position=60),
     PermissionSpec("tasks.status.write", position=65),

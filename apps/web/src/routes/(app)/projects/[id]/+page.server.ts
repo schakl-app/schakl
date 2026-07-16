@@ -135,6 +135,7 @@ export const actions: Actions = {
         project_id: event.params.id,
         company_id: company_id || null,
         requires_interaction: false,
+        visible_to_client: false,
       },
     });
     if (apiError) return fail(400, { error: apiErrorKey(apiError).key });

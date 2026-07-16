@@ -104,6 +104,11 @@ export const actions: Actions = {
     if (requiresInteraction.length > 0) {
       body.requires_interaction = requiresInteraction[requiresInteraction.length - 1] === "true";
     }
+    // Client-portal visibility rides the same hidden-false-then-checkbox pattern.
+    const visibleToClient = form.getAll("visible_to_client");
+    if (visibleToClient.length > 0) {
+      body.visible_to_client = visibleToClient[visibleToClient.length - 1] === "true";
+    }
     if (form.has("freq")) {
       const freq = String(form.get("freq") ?? "").trim();
       body.recurrence = freq

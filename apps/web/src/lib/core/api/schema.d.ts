@@ -10461,6 +10461,11 @@ export interface components {
             status?: string | null;
             /** Title */
             title: string;
+            /**
+             * Visible To Client
+             * @default false
+             */
+            visible_to_client: boolean;
         };
         /**
          * TaskDetail
@@ -10532,6 +10537,11 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /**
+             * Visible To Client
+             * @default false
+             */
+            visible_to_client: boolean;
         };
         /**
          * TaskLabelsSet
@@ -10613,6 +10623,11 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /**
+             * Visible To Client
+             * @default false
+             */
+            visible_to_client: boolean;
         };
         /**
          * TaskPriority
@@ -10671,6 +10686,11 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /**
+             * Visible To Client
+             * @default false
+             */
+            visible_to_client: boolean;
         };
         /** TaskUpdate */
         TaskUpdate: {
@@ -10700,6 +10720,8 @@ export interface components {
             status?: string | null;
             /** Title */
             title?: string | null;
+            /** Visible To Client */
+            visible_to_client?: boolean | null;
         };
         /**
          * TeamLeaveItem

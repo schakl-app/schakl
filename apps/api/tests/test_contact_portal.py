@@ -202,3 +202,77 @@ async def test_portal_state_is_tenant_scoped(client_for) -> None:
         assert (
             await c.get(f"/api/v1/contacts/{contact['id']}/portal", headers=other_headers)
         ).status_code == 404
+
+
+async def test_portal_sees_only_client_visible_tasks(client_for) -> None:
+    """A portal login sees a task only when staff ticked visible_to_client — on the list, by
+    id, and as a comment target; commenting on a visible task works (client own-grant)."""
+    t, headers, contact, company_ids = await _tenant_with_contact(client_for, "portal-tasks")
+    company = company_ids[0]
+
+    async with client_for(t.host) as c:
+        visible = (
+            await c.post(
+                "/api/v1/tasks",
+                json={"title": "Zichtbaar", "company_id": company, "visible_to_client": True},
+                headers=headers,
+            )
+        ).json()
+        hidden = (
+            await c.post(
+                "/api/v1/tasks",
+                json={"title": "Intern", "company_id": company},
+                headers=headers,
+            )
+        ).json()
+
+        await c.post(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)
+        async with async_session_maker() as session:
+            portal_user = await session.scalar(
+                select(User).where(User.email == contact["email"])
+            )
+        portal_headers = await auth_cookie(portal_user)
+
+        titles = [
+            r["title"]
+            for r in (await c.get("/api/v1/tasks?limit=50", headers=portal_headers)).json()[
+                "items"
+            ]
+        ]
+        assert titles == ["Zichtbaar"]
+        assert (
+            await c.get(f"/api/v1/tasks/{visible['id']}", headers=portal_headers)
+        ).status_code == 200
+        # The unticked task is absent, not forbidden — and its comment path with it.
+        assert (
+            await c.get(f"/api/v1/tasks/{hidden['id']}", headers=portal_headers)
+        ).status_code == 404
+        assert (
+            await c.post(
+                f"/api/v1/tasks/{hidden['id']}/comments",
+                json={"body": "hoi"},
+                headers=portal_headers,
+            )
+        ).status_code == 404
+
+        # Commenting on the visible task is exactly what the checkbox is for.
+        commented = await c.post(
+            f"/api/v1/tasks/{visible['id']}/comments",
+            json={"body": "Vraagje over de planning"},
+            headers=portal_headers,
+        )
+        assert commented.status_code == 201, commented.text
+
+        # The staff activity feed stays out of portal reach entirely.
+        feed = await c.get(
+            f"/api/v1/activity?entity_type=task&entity_id={visible['id']}",
+            headers=portal_headers,
+        )
+        assert feed.json() == []
+
+        # Staff keep seeing both, whatever the flag.
+        staff_titles = {
+            r["title"]
+            for r in (await c.get("/api/v1/tasks?limit=50", headers=headers)).json()["items"]
+        }
+        assert {"Zichtbaar", "Intern"} <= staff_titles

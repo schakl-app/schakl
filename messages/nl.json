@@ -2354,5 +2354,7 @@
   "errors.portal_email_in_use": "Dit e-mailadres hoort al bij een bestaand account. Een portaal-login heeft een eigen adres nodig.",
   "companies.logo.label": "Logo",
   "companies.logo.remove": "Huidig logo verwijderen",
-  "companies.logo.hint": "Zichtbaar op deze pagina en op het eigen portaaldashboard van de klant. Dit is het beeldmerk van de klant, niet jullie huisstijl."
+  "companies.logo.hint": "Zichtbaar op deze pagina en op het eigen portaaldashboard van de klant. Dit is het beeldmerk van de klant, niet jullie huisstijl.",
+  "tasks.field.visible_to_client": "Zichtbaar voor klant",
+  "tasks.field.visible_to_client_hint": "Een portaalcontact van deze klant kan deze taak zien en erop reageren. Standaard uit."
 }

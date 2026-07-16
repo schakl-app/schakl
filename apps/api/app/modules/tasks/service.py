@@ -26,7 +26,7 @@ from app.core.richtext import (
     sanitize_markdown,
 )
 from app.core.sorting import apply_sort, user_sort_name
-from app.core.tenancy import RequestContext
+from app.core.tenancy import RequestContext, TenantScopedRepository
 from app.errors import AppError
 from app.modules.tasks import recurrence as rec_mod
 from app.modules.tasks.models import (
@@ -90,6 +90,7 @@ _TRACKED_FIELDS = (
     "project_id",
     "recurrence",
     "requires_interaction",
+    "visible_to_client",
 )
 
 
@@ -171,9 +172,23 @@ def _rich_items(
 
 
 class TaskService:
+    class _PortalTaskRepository(TenantScopedRepository):
+        """The task repo a portal login gets: every read is AND'd with visible_to_client,
+        on the same `_scoped()` seam org/horizon filtering rides — so an unticked task is
+        absent for a client on every path (get-by-id, lists, counts, comment targets)."""
+
+        def _scoped(self):  # noqa: ANN202 — mirrors the base signature
+            return super()._scoped().where(Task.visible_to_client.is_(True))
+
     def __init__(self, ctx: RequestContext) -> None:
         self.ctx = ctx
-        self.repo = ctx.repo(Task)
+        self.repo = (
+            self._PortalTaskRepository(
+                ctx.session, ctx.org.id, Task, company_scope=ctx.company_scope
+            )
+            if ctx.is_portal
+            else ctx.repo(Task)
+        )
 
     # --- access scoping (issue #19) ------------------------------------------ #
     async def _writable_task_or_403(self, task_id: uuid.UUID) -> Task:

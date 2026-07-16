@@ -258,6 +258,10 @@
           bind:value={fCompany}
           id="create-company"
         />
+        <label class="mt-2 flex items-center gap-2 text-sm text-text">
+          <input type="checkbox" name="visible_to_client" value="true" />
+          {t("tasks.field.visible_to_client")}
+        </label>
       </div>
       <div>
         <label for="create-assignee" class="mb-1 block text-sm font-medium text-text"

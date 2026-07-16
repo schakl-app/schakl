@@ -27,7 +27,6 @@ from app.core.entitlements.service import (
 )
 from app.core.models import OrgSettings, OrgStatus
 from app.core.permissions.deps import no_permission_required, require_permission
-from app.core.portal import portal_user_ids
 from app.core.tenancy import RequestContext, request_hostname, require_context, resolve_org
 from app.core.timezone import is_valid_timezone
 from app.db import async_session_maker, set_current_org
@@ -193,7 +192,7 @@ async def me(ctx: RequestContext = Depends(require_context)) -> MeInfo:
         ctx,
         ctx.user,
         await ai_enabled_features(ctx.session, ctx.org.id),
-        is_portal=bool(await portal_user_ids(ctx.session, ctx.org.id, {ctx.user.id})),
+        is_portal=ctx.is_portal,
     )
 
 
@@ -233,7 +232,7 @@ async def update_me(
         ctx,
         user,
         await ai_enabled_features(ctx.session, ctx.org.id),
-        is_portal=bool(await portal_user_ids(ctx.session, ctx.org.id, {user.id})),
+        is_portal=ctx.is_portal,
     )
 
 

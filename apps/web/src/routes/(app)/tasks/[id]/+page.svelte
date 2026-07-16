@@ -61,6 +61,11 @@
       : activities.slice(0, ACTIVITY_COLLAPSED),
   );
   const userId = $derived(page.data.user?.id ?? "");
+  // A portal login (#193) works the task, not the office around it: uploads, the activity
+  // trail, time budgets and module panels (interactions, Drive) stay staff-only. The API
+  // enforces the same (portal activity feed is empty; time/interactions are permission-gated);
+  // this keeps the page honest about it.
+  const isPortal = $derived(page.data.user?.isPortal ?? false);
   // `tasks.comment.write:any` lets a manager clean up anyone's comment; the author always can.
   const canDeleteAnyComment = $derived(can(page.data.user, "tasks.comment.write", "any"));
 
@@ -732,16 +737,18 @@
         </button>
       </form>
 
-      <!-- Document uploads through the storage core (#123). -->
-      <div class="mt-4 border-t border-border pt-4">
-        <FileAttachments
-          files={data.files}
-          uploadAction="?/uploadFile"
-          deleteAction="?/deleteFile"
-          error={form?.fileError ?? null}
-        />
-      </div>
-      <p class="mt-2 text-[11px] text-text-muted">{t("tasks.links.files_hint")}</p>
+      {#if !isPortal}
+        <!-- Document uploads through the storage core (#123) — staff-only surface. -->
+        <div class="mt-4 border-t border-border pt-4">
+          <FileAttachments
+            files={data.files}
+            uploadAction="?/uploadFile"
+            deleteAction="?/deleteFile"
+            error={form?.fileError ?? null}
+          />
+        </div>
+        <p class="mt-2 text-[11px] text-text-muted">{t("tasks.links.files_hint")}</p>
+      {/if}
     </section>
 
     <!-- Comments -->
@@ -863,7 +870,7 @@
     </section>
 
     <!-- Panels contributed by enabled modules; history stays last (docs/UX.md). -->
-    {#each data.panels as panel (panel.key)}
+    {#each isPortal ? [] : data.panels as panel (panel.key)}
       {@const PanelComponent = panelComponent(panel.key)}
       {#if PanelComponent}
         <section class="rounded-xl border border-border bg-surface-raised p-5">
@@ -875,7 +882,8 @@
       {/if}
     {/each}
 
-    <!-- Activity -->
+    <!-- Activity — the staff paper trail, never a portal surface. -->
+    {#if !isPortal}
     <section class="rounded-xl border border-border bg-surface-raised p-5">
       <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
         {t("tasks.activity.title")}
@@ -914,6 +922,7 @@
         {/if}
       {/if}
     </section>
+    {/if}
   </div>
 
   <!-- Sidebar -->
@@ -1068,6 +1077,26 @@
                 <span class="font-medium">{t("tasks.field.requires_interaction")}</span>
                 <span class="mt-0.5 block text-[11px] leading-snug text-text-muted"
                   >{t("tasks.field.requires_interaction_hint")}</span
+                >
+              </span>
+            </label>
+          </div>
+          <div>
+            <!-- Client-portal visibility: off by default, ticked per task by staff. -->
+            <input type="hidden" name="visible_to_client" value="false" form="task-edit" />
+            <label class="flex items-start gap-2 text-sm text-text">
+              <input
+                type="checkbox"
+                name="visible_to_client"
+                value="true"
+                checked={task.visible_to_client}
+                form="task-edit"
+                class="mt-0.5 shrink-0"
+              />
+              <span>
+                <span class="font-medium">{t("tasks.field.visible_to_client")}</span>
+                <span class="mt-0.5 block text-[11px] leading-snug text-text-muted"
+                  >{t("tasks.field.visible_to_client_hint")}</span
                 >
               </span>
             </label>

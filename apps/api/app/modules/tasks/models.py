@@ -80,6 +80,12 @@ class Task(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
         ),
     )
 
+    # Client-portal visibility (#212 follow-up): a task is invisible to portal logins unless
+    # staff explicitly tick it. Enforced in TaskService via a portal-filtered repository,
+    # so a portal request can never reach an unticked task by any path (get, list, comments).
+    visible_to_client: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
     company_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("companies.id", ondelete="SET NULL"),

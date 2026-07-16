@@ -37,6 +37,8 @@ class TaskBase(BaseModel):
     # Per-task close policy (#157 extended): when set, this task can only reach a finished
     # status once a designated closing contact moment is linked, regardless of the status flag.
     requires_interaction: bool = False
+    # Client-portal visibility: off by default — staff opt a task in explicitly.
+    visible_to_client: bool = False
 
 
 class TaskCreate(TaskBase):
@@ -57,6 +59,7 @@ class TaskUpdate(BaseModel):
     recurrence: Recurrence | None = None
     # Toggle the per-task "close only with a contact moment" policy (#157 extended).
     requires_interaction: bool | None = None
+    visible_to_client: bool | None = None
     # Required when the due date moves later (accountability; logged in the activity feed).
     due_change_reason: str | None = Field(default=None, max_length=1000)
     # The contact moment this close is justified by (#157) — must be linked to this task and

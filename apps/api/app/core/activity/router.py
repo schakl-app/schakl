@@ -37,5 +37,9 @@ async def entity_activity(
 ) -> list[ActivityItem]:
     if not is_auditable(entity_type):
         return []
+    # A portal login reads dashboards, not the staff paper trail — the trail names actors,
+    # edits and internal notes-adjacent payloads. Empty, not 403: the panel simply isn't there.
+    if ctx.is_portal:
+        return []
     items = await ActivityService(ctx).feed(entity_type, entity_id, limit)
     return [ActivityItem(**item) for item in items]

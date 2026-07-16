@@ -97,6 +97,9 @@ class RequestContext:
     #: ``None`` = unrestricted (the default and the owner's guarantee); a set = this
     #: membership sees only those companies' rows. Enforced by the repository below.
     company_scope: frozenset[uuid.UUID] | None = None
+    #: A contact-linked (client-portal) login (#193). Services use it where "what a client
+    #: may see" is narrower than the horizon alone — e.g. only tasks ticked visible.
+    is_portal: bool = False
     # Set only during an instance-admin impersonation (issue #26): ``user`` is then the
     # impersonated member and ``impersonated_by`` the real, authenticated instance owner.
     impersonated_by: User | None = None
@@ -227,12 +230,18 @@ async def require_context(
         # via the resolver seam (the tables belong to the companies module). A wildcard
         # holder (owner) is never restricted, whatever rows exist — never lock the tenant
         # out (§15) — so resolution is skipped entirely for them.
+        from app.core.portal import portal_user_ids
         from app.core.scope import resolve_company_scope
 
         company_scope = (
             None
             if permissions.wildcard
             else await resolve_company_scope(session, org.id, membership.id)
+        )
+        is_portal = (
+            False
+            if permissions.wildcard
+            else bool(await portal_user_ids(session, org.id, {user.id}))
         )
 
         ctx = RequestContext(
@@ -242,6 +251,7 @@ async def require_context(
             membership_id=membership.id,
             permissions=permissions,
             company_scope=company_scope,
+            is_portal=is_portal,
             impersonated_by=impersonator,
             impersonation_expires_at=expires_at,
         )

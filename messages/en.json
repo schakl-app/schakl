@@ -2354,5 +2354,7 @@
   "errors.portal_email_in_use": "This email address already belongs to an existing account. A portal login must have its own address.",
   "companies.logo.label": "Logo",
   "companies.logo.remove": "Remove current logo",
-  "companies.logo.hint": "Shown on this page and on the client's own portal dashboard. This is the client's mark, not your agency branding."
+  "companies.logo.hint": "Shown on this page and on the client's own portal dashboard. This is the client's mark, not your agency branding.",
+  "tasks.field.visible_to_client": "Visible to client",
+  "tasks.field.visible_to_client_hint": "A portal contact of this client can see this task and comment on it. Off by default."
 }
