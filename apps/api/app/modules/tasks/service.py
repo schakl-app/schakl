@@ -18,6 +18,7 @@ from sqlalchemy import text as sql_text
 from app.core.auth.models import User
 from app.core.events import emit
 from app.core.models import Membership
+from app.core.parent import ensure_parent_in_tenant
 from app.core.richtext import (
     extract_contact_mention_ids,
     extract_mention_ids,
@@ -529,6 +530,9 @@ class TaskService:
     async def create(self, data: TaskCreate) -> Task:
         self.ctx.require("tasks.task.create")
         values = data.model_dump()
+        # A task's company/project FKs must live in this tenant (audit F19).
+        for _fk, _tbl in (("company_id", "companies"), ("project_id", "projects")):
+            await ensure_parent_in_tenant(self.ctx.session, _tbl, values.get(_fk), self.ctx.org.id)
         # Markdown source is stored; strip any raw HTML on write (issue #66, app/core/richtext).
         values["description"] = sanitize_markdown(values.get("description"))
         # Verantwoordelijke defaults down: project's responsible → else the company's,
@@ -633,6 +637,9 @@ class TaskService:
     async def update(self, task_id: uuid.UUID, data: TaskUpdate) -> Task:
         task = await self._writable_task_or_403(task_id)
         values = data.model_dump(exclude_unset=True)
+        for _fk, _tbl in (("company_id", "companies"), ("project_id", "projects")):
+            if _fk in values:
+                await ensure_parent_in_tenant(self.ctx.session, _tbl, values.get(_fk), self.ctx.org.id)
         reason = values.pop("due_change_reason", None)
         if "description" in values:
             values["description"] = sanitize_markdown(values["description"])

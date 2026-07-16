@@ -222,6 +222,9 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "SCHAKL_ENCRYPTION_KEY, when set, must be a strong value (>=32 chars)."
                 )
+            # Production terminates TLS at the edge, so the auth cookie must always carry the
+            # Secure attribute — never emit it over plaintext (audit F15).
+            self.auth_cookie_secure = True
         return self
 
     @property

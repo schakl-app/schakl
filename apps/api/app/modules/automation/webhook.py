@@ -33,6 +33,7 @@ from urllib.parse import urlparse
 import httpx
 
 from app.config import settings
+from app.core.net_guard import is_public_address
 
 TIMEOUT_SECONDS = 10.0
 
@@ -80,8 +81,7 @@ async def ensure_public_target(url: str) -> None:
     if settings.allow_private_notification_targets:
         return
     for addr in await _resolve_addrs(host):
-        ip = ipaddress.ip_address(addr)
-        if not ip.is_global:
+        if not is_public_address(addr):
             raise WebhookError("errors.automation_webhook_private_target")
 
 

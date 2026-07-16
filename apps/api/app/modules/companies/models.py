@@ -41,6 +41,7 @@ class Company(
 ):
     __tablename__ = "companies"
     __entity_type__ = "company"  # registers as customizable + auditable (issue #67)
+    __activity_read_permission__ = "companies.company.read"  # trail read gate (audit F7)
 
     # GIN index on the JSONB custom-fields column (CLAUDE.md §13).
     __table_args__ = (

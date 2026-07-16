@@ -145,6 +145,7 @@ class InteractionSource(StrEnum):
 class Interaction(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, AuditableMixin, Base):
     __tablename__ = "interactions"
     __entity_type__ = ENTITY_TYPE
+    __activity_read_permission__ = "interactions.interaction.read"  # trail read gate (audit F7)
     __table_args__ = (
         Index("ix_interactions_org_occurred", "org_id", "occurred_at"),
         Index("ix_interactions_org_status", "org_id", "status"),

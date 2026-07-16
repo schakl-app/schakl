@@ -135,7 +135,75 @@ Confirm yours does. The stronger long-term fix is to key SSO identity on `(iss, 
 
 ---
 
-## Documented findings (recommended, not auto-applied)
+## Phase 2 — remaining findings addressed
+
+A second pass fixed the rest of the exploitable and safely-fixable findings. **The `Status`
+column in the table above reflects phase 1; the authoritative current status is here.**
+
+### Fixed in this branch (phase 2), each verified against the sandbox
+
+- **F5 (partial) — OIDC discovery SSRF:** the discovery fetch no longer follows redirects, closing
+  the public-URL→internal 302 pivot. A *private* IdP host stays allowed on purpose (self-hosted
+  installs run Keycloak/Authentik on the LAN), so blocking it would break a documented feature.
+- **F7 — activity/notification feed BOLA:** reading a record's trail now requires the entity's own
+  module read permission, not just the blanket `activity.read`/`notifications.notification.read`.
+  The registry carries each module's read key (no core module-list). Verified.
+- **F9 — notification SSRF deny-list:** replaced with the shared `is_public_address`
+  (`app/core/net_guard.py`), which unwraps IPv4-mapped IPv6 and rejects `0.0.0.0`/CGNAT — unified
+  with the webhook guard so the two can't drift.
+- **F10 — CSV formula injection:** text cells starting `= + - @` are apostrophe-prefixed; numbers
+  are left intact. Verified.
+- **F12 — Traefik dashboard:** `api.insecure`/`dashboard` removed and the `:8080` publish dropped.
+- **F14 — security headers:** `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`,
+  `Referrer-Policy`, and a `frame-ancestors/object-src/base-uri/form-action` CSP added in the web
+  hooks. (No `script-src` yet — the inline no-flash theme script needs a nonce migration, noted below.)
+- **F15 — Secure cookie:** production now forces `auth_cookie_secure=True`. Verified.
+- **F19 — cross-module parent FK:** projects/tasks/time validate their company/project/task parents
+  are in the tenant (shared `ensure_parent_in_tenant`), turning the 500 existence-oracle into a
+  clean 404. Verified.
+- **F20 — leave `hours_override` self-approval:** setting/clearing an override on your *own* request
+  now honours the self-approval policy, the same as the decide and span-edit paths.
+- **F21 — verification token log:** the raw token is no longer written to the log.
+- **F24 — SMTP SSRF:** the relay host is checked against the shared guard (opt-in for an internal
+  MTA via `allow_private_notification_targets`).
+- **F26 — open redirect / GET logout:** the `set-locale`/`set-theme`/`set-format` routes accept only
+  same-origin relative paths; `logout` is POST-only.
+
+New tests: `apps/api/tests/test_audit_adversarial_phase2.py` (F7 BOLA 403, F19 cross-tenant FK 404,
+F10 neutralisation, F15 Secure-cookie forcing). Full API suite green.
+
+### Deliberately documented, not auto-changed (with the reason)
+
+- **F6 — AI `base_url` SSRF:** blocking private hosts would break a self-hosted LLM endpoint
+  (Ollama/vLLM on localhost/LAN) — the reason `base_url` exists. It is admin-gated and does not
+  follow redirects. Left by design; the reflection oracle is the residual.
+- **F8 — DNS-rebinding TOCTOU:** the resolve-then-connect window remains; the complete fix pins the
+  validated IP at connect time (a TLS-aware custom transport). Deferred to avoid fragile TLS-bypass
+  code — the guard + no-redirects close the direct vectors.
+- **F11 — secrets-at-rest KDF:** changing the derivation re-keys Fernet and makes *existing*
+  encrypted secrets undecryptable — a re-encryption migration (expand/contract, docs/WORKFLOW.md).
+  F1's strong-secret guard already removes the predictable-key path.
+- **F13 — containers non-root:** needs a `USER` plus correct ownership of the `/data/storage` named
+  volume; can't be built or run-tested here (no Docker daemon), and wrong volume ownership silently
+  breaks uploads. Patch: add a non-root user, `chown` the venv + storage, verify a fresh-volume boot.
+- **F16 — session revocation:** needs a `users.sessions_valid_after` (or token-version) column plus a
+  custom JWT strategy that checks it each request — a schema migration + auth-core change that
+  warrants its own tested PR.
+- **F17 — service-account key re-cap:** re-capping to the creator's live perms contradicts the
+  documented "automation outlives its creator" design; the right fix surfaces SA keys in the
+  offboarding/role-change flow.
+- **F18 — CSRF hardening:** only reachable in the multi-tenant *cloud* model (sibling subdomains are
+  same-site); needs an Origin allow-list weighed against the SSR call path.
+- **F22 — open registration default:** low impact (a self-registered user gets no membership); flipping
+  a shipped onboarding default is a product call.
+- **F23 — upload content sniffing:** the stored-XSS is already blocked (nosniff + attachment, SVG never
+  inline); magic-byte sniffing is defense-in-depth.
+- **F25 — MCP `tools/list` unauth:** enumeration only, and `/openapi.json` is already public; add a
+  FastMCP auth provider if the tool surface should itself be key-gated.
+
+---
+
+## Original phase-1 documented notes (detail, some now superseded above)
 
 These are real but were left for review because they touch deployment posture, span multiple
 files/tiers, or need product judgement. Each has a concrete fix.
