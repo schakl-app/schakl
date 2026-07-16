@@ -73,8 +73,9 @@
   // `contact:` prefix, a colleague's stays bare so pre-#165 bodies round-trip unchanged.
   const known = new Map<string, { id: string; kind: "user" | "contact" }>();
   // #task references (#197) keep their own map: `@Jan` and a task titled "Jan" must never
-  // collide, so the two trigger characters never share a namespace.
-  const knownTasks = new Map<string, string>();
+  // collide, so the two trigger characters never share a namespace. A plain object, like the
+  // maps above it is a non-reactive cache — nothing renders from it.
+  const knownTasks: Record<string, string> = {};
 
   function toDisplay(source: string): string {
     return source
@@ -88,7 +89,7 @@
       .replace(
         new RegExp(`#\\[([^\\]]+)\\]\\(mention:task:(${UUID_RE})\\)`, "g"),
         (_all, title: string, id: string) => {
-          knownTasks.set(title, id);
+          knownTasks[title] = id;
           return `#${title}`;
         },
       );
@@ -120,17 +121,18 @@
           `${pre}@[${mentionName}](${marker(ids.get(mentionName)!)})`,
       );
     }
-    const taskIds = new Map(tasks.map((task) => [task.name, task.id]));
-    for (const [n, id] of knownTasks) taskIds.set(n, id);
-    if (taskIds.size > 0) {
-      const alternation = [...taskIds.keys()]
+    const taskIds: Record<string, string> = { ...knownTasks };
+    for (const task of tasks) taskIds[task.name] = task.id;
+    const taskNames = Object.keys(taskIds);
+    if (taskNames.length > 0) {
+      const alternation = taskNames
         .sort((a, b) => b.length - a.length)
         .map(escapeRe)
         .join("|");
       source = source.replace(
         new RegExp(`(^|\\s)#(${alternation})(?!\\w)`, "g"),
         (_all, pre: string, title: string) =>
-          `${pre}#[${title}](mention:task:${taskIds.get(title)!})`,
+          `${pre}#[${title}](mention:task:${taskIds[title]})`,
       );
     }
     return source;
@@ -210,7 +212,7 @@
     if (!el) return;
     const caret = el.selectionStart;
     if (member.kind === "task") {
-      knownTasks.set(member.name, member.id);
+      knownTasks[member.name] = member.id;
     } else {
       known.set(member.name, {
         id: member.id,
