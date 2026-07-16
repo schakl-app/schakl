@@ -129,6 +129,19 @@ class Settings(BaseSettings):
     # out of its own instance (docs/SSO.md).
     force_local_login: bool = False
 
+    # --- Two-factor authentication (local login) ---
+    # TOTP + backup codes need no configuration. The SMS factor is **instance** configuration
+    # (set by the operator, like SCHAKL_INSTANCE_ADMIN_ENABLED): a generic HTTP gateway the box
+    # POSTs {"to", "message", "sender"} to, with an optional bearer token. Unset = the SMS
+    # option simply does not exist anywhere in the product (docs/TWOFACTOR.md).
+    sms_gateway_url: str | None = None
+    sms_gateway_token: str | None = None
+    # Sender id passed to the gateway; None lets the gateway apply its own default (a hardcoded
+    # product name here would violate the per-tenant branding rule, CLAUDE.md §2).
+    sms_gateway_sender: str | None = None
+    # Seconds a login's 2FA challenge token stays redeemable (password re-entry after that).
+    twofactor_challenge_lifetime_seconds: int = 300
+
     # --- Google Workspace OAuth (stub for P3) ---
     google_client_id: str | None = None
     google_client_secret: str | None = None

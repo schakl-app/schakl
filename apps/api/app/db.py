@@ -39,8 +39,10 @@ RLS_GUC = "app.current_org"
 #: must carry ``org_id`` + an RLS policy — tests/test_tenancy_seams.py enforces exactly
 #: this list, so extending it is a reviewed decision, not an accident.
 INSTANCE_LEVEL_TABLES = frozenset(
-    {"orgs", "users", "instance_audit_log", "instance_license"}
+    {"orgs", "users", "user_two_factor", "instance_audit_log", "instance_license"}
 )  # instance_license: one product license per installation (issue #137)
+# user_two_factor: global identity like `users` — a second factor follows the person across
+# every org they belong to (docs/TWOFACTOR.md).
 
 
 class Base(DeclarativeBase):

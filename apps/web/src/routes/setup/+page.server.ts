@@ -64,11 +64,12 @@ export const actions: Actions = {
     }
 
     // Sign the fresh owner in on this host (the wizard just claimed it for the org).
-    const token = await apiLogin(event, values.owner_email, password);
-    if (!token) {
+    // A just-created account can't have 2FA yet, so anything but a session is a failure.
+    const login = await apiLogin(event, values.owner_email, password);
+    if (login.kind !== "session") {
       return fail(400, { error: "auth.invalid_credentials", fields: undefined, values });
     }
-    event.cookies.set(AUTH_COOKIE_NAME, token, {
+    event.cookies.set(AUTH_COOKIE_NAME, login.token, {
       path: "/",
       httpOnly: true,
       sameSite: "lax",

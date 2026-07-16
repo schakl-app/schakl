@@ -21,6 +21,7 @@ from pwdlib import PasswordHash
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import func, select
 
+from app.core.auth import twofactor
 from app.core.auth.models import User
 from app.core.auth.users import get_user_manager
 from app.core.email.service import get_row as email_settings_row
@@ -66,6 +67,9 @@ class MemberRead(BaseModel):
     role_ids: list[str] = []
     is_active: bool
     is_self: bool
+    #: The member's account demands a second factor at login — what makes the admin's
+    #: "reset 2FA" action (a lost-phone escape hatch) appear only where it means something.
+    two_factor_enabled: bool = False
     #: Set only on the invite response (#161): whether the welcome mail went out, and the
     #: i18n key saying why not (e.g. no transport configured) so the admin knows to act.
     invite_email_sent: bool | None = None
@@ -111,6 +115,7 @@ def _member_read(
     membership: Membership,
     user: User,
     role_ids: list[uuid.UUID] | None = None,
+    two_factor_enabled: bool = False,
 ) -> MemberRead:
     return MemberRead(
         membership_id=str(membership.id),
@@ -121,6 +126,7 @@ def _member_read(
         role_ids=[str(role_id) for role_id in role_ids or []],
         is_active=user.is_active,
         is_self=user.id == ctx.user.id,
+        two_factor_enabled=two_factor_enabled,
     )
 
 
@@ -163,7 +169,23 @@ async def list_members(ctx: RequestContext = Depends(require_context)) -> list[M
         )
     ):
         held.setdefault(membership_id, []).append(role_id)
-    return [_member_read(ctx, m, u, held.get(m.id, [])) for m, u in rows]
+    # Same rule for 2FA state: one grouped query over the team's user ids (a confirmed row per
+    # user), not a lookup per member.
+    user_ids = [u.id for _, u in rows]
+    secured: set[uuid.UUID] = set(
+        (
+            await ctx.session.execute(
+                select(twofactor.UserTwoFactor.user_id).where(
+                    twofactor.UserTwoFactor.user_id.in_(user_ids or [uuid.uuid4()]),
+                    twofactor.UserTwoFactor.confirmed_at.is_not(None),
+                )
+            )
+        ).scalars()
+    )
+    return [
+        _member_read(ctx, m, u, held.get(m.id, []), two_factor_enabled=u.id in secured)
+        for m, u in rows
+    ]
 
 
 @router.get(
@@ -421,6 +443,37 @@ async def set_member_roles(
         },
     )
     return await _effective(ctx, membership)
+
+
+@router.delete(
+    "/{membership_id}/two-factor",
+    status_code=204,
+    dependencies=[require_permission("members.member.write")],
+)
+async def reset_member_two_factor(
+    membership_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> None:
+    """Reset a member's 2FA — the lost-phone escape hatch (docs/TWOFACTOR.md).
+
+    Deletes the enrollment outright (secret, backup codes, SMS number), so the account is a
+    plain password login again until the member re-enrolls; no secret is ever *read*. The user
+    identity is global (§5), so this genuinely clears their 2FA everywhere — but the reach is
+    tenant-scoped where it matters: the target is addressed by *membership*, and an admin of
+    another org has no membership id of theirs to name (404). Audited, like every trust change.
+    """
+    membership = await _membership_or_404(ctx, membership_id)
+    row = await twofactor.row_for(ctx.session, membership.user_id)
+    if row is None:
+        raise AppError("not_found", "errors.not_found", status_code=404)
+    await ctx.session.delete(row)
+    await audit.record(
+        ctx.session,
+        org_id=ctx.org.id,
+        actor=ctx.user,
+        action="membership.two_factor_reset",
+        target_user_id=membership.user_id,
+    )
 
 
 @router.get(
