@@ -2264,6 +2264,9 @@
   "activity.action.marketing.unlinked": "ontkoppelde {source}: {name}",
   "activity.action.marketing.key_events_enabled": "maakte sleutelgebeurtenissen zichtbaar",
   "activity.action.marketing.key_events_disabled": "verborg sleutelgebeurtenissen",
+  "activity.action.marketing.layout_changed": "wijzigde de indeling van het marketingtabblad",
+  "activity.action.logo_uploaded": "uploadde logo “{filename}”",
+  "activity.action.logo_removed": "verwijderde het logo",
   "common.remove": "Verwijderen",
   "marketing.loading": "Laden…",
   "nav.marketing": "Marketing",
@@ -2387,5 +2390,6 @@
   "hr.category.other": "Overig",
   "marketing.link_website": "Koppelen aan website",
   "marketing.link_website_all": "Hele klant",
-  "marketing.website_group_none": "Klantbreed"
+  "marketing.website_group_none": "Klantbreed",
+  "tasks.filter.toggle": "Filters"
 }

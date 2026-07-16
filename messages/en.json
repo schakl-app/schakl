@@ -2264,6 +2264,9 @@
   "activity.action.marketing.unlinked": "unlinked {source}: {name}",
   "activity.action.marketing.key_events_enabled": "made key events visible",
   "activity.action.marketing.key_events_disabled": "hid key events",
+  "activity.action.marketing.layout_changed": "changed the marketing tab layout",
+  "activity.action.logo_uploaded": "uploaded logo “{filename}”",
+  "activity.action.logo_removed": "removed the logo",
   "common.remove": "Remove",
   "marketing.loading": "Loading…",
   "nav.marketing": "Marketing",
@@ -2387,5 +2390,6 @@
   "hr.category.other": "Other",
   "marketing.link_website": "Link to website",
   "marketing.link_website_all": "Whole client",
-  "marketing.website_group_none": "Client-wide"
+  "marketing.website_group_none": "Client-wide",
+  "tasks.filter.toggle": "Filters"
 }

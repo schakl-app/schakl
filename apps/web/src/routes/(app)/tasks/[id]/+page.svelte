@@ -329,11 +329,14 @@
   <a href="/tasks" class="text-sm text-text-muted hover:text-text">← {t("tasks.title")}</a>
 </div>
 
-<div class="grid gap-4 lg:grid-cols-[1fr_320px]">
+<!-- Phone vs desktop order: a flex column below `lg` puts the details card (status, assignee,
+     due date) straight after the title — on a phone those are what you came to change, and they
+     must not live below the whole comment thread. At `lg` the grid takes over untouched. -->
+<div class="flex flex-col gap-4 lg:grid lg:grid-cols-[1fr_320px]">
   <!-- Main column. `min-w-0` for the same reason the shell needs it (issue #36): a grid item's
        automatic minimum size is its content's min-content width, so without it the widest card
        inside dictates the column's width and the page grows past the viewport. -->
-  <div class="min-w-0 space-y-4">
+  <div class="order-1 min-w-0 space-y-4 lg:order-none lg:col-start-1 lg:row-start-1">
     <!-- Title + mode menu -->
     <section class="rounded-xl border border-border bg-surface-raised p-5">
       <div class="flex items-start gap-3">
@@ -416,7 +419,11 @@
         {/if}
       </div>
     </section>
+  </div>
 
+  <!-- The rest of the main column — after the details card on a phone (order-3), back into the
+       left grid column at `lg`. -->
+  <div class="order-3 min-w-0 space-y-4 lg:order-none lg:col-start-1 lg:row-start-2">
     <!-- Planned blocks on the calendar (#188) — schedule, move, and log time from a passed one. -->
     <TaskSchedulePanel
       schedules={data.schedules}
@@ -925,8 +932,8 @@
     {/if}
   </div>
 
-  <!-- Sidebar -->
-  <aside class="min-w-0 space-y-4">
+  <!-- Sidebar — second on a phone (order-2, right under the title), right column at `lg`. -->
+  <aside class="order-2 min-w-0 space-y-4 lg:order-none lg:col-start-2 lg:row-span-2 lg:row-start-1">
     <section class="rounded-xl border border-border bg-surface-raised p-4">
       <div class="space-y-3">
         <!-- Status is core workflow → always editable -->

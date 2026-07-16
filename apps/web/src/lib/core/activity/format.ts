@@ -72,7 +72,11 @@ export function activityText(item: ActivityLike): string {
     );
     return t("activity.action.updated", { changes: parts.join(", ") });
   }
-  if (item.action === "file_attached" || item.action === "file_removed") {
+  if (
+    item.action === "file_attached" ||
+    item.action === "file_removed" ||
+    item.action === "logo_uploaded"
+  ) {
     return t(`activity.action.${item.action}`, {
       filename: String(item.payload?.filename ?? ""),
     });

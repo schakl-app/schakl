@@ -123,6 +123,11 @@
     void goto(url, { keepFocus: true, noScroll: true });
   }
   const hasFilters = $derived(Object.values(data.filters).some(Boolean));
+  const activeFilterCount = $derived(Object.values(data.filters).filter(Boolean).length);
+  // On a phone the filter bar collapses behind one toggle: five stacked controls otherwise push
+  // the actual tasks a full screen down. Open when arriving with a filter in the URL.
+  // svelte-ignore state_referenced_locally
+  let showFilters = $state(Object.values(data.filters).some(Boolean));
 
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
@@ -154,10 +159,26 @@
   </button>
 </div>
 
-<!-- Filter bar -->
-<div class="mb-4 flex flex-wrap items-center gap-2">
+<!-- Filter bar. Collapsed behind one toggle below `sm` (docs/UX.md: a phone is not a smaller
+     desktop) — always expanded from `sm` up. -->
+<button
+  type="button"
+  class="mb-2 flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-text sm:hidden {showFilters
+    ? 'border-brand text-brand'
+    : ''}"
+  aria-expanded={showFilters}
+  onclick={() => (showFilters = !showFilters)}
+>
+  {t("tasks.filter.toggle")}
+  {#if activeFilterCount > 0}
+    <span class="rounded-full bg-brand px-1.5 py-0.5 text-[10px] font-semibold text-white"
+      >{activeFilterCount}</span
+    >
+  {/if}
+</button>
+<div class="mb-4 flex-wrap items-center gap-2 {showFilters ? 'flex' : 'hidden'} sm:flex">
   <SearchInput placeholder={t("tasks.search_placeholder")} />
-  <div class="w-44">
+  <div class="w-full sm:w-44">
     <Combobox
       items={companyItems}
       name="_filter_company"
@@ -167,7 +188,7 @@
       id="filter-company"
     />
   </div>
-  <div class="w-44">
+  <div class="w-full sm:w-44">
     <Combobox
       items={projectItems}
       name="_filter_project"
@@ -177,7 +198,7 @@
       id="filter-project"
     />
   </div>
-  <div class="w-44">
+  <div class="w-full sm:w-44">
     <Combobox
       items={memberItems}
       name="_filter_assignee"
