@@ -12,7 +12,11 @@ from app.core.permissions import PermissionSpec
 MARKETING_PERMISSIONS: list[PermissionSpec] = [
     # A client's marketing performance is what the account manager works with, so members see
     # it by default; a tenant that treats ad spend as sensitive narrows this to admin.
-    PermissionSpec("marketing.metrics.read", position=10, default_roles=("admin", "member")),
+    # `client` joined for the portal (#193): a logged-in contact reads their companies'
+    # curated dashboards. Reaches existing orgs once via the startup reconciler (§15).
+    PermissionSpec(
+        "marketing.metrics.read", position=10, default_roles=("admin", "member", "client")
+    ),
     # Linking/unlinking GA4/GSC/Ads accounts (and listing what a connection can access) is
     # configuration — admin by default, like the Google settings themselves.
     PermissionSpec("marketing.link.manage", position=20),

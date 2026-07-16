@@ -8,10 +8,14 @@
   import { pageTitle } from "$lib/core/title";
   import { dashboardWidgetsFor } from "$lib/core/registry";
   import WidgetGallery from "$lib/core/ui/WidgetGallery.svelte";
+  import MarketingSourceSection from "$lib/modules/marketing/MarketingSourceSection.svelte";
+  import type { CompanyMarketing } from "$lib/modules/marketing/types";
 
   let { data, form } = $props();
 
   const user = $derived(page.data.user);
+  // Generated OpenAPI types are looser than the module's own (#193) — narrow once here.
+  const portalMetrics = $derived((data.portal?.metrics ?? null) as CompanyMarketing | null);
   const enabled = $derived(page.data.theme?.enabledModules ?? []);
   const allWidgets = $derived(dashboardWidgetsFor(enabled, page.data.user));
 
@@ -59,6 +63,57 @@
   <title>{pageTitle(t("dashboard.my_day.title"))}</title>
 </svelte:head>
 
+{#if data.portal}
+  <!-- The client portal homepage (#193): the marketing dashboard as the agency curated it
+       (#192 layouts, enforced by the API) for each company in this contact's horizon. -->
+  <div class="mb-6">
+    <h1 class="text-xl font-semibold text-text">{t("portal.home.title")}</h1>
+    <p class="mt-1 text-sm text-text-muted">
+      {t("dashboard.welcome", { name: user?.full_name || user?.email || "" })}
+    </p>
+  </div>
+
+  {#if data.portal.companies.length === 0}
+    <div class="rounded-xl border border-dashed border-border bg-surface-raised p-8 text-center">
+      <p class="text-sm text-text-muted">{t("portal.home.empty")}</p>
+    </div>
+  {:else}
+    {#if data.portal.companies.length > 1}
+      <!-- Several companies: a switcher; one: straight to it. -->
+      <div class="mb-5 flex flex-wrap items-center gap-1" data-sveltekit-preload-data="hover">
+        {#each data.portal.companies as company (company.id)}
+          <a
+            href={`?company=${company.id}`}
+            data-sveltekit-noscroll
+            class="rounded-lg px-3 py-1.5 text-sm font-medium {company.id === data.portal.selected
+              ? 'bg-brand text-white'
+              : 'text-text-muted hover:bg-surface'}"
+          >
+            {company.name}
+          </a>
+        {/each}
+      </div>
+    {:else}
+      <h2 class="mb-4 text-base font-semibold text-text">{data.portal.companies[0].name}</h2>
+    {/if}
+
+    {#if portalMetrics && portalMetrics.sources.length > 0}
+      <div class="space-y-5">
+        {#each portalMetrics.sources as src (src.link_id)}
+          <MarketingSourceSection
+            companyId={data.portal.selected ?? ""}
+            {src}
+            rangeDays={30}
+          />
+        {/each}
+      </div>
+    {:else}
+      <div class="rounded-xl border border-dashed border-border bg-surface-raised p-8 text-center">
+        <p class="text-sm text-text-muted">{t("portal.home.no_data")}</p>
+      </div>
+    {/if}
+  {/if}
+{:else}
 <div class="mb-6 flex items-start justify-between">
   <div>
     <h1 class="text-xl font-semibold text-text">{t("dashboard.my_day.title")}</h1>
@@ -148,4 +203,5 @@
     </div>
     <WidgetGallery widgets={allWidgets} {activeKeys} onadd={addWidget} />
   </section>
+{/if}
 {/if}

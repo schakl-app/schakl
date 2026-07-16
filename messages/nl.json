@@ -2335,5 +2335,21 @@
   "marketing.layout.label_en": "Naam (EN)",
   "marketing.layout.drilldowns": "Uitsplitsingen",
   "marketing.layout.chart_metric": "Standaardgrafiek",
-  "marketing.layout.chart_default": "Automatisch"
+  "marketing.layout.chart_default": "Automatisch",
+  "portal.home.title": "Jouw dashboard",
+  "portal.home.empty": "Er zijn nog geen bedrijven aan je account gekoppeld. Je bureau stelt dit in.",
+  "portal.home.no_data": "Nog geen marketingdata om te tonen.",
+  "contacts.portal.title": "Klantportaal",
+  "contacts.portal.hint": "Geef deze contactpersoon een login die de marketingdashboards van zijn of haar bedrijven toont, precies zoals hier samengesteld. Verder is er niets zichtbaar.",
+  "contacts.portal.status.none": "Geen toegang",
+  "contacts.portal.status.invited": "Uitgenodigd",
+  "contacts.portal.status.active": "Actief",
+  "contacts.portal.status.disabled": "Uitgeschakeld",
+  "contacts.portal.enable": "Uitnodigen voor portaal",
+  "contacts.portal.reenable": "Toegang opnieuw inschakelen",
+  "contacts.portal.resend": "Uitnodiging opnieuw versturen",
+  "contacts.portal.disable": "Toegang uitschakelen",
+  "contacts.portal.email_not_sent": "De toegang staat klaar, maar de uitnodigingsmail kon niet worden verzonden. Stel e-mail in onder Instellingen en verstuur de uitnodiging opnieuw.",
+  "errors.portal_email_required": "Deze contactpersoon heeft een e-mailadres nodig voordat je kunt uitnodigen.",
+  "errors.portal_email_in_use": "Dit e-mailadres hoort al bij een bestaand account. Een portaal-login heeft een eigen adres nodig."
 }

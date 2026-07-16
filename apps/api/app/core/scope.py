@@ -30,19 +30,35 @@ CompanyScopeResolver = Callable[
     [AsyncSession, uuid.UUID, uuid.UUID], Awaitable[frozenset[uuid.UUID] | None]
 ]
 
-_resolver: CompanyScopeResolver | None = None
+_resolvers: list[CompanyScopeResolver] = []
 
 
 def register_company_scope_resolver(resolver: CompanyScopeResolver) -> None:
-    """Called once by the owning module's package ``__init__`` (companies)."""
-    global _resolver
-    _resolver = resolver
+    """Called once per owning module's package ``__init__``. More than one source can bound
+    a membership (company groups #191, a portal contact's companies #193); each resolver
+    answers ``None`` for "this source doesn't restrict them"."""
+    if resolver not in _resolvers:
+        _resolvers.append(resolver)
 
 
 async def resolve_company_scope(
     session: AsyncSession, org_id: uuid.UUID, membership_id: uuid.UUID
 ) -> frozenset[uuid.UUID] | None:
-    """The membership's horizon: ``None`` = unrestricted, a set = only those companies."""
-    if _resolver is None:
+    """The membership's horizon: ``None`` = unrestricted, a set = only those companies.
+
+    Restricting sources **union** (#193): a portal contact linked to two companies who is
+    also assigned a group sees the union — while a membership no source restricts stays
+    unrestricted. The union of restrictions can never widen past "everything", so combining
+    with ``None`` (unrestricted) collapses to the restricted sets only.
+    """
+    scopes = [
+        scope
+        for resolver in _resolvers
+        if (scope := await resolver(session, org_id, membership_id)) is not None
+    ]
+    if not scopes:
         return None
-    return await _resolver(session, org_id, membership_id)
+    combined: frozenset[uuid.UUID] = frozenset()
+    for scope in scopes:
+        combined |= scope
+    return combined

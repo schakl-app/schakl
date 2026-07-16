@@ -21,6 +21,8 @@ export interface SessionUser {
   customAvatarUrl: string | null;
   /** Instance owner with the instance-admin surface enabled (issue #26). */
   isInstanceAdmin: boolean;
+  /** A contact-linked (client-portal) login (#193): renders the reduced portal shell. */
+  isPortal: boolean;
   /** Instance owner (users.is_superuser) regardless of the admin-surface flag — gates
    *  license management (issue #137). */
   isInstanceOwner: boolean;
@@ -83,6 +85,7 @@ export async function fetchUser(event: ApiEvent): Promise<SessionUser | null> {
     avatarUrl: data.avatar_url ?? null,
     customAvatarUrl: data.custom_avatar_url ?? null,
     isInstanceAdmin: data.is_instance_admin ?? false,
+    isPortal: data.is_portal ?? false,
     isInstanceOwner: data.is_instance_owner ?? false,
     impersonatedBy: data.impersonated_by ?? null,
     impersonationExpiresAt: data.impersonation_expires_at ?? null,

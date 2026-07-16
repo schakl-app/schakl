@@ -34,14 +34,20 @@
 
   const theme = $derived(page.data.theme);
   const user = $derived(page.data.user);
+  // The portal shell (#193): a contact-linked login gets a reduced frame — their homepage is
+  // the curated dashboard, module nav shrinks to what the client role can read, no bell/AI.
+  // UX only; the API's deny-by-default permissions and the company horizon are the boundary.
+  const isPortal = $derived(user?.isPortal ?? false);
   const nav = $derived(
-    navItemsFor(theme?.enabledModules ?? [], user, page.data.navPref?.items ?? null),
+    isPortal ? [] : navItemsFor(theme?.enabledModules ?? [], user, page.data.navPref?.items ?? null),
   );
   const path = $derived(page.url.pathname);
-  const showOverview = $derived(can(user, "time.report.read"));
-  const showSettings = $derived(canAccessSettings(user?.permissions));
+  const showOverview = $derived(!isPortal && can(user, "time.report.read"));
+  const showSettings = $derived(!isPortal && canAccessSettings(user?.permissions));
   // The bell is a shell element, not a nav item, so it is gated here rather than by the registry.
-  const hasNotifications = $derived(theme?.enabledModules?.includes("notifications") ?? false);
+  const hasNotifications = $derived(
+    !isPortal && (theme?.enabledModules?.includes("notifications") ?? false),
+  );
 
   // AI affordance gate (epic #131): shared components (RichTextEditor's assist) read this
   // through context so no consumer needs per-module wiring. Off means invisible (#126).
@@ -169,14 +175,17 @@
         <LayoutDashboard size={18} class="shrink-0 text-text-muted" />
         {#if !collapsed}<span class="truncate">{t("nav.dashboard")}</span>{/if}
       </a>
-      <a
-        href="/calendar"
-        class={itemClass(path.startsWith("/calendar"))}
-        title={collapsed ? t("nav.calendar") : undefined}
-      >
-        <CalendarDays size={18} class="shrink-0 text-text-muted" />
-        {#if !collapsed}<span class="truncate">{t("nav.calendar")}</span>{/if}
-      </a>
+      {#if !isPortal}
+        <!-- The team agenda is a staff surface; the portal shell (#193) has no business here. -->
+        <a
+          href="/calendar"
+          class={itemClass(path.startsWith("/calendar"))}
+          title={collapsed ? t("nav.calendar") : undefined}
+        >
+          <CalendarDays size={18} class="shrink-0 text-text-muted" />
+          {#if !collapsed}<span class="truncate">{t("nav.calendar")}</span>{/if}
+        </a>
+      {/if}
       {#each navEntries as entry (entry.kind === "group" ? `g:${entry.key}` : entry.item.key)}
         {#if entry.kind === "item"}
           {@const Icon = entry.item.icon}

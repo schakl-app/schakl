@@ -755,6 +755,42 @@ export interface paths {
         patch: operations["update_contact_company_link_api_v1_contacts__contact_id__links__company_id__patch"];
         trace?: never;
     };
+    "/api/v1/contacts/{contact_id}/portal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Portal State */
+        get: operations["portal_state_api_v1_contacts__contact_id__portal_get"];
+        put?: never;
+        /** Enable Portal */
+        post: operations["enable_portal_api_v1_contacts__contact_id__portal_post"];
+        /** Disable Portal */
+        delete: operations["disable_portal_api_v1_contacts__contact_id__portal_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/contacts/{contact_id}/portal/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resend Portal Invite */
+        post: operations["resend_portal_invite_api_v1_contacts__contact_id__portal_resend_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/custom-fields/definitions": {
         parameters: {
             query?: never;
@@ -8072,6 +8108,11 @@ export interface components {
              * @default false
              */
             is_instance_owner: boolean;
+            /**
+             * Is Portal
+             * @default false
+             */
+            is_portal: boolean;
             /** Locale */
             locale: string | null;
             /** Permissions */
@@ -8679,6 +8720,21 @@ export interface components {
             position: number;
             /** Scopes */
             scopes: string[];
+        };
+        /** PortalState */
+        PortalState: {
+            /** Email */
+            email?: string | null;
+            /** Invite Email Error */
+            invite_email_error?: string | null;
+            /** Invite Email Sent */
+            invite_email_sent?: boolean | null;
+            /**
+             * Status
+             * @default none
+             * @enum {string}
+             */
+            status: "none" | "invited" | "active" | "disabled";
         };
         /** PreferenceMatrix */
         PreferenceMatrix: {
@@ -13742,6 +13798,130 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ContactRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    portal_state_api_v1_contacts__contact_id__portal_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    enable_portal_api_v1_contacts__contact_id__portal_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    disable_portal_api_v1_contacts__contact_id__portal_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resend_portal_invite_api_v1_contacts__contact_id__portal_resend_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalState"];
                 };
             };
             /** @description Validation Error */

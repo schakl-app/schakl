@@ -50,6 +50,13 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         kind = getattr(request.state, "password_email_kind", "reset") if request else "reset"
         await send_password_email(self.user_db.session, user, token, request, kind=kind)
 
+    async def on_after_reset_password(self, user: User, request: Request | None = None) -> None:
+        """Setting a password through the emailed link proves the mailbox — that IS
+        verification. Drives the portal's invited → active status (#193), and is equally
+        true for a staff invite (#161), which rides the same token."""
+        if not user.is_verified:
+            await self.user_db.update(user, {"is_verified": True})
+
     async def on_after_request_verify(
         self, user: User, token: str, request: Request | None = None
     ) -> None:

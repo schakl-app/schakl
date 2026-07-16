@@ -227,16 +227,22 @@ class NotificationService:
         return event
 
     async def _members_only(self, recipients: set[uuid.UUID]) -> set[uuid.UUID]:
-        """Drop anyone who is not a member of this org — one query, no per-recipient check."""
+        """Drop anyone who is not a *staff* member of this org — one query, no per-recipient
+        check. A portal login (a contact-linked membership, #193) is a member too, but staff
+        events must never reach a client's inbox; portal-facing notifications are a later,
+        opt-in story."""
         if not recipients:
             return recipients
+        from app.core.portal import portal_user_ids
+
         rows = await self.session.execute(
             select(Membership.user_id).where(
                 Membership.org_id == self.org_id,
                 Membership.user_id.in_(recipients),
             )
         )
-        return set(rows.scalars())
+        members = set(rows.scalars())
+        return members - await portal_user_ids(self.session, self.org_id, members)
 
     async def _apply_preferences(
         self,

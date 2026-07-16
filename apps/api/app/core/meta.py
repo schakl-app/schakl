@@ -27,6 +27,7 @@ from app.core.entitlements.service import (
 )
 from app.core.models import OrgSettings, OrgStatus
 from app.core.permissions.deps import no_permission_required, require_permission
+from app.core.portal import portal_user_ids
 from app.core.tenancy import RequestContext, request_hostname, require_context, resolve_org
 from app.core.timezone import is_valid_timezone
 from app.db import async_session_maker, set_current_org
@@ -142,6 +143,10 @@ class MeInfo(BaseModel):
     #: provider under Instellingen → AI — "off means invisible". Rides the payload the web
     #: already fetches per request, so gating an affordance costs no extra call.
     ai_features: list[str] = Field(default_factory=list)
+    #: A contact-linked (client-portal) login (#193): the web renders the portal shell for
+    #: these — reduced nav, homepage = their companies' curated dashboards. UX input only;
+    #: the horizon + deny-by-default permissions are the boundary.
+    is_portal: bool = False
 
 
 class MeUpdate(BaseModel):
@@ -154,9 +159,12 @@ class MeUpdate(BaseModel):
     custom_avatar_url: str | None = Field(default=None, max_length=1024)
 
 
-def _me_info(ctx: RequestContext, user: User, ai_features: list[str]) -> MeInfo:
+def _me_info(
+    ctx: RequestContext, user: User, ai_features: list[str], *, is_portal: bool = False
+) -> MeInfo:
     return MeInfo(
         ai_features=ai_features,
+        is_portal=is_portal,
         id=str(user.id),
         email=user.email,
         full_name=user.full_name,
@@ -181,7 +189,12 @@ def _me_info(ctx: RequestContext, user: User, ai_features: list[str]) -> MeInfo:
     dependencies=[no_permission_required("who am I in this tenant; every member needs it")],
 )
 async def me(ctx: RequestContext = Depends(require_context)) -> MeInfo:
-    return _me_info(ctx, ctx.user, await ai_enabled_features(ctx.session, ctx.org.id))
+    return _me_info(
+        ctx,
+        ctx.user,
+        await ai_enabled_features(ctx.session, ctx.org.id),
+        is_portal=bool(await portal_user_ids(ctx.session, ctx.org.id, {ctx.user.id})),
+    )
 
 
 @router.patch(
@@ -216,7 +229,12 @@ async def update_me(
         setattr(user, key, value)
     await ctx.session.flush()
     await ctx.session.refresh(user)
-    return _me_info(ctx, user, await ai_enabled_features(ctx.session, ctx.org.id))
+    return _me_info(
+        ctx,
+        user,
+        await ai_enabled_features(ctx.session, ctx.org.id),
+        is_portal=bool(await portal_user_ids(ctx.session, ctx.org.id, {user.id})),
+    )
 
 
 @router.get(

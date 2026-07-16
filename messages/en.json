@@ -2335,5 +2335,21 @@
   "marketing.layout.label_en": "Name (EN)",
   "marketing.layout.drilldowns": "Drill-downs",
   "marketing.layout.chart_metric": "Default chart metric",
-  "marketing.layout.chart_default": "Automatic"
+  "marketing.layout.chart_default": "Automatic",
+  "portal.home.title": "Your dashboard",
+  "portal.home.empty": "No companies are linked to your account yet. Your agency will set this up.",
+  "portal.home.no_data": "No marketing data to show yet.",
+  "contacts.portal.title": "Client portal",
+  "contacts.portal.hint": "Give this contact a login that shows their companies' marketing dashboards, exactly as curated here. They can see nothing else.",
+  "contacts.portal.status.none": "No access",
+  "contacts.portal.status.invited": "Invited",
+  "contacts.portal.status.active": "Active",
+  "contacts.portal.status.disabled": "Disabled",
+  "contacts.portal.enable": "Invite to portal",
+  "contacts.portal.reenable": "Re-enable access",
+  "contacts.portal.resend": "Resend invite",
+  "contacts.portal.disable": "Disable access",
+  "contacts.portal.email_not_sent": "Access is set up, but the invite email could not be sent. Configure email under Settings, then resend.",
+  "errors.portal_email_required": "This contact needs an email address before they can be invited.",
+  "errors.portal_email_in_use": "This email address already belongs to an existing account. A portal login must have its own address."
 }
