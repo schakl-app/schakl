@@ -29,10 +29,23 @@ class CompanyBase(BaseModel):
     responsible_user_id: uuid.UUID | None = None
     # Where invoices go — often a different mailbox than the primary contact (#30, #31).
     invoice_email: EmailStr | None = Field(default=None, max_length=320)
+    # Billing identity (issue #11) — optional; document issue judges completeness (#207).
+    vat_number: str | None = Field(default=None, max_length=32)
+    coc_number: str | None = Field(default=None, max_length=32)
+    address_line1: str | None = Field(default=None, max_length=255)
+    address_line2: str | None = Field(default=None, max_length=255)
+    postal_code: str | None = Field(default=None, max_length=16)
+    city: str | None = Field(default=None, max_length=120)
+    country: str | None = Field(default=None, min_length=2, max_length=2)
     # Per-tenant custom values (validated against tenant definitions in P1).
     custom: dict[str, Any] = Field(default_factory=dict)
 
     _normalize_invoice_email = field_validator("invoice_email", mode="before")(_blank_to_none)
+    _normalize_billing = field_validator(
+        "vat_number", "coc_number", "address_line1", "address_line2",
+        "postal_code", "city", "country",
+        mode="before",
+    )(_blank_to_none)
 
 
 class CompanyCreate(CompanyBase):
@@ -49,9 +62,21 @@ class CompanyUpdate(BaseModel):
     responsible_user_id: uuid.UUID | None = None
     assignees: list[AssigneeWrite] | None = None
     invoice_email: EmailStr | None = Field(default=None, max_length=320)
+    vat_number: str | None = Field(default=None, max_length=32)
+    coc_number: str | None = Field(default=None, max_length=32)
+    address_line1: str | None = Field(default=None, max_length=255)
+    address_line2: str | None = Field(default=None, max_length=255)
+    postal_code: str | None = Field(default=None, max_length=16)
+    city: str | None = Field(default=None, max_length=120)
+    country: str | None = Field(default=None, min_length=2, max_length=2)
     custom: dict[str, Any] | None = None
 
     _normalize_invoice_email = field_validator("invoice_email", mode="before")(_blank_to_none)
+    _normalize_billing = field_validator(
+        "vat_number", "coc_number", "address_line1", "address_line2",
+        "postal_code", "city", "country",
+        mode="before",
+    )(_blank_to_none)
 
 
 class CompanyRead(CompanyBase):
