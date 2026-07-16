@@ -9687,6 +9687,8 @@ export interface components {
         };
         /** StoredFileRead */
         StoredFileRead: {
+            /** Backend */
+            backend: string;
             /** Content Type */
             content_type: string;
             /**
@@ -9714,6 +9716,8 @@ export interface components {
             org_id: string;
             /** Size Bytes */
             size_bytes: number;
+            /** Storage Key */
+            storage_key: string;
         };
         /** SubscriptionCreate */
         SubscriptionCreate: {

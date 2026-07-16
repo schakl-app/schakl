@@ -13,6 +13,10 @@ class StoredFileRead(BaseModel):
 
     id: uuid.UUID
     org_id: uuid.UUID
+    # Which backend holds the bytes (#190) and under which opaque key (`<org_id>/<file_id>`,
+    # no secret) — surfaced for ops: "which rows still live on the volume?" is answerable.
+    backend: str
+    storage_key: str
     filename: str
     content_type: str
     size_bytes: int

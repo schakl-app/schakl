@@ -22,7 +22,7 @@ from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import select
 
 from app.core.permissions.deps import no_permission_required, require_permission
-from app.core.storage.backend import get_storage
+from app.core.storage.backend import StorageUnavailableError, storage_for
 from app.core.storage.models import StoredFile
 from app.core.storage.schemas import StoredFileRead
 from app.core.storage.service import PUBLIC_ENTITY_TYPES, FileService
@@ -39,14 +39,32 @@ router = APIRouter(prefix="/files", tags=["files"])
 _INLINE_TYPES = frozenset({"image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf"})
 
 
-def _file_response(stored: StoredFile, request: Request, *, public: bool = False) -> Response:
-    """Stream a stored file with ETag/304, honouring the inline allow-list."""
-    etag = f'"{stored.id}"'
-    if request.headers.get("if-none-match") == etag:
-        return Response(status_code=304, headers={"ETag": etag})
-    disposition = "inline" if stored.content_type in _INLINE_TYPES else "attachment"
+async def _open_stored(stored: StoredFile, ctx: RequestContext | None = None):
+    """Resolve the row's own backend (#190) and open its bytes off the event loop.
+
+    An S3 read is an external HTTP call: with a ``ctx`` it runs inside ``release_db()`` so it
+    never pins the request's pooled DB connection (docs/PERFORMANCE.md) — safe because
+    ``S3ObjectStorage.open`` buffers fully, so no S3 socket outlives the call either.
+    """
     try:
-        stream = get_storage().open(stored.storage_key)
+        backend = storage_for(stored.backend)
+    except StorageUnavailableError:
+        # The row was written by a backend this instance can no longer reach (e.g. an `s3`
+        # row after the S3 env config was removed). Distinct from bytes-missing: the ops fix
+        # is to restore SCHAKL_STORAGE_S3_*, not to hunt a volume.
+        logger.warning(
+            "stored file %s needs backend=%s which is not configured on this instance",
+            stored.id,
+            stored.backend,
+        )
+        raise AppError(
+            "not_found", "errors.storage_backend_unavailable", status_code=404
+        ) from None
+    try:
+        if stored.backend == "s3" and ctx is not None:
+            async with ctx.release_db():
+                return await asyncio.to_thread(backend.open, stored.storage_key)
+        return await asyncio.to_thread(backend.open, stored.storage_key)
     except FileNotFoundError:
         # The row exists but its bytes are gone — the DB and the file store have drifted apart.
         # On a standard single-host deploy api + worker share the storage volume, so this is a
@@ -64,6 +82,21 @@ def _file_response(stored: StoredFile, request: Request, *, public: bool = False
             stored.entity_id,
         )
         raise AppError("not_found", "errors.file_bytes_missing", status_code=404) from None
+
+
+async def _file_response(
+    stored: StoredFile,
+    request: Request,
+    *,
+    public: bool = False,
+    ctx: RequestContext | None = None,
+) -> Response:
+    """Stream a stored file with ETag/304, honouring the inline allow-list."""
+    etag = f'"{stored.id}"'
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers={"ETag": etag})
+    disposition = "inline" if stored.content_type in _INLINE_TYPES else "attachment"
+    stream = await _open_stored(stored, ctx)
     filename = stored.filename.replace('"', "")
     cache = "public, max-age=3600" if public else "private, max-age=3600"
     return StreamingResponse(
@@ -156,7 +189,7 @@ async def serve_file(
 ) -> Response:
     """Stream the bytes. Cross-tenant ids read as 404 (tenant-scoped row lookup)."""
     stored = await FileService(ctx).get_or_404(file_id)
-    return _file_response(stored, request)
+    return await _file_response(stored, request, ctx=ctx)
 
 
 # The size variants the installable-app icon story needs (#198): apple-touch (180) and the
@@ -217,6 +250,8 @@ async def serve_public_file(
     Only raster images resize — an SVG (or a decode failure) falls back to the original bytes,
     a degraded icon rather than a broken install.
     """
+    # Load the row inside its own short session, fetch the bytes *after* the block closes —
+    # so the anonymous path never holds a DB connection across storage IO either (#190).
     async with async_session_maker() as session:
         org = await resolve_org(session, request_hostname(request))
         if org is None:
@@ -227,36 +262,29 @@ async def serve_public_file(
         )
         if stored is None or stored.entity_type not in PUBLIC_ENTITY_TYPES:
             raise AppError("not_found", "errors.not_found", status_code=404)
-        if (
-            size in _ICON_SIZES
-            and stored.content_type.startswith("image/")
-            and stored.content_type != "image/svg+xml"
-        ):
-            background = bg if _HEX_BG.match(bg) else "#ffffff"
-            etag = f'"{stored.id}-{size}{"m" if maskable else ""}-{background[1:]}"'
-            if request.headers.get("if-none-match") == etag:
-                return Response(status_code=304, headers={"ETag": etag})
-            try:
-                raw = await asyncio.to_thread(
-                    lambda: get_storage().open(stored.storage_key).read()
-                )
-            except FileNotFoundError:
-                raise AppError(
-                    "not_found", "errors.file_bytes_missing", status_code=404
-                ) from None
-            try:
-                png = await asyncio.to_thread(_iconify, raw, size, maskable, background)
-            except Exception:  # noqa: BLE001 — a bad image degrades, never 500s an icon fetch
-                logger.warning("app icon %s could not be resized; serving original", stored.id)
-            else:
-                return Response(
-                    png,
-                    media_type="image/png",
-                    headers={
-                        "ETag": etag,
-                        "Cache-Control": "public, max-age=3600",
-                        "X-Content-Type-Options": "nosniff",
-                        "Content-Disposition": 'inline; filename="icon.png"',
-                    },
-                )
-        return _file_response(stored, request, public=True)
+    if (
+        size in _ICON_SIZES
+        and stored.content_type.startswith("image/")
+        and stored.content_type != "image/svg+xml"
+    ):
+        background = bg if _HEX_BG.match(bg) else "#ffffff"
+        etag = f'"{stored.id}-{size}{"m" if maskable else ""}-{background[1:]}"'
+        if request.headers.get("if-none-match") == etag:
+            return Response(status_code=304, headers={"ETag": etag})
+        raw = await asyncio.to_thread((await _open_stored(stored)).read)
+        try:
+            png = await asyncio.to_thread(_iconify, raw, size, maskable, background)
+        except Exception:  # noqa: BLE001 — a bad image degrades, never 500s an icon fetch
+            logger.warning("app icon %s could not be resized; serving original", stored.id)
+        else:
+            return Response(
+                png,
+                media_type="image/png",
+                headers={
+                    "ETag": etag,
+                    "Cache-Control": "public, max-age=3600",
+                    "X-Content-Type-Options": "nosniff",
+                    "Content-Disposition": 'inline; filename="icon.png"',
+                },
+            )
+    return await _file_response(stored, request, public=True)

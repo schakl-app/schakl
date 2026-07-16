@@ -342,3 +342,140 @@ async def test_app_icon_url_branding_round_trip(client_for) -> None:
 
     async with client_for(other.host) as c:
         assert (await c.get("/api/v1/meta/tenant")).json()["app_icon_url"] is None
+
+
+class _FakeS3:
+    """In-memory stand-in for S3ObjectStorage (#190) — the protocol, no network."""
+
+    def __init__(self) -> None:
+        self.blobs: dict[str, bytes] = {}
+
+    def put(self, key: str, stream) -> None:
+        self.blobs[key] = stream.read()
+
+    def open(self, key: str):
+        import io
+
+        if key not in self.blobs:
+            raise FileNotFoundError(key)
+        return io.BytesIO(self.blobs[key])
+
+    def delete(self, key: str) -> None:
+        self.blobs.pop(key, None)
+
+
+def _enable_fake_s3(monkeypatch) -> _FakeS3:
+    """Point the instance at S3 (#190) the way env vars would, faked at the client seam."""
+    from app.core.storage import backend as backend_mod
+
+    fake = _FakeS3()
+    monkeypatch.setattr(settings, "storage_backend", "s3")
+    monkeypatch.setattr(settings, "storage_s3_endpoint", "http://minio.local:9000")
+    monkeypatch.setattr(settings, "storage_s3_bucket", "schakl")
+    monkeypatch.setattr(settings, "storage_s3_access_key_id", "key")
+    monkeypatch.setattr(settings, "storage_s3_secret_access_key", "secret")
+    original = backend_mod.storage_for
+
+    def fake_storage_for(name: str):
+        if name == "s3":
+            from app.core.storage.s3 import s3_configured
+
+            if not s3_configured():
+                raise backend_mod.StorageUnavailableError(name)
+            return fake
+        return original(name)
+
+    # Patch every import site of the seam (service + router bind the name at import).
+    import app.core.storage.router as router_mod
+    import app.core.storage.service as service_mod
+
+    monkeypatch.setattr(backend_mod, "storage_for", fake_storage_for)
+    monkeypatch.setattr(service_mod, "storage_for", fake_storage_for)
+    monkeypatch.setattr(router_mod, "storage_for", fake_storage_for)
+    monkeypatch.setattr(
+        service_mod, "get_storage", lambda: fake_storage_for(settings.storage_backend)
+    )
+    return fake
+
+
+async def test_s3_backend_records_and_serves_new_writes(
+    client_for, tmp_path, monkeypatch
+) -> None:
+    """With SCHAKL_STORAGE_BACKEND=s3 (#190), new uploads record backend="s3", land in the
+    bucket, and serve back through the API — the bucket is never exposed directly."""
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    t = await make_tenant("files-s3")
+    headers = await auth_cookie(t.user)
+
+    # A pre-existing local row (written before S3 was enabled).
+    async with client_for(t.host) as c:
+        local_meta = (
+            await c.post(
+                "/api/v1/files",
+                files={"file": ("old.png", _PNG, "image/png")},
+                headers=headers,
+            )
+        ).json()
+        assert local_meta["backend"] == "local"
+
+    fake = _enable_fake_s3(monkeypatch)
+    async with client_for(t.host) as c:
+        created = await c.post(
+            "/api/v1/files",
+            files={"file": ("new.png", _PNG, "image/png")},
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        meta = created.json()
+        assert meta["backend"] == "s3"
+        # The bytes went to the bucket, under the org-prefixed key.
+        assert fake.blobs[meta["storage_key"]] == _PNG
+        assert meta["storage_key"].startswith(str(t.org.id))
+
+        # Reads dispatch on the row's backend: the s3 row serves from the fake bucket…
+        served = await c.get(f"/api/v1/files/{meta['id']}", headers=headers)
+        assert served.status_code == 200 and served.content == _PNG
+        # …and the pre-S3 local row still serves from the volume (override, not migration).
+        old = await c.get(f"/api/v1/files/{local_meta['id']}", headers=headers)
+        assert old.status_code == 200 and old.content == _PNG
+
+        # Deleting the s3 row removes the object from the bucket.
+        assert (
+            await c.delete(f"/api/v1/files/{meta['id']}", headers=headers)
+        ).status_code == 204
+        assert meta["storage_key"] not in fake.blobs
+
+
+async def test_s3_row_with_config_removed_reads_as_distinct_404(
+    client_for, tmp_path, monkeypatch
+) -> None:
+    """An `s3` row whose instance config was since removed answers the distinct
+    errors.storage_backend_unavailable — an ops pointer, not a generic bad link."""
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    t = await make_tenant("files-s3-gone")
+    headers = await auth_cookie(t.user)
+
+    fake = _enable_fake_s3(monkeypatch)
+    async with client_for(t.host) as c:
+        meta = (
+            await c.post(
+                "/api/v1/files",
+                files={"file": ("f.png", _PNG, "image/png")},
+                headers=headers,
+            )
+        ).json()
+        assert meta["backend"] == "s3"
+
+    # The operator unsets the S3 env config; the instance falls back to local for writes.
+    monkeypatch.setattr(settings, "storage_backend", "local")
+    monkeypatch.setattr(settings, "storage_s3_endpoint", "")
+    async with client_for(t.host) as c:
+        res = await c.get(f"/api/v1/files/{meta['id']}", headers=headers)
+        assert res.status_code == 404
+        assert res.json()["error"]["message"] == "errors.storage_backend_unavailable"
+
+        # Deleting the row still works — the blob is orphaned space, not a locked tenant.
+        assert (
+            await c.delete(f"/api/v1/files/{meta['id']}", headers=headers)
+        ).status_code == 204
+    assert fake.blobs  # the orphaned object is still in the (fake) bucket

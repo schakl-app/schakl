@@ -54,8 +54,32 @@ class LocalVolumeStorage:
         self._path(key).unlink(missing_ok=True)
 
 
-def get_storage() -> StorageBackend:
-    """The configured backend. Reads settings per call so tests can repoint the root."""
-    if settings.storage_backend == "local":
+class StorageUnavailableError(LookupError):
+    """A row's recorded backend cannot be resolved on this instance (#190) — e.g. an ``s3``
+    row after the S3 env config was removed. Callers translate this to a distinct 404
+    (``errors.storage_backend_unavailable``), sibling of ``errors.file_bytes_missing``."""
+
+    def __init__(self, backend: str) -> None:
+        super().__init__(backend)
+        self.backend = backend
+
+
+def storage_for(backend: str) -> StorageBackend:
+    """The backend for a **stored row** — reads/deletes dispatch on ``files.backend``, so
+    enabling S3 affects new writes only and existing local files keep serving (#190)."""
+    if backend == "local":
         return LocalVolumeStorage(settings.storage_path)
-    raise RuntimeError(f"unknown storage backend: {settings.storage_backend!r}")
+    if backend == "s3":
+        from app.core.storage.s3 import S3ObjectStorage, s3_configured
+
+        if not s3_configured():
+            raise StorageUnavailableError(backend)
+        return S3ObjectStorage()
+    raise StorageUnavailableError(backend)
+
+
+def get_storage() -> StorageBackend:
+    """The backend **new writes** go to. Reads settings per call so tests can repoint it."""
+    if settings.storage_backend not in ("local", "s3"):
+        raise RuntimeError(f"unknown storage backend: {settings.storage_backend!r}")
+    return storage_for(settings.storage_backend)

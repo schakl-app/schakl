@@ -1132,6 +1132,7 @@
   "errors.invalid_url": "Voer een geldige URL in.",
   "errors.not_found": "Niet gevonden.",
   "errors.file_bytes_missing": "De registratie van dit bestand bestaat, maar de inhoud ontbreekt in de opslag. Meestal betekent dit dat de bestandsopslag en de database uit elkaar zijn gelopen; controleer of de API en de worker dezelfde opslagvolume delen.",
+  "errors.storage_backend_unavailable": "Dit bestand is opgeslagen in een opslag-backend die niet op deze installatie is geconfigureerd. Herstel de objectopslag-configuratie (SCHAKL_STORAGE_S3_*) om het weer bereikbaar te maken.",
   "errors.unauthorized": "Log in om verder te gaan.",
   "errors.forbidden": "Je hebt hier geen toegang toe.",
   "errors.demo_blocked": "Deze actie is uitgeschakeld in de demo.",
