@@ -32,7 +32,8 @@
 
   type Task = (typeof data.tasks)[number];
 
-  let showCreate = $state(false);
+  // Quick-create from a client page (?new=1&company_id=): the form opens with the client set.
+  let showCreate = $state(page.url.searchParams.has("new"));
   let deleteId = $state("");
   let confirmDelete = $state(false);
   const userId = $derived(page.data.user?.id ?? "");
@@ -103,7 +104,7 @@
   );
 
   // Create-form state: the project pick narrows to that project's client automatically.
-  let fCompany = $state("");
+  let fCompany = $state(page.url.searchParams.get("company_id") ?? "");
   let fProject = $state("");
   const createProjects = $derived(
     fCompany

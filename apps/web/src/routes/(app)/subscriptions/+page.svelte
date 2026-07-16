@@ -143,6 +143,13 @@
     showForm = true;
   }
 
+  // Quick-create from a client page (?new=1&company=): the dialog opens with the client set
+  // (the same ?company= also filters the list behind it to that client).
+  if (page.url.searchParams.has("new")) {
+    openCreate();
+    createdCompanyId = page.url.searchParams.get("company") ?? "";
+  }
+
   const money = (value: string | number | null | undefined) =>
     value == null ? "—" : fmtMoney(Number(value));
 

@@ -2,6 +2,7 @@
   import { Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
+  import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
@@ -13,7 +14,9 @@
 
   let { data, form } = $props();
 
-  let showCreate = $state(false);
+  // Quick-create from a client page (?new=1&company=): the dialog opens with the client set.
+  let showCreate = $state(page.url.searchParams.has("new"));
+  const initialCompanyId = page.url.searchParams.get("company") ?? "";
   let deleteId = $state("");
   let confirmDelete = $state(false);
 
@@ -136,6 +139,7 @@
       definitions={data.definitions}
       locale={data.locale}
       idPrefix="new-domain"
+      {initialCompanyId}
       oncreatecompany={quickCreateCompany}
       oncreatecontact={quickCreateContact}
       oncreateprovider={quickCreateProvider}

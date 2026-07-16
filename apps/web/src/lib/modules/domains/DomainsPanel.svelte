@@ -1,6 +1,8 @@
 <script lang="ts">
   /** Domains attached to a client, shown on the company detail page (issue #90). */
+  import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import { can } from "$lib/core/permissions";
 
   interface PanelDomain {
     id: string;
@@ -9,7 +11,7 @@
     email_enabled: boolean;
   }
 
-  let { data }: { companyId: string; data: Record<string, unknown> } = $props();
+  let { companyId, data }: { companyId: string; data: Record<string, unknown> } = $props();
   const domains = $derived((data.domains ?? []) as PanelDomain[]);
 </script>
 
@@ -28,4 +30,13 @@
       </li>
     {/each}
   </ul>
+{/if}
+{#if can(page.data.user, "domains.domain.write")}
+  <!-- Quick-create from the client page: opens the domain dialog with this client set. -->
+  <a
+    href={`/domains?company=${companyId}&new=1`}
+    class="mt-3 inline-block text-xs text-brand hover:underline"
+  >
+    ＋ {t("domains.new")}
+  </a>
 {/if}

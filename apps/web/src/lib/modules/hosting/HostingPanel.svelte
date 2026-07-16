@@ -1,6 +1,8 @@
 <script lang="ts">
   /** Hosting attached to a client, shown on the company detail page (issue #93). */
+  import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import { can } from "$lib/core/permissions";
 
   interface PanelHosting {
     id: string;
@@ -9,7 +11,7 @@
     ip_address: string | null;
   }
 
-  let { data }: { companyId: string; data: Record<string, unknown> } = $props();
+  let { companyId, data }: { companyId: string; data: Record<string, unknown> } = $props();
   const hosting = $derived((data.hosting ?? []) as PanelHosting[]);
 </script>
 
@@ -29,4 +31,13 @@
       </li>
     {/each}
   </ul>
+{/if}
+{#if can(page.data.user, "hosting.hosting.write")}
+  <!-- Quick-create from the client page: opens the hosting dialog with this client set. -->
+  <a
+    href={`/hosting?company=${companyId}&new=1`}
+    class="mt-3 inline-block text-xs text-brand hover:underline"
+  >
+    ＋ {t("hosting.new")}
+  </a>
 {/if}
