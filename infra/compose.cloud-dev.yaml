@@ -3,7 +3,7 @@
 # suite (docs/CLOUD.md). Production TLS lives in compose.cloud.yaml.
 #
 #   docker compose -f infra/compose.yaml -f infra/compose.cloud-dev.yaml up -d
-#   PLAYWRIGHT_CLOUD=1 pnpm web test:e2e
+#   PLAYWRIGHT_CLOUD=1 pnpm web test:e2e tests/e2e/cloud.spec.ts
 
 services:
   api:
