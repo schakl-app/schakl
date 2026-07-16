@@ -9,6 +9,7 @@
     ChevronRight,
     ChevronsLeft,
     ChevronsRight,
+    FileText,
     Handshake,
     LayoutDashboard,
     LogOut,
@@ -389,6 +390,17 @@
                   <p class="truncate text-xs text-text-muted">{user?.email}</p>
                 {/if}
               </div>
+              {#if !isPortal && theme?.enabledModules?.includes("hr") && can(user, "hr.dossier.read")}
+                <!-- The personal page (hr module): leave, contract, dossier documents. -->
+                <a
+                  href="/me"
+                  class="flex items-center gap-2 px-4 py-2 text-sm text-text hover:bg-surface"
+                  onclick={() => (profileOpen = false)}
+                >
+                  <FileText size={16} class="text-text-muted" />
+                  {t("header.my_page")}
+                </a>
+              {/if}
               <a
                 href="/settings/account"
                 class="flex items-center gap-2 px-4 py-2 text-sm text-text hover:bg-surface"

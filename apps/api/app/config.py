@@ -108,7 +108,7 @@ class Settings(BaseSettings):
         default_factory=lambda: [
             "companies", "contacts", "tasks", "projects", "time", "leave", "notifications",
             "domains", "hosting", "websites", "subscriptions", "automation", "interactions",
-            "google", "marketing",
+            "google", "marketing", "hr",
         ]
     )
     default_locale: str = "nl"

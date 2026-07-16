@@ -161,6 +161,10 @@ async def list_files(
         # Same horizon rule as serving one (#191/#196).
         if entity_id not in ctx.company_scope:
             return []
+    if entity_type == "hr_document":
+        # Dossier documents list only for their owner or a dossier manager.
+        if entity_id != ctx.user.id and not ctx.can("hr.dossier.read", scope="any"):
+            return []
     rows = await FileService(ctx).list_for(entity_type, entity_id)
     return [StoredFileRead.model_validate(row) for row in rows]
 
@@ -207,6 +211,12 @@ def _company_horizon_guard(ctx: RequestContext, stored: StoredFile) -> None:
         and stored.entity_id not in ctx.company_scope
     ):
         raise AppError("not_found", "errors.not_found", status_code=404)
+    # An HR dossier document (a contract copy) is the most sensitive blob in the tenant:
+    # only its owner or a dossier manager reads it — everyone else gets the same 404 the
+    # dossier route answers, whatever route the file id arrived through.
+    if stored.entity_type == "hr_document":
+        if stored.entity_id != ctx.user.id and not ctx.can("hr.dossier.read", scope="any"):
+            raise AppError("not_found", "errors.not_found", status_code=404)
 
 
 # The size variants the installable-app icon story needs (#198): apple-touch (180) and the
