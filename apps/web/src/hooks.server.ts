@@ -40,12 +40,16 @@ const handleContext: Handle = async ({ event, resolve }) => {
   event.locals.theme = theme;
   event.locals.user = user;
 
-  // A hostname that resolves to no org is either a fresh install (route every visit to the
-  // first-run wizard) or an unknown host (the login screen explains — issue #26).
+  // A hostname that resolves to no org is a fresh install (route every visit to the
+  // first-run wizard), the instance-management host of a cloud deployment (route to the
+  // console — epic #199), or an unknown host (the login screen explains — issue #26).
   if (!theme.resolved && !event.url.pathname.startsWith("/setup")) {
-    const { data: setup } = await apiFor(event).GET("/api/v1/setup/status");
-    if (setup?.needs_setup) {
+    const { data: instance } = await apiFor(event).GET("/api/v1/meta/instance");
+    if (instance?.needs_setup) {
       return new Response(null, { status: 303, headers: { location: "/setup" } });
+    }
+    if (instance?.is_instance_host && !event.url.pathname.startsWith("/console")) {
+      return new Response(null, { status: 303, headers: { location: "/console" } });
     }
   }
 

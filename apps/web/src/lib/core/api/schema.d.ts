@@ -1500,6 +1500,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/instance/api-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Instance Api Keys */
+        get: operations["list_instance_api_keys_api_v1_instance_api_keys_get"];
+        put?: never;
+        /** Create Instance Api Key */
+        post: operations["create_instance_api_key_api_v1_instance_api_keys_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/instance/api-keys/{key_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke Instance Api Key */
+        post: operations["revoke_instance_api_key_api_v1_instance_api_keys__key_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/instance/audit": {
         parameters: {
             query?: never;
@@ -1556,6 +1591,23 @@ export interface paths {
          *     removes). Data in licensed modules is untouched — they go read-only, never away.
          */
         delete: operations["remove_license_api_v1_instance_license_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/instance/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Instance Me */
+        get: operations["instance_me_api_v1_instance_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1683,6 +1735,23 @@ export interface paths {
         patch: operations["update_org_modules_api_v1_instance_orgs__org_id__modules_patch"];
         trace?: never;
     };
+    "/api/v1/instance/orgs/{org_id}/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Org Plan */
+        patch: operations["update_org_plan_api_v1_instance_orgs__org_id__plan_patch"];
+        trace?: never;
+    };
     "/api/v1/instance/orgs/{org_id}/purge": {
         parameters: {
             query?: never;
@@ -1700,6 +1769,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/instance/orgs/{org_id}/service-access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Org Service Access */
+        get: operations["org_service_access_api_v1_instance_orgs__org_id__service_access_get"];
+        put?: never;
+        /** Claim Service Pin */
+        post: operations["claim_service_pin_api_v1_instance_orgs__org_id__service_access_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/instance/orgs/{org_id}/suspend": {
         parameters: {
             query?: never;
@@ -1711,6 +1798,92 @@ export interface paths {
         put?: never;
         /** Suspend Org */
         post: operations["suspend_org_api_v1_instance_orgs__org_id__suspend_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/instance/provisioning/orgs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Provisioned Orgs */
+        get: operations["list_provisioned_orgs_api_v1_instance_provisioning_orgs_get"];
+        put?: never;
+        /** Provision Org */
+        post: operations["provision_org_api_v1_instance_provisioning_orgs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/instance/provisioning/orgs/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Provisioned Org */
+        get: operations["provisioned_org_api_v1_instance_provisioning_orgs__slug__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/instance/provisioning/orgs/{slug}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate Provisioned Org */
+        post: operations["activate_provisioned_org_api_v1_instance_provisioning_orgs__slug__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/instance/provisioning/orgs/{slug}/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Plan */
+        patch: operations["update_plan_api_v1_instance_provisioning_orgs__slug__plan_patch"];
+        trace?: never;
+    };
+    "/api/v1/instance/provisioning/orgs/{slug}/suspend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Suspend Provisioned Org */
+        post: operations["suspend_provisioned_org_api_v1_instance_provisioning_orgs__slug__suspend_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2639,6 +2812,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/meta/instance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Deployment Meta */
+        get: operations["deployment_meta_api_v1_meta_instance_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/meta/me": {
         parameters: {
             query?: never;
@@ -3303,6 +3493,25 @@ export interface paths {
         /** Test Email Settings */
         post: operations["test_email_settings_api_v1_settings_email_test_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/service-access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Service Access Status */
+        get: operations["service_access_status_api_v1_settings_service_access_get"];
+        put?: never;
+        /** Issue Service Pin */
+        post: operations["issue_service_pin_api_v1_settings_service_access_post"];
+        /** Revoke Service Pin */
+        delete: operations["revoke_service_pin_api_v1_settings_service_access_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -5203,6 +5412,11 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /** ClaimPinRequest */
+        ClaimPinRequest: {
+            /** Pin */
+            pin: string;
+        };
         /** ClientRevenue */
         ClientRevenue: {
             /** Company Id */
@@ -6216,7 +6430,7 @@ export interface components {
              * Provider
              * @enum {string}
              */
-            provider: "smtp" | "brevo" | "sendgrid" | "smtp2go";
+            provider: "smtp" | "brevo" | "sendgrid" | "smtp2go" | "instance";
             /** Reply To */
             reply_to?: string | null;
             /** Security */
@@ -6228,15 +6442,16 @@ export interface components {
          * EmailSettingsWrite
          * @description Upsert payload. Secret fields left empty on an update keep the stored value
          *     (as long as the provider is unchanged) — the API never plays the secret back.
+         *
+         *     ``provider="instance"`` (the operator-provided transport) needs no ``from_email`` —
+         *     mail leaves from the instance's own address; the handler enforces presence for every
+         *     other provider.
          */
         EmailSettingsWrite: {
             /** Api Key */
             api_key?: string | null;
-            /**
-             * From Email
-             * Format: email
-             */
-            from_email: string;
+            /** From Email */
+            from_email?: string | null;
             /** From Name */
             from_name: string;
             /** Host */
@@ -6249,7 +6464,7 @@ export interface components {
              * Provider
              * @enum {string}
              */
-            provider: "smtp" | "brevo" | "sendgrid" | "smtp2go";
+            provider: "smtp" | "brevo" | "sendgrid" | "smtp2go" | "instance";
             /** Reply To */
             reply_to?: string | null;
             /** Security */
@@ -6771,6 +6986,92 @@ export interface components {
             message_key: string;
             /** Row */
             row: number;
+        };
+        /** InstanceApiKeyCreate */
+        InstanceApiKeyCreate: {
+            /** Expires At */
+            expires_at?: string | null;
+            /** Name */
+            name: string;
+        };
+        /** InstanceApiKeyCreated */
+        InstanceApiKeyCreated: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By Email */
+            created_by_email: string;
+            /** Expires At */
+            expires_at: string | null;
+            /** Id */
+            id: string;
+            /** Key Redacted */
+            key_redacted: string;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Name */
+            name: string;
+            /** Revoked At */
+            revoked_at: string | null;
+            /** Secret */
+            secret: string;
+        };
+        /** InstanceApiKeyRead */
+        InstanceApiKeyRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By Email */
+            created_by_email: string;
+            /** Expires At */
+            expires_at: string | null;
+            /** Id */
+            id: string;
+            /** Key Redacted */
+            key_redacted: string;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Name */
+            name: string;
+            /** Revoked At */
+            revoked_at: string | null;
+        };
+        /**
+         * InstanceMe
+         * @description Who is logged in on the instance (apex) host — where no org, and so no ``/meta/me``,
+         *     exists. The console guards itself on ``is_instance_admin``.
+         */
+        InstanceMe: {
+            /** Email */
+            email: string;
+            /** Full Name */
+            full_name: string | null;
+            /** Id */
+            id: string;
+            /** Is Instance Admin */
+            is_instance_admin: boolean;
+            /** Is Instance Owner */
+            is_instance_owner: boolean;
+        };
+        /**
+         * InstanceMeta
+         * @description What the web needs about the *instance* on a host no org resolves on (epic #199):
+         *     whether this deployment is cloud, whether the request host is the instance-management
+         *     host (the base domain), and whether first-run setup still has to happen.
+         */
+        InstanceMeta: {
+            /** Base Domain */
+            base_domain: string;
+            /** Deployment */
+            deployment: string;
+            /** Is Instance Host */
+            is_instance_host: boolean;
+            /** Needs Setup */
+            needs_setup: boolean;
         };
         /**
          * InteractionApprove
@@ -8045,10 +8346,20 @@ export interface components {
             customizable_entity_types: string[];
             /** Default Locale */
             default_locale: string;
+            /**
+             * Deployment
+             * @default self_hosted
+             */
+            deployment: string;
             /** Enabled Modules */
             enabled_modules: string[];
             /** Entitled Modules */
             entitled_modules?: string[];
+            /**
+             * Instance Email Available
+             * @default false
+             */
+            instance_email_available: boolean;
             /** Licensed Modules */
             licensed_modules?: string[];
             /** Local Login Enabled */
@@ -8204,12 +8515,16 @@ export interface components {
             name: string;
             /** Pending Domain */
             pending_domain: string | null;
+            /** Plan */
+            plan?: string | null;
             /** Slug */
             slug: string;
             /** Status */
             status: string;
             /** Suspended At */
             suspended_at: string | null;
+            /** Trial Ends At */
+            trial_ends_at?: string | null;
         };
         /** OrgMember */
         OrgMember: {
@@ -8228,6 +8543,37 @@ export interface components {
         OrgModulesUpdate: {
             /** Enabled Modules */
             enabled_modules: string[];
+        };
+        /** OrgPlanRead */
+        OrgPlanRead: {
+            /** Plan */
+            plan: string | null;
+            /** Trial Ends At */
+            trial_ends_at: string | null;
+        };
+        /** OrgPlanUpdate */
+        OrgPlanUpdate: {
+            /** Plan */
+            plan: string;
+            /** Trial Days */
+            trial_days?: number | null;
+            /** Trial Ends At */
+            trial_ends_at?: string | null;
+        };
+        /** OrgServiceAccess */
+        OrgServiceAccess: {
+            /** Access Until */
+            access_until?: string | null;
+            /**
+             * Pin Pending
+             * @default false
+             */
+            pin_pending: boolean;
+            /**
+             * Required
+             * @default true
+             */
+            required: boolean;
         };
         /** OrgSummary */
         OrgSummary: {
@@ -8250,12 +8596,16 @@ export interface components {
             name: string;
             /** Pending Domain */
             pending_domain: string | null;
+            /** Plan */
+            plan?: string | null;
             /** Slug */
             slug: string;
             /** Status */
             status: string;
             /** Suspended At */
             suspended_at: string | null;
+            /** Trial Ends At */
+            trial_ends_at?: string | null;
         };
         /** OrgUpdate */
         OrgUpdate: {
@@ -8548,6 +8898,15 @@ export interface components {
             position: number;
             /** Scopes */
             scopes: string[];
+        };
+        /** PlanUpdate */
+        PlanUpdate: {
+            /** Plan */
+            plan: string;
+            /** Trial Days */
+            trial_days?: number | null;
+            /** Trial Ends At */
+            trial_ends_at?: string | null;
         };
         /** PreferenceMatrix */
         PreferenceMatrix: {
@@ -8907,6 +9266,54 @@ export interface components {
             name?: string | null;
             /** Position */
             position?: number | null;
+        };
+        /** ProvisionOrgRequest */
+        ProvisionOrgRequest: {
+            /** Brand Name */
+            brand_name?: string | null;
+            /** Enabled Modules */
+            enabled_modules?: string[] | null;
+            /** Locale */
+            locale?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Owner Email
+             * Format: email
+             */
+            owner_email: string;
+            /** Owner Full Name */
+            owner_full_name?: string | null;
+            /** Owner Password */
+            owner_password?: string | null;
+            /**
+             * Plan
+             * @default trial
+             */
+            plan: string;
+            /** Slug */
+            slug: string;
+            /** Trial Days */
+            trial_days?: number | null;
+        };
+        /** ProvisionedOrg */
+        ProvisionedOrg: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Owner Email */
+            owner_email?: string | null;
+            /** Plan */
+            plan: string | null;
+            /** Slug */
+            slug: string;
+            /** Status */
+            status: string;
+            /** Trial Ends At */
+            trial_ends_at: string | null;
+            /** Url */
+            url: string;
         };
         /** PurgeRequest */
         PurgeRequest: {
@@ -9430,6 +9837,50 @@ export interface components {
                 [key: string]: number[];
             };
         };
+        /** ServiceAccessIssued */
+        ServiceAccessIssued: {
+            /**
+             * Active
+             * @default false
+             */
+            active: boolean;
+            /**
+             * Claimed
+             * @default false
+             */
+            claimed: boolean;
+            /** Created At */
+            created_at?: string | null;
+            /** Created By Email */
+            created_by_email?: string | null;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Pin */
+            pin: string;
+            /** Pin Hours */
+            pin_hours: number;
+        };
+        /** ServiceAccessStatus */
+        ServiceAccessStatus: {
+            /**
+             * Active
+             * @default false
+             */
+            active: boolean;
+            /**
+             * Claimed
+             * @default false
+             */
+            claimed: boolean;
+            /** Created At */
+            created_at?: string | null;
+            /** Created By Email */
+            created_by_email?: string | null;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Pin Hours */
+            pin_hours: number;
+        };
         /** ServiceAccountCreate */
         ServiceAccountCreate: {
             /** Name */
@@ -9470,7 +9921,7 @@ export interface components {
             /** Locale */
             locale?: string | null;
             /** Org Name */
-            org_name: string;
+            org_name?: string | null;
             /**
              * Owner Email
              * Format: email
@@ -9483,7 +9934,7 @@ export interface components {
             /** Primary Color */
             primary_color?: string | null;
             /** Slug */
-            slug: string;
+            slug?: string | null;
             /** Timezone */
             timezone?: string | null;
         };
@@ -11525,6 +11976,8 @@ export interface components {
         };
         /** DomainStatus */
         app__core__domains__DomainStatus: {
+            /** Cname Target */
+            cname_target?: string | null;
             /** Custom Domain */
             custom_domain: string | null;
             /** Custom Domain Verified At */
@@ -15150,6 +15603,90 @@ export interface operations {
             };
         };
     };
+    list_instance_api_keys_api_v1_instance_api_keys_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstanceApiKeyRead"][];
+                };
+            };
+        };
+    };
+    create_instance_api_key_api_v1_instance_api_keys_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstanceApiKeyCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstanceApiKeyCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_instance_api_key_api_v1_instance_api_keys__key_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstanceApiKeyRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_audit_api_v1_instance_audit_get: {
         parameters: {
             query?: {
@@ -15269,6 +15806,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LicenseStatus"];
+                };
+            };
+        };
+    };
+    instance_me_api_v1_instance_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstanceMe"];
                 };
             };
         };
@@ -15590,6 +16147,41 @@ export interface operations {
             };
         };
     };
+    update_org_plan_api_v1_instance_orgs__org_id__plan_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrgPlanUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgPlanRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     purge_org_api_v1_instance_orgs__org_id__purge_post: {
         parameters: {
             query?: never;
@@ -15623,6 +16215,72 @@ export interface operations {
             };
         };
     };
+    org_service_access_api_v1_instance_orgs__org_id__service_access_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgServiceAccess"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    claim_service_pin_api_v1_instance_orgs__org_id__service_access_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaimPinRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgServiceAccess"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     suspend_org_api_v1_instance_orgs__org_id__suspend_post: {
         parameters: {
             query?: never;
@@ -15641,6 +16299,187 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrgSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_provisioned_orgs_api_v1_instance_provisioning_orgs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProvisionedOrg"][];
+                };
+            };
+        };
+    };
+    provision_org_api_v1_instance_provisioning_orgs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProvisionOrgRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProvisionedOrg"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    provisioned_org_api_v1_instance_provisioning_orgs__slug__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProvisionedOrg"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_provisioned_org_api_v1_instance_provisioning_orgs__slug__activate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProvisionedOrg"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_plan_api_v1_instance_provisioning_orgs__slug__plan_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProvisionedOrg"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suspend_provisioned_org_api_v1_instance_provisioning_orgs__slug__suspend_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProvisionedOrg"];
                 };
             };
             /** @description Validation Error */
@@ -17788,6 +18627,26 @@ export interface operations {
             };
         };
     };
+    deployment_meta_api_v1_meta_instance_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstanceMeta"];
+                };
+            };
+        };
+    };
     me_api_v1_meta_me_get: {
         parameters: {
             query?: never;
@@ -19478,6 +20337,66 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EmailTestResult"];
+                };
+            };
+        };
+    };
+    service_access_status_api_v1_settings_service_access_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceAccessStatus"];
+                };
+            };
+        };
+    };
+    issue_service_pin_api_v1_settings_service_access_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceAccessIssued"];
+                };
+            };
+        };
+    };
+    revoke_service_pin_api_v1_settings_service_access_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceAccessStatus"];
                 };
             };
         };

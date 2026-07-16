@@ -10,10 +10,13 @@ import type { Actions, PageServerLoad } from "./$types";
 // the API refuses a second setup regardless, this guard is just the UX mirror of that.
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
-  const { data: status } = await api.GET("/api/v1/setup/status");
-  if (!status?.needs_setup) throw redirect(303, "/");
+  const { data: instance } = await api.GET("/api/v1/meta/instance");
+  if (!instance?.needs_setup) throw redirect(303, "/");
   const { data: modules } = await api.GET("/api/v1/meta/modules");
   return {
+    // Cloud (epic #199): the wizard mints only the instance owner — the org fields vanish
+    // and orgs arrive through the console / provisioning API afterwards.
+    cloud: instance.deployment === "cloud",
     availableModules: modules?.enabled_modules ?? ["companies"],
     locales: modules?.supported_locales ?? ["nl", "en"],
     defaultLocale: modules?.default_locale ?? "nl",
@@ -35,13 +38,41 @@ export const actions: Actions = {
     };
     const password = String(form.get("owner_password") ?? "");
     const modules = form.getAll("modules").map(String);
+    const cloud = String(form.get("cloud") ?? "") === "true";
 
-    if (!values.org_name || !values.slug || !values.owner_email || !password) {
+    if (!values.owner_email || !password || (!cloud && (!values.org_name || !values.slug))) {
       return fail(400, {
         error: "errors.required",
         fields: undefined as Record<string, string> | undefined,
         values,
       });
+    }
+
+    if (cloud) {
+      // Cloud first-run (epic #199): instance owner only; the console takes over from here.
+      const { error } = await apiFor(event).POST("/api/v1/setup", {
+        body: {
+          owner_email: values.owner_email,
+          owner_password: password,
+          owner_full_name: values.owner_full_name || undefined,
+        },
+      });
+      if (error) {
+        const parsed = apiErrorKey(error);
+        return fail(400, { error: parsed.key, fields: parsed.fields, values });
+      }
+      const token = await apiLogin(event, values.owner_email, password);
+      if (!token) {
+        return fail(400, { error: "auth.invalid_credentials", fields: undefined, values });
+      }
+      event.cookies.set(AUTH_COOKIE_NAME, token, {
+        path: "/",
+        httpOnly: true,
+        sameSite: "lax",
+        secure: event.url.protocol === "https:",
+        maxAge: 60 * 60 * 24 * 7,
+      });
+      throw redirect(303, "/console");
     }
 
     const { error } = await apiFor(event).POST("/api/v1/setup", {

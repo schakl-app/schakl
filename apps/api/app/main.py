@@ -60,6 +60,14 @@ async def lifespan(app_: FastAPI) -> AsyncIterator[None]:
     The mounted MCP sub-app (CLAUDE.md §12) brings its own lifespan (the streamable-HTTP
     session manager); FastAPI only runs the outermost one, so it is entered here."""
     await reconcile_permission_defaults()
+    if settings.is_cloud and settings.cloud_ingress_dir:
+        # Rebuild the custom-domain ingress fragment on boot (#202) — the file lives on a
+        # volume that may be fresh; never fatal (sync_ingress logs and swallows).
+        from app.core.cloud.ingress import sync_ingress
+        from app.db import async_session_maker
+
+        async with async_session_maker() as session:
+            await sync_ingress(session)
     mcp_asgi = getattr(app_.state, "mcp_app", None)
     if mcp_asgi is not None:
         async with mcp_asgi.lifespan(mcp_asgi):
@@ -125,6 +133,22 @@ def create_app() -> FastAPI:
     # After module loading on purpose: the impex routes are built per opted-in entity so each
     # one declares that entity's own read/write permission (issue #77, §15 deny-by-default).
     api.include_router(build_impex_router())
+
+    # Cloud posture (epic #199, business-licensed): the tenant's service-access settings, the
+    # console's instance additions (PIN claim, plans, instance API keys, /instance/me) and the
+    # key-authenticated provisioning API. Mounted unconditionally so the OpenAPI spec (and the
+    # generated web client) is posture-independent — but every route carries require_cloud,
+    # answering 404 on a self-hosted box. The provisioning surface additionally carries the
+    # `cloud` sku's write gate (#137): the business license governs it, with the built-in
+    # bootstrap window as the free trial.
+    from app.core.cloud.provisioning import router as provisioning_router
+    from app.core.cloud.router import instance_router as cloud_instance_router
+    from app.core.cloud.router import org_router as cloud_org_router
+    from app.core.entitlements.service import CLOUD_SKU
+
+    api.include_router(cloud_org_router)
+    api.include_router(cloud_instance_router)
+    api.include_router(provisioning_router, dependencies=[license_write_gate(CLOUD_SKU)])
 
     app.include_router(api)
 

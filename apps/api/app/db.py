@@ -39,8 +39,19 @@ RLS_GUC = "app.current_org"
 #: must carry ``org_id`` + an RLS policy — tests/test_tenancy_seams.py enforces exactly
 #: this list, so extending it is a reviewed decision, not an accident.
 INSTANCE_LEVEL_TABLES = frozenset(
-    {"orgs", "users", "instance_audit_log", "instance_license"}
-)  # instance_license: one product license per installation (issue #137)
+    {
+        "orgs",
+        "users",
+        "instance_audit_log",
+        "instance_license",  # one product license per installation (issue #137)
+        # Cloud (epic #199): the instance owner's provisioning credentials, and the org-issued
+        # service-access grants the owner must present before touching tenant data. Both are
+        # read by the instance surface *before* any tenant is bound, so they cannot sit under
+        # RLS; writes are org-bound by code and audited.
+        "instance_api_keys",
+        "service_access_grants",
+    }
+)
 
 
 class Base(DeclarativeBase):

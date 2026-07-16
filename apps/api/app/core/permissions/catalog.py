@@ -180,6 +180,12 @@ def all_permissions() -> list[PermissionSpec]:
     """
     _ensure_modules_registered()
     specs: list[PermissionSpec] = list(CORE_PERMISSIONS)
+    # The cloud posture brings its own capabilities (service access, epic #199) exactly like
+    # a module ships its own. Included unconditionally — the routes are always mounted (they
+    # 404 at runtime on self-host), and a declared permission must exist in the catalog.
+    from app.core.cloud.permissions import CLOUD_PERMISSIONS
+
+    specs.extend(CLOUD_PERMISSIONS)
     for module in registry.enabled(settings.enabled_modules):
         specs.extend(module.permissions)
     _assert_unique(specs)

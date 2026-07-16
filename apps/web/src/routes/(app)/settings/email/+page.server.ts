@@ -10,30 +10,37 @@ import type { Actions, PageServerLoad } from "./$types";
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   // Transport config + the tenant's auth-mail templates (#161 tier 2), both admin-gated.
-  const [settings, templates] = await Promise.all([
+  const [settings, templates, modules] = await Promise.all([
     api.GET("/api/v1/settings/email"),
     api.GET("/api/v1/settings/email/templates"),
+    api.GET("/api/v1/meta/modules"),
   ]);
   return {
     settings: settings.data ?? null,
     templates: templates.data ?? null,
     locale: event.locals.locale,
+    // The operator-provided transport (epic #199): offered as an explicit choice when set.
+    instanceEmailAvailable: modules.data?.instance_email_available ?? false,
   };
 };
 
 export const actions: Actions = {
   save: async (event) => {
     const form = await event.request.formData();
-    const provider = String(form.get("provider") ?? "") as "smtp";
+    const provider = String(form.get("provider") ?? "") as "smtp" | "instance";
     const from_email = String(form.get("from_email") ?? "").trim();
     const from_name = String(form.get("from_name") ?? "").trim();
-    if (!provider || !from_email || !from_name) return fail(400, { error: "errors.required" });
+    // The instance transport (epic #199) sends from the instance's own address — no
+    // from_email to enter; every bring-your-own provider still requires one.
+    if (!provider || !from_name || (provider !== "instance" && !from_email)) {
+      return fail(400, { error: "errors.required" });
+    }
 
     const text = (name: string) => String(form.get(name) ?? "").trim() || null;
     const { error } = await apiFor(event).PUT("/api/v1/settings/email", {
       body: {
         provider,
-        from_email,
+        from_email: from_email || null,
         from_name,
         reply_to: text("reply_to"),
         host: text("host"),

@@ -96,6 +96,15 @@ Keep `org_id` + RLS on every table anyway: it's near-free now and is the only th
 lets the *same code* run a future multi-org **cloud** version with the tenant resolved by
 hostname. Don't take shortcuts that assume one org.
 
+The multi-org posture exists: `SCHAKL_DEPLOYMENT=cloud` (epic #199, **business-licensed** —
+`apps/api/app/core/cloud/`, `apps/web/src/routes/(cloud)/`, see `docs/CLOUD.md`). It moves
+the instance console to the apex host (no org resolves there), provisions orgs over an
+instance-API-key API with per-org plans (trial / standard / unlimited), requires an
+**org-issued service PIN** before the instance owner may touch tenant data, offers
+instance-provided e-mail as a per-org choice, and terminates TLS itself (wildcard origin
+cert for subdomains, Let's Encrypt for verified CNAME domains). Google and AI credentials
+stay bring-your-own per org.
+
 - **Hostname resolution is strict**: a verified custom domain (`orgs.custom_domain`) or
   `<slug>.<base_domain>` — an unknown host is an explicit error, never "the only org".
 - **Org lifecycle & instance administration** (issue #26) live in `app/core/instance/`:

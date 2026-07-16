@@ -70,6 +70,13 @@ class Org(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     pending_domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
     domain_verification_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
+    # Cloud plan (epic #199, issue #200 slice): NULL on self-host / unmanaged orgs. One of
+    # "trial" (expires at trial_ends_at → suspended by the cloud cron), "standard" (billing
+    # drives suspension over the provisioning API) or "unlimited" (never expires). This is
+    # *platform* billing state — nothing to do with the tenant's own `subscriptions` module.
+    plan: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    trial_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
 
 class Membership(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     """Links a (global) user to an org; what they may do lives in ``membership_roles`` (#19)."""
