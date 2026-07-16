@@ -15,6 +15,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from app.config import settings
+from app.core.auth.account import router as account_router
 from app.core.auth.backend import auth_backend
 from app.core.auth.oidc import router as oidc_router
 from app.core.auth.schemas import UserCreate, UserRead, UserUpdate
@@ -73,6 +74,11 @@ def build_auth_router() -> APIRouter:
 
     router.include_router(
         fastapi_users.get_users_router(UserRead, UserUpdate), prefix="/users", tags=["users"]
+    )
+    # Change-email lives with the other credential changes, behind the same per-org guard:
+    # the address is the *local* sign-in identifier (an OIDC-enforced org manages it at the IdP).
+    router.include_router(
+        account_router, prefix="/users", tags=["users"], dependencies=local_login_guard
     )
 
     router.include_router(oidc_router, prefix="/auth/oidc", tags=["auth"])

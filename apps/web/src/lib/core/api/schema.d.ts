@@ -4562,6 +4562,28 @@ export interface paths {
         patch: operations["users_patch_current_user_api_v1_users_me_patch"];
         trace?: never;
     };
+    "/api/v1/users/me/email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Users:Change Email
+         * @description Change the caller's own sign-in address. Costs the current password; the new address
+         *     must be free (emails are unique case-insensitively and stored lowercase, like invites).
+         *     Verification state resets — the new address has never been proven.
+         */
+        post: operations["users_change_email_api_v1_users_me_email_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/{id}": {
         parameters: {
             query?: never;
@@ -6420,6 +6442,16 @@ export interface components {
             role_ids: string[];
             /** User Id */
             user_id: string;
+        };
+        /** EmailChange */
+        EmailChange: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Password */
+            password: string;
         };
         /**
          * EmailPrefRead
@@ -22921,6 +22953,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    users_change_email_api_v1_users_me_email_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserRead"];
+                };
             };
             /** @description Validation Error */
             422: {

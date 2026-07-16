@@ -215,7 +215,11 @@
           disabled
           class="w-full cursor-not-allowed rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-muted"
         />
-        <p class="mt-1 text-xs text-text-muted">{t("settings.account.email_help")}</p>
+        <p class="mt-1 text-xs text-text-muted">
+          {data.localLogin
+            ? t("settings.account.email_change_help")
+            : t("settings.account.email_managed_by_sso")}
+        </p>
       </div>
       {#if form?.saved}
         <p class="text-sm text-green-600 dark:text-green-400">{t("settings.account.saved")}</p>
@@ -228,6 +232,63 @@
       </button>
     </form>
   </section>
+
+  <!-- Change email: the sign-in address moves only with the current password (account.py).
+       Hidden when the org enforces SSO — the IdP owns the address then. -->
+  {#if data.localLogin}
+    <section class="rounded-xl border border-border bg-surface-raised p-5">
+      <h2 class="text-sm font-semibold text-text">{t("settings.account.change_email")}</h2>
+      <p class="mt-1 text-sm text-text-muted">{t("settings.account.email_change_help")}</p>
+      <form
+        method="POST"
+        action="?/changeEmail"
+        use:enhance={() =>
+          ({ update }) =>
+            update({ reset: true })}
+        class="mt-4 space-y-4"
+      >
+        <div>
+          <label for="new-email" class="mb-1 block text-sm font-medium text-text">
+            {t("settings.account.new_email")}
+          </label>
+          <input
+            id="new-email"
+            name="email"
+            type="email"
+            autocomplete="email"
+            required
+            class="w-full rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+          />
+        </div>
+        <div>
+          <label for="email-password" class="mb-1 block text-sm font-medium text-text">
+            {t("settings.account.current_password")}
+          </label>
+          <input
+            id="email-password"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            required
+            class="w-full rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+          />
+        </div>
+        {#if form?.emailChanged}
+          <p class="text-sm text-green-600 dark:text-green-400">
+            {t("settings.account.email_changed")}
+          </p>
+        {/if}
+        {#if form?.emailError}
+          <p class="text-sm text-red-600 dark:text-red-400">{t(form.emailError)}</p>
+        {/if}
+        <button
+          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        >
+          {t("settings.account.change_email")}
+        </button>
+      </form>
+    </section>
+  {/if}
 
   <!-- Change password (#161). Hidden when the org enforces SSO (no local password to change). -->
   {#if data.localLogin}

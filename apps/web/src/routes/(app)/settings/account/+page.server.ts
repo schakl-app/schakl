@@ -139,6 +139,23 @@ export const actions: Actions = {
     return { saved: true };
   },
 
+  /** Change my sign-in address: costs the current password (POST /users/me/email — the bare
+   *  PATCH deliberately ignores `email`). The session cookie stays valid (it carries the id). */
+  changeEmail: async (event) => {
+    const form = await event.request.formData();
+    const email = String(form.get("email") ?? "").trim();
+    const password = String(form.get("password") ?? "");
+    if (!email || !password) return fail(400, { emailError: "errors.required" });
+    const { error } = await apiFor(event).POST("/api/v1/users/me/email", {
+      body: { email, password },
+    });
+    if (error) {
+      const e = apiErrorKey(error);
+      return fail(400, { emailError: e.fields?.email ?? e.key });
+    }
+    return { emailChanged: true };
+  },
+
   /** Change my password (#161): the API enforces the policy (min 8 / max 128 / not the email)
    *  on `PATCH /users/me`; we only check the confirm field matches before sending. */
   changePassword: async (event) => {
