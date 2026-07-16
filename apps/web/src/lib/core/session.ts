@@ -55,6 +55,7 @@ export async function fetchTenant(event: ApiEvent): Promise<OrgTheme> {
     showBrandName: data.show_brand_name,
     logoUrl: data.logo_url,
     faviconUrl: data.favicon_url,
+    appIconUrl: data.app_icon_url ?? null,
     primaryColor: data.primary_color,
     accentColor: data.accent_color,
     defaultLocale: data.default_locale,

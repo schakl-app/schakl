@@ -11,10 +11,13 @@ from the hostname alone — and reaches *only* rows tagged with a public entity 
 
 from __future__ import annotations
 
+import asyncio
+import io
 import logging
+import re
 import uuid
 
-from fastapi import APIRouter, Depends, Request, UploadFile
+from fastapi import APIRouter, Depends, Query, Request, UploadFile
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import select
 
@@ -156,6 +159,38 @@ async def serve_file(
     return _file_response(stored, request)
 
 
+# The size variants the installable-app icon story needs (#198): apple-touch (180) and the
+# manifest's 192/512 (purpose any + maskable). A closed set so this can't become a generic
+# image-resizing proxy.
+_ICON_SIZES = frozenset({180, 192, 512})
+_HEX_BG = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def _iconify(data: bytes, size: int, maskable: bool, bg: str) -> bytes:
+    """Square-crop and resize an image to a PNG app icon; the maskable variant keeps the
+    artwork inside the ~80% safe zone on an opaque background, so a round Android mask never
+    clips it. Pillow work — callers run this in a thread."""
+    from PIL import Image  # local import: Pillow loads only when an icon variant is asked for
+
+    with Image.open(io.BytesIO(data)) as source:
+        img = source.convert("RGBA")
+        side = min(img.size)
+        left = (img.width - side) // 2
+        top = (img.height - side) // 2
+        img = img.crop((left, top, left + side, top + side))
+        if maskable:
+            inner = round(size * 0.8)
+            icon = img.resize((inner, inner), Image.LANCZOS)
+            canvas = Image.new("RGBA", (size, size), bg)
+            canvas.paste(icon, ((size - inner) // 2, (size - inner) // 2), icon)
+            img = canvas
+        else:
+            img = img.resize((size, size), Image.LANCZOS)
+        out = io.BytesIO()
+        img.save(out, "PNG")
+        return out.getvalue()
+
+
 @router.get(
     "/{file_id}/public",
     dependencies=[
@@ -165,11 +200,22 @@ async def serve_file(
         )
     ],
 )
-async def serve_public_file(file_id: uuid.UUID, request: Request) -> Response:
+async def serve_public_file(
+    file_id: uuid.UUID,
+    request: Request,
+    size: int | None = Query(default=None),
+    maskable: bool = Query(default=False),
+    bg: str = Query(default="#ffffff", max_length=7),
+) -> Response:
     """Anonymous serving for branding assets, org resolved strictly from the hostname.
 
     Suspended orgs still resolve (their login screen keeps its branding, matching
     `/meta/tenant`); deleted orgs — and any unknown host — read as 404.
+
+    ``size`` (180/192/512, #198) answers a resized square PNG for the PWA manifest and the
+    apple-touch-icon; ``maskable`` pads the artwork into the safe zone on the ``bg`` colour.
+    Only raster images resize — an SVG (or a decode failure) falls back to the original bytes,
+    a degraded icon rather than a broken install.
     """
     async with async_session_maker() as session:
         org = await resolve_org(session, request_hostname(request))
@@ -181,4 +227,36 @@ async def serve_public_file(file_id: uuid.UUID, request: Request) -> Response:
         )
         if stored is None or stored.entity_type not in PUBLIC_ENTITY_TYPES:
             raise AppError("not_found", "errors.not_found", status_code=404)
+        if (
+            size in _ICON_SIZES
+            and stored.content_type.startswith("image/")
+            and stored.content_type != "image/svg+xml"
+        ):
+            background = bg if _HEX_BG.match(bg) else "#ffffff"
+            etag = f'"{stored.id}-{size}{"m" if maskable else ""}-{background[1:]}"'
+            if request.headers.get("if-none-match") == etag:
+                return Response(status_code=304, headers={"ETag": etag})
+            try:
+                raw = await asyncio.to_thread(
+                    lambda: get_storage().open(stored.storage_key).read()
+                )
+            except FileNotFoundError:
+                raise AppError(
+                    "not_found", "errors.file_bytes_missing", status_code=404
+                ) from None
+            try:
+                png = await asyncio.to_thread(_iconify, raw, size, maskable, background)
+            except Exception:  # noqa: BLE001 — a bad image degrades, never 500s an icon fetch
+                logger.warning("app icon %s could not be resized; serving original", stored.id)
+            else:
+                return Response(
+                    png,
+                    media_type="image/png",
+                    headers={
+                        "ETag": etag,
+                        "Cache-Control": "public, max-age=3600",
+                        "X-Content-Type-Options": "nosniff",
+                        "Content-Disposition": 'inline; filename="icon.png"',
+                    },
+                )
         return _file_response(stored, request, public=True)

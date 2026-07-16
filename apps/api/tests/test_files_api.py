@@ -259,3 +259,86 @@ async def test_avatar_file_delete_is_personal(client_for, tmp_path, monkeypatch)
 
         # The owner may.
         assert (await c.delete(f"/api/v1/files/{file_id}", headers=headers)).status_code == 204
+
+
+async def test_app_icon_size_variants(client_for, tmp_path, monkeypatch) -> None:
+    """The public branding serve derives real PNG size variants for the PWA icon story
+    (#198): square-cropped, resized, and — maskable — padded into the safe zone."""
+    import io
+
+    from PIL import Image
+
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    t = await make_tenant("files-icon")
+    headers = await auth_cookie(t.user)
+
+    # A non-square source proves the centre crop: 640x480, all-brand pixels.
+    buf = io.BytesIO()
+    Image.new("RGBA", (640, 480), "#4f46e5").save(buf, "PNG")
+    async with client_for(t.host) as c:
+        created = await c.post(
+            "/api/v1/files?entity_type=branding",
+            files={"file": ("icon.png", buf.getvalue(), "image/png")},
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        file_id = created.json()["id"]
+
+        for size in (180, 192, 512):
+            res = await c.get(f"/api/v1/files/{file_id}/public?size={size}")
+            assert res.status_code == 200
+            assert res.headers["content-type"] == "image/png"
+            img = Image.open(io.BytesIO(res.content))
+            assert img.size == (size, size)
+
+        # Maskable pads the artwork on an opaque background; still exactly the asked size.
+        res = await c.get(f"/api/v1/files/{file_id}/public?size=192&maskable=true")
+        assert res.status_code == 200
+        img = Image.open(io.BytesIO(res.content))
+        assert img.size == (192, 192)
+        # The pad ring is the bg colour (default white), the centre stays the icon's colour.
+        assert img.convert("RGB").getpixel((2, 2)) == (255, 255, 255)
+        centre = img.convert("RGB").getpixel((96, 96))
+        assert centre != (255, 255, 255)
+
+        # A variant answers 304 on its own ETag — and a different size has a different one.
+        etag = res.headers["etag"]
+        again = await c.get(
+            f"/api/v1/files/{file_id}/public?size=192&maskable=true",
+            headers={"If-None-Match": etag},
+        )
+        assert again.status_code == 304
+        other = await c.get(f"/api/v1/files/{file_id}/public?size=512")
+        assert other.headers["etag"] != etag
+
+        # An unknown size serves the original bytes unchanged (no open resize proxy).
+        res = await c.get(f"/api/v1/files/{file_id}/public?size=333")
+        assert res.headers["content-type"] == "image/png"
+        assert Image.open(io.BytesIO(res.content)).size == (640, 480)
+
+
+async def test_app_icon_url_branding_round_trip(client_for) -> None:
+    """`app_icon_url` (#198) rides org branding: writable via PATCH, readable pre-auth
+    (the manifest needs it), clearable with an empty string, and tenant-scoped."""
+    t = await make_tenant("branding-appicon")
+    other = await make_tenant("branding-appicon-other")
+    headers = await auth_cookie(t.user)
+
+    async with client_for(t.host) as c:
+        updated = await c.patch(
+            "/api/v1/meta/tenant",
+            json={"app_icon_url": "/api/v1/files/00000000-0000-0000-0000-000000000001/public"},
+            headers=headers,
+        )
+        assert updated.status_code == 200, updated.text
+        assert updated.json()["app_icon_url"] is not None
+
+        # Pre-auth read — the login screen / manifest fetches this without a session.
+        anon = await c.get("/api/v1/meta/tenant")
+        assert anon.json()["app_icon_url"] is not None
+
+        cleared = await c.patch("/api/v1/meta/tenant", json={"app_icon_url": ""}, headers=headers)
+        assert cleared.json()["app_icon_url"] is None
+
+    async with client_for(other.host) as c:
+        assert (await c.get("/api/v1/meta/tenant")).json()["app_icon_url"] is None

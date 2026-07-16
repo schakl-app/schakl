@@ -73,6 +73,14 @@ export const actions: Actions = {
       if ("error" in uploaded) return fail(400, { error: uploaded.error });
       favicon_url = uploaded.url;
     }
+    // The installable-app icon (#198): a square raster the manifest/apple-touch derive from.
+    let app_icon_url = String(form.get("app_icon_url") ?? "").trim();
+    const appIconFile = form.get("app_icon_file");
+    if (appIconFile instanceof File && appIconFile.size > 0) {
+      const uploaded = await uploadBrandingFile(event, appIconFile);
+      if ("error" in uploaded) return fail(400, { error: uploaded.error });
+      app_icon_url = uploaded.url;
+    }
 
     const { error } = await apiFor(event).PATCH("/api/v1/meta/tenant", {
       body: {
@@ -80,6 +88,7 @@ export const actions: Actions = {
         show_brand_name: form.get("show_brand_name") === "on",
         logo_url,
         favicon_url,
+        app_icon_url,
         primary_color: String(form.get("primary_color") ?? "").trim() || undefined,
         accent_color: String(form.get("accent_color") ?? "").trim() || undefined,
         default_locale: String(form.get("default_locale") ?? "").trim() || undefined,

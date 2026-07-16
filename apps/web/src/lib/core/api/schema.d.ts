@@ -901,6 +901,11 @@ export interface paths {
          *
          *     Suspended orgs still resolve (their login screen keeps its branding, matching
          *     `/meta/tenant`); deleted orgs — and any unknown host — read as 404.
+         *
+         *     ``size`` (180/192/512, #198) answers a resized square PNG for the PWA manifest and the
+         *     apple-touch-icon; ``maskable`` pads the artwork into the safe zone on the ``bg`` colour.
+         *     Only raster images resize — an SVG (or a decode failure) falls back to the original bytes,
+         *     a degraded icon rather than a broken install.
          */
         get: operations["serve_public_file_api_v1_files__file_id__public_get"];
         put?: never;
@@ -5242,6 +5247,8 @@ export interface components {
             id: string;
             /** Mentioned Contact Ids */
             mentioned_contact_ids?: string[];
+            /** Mentioned Task Ids */
+            mentioned_task_ids?: string[];
             /** Mentioned User Ids */
             mentioned_user_ids?: string[];
         };
@@ -10665,6 +10672,8 @@ export interface components {
         TenantBranding: {
             /** Accent Color */
             accent_color: string;
+            /** App Icon Url */
+            app_icon_url?: string | null;
             /** Brand Name */
             brand_name: string;
             /** Currency */
@@ -10710,6 +10719,8 @@ export interface components {
         TenantBrandingUpdate: {
             /** Accent Color */
             accent_color?: string | null;
+            /** App Icon Url */
+            app_icon_url?: string | null;
             /** Brand Name */
             brand_name?: string | null;
             /** Currency */
@@ -14001,7 +14012,11 @@ export interface operations {
     };
     serve_public_file_api_v1_files__file_id__public_get: {
         parameters: {
-            query?: never;
+            query?: {
+                size?: number | null;
+                maskable?: boolean;
+                bg?: string;
+            };
             header?: never;
             path: {
                 file_id: string;

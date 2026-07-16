@@ -39,6 +39,21 @@
 <svelte:head>
   <meta name="theme-color" content={data.theme.primaryColor} />
   <link rel="icon" href={data.theme.faviconUrl || "/favicon.svg"} />
+  <!-- iOS ignores manifest icons for "Add to Home Screen" and wants a raster apple-touch-icon
+       (#198): the tenant's uploaded app icon resized by the API, else the bundled default —
+       never a page screenshot. Runtime per-tenant like the favicon above (Golden Rule 4). -->
+  <link
+    rel="apple-touch-icon"
+    sizes="180x180"
+    href={data.theme.appIconUrl
+      ? `${data.theme.appIconUrl}?size=180`
+      : "/icons/apple-touch-icon.png"}
+  />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  {#if data.theme.brandName}
+    <meta name="apple-mobile-web-app-title" content={data.theme.brandName} />
+  {/if}
 </svelte:head>
 
 <!-- Brand custom properties live on <html>, not on this wrapper: `accent-color` is inherited

@@ -42,6 +42,9 @@ class TenantBranding(BaseModel):
     show_brand_name: bool
     logo_url: str | None
     favicon_url: str | None
+    # Installable-app icon source (#198): a square raster; the manifest and apple-touch-icon
+    # serve size variants of it. Distinct from the favicon on purpose.
+    app_icon_url: str | None = None
     primary_color: str
     accent_color: str
     default_locale: str
@@ -72,6 +75,7 @@ class TenantBrandingUpdate(BaseModel):
     show_brand_name: bool | None = None
     logo_url: str | None = Field(default=None, max_length=1024)
     favicon_url: str | None = Field(default=None, max_length=1024)
+    app_icon_url: str | None = Field(default=None, max_length=1024)
     primary_color: str | None = Field(default=None, pattern=_HEX_COLOR)
     accent_color: str | None = Field(default=None, pattern=_HEX_COLOR)
     default_locale: str | None = None
@@ -233,6 +237,7 @@ async def tenant_branding(request: Request) -> TenantBranding:
             show_brand_name=s.show_brand_name if s else True,
             logo_url=s.logo_url if s else None,
             favicon_url=s.favicon_url if s else None,
+            app_icon_url=s.app_icon_url if s else None,
             primary_color=s.primary_color if s else "#4f46e5",
             accent_color=s.accent_color if s else "#0ea5e9",
             default_locale=s.default_locale if s else settings.default_locale,
@@ -318,7 +323,7 @@ async def update_tenant_branding(
         )
     for key, value in data.items():
         # Empty strings clear the optional fields; required fields ignore empties.
-        if key in ("logo_url", "favicon_url", "tab_title_template"):
+        if key in ("logo_url", "favicon_url", "app_icon_url", "tab_title_template"):
             setattr(s, key, value or None)
         elif isinstance(value, bool) or value:
             setattr(s, key, value)
@@ -330,6 +335,7 @@ async def update_tenant_branding(
         show_brand_name=s.show_brand_name,
         logo_url=s.logo_url,
         favicon_url=s.favicon_url,
+        app_icon_url=s.app_icon_url,
         primary_color=s.primary_color,
         accent_color=s.accent_color,
         default_locale=s.default_locale,
