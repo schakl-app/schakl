@@ -28,6 +28,9 @@ export const load: PageServerLoad = async (event) => {
       logoUrl: c.logo_file_id ? `/api/v1/companies/${c.id}/logo` : null,
     }));
     const selected = event.url.searchParams.get("company") ?? items[0]?.id ?? null;
+    // Per-website view (owner feedback): a client with several sites reads them one at a
+    // time; filtering is client-side, the payload already carries every link.
+    const website = event.url.searchParams.get("website") || "";
     const metrics = selected
       ? (
           await api.GET("/api/v1/marketing/companies/{company_id}/metrics", {
@@ -36,7 +39,7 @@ export const load: PageServerLoad = async (event) => {
         ).data ?? null
       : null;
     return {
-      portal: { companies: items, selected, metrics },
+      portal: { companies: items, selected, website, metrics },
       widgetKeys: [] as string[],
       availableWidgetKeys: [] as string[],
       prefsSource: "none",

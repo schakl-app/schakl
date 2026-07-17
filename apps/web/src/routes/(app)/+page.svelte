@@ -16,6 +16,22 @@
   const user = $derived(page.data.user);
   // Generated OpenAPI types are looser than the module's own (#193) — narrow once here.
   const portalMetrics = $derived((data.portal?.metrics ?? null) as CompanyMarketing | null);
+  // A client with several websites always sees them named and switchable (owner feedback);
+  // the default view shows everything, client-level links get their own tab.
+  const portalWebsites = $derived(portalMetrics?.websites ?? []);
+  const portalHasClientLevel = $derived(
+    (portalMetrics?.sources ?? []).some((s) => !s.website_id),
+  );
+  const portalWebsite = $derived(data.portal?.website ?? "");
+  const portalSources = $derived(
+    (portalMetrics?.sources ?? []).filter((s) =>
+      !portalWebsite
+        ? true
+        : portalWebsite === "client"
+          ? !s.website_id
+          : s.website_id === portalWebsite,
+    ),
+  );
   const enabled = $derived(page.data.theme?.enabledModules ?? []);
   const allWidgets = $derived(dashboardWidgetsFor(enabled, page.data.user));
 
@@ -146,9 +162,45 @@
         </h2>
       {/if}
     {/if}
-    {#if portalMetrics && portalMetrics.sources.length > 0}
+    {#if portalWebsites.length > 1}
+      <!-- Several websites: always name them, switchable (owner feedback). -->
+      <div class="mb-4 flex flex-wrap items-center gap-1" data-sveltekit-preload-data="hover">
+        <a
+          href={`?company=${data.portal.selected}`}
+          data-sveltekit-noscroll
+          class="rounded-lg px-3 py-1.5 text-sm font-medium {!portalWebsite
+            ? 'bg-brand text-white'
+            : 'text-text-muted hover:bg-surface'}"
+        >
+          {t("marketing.filter.all_websites")}
+        </a>
+        {#each portalWebsites as site (site.id)}
+          <a
+            href={`?company=${data.portal.selected}&website=${site.id}`}
+            data-sveltekit-noscroll
+            class="rounded-lg px-3 py-1.5 text-sm font-medium {portalWebsite === site.id
+              ? 'bg-brand text-white'
+              : 'text-text-muted hover:bg-surface'}"
+          >
+            {site.name}
+          </a>
+        {/each}
+        {#if portalHasClientLevel}
+          <a
+            href={`?company=${data.portal.selected}&website=client`}
+            data-sveltekit-noscroll
+            class="rounded-lg px-3 py-1.5 text-sm font-medium {portalWebsite === 'client'
+              ? 'bg-brand text-white'
+              : 'text-text-muted hover:bg-surface'}"
+          >
+            {t("marketing.website_group_none")}
+          </a>
+        {/if}
+      </div>
+    {/if}
+    {#if portalSources.length > 0}
       <div class="space-y-5">
-        {#each portalMetrics.sources as src (src.link_id)}
+        {#each portalSources as src (src.link_id)}
           <MarketingSourceSection
             companyId={data.portal.selected ?? ""}
             {src}
