@@ -80,7 +80,11 @@
 
 </script>
 
-<div class="flex items-center gap-3 px-4 py-2.5 hover:bg-surface">
+<!-- `flex-wrap` + a real flex-basis on the title block: with every badge `shrink-0`, a busy row
+     on a phone used to squeeze the `flex-1 min-w-0` title to literally zero width — a task you
+     could no longer read or open. Wrapping moves the badge cluster to its own line instead;
+     on a desktop everything still fits on one. -->
+<div class="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 hover:bg-surface">
   <form method="POST" action={toggleAction} use:enhance>
     <input type="hidden" name="id" value={task.id} />
     <input type="hidden" name="status" value={toggleTo} />
@@ -93,7 +97,7 @@
     >
   </form>
 
-  <div class="min-w-0 flex-1">
+  <div class="min-w-0 flex-1 basis-40">
     <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5">
       <a
         href={`/tasks/${task.id}`}
@@ -118,44 +122,46 @@
     </div>
   </div>
 
-  {#if task.priority === "high" && !done}
-    <span class="shrink-0 text-[11px] font-semibold uppercase text-red-500 dark:text-red-400"
-      >{t("tasks.priority.high")}</span
-    >
-  {/if}
-  {#if (task.checklist_total ?? 0) > 0}
-    <span
-      class="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium tabular-nums
-        {task.checklist_done === task.checklist_total
-        ? 'bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300'
-        : 'bg-surface text-text-muted'}">☑ {task.checklist_done}/{task.checklist_total}</span
-    >
-  {/if}
-  {#if (task.comment_count ?? 0) > 0}
-    <span class="shrink-0 text-[11px] tabular-nums text-text-muted">💬 {task.comment_count}</span>
-  {/if}
-  {#if task.allocated_minutes}
-    <span
-      class="shrink-0 rounded bg-surface px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-text-muted"
-    >
-      ⏱ {formatMinutes(task.allocated_minutes)}
-    </span>
-  {/if}
-  {#if task.due_date}
-    <span
-      class="shrink-0 text-xs tabular-nums {overdue
-        ? 'font-semibold text-red-600 dark:text-red-400'
-        : 'text-text-muted'}"
-    >
-      {fmtDayMonth(task.due_date)}
-    </span>
-  {/if}
-  {#if assignee}
-    <Avatar
-      name={assignee.full_name}
-      email={assignee.email}
-      avatarUrl={assignee.avatar_url ?? null}
-      size="sm"
-    />
-  {/if}
+  <div class="flex shrink-0 items-center gap-2.5">
+    {#if task.priority === "high" && !done}
+      <span class="text-[11px] font-semibold uppercase text-red-500 dark:text-red-400"
+        >{t("tasks.priority.high")}</span
+      >
+    {/if}
+    {#if (task.checklist_total ?? 0) > 0}
+      <span
+        class="rounded px-1.5 py-0.5 text-[11px] font-medium tabular-nums
+          {task.checklist_done === task.checklist_total
+          ? 'bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300'
+          : 'bg-surface text-text-muted'}">☑ {task.checklist_done}/{task.checklist_total}</span
+      >
+    {/if}
+    {#if (task.comment_count ?? 0) > 0}
+      <span class="text-[11px] tabular-nums text-text-muted">💬 {task.comment_count}</span>
+    {/if}
+    {#if task.allocated_minutes}
+      <span
+        class="rounded bg-surface px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-text-muted"
+      >
+        ⏱ {formatMinutes(task.allocated_minutes)}
+      </span>
+    {/if}
+    {#if task.due_date}
+      <span
+        class="text-xs tabular-nums {overdue
+          ? 'font-semibold text-red-600 dark:text-red-400'
+          : 'text-text-muted'}"
+      >
+        {fmtDayMonth(task.due_date)}
+      </span>
+    {/if}
+    {#if assignee}
+      <Avatar
+        name={assignee.full_name}
+        email={assignee.email}
+        avatarUrl={assignee.avatar_url ?? null}
+        size="sm"
+      />
+    {/if}
+  </div>
 </div>

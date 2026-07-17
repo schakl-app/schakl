@@ -2392,5 +2392,10 @@
   "marketing.link_website_all": "Whole client",
   "marketing.website_group_none": "Client-wide",
   "tasks.filter.toggle": "Filters",
-  "domains.panel.add_website": "Website"
+  "domains.panel.add_website": "Website",
+  "tasks.finish_prompt.title": "All to-dos done",
+  "tasks.finish_prompt.message": "Every to-do on this task is ticked. Move the task to “{status}”?",
+  "tasks.finish_prompt.confirm": "Finish task",
+  "tasks.finish_prompt.not_now": "Not now",
+  "tasks.finish_prompt.needs_interaction": "Every to-do is ticked, but this task requires a closing contact moment. Log one under Contact moments and finish the task with it."
 }

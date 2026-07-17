@@ -2392,5 +2392,10 @@
   "marketing.link_website_all": "Hele klant",
   "marketing.website_group_none": "Klantbreed",
   "tasks.filter.toggle": "Filters",
-  "domains.panel.add_website": "Website"
+  "domains.panel.add_website": "Website",
+  "tasks.finish_prompt.title": "Alle to-do’s afgevinkt",
+  "tasks.finish_prompt.message": "Alle to-do’s van deze taak zijn afgevinkt. Taak verplaatsen naar “{status}”?",
+  "tasks.finish_prompt.confirm": "Taak afronden",
+  "tasks.finish_prompt.not_now": "Niet nu",
+  "tasks.finish_prompt.needs_interaction": "Alle to-do’s zijn afgevinkt, maar deze taak vereist een afsluitend contactmoment. Leg er een vast onder Contactmomenten en rond de taak daarmee af."
 }

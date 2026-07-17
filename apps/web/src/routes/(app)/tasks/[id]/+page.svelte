@@ -74,6 +74,23 @@
   const statusName = (key: string) =>
     statuses.find((s) => s.key === key)?.name ?? key;
   const isDone = $derived(statuses.find((s) => s.key === task.status)?.is_terminal ?? false);
+
+  // Ticking the *last* open to-do offers to finish the task (the to-dos and the status should
+  // not drift apart silently). If finishing is gated on a closing contact moment (#157 — the
+  // task's own flag, or the terminal status's), the prompt says so instead of offering a move
+  // that the API would refuse.
+  let showFinishPrompt = $state(false);
+  const openItemCount = $derived(
+    (task.checklists ?? []).reduce(
+      (n, checklist) => n + (checklist.items ?? []).filter((item) => !item.done).length,
+      0,
+    ),
+  );
+  const finishStatus = $derived(statuses.find((s) => s.is_terminal) ?? null);
+  const finishNeedsMoment = $derived(
+    (task.requires_interaction || (finishStatus?.requires_interaction ?? false)) &&
+      !task.closing_interaction_id,
+  );
   // @mention candidates for the comment composer (issue #63): the org members already loaded,
   // plus — since #165 — the task's company's contacts, fetched lazily in the browser so the
   // SSR load pays nothing for them (docs/PERFORMANCE.md).
@@ -560,7 +577,25 @@
             {#each items as item (item.id)}
               <li class="group">
                 <div class="flex items-center gap-2">
-                  <form method="POST" action="?/toggleItem" use:enhance>
+                  <form
+                    method="POST"
+                    action="?/toggleItem"
+                    use:enhance={() => {
+                      // Snapshot before the server flips it: checking the last open to-do on an
+                      // unfinished task opens the finish prompt after the reload.
+                      const completesLast =
+                        !item.done &&
+                        openItemCount === 1 &&
+                        !isDone &&
+                        !isPortal &&
+                        finishStatus !== null;
+                      return ({ update }) => {
+                        void update().then(() => {
+                          if (completesLast) showFinishPrompt = true;
+                        });
+                      };
+                    }}
+                  >
                     <input type="hidden" name="checklist_id" value={checklist.id} />
                     <input type="hidden" name="item_id" value={item.id} />
                     <input type="hidden" name="done" value={String(!item.done)} />
@@ -1421,3 +1456,47 @@
   action={subConfirm.action}
   fields={subConfirm.fields}
 />
+
+<!-- The last to-do was just ticked: offer to move the task along — or, when finishing is gated
+     on a closing contact moment (#157), say exactly that instead of offering a doomed move. -->
+<Modal bind:open={showFinishPrompt} title={t("tasks.finish_prompt.title")}>
+  {#if finishNeedsMoment}
+    <p class="text-sm text-text">{t("tasks.finish_prompt.needs_interaction")}</p>
+    <div class="mt-4 flex justify-end">
+      <button
+        type="button"
+        class="rounded-lg border border-border px-4 py-2 text-sm text-text"
+        onclick={() => (showFinishPrompt = false)}
+      >
+        {t("common.close")}
+      </button>
+    </div>
+  {:else}
+    <p class="text-sm text-text">
+      {t("tasks.finish_prompt.message", { status: finishStatus?.name ?? "" })}
+    </p>
+    <div class="mt-4 flex justify-end gap-2">
+      <button
+        type="button"
+        class="rounded-lg border border-border px-4 py-2 text-sm text-text"
+        onclick={() => (showFinishPrompt = false)}
+      >
+        {t("tasks.finish_prompt.not_now")}
+      </button>
+      <form
+        method="POST"
+        action="?/update"
+        use:enhance={() =>
+          ({ update }) => {
+            showFinishPrompt = false;
+            return update();
+          }}
+      >
+        <input type="hidden" name="status" value={finishStatus?.key ?? ""} />
+        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+          {t("tasks.finish_prompt.confirm")}
+        </button>
+      </form>
+    </div>
+  {/if}
+</Modal>
