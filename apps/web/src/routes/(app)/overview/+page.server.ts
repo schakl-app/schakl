@@ -130,6 +130,7 @@ export const actions: Actions = {
         company_id: String(form.get("company_id") ?? "").trim() || null,
         project_id: String(form.get("project_id") ?? "").trim() || null,
         task_id: String(form.get("task_id") ?? "").trim() || null,
+        subscription_id: String(form.get("subscription_id") ?? "").trim() || null,
         billable: form.get("billable") !== "false",
         entry_type_key: String(form.get("entry_type_key") ?? "").trim() || null,
       },

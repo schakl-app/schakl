@@ -322,3 +322,89 @@ async def test_entry_types_tenant_configurable(client_for) -> None:
                 headers=other_headers,
             )
         ).status_code == 404
+
+
+async def test_entry_subscription_link(client_for) -> None:
+    """Owner request: an entry optionally links to the subscription the hours are worked
+    under. The link must stay within the entry's client — a missing client inherits the
+    subscription's — and subscription usage counts directly linked entries."""
+    t = await make_tenant("time-sub-link")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Retainerklant"}, headers=headers)
+        ).json()
+        other = (
+            await c.post("/api/v1/companies", json={"name": "Andere klant"}, headers=headers)
+        ).json()
+        sub = (
+            await c.post(
+                "/api/v1/subscriptions",
+                json={
+                    "company_id": company["id"],
+                    "name": "Onderhoud",
+                    "status": "active",
+                    "interval": "monthly",
+                    "start_date": "2026-06-01",
+                    "next_invoice_date": "2026-08-01",
+                    "amount": "500.00",
+                    "included_hours": "10",
+                },
+                headers=headers,
+            )
+        ).json()
+
+        # No client picked: the entry inherits the subscription's client.
+        created = await c.post(
+            "/api/v1/time/entries",
+            json={
+                "started_at": "2026-07-16T09:00:00Z",
+                "ended_at": "2026-07-16T11:00:00Z",
+                "subscription_id": sub["id"],
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        body = created.json()
+        assert body["subscription_id"] == sub["id"]
+        assert body["company_id"] == company["id"]
+
+        # A subscription of a different client is refused, on create and on update.
+        mismatch = await c.post(
+            "/api/v1/time/entries",
+            json={
+                "started_at": "2026-07-16T12:00:00Z",
+                "ended_at": "2026-07-16T13:00:00Z",
+                "company_id": other["id"],
+                "subscription_id": sub["id"],
+            },
+            headers=headers,
+        )
+        assert mismatch.status_code == 422, mismatch.text
+        assert (
+            await c.patch(
+                f"/api/v1/time/entries/{body['id']}",
+                json={"company_id": other["id"]},
+                headers=headers,
+            )
+        ).status_code == 422
+        # A made-up subscription id is refused too.
+        assert (
+            await c.post(
+                "/api/v1/time/entries",
+                json={
+                    "started_at": "2026-07-16T14:00:00Z",
+                    "ended_at": "2026-07-16T15:00:00Z",
+                    "subscription_id": str(uuid.uuid4()),
+                },
+                headers=headers,
+            )
+        ).status_code == 422
+
+        # Usage counts the directly linked entry (2 h) without any project link.
+        with_usage = (
+            await c.get(
+                f"/api/v1/subscriptions/{sub['id']}", params={"usage": True}, headers=headers
+            )
+        ).json()
+        assert float(with_usage["usage"]["used_hours"]) == 2.0

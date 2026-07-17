@@ -79,6 +79,15 @@ class TimeEntry(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
         nullable=True,
         index=True,
     )
+    #: The recurring agreement these hours are worked under (owner request): consumption
+    #: against ``subscriptions.included_hours`` counts entries linked directly here alongside
+    #: the linked-project roll-up. SET NULL — ending an agreement never erases logged work.
+    subscription_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("subscriptions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     #: Optional key into the org's ``time_entry_types`` (#176) — no FK, so relabelling or
     #: removing a type never rewrites logged hours; NULL = untyped (every pre-#176 entry).

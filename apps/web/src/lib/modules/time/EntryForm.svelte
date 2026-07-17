@@ -55,7 +55,14 @@
     company_id?: string | null;
     project_id?: string | null;
     task_id?: string | null;
+    subscription_id?: string | null;
     entry_type_key?: string | null;
+  }
+
+  interface SubscriptionOption {
+    id: string;
+    name: string;
+    company_id?: string | null;
   }
 
   let {
@@ -65,6 +72,7 @@
     companies,
     projects,
     tasks,
+    subscriptions = [],
     defaultCompanyId = "",
     defaultProjectId = "",
     error = null,
@@ -84,6 +92,8 @@
     companies: Option[];
     projects: Option[];
     tasks: Option[];
+    /** Active subscriptions for the optional agreement link; empty hides the picker. */
+    subscriptions?: SubscriptionOption[];
     defaultCompanyId?: string;
     defaultProjectId?: string;
     error?: string | null;
@@ -116,6 +126,7 @@
     company_id?: string | null;
     project_id?: string | null;
     task_id?: string | null;
+    subscription_id?: string | null;
     description?: string | null;
     entry_type_key?: string | null;
   } | null;
@@ -127,6 +138,7 @@
   let fCompany = $state(entry?.company_id ?? restored?.company_id ?? defaultCompanyId);
   let fProject = $state(entry?.project_id ?? restored?.project_id ?? defaultProjectId);
   let fTask = $state(entry?.task_id ?? restored?.task_id ?? "");
+  let fSubscription = $state(entry?.subscription_id ?? restored?.subscription_id ?? "");
   let fDescription = $state(entry?.description ?? restored?.description ?? "");
   const locale = $derived((page.data.locale as string | undefined) ?? "nl");
   // Deliberate initial capture, like every f* seed above.
@@ -190,6 +202,18 @@
     if (project?.company_id) fCompany = project.company_id;
   }
 
+  // Subscription picker (owner request): narrowed to the picked client; picking one
+  // back-fills the client, exactly like the project picker — the API enforces the same pair.
+  const subscriptionOptions = $derived(
+    (fCompany ? subscriptions.filter((s) => s.company_id === fCompany) : subscriptions).map(
+      (s) => ({ value: s.id, label: s.name }),
+    ),
+  );
+  function onSubscriptionPicked(subscriptionId: string) {
+    const sub = subscriptions.find((s) => s.id === subscriptionId);
+    if (sub?.company_id) fCompany = sub.company_id;
+  }
+
   // Budget feedback where the hours are spent (#112): the person logging sees how much of the
   // picked project's budget is left *before* saving, not on another screen afterwards. Hours
   // are team-visible (the same aggregate every budget bar draws); the euro figure is passed in
@@ -233,6 +257,7 @@
       company_id: fCompany || null,
       project_id: fProject || null,
       task_id: fTask || null,
+      subscription_id: fSubscription || null,
       description: fDescription || null,
       entry_type_key: fType || null,
     };
@@ -247,6 +272,7 @@
     company_id: defaultCompanyId || null,
     project_id: defaultProjectId || null,
     task_id: null,
+    subscription_id: null,
     description: null,
     entry_type_key: null,
   });
@@ -280,6 +306,7 @@
     fCompany = defaultCompanyId;
     fProject = defaultProjectId;
     fTask = "";
+    fSubscription = "";
     fDescription = "";
     durationText = "";
     sawFirstRun = false; // the reset itself must not re-save
@@ -539,6 +566,21 @@
       placeholder={t("time.field.task")}
     />
   </div>
+  {#if subscriptions.length > 0}
+    <div>
+      <label for="subscription-{action}" class="mb-1 block text-xs font-medium text-text-muted"
+        >{t("time.field.subscription")}</label
+      >
+      <Combobox
+        items={subscriptionOptions}
+        name="subscription_id"
+        bind:value={fSubscription}
+        id="subscription-{action}"
+        placeholder={t("time.field.subscription")}
+        onselect={onSubscriptionPicked}
+      />
+    </div>
+  {/if}
   <div>
     <label for="description-{action}" class="mb-1 block text-xs font-medium text-text-muted"
       >{t("time.field.description")}</label

@@ -681,6 +681,7 @@
           companies={data.companies}
           projects={data.projects}
           tasks={data.tasks}
+          subscriptions={data.subscriptions}
           canSeeMoney={data.canSeeBudgetMoney}
           error={form?.error ?? null}
           oncancel={() => (editingId = null)}
@@ -704,6 +705,7 @@
           companies={data.companies}
           projects={data.projects}
           tasks={data.tasks}
+          subscriptions={data.subscriptions}
           canSeeMoney={data.canSeeBudgetMoney}
           draftDate={data.selectedDate}
           draftInitial={aiPrefill ?? data.day?.draft?.payload ?? null}

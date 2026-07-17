@@ -417,6 +417,7 @@
         companies={data.companies}
         projects={data.projects}
         tasks={data.tasks}
+        subscriptions={data.subscriptions}
         error={form?.error ?? null}
         oncancel={() => (showEdit = false)}
         ondone={() => (showEdit = false)}

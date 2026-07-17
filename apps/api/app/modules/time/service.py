@@ -165,6 +165,39 @@ class TimeService:
         scope = None if entry.user_id == self.ctx.user.id else "any"
         self.ctx.require("time.entry.write", scope=scope)
 
+    async def _resolve_subscription(
+        self, values: dict[str, Any], *, entry: TimeEntry | None = None
+    ) -> None:
+        """Validate the optional subscription link: it must live in this tenant and belong to
+        the entry's client. A missing client inherits the subscription's, so linked hours
+        always land on the right client. Bare-table read, never a cross-module import (§6)."""
+        sid = values.get("subscription_id", entry.subscription_id if entry else None)
+        if sid is None:
+            return
+        row = (
+            await self.ctx.session.execute(
+                sql_text("SELECT company_id FROM subscriptions WHERE id = :sid AND org_id = :oid"),
+                {"sid": str(sid), "oid": str(self.ctx.org.id)},
+            )
+        ).first()
+        if row is None:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"subscription_id": "errors.validation"},
+            )
+        company_id = values.get("company_id", entry.company_id if entry else None)
+        if company_id is None:
+            values["company_id"] = row[0]
+        elif company_id != row[0]:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"subscription_id": "errors.time_subscription_company"},
+            )
+
     # --- timer --------------------------------------------------------------- #
     async def running(self, user_id: uuid.UUID | None = None) -> TimeEntry | None:
         uid = self._effective_user_id(user_id)
@@ -180,6 +213,8 @@ class TimeService:
     async def start_timer(self, data: TimerStart) -> TimeEntry:
         self.ctx.require("time.entry.write")
         await self._valid_entry_type(data.entry_type_key)
+        timer_values = data.model_dump()
+        await self._resolve_subscription(timer_values)
         # Starting a new timer stops the current one (common time-tracker behaviour).
         current = await self.running()
         if current is not None:
@@ -189,7 +224,7 @@ class TimeService:
             started_at=_now(),
             ended_at=None,
             minutes=0,
-            **data.model_dump(),
+            **timer_values,
         )
 
     async def stop_timer(self) -> TimeEntry:
@@ -220,6 +255,7 @@ class TimeService:
             ("task_id", "tasks"),
         ):
             await ensure_parent_in_tenant(self.ctx.session, _tbl, values.get(_fk), self.ctx.org.id)
+        await self._resolve_subscription(values)
         started_at = values["started_at"]
         ended_at = values.get("ended_at")
         minutes = values.get("minutes")
@@ -256,6 +292,10 @@ class TimeService:
                 await ensure_parent_in_tenant(
                     self.ctx.session, _tbl, values.get(_fk), self.ctx.org.id
                 )
+        if "subscription_id" in values or (
+            "company_id" in values and entry.subscription_id is not None
+        ):
+            await self._resolve_subscription(values, entry=entry)
         # Keeping the entry's own type stays allowed after a deactivation (#176).
         if values.get("entry_type_key") not in (None, entry.entry_type_key):
             await self._valid_entry_type(values["entry_type_key"])

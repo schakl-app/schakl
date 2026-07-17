@@ -10,7 +10,18 @@ import type { LayoutServerLoad } from "./$types";
  */
 export const load: LayoutServerLoad = async (event) => {
   const api = apiFor(event);
-  const [companies, projects, tasks, members, companyDefs, projectDefs, prefs] = await Promise.all([
+  // The optional subscription picker on the entry form (owner request): only fetched when
+  // the module is on and the user may read agreements — otherwise the picker never renders.
+  const subscriptionsEnabled =
+    (event.locals.theme?.enabledModules?.includes("subscriptions") ?? false) &&
+    can(event.locals.user, "subscriptions.subscription.read");
+  const subscriptionsP = subscriptionsEnabled
+    ? api.GET("/api/v1/subscriptions", {
+        params: { query: { limit: 200, offset: 0, status: "active" } },
+      })
+    : Promise.resolve({ data: null });
+  const [companies, projects, tasks, members, companyDefs, projectDefs, prefs, subscriptions] =
+    await Promise.all([
     api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
     // `hours=true` (#112): the budget burn per project rides the lookup this layout already
     // makes — one grouped query server-side, zero extra API calls — so the entry form can
@@ -32,6 +43,7 @@ export const load: LayoutServerLoad = async (event) => {
     // Personal timesheet view preference (7-day vs Mon–Fri); URL-independent so it doesn't
     // refetch on day/week navigation.
     api.GET("/api/v1/prefs"),
+    subscriptionsP,
   ]);
   const weekView = (prefs.data?.prefs as { time?: { week_view?: string } } | undefined)?.time
     ?.week_view;
@@ -39,6 +51,7 @@ export const load: LayoutServerLoad = async (event) => {
     companies: companies.data?.items ?? [],
     projects: projects.data?.items ?? [],
     tasks: tasks.data?.items ?? [],
+    subscriptions: subscriptions.data?.items ?? [],
     members: members.data ?? [],
     companyDefinitions: companyDefs.data ?? [],
     projectDefinitions: projectDefs.data ?? [],

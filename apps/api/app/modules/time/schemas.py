@@ -40,6 +40,9 @@ class TimeEntryBase(BaseModel):
     company_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None
     task_id: uuid.UUID | None = None
+    #: Optional link to the subscription these hours are worked under; must belong to the
+    #: entry's client (the service derives the client from it when none is picked).
+    subscription_id: uuid.UUID | None = None
     description: str | None = None
     #: Optional key into the org's time-entry types (#176); NULL stays untyped.
     entry_type_key: str | None = Field(None, min_length=1, max_length=50, pattern=r"^[a-z0-9_]+$")
@@ -63,6 +66,7 @@ class TimeEntryUpdate(BaseModel):
     company_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None
     task_id: uuid.UUID | None = None
+    subscription_id: uuid.UUID | None = None
     description: str | None = None
     entry_type_key: str | None = Field(None, min_length=1, max_length=50, pattern=r"^[a-z0-9_]+$")
     billable: bool | None = None
@@ -199,6 +203,7 @@ class TimeEntryDraftPayload(BaseModel):
     company_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None
     task_id: uuid.UUID | None = None
+    subscription_id: uuid.UUID | None = None
     description: str | None = Field(default=None, max_length=4000)
 
 

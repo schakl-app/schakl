@@ -459,7 +459,10 @@ class SubscriptionService:
         )
 
     async def _usage(self, sub: Subscription) -> SubscriptionUsage:
-        """Current-period consumption from the linked projects' logged time (#25's numbers)."""
+        """Current-period consumption from logged time (#25's numbers): entries on the linked
+        projects **or** linked to the subscription itself (the entry form's picker) — one OR
+        over two indexed columns, so a project entry that also carries the subscription link
+        is never counted twice."""
         months = period_months(sub.interval, sub.interval_count)
         period_end = sub.next_invoice_date
         period_start = add_months(period_end, -months) if period_end else None
@@ -473,11 +476,12 @@ class SubscriptionService:
             )
         ]
         used = 0.0
-        if project_ids and period_start and period_end:
+        if period_start and period_end:
             stmt = text(
                 """
                 SELECT COALESCE(SUM(minutes), 0) FROM time_entries
-                WHERE org_id = :oid AND project_id IN :pids AND ended_at IS NOT NULL
+                WHERE org_id = :oid AND ended_at IS NOT NULL
+                  AND (subscription_id = :sid OR project_id IN :pids)
                   AND started_at >= :start AND started_at < :end
                 """
             ).bindparams(bindparam("pids", expanding=True))
@@ -485,7 +489,9 @@ class SubscriptionService:
                 stmt,
                 {
                     "oid": self._org_id,
-                    "pids": project_ids,
+                    "sid": str(sub.id),
+                    # An empty IN () is invalid SQL; the impossible id keeps the OR shape.
+                    "pids": project_ids or [str(uuid.UUID(int=0))],
                     "start": period_start,
                     "end": period_end,
                 },

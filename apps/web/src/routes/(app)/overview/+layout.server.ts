@@ -17,7 +17,12 @@ export const load: LayoutServerLoad = async (event) => {
     throw redirect(303, "/");
   }
   const api = apiFor(event);
-  const [companies, projects, tasks, members, entryTypes] = await Promise.all([
+  // The report's edit modal reuses the entry form, so its optional subscription picker
+  // needs the same lookup as the /time layout — only when the module is on and readable.
+  const subscriptionsEnabled =
+    (event.locals.theme?.enabledModules?.includes("subscriptions") ?? false) &&
+    can(event.locals.user, "subscriptions.subscription.read");
+  const [companies, projects, tasks, members, entryTypes, subscriptions] = await Promise.all([
     api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0 } } }),
     api.GET("/api/v1/projects", { params: { query: { limit: 200, offset: 0 } } }),
     api.GET("/api/v1/tasks", { params: { query: { limit: 200, offset: 0, meta: false } } }),
@@ -25,6 +30,11 @@ export const load: LayoutServerLoad = async (event) => {
     // Entry-type labels for the report's type column/filter (#176) — inactive included so a
     // historical row still names its retired type.
     api.GET("/api/v1/time/entry-types", { params: { query: { include_inactive: true } } }),
+    subscriptionsEnabled
+      ? api.GET("/api/v1/subscriptions", {
+          params: { query: { limit: 200, offset: 0, status: "active" } },
+        })
+      : Promise.resolve({ data: null }),
   ]);
   return {
     companies: companies.data?.items ?? [],
@@ -32,5 +42,6 @@ export const load: LayoutServerLoad = async (event) => {
     tasks: tasks.data?.items ?? [],
     members: members.data ?? [],
     entryTypes: entryTypes.data ?? [],
+    subscriptions: subscriptions.data?.items ?? [],
   };
 };
