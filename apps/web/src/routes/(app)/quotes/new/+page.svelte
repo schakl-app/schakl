@@ -12,7 +12,6 @@
 
 <div class="mb-6 flex items-center justify-between gap-3">
   <h1 class="text-xl font-semibold text-text">{t("invoicing.new_quote")}</h1>
-  <a href="/quotes" class="text-sm text-text-muted hover:text-text">← {t("invoicing.quotes")}</a>
 </div>
 
 <div class="max-w-4xl rounded-xl border border-border bg-surface-raised p-6">

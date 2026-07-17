@@ -34,9 +34,6 @@
 
 <div class="mx-auto max-w-3xl space-y-6">
   <div>
-    <a href="/instance" class="text-sm text-text-muted hover:text-text">
-      ← {t("instance.title")}
-    </a>
     <div class="mt-1 flex flex-wrap items-center gap-3">
       <h1 class="text-xl font-semibold text-text">{org.name}</h1>
       <span class="rounded-full px-2 py-0.5 text-xs font-medium {statusClass[org.status] ?? ''}">

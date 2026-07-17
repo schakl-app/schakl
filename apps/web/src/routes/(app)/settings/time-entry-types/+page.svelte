@@ -46,7 +46,6 @@
 
 <div class="mb-6 flex items-start justify-between">
   <div>
-    <a href="/settings" class="text-sm text-text-muted hover:text-text">← {t("settings.title")}</a>
     <h1 class="mt-2 text-xl font-semibold text-text">{t("settings.time_entry_types.title")}</h1>
     <p class="mt-1 text-sm text-text-muted">{t("settings.time_entry_types.subtitle")}</p>
   </div>

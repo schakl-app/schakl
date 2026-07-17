@@ -18,9 +18,6 @@
 </svelte:head>
 
 <div class="mb-6">
-  <a href="/settings/roles" class="text-sm text-text-muted hover:text-text"
-    >{t("settings.roles.back")}</a
-  >
   <div class="mt-1 flex flex-wrap items-center gap-2">
     <h1 class="text-xl font-semibold text-text">{role.name_i18n[data.locale] || role.key}</h1>
     {#if role.is_system}

@@ -17,7 +17,6 @@
 </svelte:head>
 
 <div class="mb-6">
-  <a href="/settings" class="text-sm text-text-muted hover:text-text">← {t("settings.title")}</a>
   <h1 class="mt-2 text-xl font-semibold text-text">{t("settings.modules.title")}</h1>
   <p class="mt-1 text-sm text-text-muted">{t("settings.modules.subtitle")}</p>
 </div>

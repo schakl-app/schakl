@@ -11,7 +11,6 @@
   <title>{pageTitle(t("settings.service_access.title"))}</title>
 </svelte:head>
 
-<a href="/settings" class="text-sm text-text-muted hover:text-text">← {t("settings.title")}</a>
 <h1 class="mb-1 mt-2 text-xl font-semibold text-text">{t("settings.service_access.title")}</h1>
 <p class="mb-6 text-sm text-text-muted">
   {t("settings.service_access.subtitle", { hours: data.access.pin_hours })}

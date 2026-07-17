@@ -344,7 +344,6 @@
 </svelte:head>
 
 <div class="mb-4">
-  <a href="/tasks" class="text-sm text-text-muted hover:text-text">← {t("tasks.title")}</a>
 </div>
 
 <!-- Phone vs desktop order: a flex column below `lg` puts the details card (status, assignee,

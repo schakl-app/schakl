@@ -56,7 +56,6 @@
 
 <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
   <div class="flex min-w-0 items-center gap-3">
-    <a href="/quotes" class="text-sm text-text-muted hover:text-text">←</a>
     <h1 class="truncate text-xl font-semibold text-text">{t("invoicing.quotes")} {title}</h1>
     <span class="rounded-md bg-surface px-2 py-0.5 text-xs text-text-muted"
       >{t(`invoicing.quote_status.${quote.status}`)}</span

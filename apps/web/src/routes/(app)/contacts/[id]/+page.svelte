@@ -67,7 +67,6 @@
 
 <div class="mb-6 flex items-center justify-between">
   <div>
-    <a href="/contacts" class="text-sm text-text-muted hover:text-text">← {t("contacts.title")}</a>
     <h1 class="mt-2 text-xl font-semibold text-text">{fullName}</h1>
   </div>
   <ActionsMenu

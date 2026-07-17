@@ -29,7 +29,6 @@
   <title>{pageTitle(t("settings.google.title"))}</title>
 </svelte:head>
 
-<a href="/settings" class="text-sm text-text-muted hover:text-text">← {t("settings.title")}</a>
 <h1 class="mb-1 mt-2 text-xl font-semibold text-text">{t("settings.google.title")}</h1>
 <p class="mb-6 text-sm text-text-muted">{t("settings.google.subtitle")}</p>
 

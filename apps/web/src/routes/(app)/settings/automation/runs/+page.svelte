@@ -36,9 +36,6 @@
 </svelte:head>
 
 <div class="mb-6">
-  <a href="/settings/automation" class="text-sm text-text-muted hover:text-text"
-    >← {t("automation.title")}</a
-  >
   <div class="mt-2 flex flex-wrap items-center gap-3">
     <h1 class="text-xl font-semibold text-text">{t("automation.runs")}</h1>
     <div class="flex-1"></div>

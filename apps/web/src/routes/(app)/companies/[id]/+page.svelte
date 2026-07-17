@@ -47,9 +47,6 @@
 </svelte:head>
 
 <div class="mb-6">
-  <a href="/companies" class="text-sm text-text-muted hover:text-text">
-    ← {t("companies.title")}
-  </a>
   <div class="mt-2 flex flex-wrap items-start justify-between gap-3">
     <div>
       <div class="flex items-center gap-3">

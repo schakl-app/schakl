@@ -68,9 +68,6 @@
 </svelte:head>
 
 <div class="mb-6">
-  <a href={`/companies/${company.id}`} class="text-sm text-text-muted hover:text-text">
-    ← {company.name}
-  </a>
   <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
     <h1 class="text-xl font-semibold text-text">{t("marketing.tab.title")}</h1>
     {#if marketing?.can_manage && sources.length > 0}

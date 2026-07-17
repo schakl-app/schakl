@@ -25,9 +25,11 @@
   import { page } from "$app/state";
   import { AI_CONTEXT_KEY, aiEnabled, type AIFeature, type AssistantEntity } from "$lib/core/ai";
   import AssistantPanel from "$lib/core/ai/AssistantPanel.svelte";
+  import { breadcrumbsFor } from "$lib/core/breadcrumbs";
   import { t } from "$lib/core/i18n";
   import { can, canAccessSettings } from "$lib/core/permissions";
   import { navItemsFor, type NavItem } from "$lib/core/registry";
+  import Breadcrumbs from "$lib/core/ui/Breadcrumbs.svelte";
   import SlideOver from "$lib/core/ui/SlideOver.svelte";
   import NotificationBell from "$lib/modules/notifications/NotificationBell.svelte";
 
@@ -40,7 +42,9 @@
   // UX only; the API's deny-by-default permissions and the company horizon are the boundary.
   const isPortal = $derived(user?.isPortal ?? false);
   const nav = $derived(
-    isPortal ? [] : navItemsFor(theme?.enabledModules ?? [], user, page.data.navPref?.items ?? null),
+    isPortal
+      ? []
+      : navItemsFor(theme?.enabledModules ?? [], user, page.data.navPref?.items ?? null),
   );
   const path = $derived(page.url.pathname);
   const showOverview = $derived(!isPortal && can(user, "time.report.read"));
@@ -427,6 +431,11 @@
     </header>
 
     <main class="flex-1 p-6">
+      {#if !isPortal}
+        <!-- Breadcrumbs on every page (owner request): rendered once here, derived from the
+             path and the page's own loaded data — no screen can ship without them. -->
+        <Breadcrumbs crumbs={breadcrumbsFor(path, page.data)} />
+      {/if}
       {@render children()}
     </main>
   </div>

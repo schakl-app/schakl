@@ -71,7 +71,6 @@
 </svelte:head>
 
 <div class="mb-6">
-  <a href="/domains" class="text-sm text-text-muted hover:text-text">← {t("domains.title")}</a>
   <div class="mt-2 flex items-center justify-between">
     <h1 class="text-xl font-semibold text-text">{domain.name}</h1>
     <ActionsMenu

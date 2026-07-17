@@ -10,9 +10,6 @@
 </svelte:head>
 
 <div class="mb-6">
-  <a href="/settings/automation" class="text-sm text-text-muted hover:text-text"
-    >← {t("automation.title")}</a
-  >
   <h1 class="mt-2 text-xl font-semibold text-text">{t("automation.edit_rule")}</h1>
 </div>
 

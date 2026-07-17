@@ -19,7 +19,6 @@
 </svelte:head>
 
 <div class="print-hide mb-4 flex items-center justify-between gap-3">
-  <a href="/invoices/{invoice.id}" class="text-sm text-text-muted hover:text-text">←</a>
   <button
     class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
     onclick={() => window.print()}>{t("invoicing.action.print")}</button

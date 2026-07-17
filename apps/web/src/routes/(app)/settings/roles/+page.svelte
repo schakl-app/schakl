@@ -35,7 +35,6 @@
 
 <div class="mb-6 flex items-start justify-between gap-4">
   <div>
-    <a href="/settings" class="text-sm text-text-muted hover:text-text">← {t("settings.title")}</a>
     <h1 class="mt-1 text-xl font-semibold text-text">{t("settings.roles.title")}</h1>
     <p class="mt-1 max-w-2xl text-sm text-text-muted">{t("settings.roles.subtitle")}</p>
   </div>

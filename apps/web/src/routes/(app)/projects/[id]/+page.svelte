@@ -118,7 +118,6 @@
 
 <div class="mb-6 flex items-start justify-between">
   <div>
-    <a href="/projects" class="text-sm text-text-muted hover:text-text">← {t("projects.title")}</a>
     <h1 class="mt-1 text-xl font-semibold text-text">{project.name}</h1>
     <p class="mt-1 text-sm text-text-muted">
       {#if companyName}{companyName} ·
