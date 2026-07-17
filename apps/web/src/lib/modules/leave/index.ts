@@ -13,6 +13,7 @@ import { TreePalm } from "@lucide/svelte";
 
 import LeaveBalanceWidget from "./LeaveBalanceWidget.svelte";
 import LeavePendingWidget from "./LeavePendingWidget.svelte";
+import LeaveTeamTodayWidget from "./LeaveTeamTodayWidget.svelte";
 import { holidayName, typeLabel, type LeaveTypeInfo } from "./format";
 
 registerWebModule({
@@ -56,9 +57,7 @@ registerWebModule({
           }),
           api.GET("/api/v1/members/lookup"),
         ]);
-        const names = new Map(
-          (members.data ?? []).map((m) => [m.user_id, m.full_name || m.email]),
-        );
+        const names = new Map((members.data ?? []).map((m) => [m.user_id, m.full_name || m.email]));
         return {
           items: (requests.data?.items ?? []).map((request) => ({
             ...request,
@@ -68,6 +67,24 @@ registerWebModule({
         };
       },
       component: LeavePendingWidget,
+    },
+    {
+      key: "leave.team_today",
+      module: "leave",
+      position: 28,
+      requiresPermission: "leave.request.read",
+      descriptionKey: "dashboard.widget_desc.leave.team_today",
+      category: "dashboard.category.leave",
+      size: "sm",
+      load: (api) => {
+        const today = new Date().toISOString().slice(0, 10);
+        return api
+          .GET("/api/v1/leave/team", {
+            params: { query: { date_from: today, date_to: today } },
+          })
+          .then((r) => r.data ?? []);
+      },
+      component: LeaveTeamTodayWidget,
     },
   ],
   calendarSources: [
