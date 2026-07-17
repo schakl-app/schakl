@@ -17,9 +17,10 @@ INTERACTION_PERMISSIONS: list[PermissionSpec] = [
         position=10,
         default_roles=(ROLE_ADMIN, ROLE_MEMBER),
     ),
-    # Widen the Interacties view beyond yourself (#168): filter the list by another owner and
-    # see other users' *pending* rows (#172). Plain `read` keeps the team-visible (logged)
-    # timeline it always had; this gates the owner filter and the pending queue of others.
+    # Widen the Interacties view beyond yourself (#168): filter the list by another owner.
+    # Plain `read` keeps the team-visible (logged) timeline it always had. Note: this does
+    # NOT open other users' *pending* email rows — an unreviewed email is private to its
+    # mailbox owner with no escape at all (owner feedback on #172, "rule 1").
     PermissionSpec("interactions.interaction.read_all", position=15),
     PermissionSpec(
         "interactions.interaction.write",

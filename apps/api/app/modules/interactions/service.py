@@ -94,18 +94,20 @@ class InteractionService:
     ) -> tuple[list[dict[str, Any]], int]:
         include_set = {part.strip() for part in (include or "").split(",") if part.strip()}
         conditions = []
+        # A pending row is private to its mailbox owner until approved — with NO admin or
+        # read_all escape (owner feedback on #172: "rule 1, always private per account").
+        # An unreviewed email is the mailbox owner's mail, not the org's record yet; it only
+        # joins the team timeline when its owner approves it.
+        conditions.append(
+            or_(
+                Interaction.status != InteractionStatus.PENDING.value,
+                Interaction.owner_user_id == self.ctx.user.id,
+            )
+        )
         if not self.ctx.can("interactions.interaction.read_all"):
-            # Someone else's queue is not a filter you may use (#168)...
+            # Someone else's queue is not a filter you may use (#168).
             if owner_user_id is not None and owner_user_id != self.ctx.user.id:
                 raise AppError("forbidden", "errors.forbidden", status_code=403)
-            # ...and a pending row is private to its mailbox owner until approved (#172):
-            # every panel and list simply omits other people's pending rows.
-            conditions.append(
-                or_(
-                    Interaction.status != InteractionStatus.PENDING.value,
-                    Interaction.owner_user_id == self.ctx.user.id,
-                )
-            )
         if company_id is not None:
             # The client timeline is already complete without a roll-up: a task/project link
             # derives ``company_id`` on write (``_resolve_links``), so filtering the FK is it.
@@ -174,12 +176,11 @@ class InteractionService:
 
     async def get(self, interaction_id: uuid.UUID) -> dict[str, Any]:
         row = await self.repo.get_or_404(interaction_id)
-        # A pending row is its owner's alone until approved (#172) — absent, not forbidden,
-        # so the id leaks nothing (§15).
+        # A pending row is its owner's alone until approved — absent, not forbidden, so the
+        # id leaks nothing (§15). No read_all/admin escape (owner feedback on #172).
         if (
             row.status == InteractionStatus.PENDING.value
             and row.owner_user_id != self.ctx.user.id
-            and not self.ctx.can("interactions.interaction.read_all")
         ):
             raise AppError("not_found", "errors.not_found", status_code=404)
         return await self._present_one(row)

@@ -368,9 +368,11 @@ async def test_member_edits_own_admin_edits_any(client_for) -> None:
 
 
 async def test_pending_rows_private_to_owner_until_approved(client_for) -> None:
-    """#172: a pending gmail row is invisible — not just body-redacted — to anyone but its
-    mailbox owner; #168: the owner filter needs read_all, and a wildcard/admin viewer may
-    still audit another mailbox's pending queue. Approval restores team visibility."""
+    """#172 (owner feedback, "rule 1"): a pending gmail row is invisible — not just
+    body-redacted — to anyone but its mailbox owner, and there is NO read_all/admin escape:
+    an unreviewed email is private mail, not yet an org record. #168: the owner filter still
+    needs read_all, but it only ever reaches team-visible rows. Approval restores team
+    visibility."""
     t = await make_tenant("inter-pending-priv")
     owner_headers = await auth_cookie(t.user)  # org owner: "*" satisfies read_all
     async with client_for(t.host) as c:
@@ -406,14 +408,23 @@ async def test_pending_rows_private_to_owner_until_approved(client_for) -> None:
                 headers=colleague_headers,
             )
         ).status_code == 403
-        # ...but a read_all holder may audit it, pending rows included.
+        # ...and even a read_all holder (here: the org owner's wildcard) never sees another
+        # mailbox's pending rows — not via the owner filter, not via the plain list, not by id.
         assert (
             await c.get(
                 "/api/v1/interactions",
                 params={"owner_user_id": str(mailbox.id), "status": "pending"},
                 headers=owner_headers,
             )
-        ).json()["total"] == 1
+        ).json()["total"] == 0
+        assert (
+            await c.get(
+                "/api/v1/interactions", params={"status": "pending"}, headers=owner_headers
+            )
+        ).json()["total"] == 0
+        assert (
+            await c.get(f"/api/v1/interactions/{row_id}", headers=owner_headers)
+        ).status_code == 404
 
         # Approval makes it team-visible, exactly as before.
         assert (
@@ -462,9 +473,12 @@ async def test_gmail_review_is_strictly_owner_only(client_for) -> None:
         member = await _member(c, owner_headers, "mailbox@inter-review.example")
         member_headers = await auth_cookie(member)
         row_id = await _seed_gmail_row(t, member.id, pending=True)
-        # Pending: the team sees metadata, never a body; edit/delete are closed.
+        # Pending: only the mailbox owner sees the row (metadata, never a body — the body is
+        # fetched after approval); edit/delete are closed even for them.
         listed = (
-            await c.get("/api/v1/interactions", params={"status": "pending"}, headers=owner_headers)
+            await c.get(
+                "/api/v1/interactions", params={"status": "pending"}, headers=member_headers
+            )
         ).json()
         assert listed["total"] == 1
         assert listed["items"][0]["snippet"] and listed["items"][0]["body_text"] is None
