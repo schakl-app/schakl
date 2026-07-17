@@ -2391,5 +2391,6 @@
   "marketing.link_website": "Link to website",
   "marketing.link_website_all": "Whole client",
   "marketing.website_group_none": "Client-wide",
-  "tasks.filter.toggle": "Filters"
+  "tasks.filter.toggle": "Filters",
+  "domains.panel.add_website": "Website"
 }

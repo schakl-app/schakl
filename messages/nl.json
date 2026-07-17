@@ -2391,5 +2391,6 @@
   "marketing.link_website": "Koppelen aan website",
   "marketing.link_website_all": "Hele klant",
   "marketing.website_group_none": "Klantbreed",
-  "tasks.filter.toggle": "Filters"
+  "tasks.filter.toggle": "Filters",
+  "domains.panel.add_website": "Website"
 }

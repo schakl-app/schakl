@@ -223,8 +223,8 @@
   </section>
 </div>
 
-<!-- Website (0/1 per domain) -->
-<section class="mt-4 rounded-xl border border-border bg-surface-raised p-5">
+<!-- Website (0/1 per domain). The `id` anchors the client page's "＋ website" quick link. -->
+<section id="website" class="mt-4 rounded-xl border border-border bg-surface-raised p-5">
   <div class="mb-4 flex items-center justify-between">
     <h2 class="text-sm font-semibold text-text">{t("websites.title")}</h2>
     {#if website && !editingWebsite}
