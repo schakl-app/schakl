@@ -13,10 +13,15 @@ export const actions: Actions = {
     const password = String(form.get("password") ?? "");
     if (!email || !password) return fail(400, { error: "errors.required", email });
 
-    const token = await apiLogin(event, email, password);
-    if (!token) return fail(400, { error: "auth.invalid_credentials", email });
+    const result = await apiLogin(event, email, password);
+    if (result.kind === "challenge") {
+      // The owner enrolled a second factor: the console has no verify step, but the session
+      // the normal login page issues after 2FA is just as valid here — point them there.
+      return fail(400, { error: "cloud.console.two_factor_via_login", email });
+    }
+    if (result.kind !== "session") return fail(400, { error: "auth.invalid_credentials", email });
 
-    event.cookies.set(AUTH_COOKIE_NAME, token, {
+    event.cookies.set(AUTH_COOKIE_NAME, result.token, {
       path: "/",
       httpOnly: true,
       sameSite: "lax",

@@ -2369,6 +2369,7 @@
   "cloud.console.nav_keys": "API-sleutels",
   "cloud.console.sign_in": "Inloggen",
   "cloud.console.sign_in_hint": "Alleen voor instance-eigenaren — beheer de organisaties op deze cloud-installatie.",
+  "cloud.console.two_factor_via_login": "Dit account gebruikt tweestapsverificatie. Log eerst in via de gewone inlogpagina — die sessie geeft ook toegang tot de console.",
   "cloud.console.sign_out": "Uitloggen",
   "cloud.console.orgs_title": "Organisaties",
   "cloud.console.orgs_subtitle": "Alle organisaties op deze cloud-installatie.",

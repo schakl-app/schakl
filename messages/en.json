@@ -2369,6 +2369,7 @@
   "cloud.console.nav_keys": "API keys",
   "cloud.console.sign_in": "Sign in",
   "cloud.console.sign_in_hint": "Instance owners only — manage the organizations on this cloud installation.",
+  "cloud.console.two_factor_via_login": "This account uses two-step verification. Sign in through the regular login page first — that session also opens the console.",
   "cloud.console.sign_out": "Sign out",
   "cloud.console.orgs_title": "Organizations",
   "cloud.console.orgs_subtitle": "Every organization on this cloud installation.",

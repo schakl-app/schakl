@@ -61,11 +61,13 @@ export const actions: Actions = {
         const parsed = apiErrorKey(error);
         return fail(400, { error: parsed.key, fields: parsed.fields, values });
       }
-      const token = await apiLogin(event, values.owner_email, password);
-      if (!token) {
+      // The account was created in this very request, so it cannot carry a second factor
+      // yet — a session is the only success shape.
+      const result = await apiLogin(event, values.owner_email, password);
+      if (result.kind !== "session") {
         return fail(400, { error: "auth.invalid_credentials", fields: undefined, values });
       }
-      event.cookies.set(AUTH_COOKIE_NAME, token, {
+      event.cookies.set(AUTH_COOKIE_NAME, result.token, {
         path: "/",
         httpOnly: true,
         sameSite: "lax",
