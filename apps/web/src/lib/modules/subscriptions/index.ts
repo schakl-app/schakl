@@ -4,10 +4,24 @@ import { t } from "$lib/core/i18n";
 import { registerWebModule } from "$lib/core/registry";
 
 import ProjectSubscriptionsPanel from "./ProjectSubscriptionsPanel.svelte";
+import SubscriptionsMrrWidget from "./SubscriptionsMrrWidget.svelte";
 import SubscriptionsPanel from "./SubscriptionsPanel.svelte";
 
 registerWebModule({
   name: "subscriptions",
+  dashboardWidgets: [
+    {
+      key: "subscriptions.mrr",
+      module: "subscriptions",
+      position: 30,
+      requiresPermission: "subscriptions.subscription.read",
+      descriptionKey: "dashboard.widget_desc.subscriptions.mrr",
+      category: "dashboard.category.finance",
+      size: "sm",
+      load: (api) => api.GET("/api/v1/subscriptions/summary").then((r) => r.data ?? null),
+      component: SubscriptionsMrrWidget,
+    },
+  ],
   nav: [
     {
       key: "subscriptions",

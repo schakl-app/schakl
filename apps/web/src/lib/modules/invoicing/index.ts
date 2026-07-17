@@ -7,10 +7,24 @@ import { FileText } from "@lucide/svelte";
 import { t } from "$lib/core/i18n";
 import { registerWebModule } from "$lib/core/registry";
 
+import InvoicingOutstandingWidget from "./InvoicingOutstandingWidget.svelte";
 import InvoicingPanel from "./InvoicingPanel.svelte";
 
 registerWebModule({
   name: "invoicing",
+  dashboardWidgets: [
+    {
+      key: "invoicing.outstanding",
+      module: "invoicing",
+      position: 35,
+      requiresPermission: "invoicing.invoice.read",
+      descriptionKey: "dashboard.widget_desc.invoicing.outstanding",
+      category: "dashboard.category.finance",
+      size: "sm",
+      load: (api) => api.GET("/api/v1/invoicing/summary").then((r) => r.data ?? null),
+      component: InvoicingOutstandingWidget,
+    },
+  ],
   nav: [
     {
       key: "invoicing",
