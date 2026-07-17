@@ -22,6 +22,9 @@ module = ModuleDescriptor(
     name="projects",
     router=router,
     i18n_namespace="projects",
+    # Licensed module (issue #137): enabling projects requires a license covering this sku;
+    # past expiry+grace it goes read-only (mutations 402) — reads and exports stay.
+    sku="projects",
     panels=[projects_company_panel],
     permissions=PROJECT_PERMISSIONS,
     impex=[PROJECT_IMPEX],

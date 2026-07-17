@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.entitlements.service import license_state
 from app.core.jobs import run_per_org
 from app.core.models import Org, OrgStatus
 from app.db import async_session_maker, set_current_org
@@ -39,8 +40,17 @@ async def _refresh_org(org: Org, session: AsyncSession) -> None:
         logger.info("refreshed DNS for %s domains in org %s", len(domains), org.slug)
 
 
+async def _licensed() -> bool:
+    """Whether the ``domains`` sku is still writable (issue #137): the mount-time 402 gate
+    covers requests, but crons write on a schedule — an expired license must stop the
+    background refresh too (expired = read-only, not gone; stored DNS facts stay visible)."""
+    return (await license_state()).writable("domains")
+
+
 async def refresh_all_domains(ctx: dict) -> None:
     """ARQ entrypoint: refresh DNS facts for every active org's domains (#92)."""
+    if not await _licensed():
+        return
     await run_per_org(_refresh_org)
 
 
@@ -51,6 +61,8 @@ async def refresh_domain_dns(ctx: dict, org_id: str, domain_id: str) -> None:
     quiet no-op — the create's transaction may have rolled back after the enqueue, or the
     domain may already be deleted; neither is this job's problem.
     """
+    if not await _licensed():
+        return
     async with async_session_maker() as session:
         org = (
             await session.execute(

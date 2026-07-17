@@ -95,6 +95,35 @@ async def _make_superuser(user_id) -> None:
         await session.commit()
 
 
+def test_paid_module_set_is_pinned() -> None:
+    """Which modules are paid is a product decision, not an accident of refactoring — pin the
+    module→sku map so a sku is never silently dropped or added. Free stays: companies (the
+    hub), contacts, tasks, notifications."""
+    from app.core.entitlements.service import licensed_skus
+    from app.registry import registry
+
+    module_skus = {
+        name: sku for name, sku in licensed_skus().items() if registry.get(name) is not None
+    }
+    assert module_skus == {
+        "automation": "automation",
+        "domains": "domains",
+        "google": "google",
+        "hosting": "hosting",
+        "hr": "hr",
+        "interactions": "interactions",
+        "invoicing": "invoicing",
+        "leave": "leave",
+        "marketing": "marketing",
+        "projects": "projects",
+        "subscriptions": "subscriptions",
+        "time": "time",
+        "websites": "websites",
+    }
+    free = {m.name for m in registry.all() if m.sku is None}
+    assert free == {"companies", "contacts", "tasks", "notifications"}
+
+
 def test_verify_roundtrip_and_tamper(license_key: Ed25519PrivateKey) -> None:
     key_text = _sign(license_key, modules=["leave", "mcp"])
     info = verify_license(key_text, settings.license_public_key)

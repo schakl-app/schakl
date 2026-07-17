@@ -21,6 +21,9 @@ module = ModuleDescriptor(
     name="time",
     router=router,
     i18n_namespace="time",
+    # Licensed module (issue #137): enabling time requires a license covering this sku;
+    # past expiry+grace it goes read-only (mutations 402) — reads and exports stay.
+    sku="time",
     panels=[time_company_panel],
     permissions=TIME_PERMISSIONS,
     impex=[TIME_ENTRY_IMPEX],

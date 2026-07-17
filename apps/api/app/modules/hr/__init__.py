@@ -13,6 +13,9 @@ module = ModuleDescriptor(
     name="hr",
     router=router,
     i18n_namespace="hr",
+    # Licensed module (issue #137): enabling hr requires a license covering this sku;
+    # past expiry+grace it goes read-only (mutations 402) — reads and exports stay.
+    sku="hr",
     permissions=HR_PERMISSIONS,
 )
 

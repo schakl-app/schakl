@@ -85,7 +85,13 @@ async def remind_for_org(org: Org, session: AsyncSession, *, week_start: date | 
 
 async def send_timesheet_reminders(ctx: dict) -> int:
     """ARQ cron entry point: last week's empty timesheets, for every org."""
+    from app.core.entitlements.service import license_state
     from app.core.jobs import run_per_org
+
+    # Licensed module (issue #137): the mount-time 402 gate covers requests, but crons write
+    # on a schedule — an expired license must stop the background half too.
+    if not (await license_state()).writable("time"):
+        return 0
 
     total = 0
 

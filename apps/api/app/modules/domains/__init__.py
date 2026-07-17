@@ -18,6 +18,9 @@ module = ModuleDescriptor(
     name="domains",
     router=router,
     i18n_namespace="domains",
+    # Licensed module (issue #137). Its own sku — the web-assets trio (domains, websites,
+    # hosting) is bundled in *license documents* (a plan lists all three skus), never in code.
+    sku="domains",
     panels=[domains_company_panel],
     permissions=DOMAIN_PERMISSIONS,
     # Refresh every domain's nameservers + DNSSEC + MX daily, off-peak and offset from other

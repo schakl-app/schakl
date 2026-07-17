@@ -14,6 +14,9 @@ module = ModuleDescriptor(
     name="websites",
     router=router,
     i18n_namespace="websites",
+    # Licensed module (issue #137). Its own sku — the web-assets trio (domains, websites,
+    # hosting) is bundled in *license documents* (a plan lists all three skus), never in code.
+    sku="websites",
     permissions=WEBSITE_PERMISSIONS,
 )
 
