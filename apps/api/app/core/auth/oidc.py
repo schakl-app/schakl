@@ -102,6 +102,17 @@ async def _claims(client: Any, token: dict) -> dict[str, Any]:
     return {**endpoint_claims, **id_claims}
 
 
+def _email_verified(claims: dict[str, Any]) -> bool:
+    """Whether the IdP vouches the email is verified. OIDC allows the claim as a JSON boolean or,
+    from some providers, the string ``"true"``. Absent/false ⇒ not verified (fail closed)."""
+    value = claims.get("email_verified")
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"true", "1", "yes"}
+    return False
+
+
 @router.get("/callback", name="oidc_callback")
 async def oidc_callback(request: Request):
     resolved = await _resolve_sso(request)
@@ -118,6 +129,16 @@ async def oidc_callback(request: Request):
         from app.core.permissions.service import create_membership
 
         user = await session.scalar(select(User).where(User.email == email))
+        if user is not None and not _email_verified(userinfo):
+            # Account-takeover guard (audit C2): adopting a *pre-existing* local account by a bare,
+            # IdP-asserted email is how an attacker on a permissive IdP (self-service signup, a
+            # social connection) captures someone else's account — including the local /setup
+            # superuser owner. Only link to an existing account when the IdP vouches the email is
+            # verified. A brand-new JIT identity (user is None) is unaffected.
+            logger.warning(
+                "OIDC login refused: unverified email claim for existing account %s", email
+            )
+            return RedirectResponse(url="/login?error=oidc")
         if user is None:
             user = User(
                 id=uuid.uuid4(),

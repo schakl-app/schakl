@@ -25,8 +25,9 @@ registerCoreCompanyPanel({
   position: POSITION,
 });
 
-// The entity types whose detail pages compose typed panels (projects today, contacts now too).
-for (const entityType of ["project", "contact"] as const) {
+// The entity types whose detail pages compose typed panels (projects, contacts, and the
+// invoicing documents — an audit trail on money is what the trail exists for, #207).
+for (const entityType of ["project", "contact", "invoice", "quote"] as const) {
   registerCoreEntityPanel({
     key: "activity.trail",
     module: "activity",

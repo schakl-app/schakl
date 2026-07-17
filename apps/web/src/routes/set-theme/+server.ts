@@ -17,5 +17,6 @@ export const POST: RequestHandler = async (event) => {
     await apiFor(event).PUT("/api/v1/prefs", { body: { prefs: { appearance: { theme: mode } } } });
     cookies.set(THEME_COOKIE, mode, THEME_COOKIE_OPTIONS);
   }
-  throw redirect(303, back || "/");
+  // Only a same-origin relative path — never an absolute or protocol-relative URL (audit F26).
+  throw redirect(303, back.startsWith("/") && !back.startsWith("//") ? back : "/");
 };

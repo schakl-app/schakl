@@ -19,6 +19,7 @@ from sqlalchemy import text as sql_text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 
 from app.core.events import emit
+from app.core.parent import ensure_parent_in_tenant
 from app.core.sorting import apply_sort, user_sort_name
 from app.core.tenancy import RequestContext
 from app.errors import AppError
@@ -212,6 +213,13 @@ class TimeService:
         # wall-clock-as-UTC, so the entry's date *is* the form's date field.
         await self._clear_draft(data.started_at.date())
         values = data.model_dump()
+        # A time entry's company/project/task FKs must live in this tenant (audit F19).
+        for _fk, _tbl in (
+            ("company_id", "companies"),
+            ("project_id", "projects"),
+            ("task_id", "tasks"),
+        ):
+            await ensure_parent_in_tenant(self.ctx.session, _tbl, values.get(_fk), self.ctx.org.id)
         started_at = values["started_at"]
         ended_at = values.get("ended_at")
         minutes = values.get("minutes")
@@ -239,6 +247,15 @@ class TimeService:
         self._ensure_writable(entry)
         self._ensure_not_locked(entry)
         values = data.model_dump(exclude_unset=True)
+        for _fk, _tbl in (
+            ("company_id", "companies"),
+            ("project_id", "projects"),
+            ("task_id", "tasks"),
+        ):
+            if _fk in values:
+                await ensure_parent_in_tenant(
+                    self.ctx.session, _tbl, values.get(_fk), self.ctx.org.id
+                )
         # Keeping the entry's own type stays allowed after a deactivation (#176).
         if values.get("entry_type_key") not in (None, entry.entry_type_key):
             await self._valid_entry_type(values["entry_type_key"])

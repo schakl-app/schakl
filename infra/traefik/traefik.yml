@@ -4,9 +4,9 @@ entryPoints:
   web:
     address: ":80"
 
-api:
-  insecure: true
-  dashboard: true
+# The dashboard/API is intentionally NOT enabled (audit F12): `api.insecure: true` served the full
+# routing topology and runtime config with no authentication on :8080. If you need the dashboard,
+# enable it behind an auth middleware on an internal-only entrypoint — never insecure + published.
 
 providers:
   file:

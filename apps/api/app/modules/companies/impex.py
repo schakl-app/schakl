@@ -18,7 +18,13 @@ from app.modules.companies.models import Company, CompanyStatus
 from app.modules.companies.schemas import CompanyCreate, CompanyUpdate
 from app.modules.companies.service import CompanyService
 
-_TEXT_FIELDS = ("name", "website", "invoice_email", "notes")
+_TEXT_FIELDS = (
+    "name", "website", "invoice_email", "notes",
+    # Billing identity (issue #11) — a client list from a bookkeeping package carries these.
+    "vat_number", "coc_number", "address_line1", "address_line2",
+    "postal_code", "city", "country",
+)
+_BILLING_FIELDS = _TEXT_FIELDS[4:]
 
 
 async def _fetch_page(
@@ -56,6 +62,7 @@ async def _create(ctx: RequestContext, values: dict[str, Any]) -> None:
             if values.get("status")
             else CompanyStatus.ACTIVE,
             custom=values.get("custom") or {},
+            **{key: values.get(key) for key in _BILLING_FIELDS},
         )
     )
 
@@ -90,6 +97,13 @@ COMPANY_IMPEX = ImpexDescriptor(
             clearable=False,
             options=tuple(status.value for status in CompanyStatus),
         ),
+        ImpexColumn("vat_number"),
+        ImpexColumn("coc_number"),
+        ImpexColumn("address_line1"),
+        ImpexColumn("address_line2"),
+        ImpexColumn("postal_code"),
+        ImpexColumn("city"),
+        ImpexColumn("country"),
         ImpexColumn("notes"),
     ),
     fetch_page=_fetch_page,

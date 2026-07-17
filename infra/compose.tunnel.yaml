@@ -12,7 +12,7 @@ name: schakl
 x-api-env: &api-env
   SCHAKL_DATABASE_URL: postgresql+asyncpg://${APP_DB_USER:-schakl_app}:${APP_DB_PASSWORD}@db:5432/${POSTGRES_DB:-schakl}
   SCHAKL_REDIS_URL: redis://redis:6379/0
-  SCHAKL_SECRET_KEY: ${SCHAKL_SECRET_KEY}
+  SCHAKL_SECRET_KEY: ${SCHAKL_SECRET_KEY:?SCHAKL_SECRET_KEY must be set (generate with: openssl rand -hex 32)}
   SCHAKL_BASE_DOMAIN: ${SCHAKL_BASE_DOMAIN}
   SCHAKL_ENVIRONMENT: ${SCHAKL_ENVIRONMENT:-production}
   # Cross-tenant admin surface (issue #26): off by default; instance owners only.

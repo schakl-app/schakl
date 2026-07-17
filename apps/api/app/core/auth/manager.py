@@ -53,4 +53,6 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
     async def on_after_request_verify(
         self, user: User, token: str, request: Request | None = None
     ) -> None:
-        logger.info("Verification requested for %s (token=%s)", user.email, token)
+        # Never log the raw verification token (audit F21): it is a bearer credential that
+        # completes email verification for the account. Log only the event.
+        logger.info("Verification requested for %s", user.email)

@@ -12,7 +12,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, Query
 
-from app.core.activity.registry import is_auditable
+from app.core.activity.registry import is_auditable, read_permission_for
 from app.core.activity.schemas import ActivityItem
 from app.core.activity.service import ActivityService
 from app.core.permissions.deps import require_permission
@@ -37,5 +37,11 @@ async def entity_activity(
 ) -> list[ActivityItem]:
     if not is_auditable(entity_type):
         return []
+    # A record's trail is only readable by someone who may read the record itself (audit F7):
+    # ``activity.read`` is a blanket grant, so require the entity's own module read permission on
+    # top of it. Types that opted in without one fall back to ``activity.read`` alone.
+    entity_read = read_permission_for(entity_type)
+    if entity_read is not None:
+        ctx.require(entity_read)
     items = await ActivityService(ctx).feed(entity_type, entity_id, limit)
     return [ActivityItem(**item) for item in items]

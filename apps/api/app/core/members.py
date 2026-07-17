@@ -27,7 +27,7 @@ from app.core.auth.users import get_user_manager
 from app.core.email.service import get_row as email_settings_row
 from app.core.models import Membership
 from app.core.permissions import audit
-from app.core.permissions.catalog import PRIVILEGE_ORDER, permission_keys
+from app.core.permissions.catalog import PRIVILEGE_ORDER, ROLE_OWNER, permission_keys
 from app.core.permissions.deps import no_permission_required, require_permission
 from app.core.permissions.models import MembershipRole
 from app.core.permissions.models import Role as RoleRow
@@ -108,6 +108,22 @@ def _system_role_key_or_422(key: str) -> str:
             fields={"role": "errors.validation"},
         )
     return key
+
+
+def _guard_owner_grant(ctx: RequestContext, role_key: str) -> None:
+    """Conferring the ``owner`` role requires role-administration power (audit F2).
+
+    ``owner`` is the sole role that stores ``*`` (full control). ``update_member_role`` and
+    ``invite_member`` are gated on ``members.member.write`` — *team* management, deliberately a
+    tier below the ``settings.roles.manage`` role machinery. Without this guard a holder of a
+    custom role carrying only ``members.member.write`` (a natural "office manager" grant) could
+    assign ``owner`` to themselves or an accomplice and escalate straight to the wildcard. Require
+    the role-administration capability specifically for the ``owner`` step, so team-management
+    alone can no longer mint an owner. A role manager (or owner) designating an owner stays legal —
+    that is intended and covered by ``test_change_role_and_last_role_manager_guard``.
+    """
+    if role_key == ROLE_OWNER and not ctx.can("settings.roles.manage"):
+        raise AppError("forbidden", "errors.forbidden", status_code=403)
 
 
 def _member_read(
@@ -280,6 +296,7 @@ async def invite_member(
         raise AppError("conflict", "errors.conflict", status_code=409)
 
     role_key = _system_role_key_or_422(payload.role)
+    _guard_owner_grant(ctx, role_key)
     membership = await create_membership(ctx.session, ctx.org.id, user.id, role_key)
     logger.info("Invited %s to org %s as %s", email, ctx.org.slug, role_key)
     await audit.record(
@@ -332,7 +349,9 @@ async def update_member_role(
 ) -> MemberRead:
     """Swap this membership's **system** role; any custom roles it also holds are untouched."""
     membership = await _membership_or_404(ctx, membership_id)
-    target = await role_by_key(ctx.session, ctx.org.id, _system_role_key_or_422(payload.role))
+    role_key = _system_role_key_or_422(payload.role)
+    _guard_owner_grant(ctx, role_key)
+    target = await role_by_key(ctx.session, ctx.org.id, role_key)
     if target is None:
         raise AppError("not_found", "errors.not_found", status_code=404)
 

@@ -25,6 +25,13 @@
     name?: string;
     website?: string | null;
     invoice_email?: string | null;
+    vat_number?: string | null;
+    coc_number?: string | null;
+    address_line1?: string | null;
+    address_line2?: string | null;
+    postal_code?: string | null;
+    city?: string | null;
+    country?: string | null;
     notes?: string | null;
     status?: string | null;
     /** Every employee working this client, the verantwoordelijke starred. Primary first. */
@@ -94,6 +101,87 @@
         class={inputClass}
       />
     </div>
+    <!-- Billing identity (issue #11): what an issued invoice snapshots (#207). -->
+    <fieldset class="sm:col-span-2">
+      <legend class="mb-1 text-sm font-medium text-neutral-700">
+        {t("companies.billing_heading")}
+      </legend>
+      <div class="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label for="{idPrefix}-vat" class="mb-1 block text-sm font-medium text-neutral-700">
+            {t("companies.vat_number")}
+          </label>
+          <input
+            id="{idPrefix}-vat"
+            name="vat_number"
+            value={company.vat_number ?? ""}
+            class={inputClass}
+          />
+        </div>
+        <div>
+          <label for="{idPrefix}-coc" class="mb-1 block text-sm font-medium text-neutral-700">
+            {t("companies.coc_number")}
+          </label>
+          <input
+            id="{idPrefix}-coc"
+            name="coc_number"
+            value={company.coc_number ?? ""}
+            class={inputClass}
+          />
+        </div>
+        <div>
+          <label for="{idPrefix}-address1" class="mb-1 block text-sm font-medium text-neutral-700">
+            {t("companies.address_line1")}
+          </label>
+          <input
+            id="{idPrefix}-address1"
+            name="address_line1"
+            value={company.address_line1 ?? ""}
+            class={inputClass}
+          />
+        </div>
+        <div>
+          <label for="{idPrefix}-address2" class="mb-1 block text-sm font-medium text-neutral-700">
+            {t("companies.address_line2")}
+          </label>
+          <input
+            id="{idPrefix}-address2"
+            name="address_line2"
+            value={company.address_line2 ?? ""}
+            class={inputClass}
+          />
+        </div>
+        <div>
+          <label for="{idPrefix}-zip" class="mb-1 block text-sm font-medium text-neutral-700">
+            {t("companies.postal_code")}
+          </label>
+          <input
+            id="{idPrefix}-zip"
+            name="postal_code"
+            value={company.postal_code ?? ""}
+            class={inputClass}
+          />
+        </div>
+        <div>
+          <label for="{idPrefix}-city" class="mb-1 block text-sm font-medium text-neutral-700">
+            {t("companies.city")}
+          </label>
+          <input id="{idPrefix}-city" name="city" value={company.city ?? ""} class={inputClass} />
+        </div>
+        <div>
+          <label for="{idPrefix}-country" class="mb-1 block text-sm font-medium text-neutral-700">
+            {t("companies.country")}
+          </label>
+          <input
+            id="{idPrefix}-country"
+            name="country"
+            maxlength="2"
+            value={company.country ?? ""}
+            class={inputClass}
+          />
+        </div>
+      </div>
+    </fieldset>
     <div>
       <label for="{idPrefix}-status" class="mb-1 block text-sm font-medium text-neutral-700">
         {t("companies.field.status")}

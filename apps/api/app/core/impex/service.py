@@ -56,6 +56,16 @@ _TRUE_WORDS = frozenset({"true", "ja", "yes", "1"})
 _FALSE_WORDS = frozenset({"false", "nee", "no", "0"})
 
 
+#: Leading characters a spreadsheet treats as the start of a formula/DDE. A text cell beginning
+#: with one is prefixed with an apostrophe so Excel/LibreOffice render it as text, not execute it
+#: (audit F10 — CSV injection). Only *text* is neutralised; numbers/dates format as themselves.
+_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _neutralize(text: str) -> str:
+    return f"'{text}" if text[:1] in _FORMULA_PREFIXES else text
+
+
 def _cell(value: Any) -> str:
     """Serialize one value for a CSV cell: ISO dates, plain numbers, ``true``/``false``."""
     if value is None:
@@ -65,9 +75,11 @@ def _cell(value: Any) -> str:
     if value is False:
         return "false"
     if isinstance(value, list):
-        return MULTI_VALUE_SEPARATOR.join(str(item) for item in value)
+        return _neutralize(MULTI_VALUE_SEPARATOR.join(str(item) for item in value))
     if isinstance(value, (datetime, date)):
         return value.isoformat()
+    if isinstance(value, str):
+        return _neutralize(value)
     return str(value)
 
 
