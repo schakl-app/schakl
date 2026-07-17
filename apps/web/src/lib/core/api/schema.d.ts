@@ -273,6 +273,209 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/2fa": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Auth:Twofactor.Status */
+        get: operations["auth_twofactor_status_api_v1_auth_2fa_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/2fa/backup-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Auth:Twofactor.Backup Codes
+         * @description A fresh set (shown once), invalidating every previous code. Costs a current TOTP code —
+         *     a stolen session alone must not be able to mint recovery codes.
+         */
+        post: operations["auth_twofactor_backup_codes_api_v1_auth_2fa_backup_codes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/2fa/challenge/sms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Auth:Twofactor.Challenge Sms
+         * @description Text a login code to the enrolled number — only for accounts that confirmed one.
+         */
+        post: operations["auth_twofactor_challenge_sms_api_v1_auth_2fa_challenge_sms_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/2fa/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Auth:Twofactor.Confirm
+         * @description A valid code from the freshly-scanned app is what turns 2FA on — and mints the backup
+         *     codes, returned exactly once.
+         */
+        post: operations["auth_twofactor_confirm_api_v1_auth_2fa_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/2fa/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Auth:Twofactor.Disable
+         * @description Turn 2FA off for the caller's own account. A **confirmed** setup costs the password
+         *     (a stolen session must not be able to strip the second factor); abandoning an unconfirmed
+         *     setup is free. Lost everything? That is what the org admin's reset is for (members.py).
+         */
+        post: operations["auth_twofactor_disable_api_v1_auth_2fa_disable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/2fa/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Auth:Twofactor.Setup
+         * @description Start (or restart) enrollment: mint a secret, return it as QR + manual key.
+         *
+         *     Idempotent while unconfirmed — every call rotates the pending secret, so an abandoned
+         *     tab's QR can never silently stay valid. A *confirmed* setup must be disabled first.
+         */
+        post: operations["auth_twofactor_setup_api_v1_auth_2fa_setup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/2fa/sms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Auth:Twofactor.Sms Disable
+         * @description Drop the SMS factor (TOTP + backup codes remain — never leaves the account factor-less).
+         */
+        delete: operations["auth_twofactor_sms_disable_api_v1_auth_2fa_sms_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/2fa/sms/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Auth:Twofactor.Sms Confirm */
+        post: operations["auth_twofactor_sms_confirm_api_v1_auth_2fa_sms_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/2fa/sms/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Auth:Twofactor.Sms Setup
+         * @description Register a number for SMS codes: it becomes usable only after echoing a code sent to it.
+         *     SMS is an *additional* factor on a confirmed TOTP setup, never the only one — a number can
+         *     be re-registered, but 2FA cannot start out SMS-only.
+         */
+        post: operations["auth_twofactor_sms_setup_api_v1_auth_2fa_sms_setup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/2fa/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Auth:Twofactor.Verify
+         * @description Redeem a login challenge with a code from any enrolled factor → session cookie.
+         */
+        post: operations["auth_twofactor_verify_api_v1_auth_2fa_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/forgot-password": {
         parameters: {
             query?: never;
@@ -3159,6 +3362,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/members/{membership_id}/two-factor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Reset Member Two Factor
+         * @description Reset a member's 2FA — the lost-phone escape hatch (docs/TWOFACTOR.md).
+         *
+         *     Deletes the enrollment outright (secret, backup codes, SMS number), so the account is a
+         *     plain password login again until the member re-enrolls; no secret is ever *read*. The user
+         *     identity is global (§5), so this genuinely clears their 2FA everywhere — but the reach is
+         *     tenant-scoped where it matters: the target is addressed by *membership*, and an admin of
+         *     another org has no membership id of theirs to name (404). Audited, like every trust change.
+         */
+        delete: operations["reset_member_two_factor_api_v1_members__membership_id__two_factor_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/meta/me": {
         parameters: {
             query?: never;
@@ -4853,6 +5082,28 @@ export interface paths {
         patch: operations["users_patch_current_user_api_v1_users_me_patch"];
         trace?: never;
     };
+    "/api/v1/users/me/email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Users:Change Email
+         * @description Change the caller's own sign-in address. Costs the current password; the new address
+         *     must be free (emails are unique case-insensitively and stored lowercase, like invites).
+         *     Verification state resets — the new address has never been proven.
+         */
+        post: operations["users_change_email_api_v1_users_me_email_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/{id}": {
         parameters: {
             query?: never;
@@ -5347,6 +5598,11 @@ export interface components {
             /** External Id */
             external_id: string;
         };
+        /** BackupCodesOut */
+        BackupCodesOut: {
+            /** Backup Codes */
+            backup_codes: string[];
+        };
         /** Body_auth_cookie_login_api_v1_auth_login_post */
         Body_auth_cookie_login_api_v1_auth_login_post: {
             /** Client Id */
@@ -5560,6 +5816,23 @@ export interface components {
             /** Triggers */
             triggers: components["schemas"]["TriggerInfo"][];
         };
+        /** ChallengeSms */
+        ChallengeSms: {
+            /** Challenge Token */
+            challenge_token: string;
+        };
+        /** ChallengeVerify */
+        ChallengeVerify: {
+            /** Challenge Token */
+            challenge_token: string;
+            /** Code */
+            code: string;
+            /**
+             * Method
+             * @default totp
+             */
+            method: string;
+        };
         /** ChannelCreate */
         ChannelCreate: {
             /**
@@ -5729,6 +6002,11 @@ export interface components {
             company_id: string | null;
             /** Revenue */
             revenue: number;
+        };
+        /** CodeIn */
+        CodeIn: {
+            /** Code */
+            code: string;
         };
         /** CommentCreate */
         CommentCreate: {
@@ -6416,6 +6694,14 @@ export interface components {
              */
             override_budget: boolean;
         };
+        /** DisableIn */
+        DisableIn: {
+            /**
+             * Password
+             * @default
+             */
+            password: string;
+        };
         /**
          * DocumentSend
          * @description POST /send: stamp ``sent_at`` and (by default) e-mail the document summary to the
@@ -6759,6 +7045,16 @@ export interface components {
             role_ids: string[];
             /** User Id */
             user_id: string;
+        };
+        /** EmailChange */
+        EmailChange: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Password */
+            password: string;
         };
         /**
          * EmailPrefRead
@@ -8860,6 +9156,21 @@ export interface components {
             /** Minutes */
             minutes: number;
         };
+        /**
+         * LoginChallenge
+         * @description What ``/auth/login`` returns instead of a cookie when a second factor is required.
+         */
+        LoginChallenge: {
+            /** Challenge Token */
+            challenge_token: string;
+            /** Methods */
+            methods: string[];
+            /**
+             * Two Factor Required
+             * @default true
+             */
+            two_factor_required: boolean;
+        };
         /** MarkAllResult */
         MarkAllResult: {
             /** Updated */
@@ -9002,6 +9313,11 @@ export interface components {
              * @default []
              */
             role_ids: string[];
+            /**
+             * Two Factor Enabled
+             * @default false
+             */
+            two_factor_enabled: boolean;
             /** User Id */
             user_id: string;
         };
@@ -10741,6 +11057,16 @@ export interface components {
         SetupStatus: {
             /** Needs Setup */
             needs_setup: boolean;
+        };
+        /** SmsSendOut */
+        SmsSendOut: {
+            /** Phone Masked */
+            phone_masked: string;
+        };
+        /** SmsSetupIn */
+        SmsSetupIn: {
+            /** Phone */
+            phone: string;
         };
         /** SourceMetrics */
         SourceMetrics: {
@@ -12516,6 +12842,40 @@ export interface components {
             /** Event */
             event: string;
         };
+        /** TwoFactorSetupOut */
+        TwoFactorSetupOut: {
+            /** Otpauth Url */
+            otpauth_url: string;
+            /** Qr Svg */
+            qr_svg: string;
+            /** Secret */
+            secret: string;
+        };
+        /** TwoFactorSmsInfo */
+        TwoFactorSmsInfo: {
+            /** Confirmed */
+            confirmed: boolean;
+            /** Phone Masked */
+            phone_masked: string;
+        };
+        /** TwoFactorStatus */
+        TwoFactorStatus: {
+            /**
+             * Backup Codes Remaining
+             * @default 0
+             */
+            backup_codes_remaining: number;
+            /** Enabled */
+            enabled: boolean;
+            /** Pending */
+            pending: boolean;
+            sms?: components["schemas"]["TwoFactorSmsInfo"] | null;
+            /**
+             * Sms Available
+             * @default false
+             */
+            sms_available: boolean;
+        };
         /** UnbilledEntry */
         UnbilledEntry: {
             /** Description */
@@ -13813,6 +14173,291 @@ export interface operations {
             };
         };
     };
+    auth_twofactor_status_api_v1_auth_2fa_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TwoFactorStatus"];
+                };
+            };
+        };
+    };
+    auth_twofactor_backup_codes_api_v1_auth_2fa_backup_codes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CodeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupCodesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    auth_twofactor_challenge_sms_api_v1_auth_2fa_challenge_sms_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChallengeSms"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmsSendOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    auth_twofactor_confirm_api_v1_auth_2fa_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CodeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupCodesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    auth_twofactor_disable_api_v1_auth_2fa_disable_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DisableIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    auth_twofactor_setup_api_v1_auth_2fa_setup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TwoFactorSetupOut"];
+                };
+            };
+        };
+    };
+    auth_twofactor_sms_disable_api_v1_auth_2fa_sms_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    auth_twofactor_sms_confirm_api_v1_auth_2fa_sms_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CodeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    auth_twofactor_sms_setup_api_v1_auth_2fa_sms_setup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SmsSetupIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmsSendOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    auth_twofactor_verify_api_v1_auth_2fa_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChallengeVerify"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     reset_forgot_password_api_v1_auth_forgot_password_post: {
         parameters: {
             query?: never;
@@ -13859,30 +14504,28 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Successful Response */
+            /** @description Password accepted, second factor required — no cookie yet. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["LoginChallenge"];
                 };
             };
-            /** @description No Content */
+            /** @description Logged in; session cookie set. */
             204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description Bad Request */
+            /** @description Bad credentials or inactive user. */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["ErrorModel"];
-                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -20576,6 +21219,35 @@ export interface operations {
             };
         };
     };
+    reset_member_two_factor_api_v1_members__membership_id__two_factor_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                membership_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     me_api_v1_meta_me_get: {
         parameters: {
             query?: never;
@@ -25069,6 +25741,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    users_change_email_api_v1_users_me_email_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserRead"];
+                };
             };
             /** @description Validation Error */
             422: {
