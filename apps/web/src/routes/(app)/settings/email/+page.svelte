@@ -6,7 +6,13 @@
 
   let { data, form } = $props();
 
-  const PROVIDERS = ["smtp", "brevo", "sendgrid", "smtp2go"] as const;
+  // "instance" = the operator-provided transport (epic #199), offered only while the
+  // instance actually has one configured.
+  const PROVIDERS = $derived(
+    data.instanceEmailAvailable
+      ? (["instance", "smtp", "brevo", "sendgrid", "smtp2go"] as const)
+      : (["smtp", "brevo", "sendgrid", "smtp2go"] as const),
+  );
 
   // "" = keep showing the stored provider; a click switches the form's field set.
   let chosen = $state("");
@@ -25,9 +31,7 @@
   const templateKinds = ["invite", "reset"] as const;
   const templatesByKind = (kind: string) =>
     (data.templates?.templates ?? []).filter((tpl) => tpl.kind === kind);
-  const variablesHint = $derived(
-    (data.templates?.variables ?? []).map((v) => `{${v}}`).join("  "),
-  );
+  const variablesHint = $derived((data.templates?.variables ?? []).map((v) => `{${v}}`).join("  "));
 </script>
 
 <svelte:head>
@@ -79,20 +83,26 @@
           class={inputClass}
         />
       </div>
-      <div>
-        <label for="email-from-email" class="mb-1 block text-sm text-text"
-          >{t("settings.email.from_email")}</label
-        >
-        <input
-          id="email-from-email"
-          name="from_email"
-          type="email"
-          required
-          placeholder="noreply@bureau.nl"
-          value={data.settings?.from_email ?? ""}
-          class={inputClass}
-        />
-      </div>
+      {#if provider !== "instance"}
+        <div>
+          <label for="email-from-email" class="mb-1 block text-sm text-text"
+            >{t("settings.email.from_email")}</label
+          >
+          <input
+            id="email-from-email"
+            name="from_email"
+            type="email"
+            required
+            placeholder="noreply@bureau.nl"
+            value={data.settings?.from_email ?? ""}
+            class={inputClass}
+          />
+        </div>
+      {:else}
+        <div class="flex items-end">
+          <p class="text-sm text-text-muted">{t("settings.email.instance_hint")}</p>
+        </div>
+      {/if}
       <div class="sm:col-span-2">
         <label for="email-reply-to" class="mb-1 block text-sm text-text"
           >{t("settings.email.reply_to")}</label
@@ -107,7 +117,9 @@
       </div>
     </div>
 
-    {#if provider === "smtp"}
+    {#if provider === "instance"}
+      <!-- No credentials to enter: the transport is the instance's own (epic #199). -->
+    {:else if provider === "smtp"}
       <div class="grid gap-4 sm:grid-cols-2">
         <div>
           <label for="email-host" class="mb-1 block text-sm text-text"
@@ -242,14 +254,18 @@
     <p class="mt-1 text-sm text-text-muted">{t("settings.email.templates.subtitle")}</p>
 
     {#if !data.settings}
-      <p class="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-200">
+      <p
+        class="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-200"
+      >
         {t("settings.email.templates.no_transport")}
       </p>
     {/if}
 
     {#each templateKinds as kind (kind)}
       <div class="mt-5">
-        <h3 class="text-sm font-semibold text-text">{t(`settings.email.templates.kind.${kind}`)}</h3>
+        <h3 class="text-sm font-semibold text-text">
+          {t(`settings.email.templates.kind.${kind}`)}
+        </h3>
         <div class="mt-2 grid gap-4 md:grid-cols-2">
           {#each templatesByKind(kind) as tpl (tpl.locale)}
             <form

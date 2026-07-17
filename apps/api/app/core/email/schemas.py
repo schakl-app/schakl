@@ -6,15 +6,19 @@ from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field
 
-EmailProvider = Literal["smtp", "brevo", "sendgrid", "smtp2go"]
+EmailProvider = Literal["smtp", "brevo", "sendgrid", "smtp2go", "instance"]
 
 
 class EmailSettingsWrite(BaseModel):
     """Upsert payload. Secret fields left empty on an update keep the stored value
-    (as long as the provider is unchanged) — the API never plays the secret back."""
+    (as long as the provider is unchanged) — the API never plays the secret back.
+
+    ``provider="instance"`` (the operator-provided transport) needs no ``from_email`` —
+    mail leaves from the instance's own address; the handler enforces presence for every
+    other provider."""
 
     provider: EmailProvider
-    from_email: EmailStr
+    from_email: EmailStr | None = None
     from_name: str = Field(min_length=1, max_length=255)
     reply_to: EmailStr | None = None
     # smtp

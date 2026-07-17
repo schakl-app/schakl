@@ -75,6 +75,16 @@ _CORE_CRON_JOBS = [
     cron(flush_api_key_last_used, minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55}),
 ]
 
+if settings.is_cloud:
+    # Cloud posture only (epic #199): trial enforcement and the custom-domain ingress drift
+    # guard. Imported lazily so a self-hosted worker never loads the business-licensed code.
+    from app.core.cloud.jobs import cloud_expire_trials, cloud_sync_ingress
+
+    _CORE_CRON_JOBS += [
+        cron(cloud_expire_trials, hour=3, minute=30),
+        cron(cloud_sync_ingress, hour=3, minute=45),
+    ]
+
 
 class WorkerSettings:
     functions = [heartbeat] + _collect_functions()

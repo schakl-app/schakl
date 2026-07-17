@@ -9,8 +9,11 @@ from app.core.mixins import OrgScopedMixin, TimestampMixin, UUIDPrimaryKeyMixin
 from app.db import Base
 
 #: Supported transports. The three named services go through their official HTTP APIs
-#: (delivery feedback, no port juggling); ``smtp`` is the bring-your-own-relay case.
-EMAIL_PROVIDERS: tuple[str, ...] = ("smtp", "brevo", "sendgrid", "smtp2go")
+#: (delivery feedback, no port juggling); ``smtp`` is the bring-your-own-relay case;
+#: ``instance`` is the explicit choice for the operator-provided transport (config.py
+#: ``SCHAKL_INSTANCE_EMAIL_*`` — the cloud "included e-mail", epic #199) and stores no
+#: credentials of its own.
+EMAIL_PROVIDERS: tuple[str, ...] = ("smtp", "brevo", "sendgrid", "smtp2go", "instance")
 
 
 class EmailSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):

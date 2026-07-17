@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +21,9 @@ from app.core.auth.models import User
 from app.core.auth.users import current_active_user
 from app.db import async_session_maker
 from app.errors import AppError
+
+if TYPE_CHECKING:
+    from app.core.models import Org
 
 
 @dataclass
@@ -32,6 +36,20 @@ class InstanceContext:
 
     user: User
     session: AsyncSession
+
+
+async def ensure_org_data_access(ctx: InstanceContext, org: Org) -> None:
+    """Run before the instance surface reads *tenant data* of one org (detail, export,
+    impersonation, module config). Lifecycle transitions (suspend/activate/delete) stay
+    outside it on purpose: the platform must be able to enforce billing without consent.
+
+    On a self-hosted box the superuser + flag gate above is the whole policy; the cloud
+    posture (epic #199) additionally demands an org-issued, claimed service PIN. The import
+    is lazy and flag-guarded so core never loads the business-licensed package elsewhere."""
+    if settings.is_cloud:
+        from app.core.cloud.access import ensure_cloud_org_access
+
+        await ensure_cloud_org_access(ctx, org)
 
 
 async def require_instance_admin(

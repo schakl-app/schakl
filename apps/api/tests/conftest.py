@@ -67,6 +67,7 @@ _DOMAIN_TABLES = (
     "api_keys, service_accounts, "
     "email_settings, org_email_templates, org_auth_settings, "
     "role_audit_log, membership_roles, role_permissions, roles, memberships, org_settings, "
+    "service_access_grants, instance_api_keys, "
     "instance_audit_log, user_two_factor, users, orgs"
 )
 _ENABLED_MODULES = [

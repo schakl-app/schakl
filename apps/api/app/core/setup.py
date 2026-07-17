@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Request
 from pwdlib import PasswordHash
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import text
+from sqlalchemy import func, select, text
 
 from app.config import settings
 from app.core.auth.models import User
@@ -50,8 +50,10 @@ class SetupStatus(BaseModel):
 
 
 class SetupRequest(BaseModel):
-    org_name: str = Field(min_length=1, max_length=255)
-    slug: str = Field(min_length=1, max_length=63)
+    # Optional on cloud (epic #199): the wizard creates only the instance owner there —
+    # orgs arrive over provisioning. Self-host validates their presence in the handler.
+    org_name: str | None = Field(default=None, min_length=1, max_length=255)
+    slug: str | None = Field(default=None, min_length=1, max_length=63)
     brand_name: str | None = Field(default=None, max_length=255)
     primary_color: str | None = Field(default=None, pattern=_HEX_COLOR)
     accent_color: str | None = Field(default=None, pattern=_HEX_COLOR)
@@ -68,14 +70,59 @@ class SetupResult(BaseModel):
     host: str | None
 
 
+async def setup_needed() -> bool:
+    """Whether first-run setup still has to happen.
+
+    Self-host: until the first org exists. Cloud (epic #199): the wizard creates only the
+    **instance owner** — orgs come from provisioning — so the question is whether a
+    superuser exists yet.
+    """
+    if settings.demo_mode:
+        return False
+    async with async_session_maker() as session:
+        if settings.is_cloud:
+            count = await session.scalar(
+                select(func.count()).select_from(User).where(User.is_superuser.is_(True))
+            )
+            return (count or 0) == 0
+        return await repo.org_count(session) == 0
+
+
 @router.get("/status", response_model=SetupStatus)
 async def setup_status() -> SetupStatus:
     # In demo mode the seeder owns org creation (#141) — the wizard must never run, so it must
-    # never present itself as needed either.
-    if settings.demo_mode:
-        return SetupStatus(needs_setup=False)
+    # never present itself as needed either (setup_needed already says false there).
+    return SetupStatus(needs_setup=await setup_needed())
+
+
+async def _run_cloud_setup(payload: SetupRequest, request: Request) -> SetupResult:
+    """Cloud first-run: mint the instance owner, nothing else. No org exists on the apex —
+    the console and the provisioning API take it from here."""
     async with async_session_maker() as session:
-        return SetupStatus(needs_setup=await repo.org_count(session) == 0)
+        await session.execute(text("SELECT pg_advisory_xact_lock(hashtext('schakl_setup'))"))
+        count = await session.scalar(
+            select(func.count()).select_from(User).where(User.is_superuser.is_(True))
+        )
+        if (count or 0) > 0:
+            raise AppError("setup_already_done", "errors.setup_already_done", status_code=409)
+        owner = User(
+            email=payload.owner_email.lower(),
+            hashed_password=_password_hash.hash(payload.owner_password),
+            full_name=payload.owner_full_name,
+            is_active=True,
+            is_verified=True,
+            is_superuser=True,
+        )
+        session.add(owner)
+        await session.flush()
+        await audit.record(
+            session,
+            actor=owner,
+            action="setup",
+            detail={"host": request_hostname(request), "deployment": "cloud"},
+        )
+        await session.commit()
+        return SetupResult(slug="", host=request_hostname(request))
 
 
 @router.post("", response_model=SetupResult, status_code=201)
@@ -83,6 +130,15 @@ async def run_setup(payload: SetupRequest, request: Request) -> SetupResult:
     if settings.demo_mode:
         # The demo seeder creates the one org; a visitor must not run the first-run wizard (#141).
         raise AppError("demo_blocked", "errors.demo_blocked", status_code=403)
+    if settings.is_cloud:
+        return await _run_cloud_setup(payload, request)
+    if not payload.org_name or not payload.slug:
+        raise AppError(
+            "validation",
+            "errors.validation",
+            status_code=422,
+            fields={"org_name": "errors.required", "slug": "errors.required"},
+        )
     slug = org_service.validate_slug(payload.slug)
     locale = payload.locale or settings.default_locale
     if locale not in settings.supported_locales:

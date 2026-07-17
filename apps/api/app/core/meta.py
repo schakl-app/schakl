@@ -109,6 +109,12 @@ class ModulesMeta(BaseModel):
     # endpoint. The modules settings screen renders its locked/unlocked badges from these.
     licensed_modules: list[str] = Field(default_factory=list)
     entitled_modules: list[str] = Field(default_factory=list)
+    # Instance posture (epic #199): "self_hosted" or "cloud". The web routes the apex host
+    # to the instance console (instead of a tenant) only on cloud.
+    deployment: str = "self_hosted"
+    # The instance-level e-mail transport is configured (config.py): Instellingen → E-mail
+    # offers "included e-mail" and an org without its own transport falls back to it.
+    instance_email_available: bool = False
 
 
 class MeInfo(BaseModel):
@@ -379,4 +385,46 @@ async def modules(request: Request) -> ModulesMeta:
         entitled_modules=sorted(
             name for name, sku in module_skus.items() if state.writable(sku)
         ),
+        deployment=settings.deployment,
+        instance_email_available=settings.instance_email_available,
+    )
+
+
+class InstanceMeta(BaseModel):
+    """What the web needs about the *instance* on a host no org resolves on (epic #199):
+    whether this deployment is cloud, whether the request host is the instance-management
+    host (the base domain), and whether first-run setup still has to happen."""
+
+    deployment: str
+    is_instance_host: bool
+    needs_setup: bool
+    base_domain: str
+
+
+def is_instance_host(host: str | None) -> bool:
+    """The apex (and its www alias) of a cloud install serves the instance console —
+    deliberately never a tenant (an org slug cannot be empty or "www", see §5)."""
+    if not settings.is_cloud or not host:
+        return False
+    base = settings.base_domain.lower()
+    return host in (base, f"www.{base}")
+
+
+@router.get(
+    "/instance",
+    response_model=InstanceMeta,
+    dependencies=[
+        no_permission_required("instance posture; the web shell routes the apex host on it")
+    ],
+)
+async def deployment_meta(request: Request) -> InstanceMeta:
+    # Named "deployment", not "instance": the MCP tool surface (§12) hides the operator
+    # surface by name, and this endpoint is public posture data, not operator tooling.
+    from app.core.setup import setup_needed
+
+    return InstanceMeta(
+        deployment=settings.deployment,
+        is_instance_host=is_instance_host(request_hostname(request)),
+        needs_setup=await setup_needed(),
+        base_domain=settings.base_domain,
     )

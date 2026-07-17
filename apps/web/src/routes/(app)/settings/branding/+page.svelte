@@ -313,6 +313,22 @@
             <dd class="break-all">{data.domain.txt_record_value}</dd>
           </div>
         </dl>
+        {#if data.domain.cname_target}
+          <!-- Cloud (#202): traffic + automatic TLS need the CNAME besides the TXT proof. -->
+          <p class="mt-3 text-xs text-text-muted">
+            {t("settings.branding.domain.cname_instructions")}
+          </p>
+          <dl class="mt-1 space-y-1 font-mono text-xs text-text">
+            <div class="flex gap-2">
+              <dt class="shrink-0 text-text-muted">CNAME</dt>
+              <dd class="break-all">{data.domain.pending_domain}</dd>
+            </div>
+            <div class="flex gap-2">
+              <dt class="shrink-0 text-text-muted">→</dt>
+              <dd class="break-all">{data.domain.cname_target}</dd>
+            </div>
+          </dl>
+        {/if}
         <div class="mt-3 flex gap-2">
           <form method="POST" action="?/verifyDomain" use:enhance>
             <button

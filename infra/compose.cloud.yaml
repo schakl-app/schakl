@@ -1,0 +1,82 @@
+# Cloud deployment overlay (epic #199, docs/CLOUD.md). Business-licensed posture:
+#
+#   docker compose -f infra/compose.yaml -f infra/compose.cloud.yaml up -d
+#
+# What it changes against the self-host stack:
+#   - SCHAKL_DEPLOYMENT=cloud on api + worker (service PIN, provisioning API, console);
+#   - Traefik terminates TLS: :443 with the operator's Cloudflare ORIGIN certificate for
+#     `<base_domain>` + `*.<base_domain>` (put origin.pem/origin.key in infra/certs/, or
+#     point SCHAKL_ORIGIN_CERT_DIR elsewhere), and a Let's Encrypt resolver for verified
+#     customer CNAME domains (#202);
+#   - a shared `ingress-dynamic` volume: the API writes custom-domains.yml (one router pair
+#     per VERIFIED custom domain), Traefik's file provider watches the same directory;
+#   - optional instance-provided e-mail (the "included e-mail" orgs may choose) via the
+#     SCHAKL_INSTANCE_EMAIL_* pass-through.
+#
+# Static Traefik config moves from traefik.yml to CLI flags here because ACME needs an
+# operator value (SCHAKL_ACME_EMAIL) and Traefik does not expand env vars in config files.
+
+x-cloud-env: &cloud-env
+  SCHAKL_DEPLOYMENT: cloud
+  SCHAKL_AUTH_COOKIE_SECURE: "true"
+  SCHAKL_CLOUD_INGRESS_DIR: /data/ingress
+  SCHAKL_CLOUD_TRIAL_DAYS: ${SCHAKL_CLOUD_TRIAL_DAYS:-14}
+  SCHAKL_CLOUD_SERVICE_PIN_HOURS: ${SCHAKL_CLOUD_SERVICE_PIN_HOURS:-24}
+  SCHAKL_CLOUD_CNAME_TARGET: ${SCHAKL_CLOUD_CNAME_TARGET:-}
+  # Instance-provided e-mail (optional; leave disabled to force bring-your-own transports).
+  SCHAKL_INSTANCE_EMAIL_ENABLED: ${SCHAKL_INSTANCE_EMAIL_ENABLED:-false}
+  SCHAKL_INSTANCE_EMAIL_PROVIDER: ${SCHAKL_INSTANCE_EMAIL_PROVIDER:-smtp}
+  SCHAKL_INSTANCE_EMAIL_FROM: ${SCHAKL_INSTANCE_EMAIL_FROM:-}
+  SCHAKL_INSTANCE_EMAIL_FROM_NAME: ${SCHAKL_INSTANCE_EMAIL_FROM_NAME:-}
+  SCHAKL_INSTANCE_EMAIL_REPLY_TO: ${SCHAKL_INSTANCE_EMAIL_REPLY_TO:-}
+  SCHAKL_INSTANCE_EMAIL_HOST: ${SCHAKL_INSTANCE_EMAIL_HOST:-}
+  SCHAKL_INSTANCE_EMAIL_PORT: ${SCHAKL_INSTANCE_EMAIL_PORT:-587}
+  SCHAKL_INSTANCE_EMAIL_SECURITY: ${SCHAKL_INSTANCE_EMAIL_SECURITY:-starttls}
+  SCHAKL_INSTANCE_EMAIL_USERNAME: ${SCHAKL_INSTANCE_EMAIL_USERNAME:-}
+  SCHAKL_INSTANCE_EMAIL_PASSWORD: ${SCHAKL_INSTANCE_EMAIL_PASSWORD:-}
+  SCHAKL_INSTANCE_EMAIL_API_KEY: ${SCHAKL_INSTANCE_EMAIL_API_KEY:-}
+
+services:
+  api:
+    environment:
+      <<: *cloud-env
+    volumes:
+      - ingress-dynamic:/data/ingress
+
+  worker:
+    environment:
+      <<: *cloud-env
+    volumes:
+      - ingress-dynamic:/data/ingress
+
+  traefik:
+    command:
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--api.insecure=true"
+      - "--api.dashboard=true"
+      - "--certificatesresolvers.letsencrypt.acme.email=${SCHAKL_ACME_EMAIL:?set SCHAKL_ACME_EMAIL for Let's Encrypt}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--providers.file.directory=/etc/traefik-dynamic"
+      - "--providers.file.watch=true"
+      - "--log.level=INFO"
+    ports:
+      - "${TRAEFIK_HTTP_PORT:-80}:80"
+      - "${TRAEFIK_HTTPS_PORT:-443}:443"
+      - "${TRAEFIK_DASHBOARD_PORT:-8080}:8080"
+    volumes:
+      - ./traefik:/etc/traefik:ro,z
+      # The watched dynamic directory: the API-generated custom-domains.yml lives on the
+      # shared volume; the static cloud routing is bind-mounted into it as 00-base.yml.
+      - ingress-dynamic:/etc/traefik-dynamic:ro
+      - ./traefik/dynamic.cloud.yml:/etc/traefik-dynamic/00-base.yml:ro,z
+      # Cloudflare origin certificate for <base_domain> + *.<base_domain>.
+      - ${SCHAKL_ORIGIN_CERT_DIR:-./certs}:/certs:ro,z
+      - letsencrypt-data:/letsencrypt
+
+volumes:
+  ingress-dynamic:
+  letsencrypt-data:

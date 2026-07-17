@@ -11,15 +11,18 @@ v3.0 (see [LICENSE](LICENSE)).
 The directories of modules that declare a `sku` on their `ModuleDescriptor` (issue #137),
 and their web counterparts — currently:
 
+- `apps/api/app/core/cloud/`
 - `apps/api/app/core/mcp/`
 - `apps/api/app/modules/automation/`
 - `apps/api/app/modules/google/`
 - `apps/api/app/modules/leave/`
 - `apps/api/app/modules/subscriptions/`
+- `apps/web/src/lib/cloud/`
 - `apps/web/src/lib/modules/automation/`
 - `apps/web/src/lib/modules/google/`
 - `apps/web/src/lib/modules/leave/`
 - `apps/web/src/lib/modules/subscriptions/`
+- `apps/web/src/routes/(cloud)/`
 - `apps/web/src/routes/(app)/leave/`
 - `apps/web/src/routes/(app)/subscriptions/`
 - `apps/web/src/routes/(app)/settings/automation/`

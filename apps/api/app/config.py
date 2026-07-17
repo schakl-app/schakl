@@ -190,6 +190,45 @@ class Settings(BaseSettings):
     # Upper bound for a single impersonation grant; every grant is audited and time-boxed.
     impersonation_max_minutes: int = 60
 
+    # --- Cloud deployment (epic #199; business-licensed — see LICENSE-COMMERCIAL.md) ---
+    # An instance *posture* like demo mode: "self_hosted" (default) or "cloud". A cloud
+    # install runs many paying orgs on one stack: the instance-management surface lives on
+    # the base domain (no org resolves there), orgs are provisioned over the API, and the
+    # instance owner needs an org-issued service PIN before touching tenant data.
+    deployment: str = "self_hosted"
+    # How long an org-issued service PIN grants the instance owner access to that org's
+    # data (hours). The org can revoke earlier at any time.
+    cloud_service_pin_hours: int = 24
+    # Default trial length for orgs provisioned with plan="trial" (days); a provisioning
+    # call may override per org, and plan="unlimited" never expires.
+    cloud_trial_days: int = 14
+    # Directory the API writes Traefik dynamic-config fragments to (one router per verified
+    # custom domain, Let's Encrypt certResolver). Unset = ingress sync off. In the cloud
+    # Compose overlay this is a volume shared read-only with Traefik's file provider.
+    cloud_ingress_dir: str | None = None
+    # The DNS target tenants point their custom-domain CNAME at (shown in the domain UI on
+    # cloud). Empty = derived as "edge.<base_domain>".
+    cloud_cname_target: str | None = None
+
+    # --- Instance-provided e-mail (cloud "included e-mail"; usable self-host too) ---
+    # When enabled, an org without its own transport sends through this instance-level
+    # transport (from the instance's own address — SPF/DKIM belong to the operator's
+    # domain), and Instellingen → E-mail offers "included e-mail" as an explicit choice.
+    # Same providers as the per-org settings (#17).
+    instance_email_enabled: bool = False
+    instance_email_provider: str = "smtp"  # smtp | brevo | sendgrid | smtp2go
+    instance_email_from: str | None = None
+    instance_email_from_name: str = ""
+    instance_email_reply_to: str | None = None
+    # smtp
+    instance_email_host: str | None = None
+    instance_email_port: int = 587
+    instance_email_security: str = "starttls"  # starttls | ssl | none
+    instance_email_username: str | None = None
+    instance_email_password: str | None = None
+    # brevo / sendgrid / smtp2go
+    instance_email_api_key: str | None = None
+
     # --- Public demo mode (issue #141) ---
     # An instance posture, like ``instance_admin_enabled``: off by default. When ``true`` this is
     # a *publicly writable* instance, so it forces the safe values below regardless of the rest of
@@ -199,6 +238,20 @@ class Settings(BaseSettings):
     # How often the demo org is wiped back to its golden snapshot (minutes). Hourly by default —
     # a mid-session reset only costs a visitor their toy edits.
     demo_reset_minutes: int = 60
+
+    @model_validator(mode="after")
+    def _force_cloud_posture(self) -> Settings:
+        """Cloud is an instance posture (epic #199). The instance-management surface is the
+        whole point of the deployment, so the flag that hides it on single-tenant boxes is
+        forced on. Runs before ``_force_demo_posture`` so a (nonsensical) demo+cloud combo
+        resolves to the demo's stricter posture."""
+        if self.deployment not in ("self_hosted", "cloud"):
+            raise ValueError(
+                f"SCHAKL_DEPLOYMENT must be 'self_hosted' or 'cloud', got {self.deployment!r}"
+            )
+        if self.deployment == "cloud":
+            self.instance_admin_enabled = True
+        return self
 
     @model_validator(mode="after")
     def _force_demo_posture(self) -> Settings:
@@ -242,6 +295,20 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment.lower() in {"production", "prod"}
+
+    @property
+    def is_cloud(self) -> bool:
+        """True on a multi-org cloud install (epic #199) — business-licensed posture."""
+        return self.deployment == "cloud"
+
+    @property
+    def instance_email_available(self) -> bool:
+        """The instance-level transport is configured well enough to offer/send."""
+        if not self.instance_email_enabled or not self.instance_email_from:
+            return False
+        if self.instance_email_provider == "smtp":
+            return bool(self.instance_email_host)
+        return bool(self.instance_email_api_key)
 
     @property
     def is_stamped_build(self) -> bool:

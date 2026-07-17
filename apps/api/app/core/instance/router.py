@@ -16,7 +16,11 @@ from sqlalchemy import select
 
 from app.core.auth.models import User
 from app.core.instance import audit, portability, repo, service
-from app.core.instance.guard import InstanceContext, require_instance_admin
+from app.core.instance.guard import (
+    InstanceContext,
+    ensure_org_data_access,
+    require_instance_admin,
+)
 from app.core.instance.impersonation import (
     IMPERSONATION_COOKIE,
     clear_grant_cookie,
@@ -55,6 +59,9 @@ class OrgSummary(BaseModel):
     custom_domain: str | None
     custom_domain_verified: bool
     pending_domain: str | None
+    # Cloud plan (epic #199); both None on self-host / unmanaged orgs.
+    plan: str | None = None
+    trial_ends_at: datetime | None = None
 
 
 class OrgMember(BaseModel):
@@ -140,6 +147,8 @@ def _summary(org: Org) -> OrgSummary:
         custom_domain=org.custom_domain,
         custom_domain_verified=org.custom_domain_verified_at is not None,
         pending_domain=org.pending_domain,
+        plan=org.plan,
+        trial_ends_at=org.trial_ends_at,
     )
 
 
@@ -182,6 +191,8 @@ async def org_detail(
     org_id: uuid.UUID, ctx: InstanceContext = Depends(require_instance_admin)
 ) -> OrgDetail:
     org = await _org_or_404(ctx, org_id)
+    # Tenant data (members, settings) — on cloud this is where the service PIN bites (#199).
+    await ensure_org_data_access(ctx, org)
     # Settings and memberships are RLS-forced: bind the GUC to this one org to read them.
     await set_current_org(ctx.session, org.id)
     org_settings = await ctx.session.scalar(
@@ -279,6 +290,7 @@ async def update_org_modules(
     ctx: InstanceContext = Depends(require_instance_admin),
 ) -> OrgDetail:
     org = await _org_or_404(ctx, org_id)
+    await ensure_org_data_access(ctx, org)
     await service.set_org_modules(ctx.session, ctx.user, org, payload.enabled_modules)
     return await org_detail(org_id, ctx)
 
@@ -291,6 +303,7 @@ async def export_org(
     org_id: uuid.UUID, ctx: InstanceContext = Depends(require_instance_admin)
 ) -> dict[str, Any]:
     org = await _org_or_404(ctx, org_id)
+    await ensure_org_data_access(ctx, org)
     payload = await portability.export_org(ctx.session, org)
     org.exported_at = datetime.now(UTC)
     await ctx.session.flush()
@@ -325,6 +338,7 @@ async def impersonate(
     ctx: InstanceContext = Depends(require_instance_admin),
 ) -> ImpersonateResponse:
     org = await _org_or_404(ctx, org_id)
+    await ensure_org_data_access(ctx, org)
     if org.status != OrgStatus.ACTIVE.value:
         raise AppError("conflict", "errors.conflict", status_code=409)
     await set_current_org(ctx.session, org.id)

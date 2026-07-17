@@ -40,10 +40,32 @@ class DomainStatus(BaseModel):
     verification_token: str | None
     txt_record_name: str | None
     txt_record_value: str | None
+    # Cloud (#202): where the tenant points their CNAME so traffic reaches this instance
+    # (TLS is issued automatically once verified). None on self-host — routing there is
+    # the operator's own ingress concern.
+    cname_target: str | None = None
 
 
 class DomainClaim(BaseModel):
     domain: str = Field(min_length=4, max_length=255)
+
+
+def _cname_target() -> str | None:
+    if not settings.is_cloud:
+        return None
+    from app.core.cloud.ingress import cname_target
+
+    return cname_target()
+
+
+async def _sync_cloud_ingress(ctx: RequestContext) -> None:
+    """Keep the Traefik custom-domain fragment in step with a verify/clear (#202).
+    No-op on self-host; never fails the request (sync_ingress logs and swallows)."""
+    if not settings.is_cloud:
+        return
+    from app.core.cloud.ingress import sync_ingress
+
+    await sync_ingress(ctx.session)
 
 
 def _status(ctx: RequestContext) -> DomainStatus:
@@ -57,6 +79,7 @@ def _status(ctx: RequestContext) -> DomainStatus:
             f"{_CHALLENGE_PREFIX}.{org.pending_domain}" if org.pending_domain else None
         ),
         txt_record_value=org.domain_verification_token,
+        cname_target=_cname_target(),
     )
 
 
@@ -127,6 +150,7 @@ async def verify_domain(ctx: RequestContext = Depends(require_context)) -> Domai
         ctx.session, actor=ctx.user, action="domain.verify", org=org,
         detail={"domain": org.custom_domain},
     )
+    await _sync_cloud_ingress(ctx)
     return _status(ctx)
 
 
@@ -149,4 +173,5 @@ async def clear_domain(ctx: RequestContext = Depends(require_context)) -> Domain
         ctx.session, actor=ctx.user, action="domain.clear", org=org,
         detail={"domain": cleared},
     )
+    await _sync_cloud_ingress(ctx)
     return _status(ctx)

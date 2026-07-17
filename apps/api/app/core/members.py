@@ -24,7 +24,7 @@ from sqlalchemy import func, select
 from app.core.auth import twofactor
 from app.core.auth.models import User
 from app.core.auth.users import get_user_manager
-from app.core.email.service import get_row as email_settings_row
+from app.core.email.service import email_configured
 from app.core.models import Membership
 from app.core.permissions import audit
 from app.core.permissions.catalog import PRIVILEGE_ORDER, ROLE_OWNER, permission_keys
@@ -312,7 +312,9 @@ async def invite_member(
         # The welcome mail is a set-password link riding the reset-token flow (#161). A
         # missing transport is reported, never silently swallowed — the settings hint that
         # pointed at a flow that didn't exist is exactly the failure mode to avoid.
-        if await email_settings_row(ctx.session, ctx.org.id) is None:
+        # The instance-provided transport counts as configured (epic #199) — the send seam
+        # falls back to it for an org without its own row.
+        if not await email_configured(ctx.session, ctx.org.id):
             member.invite_email_sent = False
             member.invite_email_error = "errors.email_not_configured"
         else:
