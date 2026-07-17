@@ -23,6 +23,8 @@ export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const company_id = event.params.id;
   const range = event.url.searchParams.get("range") ?? "30d";
+  // Website filter: "" = everything, "client" = client-level links only, else a website id.
+  const website = event.url.searchParams.get("website") || "";
   const range_days = rangeToDays(range);
 
   // Both read our database (zero Google); the drill-downs load lazily client-side afterwards.
@@ -39,6 +41,7 @@ export const load: PageServerLoad = async (event) => {
     metrics: metrics.data ?? null,
     range,
     rangeDays: range_days,
+    website,
   };
 };
 

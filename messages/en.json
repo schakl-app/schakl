@@ -2453,6 +2453,7 @@
   "marketing.link_website": "Link to website",
   "marketing.link_website_all": "Whole client",
   "marketing.website_group_none": "Client-wide",
+  "marketing.filter.all_websites": "All websites",
   "tasks.filter.toggle": "Filters",
   "domains.panel.add_website": "Website",
   "tasks.finish_prompt.title": "All to-dos done",

@@ -2453,6 +2453,7 @@
   "marketing.link_website": "Koppelen aan website",
   "marketing.link_website_all": "Hele klant",
   "marketing.website_group_none": "Klantbreed",
+  "marketing.filter.all_websites": "Alle websites",
   "tasks.filter.toggle": "Filters",
   "domains.panel.add_website": "Website",
   "tasks.finish_prompt.title": "Alle to-do’s afgevinkt",

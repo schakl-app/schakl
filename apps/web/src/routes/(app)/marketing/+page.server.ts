@@ -19,6 +19,9 @@ export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const companyId = event.url.searchParams.get("company") || "";
   const range = event.url.searchParams.get("range") ?? "30d";
+  // Website filter: "" = everything, "client" = client-level links only, else a website id.
+  // Filtering happens client-side — the metrics payload already carries every link.
+  const website = event.url.searchParams.get("website") || "";
   const range_days = rangeToDays(range);
 
   // The client list feeds the picker (name-only); the metrics load only when a client is picked.
@@ -38,5 +41,6 @@ export const load: PageServerLoad = async (event) => {
     metrics: metrics?.data ?? null,
     range,
     rangeDays: range_days,
+    website,
   };
 };

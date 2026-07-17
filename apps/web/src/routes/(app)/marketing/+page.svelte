@@ -19,20 +19,31 @@
 
   // Analytics → Search Console → Ads, a stable order regardless of link creation order.
   const ORDER: Record<MarketingSource, number> = { ga4: 0, gsc: 1, gads: 2 };
-  const sources = $derived(
+  const allSources = $derived(
     [...(marketing?.sources ?? [])].sort((a, b) => ORDER[a.source] - ORDER[b.source]),
   );
+  // Website filter: marketing is read per site (owner feedback) — "" shows everything,
+  // "client" narrows to client-level links, a website id narrows to that site's links.
+  const sources = $derived(
+    allSources.filter((s) =>
+      !data.website ? true : data.website === "client" ? !s.website_id : s.website_id === data.website,
+    ),
+  );
+  const websites = $derived(marketing?.websites ?? []);
+  const hasClientLevel = $derived(allSources.some((s) => !s.website_id));
 
-  function urlFor(companyId: string, range: string): string {
+  function urlFor(companyId: string, range: string, website = data.website): string {
     const params = new URLSearchParams();
     if (companyId) params.set("company", companyId);
     if (range && range !== "30d") params.set("range", range);
+    if (website) params.set("website", website);
     const qs = params.toString();
     return qs ? `/marketing?${qs}` : "/marketing";
   }
 
   function pickCompany(id: string) {
-    goto(urlFor(id, data.range), { keepFocus: true, noScroll: true });
+    // A website belongs to one client, so the filter resets with the client.
+    goto(urlFor(id, data.range, ""), { keepFocus: true, noScroll: true });
   }
 
   const RANGES = ["30d", "month", "quarter", "90d", "yoy"] as const;
@@ -85,6 +96,36 @@
       {/each}
     </div>
   </div>
+
+  {#if websites.length > 0}
+    <div class="mb-4 flex flex-wrap items-center gap-1" data-sveltekit-preload-data="hover">
+      <a
+        href={urlFor(data.companyId, data.range, "")}
+        class={rangeClass(!data.website)}
+        data-sveltekit-noscroll
+      >
+        {t("marketing.filter.all_websites")}
+      </a>
+      {#each websites as site (site.id)}
+        <a
+          href={urlFor(data.companyId, data.range, site.id)}
+          class={rangeClass(data.website === site.id)}
+          data-sveltekit-noscroll
+        >
+          {site.name}
+        </a>
+      {/each}
+      {#if hasClientLevel}
+        <a
+          href={urlFor(data.companyId, data.range, "client")}
+          class={rangeClass(data.website === "client")}
+          data-sveltekit-noscroll
+        >
+          {t("marketing.website_group_none")}
+        </a>
+      {/if}
+    </div>
+  {/if}
 
   {#if marketing?.needs_connection}
     <div class="rounded-xl border border-dashed border-border bg-surface-raised p-8 text-sm text-text-muted">
