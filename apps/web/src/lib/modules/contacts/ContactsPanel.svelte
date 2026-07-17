@@ -17,6 +17,7 @@
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
   import { t } from "$lib/core/i18n";
+  import { can } from "$lib/core/permissions";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import LinkField from "$lib/core/ui/LinkField.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
@@ -107,6 +108,18 @@
   }}
   oncreate={openCreate}
 />
+
+<!-- Quick-add without entering edit mode (owner feedback): the same full create-and-attach
+     dialog the type-ahead opens, one click away like every other panel's add button. -->
+{#if !editing && can(page.data.user, "contacts.contact.write")}
+  <button
+    type="button"
+    class="mt-3 inline-block text-xs text-brand hover:underline"
+    onclick={() => openCreate("")}
+  >
+    ＋ {t("contacts.new")}
+  </button>
+{/if}
 
 <Modal bind:open={showCreate} title={t("contacts.new")}>
   {#key draftFirst + draftLast + String(showCreate)}

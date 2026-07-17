@@ -710,8 +710,8 @@
           draftDate={data.selectedDate}
           draftInitial={aiPrefill ?? data.day?.draft?.payload ?? null}
           draftSavedAt={aiPrefill ? null : (data.day?.draft?.updated_at ?? null)}
-          defaultCompanyId={aiPrefill ? "" : (data.lastCompanyId ?? "")}
-          defaultProjectId={aiPrefill ? "" : (data.lastProjectId ?? "")}
+          defaultCompanyId={aiPrefill ? "" : data.presetCompanyId || (data.lastCompanyId ?? "")}
+          defaultProjectId={aiPrefill || data.presetCompanyId ? "" : (data.lastProjectId ?? "")}
           error={form?.error ?? null}
           ondone={() => {
             aiPrefill = null;

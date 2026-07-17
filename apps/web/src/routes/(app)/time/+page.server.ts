@@ -59,6 +59,9 @@ export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const selectedDate = event.url.searchParams.get("date") || todayIso();
   const week_start = event.url.searchParams.get("week") || weekStartOf(selectedDate);
+  // Deep link from a client page: ?company= presets the entry form's client, beating the
+  // last-used default.
+  const presetCompanyId = event.url.searchParams.get("company") ?? "";
   const leaveEnabled = event.locals.theme?.enabledModules?.includes("leave") ?? false;
 
   // Lookups (companies/projects/tasks/members) come from the /time layout load, which does
@@ -98,6 +101,7 @@ export const load: PageServerLoad = async (event) => {
     selectedDate,
     week_start,
     today: todayIso(),
+    presetCompanyId,
     lastCompanyId: lastEntry?.company_id ?? "",
     lastProjectId: lastEntry?.project_id ?? "",
     leaveHours: leave.data ? leaveHoursForWeek(leave.data, weekDays) : null,

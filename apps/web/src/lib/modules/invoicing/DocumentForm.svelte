@@ -32,6 +32,7 @@
     locale,
     form,
     oncancel,
+    initialCompanyId = "",
   }: {
     kind: "invoice" | "quote";
     doc?: Invoice | Quote | null;
@@ -45,13 +46,17 @@
     locale: string;
     form: Record<string, unknown> | null;
     oncancel?: () => void;
+    /** Preset client for a fresh document (the client page's "＋ nieuwe factuur"). */
+    initialCompanyId?: string;
   } = $props();
 
   const isNew = $derived(doc === null);
   const locked = $derived(doc !== null && doc.status !== "draft");
   const orgCurrency = getCurrency();
 
-  let companyId = $state("");
+  // Deliberate initial capture: the preset only seeds a fresh form.
+  // svelte-ignore state_referenced_locally
+  let companyId = $state(initialCompanyId);
   let createdCompanyId = $state("");
   let qcCompanyOpen = $state(false);
   let qcCompanyName = $state("");

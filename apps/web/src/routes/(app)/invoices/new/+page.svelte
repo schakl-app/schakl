@@ -1,9 +1,13 @@
 <script lang="ts">
+  import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
   import DocumentForm from "$lib/modules/invoicing/DocumentForm.svelte";
 
   let { data, form } = $props();
+
+  // Deep link from the client page: ?company= presets the client on the fresh invoice.
+  const initialCompanyId = page.url.searchParams.get("company") ?? "";
 </script>
 
 <svelte:head>
@@ -28,5 +32,6 @@
     settings={data.settings}
     locale={data.locale}
     {form}
+    {initialCompanyId}
   />
 </div>

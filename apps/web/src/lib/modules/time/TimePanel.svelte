@@ -1,9 +1,11 @@
 <script lang="ts">
   /** Company-detail panel: total time logged against this company (CLAUDE.md §6). */
+  import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import { can } from "$lib/core/permissions";
   import { formatMinutes } from "./format";
 
-  let { data }: { companyId: string; data: Record<string, unknown> } = $props();
+  let { companyId, data }: { companyId: string; data: Record<string, unknown> } = $props();
 
   interface RecentEntry {
     id: string;
@@ -29,4 +31,15 @@
       </li>
     {/each}
   </ul>
+{/if}
+
+{#if can(page.data.user, "time.entry.write")}
+  <!-- Log hours from where the client is (owner feedback): opens the time page's entry form
+       with this client preset. -->
+  <a
+    href={`/time?company=${companyId}`}
+    class="mt-3 inline-block text-xs text-brand hover:underline"
+  >
+    ＋ {t("time.log_for_client")}
+  </a>
 {/if}

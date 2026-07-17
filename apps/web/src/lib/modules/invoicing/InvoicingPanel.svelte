@@ -2,9 +2,11 @@
   /** Invoicing on the company page (issue #207): recent invoices with their open balance
    * (overdue loudly red — UX Principle 4) and recent quotes. Rendered from the API panel's
    * data; every number links to the document behind it (Principle 7). */
+  import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import { can } from "$lib/core/permissions";
 
-  let { data }: { companyId: string; data: Record<string, unknown> } = $props();
+  let { companyId, data }: { companyId: string; data: Record<string, unknown> } = $props();
 
   interface PanelInvoice {
     id: string;
@@ -38,10 +40,24 @@
   const dmy = (iso: string | null) => (iso ? iso.split("-").reverse().join("-") : "—");
 </script>
 
+{#snippet addInvoice()}
+  {#if can(page.data.user, "invoicing.invoice.write")}
+    <!-- New invoice from where the client is (owner feedback): opens the invoice form with
+         this client preset. -->
+    <a
+      href={`/invoices/new?company=${companyId}`}
+      class="mt-3 inline-block text-xs text-brand hover:underline"
+    >
+      ＋ {t("invoicing.new_invoice")}
+    </a>
+  {/if}
+{/snippet}
+
 {#if data.forbidden}
   <p class="text-sm text-text-muted">—</p>
 {:else if invoices.length === 0 && quotes.length === 0}
   <p class="text-sm text-text-muted">{t("invoicing.panel.empty")}</p>
+  {@render addInvoice()}
 {:else}
   {#if invoices.length > 0}
     <ul class="divide-y divide-border">
@@ -96,4 +112,5 @@
       {/each}
     </ul>
   {/if}
+  {@render addInvoice()}
 {/if}
