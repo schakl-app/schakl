@@ -12,7 +12,6 @@ from pathlib import Path
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
 #: Secrets that must never sign tokens or derive the vault key in production. The field default
 #: below and the values shipped in ``infra/.env.example`` / ``infra/compose.yaml`` all live here,
 #: so an operator who forgets to set ``SCHAKL_SECRET_KEY`` cannot boot a production instance on a

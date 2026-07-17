@@ -39,7 +39,8 @@ async def test_cross_tenant_company_crud_is_404_every_verb(client_for) -> None:
         a_company = await _create_company(ca, a_headers, "A Secret Corp")
 
     async with client_for(b.host) as cb:
-        assert (await cb.get(f"/api/v1/companies/{a_company}", headers=b_headers)).status_code == 404
+        got = await cb.get(f"/api/v1/companies/{a_company}", headers=b_headers)
+        assert got.status_code == 404
         assert (
             await cb.patch(
                 f"/api/v1/companies/{a_company}", json={"name": "pwned"}, headers=b_headers
@@ -110,7 +111,11 @@ async def test_member_cannot_touch_role_admin_endpoints(client_for) -> None:
         assert (
             await c.post(
                 "/api/v1/roles",
-                json={"key": "pwn", "name_i18n": {"en": "pwn"}, "permissions": ["companies.company.read"]},
+                json={
+                    "key": "pwn",
+                    "name_i18n": {"en": "pwn"},
+                    "permissions": ["companies.company.read"],
+                },
                 headers=m_headers,
             )
         ).status_code == 403
@@ -160,7 +165,8 @@ async def test_cross_tenant_role_access_is_404(client_for) -> None:
         b_role_id = b_roles[0]["id"]
 
     async with client_for(a.host) as ca:
-        assert (await ca.get(f"/api/v1/roles/{b_role_id}", headers=a_headers)).status_code in (404, 405)
+        got = await ca.get(f"/api/v1/roles/{b_role_id}", headers=a_headers)
+        assert got.status_code in (404, 405)
         assert (
             await ca.patch(
                 f"/api/v1/roles/{b_role_id}", json={"permissions": []}, headers=a_headers
@@ -185,7 +191,8 @@ async def test_FINDING_forged_session_with_public_default_secret(client_for) -> 
     documentation of the pre-fix exposure.
     """
     a = await make_tenant("adv-forge")
-    public_default_secret = "change-me-in-production-please-32bytes-min"  # from config.py / .env.example
+    # The old default from config.py / .env.example — publicly known, must never verify.
+    public_default_secret = "change-me-in-production-please-32bytes-min"
     forged = generate_jwt(
         {"sub": str(a.user.id), "aud": ["fastapi-users:auth"]},
         public_default_secret,
@@ -193,7 +200,9 @@ async def test_FINDING_forged_session_with_public_default_secret(client_for) -> 
     )
     async with client_for(a.host) as c:
         r = await c.get("/api/v1/companies", headers={"Cookie": f"schakl_auth={forged}"})
-        assert r.status_code == 200, "forged token built from the public default secret was accepted"
+        assert r.status_code == 200, (
+            "forged token built from the public default secret was accepted"
+        )
 
 
 async def test_FINDING_member_directory_exposed_to_every_member(client_for) -> None:
@@ -270,7 +279,7 @@ async def test_FIXED_oidc_requires_verified_email_to_adopt_account(
     """C2: SSO must not adopt a *pre-existing* local account on a bare, unverified email claim
     (account takeover, incl. the /setup owner). Unverified → refused; verified → allowed."""
     from app.core.auth import sso
-    from tests.test_auth_oidc_gate import _StubClient, _configure
+    from tests.test_auth_oidc_gate import _configure, _StubClient
 
     tenant = await make_tenant("adv-oidc-takeover")  # tenant.user is a pre-existing local account
     headers = await auth_cookie(tenant.user)

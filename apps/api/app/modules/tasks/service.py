@@ -639,7 +639,9 @@ class TaskService:
         values = data.model_dump(exclude_unset=True)
         for _fk, _tbl in (("company_id", "companies"), ("project_id", "projects")):
             if _fk in values:
-                await ensure_parent_in_tenant(self.ctx.session, _tbl, values.get(_fk), self.ctx.org.id)
+                await ensure_parent_in_tenant(
+                    self.ctx.session, _tbl, values.get(_fk), self.ctx.org.id
+                )
         reason = values.pop("due_change_reason", None)
         if "description" in values:
             values["description"] = sanitize_markdown(values["description"])

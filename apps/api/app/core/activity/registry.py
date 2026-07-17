@@ -12,7 +12,8 @@ _AUDITABLE_ENTITY_TYPES: set[str] = set()
 #: able to read the record itself (audit F7): ``activity.read`` alone is a blanket grant every
 #: role holds, so without this a member could read the change history of records in modules they
 #: hold no read permission for. Core keeps no module permission list of its own — each module
-#: supplies its own key when it opts an entity in (via ``AuditableMixin.__activity_read_permission__``
+#: supplies its own key when it opts an entity in (via
+#: ``AuditableMixin.__activity_read_permission__``
 #: or the ``register_auditable`` argument), so the coupling stays module-owned.
 _READ_PERMISSION: dict[str, str] = {}
 

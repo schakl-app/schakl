@@ -27,8 +27,8 @@ from sqlalchemy import or_, select
 
 from app.config import settings
 from app.core.crypto import decrypt
-from app.core.net_guard import is_public_address
 from app.core.events import EmitContext
+from app.core.net_guard import is_public_address
 from app.modules.notifications.events import CHANNEL_EMAIL
 from app.modules.notifications.models import (
     Notification,
