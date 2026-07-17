@@ -6,6 +6,7 @@
   import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import DocumentView from "$lib/modules/invoicing/DocumentView.svelte";
   import { taxRateLabel } from "$lib/modules/invoicing/types";
@@ -631,29 +632,15 @@
     >
       {#if editingRate}<input type="hidden" name="id" value={editingRate.id} />{/if}
       <div class="grid gap-3 sm:grid-cols-2">
-        <div>
-          <label for="rate-nl" class="mb-1 block text-sm font-medium text-text"
-            >{t("settings.invoicing.label_nl")}</label
-          >
-          <input
-            id="rate-nl"
-            name="label_nl"
-            required
-            value={(editingRate?.label_i18n as Record<string, string> | undefined)?.nl ?? ""}
-            class={inputClass}
-          />
-        </div>
-        <div>
-          <label for="rate-en" class="mb-1 block text-sm font-medium text-text"
-            >{t("settings.invoicing.label_en")}</label
-          >
-          <input
-            id="rate-en"
-            name="label_en"
-            required
-            value={(editingRate?.label_i18n as Record<string, string> | undefined)?.en ?? ""}
-            class={inputClass}
-          />
+        <div class="sm:col-span-2">
+          {#key editingRate?.id ?? "new"}
+            <I18nTextField
+              label={t("common.label_field")}
+              basename="label"
+              values={(editingRate?.label_i18n as Record<string, string> | undefined) ?? {}}
+              idPrefix="rate"
+            />
+          {/key}
         </div>
         <div>
           <label for="rate-pct" class="mb-1 block text-sm font-medium text-text"

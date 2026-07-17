@@ -7,6 +7,7 @@
   import { t } from "$lib/core/i18n";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import { entryTypeLabel, type TimeEntryTypeDef } from "$lib/modules/time/format";
 
@@ -118,32 +119,14 @@
           <p class="mt-1 text-xs text-text-muted">{t("settings.time_entry_types.key_hint")}</p>
         </div>
       {/if}
-      <div class="grid gap-3 sm:grid-cols-2">
-        <div>
-          <label for="tet-nl" class="mb-1 block text-sm text-text"
-            >{t("settings.time_entry_types.label_nl")}</label
-          >
-          <input
-            id="tet-nl"
-            name="label_nl"
-            required
-            value={editing?.label_i18n?.nl ?? ""}
-            class="w-full rounded-lg border border-border px-3 py-2 text-sm text-text outline-none focus:border-brand"
-          />
-        </div>
-        <div>
-          <label for="tet-en" class="mb-1 block text-sm text-text"
-            >{t("settings.time_entry_types.label_en")}</label
-          >
-          <input
-            id="tet-en"
-            name="label_en"
-            required
-            value={editing?.label_i18n?.en ?? ""}
-            class="w-full rounded-lg border border-border px-3 py-2 text-sm text-text outline-none focus:border-brand"
-          />
-        </div>
-      </div>
+      {#key editing?.id ?? "new"}
+        <I18nTextField
+          label={t("common.label_field")}
+          basename="label"
+          values={editing?.label_i18n ?? {}}
+          idPrefix="tet"
+        />
+      {/key}
       <input
         type="hidden"
         name="position"

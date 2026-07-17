@@ -14,6 +14,7 @@
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
+  import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
@@ -735,20 +736,14 @@
         />
         <p class="mt-1 text-xs text-text-muted">{t("settings.subscriptions.key_hint")}</p>
       </div>
-      <div class="grid gap-3 sm:grid-cols-2">
-        <div>
-          <label for="qc-type-nl" class="mb-1 block text-sm font-medium text-text"
-            >{t("settings.subscriptions.label_nl")}</label
-          >
-          <input id="qc-type-nl" name="label_nl" required value={qcTypeName} class={inputClass} />
-        </div>
-        <div>
-          <label for="qc-type-en" class="mb-1 block text-sm font-medium text-text"
-            >{t("settings.subscriptions.label_en")}</label
-          >
-          <input id="qc-type-en" name="label_en" required value={qcTypeName} class={inputClass} />
-        </div>
-      </div>
+      {#key qcTypeName}
+        <I18nTextField
+          label={t("common.label_field")}
+          basename="label"
+          values={{ nl: qcTypeName }}
+          idPrefix="qc-type"
+        />
+      {/key}
       {#if form?.qcError}
         <p class="text-sm text-red-600 dark:text-red-400">{t(form.qcError)}</p>
       {/if}

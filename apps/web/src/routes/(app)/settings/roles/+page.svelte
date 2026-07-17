@@ -7,6 +7,7 @@
   import { localeName } from "$lib/core/roles/name";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
 
   let { data, form } = $props();
@@ -142,20 +143,7 @@
       <input id="key" name="key" required pattern="[a-z0-9][a-z0-9_-]*" class={inputClass} />
       <p class="mt-1 text-xs text-text-muted">{t("settings.roles.key_hint")}</p>
     </div>
-    <div class="grid gap-3 sm:grid-cols-2">
-      <div>
-        <label for="name_nl" class="mb-1 block text-sm font-medium text-text"
-          >{t("settings.roles.name_nl")}</label
-        >
-        <input id="name_nl" name="name_nl" class={inputClass} />
-      </div>
-      <div>
-        <label for="name_en" class="mb-1 block text-sm font-medium text-text"
-          >{t("settings.roles.name_en")}</label
-        >
-        <input id="name_en" name="name_en" class={inputClass} />
-      </div>
-    </div>
+    <I18nTextField label={t("common.name_field")} basename="name" idPrefix="name" />
     <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
       {t("settings.roles.create")}
     </button>

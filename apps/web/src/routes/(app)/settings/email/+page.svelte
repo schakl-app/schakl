@@ -27,10 +27,15 @@
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 
-  // Tenant auth-mail templates (#161 tier 2): one editor card per (kind, locale).
+  // Tenant auth-mail templates (#161 tier 2): one editor per (kind, locale). The locales
+  // render behind a language switcher instead of side by side (owner feedback) — you edit
+  // one language at a time, and every translation is optional (blank = built-in default).
   const templateKinds = ["invite", "reset"] as const;
   const templatesByKind = (kind: string) =>
     (data.templates?.templates ?? []).filter((tpl) => tpl.kind === kind);
+  let activeTplLocale = $state<Record<string, string>>({});
+  const tplLocale = (kind: string) =>
+    activeTplLocale[kind] ?? templatesByKind(kind)[0]?.locale ?? "nl";
   const variablesHint = $derived((data.templates?.variables ?? []).map((v) => `{${v}}`).join("  "));
 </script>
 
@@ -263,23 +268,40 @@
 
     {#each templateKinds as kind (kind)}
       <div class="mt-5">
-        <h3 class="text-sm font-semibold text-text">
-          {t(`settings.email.templates.kind.${kind}`)}
-        </h3>
-        <div class="mt-2 grid gap-4 md:grid-cols-2">
+        <div class="flex items-center justify-between gap-2">
+          <h3 class="text-sm font-semibold text-text">
+            {t(`settings.email.templates.kind.${kind}`)}
+          </h3>
+          <div class="flex gap-0.5" role="tablist">
+            {#each templatesByKind(kind) as tpl (tpl.locale)}
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tplLocale(kind) === tpl.locale}
+                class="rounded px-1.5 py-0.5 text-[11px] font-medium uppercase {tplLocale(kind) ===
+                tpl.locale
+                  ? 'bg-brand text-white'
+                  : 'text-text-muted hover:bg-surface'}"
+                onclick={() => (activeTplLocale[kind] = tpl.locale)}
+              >
+                {tpl.locale}
+              </button>
+            {/each}
+          </div>
+        </div>
+        <div class="mt-2">
           {#each templatesByKind(kind) as tpl (tpl.locale)}
             <form
               method="POST"
               action="?/saveTemplate"
               use:enhance
-              class="space-y-3 rounded-lg border border-border p-4"
+              class="space-y-3 rounded-lg border border-border p-4 {tplLocale(kind) === tpl.locale
+                ? ''
+                : 'hidden'}"
             >
               <input type="hidden" name="kind" value={tpl.kind} />
               <input type="hidden" name="locale" value={tpl.locale} />
-              <div class="flex items-center justify-between gap-2">
-                <span class="text-xs font-semibold uppercase tracking-wide text-text">
-                  {tpl.locale.toUpperCase()}
-                </span>
+              <div class="flex items-center justify-end gap-2">
                 {#if tpl.subject || tpl.body_html}
                   <span
                     class="rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand"

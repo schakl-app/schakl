@@ -7,6 +7,7 @@
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import {
     subscriptionTypeLabel,
@@ -221,32 +222,14 @@
           <p class="mt-1 text-xs text-text-muted">{t("settings.subscriptions.key_hint")}</p>
         </div>
       {/if}
-      <div class="grid gap-3 sm:grid-cols-2">
-        <div>
-          <label for="st-nl" class="mb-1 block text-sm text-text"
-            >{t("settings.subscriptions.label_nl")}</label
-          >
-          <input
-            id="st-nl"
-            name="label_nl"
-            required
-            value={editingType?.label_i18n?.nl ?? ""}
-            class={inputClass}
-          />
-        </div>
-        <div>
-          <label for="st-en" class="mb-1 block text-sm text-text"
-            >{t("settings.subscriptions.label_en")}</label
-          >
-          <input
-            id="st-en"
-            name="label_en"
-            required
-            value={editingType?.label_i18n?.en ?? ""}
-            class={inputClass}
-          />
-        </div>
-      </div>
+      {#key editingType?.id ?? "new"}
+        <I18nTextField
+          label={t("common.label_field")}
+          basename="label"
+          values={editingType?.label_i18n ?? {}}
+          idPrefix="st"
+        />
+      {/key}
       <div>
         <span class="mb-1 block text-sm text-text"
           >{t("settings.subscriptions.task_templates")}</span

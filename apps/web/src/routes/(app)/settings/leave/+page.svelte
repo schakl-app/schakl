@@ -9,6 +9,7 @@
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
+  import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import { LABEL_COLORS, labelDotClass } from "$lib/core/ui/colors";
   import {
@@ -597,32 +598,14 @@
           />
         </div>
       {/if}
-      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div>
-          <label class="mb-1 block text-xs font-medium text-text-muted" for="type-label-nl">
-            {t("settings.leave.label_nl")}
-          </label>
-          <input
-            id="type-label-nl"
-            name="label_nl"
-            required
-            value={editType?.label_i18n?.nl ?? ""}
-            class={inputClass}
-          />
-        </div>
-        <div>
-          <label class="mb-1 block text-xs font-medium text-text-muted" for="type-label-en">
-            {t("settings.leave.label_en")}
-          </label>
-          <input
-            id="type-label-en"
-            name="label_en"
-            required
-            value={editType?.label_i18n?.en ?? ""}
-            class={inputClass}
-          />
-        </div>
-      </div>
+      {#key editType?.id ?? "new"}
+        <I18nTextField
+          label={t("common.label_field")}
+          basename="label"
+          values={editType?.label_i18n ?? {}}
+          idPrefix="type-label"
+        />
+      {/key}
       <div>
         <span class="mb-1 block text-xs font-medium text-text-muted">
           {t("settings.leave.type_color")}
@@ -790,31 +773,14 @@
         </label>
         <DateInput id="holiday-date" name="date" bind:value={holidayDate} required />
       </div>
-      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div>
-          <label class="mb-1 block text-xs font-medium text-text-muted" for="holiday-name-nl">
-            {t("settings.leave.label_nl")}
-          </label>
-          <input
-            id="holiday-name-nl"
-            name="name_nl"
-            required
-            value={editHoliday?.name_i18n?.nl ?? ""}
-            class={inputClass}
-          />
-        </div>
-        <div>
-          <label class="mb-1 block text-xs font-medium text-text-muted" for="holiday-name-en">
-            {t("settings.leave.label_en")}
-          </label>
-          <input
-            id="holiday-name-en"
-            name="name_en"
-            value={editHoliday?.name_i18n?.en ?? ""}
-            class={inputClass}
-          />
-        </div>
-      </div>
+      {#key editHoliday?.id ?? "new"}
+        <I18nTextField
+          label={t("common.name_field")}
+          basename="name"
+          values={editHoliday?.name_i18n ?? {}}
+          idPrefix="holiday-name"
+        />
+      {/key}
       {#if form?.error}<p class="text-sm text-red-600">{t(form.error)}</p>{/if}
       <div class="flex justify-end">
         <button

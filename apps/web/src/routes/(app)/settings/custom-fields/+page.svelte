@@ -7,6 +7,7 @@
   import { fieldLabel } from "$lib/core/customfields/types";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
 
   let { data, form } = $props();
@@ -181,29 +182,9 @@
         {#each TYPES as ty (ty)}<option value={ty}>{t(`customfields.type.${ty}`)}</option>{/each}
       </select>
     </div>
-    <div>
-      <label for="label_nl" class="mb-1 block text-sm font-medium text-text"
-        >{t("settings.custom_fields.label_nl")}</label
-      >
-      <input
-        id="label_nl"
-        name="label_nl"
-        class="w-full rounded-lg border border-border px-3 py-2 text-sm"
-      />
+    <div class="sm:col-span-2">
+      <I18nTextField label={t("common.label_field")} basename="label" idPrefix="label" />
     </div>
-    <div>
-      <label for="label_en" class="mb-1 block text-sm font-medium text-text"
-        >{t("settings.custom_fields.label_en")}</label
-      >
-      <input
-        id="label_en"
-        name="label_en"
-        class="w-full rounded-lg border border-border px-3 py-2 text-sm"
-      />
-    </div>
-    <p class="text-xs text-text-muted sm:col-span-2 sm:-mt-1">
-      {t("settings.custom_fields.label_optional")}
-    </p>
     {#if showOptions}
       <div class="sm:col-span-2">
         <label for="options" class="mb-1 block text-sm font-medium text-text"
@@ -294,30 +275,14 @@
             <p class="mt-1 text-xs text-text-muted">{t("settings.custom_fields.type_locked")}</p>
           </div>
         </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label for="edit-label-nl" class="mb-1 block text-sm font-medium text-text"
-              >{t("settings.custom_fields.label_nl")}</label
-            >
-            <input
-              id="edit-label-nl"
-              name="label_nl"
-              value={editDef.label_i18n?.nl ?? ""}
-              class={inputClass}
-            />
-          </div>
-          <div>
-            <label for="edit-label-en" class="mb-1 block text-sm font-medium text-text"
-              >{t("settings.custom_fields.label_en")}</label
-            >
-            <input
-              id="edit-label-en"
-              name="label_en"
-              value={editDef.label_i18n?.en ?? ""}
-              class={inputClass}
-            />
-          </div>
-        </div>
+        {#key editDef.id}
+          <I18nTextField
+            label={t("common.label_field")}
+            basename="label"
+            values={editDef.label_i18n ?? {}}
+            idPrefix="edit-label"
+          />
+        {/key}
         {#if editIsSelect}
           <div>
             <label for="edit-options" class="mb-1 block text-sm font-medium text-text"

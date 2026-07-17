@@ -2,6 +2,7 @@
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
+  import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
   import PermissionMatrix from "$lib/core/roles/PermissionMatrix.svelte";
 
   let { data, form } = $props();
@@ -10,8 +11,6 @@
   const isOwner = $derived(role.key === "owner");
   const catalog = $derived(data.permissionCatalog);
 
-  const inputClass =
-    "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
 
 <svelte:head>
@@ -40,41 +39,22 @@
 
   <div class="mb-5 rounded-xl border border-border bg-surface-raised p-5">
     <div class="grid gap-4 sm:grid-cols-2">
-      <div>
-        <label for="name_nl" class="mb-1 block text-sm font-medium text-text"
-          >{t("settings.roles.name_nl")}</label
-        >
-        <input id="name_nl" name="name_nl" value={role.name_i18n.nl ?? ""} class={inputClass} />
-      </div>
-      <div>
-        <label for="name_en" class="mb-1 block text-sm font-medium text-text"
-          >{t("settings.roles.name_en")}</label
-        >
-        <input id="name_en" name="name_en" value={role.name_i18n.en ?? ""} class={inputClass} />
-      </div>
-      <div>
-        <label for="description_nl" class="mb-1 block text-sm font-medium text-text"
-          >{t("settings.roles.description")} (NL)</label
-        >
-        <input
-          id="description_nl"
-          name="description_nl"
-          value={role.description_i18n.nl ?? ""}
-          class={inputClass}
-        />
-      </div>
-      <div>
-        <label for="description_en" class="mb-1 block text-sm font-medium text-text"
-          >{t("settings.roles.description")} (EN)</label
-        >
-        <input
-          id="description_en"
-          name="description_en"
-          value={role.description_i18n.en ?? ""}
-          class={inputClass}
-        />
-      </div>
+      <I18nTextField
+        label={t("common.name_field")}
+        basename="name"
+        values={role.name_i18n}
+        idPrefix="name"
+        hint={false}
+      />
+      <I18nTextField
+        label={t("settings.roles.description")}
+        basename="description"
+        values={role.description_i18n}
+        idPrefix="description"
+        hint={false}
+      />
     </div>
+    <p class="mt-1 text-xs text-text-muted">{t("common.translations_optional")}</p>
     {#if role.is_system}
       <p class="mt-3 text-xs text-text-muted">{t("settings.roles.system_hint")}</p>
     {/if}

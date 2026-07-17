@@ -318,6 +318,15 @@
 
 - Every string through `t()` with keys in `messages/en.json` (source) **and** `nl.json`
   (complete, natural Dutch) in the same change. Dutch is the default UI language.
+- **Tenant-entered translations are always optional** (owner policy, 2026-07-17). App strings
+  ship complete in both locales; the *tenant's own* labels (leave types, contact types, custom
+  fields, e-mail templates, roles, …) never demand both languages — one language is enough and
+  a missing locale falls back to the other at render time. Editors use the shared
+  `core/ui/I18nTextField` — **one field with an NL/EN switcher, never two side-by-side
+  inputs** — which posts every locale (`label_nl`/`label_en`) so form actions stay unchanged,
+  and deliberately carries no `required` (a required attribute on a hidden locale input blocks
+  the submit invisibly). The e-mail template editor follows the same switch-a-language shape
+  with its per-locale forms.
 - Branding (logo, colors, brand name incl. hide-name option, favicon) is runtime, per
   tenant, via Huisstijl — never hardcoded. Charts use their own validated, colorblind-safe
   palette (see the dataviz procedure), not the tenant color.
