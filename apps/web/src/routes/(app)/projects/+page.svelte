@@ -27,14 +27,15 @@
 
   type Project = (typeof data.projects)[number];
 
-  let showCreate = $state(false);
+  // Quick-create from a client page (?new=1&company=): the form opens with the client set.
+  let showCreate = $state(page.url.searchParams.has("new"));
   let deleteId = $state("");
   let deleteName = $state("");
   let confirmDelete = $state(false);
 
   // #81: which client is picked on the create form, so the assignee field can show the
   // verantwoordelijke it will inherit instead of an empty placeholder.
-  let newProjectCompanyId = $state("");
+  let newProjectCompanyId = $state(page.url.searchParams.get("company") ?? "");
 
   const STATUSES = ["active", "on_hold", "completed", "archived"] as const;
 

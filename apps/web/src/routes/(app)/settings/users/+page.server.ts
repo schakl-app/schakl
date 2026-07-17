@@ -33,7 +33,7 @@ export const load: PageServerLoad = async (event) => {
   // `/members` carries each membership's `role_ids`, so the effective set is derived here rather
   // than requested per member. The tenant's roles come from `settings/+layout.server.ts` — shared
   // with the Rollen screen and not refetched on tab navigation (docs/PERFORMANCE.md).
-  const [members, profiles, settings, rateRows, contracts, recurring, leaveTypes] =
+  const [members, profiles, settings, rateRows, contracts, recurring, leaveTypes, groupsRes] =
     await Promise.all([
       api.GET("/api/v1/members"),
       schedules ? api.GET("/api/v1/leave/profiles") : Promise.resolve({ data: null }),
@@ -46,10 +46,19 @@ export const load: PageServerLoad = async (event) => {
       // Recurring rostered-free-day patterns (#107) — employment data, same home.
       schedules ? api.GET("/api/v1/leave/recurring") : Promise.resolve({ data: null }),
       schedules ? api.GET("/api/v1/leave/types") : Promise.resolve({ data: null }),
+      // Company groups (#191): which memberships carry a visibility restriction, so the
+      // roster can badge them — visible at a glance, per the issue. Manager-only fetch.
+      can(event.locals.user, "companies.group.manage")
+        ? api.GET("/api/v1/companies/groups")
+        : Promise.resolve({ data: null }),
     ]);
+  const restrictedMembershipIds = [
+    ...new Set((groupsRes.data ?? []).flatMap((g) => g.membership_ids ?? [])),
+  ];
 
   return {
     members: members.data ?? [],
+    restrictedMembershipIds,
     schedules,
     rates,
     canEditRates,

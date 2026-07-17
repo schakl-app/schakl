@@ -84,6 +84,8 @@ class CompanyRead(CompanyBase):
 
     id: uuid.UUID
     org_id: uuid.UUID
+    # The client's logo (#196); served tenant+horizon-scoped at /companies/{id}/logo.
+    logo_file_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
     # Primary first, then oldest assignment first.

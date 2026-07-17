@@ -53,6 +53,14 @@
   <div class="mt-2 flex flex-wrap items-start justify-between gap-3">
     <div>
       <div class="flex items-center gap-3">
+        {#if company.logo_file_id}
+          <!-- The client's own logo (#196) — client data, never tenant branding. -->
+          <img
+            src={`/api/v1/companies/${company.id}/logo`}
+            alt=""
+            class="h-9 w-9 shrink-0 rounded-lg border border-border object-contain"
+          />
+        {/if}
         <h1 class="text-xl font-semibold text-text">{company.name}</h1>
         <span
           class="rounded-full px-2.5 py-0.5 text-xs font-medium {statusPillClass(company.status)}"
@@ -152,6 +160,7 @@
   <form
     method="POST"
     action="?/update"
+    enctype="multipart/form-data"
     use:enhance={() =>
       ({ update }) => {
         showEdit = false;
@@ -177,6 +186,27 @@
         id="edit-company-contacts"
       />
     </CompanyForm>
+    <div>
+      <!-- Per-client logo (#196): shown on this page's header and on the client's portal
+           dashboard. Not the agency's branding — that lives under Instellingen. -->
+      <label for="edit-company-logo" class="mb-1 block text-sm font-medium text-text"
+        >{t("companies.logo.label")}</label
+      >
+      <input
+        id="edit-company-logo"
+        name="logo_file"
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        class="block w-full text-sm text-text-muted file:mr-3 file:cursor-pointer file:rounded-lg file:border file:border-solid file:border-border file:bg-transparent file:px-3 file:py-1.5 file:text-sm file:text-text hover:file:border-brand"
+      />
+      {#if company.logo_file_id}
+        <label class="mt-2 flex items-center gap-2 text-sm text-text">
+          <input type="checkbox" name="logo_remove" value="1" />
+          {t("companies.logo.remove")}
+        </label>
+      {/if}
+      <p class="mt-1 text-xs text-text-muted">{t("companies.logo.hint")}</p>
+    </div>
     {#if form?.error}<p class="text-sm text-red-600">{t(form.error)}</p>{/if}
     <div class="flex justify-end gap-2 pt-1">
       <button

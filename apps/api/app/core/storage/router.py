@@ -11,15 +11,18 @@ from the hostname alone — and reaches *only* rows tagged with a public entity 
 
 from __future__ import annotations
 
+import asyncio
+import io
 import logging
+import re
 import uuid
 
-from fastapi import APIRouter, Depends, Request, UploadFile
+from fastapi import APIRouter, Depends, Query, Request, UploadFile
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import select
 
 from app.core.permissions.deps import no_permission_required, require_permission
-from app.core.storage.backend import get_storage
+from app.core.storage.backend import StorageUnavailableError, storage_for
 from app.core.storage.models import StoredFile
 from app.core.storage.schemas import StoredFileRead
 from app.core.storage.service import PUBLIC_ENTITY_TYPES, FileService
@@ -36,14 +39,32 @@ router = APIRouter(prefix="/files", tags=["files"])
 _INLINE_TYPES = frozenset({"image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf"})
 
 
-def _file_response(stored: StoredFile, request: Request, *, public: bool = False) -> Response:
-    """Stream a stored file with ETag/304, honouring the inline allow-list."""
-    etag = f'"{stored.id}"'
-    if request.headers.get("if-none-match") == etag:
-        return Response(status_code=304, headers={"ETag": etag})
-    disposition = "inline" if stored.content_type in _INLINE_TYPES else "attachment"
+async def _open_stored(stored: StoredFile, ctx: RequestContext | None = None):
+    """Resolve the row's own backend (#190) and open its bytes off the event loop.
+
+    An S3 read is an external HTTP call: with a ``ctx`` it runs inside ``release_db()`` so it
+    never pins the request's pooled DB connection (docs/PERFORMANCE.md) — safe because
+    ``S3ObjectStorage.open`` buffers fully, so no S3 socket outlives the call either.
+    """
     try:
-        stream = get_storage().open(stored.storage_key)
+        backend = storage_for(stored.backend)
+    except StorageUnavailableError:
+        # The row was written by a backend this instance can no longer reach (e.g. an `s3`
+        # row after the S3 env config was removed). Distinct from bytes-missing: the ops fix
+        # is to restore SCHAKL_STORAGE_S3_*, not to hunt a volume.
+        logger.warning(
+            "stored file %s needs backend=%s which is not configured on this instance",
+            stored.id,
+            stored.backend,
+        )
+        raise AppError(
+            "not_found", "errors.storage_backend_unavailable", status_code=404
+        ) from None
+    try:
+        if stored.backend == "s3" and ctx is not None:
+            async with ctx.release_db():
+                return await asyncio.to_thread(backend.open, stored.storage_key)
+        return await asyncio.to_thread(backend.open, stored.storage_key)
     except FileNotFoundError:
         # The row exists but its bytes are gone — the DB and the file store have drifted apart.
         # On a standard single-host deploy api + worker share the storage volume, so this is a
@@ -61,6 +82,21 @@ def _file_response(stored: StoredFile, request: Request, *, public: bool = False
             stored.entity_id,
         )
         raise AppError("not_found", "errors.file_bytes_missing", status_code=404) from None
+
+
+async def _file_response(
+    stored: StoredFile,
+    request: Request,
+    *,
+    public: bool = False,
+    ctx: RequestContext | None = None,
+) -> Response:
+    """Stream a stored file with ETag/304, honouring the inline allow-list."""
+    etag = f'"{stored.id}"'
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers={"ETag": etag})
+    disposition = "inline" if stored.content_type in _INLINE_TYPES else "attachment"
+    stream = await _open_stored(stored, ctx)
     filename = stored.filename.replace('"', "")
     cache = "public, max-age=3600" if public else "private, max-age=3600"
     return StreamingResponse(
@@ -121,6 +157,14 @@ async def list_files(
     ctx: RequestContext = Depends(require_context),
 ) -> list[StoredFileRead]:
     """The files attached to one entity (a task's documents, a project's documents)."""
+    if entity_type == "company_logo" and ctx.company_scope is not None:
+        # Same horizon rule as serving one (#191/#196).
+        if entity_id not in ctx.company_scope:
+            return []
+    if entity_type == "hr_document":
+        # Dossier documents list only for their owner or a dossier manager.
+        if entity_id != ctx.user.id and not ctx.can("hr.dossier.read", scope="any"):
+            return []
     rows = await FileService(ctx).list_for(entity_type, entity_id)
     return [StoredFileRead.model_validate(row) for row in rows]
 
@@ -153,7 +197,58 @@ async def serve_file(
 ) -> Response:
     """Stream the bytes. Cross-tenant ids read as 404 (tenant-scoped row lookup)."""
     stored = await FileService(ctx).get_or_404(file_id)
-    return _file_response(stored, request)
+    _company_horizon_guard(ctx, stored)
+    return await _file_response(stored, request, ctx=ctx)
+
+
+def _company_horizon_guard(ctx: RequestContext, stored: StoredFile) -> None:
+    """A company-rooted file honours the caller's company horizon (#191/#196): a portal
+    login (or a restricted member) must not fetch an invisible company's logo by file id.
+    Same answer the company itself gives — 404, never a leaking 403."""
+    if (
+        stored.entity_type == "company_logo"
+        and ctx.company_scope is not None
+        and stored.entity_id not in ctx.company_scope
+    ):
+        raise AppError("not_found", "errors.not_found", status_code=404)
+    # An HR dossier document (a contract copy) is the most sensitive blob in the tenant:
+    # only its owner or a dossier manager reads it — everyone else gets the same 404 the
+    # dossier route answers, whatever route the file id arrived through.
+    if stored.entity_type == "hr_document":
+        if stored.entity_id != ctx.user.id and not ctx.can("hr.dossier.read", scope="any"):
+            raise AppError("not_found", "errors.not_found", status_code=404)
+
+
+# The size variants the installable-app icon story needs (#198): apple-touch (180) and the
+# manifest's 192/512 (purpose any + maskable). A closed set so this can't become a generic
+# image-resizing proxy.
+_ICON_SIZES = frozenset({180, 192, 512})
+_HEX_BG = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def _iconify(data: bytes, size: int, maskable: bool, bg: str) -> bytes:
+    """Square-crop and resize an image to a PNG app icon; the maskable variant keeps the
+    artwork inside the ~80% safe zone on an opaque background, so a round Android mask never
+    clips it. Pillow work — callers run this in a thread."""
+    from PIL import Image  # local import: Pillow loads only when an icon variant is asked for
+
+    with Image.open(io.BytesIO(data)) as source:
+        img = source.convert("RGBA")
+        side = min(img.size)
+        left = (img.width - side) // 2
+        top = (img.height - side) // 2
+        img = img.crop((left, top, left + side, top + side))
+        if maskable:
+            inner = round(size * 0.8)
+            icon = img.resize((inner, inner), Image.LANCZOS)
+            canvas = Image.new("RGBA", (size, size), bg)
+            canvas.paste(icon, ((size - inner) // 2, (size - inner) // 2), icon)
+            img = canvas
+        else:
+            img = img.resize((size, size), Image.LANCZOS)
+        out = io.BytesIO()
+        img.save(out, "PNG")
+        return out.getvalue()
 
 
 @router.get(
@@ -165,12 +260,25 @@ async def serve_file(
         )
     ],
 )
-async def serve_public_file(file_id: uuid.UUID, request: Request) -> Response:
+async def serve_public_file(
+    file_id: uuid.UUID,
+    request: Request,
+    size: int | None = Query(default=None),
+    maskable: bool = Query(default=False),
+    bg: str = Query(default="#ffffff", max_length=7),
+) -> Response:
     """Anonymous serving for branding assets, org resolved strictly from the hostname.
 
     Suspended orgs still resolve (their login screen keeps its branding, matching
     `/meta/tenant`); deleted orgs — and any unknown host — read as 404.
+
+    ``size`` (180/192/512, #198) answers a resized square PNG for the PWA manifest and the
+    apple-touch-icon; ``maskable`` pads the artwork into the safe zone on the ``bg`` colour.
+    Only raster images resize — an SVG (or a decode failure) falls back to the original bytes,
+    a degraded icon rather than a broken install.
     """
+    # Load the row inside its own short session, fetch the bytes *after* the block closes —
+    # so the anonymous path never holds a DB connection across storage IO either (#190).
     async with async_session_maker() as session:
         org = await resolve_org(session, request_hostname(request))
         if org is None:
@@ -181,4 +289,29 @@ async def serve_public_file(file_id: uuid.UUID, request: Request) -> Response:
         )
         if stored is None or stored.entity_type not in PUBLIC_ENTITY_TYPES:
             raise AppError("not_found", "errors.not_found", status_code=404)
-        return _file_response(stored, request, public=True)
+    if (
+        size in _ICON_SIZES
+        and stored.content_type.startswith("image/")
+        and stored.content_type != "image/svg+xml"
+    ):
+        background = bg if _HEX_BG.match(bg) else "#ffffff"
+        etag = f'"{stored.id}-{size}{"m" if maskable else ""}-{background[1:]}"'
+        if request.headers.get("if-none-match") == etag:
+            return Response(status_code=304, headers={"ETag": etag})
+        raw = await asyncio.to_thread((await _open_stored(stored)).read)
+        try:
+            png = await asyncio.to_thread(_iconify, raw, size, maskable, background)
+        except Exception:  # noqa: BLE001 — a bad image degrades, never 500s an icon fetch
+            logger.warning("app icon %s could not be resized; serving original", stored.id)
+        else:
+            return Response(
+                png,
+                media_type="image/png",
+                headers={
+                    "ETag": etag,
+                    "Cache-Control": "public, max-age=3600",
+                    "X-Content-Type-Options": "nosniff",
+                    "Content-Disposition": 'inline; filename="icon.png"',
+                },
+            )
+    return await _file_response(stored, request, public=True)

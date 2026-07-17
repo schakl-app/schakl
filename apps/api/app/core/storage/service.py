@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
 from typing import BinaryIO
 
 from app.config import settings
 from app.core.events import emit
-from app.core.storage.backend import get_storage
+from app.core.storage.backend import StorageUnavailableError, get_storage, storage_for
 from app.core.storage.models import StoredFile
 from app.core.tenancy import RequestContext
 from app.errors import AppError
@@ -18,6 +19,8 @@ from app.errors import AppError
 #: therefore gated on the branding permission — otherwise any member could publish
 #: anonymously-readable files on the org's domain.
 PUBLIC_ENTITY_TYPES = frozenset({"branding"})
+
+logger = logging.getLogger("schakl.storage")
 
 
 class FileService:
@@ -61,8 +64,15 @@ class FileService:
             )
         file_id = uuid.uuid4()
         key = f"{self.ctx.org.id}/{file_id}"
-        # Blocking filesystem IO off the event loop; the row only exists once the bytes do.
-        await asyncio.to_thread(get_storage().put, key, stream)
+        # Blocking IO off the event loop; the row only exists once the bytes do. An S3 put is
+        # an external HTTP call, so it must not pin the request's pooled DB connection
+        # (docs/PERFORMANCE.md) — release it for the duration; local disk writes are fast and
+        # keep the plain path.
+        if settings.storage_backend == "s3":
+            async with self.ctx.release_db():
+                await asyncio.to_thread(get_storage().put, key, stream)
+        else:
+            await asyncio.to_thread(get_storage().put, key, stream)
         stored = await self.repo.create(
             id=file_id,
             backend=settings.storage_backend,
@@ -91,10 +101,27 @@ class FileService:
             raise AppError("forbidden", "errors.forbidden", status_code=403)
         payload = self._event_payload(stored, "removed")
         entity_type, entity_id = stored.entity_type, stored.entity_id
+        backend_name = stored.backend
         await self.repo.delete(stored)
         # Bytes go after the row: a failed row delete keeps the file consistent, while a
-        # dangling blob is merely orphaned space.
-        await asyncio.to_thread(get_storage().delete, payload["storage_key"])
+        # dangling blob is merely orphaned space. Deletes dispatch on the row's own backend
+        # (#190) — a pre-S3 local row keeps deleting from the volume — and an S3 delete, an
+        # external call, releases the DB connection for the duration. An unreachable backend
+        # must not block the row's removal: the blob is orphaned space, not a broken tenant.
+        try:
+            backend = storage_for(backend_name)
+        except StorageUnavailableError:
+            logger.warning(
+                "deleting file row %s without its bytes: backend=%s is not configured",
+                payload["file_id"],
+                backend_name,
+            )
+        else:
+            if backend_name == "s3":
+                async with self.ctx.release_db():
+                    await asyncio.to_thread(backend.delete, payload["storage_key"])
+            else:
+                await asyncio.to_thread(backend.delete, payload["storage_key"])
         if entity_type and entity_id:
             await emit("file.removed", self.ctx, payload)
 
@@ -112,7 +139,8 @@ class FileService:
         return await self.repo.get_or_404(file_id)
 
     def open(self, file: StoredFile) -> BinaryIO:
-        return get_storage().open(file.storage_key)
+        # Reads dispatch on the row's backend (#190), never on the instance default.
+        return storage_for(file.backend).open(file.storage_key)
 
     @staticmethod
     def _event_payload(stored: StoredFile, action: str) -> dict:

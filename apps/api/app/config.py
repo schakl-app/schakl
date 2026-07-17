@@ -65,10 +65,25 @@ class Settings(BaseSettings):
     update_check_repo: str = "schakl-app/schakl"
 
     # --- File storage (issue #123) ---
-    # "local" writes under storage_path (a named volume in Compose); "gdrive"/"s3" are the
-    # future backends the seam exists for. Callers depend on the interface, never the path.
+    # "local" writes under storage_path (a named volume in Compose); "s3" writes to the
+    # S3-compatible bucket configured below (#190). Callers depend on the interface, never
+    # the path. The backend is recorded per row, so switching affects **new writes only** —
+    # existing local files keep serving from the volume (override, not migration).
     storage_backend: str = "local"
     storage_path: str = "/data/storage"
+    # S3-compatible object storage (#190) — instance-wide, via SCHAKL_STORAGE_S3_* env vars.
+    # Coded strictly against the S3 API, so Hetzner Object Storage, MinIO, Scaleway and AWS
+    # all work. The bucket stays private: the API remains the only data path (Golden Rule 6).
+    storage_s3_endpoint: str = ""
+    storage_s3_region: str = ""
+    storage_s3_bucket: str = ""
+    storage_s3_access_key_id: str = ""
+    storage_s3_secret_access_key: str = ""
+    # Optional key prefix inside the bucket (normalized; applied inside the backend). Keys
+    # stay `<org_id>/<file_id>`, so tenant isolation holds at the key level either way.
+    storage_s3_key_prefix: str = ""
+    # Path-style addressing is MinIO-safe and Hetzner supports both; default on.
+    storage_s3_force_path_style: bool = True
     # Upload guardrails: bytes, and an allow-list of content types (images, pdf, plain text,
     # archives, office docs — the practical attachment set; extend per deployment via env).
     upload_max_bytes: int = 10 * 1024 * 1024
@@ -106,7 +121,7 @@ class Settings(BaseSettings):
         default_factory=lambda: [
             "companies", "contacts", "tasks", "projects", "time", "leave", "notifications",
             "domains", "hosting", "websites", "subscriptions", "invoicing", "automation",
-            "interactions", "google", "marketing",
+            "interactions", "google", "marketing", "hr",
         ]
     )
     default_locale: str = "nl"

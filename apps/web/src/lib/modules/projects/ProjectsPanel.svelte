@@ -1,8 +1,10 @@
 <script lang="ts">
   /** Company-detail panel: projects attached to this company (CLAUDE.md §6). */
+  import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import { can } from "$lib/core/permissions";
 
-  let { data }: { companyId: string; data: Record<string, unknown> } = $props();
+  let { companyId, data }: { companyId: string; data: Record<string, unknown> } = $props();
 
   interface PanelProject {
     id: string;
@@ -33,4 +35,13 @@
       </li>
     {/each}
   </ul>
+{/if}
+{#if can(page.data.user, "projects.project.write")}
+  <!-- Quick-create from the client page: opens the project form with this client set. -->
+  <a
+    href={`/projects?company=${companyId}&new=1`}
+    class="mt-3 inline-block text-xs text-brand hover:underline"
+  >
+    ＋ {t("projects.new")}
+  </a>
 {/if}

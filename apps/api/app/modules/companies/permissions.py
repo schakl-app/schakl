@@ -12,4 +12,8 @@ COMPANY_PERMISSIONS: list[PermissionSpec] = [
     ),
     PermissionSpec("companies.company.write", position=20),
     PermissionSpec("companies.company.delete", position=30),
+    # The company data horizon (#191): group CRUD, company assignment and per-member
+    # visibility assignment are one administrative capability. Admin-only by default;
+    # reaches existing orgs through the startup reconciler (§15).
+    PermissionSpec("companies.group.manage", position=40, default_roles=(ROLE_ADMIN,)),
 ]

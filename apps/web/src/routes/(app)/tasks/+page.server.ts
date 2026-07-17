@@ -68,6 +68,7 @@ export const actions: Actions = {
         due_date: String(form.get("due_date") ?? "").trim() || null,
         // New tasks don't demand a closing contact moment; toggled later on the task page (#157).
         requires_interaction: false,
+        visible_to_client: form.get("visible_to_client") === "true",
       },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });

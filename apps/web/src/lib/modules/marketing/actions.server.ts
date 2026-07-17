@@ -30,11 +30,13 @@ export const marketingActions = {
     const source = String(form.get("source") ?? "") as MarketingSource;
     const external_id = String(form.get("external_id") ?? "").trim();
     const display_name = String(form.get("display_name") ?? "").trim();
+    const website_id = String(form.get("website_id") ?? "").trim();
     if (!source || !external_id || !display_name) return fail(400, { error: "errors.required" });
 
     const { error } = await apiFor(event).POST("/api/v1/marketing/links", {
       body: {
         company_id: event.params.id as string,
+        website_id: website_id || null,
         source,
         external_id,
         display_name,

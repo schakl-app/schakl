@@ -74,3 +74,63 @@ async def test_foreign_mention_id_is_ignored(client_for) -> None:
             )
         ).json()
         assert comment["mentioned_user_ids"] == []
+
+
+async def test_task_reference_is_captured_and_org_scoped(client_for) -> None:
+    """A #task reference (#197) is stored structurally; a cross-tenant id never validates."""
+    t = await make_tenant("taskref")
+    other = await make_tenant("taskref-other")
+    owner_headers = await auth_cookie(t.user)
+    other_headers = await auth_cookie(other.user)
+
+    async with client_for(other.host) as c:
+        foreign = (
+            await c.post("/api/v1/tasks", json={"title": "Foreign"}, headers=other_headers)
+        ).json()
+
+    async with client_for(t.host) as c:
+        host = (await c.post("/api/v1/tasks", json={"title": "Host"}, headers=owner_headers)).json()
+        linked = (
+            await c.post("/api/v1/tasks", json={"title": "Linked"}, headers=owner_headers)
+        ).json()
+        body = (
+            f"see #[Linked](mention:task:{linked['id']}) "
+            f"and #[Foreign](mention:task:{foreign['id']})"
+        )
+        comment = (
+            await c.post(
+                f"/api/v1/tasks/{host['id']}/comments", json={"body": body}, headers=owner_headers
+            )
+        ).json()
+        # The in-org reference sticks; the other tenant's task id silently drops out.
+        assert comment["mentioned_task_ids"] == [linked["id"]]
+        # A reference is a cross-link, not a person: nothing to notify, nothing mentioned.
+        assert comment["mentioned_user_ids"] == []
+
+
+async def test_task_reference_edit_revalidates(client_for) -> None:
+    """Editing a comment keeps the stored reference set in step with the body (#197)."""
+    t = await make_tenant("taskref-edit")
+    owner_headers = await auth_cookie(t.user)
+
+    async with client_for(t.host) as c:
+        host = (await c.post("/api/v1/tasks", json={"title": "Host"}, headers=owner_headers)).json()
+        linked = (
+            await c.post("/api/v1/tasks", json={"title": "Linked"}, headers=owner_headers)
+        ).json()
+        comment = (
+            await c.post(
+                f"/api/v1/tasks/{host['id']}/comments",
+                json={"body": f"see #[Linked](mention:task:{linked['id']})"},
+                headers=owner_headers,
+            )
+        ).json()
+        assert comment["mentioned_task_ids"] == [linked["id"]]
+        edited = (
+            await c.patch(
+                f"/api/v1/tasks/{host['id']}/comments/{comment['id']}",
+                json={"body": "plain text now"},
+                headers=owner_headers,
+            )
+        ).json()
+        assert edited["mentioned_task_ids"] == []

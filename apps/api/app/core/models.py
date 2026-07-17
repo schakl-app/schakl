@@ -105,6 +105,10 @@ class OrgSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     )
     logo_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     favicon_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    # The installable-app icon source (#198): a square raster the PWA manifest and the
+    # apple-touch-icon derive their size variants from. A different asset from the favicon
+    # (a 16px tab glyph makes an ugly home-screen tile), still runtime per-tenant.
+    app_icon_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     primary_color: Mapped[str] = mapped_column(String(32), nullable=False, default="#4f46e5")
     accent_color: Mapped[str] = mapped_column(String(32), nullable=False, default="#0ea5e9")
     # DEPRECATED (expand/contract, issue #26): moved to orgs.custom_domain because resolution

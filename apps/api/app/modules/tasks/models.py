@@ -80,6 +80,12 @@ class Task(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
         ),
     )
 
+    # Client-portal visibility (#212 follow-up): a task is invisible to portal logins unless
+    # staff explicitly tick it. Enforced in TaskService via a portal-filtered repository,
+    # so a portal request can never reach an unticked task by any path (get, list, comments).
+    visible_to_client: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
     company_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("companies.id", ondelete="SET NULL"),
@@ -354,6 +360,11 @@ class TaskComment(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     # Contacts @mentioned (#165) — parallel to, never folded into, the user list: contacts are
     # references into the CRM, not notification recipients, so the fan-out stays unambiguous.
     mentioned_contact_ids: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    # Tasks #referenced (#197) — cross-links, validated org-scoped like the other kinds. Stored
+    # structurally so a "referenced in" backlink can be built later without re-parsing bodies.
+    mentioned_task_ids: Mapped[list[str]] = mapped_column(
         JSONB, nullable=False, default=list, server_default="[]"
     )
     edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

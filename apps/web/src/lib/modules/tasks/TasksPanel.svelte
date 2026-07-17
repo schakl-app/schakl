@@ -1,7 +1,9 @@
 <script lang="ts">
   /** Company-detail panel: the client's task overview (CLAUDE.md §6). */
+  import { page } from "$app/state";
   import { fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { can } from "$lib/core/permissions";
   import { labelChipClass } from "$lib/modules/tasks/labels";
 
   let { companyId, data }: { companyId: string; data: Record<string, unknown> } = $props();
@@ -68,9 +70,14 @@
     {/each}
   </ul>
 {/if}
-<a
-  href={`/tasks?company_id=${companyId}`}
-  class="mt-3 inline-block text-xs text-brand hover:underline"
->
-  {t("tasks.panel.view_all")}
-</a>
+<div class="mt-3 flex items-center gap-4">
+  <a href={`/tasks?company_id=${companyId}`} class="text-xs text-brand hover:underline">
+    {t("tasks.panel.view_all")}
+  </a>
+  {#if can(page.data.user, "tasks.task.create")}
+    <!-- Quick-create from the client page: opens the task form with this client set. -->
+    <a href={`/tasks?company_id=${companyId}&new=1`} class="text-xs text-brand hover:underline">
+      ＋ {t("tasks.new")}
+    </a>
+  {/if}
+</div>

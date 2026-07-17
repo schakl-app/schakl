@@ -17,10 +17,13 @@
   let {
     source,
     linkedIds,
+    websiteId = "",
   }: {
     source: MarketingSource;
     /** external_ids already linked to this company for this source — filtered out of options. */
     linkedIds: string[];
+    /** The client website the new link attaches to ("" = client-level). */
+    websiteId?: string;
   } = $props();
 
   let loading = $state(true);
@@ -130,6 +133,7 @@
     class="hidden"
   >
     <input type="hidden" name="source" value={source} />
+    <input type="hidden" name="website_id" value={websiteId} />
     <input type="hidden" name="external_id" value={picked?.external_id ?? ""} />
     <input type="hidden" name="display_name" value={picked?.display_name ?? ""} />
     <input type="hidden" name="config" value={picked?.config ?? "{}"} />

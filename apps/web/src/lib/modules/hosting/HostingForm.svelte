@@ -22,6 +22,7 @@
     locale,
     idPrefix = "hosting",
     nameDefault = "",
+    initialCompanyId = "",
     oncreatecompany,
     oncreatecontact,
     oncreateprovider,
@@ -38,6 +39,8 @@
     idPrefix?: string;
     /** Prefills the name on create — for quick-create from another form's picker (#115). */
     nameDefault?: string;
+    /** Preselects the client on a fresh form (quick-create from a client page). */
+    initialCompanyId?: string;
     /** Inline-create (#115, docs/UX.md): typing an unknown name offers "＋ … toevoegen".
      * `slot` is set when the PartyPicker asks, so the created entity auto-selects there. */
     oncreatecompany?: (name: string, slot?: string) => void;
@@ -80,7 +83,7 @@
       <Combobox
         items={companyItems}
         name="company_id"
-        value={createdBySlot.company ?? hosting?.company_id ?? ""}
+        value={createdBySlot.company ?? hosting?.company_id ?? initialCompanyId}
         id="{idPrefix}-company"
         placeholder={t("common.none")}
         oncreate={oncreatecompany}

@@ -37,6 +37,8 @@ class TaskBase(BaseModel):
     # Per-task close policy (#157 extended): when set, this task can only reach a finished
     # status once a designated closing contact moment is linked, regardless of the status flag.
     requires_interaction: bool = False
+    # Client-portal visibility: off by default — staff opt a task in explicitly.
+    visible_to_client: bool = False
 
 
 class TaskCreate(TaskBase):
@@ -57,6 +59,7 @@ class TaskUpdate(BaseModel):
     recurrence: Recurrence | None = None
     # Toggle the per-task "close only with a contact moment" policy (#157 extended).
     requires_interaction: bool | None = None
+    visible_to_client: bool | None = None
     # Required when the due date moves later (accountability; logged in the activity feed).
     due_change_reason: str | None = Field(default=None, max_length=1000)
     # The contact moment this close is justified by (#157) — must be linked to this task and
@@ -265,6 +268,8 @@ class CommentRead(BaseModel):
     mentioned_user_ids: list[uuid.UUID] = Field(default_factory=list)
     # Contacts @mentioned (#165) — CRM references, never notification recipients.
     mentioned_contact_ids: list[uuid.UUID] = Field(default_factory=list)
+    # Tasks #referenced (#197) — deep links into the board, validated org-scoped on write.
+    mentioned_task_ids: list[uuid.UUID] = Field(default_factory=list)
     edited_at: datetime | None
     created_at: datetime
 

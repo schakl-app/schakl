@@ -304,6 +304,16 @@
                 >{t("settings.users.inactive")}</span
               >
             {/if}
+{#if data.restrictedMembershipIds.includes(member.membership_id)}
+              <!-- A visibility restriction (#191) must be visible at a glance — a restricted
+                   member quietly seeing "everything they know of" reads as data loss. -->
+              <a
+                href="/settings/company-groups"
+                class="rounded-full px-2 py-0.5 text-[11px] font-medium text-text-muted ring-1 ring-inset ring-border hover:text-brand"
+                title={t("settings.users.restricted_hint")}
+                >{t("settings.users.restricted")}</a
+              >
+            {/if}
             {#if member.two_factor_enabled}
               <span
                 class="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-700 dark:bg-green-950 dark:text-green-300"

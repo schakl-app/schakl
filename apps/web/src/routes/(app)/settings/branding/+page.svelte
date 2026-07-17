@@ -201,6 +201,31 @@
           <p class="mt-1 text-xs text-text-muted">{t("settings.branding.upload_help")}</p>
         </div>
         <div>
+          <!-- The installable-app icon (#198): a different asset from the favicon — a square
+               raster the PWA manifest and the iOS home-screen icon derive their sizes from. -->
+          <label for="app_icon_file" class="mb-1 block text-sm font-medium text-text"
+            >{t("settings.branding.app_icon")}</label
+          >
+          <input
+            id="app_icon_file"
+            name="app_icon_file"
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            class="block w-full text-sm text-text-muted file:mr-3 file:cursor-pointer file:rounded-lg file:border file:border-solid file:border-border file:bg-transparent file:px-3 file:py-1.5 file:text-sm file:text-text hover:file:border-brand"
+          />
+          <label for="app_icon_url" class="mb-1 mt-2 block text-xs text-text-muted"
+            >{t("settings.branding.app_icon_url")}</label
+          >
+          <input
+            id="app_icon_url"
+            name="app_icon_url"
+            value={branding.app_icon_url ?? ""}
+            placeholder="https://…"
+            class={inputClass}
+          />
+          <p class="mt-1 text-xs text-text-muted">{t("settings.branding.app_icon_help")}</p>
+        </div>
+        <div>
           <label for="primary_color" class="mb-1 block text-sm font-medium text-text"
             >{t("settings.branding.primary_color")}</label
           >

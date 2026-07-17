@@ -32,9 +32,11 @@ import nh3
 # two drifting copies of this regex would disagree about who got mentioned.
 # An optional kind prefix (#165) — `mention:contact:<uuid>` — discriminates contact mentions;
 # an absent prefix means a colleague, so every marker stored before #165 keeps parsing as one.
+# A task reference (#197) is the same marker family with a `#` trigger and a `task` kind:
+# `#[Task title](mention:task:<uuid>)` — a cross-link, never a notification recipient.
 MENTION_RE = re.compile(
-    r"@\[[^\]]+\]\(mention:(?:(user|contact):)?([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
-    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\)"
+    r"[@#]\[[^\]]+\]\(mention:(?:(user|contact|task):)?([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\)"
 )
 
 
@@ -63,6 +65,13 @@ def extract_contact_mention_ids(body: str | None) -> list[uuid.UUID]:
     """The distinct *contact* ids mentioned in a body (#165) — same syntactic-only contract;
     callers validate against the org's contacts."""
     return _mention_ids(body, "contact")
+
+
+def extract_task_mention_ids(body: str | None) -> list[uuid.UUID]:
+    """The distinct *task* ids referenced in a body (#197) — same syntactic-only contract;
+    callers validate against the org's tasks. A reference is a deep link, never a
+    notification: nobody is alerted because a task was linked."""
+    return _mention_ids(body, "task")
 
 
 def sanitize_markdown(value: str | None) -> str | None:

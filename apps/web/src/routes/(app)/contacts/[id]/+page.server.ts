@@ -4,6 +4,7 @@ import { error, fail, redirect } from "@sveltejs/kit";
 
 import { parseAssignees } from "$lib/core/assignees";
 import { apiErrorKey } from "$lib/core/errors";
+import { can } from "$lib/core/permissions";
 import { entityPanelsFor } from "$lib/core/registry";
 import { apiFor } from "$lib/core/session";
 import { interactionActions } from "$lib/modules/interactions/actions.server";
@@ -20,7 +21,9 @@ export const load: PageServerLoad = async (event) => {
   const enabled = event.locals.theme?.enabledModules ?? [];
   const panels = entityPanelsFor(enabled, "contact");
 
-  const [contact, definitions, companies, companyDefinitions, members, ...panelData] =
+  // Portal state (#193): manager-only (managing logins is member management), one call.
+  const canPortal = can(event.locals.user, "members.member.write");
+  const [contact, definitions, companies, companyDefinitions, members, portal, ...panelData] =
     await Promise.all([
       api.GET("/api/v1/contacts/{contact_id}", { params: { path: { contact_id } } }),
       api.GET("/api/v1/custom-fields/definitions", {
@@ -32,6 +35,9 @@ export const load: PageServerLoad = async (event) => {
       }),
       // The quick-create client dialog is the full client form, so it needs the member lookup.
       api.GET("/api/v1/members/lookup"),
+      canPortal
+        ? api.GET("/api/v1/contacts/{contact_id}/portal", { params: { path: { contact_id } } })
+        : Promise.resolve({ data: null }),
       ...panels.map((panel) => panel.load(api, context)),
     ]);
   if (!contact.data) throw error(404, { code: "not_found", message: "errors.not_found" });
@@ -41,6 +47,8 @@ export const load: PageServerLoad = async (event) => {
     companies: companies.data?.items ?? [],
     companyDefinitions: companyDefinitions.data ?? [],
     members: members.data ?? [],
+    portal: portal.data ?? null,
+    canPortal,
     context,
     panels: panels.map((panel, index) => ({
       key: panel.key,
@@ -150,6 +158,34 @@ export const actions: Actions = {
       params: { path: { contact_id: event.params.id } },
     });
     throw redirect(303, "/contacts");
+  },
+
+  // Client portal (#193): enable (invite), resend, disable — the API is the boundary.
+  portalEnable: async (event) => {
+    const { data, error: err } = await apiFor(event).POST(
+      "/api/v1/contacts/{contact_id}/portal",
+      { params: { path: { contact_id: event.params.id } } },
+    );
+    if (err) return fail(400, { portalError: apiErrorKey(err).fields?.email ?? apiErrorKey(err).key });
+    return { portalSaved: true, portalEmail: data?.invite_email_sent ?? null };
+  },
+
+  portalResend: async (event) => {
+    const { data, error: err } = await apiFor(event).POST(
+      "/api/v1/contacts/{contact_id}/portal/resend",
+      { params: { path: { contact_id: event.params.id } } },
+    );
+    if (err) return fail(400, { portalError: apiErrorKey(err).key });
+    return { portalSaved: true, portalEmail: data?.invite_email_sent ?? null };
+  },
+
+  portalDisable: async (event) => {
+    const { error: err } = await apiFor(event).DELETE(
+      "/api/v1/contacts/{contact_id}/portal",
+      { params: { path: { contact_id: event.params.id } } },
+    );
+    if (err) return fail(400, { portalError: apiErrorKey(err).key });
+    return { portalSaved: true };
   },
 
   // Contactmomenten panel contract (lib/modules/interactions).

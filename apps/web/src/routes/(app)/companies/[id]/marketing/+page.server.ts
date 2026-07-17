@@ -1,9 +1,10 @@
-import { error, redirect } from "@sveltejs/kit";
+import { error, fail, redirect } from "@sveltejs/kit";
 
+import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 
-import type { PageServerLoad } from "./$types";
+import type { Actions, PageServerLoad } from "./$types";
 
 /** Preset → trailing-day count. "month" is days-so-far this month; the API clamps to ≥ 1. */
 const PRESET_DAYS: Record<string, number> = { "30d": 30, "90d": 90, quarter: 90, yoy: 365 };
@@ -39,4 +40,25 @@ export const load: PageServerLoad = async (event) => {
     range,
     rangeDays: range_days,
   };
+};
+
+export const actions: Actions = {
+  // Save the client's curated tab layout (#192). The editor posts the whole layout —
+  // its own source replaced, the others carried through — as one JSON value.
+  saveLayout: async (event) => {
+    const form = await event.request.formData();
+    const company_id = String(form.get("company_id") ?? event.params.id);
+    let layout: Record<string, unknown>;
+    try {
+      layout = JSON.parse(String(form.get("layout") ?? "{}")) as Record<string, unknown>;
+    } catch {
+      return fail(400, { error: "errors.validation" });
+    }
+    const { error: apiError } = await apiFor(event).PUT(
+      "/api/v1/marketing/companies/{company_id}/settings",
+      { params: { path: { company_id } }, body: { layout } },
+    );
+    if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
+    return { saved: true };
+  },
 };

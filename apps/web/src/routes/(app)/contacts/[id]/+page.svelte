@@ -230,6 +230,67 @@
         <CustomFieldsView definitions={data.definitions} values={custom} locale={data.locale} />
       </section>
     {/if}
+
+    {#if data.canPortal && data.portal}
+      <!-- Client portal (#193): give this contact a login that lands on their companies'
+           curated dashboards. Enable/disable is reversible; the API is the boundary. -->
+      <section class="rounded-xl border border-border bg-surface-raised p-5">
+        <div class="mb-3 flex flex-wrap items-center gap-2">
+          <h2 class="text-sm font-semibold text-text">{t("contacts.portal.title")}</h2>
+          <span
+            class="rounded-full px-2 py-0.5 text-[11px] font-medium
+              {data.portal.status === 'active'
+              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+              : data.portal.status === 'invited'
+                ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+                : data.portal.status === 'disabled'
+                  ? 'bg-surface text-text-muted ring-1 ring-inset ring-border'
+                  : 'text-text-muted ring-1 ring-inset ring-border'}"
+          >
+            {t(`contacts.portal.status.${data.portal.status}`)}
+          </span>
+        </div>
+        <p class="mb-3 text-sm text-text-muted">{t("contacts.portal.hint")}</p>
+        {#if form?.portalError}
+          <p class="mb-3 text-sm text-red-600 dark:text-red-400">{t(form.portalError)}</p>
+        {/if}
+        {#if form?.portalSaved && form?.portalEmail === false}
+          <p class="mb-3 text-sm text-amber-700 dark:text-amber-400">
+            {t("contacts.portal.email_not_sent")}
+          </p>
+        {/if}
+        <div class="flex flex-wrap gap-2">
+          {#if data.portal.status === "none" || data.portal.status === "disabled"}
+            <form method="POST" action="?/portalEnable" use:enhance>
+              <button
+                class="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
+              >
+                {data.portal.status === "disabled"
+                  ? t("contacts.portal.reenable")
+                  : t("contacts.portal.enable")}
+              </button>
+            </form>
+          {:else}
+            {#if data.portal.status === "invited"}
+              <form method="POST" action="?/portalResend" use:enhance>
+                <button
+                  class="rounded-lg border border-border px-3 py-1.5 text-sm text-text hover:border-brand"
+                >
+                  {t("contacts.portal.resend")}
+                </button>
+              </form>
+            {/if}
+            <form method="POST" action="?/portalDisable" use:enhance>
+              <button
+                class="rounded-lg border border-border px-3 py-1.5 text-sm text-text hover:border-red-400 hover:text-red-500"
+              >
+                {t("contacts.portal.disable")}
+              </button>
+            </form>
+          {/if}
+        </div>
+      </section>
+    {/if}
   </div>
 {/if}
 

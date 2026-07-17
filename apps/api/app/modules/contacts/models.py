@@ -55,6 +55,8 @@ class Contact(
 
     __table_args__ = (
         Index("ix_contacts_custom", "custom", postgresql_using="gin"),
+        # One portal login maps to one contact within the org (#193); NULLs don't collide.
+        UniqueConstraint("org_id", "user_id", name="uq_contacts_user"),
     )
 
     first_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
@@ -63,6 +65,15 @@ class Contact(
     phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
     job_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The client-portal login this contact is linked to (issue #193): at most one login per
+    # contact, at most one contact per login within the org. SET NULL so deleting the account
+    # unlinks rather than deleting the person; the link is what makes a membership a *portal*
+    # membership (its horizon becomes the contact's companies, resolved in portal.py).
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
 
 class CompanyContact(

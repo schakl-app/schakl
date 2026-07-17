@@ -11,6 +11,8 @@ export interface OrgTheme {
   showBrandName: boolean;
   logoUrl: string | null;
   faviconUrl: string | null;
+  /** Installable-app icon source (#198): a square raster; manifest + apple-touch derive sizes. */
+  appIconUrl: string | null;
   primaryColor: string;
   accentColor: string;
   defaultLocale: string;
@@ -37,6 +39,7 @@ export const DEFAULT_THEME: OrgTheme = {
   showBrandName: true,
   logoUrl: null,
   faviconUrl: null,
+  appIconUrl: null,
   primaryColor: "#4f46e5",
   accentColor: "#0ea5e9",
   defaultLocale: "nl",

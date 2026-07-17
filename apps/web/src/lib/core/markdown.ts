@@ -47,6 +47,10 @@ const ALLOWED_ATTR = ["href", "title", "class", "data-user-id", "data-contact-id
 const _UUID = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
 // Optional kind prefix (#165): `mention:contact:<uuid>`; absent = a colleague (pre-#165 bodies).
 const _MENTION_RE = new RegExp(`^@\\[([^\\]]+)\\]\\(mention:(?:(user|contact):)?(${_UUID})\\)`);
+// A #task reference (#197): same marker family, `#` trigger, its own extension so the existing
+// @-mention rendering stays byte-for-byte unchanged. Renders as a *deep link* to the task —
+// an `<a href="/tasks/<id>">` (the crm:// route mapping), not a data-* span like a person chip.
+const _TASKREF_RE = new RegExp(`^#\\[([^\\]]+)\\]\\(mention:task:(${_UUID})\\)`);
 // AI answers cite records as `[Name](crm://<type>/<id>)` (epic #131): the type/id resolve to the
 // app route here, so the model never has to know web paths and a bad reference degrades to text.
 const _CRM_RE = new RegExp(`^\\[([^\\]]+)\\]\\(crm://([a-z_]+)/(${_UUID})\\)`);
@@ -100,6 +104,26 @@ function ensureConfigured(): void {
             return `<span class="mention mention-contact" data-contact-id="${id}">@${name}</span>`;
           }
           return `<span class="mention" data-user-id="${id}">@${name}</span>`;
+        },
+      },
+      {
+        name: "taskref",
+        level: "inline",
+        start(src: string) {
+          const i = src.indexOf("#[");
+          return i < 0 ? undefined : i;
+        },
+        tokenizer(src: string) {
+          const m = _TASKREF_RE.exec(src);
+          if (m) return { type: "taskref", raw: m[0], name: m[1], id: m[2] };
+        },
+        renderer(token: Tokens.Generic) {
+          const name = escapeHtml(String(token.name ?? ""));
+          const id = String(token.id ?? "");
+          // A same-app relative href: the DOMPurify hook keeps it same-tab, and the URI
+          // allow-list already admits a single leading `/`. Visually a chip, distinct from a
+          // person mention (see Markdown.svelte `.mention-task`).
+          return `<a href="/tasks/${id}" class="mention mention-task">#${name}</a>`;
         },
       },
       {

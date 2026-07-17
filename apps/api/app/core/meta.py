@@ -42,6 +42,9 @@ class TenantBranding(BaseModel):
     show_brand_name: bool
     logo_url: str | None
     favicon_url: str | None
+    # Installable-app icon source (#198): a square raster; the manifest and apple-touch-icon
+    # serve size variants of it. Distinct from the favicon on purpose.
+    app_icon_url: str | None = None
     primary_color: str
     accent_color: str
     default_locale: str
@@ -72,6 +75,7 @@ class TenantBrandingUpdate(BaseModel):
     show_brand_name: bool | None = None
     logo_url: str | None = Field(default=None, max_length=1024)
     favicon_url: str | None = Field(default=None, max_length=1024)
+    app_icon_url: str | None = Field(default=None, max_length=1024)
     primary_color: str | None = Field(default=None, pattern=_HEX_COLOR)
     accent_color: str | None = Field(default=None, pattern=_HEX_COLOR)
     default_locale: str | None = None
@@ -144,6 +148,10 @@ class MeInfo(BaseModel):
     #: provider under Instellingen → AI — "off means invisible". Rides the payload the web
     #: already fetches per request, so gating an affordance costs no extra call.
     ai_features: list[str] = Field(default_factory=list)
+    #: A contact-linked (client-portal) login (#193): the web renders the portal shell for
+    #: these — reduced nav, homepage = their companies' curated dashboards. UX input only;
+    #: the horizon + deny-by-default permissions are the boundary.
+    is_portal: bool = False
 
 
 class MeUpdate(BaseModel):
@@ -156,9 +164,12 @@ class MeUpdate(BaseModel):
     custom_avatar_url: str | None = Field(default=None, max_length=1024)
 
 
-def _me_info(ctx: RequestContext, user: User, ai_features: list[str]) -> MeInfo:
+def _me_info(
+    ctx: RequestContext, user: User, ai_features: list[str], *, is_portal: bool = False
+) -> MeInfo:
     return MeInfo(
         ai_features=ai_features,
+        is_portal=is_portal,
         id=str(user.id),
         email=user.email,
         full_name=user.full_name,
@@ -183,7 +194,12 @@ def _me_info(ctx: RequestContext, user: User, ai_features: list[str]) -> MeInfo:
     dependencies=[no_permission_required("who am I in this tenant; every member needs it")],
 )
 async def me(ctx: RequestContext = Depends(require_context)) -> MeInfo:
-    return _me_info(ctx, ctx.user, await ai_enabled_features(ctx.session, ctx.org.id))
+    return _me_info(
+        ctx,
+        ctx.user,
+        await ai_enabled_features(ctx.session, ctx.org.id),
+        is_portal=ctx.is_portal,
+    )
 
 
 @router.patch(
@@ -218,7 +234,12 @@ async def update_me(
         setattr(user, key, value)
     await ctx.session.flush()
     await ctx.session.refresh(user)
-    return _me_info(ctx, user, await ai_enabled_features(ctx.session, ctx.org.id))
+    return _me_info(
+        ctx,
+        user,
+        await ai_enabled_features(ctx.session, ctx.org.id),
+        is_portal=ctx.is_portal,
+    )
 
 
 @router.get(
@@ -239,6 +260,7 @@ async def tenant_branding(request: Request) -> TenantBranding:
             show_brand_name=s.show_brand_name if s else True,
             logo_url=s.logo_url if s else None,
             favicon_url=s.favicon_url if s else None,
+            app_icon_url=s.app_icon_url if s else None,
             primary_color=s.primary_color if s else "#4f46e5",
             accent_color=s.accent_color if s else "#0ea5e9",
             default_locale=s.default_locale if s else settings.default_locale,
@@ -324,7 +346,7 @@ async def update_tenant_branding(
         )
     for key, value in data.items():
         # Empty strings clear the optional fields; required fields ignore empties.
-        if key in ("logo_url", "favicon_url", "tab_title_template"):
+        if key in ("logo_url", "favicon_url", "app_icon_url", "tab_title_template"):
             setattr(s, key, value or None)
         elif isinstance(value, bool) or value:
             setattr(s, key, value)
@@ -336,6 +358,7 @@ async def update_tenant_branding(
         show_brand_name=s.show_brand_name,
         logo_url=s.logo_url,
         favicon_url=s.favicon_url,
+        app_icon_url=s.app_icon_url,
         primary_color=s.primary_color,
         accent_color=s.accent_color,
         default_locale=s.default_locale,

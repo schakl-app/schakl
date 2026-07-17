@@ -72,6 +72,16 @@ class MarketingLink(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
         nullable=False,
         index=True,
     )
+    #: The client website this property measures. A client with two sites links each property to
+    #: its own site, and the panel/tab group per website. Nullable — a link may stay client-level
+    #: (no websites module, or a property spanning sites) — and SET NULL, not CASCADE: a removed
+    #: website must not delete the link or its synced history, the link just goes client-level.
+    website_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("websites.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     source: Mapped[str] = mapped_column(String(8), nullable=False)
     #: The provider's own id: GA4 "properties/123456789", GSC "sc-domain:acme.nl" or a URL,
     #: Ads "1234567890" (customer id, no dashes).
@@ -161,9 +171,15 @@ class MarketingCompanySettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMix
     )
     #: Show GA4 key events / conversions for this client. Default on: it preserves the behaviour
     #: from before this setting existed (the metric was always visible).
+    #: DEPRECATED (expand/contract, #192): one special case of the layout below. Honoured only
+    #: where the layout has no tiles for GA4; drop the column in the release after next.
     show_key_events: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("true")
     )
+    #: The curated tab layout (#192): per source an ordered tile list (absence = hidden),
+    #: per-tile label_i18n overrides, enabled drill-downs and the default charted metric.
+    #: NULL = no curation, today's behaviour. Shape validated in modules/marketing/layout.py.
+    layout: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
 
 class MarketingSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):

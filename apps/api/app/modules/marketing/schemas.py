@@ -11,11 +11,21 @@ from app.modules.marketing.models import MarketingSource
 
 
 # --- links (#132) ---------------------------------------------------------------------------- #
+class WebsiteRef(BaseModel):
+    """A client website a link can attach to — id + display name (the domain), nothing more."""
+
+    id: uuid.UUID
+    name: str
+
+
 class LinkRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
     company_id: uuid.UUID
+    #: The client website this property measures — None = a client-level link.
+    website_id: uuid.UUID | None = None
+    website_name: str | None = None
     source: MarketingSource
     external_id: str
     display_name: str
@@ -31,6 +41,9 @@ class LinkRead(BaseModel):
 
 class LinkCreate(BaseModel):
     company_id: uuid.UUID
+    #: Attach the link to one of the client's websites (validated against the company); omit for
+    #: a client-level link.
+    website_id: uuid.UUID | None = None
     source: MarketingSource
     external_id: str = Field(min_length=1, max_length=512)
     display_name: str = Field(min_length=1, max_length=512)
@@ -86,6 +99,9 @@ class SourceMetrics(BaseModel):
     source: MarketingSource
     display_name: str
     external_id: str
+    #: The client website this link measures (None = client-level) — the tab groups on it.
+    website_id: uuid.UUID | None = None
+    website_name: str | None = None
     #: "ok" (synced), "pending" (backfill running / never synced), "error" (link's sync failed),
     #: "disconnected" (its Google connection is gone/errored).
     health: str = "pending"
@@ -98,6 +114,14 @@ class SourceMetrics(BaseModel):
     series: SeriesData = Field(default_factory=SeriesData)
     #: GA4 only: period sessions by acquisition channel, for the split.
     channels: dict[str, float] | None = None
+    #: The ordered, *visible* tile keys after the client's layout applied (#192). Hidden tiles
+    #: are already absent from ``kpis``/``series`` — this carries the curated order.
+    tiles: list[str] = Field(default_factory=list)
+    #: Per-tile label overrides, ``{metric: {locale: label}}`` (#192) — tenant data, so every
+    #: consumer (web, MCP) shows the client's naming.
+    tile_labels: dict[str, dict[str, str]] = Field(default_factory=dict)
+    #: The enabled drill-down kinds after the layout applied (#192).
+    drilldowns: list[str] = Field(default_factory=list)
 
 
 class CompanyMarketing(BaseModel):
@@ -113,13 +137,24 @@ class CompanyMarketing(BaseModel):
     #: Whether GA4 key events / conversions are shown for this client (#134). When False the
     #: GA4 sources above already omit those metrics; the flag lets the UI render the toggle.
     show_key_events: bool = True
+    #: The stored layout (#192), for the tab's edit mode — present only for a caller who may
+    #: manage it (``can_manage``); ``None`` = no curation.
+    layout: dict | None = None
+    #: The client's websites, so the link pickers can attach a new link to one and the tab can
+    #: label its groups. Empty when the client has none (links stay client-level).
+    websites: list[WebsiteRef] = Field(default_factory=list)
 
 
-# --- per-client settings (#134) -------------------------------------------------------------- #
+# --- per-client settings (#134, layout #192) -------------------------------------------------- #
 class CompanySettingsUpdate(BaseModel):
-    """The one per-client marketing preference: show GA4 key events / conversions."""
+    """Per-client marketing preferences. Both fields optional: send what changes.
 
-    show_key_events: bool
+    ``layout`` replaces the stored layout wholesale (``{"sources": {}}`` clears it); the
+    legacy ``show_key_events`` keeps working during the expand release (#192).
+    """
+
+    show_key_events: bool | None = None
+    layout: dict | None = None
 
 
 class CompanySettingsRead(BaseModel):
@@ -127,6 +162,7 @@ class CompanySettingsRead(BaseModel):
 
     company_id: uuid.UUID
     show_key_events: bool
+    layout: dict | None = None
 
 
 # --- org-level settings (#134) --------------------------------------------------------------- #

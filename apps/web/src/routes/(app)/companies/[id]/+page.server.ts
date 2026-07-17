@@ -1,6 +1,7 @@
 import { error, fail, redirect } from "@sveltejs/kit";
 
 import { parseAssignees } from "$lib/core/assignees";
+import { apiBaseUrl } from "$lib/core/api/client";
 import { apiErrorKey } from "$lib/core/errors";
 import { apiFor } from "$lib/core/session";
 import { interactionActions } from "$lib/modules/interactions/actions.server";
@@ -113,6 +114,34 @@ export const actions: Actions = {
       },
     });
     if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
+
+    // Per-client logo (#196): a chosen file replaces it; the checkbox removes it. Multipart
+    // goes through a plain fetch — the typed client has no multipart serializer.
+    const logoFile = form.get("logo_file");
+    if (logoFile instanceof File && logoFile.size > 0) {
+      const body = new FormData();
+      body.append("file", logoFile, logoFile.name);
+      const res = await event.fetch(
+        `${apiBaseUrl()}/api/v1/companies/${company_id}/logo`,
+        {
+          method: "POST",
+          headers: {
+            cookie: event.request.headers.get("cookie") ?? "",
+            "x-forwarded-host": event.request.headers.get("host") ?? "",
+          },
+          body,
+        },
+      );
+      if (!res.ok) {
+        return fail(400, {
+          error: res.status === 413 ? "errors.upload_too_large" : "errors.upload_type",
+        });
+      }
+    } else if (form.get("logo_remove")) {
+      await api.DELETE("/api/v1/companies/{company_id}/logo", {
+        params: { path: { company_id } },
+      });
+    }
 
     const selections = parseContacts(form.get("contacts"));
     if (selections === undefined) return { updated: true };

@@ -632,3 +632,300 @@ async def test_key_events_drilldown_respects_visibility_gate(client_for) -> None
         )
         res = await c.get(drill_url, params=params, headers=headers)
         assert res.status_code == 422
+
+
+async def test_layout_roundtrip_orders_hides_and_relabels(client_for) -> None:
+    """The per-client layout (#192): tiles reorder and hide server-side, label overrides ride
+    the payload, the default charted metric follows the layout, and the drill-down list obeys
+    it — panel, tab and overview alike."""
+    t = await make_tenant("mktg-layout")
+    headers = await auth_cookie(t.user)
+    today = date.today()
+
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Layout BV"}, headers=headers)
+        ).json()
+        ga4 = (
+            await c.post(
+                "/api/v1/marketing/links",
+                json={
+                    "company_id": company["id"],
+                    "source": "ga4",
+                    "external_id": "properties/7",
+                    "display_name": "Layout — GA4",
+                },
+                headers=headers,
+            )
+        ).json()
+        await _seed_metrics(
+            t.org.id,
+            uuid.UUID(ga4["id"]),
+            {
+                today - timedelta(days=2): {
+                    "sessions": 100, "totalUsers": 80, "keyEvents": 9, "conversions": 9,
+                }
+            },
+        )
+        await _mark_synced(t.org.id, uuid.UUID(ga4["id"]))
+
+        layout = {
+            "sources": {
+                "ga4": {
+                    "tiles": ["keyEvents", "sessions"],
+                    "labels": {
+                        "keyEvents": {"nl": "Aanvragen via de website", "en": "Enquiries"}
+                    },
+                    "drilldowns": ["top_pages", "key_events"],
+                    "chart_metric": "keyEvents",
+                }
+            }
+        }
+        saved = await c.put(
+            f"/api/v1/marketing/companies/{company['id']}/settings",
+            json={"layout": layout},
+            headers=headers,
+        )
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["layout"]["sources"]["ga4"]["tiles"] == ["keyEvents", "sessions"]
+
+        body = (
+            await c.get(
+                f"/api/v1/marketing/companies/{company['id']}/metrics",
+                params={"range_days": 30},
+                headers=headers,
+            )
+        ).json()
+        src = next(s for s in body["sources"] if s["source"] == "ga4")
+        # Order and visibility are the layout's: two tiles, in the curated order; the hidden
+        # metrics are absent from the payload entirely — kpis and series both.
+        assert src["tiles"] == ["keyEvents", "sessions"]
+        assert set(src["kpis"]) == {"keyEvents", "sessions"}
+        assert set(src["series"]["metrics"]) == {"keyEvents", "sessions"}
+        assert src["tile_labels"]["keyEvents"]["nl"] == "Aanvragen via de website"
+        assert src["primary_metric"] == "keyEvents"
+        assert src["drilldowns"] == ["top_pages", "key_events"]
+        # The stored layout rides the payload for the editor (manager-only).
+        assert body["layout"]["sources"]["ga4"]["chart_metric"] == "keyEvents"
+
+        # The overview grid respects the same layout: sessions visible, conversions hidden.
+        ov = (
+            await c.get("/api/v1/marketing/overview", params={"range_days": 30}, headers=headers)
+        ).json()
+        row = next(r for r in ov["rows"] if r["company_id"] == company["id"])
+        assert "sessions" in row["metrics"]
+        assert "conversions" not in row["metrics"]
+        # keyEvents stays visible per the layout, so the grid's toggle reads on.
+        assert row["show_key_events"] is True
+
+        # The layout change landed on the client's trail (§16).
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            actions = (
+                (
+                    await session.execute(
+                        select(ActivityLog.action).where(
+                            ActivityLog.entity_type == "company",
+                            ActivityLog.entity_id == uuid.UUID(company["id"]),
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        assert "marketing.layout_changed" in actions
+
+        # Clearing the layout restores the defaults.
+        cleared = await c.put(
+            f"/api/v1/marketing/companies/{company['id']}/settings",
+            json={"layout": {"sources": {}}},
+            headers=headers,
+        )
+        assert cleared.json()["layout"] is None
+        body = (
+            await c.get(
+                f"/api/v1/marketing/companies/{company['id']}/metrics",
+                params={"range_days": 30},
+                headers=headers,
+            )
+        ).json()
+        src = next(s for s in body["sources"] if s["source"] == "ga4")
+        assert "totalUsers" in src["kpis"]
+
+
+async def test_layout_validation_rejects_unknown_keys(client_for) -> None:
+    t = await make_tenant("mktg-layout-val")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Val BV"}, headers=headers)
+        ).json()
+        for bad in (
+            {"sources": {"nope": {"tiles": []}}},
+            {"sources": {"ga4": {"tiles": ["notAMetric"]}}},
+            {"sources": {"ga4": {"drilldowns": ["notAKind"]}}},
+            {"sources": {"ga4": {"chart_metric": "notAMetric"}}},
+            {"sources": {"ga4": {"labels": {"sessions": {"fr": "Sessions"}}}}},
+        ):
+            res = await c.put(
+                f"/api/v1/marketing/companies/{company['id']}/settings",
+                json={"layout": bad},
+                headers=headers,
+            )
+            assert res.status_code == 422, bad
+
+
+async def test_layout_hides_key_events_drilldown_and_toggle_edits_layout(client_for) -> None:
+    """A layout without the keyEvents tile 422s the by-event drill-down; the legacy toggle
+    keeps working against a curated layout by editing its tiles (#192 expand rules)."""
+    t = await make_tenant("mktg-layout-kd")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "KD BV"}, headers=headers)
+        ).json()
+        ga4 = (
+            await c.post(
+                "/api/v1/marketing/links",
+                json={
+                    "company_id": company["id"],
+                    "source": "ga4",
+                    "external_id": "properties/9",
+                    "display_name": "KD — GA4",
+                },
+                headers=headers,
+            )
+        ).json()
+
+        # Hide keyEvents via layout; the drill-down goes with it.
+        await c.put(
+            f"/api/v1/marketing/companies/{company['id']}/settings",
+            json={"layout": {"sources": {"ga4": {"tiles": ["sessions"]}}}},
+            headers=headers,
+        )
+        res = await c.get(
+            "/api/v1/marketing/companies/" + company["id"] + "/drilldown",
+            params={"link_id": ga4["id"], "kind": "key_events", "range_days": 30},
+            headers=headers,
+        )
+        assert res.status_code == 422
+        # The settings echo derives the boolean from the tiles.
+        body = (
+            await c.get(
+                f"/api/v1/marketing/companies/{company['id']}/metrics",
+                params={"range_days": 30},
+                headers=headers,
+            )
+        ).json()
+        assert body["show_key_events"] is False
+
+        # The legacy toggle edits the curated tiles back on.
+        toggled = await c.put(
+            f"/api/v1/marketing/companies/{company['id']}/settings",
+            json={"show_key_events": True},
+            headers=headers,
+        )
+        assert toggled.json()["show_key_events"] is True
+        tiles = toggled.json()["layout"]["sources"]["ga4"]["tiles"]
+        assert "keyEvents" in tiles and "sessions" in tiles
+
+
+async def test_layout_tenant_isolation(client_for) -> None:
+    a = await make_tenant("mktg-layout-a")
+    b = await make_tenant("mktg-layout-b")
+    a_headers = await auth_cookie(a.user)
+    b_headers = await auth_cookie(b.user)
+    async with client_for(a.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "A BV"}, headers=a_headers)
+        ).json()
+        await c.put(
+            f"/api/v1/marketing/companies/{company['id']}/settings",
+            json={"layout": {"sources": {"ga4": {"tiles": ["sessions"]}}}},
+            headers=a_headers,
+        )
+    async with client_for(b.host) as c:
+        # B cannot reach A's company settings by id — reads as absent.
+        res = await c.put(
+            f"/api/v1/marketing/companies/{company['id']}/settings",
+            json={"layout": {"sources": {}}},
+            headers=b_headers,
+        )
+        assert res.status_code == 404
+
+
+async def test_link_attaches_to_client_website(client_for) -> None:
+    """A link may attach to one of *this* client's websites; the metrics payload carries the
+    website (id + domain name) so panel/tab group per site, and another company's website 404s."""
+    a = await make_tenant("mktg-web")
+    headers = await auth_cookie(a.user)
+
+    async with client_for(a.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Twee Sites BV"}, headers=headers)
+        ).json()
+        other = (
+            await c.post("/api/v1/companies", json={"name": "Ander BV"}, headers=headers)
+        ).json()
+        domain = (
+            await c.post(
+                "/api/v1/domains",
+                json={"name": "tweesites.nl", "company_id": company["id"]},
+                headers=headers,
+            )
+        ).json()
+        website = (
+            await c.post("/api/v1/websites", json={"domain_id": domain["id"]}, headers=headers)
+        ).json()
+        other_domain = (
+            await c.post(
+                "/api/v1/domains",
+                json={"name": "ander.nl", "company_id": other["id"]},
+                headers=headers,
+            )
+        ).json()
+        other_website = (
+            await c.post(
+                "/api/v1/websites", json={"domain_id": other_domain["id"]}, headers=headers
+            )
+        ).json()
+
+        created = await c.post(
+            "/api/v1/marketing/links",
+            json={
+                "company_id": company["id"],
+                "website_id": website["id"],
+                "source": "ga4",
+                "external_id": "properties/111",
+                "display_name": "Twee Sites — GA4",
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        assert created.json()["website_id"] == website["id"]
+        assert created.json()["website_name"] == "tweesites.nl"
+
+        # Another company's website is not a valid attachment point — a non-leaking 404.
+        rejected = await c.post(
+            "/api/v1/marketing/links",
+            json={
+                "company_id": company["id"],
+                "website_id": other_website["id"],
+                "source": "gsc",
+                "external_id": "sc-domain:tweesites.nl",
+                "display_name": "Twee Sites — GSC",
+            },
+            headers=headers,
+        )
+        assert rejected.status_code == 404, rejected.text
+
+        # The metrics payload groups per website: the source carries the website, and the
+        # client's website list rides along for the pickers.
+        metrics = (
+            await c.get(
+                f"/api/v1/marketing/companies/{company['id']}/metrics", headers=headers
+            )
+        ).json()
+        assert [w["name"] for w in metrics["websites"]] == ["tweesites.nl"]
+        assert metrics["sources"][0]["website_id"] == website["id"]
+        assert metrics["sources"][0]["website_name"] == "tweesites.nl"

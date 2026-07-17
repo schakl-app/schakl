@@ -63,6 +63,7 @@ _DOMAIN_TABLES = (
     "websites, hosting, domains, providers, "
     "time_entry_drafts, time_entries, time_entry_types, tasks, projects, contacts, contact_types, "
     "custom_field_definitions, "
+    "membership_company_groups, company_group_members, company_groups, hr_documents, "
     "files, activity_log, dashboard_prefs, nav_prefs, user_prefs, companies, "
     "api_keys, service_accounts, "
     "email_settings, org_email_templates, org_auth_settings, "
@@ -71,6 +72,7 @@ _DOMAIN_TABLES = (
     "instance_audit_log, user_two_factor, users, orgs"
 )
 _ENABLED_MODULES = [
+    "hr",
     "companies", "contacts", "tasks", "projects", "time", "leave", "notifications",
     "domains", "hosting", "websites", "subscriptions", "invoicing", "automation",
     "interactions", "google", "marketing",

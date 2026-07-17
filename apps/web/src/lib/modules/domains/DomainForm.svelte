@@ -24,6 +24,7 @@
     definitions,
     locale,
     idPrefix = "domain",
+    initialCompanyId = "",
     oncreatecompany,
     oncreatecontact,
     oncreateprovider,
@@ -38,6 +39,8 @@
     definitions: Definition[];
     locale: string;
     idPrefix?: string;
+    /** Preselects the client on a fresh form (quick-create from a client page). */
+    initialCompanyId?: string;
     /** Inline-create (#115, docs/UX.md): typing an unknown name offers "＋ … toevoegen".
      * `slot` is set when a PartyPicker asks, so the created entity auto-selects there. */
     oncreatecompany?: (name: string, slot?: string) => void;
@@ -85,7 +88,7 @@
     <Combobox
       items={companyItems}
       name="company_id"
-      value={createdBySlot.company ?? domain?.company_id ?? ""}
+      value={createdBySlot.company ?? domain?.company_id ?? initialCompanyId}
       allowEmpty={false}
       id="{idPrefix}-company"
       placeholder={t("domains.company")}

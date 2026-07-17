@@ -182,6 +182,41 @@ volume **`storage-data`**, mounted into `api` and `worker` at `SCHAKL_STORAGE_PA
   `SCHAKL_UPLOAD_ALLOWED_TYPES` (a JSON list; defaults to images, PDF, text, zip and office
   documents). The API refuses anything outside them with `413`/`422`.
 
+### S3-compatible object storage (issue #190, off by default)
+
+Instead of the node-local volume, new files can go to any S3-compatible bucket (Hetzner
+Object Storage, MinIO, Scaleway, AWS — the implementation codes strictly against the S3 API).
+Instance-wide, via environment variables on `api` **and** `worker`:
+
+```bash
+SCHAKL_STORAGE_BACKEND=s3
+SCHAKL_STORAGE_S3_ENDPOINT=https://fsn1.your-objectstorage.com
+SCHAKL_STORAGE_S3_REGION=fsn1
+SCHAKL_STORAGE_S3_BUCKET=my-schakl-files
+SCHAKL_STORAGE_S3_ACCESS_KEY_ID=…
+SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY=…
+SCHAKL_STORAGE_S3_KEY_PREFIX=            # optional, nests all keys under a prefix
+SCHAKL_STORAGE_S3_FORCE_PATH_STYLE=true  # default; MinIO-safe, Hetzner supports both
+```
+
+What to know before flipping it on:
+
+- **Override, not migration.** The backend is recorded per file row, so enabling S3 affects
+  **new writes only** — files already on `storage-data` keep serving from the volume. Keep
+  the volume (and its backups) as long as any `local` rows exist; `GET /api/v1/files` rows
+  carry `backend`, so "what still lives on the volume" is answerable.
+- **The bucket stays private.** No public ACL or bucket policy — every byte still travels the
+  API (tenant scoping + permissions, Golden Rule 6). Object keys are org-prefixed
+  (`<org_id>/<file_id>`), so isolation holds at the key level too.
+- **Scope the credential to the one bucket**, and prefer bucket versioning + lifecycle rules
+  for backup/retention over volume snapshots for the S3-backed rows.
+- **Changing the bucket or prefix later** makes objects written under the old one unreachable
+  from the app (the same as repointing `SCHAKL_STORAGE_PATH`). Rows whose backend can't be
+  reached (e.g. S3 config removed) answer a distinct 404, `errors.storage_backend_unavailable`,
+  naming the fix.
+- **Rollback is safe:** unset the variables and new writes fall back to the volume; S3 rows
+  then 404 (distinctly) until the config returns. No migration in either direction.
+
 ## Releases and image tags
 
 Images are built **only** when a `v*` tag is pushed (`.github/workflows/release.yml`). Pushing

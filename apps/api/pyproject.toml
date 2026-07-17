@@ -29,6 +29,8 @@ dependencies = [
     "apprise>=1.12.0",
     "cryptography>=49.0.0",
     "fastmcp>=2.12,<3",
+    "pillow>=12.3.0",
+    "boto3>=1.43.49",
     "pyotp>=2.9",
     "segno>=1.6",
 ]

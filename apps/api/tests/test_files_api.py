@@ -259,3 +259,223 @@ async def test_avatar_file_delete_is_personal(client_for, tmp_path, monkeypatch)
 
         # The owner may.
         assert (await c.delete(f"/api/v1/files/{file_id}", headers=headers)).status_code == 204
+
+
+async def test_app_icon_size_variants(client_for, tmp_path, monkeypatch) -> None:
+    """The public branding serve derives real PNG size variants for the PWA icon story
+    (#198): square-cropped, resized, and — maskable — padded into the safe zone."""
+    import io
+
+    from PIL import Image
+
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    t = await make_tenant("files-icon")
+    headers = await auth_cookie(t.user)
+
+    # A non-square source proves the centre crop: 640x480, all-brand pixels.
+    buf = io.BytesIO()
+    Image.new("RGBA", (640, 480), "#4f46e5").save(buf, "PNG")
+    async with client_for(t.host) as c:
+        created = await c.post(
+            "/api/v1/files?entity_type=branding",
+            files={"file": ("icon.png", buf.getvalue(), "image/png")},
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        file_id = created.json()["id"]
+
+        for size in (180, 192, 512):
+            res = await c.get(f"/api/v1/files/{file_id}/public?size={size}")
+            assert res.status_code == 200
+            assert res.headers["content-type"] == "image/png"
+            img = Image.open(io.BytesIO(res.content))
+            assert img.size == (size, size)
+
+        # Maskable pads the artwork on an opaque background; still exactly the asked size.
+        res = await c.get(f"/api/v1/files/{file_id}/public?size=192&maskable=true")
+        assert res.status_code == 200
+        img = Image.open(io.BytesIO(res.content))
+        assert img.size == (192, 192)
+        # The pad ring is the bg colour (default white), the centre stays the icon's colour.
+        assert img.convert("RGB").getpixel((2, 2)) == (255, 255, 255)
+        centre = img.convert("RGB").getpixel((96, 96))
+        assert centre != (255, 255, 255)
+
+        # A variant answers 304 on its own ETag — and a different size has a different one.
+        etag = res.headers["etag"]
+        again = await c.get(
+            f"/api/v1/files/{file_id}/public?size=192&maskable=true",
+            headers={"If-None-Match": etag},
+        )
+        assert again.status_code == 304
+        other = await c.get(f"/api/v1/files/{file_id}/public?size=512")
+        assert other.headers["etag"] != etag
+
+        # An unknown size serves the original bytes unchanged (no open resize proxy).
+        res = await c.get(f"/api/v1/files/{file_id}/public?size=333")
+        assert res.headers["content-type"] == "image/png"
+        assert Image.open(io.BytesIO(res.content)).size == (640, 480)
+
+
+async def test_app_icon_url_branding_round_trip(client_for) -> None:
+    """`app_icon_url` (#198) rides org branding: writable via PATCH, readable pre-auth
+    (the manifest needs it), clearable with an empty string, and tenant-scoped."""
+    t = await make_tenant("branding-appicon")
+    other = await make_tenant("branding-appicon-other")
+    headers = await auth_cookie(t.user)
+
+    async with client_for(t.host) as c:
+        updated = await c.patch(
+            "/api/v1/meta/tenant",
+            json={"app_icon_url": "/api/v1/files/00000000-0000-0000-0000-000000000001/public"},
+            headers=headers,
+        )
+        assert updated.status_code == 200, updated.text
+        assert updated.json()["app_icon_url"] is not None
+
+        # Pre-auth read — the login screen / manifest fetches this without a session.
+        anon = await c.get("/api/v1/meta/tenant")
+        assert anon.json()["app_icon_url"] is not None
+
+        cleared = await c.patch("/api/v1/meta/tenant", json={"app_icon_url": ""}, headers=headers)
+        assert cleared.json()["app_icon_url"] is None
+
+    async with client_for(other.host) as c:
+        assert (await c.get("/api/v1/meta/tenant")).json()["app_icon_url"] is None
+
+
+class _FakeS3:
+    """In-memory stand-in for S3ObjectStorage (#190) — the protocol, no network."""
+
+    def __init__(self) -> None:
+        self.blobs: dict[str, bytes] = {}
+
+    def put(self, key: str, stream) -> None:
+        self.blobs[key] = stream.read()
+
+    def open(self, key: str):
+        import io
+
+        if key not in self.blobs:
+            raise FileNotFoundError(key)
+        return io.BytesIO(self.blobs[key])
+
+    def delete(self, key: str) -> None:
+        self.blobs.pop(key, None)
+
+
+def _enable_fake_s3(monkeypatch) -> _FakeS3:
+    """Point the instance at S3 (#190) the way env vars would, faked at the client seam."""
+    from app.core.storage import backend as backend_mod
+
+    fake = _FakeS3()
+    monkeypatch.setattr(settings, "storage_backend", "s3")
+    monkeypatch.setattr(settings, "storage_s3_endpoint", "http://minio.local:9000")
+    monkeypatch.setattr(settings, "storage_s3_bucket", "schakl")
+    monkeypatch.setattr(settings, "storage_s3_access_key_id", "key")
+    monkeypatch.setattr(settings, "storage_s3_secret_access_key", "secret")
+    original = backend_mod.storage_for
+
+    def fake_storage_for(name: str):
+        if name == "s3":
+            from app.core.storage.s3 import s3_configured
+
+            if not s3_configured():
+                raise backend_mod.StorageUnavailableError(name)
+            return fake
+        return original(name)
+
+    # Patch every import site of the seam (service + router bind the name at import).
+    import app.core.storage.router as router_mod
+    import app.core.storage.service as service_mod
+
+    monkeypatch.setattr(backend_mod, "storage_for", fake_storage_for)
+    monkeypatch.setattr(service_mod, "storage_for", fake_storage_for)
+    monkeypatch.setattr(router_mod, "storage_for", fake_storage_for)
+    monkeypatch.setattr(
+        service_mod, "get_storage", lambda: fake_storage_for(settings.storage_backend)
+    )
+    return fake
+
+
+async def test_s3_backend_records_and_serves_new_writes(
+    client_for, tmp_path, monkeypatch
+) -> None:
+    """With SCHAKL_STORAGE_BACKEND=s3 (#190), new uploads record backend="s3", land in the
+    bucket, and serve back through the API — the bucket is never exposed directly."""
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    t = await make_tenant("files-s3")
+    headers = await auth_cookie(t.user)
+
+    # A pre-existing local row (written before S3 was enabled).
+    async with client_for(t.host) as c:
+        local_meta = (
+            await c.post(
+                "/api/v1/files",
+                files={"file": ("old.png", _PNG, "image/png")},
+                headers=headers,
+            )
+        ).json()
+        assert local_meta["backend"] == "local"
+
+    fake = _enable_fake_s3(monkeypatch)
+    async with client_for(t.host) as c:
+        created = await c.post(
+            "/api/v1/files",
+            files={"file": ("new.png", _PNG, "image/png")},
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        meta = created.json()
+        assert meta["backend"] == "s3"
+        # The bytes went to the bucket, under the org-prefixed key.
+        assert fake.blobs[meta["storage_key"]] == _PNG
+        assert meta["storage_key"].startswith(str(t.org.id))
+
+        # Reads dispatch on the row's backend: the s3 row serves from the fake bucket…
+        served = await c.get(f"/api/v1/files/{meta['id']}", headers=headers)
+        assert served.status_code == 200 and served.content == _PNG
+        # …and the pre-S3 local row still serves from the volume (override, not migration).
+        old = await c.get(f"/api/v1/files/{local_meta['id']}", headers=headers)
+        assert old.status_code == 200 and old.content == _PNG
+
+        # Deleting the s3 row removes the object from the bucket.
+        assert (
+            await c.delete(f"/api/v1/files/{meta['id']}", headers=headers)
+        ).status_code == 204
+        assert meta["storage_key"] not in fake.blobs
+
+
+async def test_s3_row_with_config_removed_reads_as_distinct_404(
+    client_for, tmp_path, monkeypatch
+) -> None:
+    """An `s3` row whose instance config was since removed answers the distinct
+    errors.storage_backend_unavailable — an ops pointer, not a generic bad link."""
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    t = await make_tenant("files-s3-gone")
+    headers = await auth_cookie(t.user)
+
+    fake = _enable_fake_s3(monkeypatch)
+    async with client_for(t.host) as c:
+        meta = (
+            await c.post(
+                "/api/v1/files",
+                files={"file": ("f.png", _PNG, "image/png")},
+                headers=headers,
+            )
+        ).json()
+        assert meta["backend"] == "s3"
+
+    # The operator unsets the S3 env config; the instance falls back to local for writes.
+    monkeypatch.setattr(settings, "storage_backend", "local")
+    monkeypatch.setattr(settings, "storage_s3_endpoint", "")
+    async with client_for(t.host) as c:
+        res = await c.get(f"/api/v1/files/{meta['id']}", headers=headers)
+        assert res.status_code == 404
+        assert res.json()["error"]["message"] == "errors.storage_backend_unavailable"
+
+        # Deleting the row still works — the blob is orphaned space, not a locked tenant.
+        assert (
+            await c.delete(f"/api/v1/files/{meta['id']}", headers=headers)
+        ).status_code == 204
+    assert fake.blobs  # the orphaned object is still in the (fake) bucket
