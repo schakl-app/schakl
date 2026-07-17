@@ -33,6 +33,7 @@ dependencies = [
     "boto3>=1.43.49",
     "pyotp>=2.9",
     "segno>=1.6",
+    "fpdf2>=2.8.7",
 ]
 
 [dependency-groups]

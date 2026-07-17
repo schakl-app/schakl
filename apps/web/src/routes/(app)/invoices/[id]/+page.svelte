@@ -125,6 +125,11 @@
         ...(!isDraft
           ? [
               {
+                label: t("invoicing.action.download_pdf"),
+                icon: Download,
+                href: `/invoices/${invoice.id}/pdf`,
+              },
+              {
                 label: t("invoicing.action.print"),
                 icon: Printer,
                 href: `/invoices/${invoice.id}/print`,

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Check, FileText, Pencil, Printer, Trash2, X } from "@lucide/svelte";
+  import { Download, Check, FileText, Pencil, Printer, Trash2, X } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
@@ -114,6 +114,11 @@
           : []),
         ...(!isDraft
           ? [
+              {
+                label: t("invoicing.action.download_pdf"),
+                icon: Download,
+                href: `/quotes/${quote.id}/pdf`,
+              },
               {
                 label: t("invoicing.action.print"),
                 icon: Printer,

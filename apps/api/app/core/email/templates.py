@@ -183,4 +183,5 @@ def apply_signature(message: OutgoingEmail, signature_html: str | None) -> Outgo
         subject=message.subject,
         text=message.text + (f"\n\n-- \n{plain}" if plain else ""),
         html=f"{body_html}<br>{sig_html}",
+        attachments=message.attachments,
     )

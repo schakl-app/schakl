@@ -557,6 +557,38 @@ class _DocumentService:
         self.settings = InvoicingSettingsService(ctx)
         self.custom_fields = CustomFieldsService(ctx)
 
+    async def document_pdf(self, doc: Any, kind: str) -> tuple[bytes, str]:
+        """Render this document as PDF bytes + a filename (owner feedback: the API, not the
+        browser's print dialog, is where an invoice document comes from). ``doc`` must have
+        its lines attached (``get()`` does)."""
+        from app.modules.invoicing.pdf import render_document_pdf
+
+        settings_row = await self.settings.row()
+        template_id = doc.template_id or settings_row.default_template_id
+        config: dict[str, Any] = {}
+        if template_id is not None:
+            template = await self.ctx.session.scalar(
+                self.ctx.repo(DocumentTemplate)
+                .scoped_select()
+                .where(DocumentTemplate.id == template_id)
+            )
+            if template is not None:
+                config = template.config or {}
+        org_settings = await self.ctx.session.scalar(
+            select(OrgSettings).where(OrgSettings.org_id == self.ctx.org.id)
+        )
+        brand = (org_settings.brand_name if org_settings else None) or self.ctx.org.name
+        content = render_document_pdf(
+            kind=kind,
+            doc=doc,
+            lines=list(doc.lines),
+            seller=settings_row.company_details or {},
+            config=config,
+            brand_name=brand,
+        )
+        prefix = "offerte" if kind == "quote" else "factuur"
+        return content, f"{doc.number or f'{prefix}-{doc.id}'}.pdf"
+
     async def _default_tax_rate_id(self, settings_row: InvoicingSettings) -> uuid.UUID | None:
         """The rate a line without one gets: the configured default, else the catalog's
         ``is_default`` row (which is what the seeder marks)."""
@@ -948,12 +980,20 @@ class InvoiceService(_DocumentService):
                 raise AppError(
                     "validation", "errors.invoicing.no_recipient", status_code=400
                 )
+            from app.core.email.senders import EmailAttachment
             from app.modules.invoicing import emails
 
             message = emails.compose_invoice_email(
                 invoice, self.ctx.org.name, data.message
             )
             message.to = to
+            # The mail carries the document (owner feedback): a text summary is not an
+            # invoice. Lines ride along for the render.
+            await self._attach([invoice], payments=True)
+            content, filename = await self.document_pdf(invoice, "invoice")
+            message.attachments.append(
+                EmailAttachment(filename=filename, content=content, mimetype="application/pdf")
+            )
             await emails.deliver(self.ctx, message)
         invoice = await self.repo.update(invoice, sent_at=datetime.now(UTC))
         await ActivityService(self.ctx).record(
@@ -1566,10 +1606,16 @@ class QuoteService(_DocumentService):
                 raise AppError(
                     "validation", "errors.invoicing.no_recipient", status_code=400
                 )
+            from app.core.email.senders import EmailAttachment
             from app.modules.invoicing import emails
 
             message = emails.compose_quote_email(quote, self.ctx.org.name, data.message)
             message.to = to
+            await self._attach([quote])
+            content, filename = await self.document_pdf(quote, "quote")
+            message.attachments.append(
+                EmailAttachment(filename=filename, content=content, mimetype="application/pdf")
+            )
             await emails.deliver(self.ctx, message)
         quote = await self.repo.update(quote, sent_at=datetime.now(UTC))
         await ActivityService(self.ctx).record(

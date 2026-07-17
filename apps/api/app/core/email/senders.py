@@ -13,9 +13,10 @@ transport that is inherently synchronous.
 from __future__ import annotations
 
 import asyncio
+import base64
 import smtplib
 import ssl
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from email.message import EmailMessage as MimeMessage
 
 import httpx
@@ -26,11 +27,21 @@ _TIMEOUT = 15.0
 
 
 @dataclass
+class EmailAttachment:
+    "'A file riding an outgoing mail (issue #207: the sent invoice carries its PDF).'"
+
+    filename: str
+    content: bytes
+    mimetype: str = "application/octet-stream"
+
+
+@dataclass
 class OutgoingEmail:
     to: str
     subject: str
     text: str
     html: str | None = None
+    attachments: list[EmailAttachment] = field(default_factory=list)
 
 
 @dataclass
@@ -67,6 +78,14 @@ def _mime(sender: Sender, message: OutgoingEmail) -> MimeMessage:
     mime.set_content(message.text)
     if message.html:
         mime.add_alternative(message.html, subtype="html")
+    for attachment in message.attachments:
+        maintype, _, subtype = attachment.mimetype.partition("/")
+        mime.add_attachment(
+            attachment.content,
+            maintype=maintype or "application",
+            subtype=subtype or "octet-stream",
+            filename=attachment.filename,
+        )
     return mime
 
 
@@ -116,6 +135,11 @@ async def _send_brevo(
         payload["htmlContent"] = message.html
     if sender.reply_to:
         payload["replyTo"] = {"email": sender.reply_to}
+    if message.attachments:
+        payload["attachment"] = [
+            {"name": a.filename, "content": base64.b64encode(a.content).decode()}
+            for a in message.attachments
+        ]
     return await _post_json(
         "https://api.brevo.com/v3/smtp/email",
         headers={"api-key": str(config.get("api_key") or "")},
@@ -139,6 +163,16 @@ async def _send_sendgrid(
     }
     if sender.reply_to:
         payload["reply_to"] = {"email": sender.reply_to}
+    if message.attachments:
+        payload["attachments"] = [
+            {
+                "content": base64.b64encode(a.content).decode(),
+                "filename": a.filename,
+                "type": a.mimetype,
+                "disposition": "attachment",
+            }
+            for a in message.attachments
+        ]
     return await _post_json(
         "https://api.sendgrid.com/v3/mail/send",
         headers={"Authorization": f"Bearer {config.get('api_key') or ''}"},
@@ -159,6 +193,15 @@ async def _send_smtp2go(
     }
     if message.html:
         payload["html_body"] = message.html
+    if message.attachments:
+        payload["attachments"] = [
+            {
+                "filename": a.filename,
+                "fileblob": base64.b64encode(a.content).decode(),
+                "mimetype": a.mimetype,
+            }
+            for a in message.attachments
+        ]
     ok, error = await _post_json(
         "https://api.smtp2go.com/v3/email/send",
         headers={"X-Smtp2go-Api-Key": str(config.get("api_key") or "")},

@@ -2647,6 +2647,7 @@
   "invoicing.action.credit": "Create credit note",
   "invoicing.action.register_payment": "Register payment",
   "invoicing.action.download_ubl": "Download UBL",
+  "invoicing.action.download_pdf": "Download PDF",
   "invoicing.action.print": "Print / PDF",
   "invoicing.action.accept": "Accept",
   "invoicing.action.reject": "Reject",

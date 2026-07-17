@@ -467,6 +467,43 @@ async def delete_payment(
 
 
 @router.get(
+    "/invoices/{invoice_id}/pdf",
+    dependencies=[require_permission("invoicing.invoice.read")],
+)
+async def download_invoice_pdf(
+    invoice_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> Response:
+    """The rendered invoice document (owner feedback): the same PDF the send path attaches."""
+    service = InvoiceService(ctx)
+    invoice = await service.get(invoice_id)
+    content, filename = await service.document_pdf(invoice, "invoice")
+    return Response(
+        content=content,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get(
+    "/quotes/{quote_id}/pdf",
+    dependencies=[require_permission("invoicing.quote.read")],
+)
+async def download_quote_pdf(
+    quote_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> Response:
+    service = QuoteService(ctx)
+    quote = await service.get(quote_id)
+    content, filename = await service.document_pdf(quote, "quote")
+    return Response(
+        content=content,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get(
     "/invoices/{invoice_id}/ubl",
     dependencies=[require_permission("invoicing.invoice.read")],
 )

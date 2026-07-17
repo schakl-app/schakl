@@ -569,3 +569,31 @@ async def test_products_catalog(client_for) -> None:
                 headers=other_headers,
             )
         ).status_code == 404
+
+
+async def test_invoice_pdf_download(client_for) -> None:
+    """Owner feedback: the API renders the invoice document itself — the same PDF the send
+    path attaches — instead of leaving 'PDF' to the browser's print dialog."""
+    t: Tenant = await make_tenant("inv-pdf")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "PDF BV"}, headers=headers)
+        ).json()
+        invoice = (
+            await c.post(
+                "/api/v1/invoicing/invoices",
+                json={
+                    "company_id": company["id"],
+                    "lines": [
+                        {"description": "Websiteonderhoud", "quantity": "2", "unit_price": "95"}
+                    ],
+                },
+                headers=headers,
+            )
+        ).json()
+        res = await c.get(f"/api/v1/invoicing/invoices/{invoice['id']}/pdf", headers=headers)
+        assert res.status_code == 200, res.text
+        assert res.headers["content-type"] == "application/pdf"
+        assert res.content.startswith(b"%PDF")
+        assert "attachment" in res.headers["content-disposition"]

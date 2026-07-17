@@ -2647,6 +2647,7 @@
   "invoicing.action.credit": "Crediteren",
   "invoicing.action.register_payment": "Betaling registreren",
   "invoicing.action.download_ubl": "UBL downloaden",
+  "invoicing.action.download_pdf": "PDF downloaden",
   "invoicing.action.print": "Afdrukken / PDF",
   "invoicing.action.accept": "Accepteren",
   "invoicing.action.reject": "Afwijzen",
