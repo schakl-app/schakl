@@ -15,6 +15,7 @@
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import AssigneePicker from "$lib/core/ui/AssigneePicker.svelte";
   import AvatarStack from "$lib/core/ui/AvatarStack.svelte";
+  import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import FileAttachments from "$lib/core/ui/FileAttachments.svelte";
@@ -217,9 +218,7 @@
           {@const margin = billableValue - data.cost.cost}
           <div class="mt-2 flex items-center justify-between text-sm">
             <span class="text-text-muted">{t("projects.margin")}</span>
-            <span
-              class="font-medium {margin < 0 ? 'text-red-600 dark:text-red-400' : 'text-text'}"
-            >
+            <span class="font-medium {margin < 0 ? 'text-red-600 dark:text-red-400' : 'text-text'}">
               {money(margin)}
             </span>
           </div>
@@ -280,10 +279,9 @@
             </select>
           </div>
           <div class="flex items-center gap-2 pt-6">
-            <input
+            <FormCheckbox
               id="billable_default"
               name="billable_default"
-              type="checkbox"
               checked={project.billable_default}
               class="h-4 w-4 rounded border-border text-brand focus:ring-brand"
             />

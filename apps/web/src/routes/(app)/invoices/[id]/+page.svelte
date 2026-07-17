@@ -9,6 +9,7 @@
   import { entityPanelsFor } from "$lib/core/registry";
   import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
@@ -255,8 +256,7 @@
         <form method="POST" action="?/save" use:enhance class="mt-3 border-t border-border pt-3">
           <input type="hidden" name="_status" value={invoice.status} />
           <label class="flex items-center gap-2 text-sm text-text">
-            <input
-              type="checkbox"
+            <FormCheckbox
               name="reminders_paused_toggle"
               checked={invoice.reminders_paused}
               onchange={(e) => e.currentTarget.form?.requestSubmit()}

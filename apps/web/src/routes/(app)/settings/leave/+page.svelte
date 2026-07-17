@@ -3,6 +3,7 @@
   import { tick } from "svelte";
 
   import { enhance } from "$app/forms";
+  import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
@@ -262,8 +263,7 @@
           update({ reset: false })}
     >
       <label class="flex items-start gap-3 text-sm text-text">
-        <input
-          type="checkbox"
+        <FormCheckbox
           name="self_approval"
           checked={data.selfApproval}
           class="mt-0.5 h-4 w-4 rounded border-border"
@@ -626,23 +626,15 @@
       </div>
       <div class="space-y-2">
         <label class="flex items-center gap-2 text-sm text-text">
-          <input type="checkbox" name="paid" checked={editType?.paid ?? true} />
+          <FormCheckbox name="paid" checked={editType?.paid ?? true} />
           {t("settings.leave.prop_paid")}
         </label>
         <label class="flex items-center gap-2 text-sm text-text">
-          <input
-            type="checkbox"
-            name="tracks_balance"
-            checked={editType?.tracks_balance ?? false}
-          />
+          <FormCheckbox name="tracks_balance" checked={editType?.tracks_balance ?? false} />
           {t("settings.leave.prop_balance_long")}
         </label>
         <label class="flex items-center gap-2 text-sm text-text">
-          <input
-            type="checkbox"
-            name="requires_approval"
-            checked={editType?.requires_approval ?? true}
-          />
+          <FormCheckbox name="requires_approval" checked={editType?.requires_approval ?? true} />
           {t("settings.leave.prop_approval_long")}
         </label>
       </div>

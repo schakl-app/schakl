@@ -5,6 +5,7 @@
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import { LABEL_COLORS, labelChipClass, labelDotClass } from "$lib/modules/tasks/labels";
 
@@ -58,16 +59,15 @@
                   {/each}
                 </select>
                 <label class="flex items-center gap-1 text-xs text-text-muted">
-                  <input type="checkbox" name="is_terminal" value="true" checked={status.is_terminal} />
+                  <FormCheckbox name="is_terminal" value="true" checked={status.is_terminal} />
                   {t("tasks.statuses.terminal")}
                 </label>
                 <label class="flex items-center gap-1 text-xs text-text-muted">
-                  <input type="checkbox" name="is_default" value="true" checked={status.is_default} />
+                  <FormCheckbox name="is_default" value="true" checked={status.is_default} />
                   {t("tasks.statuses.default")}
                 </label>
                 <label class="flex items-center gap-1 text-xs text-text-muted">
-                  <input
-                    type="checkbox"
+                  <FormCheckbox
                     name="requires_interaction"
                     value="true"
                     checked={status.requires_interaction}

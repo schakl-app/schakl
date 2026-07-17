@@ -12,6 +12,7 @@
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
 
   let { data, form } = $props();
@@ -80,7 +81,13 @@
             <label for="name-{group.id}" class="mb-1 block text-sm font-medium text-text"
               >{t("settings.company_groups.name")}</label
             >
-            <input id="name-{group.id}" name="name" value={group.name} required class={inputClass} />
+            <input
+              id="name-{group.id}"
+              name="name"
+              value={group.name}
+              required
+              class={inputClass}
+            />
           </div>
           <div class="grid gap-4 md:grid-cols-2">
             <fieldset>
@@ -90,8 +97,7 @@
               <div class="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-border p-3">
                 {#each data.companies as company (company.id)}
                   <label class="flex items-center gap-2 text-sm text-text">
-                    <input
-                      type="checkbox"
+                    <FormCheckbox
                       name="company_ids"
                       value={company.id}
                       checked={group.company_ids?.includes(company.id)}
@@ -113,8 +119,7 @@
               <div class="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-border p-3">
                 {#each data.members as member (member.membership_id)}
                   <label class="flex items-center gap-2 text-sm text-text">
-                    <input
-                      type="checkbox"
+                    <FormCheckbox
                       name="membership_ids"
                       value={member.membership_id}
                       checked={group.membership_ids?.includes(member.membership_id)}

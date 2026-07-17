@@ -6,6 +6,7 @@
   import { pageTitle } from "$lib/core/title";
   import { fieldLabel } from "$lib/core/customfields/types";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
@@ -299,8 +300,7 @@
         {/if}
         <div class="flex items-center gap-4">
           <label class="flex items-center gap-2 text-sm text-text">
-            <input
-              type="checkbox"
+            <FormCheckbox
               name="required"
               checked={editDef.required}
               class="h-4 w-4 rounded border-border"

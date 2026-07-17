@@ -1,5 +1,6 @@
 <script lang="ts">
   import { enhance } from "$app/forms";
+  import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
 
@@ -70,7 +71,7 @@
 
   <form method="POST" action="?/save" use:enhance class="space-y-4">
     <label class="flex items-start gap-2 text-sm text-text">
-      <input type="checkbox" name="enabled" checked={sso?.enabled ?? false} class="mt-0.5" />
+      <FormCheckbox name="enabled" checked={sso?.enabled ?? false} class="mt-0.5" />
       <span>
         {t("settings.sso.enabled")}
         <span class="block text-xs text-text-muted">{t("settings.sso.enabled_hint")}</span>
@@ -137,12 +138,7 @@
     </div>
 
     <label class="flex items-start gap-2 text-sm text-text">
-      <input
-        type="checkbox"
-        name="auto_provision"
-        checked={sso?.auto_provision ?? true}
-        class="mt-0.5"
-      />
+      <FormCheckbox name="auto_provision" checked={sso?.auto_provision ?? true} class="mt-0.5" />
       <span>
         {t("settings.sso.auto_provision")}
         <span class="block text-xs text-text-muted">{t("settings.sso.auto_provision_hint")}</span>
@@ -150,8 +146,7 @@
     </label>
 
     <label class="flex items-start gap-2 text-sm text-text" class:opacity-60={enforceLocked}>
-      <input
-        type="checkbox"
+      <FormCheckbox
         name="enforced"
         checked={sso?.enforced ?? false}
         disabled={enforceLocked}

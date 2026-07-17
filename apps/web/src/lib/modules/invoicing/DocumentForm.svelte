@@ -93,7 +93,10 @@
     }
   });
 
-  const includeTax = $derived(
+  // Bound state, not a one-way checked (docs/UX.md): the mark must survive hydration, and
+  // the line calculations must follow the toggle live — a derived-only value did neither.
+  // svelte-ignore state_referenced_locally
+  let includeTax = $state(
     (doc?.prices_include_tax ?? settings?.prices_include_tax ?? false) as boolean,
   );
   const companyItems = $derived(companies.map((c) => ({ value: c.id, label: c.name })));
@@ -274,7 +277,7 @@
         type="checkbox"
         name="prices_include_tax"
         value="1"
-        checked={includeTax}
+        bind:checked={includeTax}
         class="rounded border-border"
       />
       {t("invoicing.field.prices_include_tax")}

@@ -5,6 +5,7 @@
   import { pageTitle } from "$lib/core/title";
   import { moduleLabel } from "$lib/core/registry";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
 
   let { data, form } = $props();
 
@@ -103,8 +104,7 @@
         {#each data.availableModules as moduleName (moduleName)}
           {@const isHub = moduleName === "companies"}
           <label class="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm">
-            <input
-              type="checkbox"
+            <FormCheckbox
               name="modules"
               value={moduleName}
               checked={org.enabled_modules.includes(moduleName)}

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { enhance } from "$app/forms";
+  import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import { currencyLabel } from "$lib/core/currencies";
   import { localeLabel, t } from "$lib/core/i18n";
   import { pageTitle, renderTabTitle } from "$lib/core/title";
@@ -67,8 +68,7 @@
             class={inputClass}
           />
           <label class="mt-2 flex items-center gap-2 text-sm text-text">
-            <input
-              type="checkbox"
+            <FormCheckbox
               name="show_brand_name"
               checked={branding.show_brand_name}
               class="h-4 w-4 rounded border-border text-brand focus:ring-brand"

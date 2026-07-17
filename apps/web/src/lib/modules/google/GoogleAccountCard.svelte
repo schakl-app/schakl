@@ -10,6 +10,7 @@
    * **Host contract:** the account page exposes `?/googleDisconnect` and `?/googleGmailPrefs`.
    */
   import { enhance } from "$app/forms";
+  import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import { t } from "$lib/core/i18n";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
 
@@ -133,8 +134,7 @@
       {#if data.gmail_enabled}
         <form method="POST" action="?/googleGmailPrefs" use:enhance class="space-y-3">
           <label class="flex items-start gap-2 text-sm text-text">
-            <input
-              type="checkbox"
+            <FormCheckbox
               name="gmail_sync_enabled"
               checked={connection.gmail_sync_enabled}
               class="mt-0.5"

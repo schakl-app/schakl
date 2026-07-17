@@ -10,6 +10,7 @@
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import FileAttachments from "$lib/core/ui/FileAttachments.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import Markdown from "$lib/core/ui/Markdown.svelte";
@@ -36,9 +37,7 @@
     projects: data.projects,
     // The current task, so a panel can walk task → project → client (e.g. the Drive panel
     // roots the browser at the project/client folder rather than the shared-drive root, #150).
-    tasks: task.project_id
-      ? [{ id: task.id, title: task.title, project_id: task.project_id }]
-      : [],
+    tasks: task.project_id ? [{ id: task.id, title: task.title, project_id: task.project_id }] : [],
   });
 
   // The activity log grows without bound on a busy task (issue #86): show the most recent few and
@@ -71,8 +70,7 @@
 
   // The org's configured status vocabulary (issue #62), from the /tasks layout load.
   const statuses = $derived(data.statuses);
-  const statusName = (key: string) =>
-    statuses.find((s) => s.key === key)?.name ?? key;
+  const statusName = (key: string) => statuses.find((s) => s.key === key)?.name ?? key;
   const isDone = $derived(statuses.find((s) => s.key === task.status)?.is_terminal ?? false);
 
   // Ticking the *last* open to-do offers to finish the task (the to-dos and the status should
@@ -470,356 +468,356 @@
          checklists shows no section at all until you edit — an empty card with a create form
          is exactly the clutter use mode exists to avoid. -->
     {#if (task.checklists ?? []).length > 0 || editMode}
-    <section class="rounded-xl border border-border bg-surface-raised p-5">
-      <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
-        {t("tasks.checklist.title")}
-      </h3>
+      <section class="rounded-xl border border-border bg-surface-raised p-5">
+        <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
+          {t("tasks.checklist.title")}
+        </h3>
 
-      {#each task.checklists ?? [] as checklist (checklist.id)}
-        {@const items = checklist.items ?? []}
-        {@const total = items.length}
-        {@const doneCount = items.filter((i) => i.done).length}
-        <div class="mb-4">
-          <div class="mb-1 flex items-center justify-between gap-2">
-            <h4 class="text-sm font-semibold text-text">{checklist.title}</h4>
-            <div class="flex items-center gap-2">
-              <span class="text-xs tabular-nums text-text-muted"
-                >{t("tasks.checklist.progress", { done: doneCount, total })}</span
-              >
-              {#if editMode && items.length > 0}
-                <form method="POST" action="?/saveChecklistTemplate" use:enhance>
-                  <input type="hidden" name="title" value={checklist.title} />
-                  <!-- Item titles *and* descriptions, so the saved template carries both (issue #66). -->
-                  <input
-                    type="hidden"
-                    name="items"
-                    value={JSON.stringify(
-                      items.map((i) => ({ title: i.title, description: i.description ?? null })),
-                    )}
-                  />
-                  <button
-                    class="text-xs text-text-muted hover:text-brand"
-                    title={t("tasks.checklist.save_template_hint")}
-                  >
-                    {t("tasks.checklist.save_template")}
-                  </button>
-                </form>
-              {/if}
-              {#if editMode}
-                <ActionsMenu
-                  compact
-                  items={[
-                    {
-                      label: t("common.edit"),
-                      icon: Pencil,
-                      onclick: () =>
-                        (editingChecklistId =
-                          editingChecklistId === checklist.id ? null : checklist.id),
-                    },
-                    {
-                      label: t("common.delete"),
-                      icon: Trash2,
-                      danger: true,
-                      onclick: () =>
-                        askDelete(
-                          "?/deleteChecklist",
-                          { checklist_id: checklist.id },
-                          t("tasks.checklist.delete_confirm"),
-                        ),
-                    },
-                  ]}
-                />
-              {/if}
-            </div>
-          </div>
-          {#if editingChecklistId === checklist.id}
-            <form
-              method="POST"
-              action="?/editChecklist"
-              use:enhance={() =>
-                ({ update }) => {
-                  editingChecklistId = null;
-                  void update();
-                }}
-              class="mb-2 space-y-2"
-            >
-              <input type="hidden" name="checklist_id" value={checklist.id} />
-              <input name="title" value={checklist.title} required class={inputClass} />
-              <RichTextEditor
-                name="description"
-                rows={2}
-                value={checklist.description ?? ""}
-                placeholder={t("tasks.checklist.description_placeholder")}
-              />
-              <div class="flex gap-2">
-                <button class="rounded-lg bg-brand px-2 py-1 text-xs font-medium text-white"
-                  >{t("common.save")}</button
+        {#each task.checklists ?? [] as checklist (checklist.id)}
+          {@const items = checklist.items ?? []}
+          {@const total = items.length}
+          {@const doneCount = items.filter((i) => i.done).length}
+          <div class="mb-4">
+            <div class="mb-1 flex items-center justify-between gap-2">
+              <h4 class="text-sm font-semibold text-text">{checklist.title}</h4>
+              <div class="flex items-center gap-2">
+                <span class="text-xs tabular-nums text-text-muted"
+                  >{t("tasks.checklist.progress", { done: doneCount, total })}</span
                 >
-                <button
-                  type="button"
-                  class="rounded-lg border border-border px-2 py-1 text-xs"
-                  onclick={() => (editingChecklistId = null)}>{t("common.cancel")}</button
-                >
-              </div>
-            </form>
-          {:else if checklist.description}
-            <div class="mb-2"><Markdown value={checklist.description} /></div>
-          {/if}
-          {#if total > 0}
-            <div class="mb-2 h-1.5 overflow-hidden rounded-full bg-surface">
-              <div
-                class="h-full rounded-full {doneCount === total ? 'bg-green-500' : 'bg-brand'}"
-                style="width: {total ? Math.round((doneCount / total) * 100) : 0}%"
-              ></div>
-            </div>
-          {/if}
-          <ul class="space-y-1">
-            {#each items as item (item.id)}
-              <li class="group">
-                <div class="flex items-center gap-2">
-                  <form
-                    method="POST"
-                    action="?/toggleItem"
-                    use:enhance={() => {
-                      // Snapshot before the server flips it: checking the last open to-do on an
-                      // unfinished task opens the finish prompt after the reload.
-                      const completesLast =
-                        !item.done &&
-                        openItemCount === 1 &&
-                        !isDone &&
-                        !isPortal &&
-                        finishStatus !== null;
-                      return ({ update }) => {
-                        void update().then(() => {
-                          if (completesLast) showFinishPrompt = true;
-                        });
-                      };
-                    }}
-                  >
-                    <input type="hidden" name="checklist_id" value={checklist.id} />
-                    <input type="hidden" name="item_id" value={item.id} />
-                    <input type="hidden" name="done" value={String(!item.done)} />
+                {#if editMode && items.length > 0}
+                  <form method="POST" action="?/saveChecklistTemplate" use:enhance>
+                    <input type="hidden" name="title" value={checklist.title} />
+                    <!-- Item titles *and* descriptions, so the saved template carries both (issue #66). -->
+                    <input
+                      type="hidden"
+                      name="items"
+                      value={JSON.stringify(
+                        items.map((i) => ({ title: i.title, description: i.description ?? null })),
+                      )}
+                    />
                     <button
-                      class="flex h-4 w-4 items-center justify-center rounded border text-[10px]
-                        {item.done
-                        ? 'border-brand bg-brand text-white'
-                        : 'border-border text-transparent hover:border-brand'}"
-                      aria-label={t("tasks.toggle_done")}>✓</button
+                      class="text-xs text-text-muted hover:text-brand"
+                      title={t("tasks.checklist.save_template_hint")}
                     >
+                      {t("tasks.checklist.save_template")}
+                    </button>
                   </form>
-                  <span
-                    class="flex-1 text-sm {item.done
-                      ? 'text-text-muted line-through'
-                      : 'text-text'}">{item.title}</span
-                  >
-                  {#if editMode}
-                    <ActionsMenu
-                      compact
-                      items={[
-                        {
-                          label: t("common.edit"),
-                          icon: Pencil,
-                          onclick: () =>
-                            (editingItemId = editingItemId === item.id ? null : item.id),
-                        },
-                        {
-                          label: t("common.delete"),
-                          icon: Trash2,
-                          danger: true,
-                          onclick: () =>
-                            askDelete(
-                              "?/deleteItem",
-                              { checklist_id: checklist.id, item_id: item.id },
-                              t("tasks.checklist.item_delete_confirm"),
-                            ),
-                        },
-                      ]}
-                    />
-                  {/if}
-                </div>
-                {#if editingItemId === item.id}
-                  <form
-                    method="POST"
-                    action="?/editItem"
-                    use:enhance={() =>
-                      ({ update }) => {
-                        editingItemId = null;
-                        void update();
-                      }}
-                    class="mt-1 space-y-2 pl-6"
-                  >
-                    <input type="hidden" name="checklist_id" value={checklist.id} />
-                    <input type="hidden" name="item_id" value={item.id} />
-                    <input name="title" value={item.title} required class={inputClass} />
-                    <RichTextEditor
-                      name="description"
-                      rows={2}
-                      value={item.description ?? ""}
-                      placeholder={t("tasks.checklist.description_placeholder")}
-                    />
-                    <div class="flex gap-2">
-                      <button class="rounded-lg bg-brand px-2 py-1 text-xs font-medium text-white"
-                        >{t("common.save")}</button
-                      >
-                      <button
-                        type="button"
-                        class="rounded-lg border border-border px-2 py-1 text-xs"
-                        onclick={() => (editingItemId = null)}>{t("common.cancel")}</button
-                      >
-                    </div>
-                  </form>
-                {:else if item.description}
-                  <div class="mt-0.5 pl-6"><Markdown value={item.description} /></div>
                 {/if}
-              </li>
-            {/each}
-          </ul>
-          <form method="POST" action="?/addItem" use:enhance class="mt-2 flex gap-2">
-            <input type="hidden" name="checklist_id" value={checklist.id} />
-            <input
-              name="title"
-              placeholder={t("tasks.checklist.item_placeholder")}
-              required
-              class="min-w-0 flex-1 rounded-lg border border-border px-2 py-1 text-sm outline-none focus:border-brand"
-            />
-            <button
-              class="rounded-lg border border-border px-2 py-1 text-xs text-text-muted hover:border-brand hover:text-brand"
-              >＋</button
-            >
-          </form>
-        </div>
-      {/each}
+                {#if editMode}
+                  <ActionsMenu
+                    compact
+                    items={[
+                      {
+                        label: t("common.edit"),
+                        icon: Pencil,
+                        onclick: () =>
+                          (editingChecklistId =
+                            editingChecklistId === checklist.id ? null : checklist.id),
+                      },
+                      {
+                        label: t("common.delete"),
+                        icon: Trash2,
+                        danger: true,
+                        onclick: () =>
+                          askDelete(
+                            "?/deleteChecklist",
+                            { checklist_id: checklist.id },
+                            t("tasks.checklist.delete_confirm"),
+                          ),
+                      },
+                    ]}
+                  />
+                {/if}
+              </div>
+            </div>
+            {#if editingChecklistId === checklist.id}
+              <form
+                method="POST"
+                action="?/editChecklist"
+                use:enhance={() =>
+                  ({ update }) => {
+                    editingChecklistId = null;
+                    void update();
+                  }}
+                class="mb-2 space-y-2"
+              >
+                <input type="hidden" name="checklist_id" value={checklist.id} />
+                <input name="title" value={checklist.title} required class={inputClass} />
+                <RichTextEditor
+                  name="description"
+                  rows={2}
+                  value={checklist.description ?? ""}
+                  placeholder={t("tasks.checklist.description_placeholder")}
+                />
+                <div class="flex gap-2">
+                  <button class="rounded-lg bg-brand px-2 py-1 text-xs font-medium text-white"
+                    >{t("common.save")}</button
+                  >
+                  <button
+                    type="button"
+                    class="rounded-lg border border-border px-2 py-1 text-xs"
+                    onclick={() => (editingChecklistId = null)}>{t("common.cancel")}</button
+                  >
+                </div>
+              </form>
+            {:else if checklist.description}
+              <div class="mb-2"><Markdown value={checklist.description} /></div>
+            {/if}
+            {#if total > 0}
+              <div class="mb-2 h-1.5 overflow-hidden rounded-full bg-surface">
+                <div
+                  class="h-full rounded-full {doneCount === total ? 'bg-green-500' : 'bg-brand'}"
+                  style="width: {total ? Math.round((doneCount / total) * 100) : 0}%"
+                ></div>
+              </div>
+            {/if}
+            <ul class="space-y-1">
+              {#each items as item (item.id)}
+                <li class="group">
+                  <div class="flex items-center gap-2">
+                    <form
+                      method="POST"
+                      action="?/toggleItem"
+                      use:enhance={() => {
+                        // Snapshot before the server flips it: checking the last open to-do on an
+                        // unfinished task opens the finish prompt after the reload.
+                        const completesLast =
+                          !item.done &&
+                          openItemCount === 1 &&
+                          !isDone &&
+                          !isPortal &&
+                          finishStatus !== null;
+                        return ({ update }) => {
+                          void update().then(() => {
+                            if (completesLast) showFinishPrompt = true;
+                          });
+                        };
+                      }}
+                    >
+                      <input type="hidden" name="checklist_id" value={checklist.id} />
+                      <input type="hidden" name="item_id" value={item.id} />
+                      <input type="hidden" name="done" value={String(!item.done)} />
+                      <button
+                        class="flex h-4 w-4 items-center justify-center rounded border text-[10px]
+                        {item.done
+                          ? 'border-brand bg-brand text-white'
+                          : 'border-border text-transparent hover:border-brand'}"
+                        aria-label={t("tasks.toggle_done")}>✓</button
+                      >
+                    </form>
+                    <span
+                      class="flex-1 text-sm {item.done
+                        ? 'text-text-muted line-through'
+                        : 'text-text'}">{item.title}</span
+                    >
+                    {#if editMode}
+                      <ActionsMenu
+                        compact
+                        items={[
+                          {
+                            label: t("common.edit"),
+                            icon: Pencil,
+                            onclick: () =>
+                              (editingItemId = editingItemId === item.id ? null : item.id),
+                          },
+                          {
+                            label: t("common.delete"),
+                            icon: Trash2,
+                            danger: true,
+                            onclick: () =>
+                              askDelete(
+                                "?/deleteItem",
+                                { checklist_id: checklist.id, item_id: item.id },
+                                t("tasks.checklist.item_delete_confirm"),
+                              ),
+                          },
+                        ]}
+                      />
+                    {/if}
+                  </div>
+                  {#if editingItemId === item.id}
+                    <form
+                      method="POST"
+                      action="?/editItem"
+                      use:enhance={() =>
+                        ({ update }) => {
+                          editingItemId = null;
+                          void update();
+                        }}
+                      class="mt-1 space-y-2 pl-6"
+                    >
+                      <input type="hidden" name="checklist_id" value={checklist.id} />
+                      <input type="hidden" name="item_id" value={item.id} />
+                      <input name="title" value={item.title} required class={inputClass} />
+                      <RichTextEditor
+                        name="description"
+                        rows={2}
+                        value={item.description ?? ""}
+                        placeholder={t("tasks.checklist.description_placeholder")}
+                      />
+                      <div class="flex gap-2">
+                        <button class="rounded-lg bg-brand px-2 py-1 text-xs font-medium text-white"
+                          >{t("common.save")}</button
+                        >
+                        <button
+                          type="button"
+                          class="rounded-lg border border-border px-2 py-1 text-xs"
+                          onclick={() => (editingItemId = null)}>{t("common.cancel")}</button
+                        >
+                      </div>
+                    </form>
+                  {:else if item.description}
+                    <div class="mt-0.5 pl-6"><Markdown value={item.description} /></div>
+                  {/if}
+                </li>
+              {/each}
+            </ul>
+            <form method="POST" action="?/addItem" use:enhance class="mt-2 flex gap-2">
+              <input type="hidden" name="checklist_id" value={checklist.id} />
+              <input
+                name="title"
+                placeholder={t("tasks.checklist.item_placeholder")}
+                required
+                class="min-w-0 flex-1 rounded-lg border border-border px-2 py-1 text-sm outline-none focus:border-brand"
+              />
+              <button
+                class="rounded-lg border border-border px-2 py-1 text-xs text-text-muted hover:border-brand hover:text-brand"
+                >＋</button
+              >
+            </form>
+          </div>
+        {/each}
 
-      {#if editMode}
-        <form method="POST" action="?/addChecklist" use:enhance class="flex gap-2">
-          <!-- `min-w-0`: a flex `<input>` keeps its browser-default width (~228px here) as its
+        {#if editMode}
+          <form method="POST" action="?/addChecklist" use:enhance class="flex gap-2">
+            <!-- `min-w-0`: a flex `<input>` keeps its browser-default width (~228px here) as its
                min-content floor, so `flex-1` alone cannot shrink it and the row pushed the whole
                card past a phone's width (issue #36). -->
-          <input
-            name="title"
-            placeholder={t("tasks.checklist.add")}
-            required
-            class="min-w-0 flex-1 rounded-lg border border-dashed border-border px-3 py-1.5 text-sm outline-none focus:border-brand"
-          />
-          <button
-            class="rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:border-brand hover:text-brand"
-          >
-            {t("common.create")}
-          </button>
-        </form>
-        {#if data.checklistTemplates.length > 0}
-          <form method="POST" action="?/addChecklist" use:enhance class="mt-2 flex gap-2">
-            <select
-              name="template_id"
+            <input
+              name="title"
+              placeholder={t("tasks.checklist.add")}
               required
-              class="flex-1 rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted"
-            >
-              {#each data.checklistTemplates as checklistTemplate (checklistTemplate.id)}
-                <option value={checklistTemplate.id}>
-                  {checklistTemplate.title} ({checklistTemplate.items?.length ?? 0})
-                </option>
-              {/each}
-            </select>
+              class="min-w-0 flex-1 rounded-lg border border-dashed border-border px-3 py-1.5 text-sm outline-none focus:border-brand"
+            />
             <button
               class="rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:border-brand hover:text-brand"
             >
-              {t("tasks.checklist.from_template")}
+              {t("common.create")}
             </button>
           </form>
+          {#if data.checklistTemplates.length > 0}
+            <form method="POST" action="?/addChecklist" use:enhance class="mt-2 flex gap-2">
+              <select
+                name="template_id"
+                required
+                class="flex-1 rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted"
+              >
+                {#each data.checklistTemplates as checklistTemplate (checklistTemplate.id)}
+                  <option value={checklistTemplate.id}>
+                    {checklistTemplate.title} ({checklistTemplate.items?.length ?? 0})
+                  </option>
+                {/each}
+              </select>
+              <button
+                class="rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:border-brand hover:text-brand"
+              >
+                {t("tasks.checklist.from_template")}
+              </button>
+            </form>
+          {/if}
         {/if}
-      {/if}
-    </section>
+      </section>
     {/if}
 
     <!-- Links & attachments. Use mode shows what is attached (open, download); adding a link,
          uploading a file and deleting either are edit-mode work (docs/UX.md §3). No links and
          no files → no section, until you edit. -->
     {#if (task.links ?? []).length > 0 || data.files.length > 0 || editMode}
-    <section class="rounded-xl border border-border bg-surface-raised p-5">
-      <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
-        {t("tasks.links.title")}
-      </h3>
-      {#if (task.links ?? []).length === 0}
-        {#if editMode}<p class="mb-3 text-sm text-text-muted">{t("tasks.links.empty")}</p>{/if}
-      {:else}
-        <ul class="mb-3 space-y-1">
-          {#each task.links ?? [] as link (link.id)}
-            <li class="group flex items-center gap-2">
-              <LinkIcon size={14} class="shrink-0 text-text-muted" />
-              <a
-                href={link.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                class="min-w-0 flex-1 truncate text-sm text-brand hover:underline"
-              >
-                {link.title || link.url}
-              </a>
-              {#if editMode}
-                <ActionsMenu
-                  compact
-                  items={[
-                    {
-                      label: t("common.delete"),
-                      icon: Trash2,
-                      danger: true,
-                      onclick: () =>
-                        askDelete(
-                          "?/deleteLink",
-                          { link_id: link.id },
-                          t("tasks.links.delete_confirm"),
-                        ),
-                    },
-                  ]}
-                />
-              {/if}
-            </li>
-          {/each}
-        </ul>
-      {/if}
-      {#if editMode}
-        <form
-          method="POST"
-          action="?/addLink"
-          use:enhance={() =>
-            ({ update }) =>
-              void update({ reset: true })}
-          class="flex flex-wrap gap-2"
-        >
-          <input
-            name="url"
-            required
-            placeholder={t("tasks.links.url_placeholder")}
-            class="min-w-[12rem] flex-1 rounded-lg border border-border px-3 py-1.5 text-sm outline-none focus:border-brand"
-          />
-          <input
-            name="title"
-            placeholder={t("tasks.links.title_placeholder")}
-            class="w-40 rounded-lg border border-border px-3 py-1.5 text-sm outline-none focus:border-brand"
-          />
-          <button
-            class="rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:border-brand hover:text-brand"
-          >
-            {t("common.create")}
-          </button>
-        </form>
-      {/if}
-
-      {#if !isPortal && (data.files.length > 0 || editMode)}
-        <!-- Document uploads through the storage core (#123) — staff-only surface. -->
-        <div class="{editMode ? 'mt-4 border-t border-border pt-4' : ''}">
-          <FileAttachments
-            files={data.files}
-            uploadAction="?/uploadFile"
-            deleteAction="?/deleteFile"
-            error={form?.fileError ?? null}
-            readonly={!editMode}
-          />
-        </div>
-        {#if editMode}
-          <p class="mt-2 text-[11px] text-text-muted">{t("tasks.links.files_hint")}</p>
+      <section class="rounded-xl border border-border bg-surface-raised p-5">
+        <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
+          {t("tasks.links.title")}
+        </h3>
+        {#if (task.links ?? []).length === 0}
+          {#if editMode}<p class="mb-3 text-sm text-text-muted">{t("tasks.links.empty")}</p>{/if}
+        {:else}
+          <ul class="mb-3 space-y-1">
+            {#each task.links ?? [] as link (link.id)}
+              <li class="group flex items-center gap-2">
+                <LinkIcon size={14} class="shrink-0 text-text-muted" />
+                <a
+                  href={link.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="min-w-0 flex-1 truncate text-sm text-brand hover:underline"
+                >
+                  {link.title || link.url}
+                </a>
+                {#if editMode}
+                  <ActionsMenu
+                    compact
+                    items={[
+                      {
+                        label: t("common.delete"),
+                        icon: Trash2,
+                        danger: true,
+                        onclick: () =>
+                          askDelete(
+                            "?/deleteLink",
+                            { link_id: link.id },
+                            t("tasks.links.delete_confirm"),
+                          ),
+                      },
+                    ]}
+                  />
+                {/if}
+              </li>
+            {/each}
+          </ul>
         {/if}
-      {/if}
-    </section>
+        {#if editMode}
+          <form
+            method="POST"
+            action="?/addLink"
+            use:enhance={() =>
+              ({ update }) =>
+                void update({ reset: true })}
+            class="flex flex-wrap gap-2"
+          >
+            <input
+              name="url"
+              required
+              placeholder={t("tasks.links.url_placeholder")}
+              class="min-w-[12rem] flex-1 rounded-lg border border-border px-3 py-1.5 text-sm outline-none focus:border-brand"
+            />
+            <input
+              name="title"
+              placeholder={t("tasks.links.title_placeholder")}
+              class="w-40 rounded-lg border border-border px-3 py-1.5 text-sm outline-none focus:border-brand"
+            />
+            <button
+              class="rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:border-brand hover:text-brand"
+            >
+              {t("common.create")}
+            </button>
+          </form>
+        {/if}
+
+        {#if !isPortal && (data.files.length > 0 || editMode)}
+          <!-- Document uploads through the storage core (#123) — staff-only surface. -->
+          <div class={editMode ? "mt-4 border-t border-border pt-4" : ""}>
+            <FileAttachments
+              files={data.files}
+              uploadAction="?/uploadFile"
+              deleteAction="?/deleteFile"
+              error={form?.fileError ?? null}
+              readonly={!editMode}
+            />
+          </div>
+          {#if editMode}
+            <p class="mt-2 text-[11px] text-text-muted">{t("tasks.links.files_hint")}</p>
+          {/if}
+        {/if}
+      </section>
     {/if}
 
     <!-- Comments -->
@@ -955,49 +953,51 @@
 
     <!-- Activity — the staff paper trail, never a portal surface. -->
     {#if !isPortal}
-    <section class="rounded-xl border border-border bg-surface-raised p-5">
-      <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
-        {t("tasks.activity.title")}
-      </h3>
-      {#if activities.length === 0}
-        <p class="text-sm text-text-muted">—</p>
-      {:else}
-        <ul class="space-y-2">
-          {#each visibleActivities as activity (activity.id)}
-            {@const href = activityHref(activity)}
-            <li class="flex items-baseline gap-2 text-sm">
-              <span class="shrink-0 text-[11px] tabular-nums text-text-muted"
-                >{when(activity.created_at)}</span
-              >
-              <span class="text-text">
-                <span class="font-medium">{actorLabel(activity)}</span>
-                {#if href}
-                  <a class="hover:text-brand hover:underline" {href}>{activityText(activity)}</a>
-                {:else}
-                  {activityText(activity)}
-                {/if}
-              </span>
-            </li>
-          {/each}
-        </ul>
-        {#if activities.length > ACTIVITY_COLLAPSED}
-          <button
-            type="button"
-            class="mt-3 text-xs font-medium text-brand hover:underline"
-            onclick={() => (activityExpanded = !activityExpanded)}
-          >
-            {activityExpanded
-              ? t("common.show_less")
-              : t("common.show_all", { count: activities.length })}
-          </button>
+      <section class="rounded-xl border border-border bg-surface-raised p-5">
+        <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
+          {t("tasks.activity.title")}
+        </h3>
+        {#if activities.length === 0}
+          <p class="text-sm text-text-muted">—</p>
+        {:else}
+          <ul class="space-y-2">
+            {#each visibleActivities as activity (activity.id)}
+              {@const href = activityHref(activity)}
+              <li class="flex items-baseline gap-2 text-sm">
+                <span class="shrink-0 text-[11px] tabular-nums text-text-muted"
+                  >{when(activity.created_at)}</span
+                >
+                <span class="text-text">
+                  <span class="font-medium">{actorLabel(activity)}</span>
+                  {#if href}
+                    <a class="hover:text-brand hover:underline" {href}>{activityText(activity)}</a>
+                  {:else}
+                    {activityText(activity)}
+                  {/if}
+                </span>
+              </li>
+            {/each}
+          </ul>
+          {#if activities.length > ACTIVITY_COLLAPSED}
+            <button
+              type="button"
+              class="mt-3 text-xs font-medium text-brand hover:underline"
+              onclick={() => (activityExpanded = !activityExpanded)}
+            >
+              {activityExpanded
+                ? t("common.show_less")
+                : t("common.show_all", { count: activities.length })}
+            </button>
+          {/if}
         {/if}
-      {/if}
-    </section>
+      </section>
     {/if}
   </div>
 
   <!-- Sidebar — second on a phone (order-2, right under the title), right column at `lg`. -->
-  <aside class="order-2 min-w-0 space-y-4 lg:order-none lg:col-start-2 lg:row-span-2 lg:row-start-1">
+  <aside
+    class="order-2 min-w-0 space-y-4 lg:order-none lg:col-start-2 lg:row-span-2 lg:row-start-1"
+  >
     <section class="rounded-xl border border-border bg-surface-raised p-4">
       <div class="space-y-3">
         <!-- Status is core workflow → always editable for staff; a portal contact reads it. -->
@@ -1142,8 +1142,7 @@
                  unchecked box still submits a value; the status quick-form never carries it. -->
             <input type="hidden" name="requires_interaction" value="false" form="task-edit" />
             <label class="flex items-start gap-2 text-sm text-text">
-              <input
-                type="checkbox"
+              <FormCheckbox
                 name="requires_interaction"
                 value="true"
                 checked={task.requires_interaction}
@@ -1162,8 +1161,7 @@
             <!-- Client-portal visibility: off by default, ticked per task by staff. -->
             <input type="hidden" name="visible_to_client" value="false" form="task-edit" />
             <label class="flex items-start gap-2 text-sm text-text">
-              <input
-                type="checkbox"
+              <FormCheckbox
                 name="visible_to_client"
                 value="true"
                 checked={task.visible_to_client}
@@ -1239,101 +1237,101 @@
     <!-- Labels — edit-mode only: in use mode the chips already sit under the title, so a second
          card repeating them (or teaching "no labels yet") is noise (docs/UX.md §3). -->
     {#if editMode}
-    <section class="rounded-xl border border-border bg-surface-raised p-4">
-      <div class="mb-2 flex items-center justify-between">
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
-          {t("tasks.field.labels")}
-        </h3>
-        <button
-          type="button"
-          class="text-xs text-text-muted hover:text-brand"
-          onclick={() => (showLabelPicker = !showLabelPicker)}
-        >
-          {showLabelPicker ? t("common.cancel") : t("common.edit")}
-        </button>
-      </div>
-
-      {#if showLabelPicker}
-        <form
-          method="POST"
-          action="?/setLabels"
-          use:enhance={() =>
-            ({ update }) => {
-              showLabelPicker = false;
-              void update();
-            }}
-          class="space-y-1"
-        >
-          {#each data.labels as label (label.id)}
-            <label class="flex items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-surface">
-              <input
-                type="checkbox"
-                name="label_ids"
-                value={label.id}
-                checked={currentLabelIds.includes(label.id)}
-                class="h-4 w-4 rounded border-border text-brand focus:ring-brand"
-              />
-              <span class="h-2.5 w-2.5 rounded-full {labelDotClass(label.color)}"></span>
-              <span class="text-text">{label.name}</span>
-            </label>
-          {/each}
+      <section class="rounded-xl border border-border bg-surface-raised p-4">
+        <div class="mb-2 flex items-center justify-between">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
+            {t("tasks.field.labels")}
+          </h3>
           <button
-            class="mt-2 w-full rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
-            >{t("common.apply")}</button
+            type="button"
+            class="text-xs text-text-muted hover:text-brand"
+            onclick={() => (showLabelPicker = !showLabelPicker)}
           >
-        </form>
+            {showLabelPicker ? t("common.cancel") : t("common.edit")}
+          </button>
+        </div>
 
-        <form
-          method="POST"
-          action="?/createLabel"
-          use:enhance={() =>
-            ({ update }) => {
-              showLabelPicker = false;
-              void update();
-            }}
-          class="mt-3 border-t border-border pt-3"
-        >
-          {#each currentLabelIds as id (id)}
-            <input type="hidden" name="current_label_ids" value={id} />
-          {/each}
-          <input
-            name="name"
-            placeholder={t("tasks.labels.new_placeholder")}
-            required
-            class="w-full rounded-lg border border-border px-2 py-1 text-sm"
-          />
-          <input type="hidden" name="color" value={newLabelColor} />
-          <div class="mt-2 flex flex-wrap gap-1">
-            {#each LABEL_COLORS as color (color)}
-              <button
-                type="button"
-                aria-label={color}
-                class="h-5 w-5 rounded-full {labelDotClass(color)} {newLabelColor === color
-                  ? 'ring-2 ring-text ring-offset-1'
-                  : ''}"
-                onclick={() => (newLabelColor = color)}
-              ></button>
+        {#if showLabelPicker}
+          <form
+            method="POST"
+            action="?/setLabels"
+            use:enhance={() =>
+              ({ update }) => {
+                showLabelPicker = false;
+                void update();
+              }}
+            class="space-y-1"
+          >
+            {#each data.labels as label (label.id)}
+              <label class="flex items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-surface">
+                <FormCheckbox
+                  name="label_ids"
+                  value={label.id}
+                  checked={currentLabelIds.includes(label.id)}
+                  class="h-4 w-4 rounded border-border text-brand focus:ring-brand"
+                />
+                <span class="h-2.5 w-2.5 rounded-full {labelDotClass(label.color)}"></span>
+                <span class="text-text">{label.name}</span>
+              </label>
+            {/each}
+            <button
+              class="mt-2 w-full rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+              >{t("common.apply")}</button
+            >
+          </form>
+
+          <form
+            method="POST"
+            action="?/createLabel"
+            use:enhance={() =>
+              ({ update }) => {
+                showLabelPicker = false;
+                void update();
+              }}
+            class="mt-3 border-t border-border pt-3"
+          >
+            {#each currentLabelIds as id (id)}
+              <input type="hidden" name="current_label_ids" value={id} />
+            {/each}
+            <input
+              name="name"
+              placeholder={t("tasks.labels.new_placeholder")}
+              required
+              class="w-full rounded-lg border border-border px-2 py-1 text-sm"
+            />
+            <input type="hidden" name="color" value={newLabelColor} />
+            <div class="mt-2 flex flex-wrap gap-1">
+              {#each LABEL_COLORS as color (color)}
+                <button
+                  type="button"
+                  aria-label={color}
+                  class="h-5 w-5 rounded-full {labelDotClass(color)} {newLabelColor === color
+                    ? 'ring-2 ring-text ring-offset-1'
+                    : ''}"
+                  onclick={() => (newLabelColor = color)}
+                ></button>
+              {/each}
+            </div>
+            <button
+              class="mt-2 w-full rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:border-brand hover:text-brand"
+            >
+              {t("tasks.labels.create")}
+            </button>
+          </form>
+        {:else if (task.labels ?? []).length === 0}
+          <p class="text-sm text-text-muted">{t("tasks.labels.empty")}</p>
+        {:else}
+          <div class="flex flex-wrap gap-1">
+            {#each task.labels ?? [] as label (label.id)}
+              <span
+                class="rounded-full px-2 py-0.5 text-[11px] font-medium {labelChipClass(
+                  label.color,
+                )}">{label.name}</span
+              >
             {/each}
           </div>
-          <button
-            class="mt-2 w-full rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:border-brand hover:text-brand"
-          >
-            {t("tasks.labels.create")}
-          </button>
-        </form>
-      {:else if (task.labels ?? []).length === 0}
-        <p class="text-sm text-text-muted">{t("tasks.labels.empty")}</p>
-      {:else}
-        <div class="flex flex-wrap gap-1">
-          {#each task.labels ?? [] as label (label.id)}
-            <span
-              class="rounded-full px-2 py-0.5 text-[11px] font-medium {labelChipClass(label.color)}"
-              >{label.name}</span
-            >
-          {/each}
-        </div>
-      {/if}
-    </section>
+        {/if}
+      </section>
     {/if}
 
     <!-- Recurrence (definition → edit mode only) -->
@@ -1493,7 +1491,9 @@
           }}
       >
         <input type="hidden" name="status" value={finishStatus?.key ?? ""} />
-        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+        <button
+          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        >
           {t("tasks.finish_prompt.confirm")}
         </button>
       </form>

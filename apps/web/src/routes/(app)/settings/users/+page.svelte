@@ -20,6 +20,7 @@
   import { effectivePermissions, WILDCARD } from "$lib/core/roles/permissions";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import { fmtHours } from "$lib/modules/leave/format";
@@ -304,14 +305,13 @@
                 >{t("settings.users.inactive")}</span
               >
             {/if}
-{#if data.restrictedMembershipIds.includes(member.membership_id)}
+            {#if data.restrictedMembershipIds.includes(member.membership_id)}
               <!-- A visibility restriction (#191) must be visible at a glance — a restricted
                    member quietly seeing "everything they know of" reads as data loss. -->
               <a
                 href="/settings/company-groups"
                 class="rounded-full px-2 py-0.5 text-[11px] font-medium text-text-muted ring-1 ring-inset ring-border hover:text-brand"
-                title={t("settings.users.restricted_hint")}
-                >{t("settings.users.restricted")}</a
+                title={t("settings.users.restricted_hint")}>{t("settings.users.restricted")}</a
               >
             {/if}
             {#if member.two_factor_enabled}
@@ -375,8 +375,7 @@
                   <label
                     class="flex items-center gap-3 rounded-lg border border-border bg-surface-raised px-3 py-2"
                   >
-                    <input
-                      type="checkbox"
+                    <FormCheckbox
                       name="role_ids"
                       value={role.id}
                       checked={member.role_ids.includes(role.id)}

@@ -22,8 +22,13 @@
   let toggleId = $state("");
   let toggleActive = $state("");
 
+  // Radio selection is component state, never a one-way checked (docs/UX.md): a mark
+  // rendered one-way can vanish on hydration and the save then posts nothing.
+  let newKind = $state("email");
+
   function openCreate() {
     editing = null;
+    newKind = "email";
     showModal = true;
   }
   function openEdit(p: Provider) {
@@ -127,7 +132,7 @@
           <div class="flex flex-wrap gap-2">
             {#each KINDS as kind (kind)}
               <label class="flex items-center gap-1.5 text-sm text-text">
-                <input type="radio" name="kind" value={kind} checked={kind === "email"} />
+                <input type="radio" name="kind" value={kind} bind:group={newKind} />
                 {t(`providers.kind.${kind}`)}
               </label>
             {/each}

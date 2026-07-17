@@ -67,12 +67,17 @@
     form?.inlineCreated?.slot === "hosting_account" ? form.inlineCreated.id : "",
   );
 
+  // Radio selection is component state, never a one-way checked (docs/UX.md).
+  let hostChoice = $state<"root" | "www">("root");
+
   function openCreate() {
     editing = null;
+    hostChoice = "root";
     showModal = true;
   }
   function openEdit(w: Website) {
     editing = w;
+    hostChoice = w.root ? "root" : "www";
     showModal = true;
   }
   function requestDelete(id: string) {
@@ -177,10 +182,10 @@
           <span class="mb-1 block text-sm text-text">{t("websites.host")}</span>
           <div class="flex gap-3">
             <label class="flex items-center gap-1.5 text-sm text-text">
-              <input type="radio" name="root" value="root" checked={editing?.root ?? true} /> @ (root)
+              <input type="radio" name="root" value="root" bind:group={hostChoice} /> @ (root)
             </label>
             <label class="flex items-center gap-1.5 text-sm text-text">
-              <input type="radio" name="root" value="www" checked={editing ? !editing.root : false} />
+              <input type="radio" name="root" value="www" bind:group={hostChoice} />
               www
             </label>
           </div>

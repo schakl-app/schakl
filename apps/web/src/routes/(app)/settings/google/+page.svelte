@@ -1,5 +1,6 @@
 <script lang="ts">
   import { enhance } from "$app/forms";
+  import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
 
@@ -108,8 +109,7 @@
         {t("settings.google.surfaces")}
       </legend>
       <label class="flex items-start gap-2 text-sm text-text">
-        <input
-          type="checkbox"
+        <FormCheckbox
           name="calendar_enabled"
           checked={settings?.calendar_enabled ?? false}
           class="mt-0.5"
@@ -122,8 +122,7 @@
         </span>
       </label>
       <label class="flex items-start gap-2 text-sm text-text">
-        <input
-          type="checkbox"
+        <FormCheckbox
           name="drive_enabled"
           checked={settings?.drive_enabled ?? false}
           class="mt-0.5"
@@ -136,8 +135,7 @@
         </span>
       </label>
       <label class="flex items-start gap-2 text-sm text-text">
-        <input
-          type="checkbox"
+        <FormCheckbox
           name="gmail_enabled"
           checked={settings?.gmail_enabled ?? false}
           class="mt-0.5"
@@ -217,8 +215,7 @@
         </div>
       </div>
       <label class="flex items-start gap-2 text-sm text-text">
-        <input
-          type="checkbox"
+        <FormCheckbox
           name="drive_auto_provision"
           checked={settings?.drive_auto_provision ?? false}
           class="mt-0.5"
@@ -242,7 +239,10 @@
           >
           <select id="google-approval-mode" name="gmail_approval_mode" class={inputClass}>
             {#each ["approval_required", "auto_approve"] as mode (mode)}
-              <option value={mode} selected={(settings?.gmail_approval_mode ?? "approval_required") === mode}>
+              <option
+                value={mode}
+                selected={(settings?.gmail_approval_mode ?? "approval_required") === mode}
+              >
                 {t(`settings.google.approval_mode_${mode}`)}
               </option>
             {/each}
@@ -254,7 +254,10 @@
           >
           <select id="google-thread-followup" name="gmail_thread_followup" class={inputClass}>
             {#each ["inherit_pending", "inherit_approve"] as mode (mode)}
-              <option value={mode} selected={(settings?.gmail_thread_followup ?? "inherit_pending") === mode}>
+              <option
+                value={mode}
+                selected={(settings?.gmail_thread_followup ?? "inherit_pending") === mode}
+              >
                 {t(`settings.google.thread_followup_${mode}`)}
               </option>
             {/each}

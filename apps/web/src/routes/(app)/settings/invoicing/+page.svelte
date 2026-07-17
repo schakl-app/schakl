@@ -2,6 +2,7 @@
   import { Pencil, Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
+  import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
@@ -460,8 +461,7 @@
         />
       </div>
       <label class="flex items-center gap-2 text-sm text-text sm:col-span-2">
-        <input
-          type="checkbox"
+        <FormCheckbox
           name="number_reset_yearly"
           value="1"
           checked={data.settings?.number_reset_yearly ?? true}
@@ -538,8 +538,7 @@
       </div>
       <div class="flex items-end">
         <label class="flex items-center gap-2 text-sm text-text">
-          <input
-            type="checkbox"
+          <FormCheckbox
             name="prices_include_tax"
             value="1"
             checked={data.settings?.prices_include_tax ?? false}
@@ -567,8 +566,7 @@
     <p class="mb-3 text-sm text-text-muted">{t("settings.invoicing.reminders_hint")}</p>
     <form method="POST" action="?/saveReminders" use:enhance class="space-y-3">
       <label class="flex items-center gap-2 text-sm text-text">
-        <input
-          type="checkbox"
+        <FormCheckbox
           name="reminders_enabled"
           value="1"
           checked={data.settings?.reminders_enabled ?? false}
@@ -684,8 +682,7 @@
         </div>
         <div class="flex items-end">
           <label class="flex items-center gap-2 text-sm text-text">
-            <input
-              type="checkbox"
+            <FormCheckbox
               name="is_default"
               value="1"
               checked={editingRate?.is_default ?? false}

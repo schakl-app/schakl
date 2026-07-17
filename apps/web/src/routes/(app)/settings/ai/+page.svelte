@@ -2,6 +2,7 @@
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
+  import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
 
   let { data, form } = $props();
@@ -173,8 +174,7 @@
       {#each FEATURES as feature (feature)}
         <div class="flex flex-wrap items-center gap-3">
           <label class="flex min-w-48 items-center gap-2 text-sm text-text">
-            <input
-              type="checkbox"
+            <FormCheckbox
               name={`feature_${feature}`}
               checked={ai?.features?.[feature]?.enabled ?? true}
             />

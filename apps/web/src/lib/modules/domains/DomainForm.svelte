@@ -50,6 +50,11 @@
     created?: { slot: string; id: string } | null;
   } = $props();
 
+  // Radio selection is component state, never a one-way checked (docs/UX.md); seeded once
+  // per mount — the host page keys this form per record.
+  // svelte-ignore state_referenced_locally
+  let statusChoice = $state(domain?.status ?? "active");
+
   const STATUSES = ["active", "redirect", "parked", "expired", "inactive"] as const;
 
   const byKind = (kind: string) =>
@@ -101,12 +106,7 @@
     <div class="flex flex-wrap gap-2">
       {#each STATUSES as status (status)}
         <label class="flex items-center gap-1.5 text-sm text-text">
-          <input
-            type="radio"
-            name="status"
-            value={status}
-            checked={(domain?.status ?? "active") === status}
-          />
+          <input type="radio" name="status" value={status} bind:group={statusChoice} />
           {t(`domains.status.${status}`)}
         </label>
       {/each}

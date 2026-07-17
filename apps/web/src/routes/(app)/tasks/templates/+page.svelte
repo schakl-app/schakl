@@ -7,6 +7,7 @@
   import { pageTitle } from "$lib/core/title";
   import { can } from "$lib/core/permissions";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import TasksNav from "$lib/modules/tasks/TasksNav.svelte";
 
@@ -203,8 +204,7 @@
           </div>
         {/if}
         <label class="flex items-center gap-2 pb-2 text-sm text-text">
-          <input
-            type="checkbox"
+          <FormCheckbox
             name="active"
             checked={editing.active}
             class="h-4 w-4 rounded border-border text-brand focus:ring-brand"
@@ -309,7 +309,11 @@
               class={inputClass}></textarea>
           </div>
           <label class="mt-2 flex items-start gap-2 text-sm text-text">
-            <input type="checkbox" bind:checked={item.requires_interaction} class="mt-0.5 shrink-0" />
+            <input
+              type="checkbox"
+              bind:checked={item.requires_interaction}
+              class="mt-0.5 shrink-0"
+            />
             <span>
               <span class="font-medium">{t("tasks.field.requires_interaction")}</span>
               <span class="mt-0.5 block text-[11px] leading-snug text-text-muted"

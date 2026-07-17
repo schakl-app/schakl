@@ -19,6 +19,8 @@
 
   let editing = $state(false);
   let editingWebsite = $state(false);
+  // Radio selection is component state, never a one-way checked (docs/UX.md).
+  let websiteHost = $state<"root" | "www">("root");
   let confirmDelete = $state(false);
 
   // Inline-create from the pickers (#115): "＋ … toevoegen" opens these dialogs.
@@ -230,7 +232,13 @@
     {#if website && !editingWebsite}
       <ActionsMenu
         items={[
-          { label: t("common.edit"), onclick: () => (editingWebsite = true) },
+          {
+            label: t("common.edit"),
+            onclick: () => {
+              websiteHost = website?.root ? "root" : "www";
+              editingWebsite = true;
+            },
+          },
           {
             label: t("common.delete"),
             icon: Trash2,
@@ -289,15 +297,10 @@
           <span class="mb-1 block text-sm text-text">{t("websites.host")}</span>
           <div class="flex gap-3">
             <label class="flex items-center gap-1.5 text-sm text-text">
-              <input type="radio" name="root" value="root" checked={website?.root ?? true} /> @ (root)
+              <input type="radio" name="root" value="root" bind:group={websiteHost} /> @ (root)
             </label>
             <label class="flex items-center gap-1.5 text-sm text-text">
-              <input
-                type="radio"
-                name="root"
-                value="www"
-                checked={website ? !website.root : false}
-              />
+              <input type="radio" name="root" value="www" bind:group={websiteHost} />
               www
             </label>
           </div>
