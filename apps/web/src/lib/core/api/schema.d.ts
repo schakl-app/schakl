@@ -7593,6 +7593,8 @@ export interface components {
             reply_to?: string | null;
             /** Security */
             security?: string | null;
+            /** Signature Html */
+            signature_html?: string | null;
             /** Username */
             username?: string | null;
         };
@@ -7627,6 +7629,8 @@ export interface components {
             reply_to?: string | null;
             /** Security */
             security?: ("starttls" | "ssl" | "none") | null;
+            /** Signature Html */
+            signature_html?: string | null;
             /** Username */
             username?: string | null;
         };

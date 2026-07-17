@@ -32,6 +32,10 @@ class EmailSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     from_email: Mapped[str] = mapped_column(String(320), nullable=False)
     from_name: Mapped[str] = mapped_column(String(255), nullable=False)
     reply_to: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    #: Org-wide HTML signature (owner request), appended automatically to every outgoing
+    #: mail by the one send seam. Sanitised on write *and* on send (the templates' rule);
+    #: NULL/blank = no signature.
+    signature_html: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 #: The auth mails a tenant may customise (#161 tier 2). Both ride the reset-token mechanism.

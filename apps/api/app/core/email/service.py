@@ -22,6 +22,7 @@ from app.core.email.schemas import (
 from app.core.email.senders import OutgoingEmail, Sender, send_email
 from app.core.email.templates import (
     TEMPLATE_VARIABLES,
+    apply_signature,
     build_email_content,
     default_body_html,
     default_subject,
@@ -125,6 +126,10 @@ async def send_org_email(
     provider's own text.
     """
     row = await get_row(session, org_id)
+    # The org-wide signature rides the one send seam (owner request): every outgoing mail —
+    # auth, notification, invoice — carries it automatically, with no per-caller code.
+    if row is not None:
+        message = apply_signature(message, row.signature_html)
     if row is None:
         if settings.instance_email_available:
             return await _send_instance_email(session, org_id, message)
@@ -137,6 +142,14 @@ async def send_org_email(
         )
     sender = Sender(from_email=row.from_email, from_name=row.from_name, reply_to=row.reply_to)
     return await send_email(row.provider, _config_of(row), sender, message)
+
+
+def _clean_signature(raw: str | None) -> str | None:
+    """Sanitise the org signature on write (the templates' rule); blank clears it."""
+    if raw is None or not raw.strip():
+        return None
+    cleaned = sanitize_email_html(raw)
+    return cleaned if cleaned.strip() else None
 
 
 class EmailSettingsService:
@@ -153,6 +166,7 @@ class EmailSettingsService:
                 from_email=settings.instance_email_from or "",
                 from_name=row.from_name,
                 reply_to=row.reply_to,
+                signature_html=row.signature_html,
             )
         config = _config_of(row)
         keys, secret_key = _PROVIDER_FIELDS[row.provider]
@@ -163,6 +177,7 @@ class EmailSettingsService:
             from_name=row.from_name,
             reply_to=row.reply_to,
             has_secret=bool(config.get(secret_key)),
+            signature_html=row.signature_html,
             **public,
         )
 
@@ -187,6 +202,7 @@ class EmailSettingsService:
                 "from_email": settings.instance_email_from or "",
                 "from_name": data.from_name,
                 "reply_to": str(data.reply_to) if data.reply_to else None,
+                "signature_html": _clean_signature(data.signature_html),
             }
             if row is None:
                 row = EmailSettings(org_id=self.ctx.org.id, **values)
@@ -232,6 +248,7 @@ class EmailSettingsService:
             "from_email": str(data.from_email),
             "from_name": data.from_name,
             "reply_to": str(data.reply_to) if data.reply_to else None,
+            "signature_html": _clean_signature(data.signature_html),
         }
         if row is None:
             row = EmailSettings(org_id=self.ctx.org.id, **values)

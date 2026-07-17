@@ -147,3 +147,45 @@ async def test_email_channel_kind_redacts_address(client_for) -> None:
             headers=headers,
         )
         assert bad.status_code == 422
+
+
+def test_apply_signature_shapes() -> None:
+    """Owner request: the org signature appends automatically at the send seam — HTML part
+    grows the (sanitised) signature, the plaintext part its words behind the classic
+    ``-- `` delimiter, and a text-only mail is promoted to text+HTML."""
+    from app.core.email.senders import OutgoingEmail
+    from app.core.email.templates import apply_signature
+
+    plain = OutgoingEmail(to="a@b.nl", subject="Hoi", text="Inhoud\nregel 2")
+    signed = apply_signature(plain, "<p>Groet,<br><b>Bureau</b></p><script>x()</script>")
+    assert signed.html is not None
+    assert "<b>Bureau</b>" in signed.html
+    assert "script" not in signed.html  # sanitised on send as well as on write
+    assert "Inhoud" in signed.html  # text promoted into the HTML part
+    assert signed.text.endswith("-- \nGroet,\nBureau")
+
+    # No signature (or one that sanitises away) leaves the message untouched.
+    assert apply_signature(plain, None) is plain
+    assert apply_signature(plain, "<script>x()</script>") is plain
+
+    rich = OutgoingEmail(to="a@b.nl", subject="Hoi", text="Inhoud", html="<p>Inhoud</p>")
+    assert apply_signature(rich, "<p>Groet</p>").html == "<p>Inhoud</p><br><p>Groet</p>"
+
+
+async def test_signature_saved_sanitised_and_returned(client_for) -> None:
+    t = await make_tenant("email-signature")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        saved = await c.put(
+            "/api/v1/settings/email",
+            json={**_BREVO, "signature_html": "<p>Groet</p><script>evil()</script>"},
+            headers=headers,
+        )
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["signature_html"] == "<p>Groet</p>"
+
+        # Blank clears it.
+        cleared = await c.put(
+            "/api/v1/settings/email", json={**_BREVO, "signature_html": "  "}, headers=headers
+        )
+        assert cleared.json()["signature_html"] is None

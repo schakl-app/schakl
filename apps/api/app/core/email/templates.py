@@ -22,6 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.email.models import EMAIL_TEMPLATE_KINDS, OrgEmailTemplate
+from app.core.email.senders import OutgoingEmail
 from app.i18n import available_locales, translate
 
 #: The variables a tenant may use in a template; shown in the editor.
@@ -145,3 +146,41 @@ def is_supported_kind(kind: str) -> bool:
 
 def is_supported_locale(locale: str) -> bool:
     return locale in available_locales()
+
+
+# --------------------------------------------------------------------------- #
+# Org-wide e-mail signature (owner request)
+# --------------------------------------------------------------------------- #
+def signature_plaintext(signature_html: str) -> str:
+    """The signature's words for the plaintext part: tags dropped, line breaks kept."""
+    text = re.sub(r"<br\s*/?>", "\n", signature_html, flags=re.IGNORECASE)
+    text = re.sub(r"</(p|div|tr)\s*>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<[^>]+>", "", text)
+    return html_lib.unescape(text).strip()
+
+
+def apply_signature(message: OutgoingEmail, signature_html: str | None) -> OutgoingEmail:
+    """Append the org's HTML signature to an outgoing message, automatically.
+
+    Rides the one send seam (``send_org_email``), so every org mail — auth, notification,
+    invoice — carries it without per-caller code. Sanitised again at send time (the same
+    double-sanitise rule the templates follow); the plaintext part gets the classic
+    ``-- `` delimiter with the signature's words. A text-only message is promoted to
+    text+HTML so the signature can render as authored.
+    """
+    if not signature_html or not signature_html.strip():
+        return message
+    sig_html = sanitize_email_html(signature_html)
+    if not sig_html.strip():
+        return message
+    body_html = message.html
+    if body_html is None:
+        escaped = html_lib.escape(message.text).replace("\n", "<br>\n")
+        body_html = f"<p>{escaped}</p>"
+    plain = signature_plaintext(sig_html)
+    return OutgoingEmail(
+        to=message.to,
+        subject=message.subject,
+        text=message.text + (f"\n\n-- \n{plain}" if plain else ""),
+        html=f"{body_html}<br>{sig_html}",
+    )

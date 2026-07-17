@@ -50,6 +50,7 @@ export const actions: Actions = {
         // Empty secrets mean "keep what is stored" — the API never plays them back.
         password: text("password"),
         api_key: text("api_key"),
+        signature_html: text("signature_html"),
       },
     });
     if (error) {

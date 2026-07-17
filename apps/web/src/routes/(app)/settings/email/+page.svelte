@@ -120,6 +120,21 @@
           class={inputClass}
         />
       </div>
+      <!-- Org-wide signature (owner request): appended automatically to every outgoing
+           mail. HTML allowed (sanitised server-side); blank = no signature. -->
+      <div class="sm:col-span-2">
+        <label for="email-signature" class="mb-1 block text-sm text-text"
+          >{t("settings.email.signature")}</label
+        >
+        <textarea
+          id="email-signature"
+          name="signature_html"
+          rows="5"
+          placeholder={t("settings.email.signature_placeholder")}
+          class="{inputClass} font-mono text-xs">{data.settings?.signature_html ?? ""}</textarea
+        >
+        <p class="mt-1 text-xs text-text-muted">{t("settings.email.signature_hint")}</p>
+      </div>
     </div>
 
     {#if provider === "instance"}

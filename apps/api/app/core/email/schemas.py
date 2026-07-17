@@ -29,6 +29,8 @@ class EmailSettingsWrite(BaseModel):
     password: str | None = Field(default=None, max_length=1024)
     # brevo / sendgrid / smtp2go
     api_key: str | None = Field(default=None, max_length=1024)
+    #: Org-wide HTML signature, appended automatically to every outgoing mail. Blank clears.
+    signature_html: str | None = Field(default=None, max_length=10000)
 
 
 class EmailSettingsRead(BaseModel):
@@ -44,6 +46,7 @@ class EmailSettingsRead(BaseModel):
     username: str | None = None
     #: A secret (password / API key) is stored; the value itself is never returned.
     has_secret: bool = False
+    signature_html: str | None = None
 
 
 class EmailTestResult(BaseModel):
