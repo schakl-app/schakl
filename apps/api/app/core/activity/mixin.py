@@ -18,9 +18,12 @@ from app.core.activity.registry import register_auditable
 class AuditableMixin:
     #: Each auditable model sets this to its stable entity-type slug (e.g. "company").
     __entity_type__: str
+    #: The permission required to read this entity's trail (audit F7) — its own module's read key,
+    #: e.g. "companies.company.read". Declared here so core needs no module permission list.
+    __activity_read_permission__: str | None = None
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
         entity_type = getattr(cls, "__entity_type__", None)
         if entity_type:
-            register_auditable(entity_type)
+            register_auditable(entity_type, getattr(cls, "__activity_read_permission__", None))

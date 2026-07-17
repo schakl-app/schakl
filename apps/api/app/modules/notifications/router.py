@@ -147,6 +147,17 @@ async def mark_all_read(ctx: RequestContext = Depends(require_context)) -> MarkA
     return MarkAllResult(updated=await NotificationService(ctx).mark_all_read())
 
 
+# Reading a record's notification-event feed requires being able to read that record (audit F7):
+# notifications.notification.read is a blanket grant, so it can't stand in for per-entity access.
+_ENTITY_READ_PERMISSION: dict[str, str] = {
+    "task": "tasks.task.read",
+    "project": "projects.project.read",
+    "company": "companies.company.read",
+    "leave_request": "leave.request.read",
+    "timesheet": "time.entry.read",
+}
+
+
 # --- activity feed (per record; powers the panels other modules host) ------------------ #
 @router.get(
     "/activity",
@@ -159,6 +170,9 @@ async def activity(
     limit: int = Query(20, ge=1, le=100),
     ctx: RequestContext = Depends(require_context),
 ) -> list[ActivityItem]:
+    entity_read = _ENTITY_READ_PERMISSION.get(entity_type)
+    if entity_read is not None:
+        ctx.require(entity_read)
     items = await NotificationService(ctx).activity(entity_type, entity_id, limit)
     return [ActivityItem.model_validate(item) for item in items]
 

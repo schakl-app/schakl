@@ -1463,9 +1463,13 @@ class LeaveService:
         await self._ensure_may_backdate(
             data.start_date < await self._org_today(), own=uid == self.ctx.user.id
         )
-        # Setting `hours` by hand is an approver's act, and it is recorded as one.
+        # Setting `hours` by hand is an approver's act — and while self-approval is off it is an
+        # approver act on your OWN request, which needs a second approver just like deciding does
+        # (audit F20).
         if data.hours_override is not None:
             self.ctx.require("leave.request.approve")
+            if not await self._acts_as_approver(uid):
+                raise AppError("self_approval", "errors.leave_self_approval", status_code=403)
         hours = await self._resolve_hours(
             user_id=uid,
             start_date=data.start_date,
@@ -1601,8 +1605,11 @@ class LeaveService:
         end_time = values.get("end_time", request.end_time)
         override = values.get("hours_override", request.hours_override)
         # Setting or clearing the override is an approver's act; leaving a stored one alone isn't.
+        # On your own request, while self-approval is off, it needs another approver (audit F20).
         if "hours_override" in data.model_fields_set:
             self.ctx.require("leave.request.approve")
+            if not await self._acts_as_approver(request.user_id):
+                raise AppError("self_approval", "errors.leave_self_approval", status_code=403)
 
         # Recomputed on every edit, so a request moved into Kerst week gets cheaper (#48).
         values["hours"] = await self._resolve_hours(
