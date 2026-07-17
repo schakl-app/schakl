@@ -124,6 +124,7 @@ class Subscription(
 ):
     __tablename__ = "subscriptions"
     __entity_type__ = "subscription"  # customizable (§13) + auditable (§16)
+    __activity_read_permission__ = "subscriptions.subscription.read"  # trail read gate (audit F7)
 
     __table_args__ = (
         Index("ix_subscriptions_custom", "custom", postgresql_using="gin"),

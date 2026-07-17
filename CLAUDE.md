@@ -45,7 +45,7 @@ other identifiers; the dot appears solely when the official product name is disp
 | Typed client  | `openapi-typescript` client generated from the API's OpenAPI spec |
 | Database      | PostgreSQL (with Row-Level Security) |
 | Jobs & cache  | Redis + ARQ |
-| Auth          | App-native at the API: FastAPI Users (local username/password, verification, reset) + Authlib (OIDC relying-party, configured **per org in the DB** — Instellingen → SSO, #76; encrypted secret, runtime toggles, `SCHAKL_FORCE_LOCAL_LOGIN` break-glass) · Google OAuth for Workspace scopes |
+| Auth          | App-native at the API: FastAPI Users (local username/password, verification, reset) + 2FA on local login (TOTP + backup codes, optional SMS via instance gateway; org-admin reset — docs/TWOFACTOR.md) + Authlib (OIDC relying-party, configured **per org in the DB** — Instellingen → SSO, #76; encrypted secret, runtime toggles, `SCHAKL_FORCE_LOCAL_LOGIN` break-glass) · Google OAuth for Workspace scopes |
 | Infra         | Docker Compose · Traefik · deployed on Hetzner · Cloudflare Zero Trust |
 | MCP / AI       | MCP server over Streamable HTTP (OAuth 2.1 resource server) via the official Python MCP SDK / FastMCP; mounted on the API app; tools contributed per module, read-first |
 
@@ -95,6 +95,15 @@ it runs as a single tenant, and the agency's clients are `companies` (data), not
 Keep `org_id` + RLS on every table anyway: it's near-free now and is the only thing that
 lets the *same code* run a future multi-org **cloud** version with the tenant resolved by
 hostname. Don't take shortcuts that assume one org.
+
+The multi-org posture exists: `SCHAKL_DEPLOYMENT=cloud` (epic #199, **business-licensed** —
+`apps/api/app/core/cloud/`, `apps/web/src/routes/(cloud)/`, see `docs/CLOUD.md`). It moves
+the instance console to the apex host (no org resolves there), provisions orgs over an
+instance-API-key API with per-org plans (trial / standard / unlimited), requires an
+**org-issued service PIN** before the instance owner may touch tenant data, offers
+instance-provided e-mail as a per-org choice, and terminates TLS itself (wildcard origin
+cert for subdomains, Let's Encrypt for verified CNAME domains). Google and AI credentials
+stay bring-your-own per org.
 
 - **Hostname resolution is strict**: a verified custom domain (`orgs.custom_domain`) or
   `<slug>.<base_domain>` — an unknown host is an explicit error, never "the only org".

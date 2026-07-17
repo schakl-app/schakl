@@ -65,8 +65,10 @@ export const SETTINGS_SCREEN_PERMISSIONS = [
   "settings.providers.manage",
   "contacts.type.manage",
   "subscriptions.type.manage",
+  "invoicing.settings.manage",
   "automation.rule.read",
   "ai.settings.manage",
+  "settings.service_access.manage",
 ] as const;
 
 export function canAccessSettings(granted: readonly string[] | undefined): boolean {

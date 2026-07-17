@@ -1,0 +1,26 @@
+# Traefik dynamic routing for a LOCAL cloud-posture stack (epic #199) — plain HTTP on :80,
+# no certificates: the hostname behaviour of the real cloud config (apex console, any-host
+# tenant routing) without the TLS story. Used by infra/compose.cloud-dev.yaml and the cloud
+# e2e suite (docs/CLOUD.md); production uses dynamic.cloud.yml.
+http:
+  routers:
+    api-paths:
+      rule: "PathPrefix(`/api/`) || PathPrefix(`/mcp`)"
+      priority: 1000
+      entryPoints: [web]
+      service: schakl-api
+    web-any:
+      rule: "HostRegexp(`^.+$`)"
+      priority: 1
+      entryPoints: [web]
+      service: schakl-web
+
+  services:
+    schakl-api:
+      loadBalancer:
+        servers:
+          - url: "http://api:8000"
+    schakl-web:
+      loadBalancer:
+        servers:
+          - url: "http://web:3000"

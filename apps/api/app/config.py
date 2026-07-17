@@ -12,6 +12,19 @@ from pathlib import Path
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+#: Secrets that must never sign tokens or derive the vault key in production. The field default
+#: below and the values shipped in ``infra/.env.example`` / ``infra/compose.yaml`` all live here,
+#: so an operator who forgets to set ``SCHAKL_SECRET_KEY`` cannot boot a production instance on a
+#: publicly-known key (security audit F1 — universal session/token forgery + secret decryption).
+_INSECURE_SECRETS = frozenset(
+    {
+        "",
+        "change-me-in-production-please-32bytes-min",
+        "dev-secret-change-me-in-production",
+        "change-me",
+    }
+)
+
 
 def _default_messages_dir() -> Path:
     """Locate the shared ``messages/`` catalogs without assuming a fixed directory depth.
@@ -107,8 +120,8 @@ class Settings(BaseSettings):
     enabled_modules: list[str] = Field(
         default_factory=lambda: [
             "companies", "contacts", "tasks", "projects", "time", "leave", "notifications",
-            "domains", "hosting", "websites", "subscriptions", "automation", "interactions",
-            "google", "marketing", "hr",
+            "domains", "hosting", "websites", "subscriptions", "invoicing", "automation",
+            "interactions", "google", "marketing", "hr",
         ]
     )
     default_locale: str = "nl"
@@ -143,6 +156,19 @@ class Settings(BaseSettings):
     # regardless of any org's "enforce SSO" toggle, so a broken IdP can never lock a tenant
     # out of its own instance (docs/SSO.md).
     force_local_login: bool = False
+
+    # --- Two-factor authentication (local login) ---
+    # TOTP + backup codes need no configuration. The SMS factor is **instance** configuration
+    # (set by the operator, like SCHAKL_INSTANCE_ADMIN_ENABLED): a generic HTTP gateway the box
+    # POSTs {"to", "message", "sender"} to, with an optional bearer token. Unset = the SMS
+    # option simply does not exist anywhere in the product (docs/TWOFACTOR.md).
+    sms_gateway_url: str | None = None
+    sms_gateway_token: str | None = None
+    # Sender id passed to the gateway; None lets the gateway apply its own default (a hardcoded
+    # product name here would violate the per-tenant branding rule, CLAUDE.md §2).
+    sms_gateway_sender: str | None = None
+    # Seconds a login's 2FA challenge token stays redeemable (password re-entry after that).
+    twofactor_challenge_lifetime_seconds: int = 300
 
     # --- Google Workspace OAuth (stub for P3) ---
     google_client_id: str | None = None
@@ -179,6 +205,45 @@ class Settings(BaseSettings):
     # Upper bound for a single impersonation grant; every grant is audited and time-boxed.
     impersonation_max_minutes: int = 60
 
+    # --- Cloud deployment (epic #199; business-licensed — see LICENSE-COMMERCIAL.md) ---
+    # An instance *posture* like demo mode: "self_hosted" (default) or "cloud". A cloud
+    # install runs many paying orgs on one stack: the instance-management surface lives on
+    # the base domain (no org resolves there), orgs are provisioned over the API, and the
+    # instance owner needs an org-issued service PIN before touching tenant data.
+    deployment: str = "self_hosted"
+    # How long an org-issued service PIN grants the instance owner access to that org's
+    # data (hours). The org can revoke earlier at any time.
+    cloud_service_pin_hours: int = 24
+    # Default trial length for orgs provisioned with plan="trial" (days); a provisioning
+    # call may override per org, and plan="unlimited" never expires.
+    cloud_trial_days: int = 14
+    # Directory the API writes Traefik dynamic-config fragments to (one router per verified
+    # custom domain, Let's Encrypt certResolver). Unset = ingress sync off. In the cloud
+    # Compose overlay this is a volume shared read-only with Traefik's file provider.
+    cloud_ingress_dir: str | None = None
+    # The DNS target tenants point their custom-domain CNAME at (shown in the domain UI on
+    # cloud). Empty = derived as "edge.<base_domain>".
+    cloud_cname_target: str | None = None
+
+    # --- Instance-provided e-mail (cloud "included e-mail"; usable self-host too) ---
+    # When enabled, an org without its own transport sends through this instance-level
+    # transport (from the instance's own address — SPF/DKIM belong to the operator's
+    # domain), and Instellingen → E-mail offers "included e-mail" as an explicit choice.
+    # Same providers as the per-org settings (#17).
+    instance_email_enabled: bool = False
+    instance_email_provider: str = "smtp"  # smtp | brevo | sendgrid | smtp2go
+    instance_email_from: str | None = None
+    instance_email_from_name: str = ""
+    instance_email_reply_to: str | None = None
+    # smtp
+    instance_email_host: str | None = None
+    instance_email_port: int = 587
+    instance_email_security: str = "starttls"  # starttls | ssl | none
+    instance_email_username: str | None = None
+    instance_email_password: str | None = None
+    # brevo / sendgrid / smtp2go
+    instance_email_api_key: str | None = None
+
     # --- Public demo mode (issue #141) ---
     # An instance posture, like ``instance_admin_enabled``: off by default. When ``true`` this is
     # a *publicly writable* instance, so it forces the safe values below regardless of the rest of
@@ -188,6 +253,20 @@ class Settings(BaseSettings):
     # How often the demo org is wiped back to its golden snapshot (minutes). Hourly by default —
     # a mid-session reset only costs a visitor their toy edits.
     demo_reset_minutes: int = 60
+
+    @model_validator(mode="after")
+    def _force_cloud_posture(self) -> Settings:
+        """Cloud is an instance posture (epic #199). The instance-management surface is the
+        whole point of the deployment, so the flag that hides it on single-tenant boxes is
+        forced on. Runs before ``_force_demo_posture`` so a (nonsensical) demo+cloud combo
+        resolves to the demo's stricter posture."""
+        if self.deployment not in ("self_hosted", "cloud"):
+            raise ValueError(
+                f"SCHAKL_DEPLOYMENT must be 'self_hosted' or 'cloud', got {self.deployment!r}"
+            )
+        if self.deployment == "cloud":
+            self.instance_admin_enabled = True
+        return self
 
     @model_validator(mode="after")
     def _force_demo_posture(self) -> Settings:
@@ -200,9 +279,51 @@ class Settings(BaseSettings):
             self.instance_admin_enabled = False
         return self
 
+    @model_validator(mode="after")
+    def _guard_production_secrets(self) -> Settings:
+        """Refuse to boot a production instance on a default/known/weak signing secret (F1).
+
+        ``secret_key`` is the root of trust: it signs the session JWT, the password-reset and
+        email-verification tokens, the impersonation grant, and (via ``crypto.py``) derives the
+        key that encrypts every secret at rest. A publicly-known value there means anyone can
+        forge a session for any user and decrypt the vault. Development/test are unaffected — this
+        only bites when ``SCHAKL_ENVIRONMENT`` is production and the secret was never set.
+        """
+        if self.is_production:
+            if self.secret_key in _INSECURE_SECRETS or len(self.secret_key) < 32:
+                raise ValueError(
+                    "SCHAKL_SECRET_KEY must be a strong, unique value (>=32 chars) in production; "
+                    "refusing to start on the default/sample secret. Generate one with "
+                    "`openssl rand -hex 32`."
+                )
+            if self.encryption_key is not None and (
+                self.encryption_key in _INSECURE_SECRETS or len(self.encryption_key) < 32
+            ):
+                raise ValueError(
+                    "SCHAKL_ENCRYPTION_KEY, when set, must be a strong value (>=32 chars)."
+                )
+            # Production terminates TLS at the edge, so the auth cookie must always carry the
+            # Secure attribute — never emit it over plaintext (audit F15).
+            self.auth_cookie_secure = True
+        return self
+
     @property
     def is_production(self) -> bool:
         return self.environment.lower() in {"production", "prod"}
+
+    @property
+    def is_cloud(self) -> bool:
+        """True on a multi-org cloud install (epic #199) — business-licensed posture."""
+        return self.deployment == "cloud"
+
+    @property
+    def instance_email_available(self) -> bool:
+        """The instance-level transport is configured well enough to offer/send."""
+        if not self.instance_email_enabled or not self.instance_email_from:
+            return False
+        if self.instance_email_provider == "smtp":
+            return bool(self.instance_email_host)
+        return bool(self.instance_email_api_key)
 
     @property
     def is_stamped_build(self) -> bool:

@@ -39,6 +39,9 @@ _EXEMPT_OPERATIONS = frozenset(
     {
         ("get", "/api/v1/meta/tenant"),
         ("get", "/api/v1/meta/modules"),
+        # Instance posture (epic #199): like /meta/tenant, the web shell needs it before any
+        # session exists (it routes the cloud apex host to the console on it). No tenant data.
+        ("get", "/api/v1/meta/instance"),
         ("get", "/api/v1/meta/me"),
         ("patch", "/api/v1/meta/me"),
         ("get", "/api/v1/prefs"),

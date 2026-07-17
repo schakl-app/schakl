@@ -37,115 +37,120 @@
 <div class="flex min-h-screen items-center justify-center px-4 py-10">
   <div class="w-full max-w-xl rounded-2xl border border-border bg-surface-raised p-8 shadow-sm">
     <h1 class="text-xl font-semibold text-text">{t("setup.title")}</h1>
-    <p class="mt-1 text-sm text-text-muted">{t("setup.subtitle")}</p>
+    <p class="mt-1 text-sm text-text-muted">
+      {data.cloud ? t("setup.cloud_subtitle") : t("setup.subtitle")}
+    </p>
 
     <form method="POST" use:enhance class="mt-6 space-y-8">
-      <section class="space-y-4">
-        <h2 class={sectionTitle}>{t("setup.section_org")}</h2>
-        <div>
-          <label for="org_name" class={labelClass}>{t("setup.org_name")}</label>
-          <input
-            id="org_name"
-            name="org_name"
-            required
-            maxlength="255"
-            bind:value={orgName}
-            class={inputClass}
-          />
-        </div>
-        <div>
-          <label for="slug" class={labelClass}>{t("setup.slug")}</label>
-          <input
-            id="slug"
-            name="slug"
-            required
-            maxlength="63"
-            pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?"
-            bind:value={slug}
-            oninput={() => (slugTouched = true)}
-            class="{inputClass} font-mono"
-          />
-          <p class="mt-1 text-xs text-text-muted">{t("setup.slug_hint")}</p>
-          {#if form?.fields?.slug}
-            <p class="mt-1 text-sm text-red-600 dark:text-red-400">{t(form.fields.slug)}</p>
-          {/if}
-        </div>
-      </section>
-
-      <section class="space-y-4">
-        <h2 class={sectionTitle}>{t("setup.section_brand")}</h2>
-        <div>
-          <label for="brand_name" class={labelClass}>{t("settings.branding.brand_name")}</label>
-          <input
-            id="brand_name"
-            name="brand_name"
-            maxlength="255"
-            placeholder={orgName}
-            value={form?.values?.brand_name ?? ""}
-            class={inputClass}
-          />
-        </div>
-        <div class="grid grid-cols-2 gap-4">
+      <input type="hidden" name="cloud" value={data.cloud ? "true" : "false"} />
+      {#if !data.cloud}
+        <section class="space-y-4">
+          <h2 class={sectionTitle}>{t("setup.section_org")}</h2>
           <div>
-            <label for="primary_color" class={labelClass}>
-              {t("settings.branding.primary_color")}
-            </label>
+            <label for="org_name" class={labelClass}>{t("setup.org_name")}</label>
             <input
-              id="primary_color"
-              name="primary_color"
-              type="color"
-              value="#4f46e5"
-              class="h-10 w-full cursor-pointer rounded-lg border border-border"
+              id="org_name"
+              name="org_name"
+              required
+              maxlength="255"
+              bind:value={orgName}
+              class={inputClass}
             />
           </div>
           <div>
-            <label for="accent_color" class={labelClass}>
-              {t("settings.branding.accent_color")}
-            </label>
+            <label for="slug" class={labelClass}>{t("setup.slug")}</label>
             <input
-              id="accent_color"
-              name="accent_color"
-              type="color"
-              value="#0ea5e9"
-              class="h-10 w-full cursor-pointer rounded-lg border border-border"
+              id="slug"
+              name="slug"
+              required
+              maxlength="63"
+              pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?"
+              bind:value={slug}
+              oninput={() => (slugTouched = true)}
+              class="{inputClass} font-mono"
+            />
+            <p class="mt-1 text-xs text-text-muted">{t("setup.slug_hint")}</p>
+            {#if form?.fields?.slug}
+              <p class="mt-1 text-sm text-red-600 dark:text-red-400">{t(form.fields.slug)}</p>
+            {/if}
+          </div>
+        </section>
+
+        <section class="space-y-4">
+          <h2 class={sectionTitle}>{t("setup.section_brand")}</h2>
+          <div>
+            <label for="brand_name" class={labelClass}>{t("settings.branding.brand_name")}</label>
+            <input
+              id="brand_name"
+              name="brand_name"
+              maxlength="255"
+              placeholder={orgName}
+              value={form?.values?.brand_name ?? ""}
+              class={inputClass}
             />
           </div>
-        </div>
-        <div>
-          <label for="locale" class={labelClass}>{t("settings.branding.default_locale")}</label>
-          <select id="locale" name="locale" class={inputClass}>
-            {#each data.locales as locale (locale)}
-              <option value={locale} selected={locale === data.defaultLocale}>
-                {localeLabel(locale)}
-              </option>
-            {/each}
-          </select>
-        </div>
-      </section>
-
-      <section class="space-y-2">
-        <h2 class={sectionTitle}>{t("setup.section_modules")}</h2>
-        <p class="text-xs text-text-muted">{t("setup.modules_hint")}</p>
-        <div class="grid grid-cols-2 gap-2">
-          {#each data.availableModules as module (module)}
-            <label
-              class="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"
-            >
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label for="primary_color" class={labelClass}>
+                {t("settings.branding.primary_color")}
+              </label>
               <input
-                type="checkbox"
-                name="modules"
-                value={module}
-                checked
-                disabled={module === "companies"}
-                class="accent-brand"
+                id="primary_color"
+                name="primary_color"
+                type="color"
+                value="#4f46e5"
+                class="h-10 w-full cursor-pointer rounded-lg border border-border"
               />
-              {moduleLabel(module)}
-            </label>
-          {/each}
-          <!-- The hub module is mandatory; a disabled checkbox posts nothing, so mirror it. -->
-          <input type="hidden" name="modules" value="companies" />
-        </div>
-      </section>
+            </div>
+            <div>
+              <label for="accent_color" class={labelClass}>
+                {t("settings.branding.accent_color")}
+              </label>
+              <input
+                id="accent_color"
+                name="accent_color"
+                type="color"
+                value="#0ea5e9"
+                class="h-10 w-full cursor-pointer rounded-lg border border-border"
+              />
+            </div>
+          </div>
+          <div>
+            <label for="locale" class={labelClass}>{t("settings.branding.default_locale")}</label>
+            <select id="locale" name="locale" class={inputClass}>
+              {#each data.locales as locale (locale)}
+                <option value={locale} selected={locale === data.defaultLocale}>
+                  {localeLabel(locale)}
+                </option>
+              {/each}
+            </select>
+          </div>
+        </section>
+
+        <section class="space-y-2">
+          <h2 class={sectionTitle}>{t("setup.section_modules")}</h2>
+          <p class="text-xs text-text-muted">{t("setup.modules_hint")}</p>
+          <div class="grid grid-cols-2 gap-2">
+            {#each data.availableModules as module (module)}
+              <label
+                class="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"
+              >
+                <input
+                  type="checkbox"
+                  name="modules"
+                  value={module}
+                  checked
+                  disabled={module === "companies"}
+                  class="accent-brand"
+                />
+                {moduleLabel(module)}
+              </label>
+            {/each}
+            <!-- The hub module is mandatory; a disabled checkbox posts nothing, so mirror it. -->
+            <input type="hidden" name="modules" value="companies" />
+          </div>
+        </section>
+      {/if}
 
       <section class="space-y-4">
         <h2 class={sectionTitle}>{t("setup.section_owner")}</h2>

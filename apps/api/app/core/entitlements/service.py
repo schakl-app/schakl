@@ -50,6 +50,9 @@ MCP_SKU = "mcp"
 #: automation (or anything else) is a *license document* decision — a plan simply lists both
 #: skus — never a coupling in code.
 AI_SKU = "ai"
+#: The cloud posture (epic #199) is a business-licensed capability: the provisioning surface
+#: mounts behind this sku's write gate. Only relevant when SCHAKL_DEPLOYMENT=cloud.
+CLOUD_SKU = "cloud"
 
 _MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 _CACHE_TTL_SECONDS = 60.0
@@ -207,6 +210,9 @@ def licensed_skus() -> dict[str, str]:
     # The AI surface always exists (configured per tenant at runtime), so its sku is always
     # part of the instance's license story.
     skus[AI_SKU] = AI_SKU
+    if settings.is_cloud:
+        # The cloud posture itself (epic #199): provisioning mutations ride its write gate.
+        skus[CLOUD_SKU] = CLOUD_SKU
     return skus
 
 

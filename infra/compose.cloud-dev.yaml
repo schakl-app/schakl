@@ -1,0 +1,20 @@
+# LOCAL cloud-posture overlay (epic #199): the cloud behaviour (apex console, service PIN,
+# provisioning API, any-host routing) on plain HTTP — for development and the cloud e2e
+# suite (docs/CLOUD.md). Production TLS lives in compose.cloud.yaml.
+#
+#   docker compose -f infra/compose.yaml -f infra/compose.cloud-dev.yaml up -d
+#   PLAYWRIGHT_CLOUD=1 pnpm web test:e2e tests/e2e/cloud.spec.ts
+
+services:
+  api:
+    environment:
+      SCHAKL_DEPLOYMENT: cloud
+
+  worker:
+    environment:
+      SCHAKL_DEPLOYMENT: cloud
+
+  traefik:
+    volumes:
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro,z
+      - ./traefik/dynamic.cloud-dev.yml:/etc/traefik/dynamic.yml:ro,z

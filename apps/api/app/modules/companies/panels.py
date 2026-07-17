@@ -19,6 +19,15 @@ async def _details_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
     return {
         "name": company.name,
         "website": company.website,
+        "invoice_email": company.invoice_email,
+        # Billing identity (issue #11): what invoicing (#207) snapshots at issue.
+        "vat_number": company.vat_number,
+        "coc_number": company.coc_number,
+        "address_line1": company.address_line1,
+        "address_line2": company.address_line2,
+        "postal_code": company.postal_code,
+        "city": company.city,
+        "country": company.country,
         "notes": company.notes,
         "custom": company.custom,
     }

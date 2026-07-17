@@ -45,7 +45,7 @@ registry.register(module)
 # activity log under entity_type=task, and the read endpoint refuses any entity_type that is not
 # registered — so register it explicitly, purely to make those mirror entries readable. This does
 # not add a second activity panel (the core panel is wired for project/contact only).
-register_auditable("task")
+register_auditable("task", read_permission="tasks.task.read")  # trail read gate (audit F7)
 
 # Client onboarding automation: instantiate matching templates when a company is created
 # with — or transitions into — a template's trigger status.

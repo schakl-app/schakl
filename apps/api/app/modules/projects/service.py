@@ -23,6 +23,7 @@ from app.core.assignees import AssigneeService
 from app.core.auth.models import User
 from app.core.customfields import CustomFieldsService
 from app.core.events import emit
+from app.core.parent import ensure_parent_in_tenant
 from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
 from app.modules.projects.budget import period_bound, period_start_date
@@ -244,6 +245,9 @@ class ProjectService:
         self.ctx.require("projects.project.write")
         values = data.model_dump()
         values.pop("assignees", None)
+        await ensure_parent_in_tenant(
+            self.ctx.session, "companies", values.get("company_id"), self.ctx.org.id
+        )
 
         # A project inherits the client's *primary* when nobody was named — not the client's whole
         # roster, which is a superset of the people actually on this project.
@@ -306,6 +310,10 @@ class ProjectService:
         previous_status = project.status
         before_fields = snapshot(project, _AUDITED_FIELDS)
         values = data.model_dump(exclude_unset=True)
+        if "company_id" in values:
+            await ensure_parent_in_tenant(
+                self.ctx.session, "companies", values.get("company_id"), self.ctx.org.id
+            )
         # ``replace`` is delete-then-insert, so who is *new* has to be read before the write.
         roster_touched = "assignees" in values or "responsible_user_id" in values
         before: set[uuid.UUID] = (

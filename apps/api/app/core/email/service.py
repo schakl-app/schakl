@@ -7,6 +7,7 @@ import json
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.core.crypto import decrypt, encrypt
 from app.core.email.models import EMAIL_TEMPLATE_KINDS, EmailSettings, OrgEmailTemplate
 from app.core.email.schemas import (
@@ -27,6 +28,7 @@ from app.core.email.templates import (
     is_supported_locale,
     sanitize_email_html,
 )
+from app.core.models import OrgSettings
 from app.core.tenancy import RequestContext
 from app.errors import AppError
 from app.i18n import available_locales, resolve_locale
@@ -48,6 +50,67 @@ async def get_row(session: AsyncSession, org_id) -> EmailSettings | None:  # noq
     return await session.scalar(select(EmailSettings).where(EmailSettings.org_id == org_id))
 
 
+def _instance_transport() -> tuple[str, dict]:
+    """The operator-provided transport from config (SCHAKL_INSTANCE_EMAIL_*) in the shape
+    :func:`send_email` expects."""
+    provider = settings.instance_email_provider
+    if provider == "smtp":
+        config = {
+            "host": settings.instance_email_host,
+            "port": settings.instance_email_port,
+            "security": settings.instance_email_security,
+            "username": settings.instance_email_username,
+            "password": settings.instance_email_password,
+        }
+    else:
+        config = {"api_key": settings.instance_email_api_key}
+    return provider, config
+
+
+async def _org_brand(session: AsyncSession, org_id) -> str | None:  # noqa: ANN001
+    """Best-effort display name for instance-transport sends. RLS-scoped: callers of the
+    send seam run in a tenant transaction with the GUC bound to this org."""
+    try:
+        return await session.scalar(
+            select(OrgSettings.brand_name).where(OrgSettings.org_id == org_id)
+        )
+    except Exception:  # noqa: BLE001 — a missing brand must never block a mail
+        return None
+
+
+async def _send_instance_email(
+    session: AsyncSession,
+    org_id,  # noqa: ANN001
+    message: OutgoingEmail,
+    *,
+    from_name: str | None = None,
+    reply_to: str | None = None,
+) -> tuple[bool, str | None]:
+    """Send via the operator's transport: the *instance's* from-address (SPF/DKIM belong to
+    the operator's domain), displayed as the org's brand."""
+    provider, config = _instance_transport()
+    brand = (
+        from_name
+        or await _org_brand(session, org_id)
+        or settings.instance_email_from_name
+        or "schakl"
+    )
+    sender = Sender(
+        from_email=str(settings.instance_email_from),
+        from_name=brand,
+        reply_to=reply_to,
+    )
+    return await send_email(provider, config, sender, message)
+
+
+async def email_configured(session: AsyncSession, org_id) -> bool:  # noqa: ANN001
+    """Whether a send for this org can go *somewhere* — its own transport, or the
+    instance-provided fallback (the cloud "included e-mail", epic #199)."""
+    if settings.instance_email_available:
+        return True
+    return await get_row(session, org_id) is not None
+
+
 async def send_org_email(
     session: AsyncSession,
     org_id,
@@ -55,12 +118,23 @@ async def send_org_email(
 ) -> tuple[bool, str | None]:
     """Send through the org's configured transport; ``(False, key)`` when none is configured.
 
-    The error string for a missing configuration is an i18n key (CLAUDE.md §9) so callers can
-    surface it directly; provider failures carry the provider's own text.
+    Resolution order (epic #199): an org's own row wins; a row with ``provider="instance"``
+    — or no row at all while the instance transport is configured — goes through the
+    operator-provided transport. The error string for a missing configuration is an i18n
+    key (CLAUDE.md §9) so callers can surface it directly; provider failures carry the
+    provider's own text.
     """
     row = await get_row(session, org_id)
     if row is None:
+        if settings.instance_email_available:
+            return await _send_instance_email(session, org_id, message)
         return False, "errors.email_not_configured"
+    if row.provider == "instance":
+        if not settings.instance_email_available:
+            return False, "errors.email_not_configured"
+        return await _send_instance_email(
+            session, org_id, message, from_name=row.from_name, reply_to=row.reply_to
+        )
     sender = Sender(from_email=row.from_email, from_name=row.from_name, reply_to=row.reply_to)
     return await send_email(row.provider, _config_of(row), sender, message)
 
@@ -72,6 +146,14 @@ class EmailSettingsService:
         self.ctx = ctx
 
     def _read(self, row: EmailSettings) -> EmailSettingsRead:
+        if row.provider == "instance":
+            # No credentials of its own — the transport lives in instance config (#199).
+            return EmailSettingsRead(
+                provider="instance",
+                from_email=settings.instance_email_from or "",
+                from_name=row.from_name,
+                reply_to=row.reply_to,
+            )
         config = _config_of(row)
         keys, secret_key = _PROVIDER_FIELDS[row.provider]
         public = {k: config.get(k) for k in keys if k != secret_key}
@@ -92,6 +174,35 @@ class EmailSettingsService:
     async def save(self, data: EmailSettingsWrite) -> EmailSettingsRead:
         self.ctx.require("settings.email.manage")
         row = await get_row(self.ctx.session, self.ctx.org.id)
+        if data.provider == "instance":
+            # The explicit "included e-mail" choice: only offerable while the operator's
+            # transport is actually configured; stores no credentials.
+            if not settings.instance_email_available:
+                raise AppError(
+                    "conflict", "errors.instance_email_unavailable", status_code=409
+                )
+            values = {
+                "provider": "instance",
+                "config_enc": encrypt(json.dumps({})),
+                "from_email": settings.instance_email_from or "",
+                "from_name": data.from_name,
+                "reply_to": str(data.reply_to) if data.reply_to else None,
+            }
+            if row is None:
+                row = EmailSettings(org_id=self.ctx.org.id, **values)
+                self.ctx.session.add(row)
+            else:
+                for key, value in values.items():
+                    setattr(row, key, value)
+            await self.ctx.session.flush()
+            return self._read(row)
+        if data.from_email is None:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"from_email": "errors.required"},
+            )
         keys, secret_key = _PROVIDER_FIELDS[data.provider]
 
         config = {k: getattr(data, k) for k in keys if getattr(data, k) not in (None, "")}

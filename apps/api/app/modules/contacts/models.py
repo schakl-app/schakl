@@ -51,6 +51,7 @@ class Contact(
 ):
     __tablename__ = "contacts"
     __entity_type__ = "contact"  # registers as customizable + auditable (issue #67)
+    __activity_read_permission__ = "contacts.contact.read"  # trail read gate (audit F7)
 
     __table_args__ = (
         Index("ix_contacts_custom", "custom", postgresql_using="gin"),

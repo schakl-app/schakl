@@ -1,0 +1,46 @@
+# Traefik dynamic routing for a CLOUD deployment (epic #199, docs/CLOUD.md). Mounted into
+# the watched directory as 00-base.yml; the API generates custom-domains.yml next to it.
+#
+# TLS model (#202):
+#   - `<slug>.<base_domain>` and the apex ride the operator's Cloudflare ORIGIN certificate
+#     (covering `<base_domain>` + `*.<base_domain>`), configured below as the default cert.
+#     Nothing per-org to do: the wildcard routers match every subdomain.
+#   - customer CNAME domains get per-domain routers from the generated fragment, each with
+#     `certResolver: letsencrypt`.
+#
+# The apex host serves the instance console (the web app routes it there when
+# SCHAKL_DEPLOYMENT=cloud); every other host resolves to a tenant inside the API.
+http:
+  routers:
+    # API paths on ANY host (tenant subdomains, the apex console, custom domains).
+    api-paths:
+      rule: "PathPrefix(`/api/`) || PathPrefix(`/mcp`)"
+      priority: 1000
+      entryPoints: [websecure]
+      service: schakl-api
+      tls: {}
+    # Everything else on ANY host goes to the SSR web app; the Host header decides whether
+    # that renders a tenant or the instance console.
+    web-any:
+      rule: "HostRegexp(`^.+$`)"
+      priority: 1
+      entryPoints: [websecure]
+      service: schakl-web
+      tls: {}
+
+  services:
+    schakl-api:
+      loadBalancer:
+        servers:
+          - url: "http://api:8000"
+    schakl-web:
+      loadBalancer:
+        servers:
+          - url: "http://web:3000"
+
+tls:
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /certs/origin.pem
+        keyFile: /certs/origin.key

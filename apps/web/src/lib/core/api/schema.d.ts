@@ -273,6 +273,209 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/2fa": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Auth:Twofactor.Status */
+        get: operations["auth_twofactor_status_api_v1_auth_2fa_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/2fa/backup-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Auth:Twofactor.Backup Codes
+         * @description A fresh set (shown once), invalidating every previous code. Costs a current TOTP code —
+         *     a stolen session alone must not be able to mint recovery codes.
+         */
+        post: operations["auth_twofactor_backup_codes_api_v1_auth_2fa_backup_codes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/2fa/challenge/sms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Auth:Twofactor.Challenge Sms
+         * @description Text a login code to the enrolled number — only for accounts that confirmed one.
+         */
+        post: operations["auth_twofactor_challenge_sms_api_v1_auth_2fa_challenge_sms_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/2fa/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Auth:Twofactor.Confirm
+         * @description A valid code from the freshly-scanned app is what turns 2FA on — and mints the backup
+         *     codes, returned exactly once.
+         */
+        post: operations["auth_twofactor_confirm_api_v1_auth_2fa_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/2fa/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Auth:Twofactor.Disable
+         * @description Turn 2FA off for the caller's own account. A **confirmed** setup costs the password
+         *     (a stolen session must not be able to strip the second factor); abandoning an unconfirmed
+         *     setup is free. Lost everything? That is what the org admin's reset is for (members.py).
+         */
+        post: operations["auth_twofactor_disable_api_v1_auth_2fa_disable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/2fa/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Auth:Twofactor.Setup
+         * @description Start (or restart) enrollment: mint a secret, return it as QR + manual key.
+         *
+         *     Idempotent while unconfirmed — every call rotates the pending secret, so an abandoned
+         *     tab's QR can never silently stay valid. A *confirmed* setup must be disabled first.
+         */
+        post: operations["auth_twofactor_setup_api_v1_auth_2fa_setup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/2fa/sms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Auth:Twofactor.Sms Disable
+         * @description Drop the SMS factor (TOTP + backup codes remain — never leaves the account factor-less).
+         */
+        delete: operations["auth_twofactor_sms_disable_api_v1_auth_2fa_sms_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/2fa/sms/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Auth:Twofactor.Sms Confirm */
+        post: operations["auth_twofactor_sms_confirm_api_v1_auth_2fa_sms_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/2fa/sms/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Auth:Twofactor.Sms Setup
+         * @description Register a number for SMS codes: it becomes usable only after echoing a code sent to it.
+         *     SMS is an *additional* factor on a confirmed TOTP setup, never the only one — a number can
+         *     be re-registered, but 2FA cannot start out SMS-only.
+         */
+        post: operations["auth_twofactor_sms_setup_api_v1_auth_2fa_sms_setup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/2fa/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Auth:Twofactor.Verify
+         * @description Redeem a login challenge with a code from any enrolled factor → session cookie.
+         */
+        post: operations["auth_twofactor_verify_api_v1_auth_2fa_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/forgot-password": {
         parameters: {
             query?: never;
@@ -1705,6 +1908,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/instance/api-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Instance Api Keys */
+        get: operations["list_instance_api_keys_api_v1_instance_api_keys_get"];
+        put?: never;
+        /** Create Instance Api Key */
+        post: operations["create_instance_api_key_api_v1_instance_api_keys_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/instance/api-keys/{key_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke Instance Api Key */
+        post: operations["revoke_instance_api_key_api_v1_instance_api_keys__key_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/instance/audit": {
         parameters: {
             query?: never;
@@ -1761,6 +1999,23 @@ export interface paths {
          *     removes). Data in licensed modules is untouched — they go read-only, never away.
          */
         delete: operations["remove_license_api_v1_instance_license_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/instance/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Instance Me */
+        get: operations["instance_me_api_v1_instance_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1888,6 +2143,23 @@ export interface paths {
         patch: operations["update_org_modules_api_v1_instance_orgs__org_id__modules_patch"];
         trace?: never;
     };
+    "/api/v1/instance/orgs/{org_id}/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Org Plan */
+        patch: operations["update_org_plan_api_v1_instance_orgs__org_id__plan_patch"];
+        trace?: never;
+    };
     "/api/v1/instance/orgs/{org_id}/purge": {
         parameters: {
             query?: never;
@@ -1905,6 +2177,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/instance/orgs/{org_id}/service-access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Org Service Access */
+        get: operations["org_service_access_api_v1_instance_orgs__org_id__service_access_get"];
+        put?: never;
+        /** Claim Service Pin */
+        post: operations["claim_service_pin_api_v1_instance_orgs__org_id__service_access_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/instance/orgs/{org_id}/suspend": {
         parameters: {
             query?: never;
@@ -1916,6 +2206,92 @@ export interface paths {
         put?: never;
         /** Suspend Org */
         post: operations["suspend_org_api_v1_instance_orgs__org_id__suspend_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/instance/provisioning/orgs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Provisioned Orgs */
+        get: operations["list_provisioned_orgs_api_v1_instance_provisioning_orgs_get"];
+        put?: never;
+        /** Provision Org */
+        post: operations["provision_org_api_v1_instance_provisioning_orgs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/instance/provisioning/orgs/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Provisioned Org */
+        get: operations["provisioned_org_api_v1_instance_provisioning_orgs__slug__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/instance/provisioning/orgs/{slug}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate Provisioned Org */
+        post: operations["activate_provisioned_org_api_v1_instance_provisioning_orgs__slug__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/instance/provisioning/orgs/{slug}/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Plan */
+        patch: operations["update_plan_api_v1_instance_provisioning_orgs__slug__plan_patch"];
+        trace?: never;
+    };
+    "/api/v1/instance/provisioning/orgs/{slug}/suspend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Suspend Provisioned Org */
+        post: operations["suspend_provisioned_org_api_v1_instance_provisioning_orgs__slug__suspend_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2040,6 +2416,526 @@ export interface paths {
         put?: never;
         /** Remap Interaction */
         post: operations["remap_interaction_api_v1_interactions__interaction_id__remap_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/invoices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Invoices */
+        get: operations["list_invoices_api_v1_invoicing_invoices_get"];
+        put?: never;
+        /** Create Invoice */
+        post: operations["create_invoice_api_v1_invoicing_invoices_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/invoices/from-time": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Invoice From Time
+         * @description Draft invoice from unbilled approved billable time; stamps the entries invoiced.
+         */
+        post: operations["invoice_from_time_api_v1_invoicing_invoices_from_time_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/invoices/{invoice_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Invoice */
+        get: operations["get_invoice_api_v1_invoicing_invoices__invoice_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Invoice */
+        delete: operations["delete_invoice_api_v1_invoicing_invoices__invoice_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Invoice */
+        patch: operations["update_invoice_api_v1_invoicing_invoices__invoice_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/invoicing/invoices/{invoice_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Invoice */
+        post: operations["cancel_invoice_api_v1_invoicing_invoices__invoice_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/invoices/{invoice_id}/credit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Credit Invoice
+         * @description Draft credit note mirroring this invoice with negated prices.
+         */
+        post: operations["credit_invoice_api_v1_invoicing_invoices__invoice_id__credit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/invoices/{invoice_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export Invoice
+         * @description Push this invoice to a live accounting provider (#31). Until an adapter module is
+         *     installed the registry is empty and this reports the provider as unknown — UBL download
+         *     is the always-available path.
+         */
+        post: operations["export_invoice_api_v1_invoicing_invoices__invoice_id__export_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/invoices/{invoice_id}/issue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue Invoice
+         * @description Assign the number, freeze the bill-to, open the invoice.
+         */
+        post: operations["issue_invoice_api_v1_invoicing_invoices__invoice_id__issue_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/invoices/{invoice_id}/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Payment */
+        post: operations["add_payment_api_v1_invoicing_invoices__invoice_id__payments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/invoices/{invoice_id}/payments/{payment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Payment */
+        delete: operations["delete_payment_api_v1_invoicing_invoices__invoice_id__payments__payment_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/invoices/{invoice_id}/refs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Invoice Refs
+         * @description What accounting packages know about this invoice (the #31 sync bookkeeping).
+         */
+        get: operations["invoice_refs_api_v1_invoicing_invoices__invoice_id__refs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/invoices/{invoice_id}/remind": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remind Invoice
+         * @description A payment reminder on demand — same mail, same bookkeeping as the daily cron.
+         */
+        post: operations["remind_invoice_api_v1_invoicing_invoices__invoice_id__remind_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/invoices/{invoice_id}/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send Invoice */
+        post: operations["send_invoice_api_v1_invoicing_invoices__invoice_id__send_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/invoices/{invoice_id}/ubl": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Ubl
+         * @description UBL 2.1 XML — importable by Exact Online, SnelStart, Moneybird, e-Boekhouden.
+         */
+        get: operations["download_ubl_api_v1_invoicing_invoices__invoice_id__ubl_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Providers
+         * @description The registered accounting adapters (#31). UBL export is always available and is not
+         *     a provider — it's a download, listed by the web from its own knowledge.
+         */
+        get: operations["list_providers_api_v1_invoicing_providers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/quotes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Quotes */
+        get: operations["list_quotes_api_v1_invoicing_quotes_get"];
+        put?: never;
+        /** Create Quote */
+        post: operations["create_quote_api_v1_invoicing_quotes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/quotes/{quote_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Quote */
+        get: operations["get_quote_api_v1_invoicing_quotes__quote_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Quote */
+        delete: operations["delete_quote_api_v1_invoicing_quotes__quote_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Quote */
+        patch: operations["update_quote_api_v1_invoicing_quotes__quote_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/invoicing/quotes/{quote_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept Quote */
+        post: operations["accept_quote_api_v1_invoicing_quotes__quote_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/quotes/{quote_id}/convert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Convert Quote
+         * @description Accepted quote → draft invoice carrying the lines at their accepted prices.
+         */
+        post: operations["convert_quote_api_v1_invoicing_quotes__quote_id__convert_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/quotes/{quote_id}/issue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Issue Quote */
+        post: operations["issue_quote_api_v1_invoicing_quotes__quote_id__issue_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/quotes/{quote_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Quote */
+        post: operations["reject_quote_api_v1_invoicing_quotes__quote_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/quotes/{quote_id}/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send Quote */
+        post: operations["send_quote_api_v1_invoicing_quotes__quote_id__send_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Settings
+         * @description Read by the editor too (defaults, numbering preview) — not only by admins.
+         */
+        get: operations["get_settings_api_v1_invoicing_settings_get"];
+        /** Save Settings */
+        put: operations["save_settings_api_v1_invoicing_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Summary */
+        get: operations["summary_api_v1_invoicing_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/tax-rates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Tax Rates */
+        get: operations["list_tax_rates_api_v1_invoicing_tax_rates_get"];
+        put?: never;
+        /** Create Tax Rate */
+        post: operations["create_tax_rate_api_v1_invoicing_tax_rates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/tax-rates/{tax_rate_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Tax Rate */
+        delete: operations["delete_tax_rate_api_v1_invoicing_tax_rates__tax_rate_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Tax Rate */
+        patch: operations["update_tax_rate_api_v1_invoicing_tax_rates__tax_rate_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/invoicing/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Templates */
+        get: operations["list_templates_api_v1_invoicing_templates_get"];
+        put?: never;
+        /** Create Template */
+        post: operations["create_template_api_v1_invoicing_templates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/templates/{template_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Template */
+        delete: operations["delete_template_api_v1_invoicing_templates__template_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Template */
+        patch: operations["update_template_api_v1_invoicing_templates__template_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/invoicing/unbilled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Unbilled */
+        get: operations["unbilled_api_v1_invoicing_unbilled_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2845,6 +3741,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/members/{membership_id}/two-factor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Reset Member Two Factor
+         * @description Reset a member's 2FA — the lost-phone escape hatch (docs/TWOFACTOR.md).
+         *
+         *     Deletes the enrollment outright (secret, backup codes, SMS number), so the account is a
+         *     plain password login again until the member re-enrolls; no secret is ever *read*. The user
+         *     identity is global (§5), so this genuinely clears their 2FA everywhere — but the reach is
+         *     tenant-scoped where it matters: the target is addressed by *membership*, and an admin of
+         *     another org has no membership id of theirs to name (404). Audited, like every trust change.
+         */
+        delete: operations["reset_member_two_factor_api_v1_members__membership_id__two_factor_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta/instance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Deployment Meta */
+        get: operations["deployment_meta_api_v1_meta_instance_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/meta/me": {
         parameters: {
             query?: never;
@@ -3509,6 +4448,25 @@ export interface paths {
         /** Test Email Settings */
         post: operations["test_email_settings_api_v1_settings_email_test_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/service-access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Service Access Status */
+        get: operations["service_access_status_api_v1_settings_service_access_get"];
+        put?: never;
+        /** Issue Service Pin */
+        post: operations["issue_service_pin_api_v1_settings_service_access_post"];
+        /** Revoke Service Pin */
+        delete: operations["revoke_service_pin_api_v1_settings_service_access_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -4539,6 +5497,28 @@ export interface paths {
         patch: operations["users_patch_current_user_api_v1_users_me_patch"];
         trace?: never;
     };
+    "/api/v1/users/me/email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Users:Change Email
+         * @description Change the caller's own sign-in address. Costs the current password; the new address
+         *     must be free (emails are unique case-insensitively and stored lowercase, like invites).
+         *     Verification state resets — the new address has never been proven.
+         */
+        post: operations["users_change_email_api_v1_users_me_email_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/{id}": {
         parameters: {
             query?: never;
@@ -5033,6 +6013,11 @@ export interface components {
             /** External Id */
             external_id: string;
         };
+        /** BackupCodesOut */
+        BackupCodesOut: {
+            /** Backup Codes */
+            backup_codes: string[];
+        };
         /** Body_auth_cookie_login_api_v1_auth_login_post */
         Body_auth_cookie_login_api_v1_auth_login_post: {
             /** Client Id */
@@ -5256,6 +6241,23 @@ export interface components {
             /** Triggers */
             triggers: components["schemas"]["TriggerInfo"][];
         };
+        /** ChallengeSms */
+        ChallengeSms: {
+            /** Challenge Token */
+            challenge_token: string;
+        };
+        /** ChallengeVerify */
+        ChallengeVerify: {
+            /** Challenge Token */
+            challenge_token: string;
+            /** Code */
+            code: string;
+            /**
+             * Method
+             * @default totp
+             */
+            method: string;
+        };
         /** ChannelCreate */
         ChannelCreate: {
             /**
@@ -5419,12 +6421,22 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /** ClaimPinRequest */
+        ClaimPinRequest: {
+            /** Pin */
+            pin: string;
+        };
         /** ClientRevenue */
         ClientRevenue: {
             /** Company Id */
             company_id: string | null;
             /** Revenue */
             revenue: number;
+        };
+        /** CodeIn */
+        CodeIn: {
+            /** Code */
+            code: string;
         };
         /** CommentCreate */
         CommentCreate: {
@@ -5513,8 +6525,18 @@ export interface components {
         };
         /** CompanyCreate */
         CompanyCreate: {
+            /** Address Line1 */
+            address_line1?: string | null;
+            /** Address Line2 */
+            address_line2?: string | null;
             /** Assignees */
             assignees?: components["schemas"]["AssigneeWrite"][] | null;
+            /** City */
+            city?: string | null;
+            /** Coc Number */
+            coc_number?: string | null;
+            /** Country */
+            country?: string | null;
             /** Custom */
             custom?: {
                 [key: string]: unknown;
@@ -5525,10 +6547,14 @@ export interface components {
             name: string;
             /** Notes */
             notes?: string | null;
+            /** Postal Code */
+            postal_code?: string | null;
             /** Responsible User Id */
             responsible_user_id?: string | null;
             /** @default active */
             status: components["schemas"]["CompanyStatus"];
+            /** Vat Number */
+            vat_number?: string | null;
             /** Website */
             website?: string | null;
         };
@@ -5570,8 +6596,18 @@ export interface components {
         };
         /** CompanyRead */
         CompanyRead: {
+            /** Address Line1 */
+            address_line1?: string | null;
+            /** Address Line2 */
+            address_line2?: string | null;
             /** Assignees */
             assignees?: components["schemas"]["AssigneeRead"][];
+            /** City */
+            city?: string | null;
+            /** Coc Number */
+            coc_number?: string | null;
+            /** Country */
+            country?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -5600,6 +6636,8 @@ export interface components {
              * Format: uuid
              */
             org_id: string;
+            /** Postal Code */
+            postal_code?: string | null;
             /** Responsible User Id */
             responsible_user_id?: string | null;
             /** @default active */
@@ -5609,6 +6647,8 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Vat Number */
+            vat_number?: string | null;
             /** Website */
             website?: string | null;
         };
@@ -5652,8 +6692,18 @@ export interface components {
         CompanyStatus: "lead" | "onboarding" | "active" | "offboarding" | "archived";
         /** CompanyUpdate */
         CompanyUpdate: {
+            /** Address Line1 */
+            address_line1?: string | null;
+            /** Address Line2 */
+            address_line2?: string | null;
             /** Assignees */
             assignees?: components["schemas"]["AssigneeWrite"][] | null;
+            /** City */
+            city?: string | null;
+            /** Coc Number */
+            coc_number?: string | null;
+            /** Country */
+            country?: string | null;
             /** Custom */
             custom?: {
                 [key: string]: unknown;
@@ -5664,9 +6714,13 @@ export interface components {
             name?: string | null;
             /** Notes */
             notes?: string | null;
+            /** Postal Code */
+            postal_code?: string | null;
             /** Responsible User Id */
             responsible_user_id?: string | null;
             status?: components["schemas"]["CompanyStatus"] | null;
+            /** Vat Number */
+            vat_number?: string | null;
             /** Website */
             website?: string | null;
         };
@@ -6022,6 +7076,30 @@ export interface components {
          * @enum {string}
          */
         CustomFieldType: "text" | "long_text" | "number" | "boolean" | "date" | "datetime" | "select" | "multi_select" | "email" | "url" | "phone";
+        /**
+         * CustomerRead
+         * @description The bill-to snapshot on a document (frozen at issue).
+         */
+        CustomerRead: {
+            /** Address Line1 */
+            address_line1?: string | null;
+            /** Address Line2 */
+            address_line2?: string | null;
+            /** City */
+            city?: string | null;
+            /** Coc Number */
+            coc_number?: string | null;
+            /** Country */
+            country?: string | null;
+            /** Email */
+            email?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Postal Code */
+            postal_code?: string | null;
+            /** Vat Number */
+            vat_number?: string | null;
+        };
         /** DashboardPrefs */
         DashboardPrefs: {
             /** Source */
@@ -6066,6 +7144,31 @@ export interface components {
              * @default false
              */
             override_budget: boolean;
+        };
+        /** DisableIn */
+        DisableIn: {
+            /**
+             * Password
+             * @default
+             */
+            password: string;
+        };
+        /**
+         * DocumentSend
+         * @description POST /send: stamp ``sent_at`` and (by default) e-mail the document summary to the
+         *     customer through the org's transport (#17). ``email=false`` records a send that
+         *     happened outside the app (posted it, mailed it yourself).
+         */
+        DocumentSend: {
+            /**
+             * Email
+             * @default true
+             */
+            email: boolean;
+            /** Message */
+            message?: string | null;
+            /** To */
+            to?: string | null;
         };
         /** DomainClaim */
         DomainClaim: {
@@ -6416,6 +7519,16 @@ export interface components {
             /** User Id */
             user_id: string;
         };
+        /** EmailChange */
+        EmailChange: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Password */
+            password: string;
+        };
         /**
          * EmailPrefRead
          * @description The user's effective e-mail rule: off, or a cadence (immediate / daily / weekly).
@@ -6475,7 +7588,7 @@ export interface components {
              * Provider
              * @enum {string}
              */
-            provider: "smtp" | "brevo" | "sendgrid" | "smtp2go";
+            provider: "smtp" | "brevo" | "sendgrid" | "smtp2go" | "instance";
             /** Reply To */
             reply_to?: string | null;
             /** Security */
@@ -6487,15 +7600,16 @@ export interface components {
          * EmailSettingsWrite
          * @description Upsert payload. Secret fields left empty on an update keep the stored value
          *     (as long as the provider is unchanged) — the API never plays the secret back.
+         *
+         *     ``provider="instance"`` (the operator-provided transport) needs no ``from_email`` —
+         *     mail leaves from the instance's own address; the handler enforces presence for every
+         *     other provider.
          */
         EmailSettingsWrite: {
             /** Api Key */
             api_key?: string | null;
-            /**
-             * From Email
-             * Format: email
-             */
-            from_email: string;
+            /** From Email */
+            from_email?: string | null;
             /** From Name */
             from_name: string;
             /** Host */
@@ -6508,7 +7622,7 @@ export interface components {
              * Provider
              * @enum {string}
              */
-            provider: "smtp" | "brevo" | "sendgrid" | "smtp2go";
+            provider: "smtp" | "brevo" | "sendgrid" | "smtp2go" | "instance";
             /** Reply To */
             reply_to?: string | null;
             /** Security */
@@ -6696,6 +7810,31 @@ export interface components {
             detail: string | {
                 [key: string]: string;
             };
+        };
+        /** ExternalRefRead */
+        ExternalRefRead: {
+            /** External Id */
+            external_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Local Id
+             * Format: uuid
+             */
+            local_id: string;
+            /** Local Type */
+            local_type: string;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            };
+            /** Provider */
+            provider: string;
+            /** Synced At */
+            synced_at: string | null;
         };
         /** GeneralPreference */
         GeneralPreference: {
@@ -7097,6 +8236,92 @@ export interface components {
             /** Row */
             row: number;
         };
+        /** InstanceApiKeyCreate */
+        InstanceApiKeyCreate: {
+            /** Expires At */
+            expires_at?: string | null;
+            /** Name */
+            name: string;
+        };
+        /** InstanceApiKeyCreated */
+        InstanceApiKeyCreated: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By Email */
+            created_by_email: string;
+            /** Expires At */
+            expires_at: string | null;
+            /** Id */
+            id: string;
+            /** Key Redacted */
+            key_redacted: string;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Name */
+            name: string;
+            /** Revoked At */
+            revoked_at: string | null;
+            /** Secret */
+            secret: string;
+        };
+        /** InstanceApiKeyRead */
+        InstanceApiKeyRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By Email */
+            created_by_email: string;
+            /** Expires At */
+            expires_at: string | null;
+            /** Id */
+            id: string;
+            /** Key Redacted */
+            key_redacted: string;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Name */
+            name: string;
+            /** Revoked At */
+            revoked_at: string | null;
+        };
+        /**
+         * InstanceMe
+         * @description Who is logged in on the instance (apex) host — where no org, and so no ``/meta/me``,
+         *     exists. The console guards itself on ``is_instance_admin``.
+         */
+        InstanceMe: {
+            /** Email */
+            email: string;
+            /** Full Name */
+            full_name: string | null;
+            /** Id */
+            id: string;
+            /** Is Instance Admin */
+            is_instance_admin: boolean;
+            /** Is Instance Owner */
+            is_instance_owner: boolean;
+        };
+        /**
+         * InstanceMeta
+         * @description What the web needs about the *instance* on a host no org resolves on (epic #199):
+         *     whether this deployment is cloud, whether the request host is the instance-management
+         *     host (the base domain), and whether first-run setup still has to happen.
+         */
+        InstanceMeta: {
+            /** Base Domain */
+            base_domain: string;
+            /** Deployment */
+            deployment: string;
+            /** Is Instance Host */
+            is_instance_host: boolean;
+            /** Needs Setup */
+            needs_setup: boolean;
+        };
         /**
          * InteractionApprove
          * @description Approve a gmail row, optionally assigning it in the same step (#183) — the same link
@@ -7353,6 +8578,319 @@ export interface components {
             subject?: string | null;
             /** Task Id */
             task_id?: string | null;
+        };
+        /** InvoiceCreate */
+        InvoiceCreate: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Contact Id */
+            contact_id?: string | null;
+            /** Currency */
+            currency?: string | null;
+            /** Custom */
+            custom?: {
+                [key: string]: unknown;
+            };
+            /** Due Date */
+            due_date?: string | null;
+            /** Exchange Rate */
+            exchange_rate?: number | string | null;
+            /** Intro */
+            intro?: string | null;
+            /** Issue Date */
+            issue_date?: string | null;
+            /** @default invoice */
+            kind: components["schemas"]["InvoiceKind"];
+            /** Lines */
+            lines?: components["schemas"]["LineWrite"][];
+            /** Locale */
+            locale?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Prices Include Tax */
+            prices_include_tax?: boolean | null;
+            /** Reference */
+            reference?: string | null;
+            /** Template Id */
+            template_id?: string | null;
+        };
+        /**
+         * InvoiceFromTime
+         * @description Build a draft invoice from unbilled time (approved + billable + not invoiced).
+         */
+        InvoiceFromTime: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /**
+             * Group By
+             * @default project
+             * @enum {string}
+             */
+            group_by: "entry" | "day" | "project";
+            /** Hourly Rate */
+            hourly_rate?: number | string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Until */
+            until?: string | null;
+        };
+        /** InvoiceIssue */
+        InvoiceIssue: {
+            /** Due Date */
+            due_date?: string | null;
+            /** Issue Date */
+            issue_date?: string | null;
+        };
+        /**
+         * InvoiceKind
+         * @enum {string}
+         */
+        InvoiceKind: "invoice" | "credit_note";
+        /** InvoiceRead */
+        InvoiceRead: {
+            /** Cancelled At */
+            cancelled_at: string | null;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /**
+             * Company Name
+             * @default
+             */
+            company_name: string;
+            /** Contact Id */
+            contact_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Credit For Id */
+            credit_for_id: string | null;
+            /** Currency */
+            currency: string;
+            /** Custom */
+            custom?: {
+                [key: string]: unknown;
+            };
+            customer?: components["schemas"]["CustomerRead"];
+            /** Due Date */
+            due_date: string | null;
+            /** Exchange Rate */
+            exchange_rate: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Intro */
+            intro: string | null;
+            /** Issue Date */
+            issue_date: string | null;
+            kind: components["schemas"]["InvoiceKind"];
+            /** Last Reminder At */
+            last_reminder_at: string | null;
+            /** Lines */
+            lines?: components["schemas"]["LineRead"][];
+            /** Locale */
+            locale: string;
+            /** Notes */
+            notes: string | null;
+            /** Number */
+            number: string | null;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /**
+             * Outstanding
+             * @default 0
+             */
+            outstanding: string;
+            /**
+             * Overdue
+             * @default false
+             */
+            overdue: boolean;
+            /** Paid At */
+            paid_at: string | null;
+            /** Paid Total */
+            paid_total: string;
+            /** Payments */
+            payments?: components["schemas"]["PaymentRead"][];
+            /** Period End */
+            period_end: string | null;
+            /** Period Start */
+            period_start: string | null;
+            /** Prices Include Tax */
+            prices_include_tax: boolean;
+            /** Quote Id */
+            quote_id: string | null;
+            /** Reference */
+            reference: string | null;
+            /** Reminder Count */
+            reminder_count: number;
+            /** Reminders Paused */
+            reminders_paused: boolean;
+            /** Sent At */
+            sent_at: string | null;
+            status: components["schemas"]["InvoiceStatus"];
+            /** Subscription Id */
+            subscription_id: string | null;
+            /** Subtotal */
+            subtotal: string;
+            /** Tax Groups */
+            tax_groups?: components["schemas"]["TaxGroupRead"][];
+            /** Tax Total */
+            tax_total: string;
+            /** Template Id */
+            template_id: string | null;
+            /** Total */
+            total: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * InvoiceStatus
+         * @enum {string}
+         */
+        InvoiceStatus: "draft" | "open" | "paid" | "cancelled";
+        /**
+         * InvoiceUpdate
+         * @description Drafts edit everything; issued documents only what doesn't change the money — the
+         *     service enforces which fields may still move after issue.
+         */
+        InvoiceUpdate: {
+            /** Contact Id */
+            contact_id?: string | null;
+            /** Currency */
+            currency?: string | null;
+            /** Custom */
+            custom?: {
+                [key: string]: unknown;
+            } | null;
+            /** Due Date */
+            due_date?: string | null;
+            /** Exchange Rate */
+            exchange_rate?: number | string | null;
+            /** Intro */
+            intro?: string | null;
+            /** Issue Date */
+            issue_date?: string | null;
+            /** Lines */
+            lines?: components["schemas"]["LineWrite"][] | null;
+            /** Locale */
+            locale?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Prices Include Tax */
+            prices_include_tax?: boolean | null;
+            /** Reference */
+            reference?: string | null;
+            /** Reminders Paused */
+            reminders_paused?: boolean | null;
+            /** Template Id */
+            template_id?: string | null;
+        };
+        /** InvoicingSettingsRead */
+        InvoicingSettingsRead: {
+            company_details: components["schemas"]["SellerDetails"];
+            /** Default Due Days */
+            default_due_days: number;
+            /** Default Hourly Rate */
+            default_hourly_rate: string | null;
+            /** Default Tax Rate Id */
+            default_tax_rate_id: string | null;
+            /** Default Template Id */
+            default_template_id: string | null;
+            /** Invoice Next Seq */
+            invoice_next_seq: number;
+            /** Invoice Number Format */
+            invoice_number_format: string;
+            /** Number Reset Yearly */
+            number_reset_yearly: boolean;
+            /** Prices Include Tax */
+            prices_include_tax: boolean;
+            /** Quote Next Seq */
+            quote_next_seq: number;
+            /** Quote Number Format */
+            quote_number_format: string;
+            /** Quote Valid Days */
+            quote_valid_days: number;
+            /** Reminder Days */
+            reminder_days: number[];
+            /** Reminders Enabled */
+            reminders_enabled: boolean;
+            /** Tax Country */
+            tax_country: string;
+        };
+        /** InvoicingSettingsWrite */
+        InvoicingSettingsWrite: {
+            company_details?: components["schemas"]["SellerDetails"] | null;
+            /** Default Due Days */
+            default_due_days?: number | null;
+            /** Default Hourly Rate */
+            default_hourly_rate?: number | string | null;
+            /** Default Tax Rate Id */
+            default_tax_rate_id?: string | null;
+            /** Default Template Id */
+            default_template_id?: string | null;
+            /** Invoice Next Seq */
+            invoice_next_seq?: number | null;
+            /** Invoice Number Format */
+            invoice_number_format?: string | null;
+            /** Number Reset Yearly */
+            number_reset_yearly?: boolean | null;
+            /** Prices Include Tax */
+            prices_include_tax?: boolean | null;
+            /** Quote Next Seq */
+            quote_next_seq?: number | null;
+            /** Quote Number Format */
+            quote_number_format?: string | null;
+            /** Quote Valid Days */
+            quote_valid_days?: number | null;
+            /** Reminder Days */
+            reminder_days?: number[] | null;
+            /** Reminders Enabled */
+            reminders_enabled?: boolean | null;
+            /** Tax Country */
+            tax_country?: string | null;
+        };
+        /**
+         * InvoicingSummary
+         * @description Totals are in the **org currency**: foreign-currency documents convert through their
+         *     stored exchange rate (1 when unset) — an approximation for steering, the documents
+         *     themselves stay exact.
+         */
+        InvoicingSummary: {
+            /** Draft Count */
+            draft_count: number;
+            /** Open Count */
+            open_count: number;
+            /** Open Total */
+            open_total: number;
+            /** Overdue Count */
+            overdue_count: number;
+            /** Overdue Total */
+            overdue_total: number;
+            /** Paid This Year */
+            paid_this_year: number;
+            /** Quotes Open Count */
+            quotes_open_count: number;
+            /** Quotes Open Total */
+            quotes_open_total: number;
         };
         /** KpiValue */
         KpiValue: {
@@ -8188,6 +9726,52 @@ export interface components {
             /** Writable */
             writable: boolean;
         };
+        /** LineRead */
+        LineRead: {
+            /** Amount */
+            amount: string;
+            /** Description */
+            description: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Position */
+            position: number;
+            /** Quantity */
+            quantity: string;
+            tax_category: components["schemas"]["TaxCategory"];
+            /** Tax Name */
+            tax_name: string;
+            /** Tax Rate Id */
+            tax_rate_id: string | null;
+            /** Tax Rate Pct */
+            tax_rate_pct: string;
+            /** Unit */
+            unit: string | null;
+            /** Unit Price */
+            unit_price: string;
+        };
+        /** LineWrite */
+        LineWrite: {
+            /** Description */
+            description: string;
+            /**
+             * Quantity
+             * @default 1
+             */
+            quantity: number | string;
+            /** Tax Rate Id */
+            tax_rate_id?: string | null;
+            /** Unit */
+            unit?: string | null;
+            /**
+             * Unit Price
+             * @default 0
+             */
+            unit_price: number | string;
+        };
         /**
          * LoggedSummary
          * @description Aggregated logged time for an entity (e.g. a project or company), across the team.
@@ -8197,6 +9781,21 @@ export interface components {
             billable_minutes: number;
             /** Minutes */
             minutes: number;
+        };
+        /**
+         * LoginChallenge
+         * @description What ``/auth/login`` returns instead of a cookie when a second factor is required.
+         */
+        LoginChallenge: {
+            /** Challenge Token */
+            challenge_token: string;
+            /** Methods */
+            methods: string[];
+            /**
+             * Two Factor Required
+             * @default true
+             */
+            two_factor_required: boolean;
         };
         /** MarkAllResult */
         MarkAllResult: {
@@ -8345,6 +9944,11 @@ export interface components {
              * @default []
              */
             role_ids: string[];
+            /**
+             * Two Factor Enabled
+             * @default false
+             */
+            two_factor_enabled: boolean;
             /** User Id */
             user_id: string;
         };
@@ -8375,10 +9979,20 @@ export interface components {
             customizable_entity_types: string[];
             /** Default Locale */
             default_locale: string;
+            /**
+             * Deployment
+             * @default self_hosted
+             */
+            deployment: string;
             /** Enabled Modules */
             enabled_modules: string[];
             /** Entitled Modules */
             entitled_modules?: string[];
+            /**
+             * Instance Email Available
+             * @default false
+             */
+            instance_email_available: boolean;
             /** Licensed Modules */
             licensed_modules?: string[];
             /** Local Login Enabled */
@@ -8534,12 +10148,16 @@ export interface components {
             name: string;
             /** Pending Domain */
             pending_domain: string | null;
+            /** Plan */
+            plan?: string | null;
             /** Slug */
             slug: string;
             /** Status */
             status: string;
             /** Suspended At */
             suspended_at: string | null;
+            /** Trial Ends At */
+            trial_ends_at?: string | null;
         };
         /** OrgMember */
         OrgMember: {
@@ -8558,6 +10176,37 @@ export interface components {
         OrgModulesUpdate: {
             /** Enabled Modules */
             enabled_modules: string[];
+        };
+        /** OrgPlanRead */
+        OrgPlanRead: {
+            /** Plan */
+            plan: string | null;
+            /** Trial Ends At */
+            trial_ends_at: string | null;
+        };
+        /** OrgPlanUpdate */
+        OrgPlanUpdate: {
+            /** Plan */
+            plan: string;
+            /** Trial Days */
+            trial_days?: number | null;
+            /** Trial Ends At */
+            trial_ends_at?: string | null;
+        };
+        /** OrgServiceAccess */
+        OrgServiceAccess: {
+            /** Access Until */
+            access_until?: string | null;
+            /**
+             * Pin Pending
+             * @default false
+             */
+            pin_pending: boolean;
+            /**
+             * Required
+             * @default true
+             */
+            required: boolean;
         };
         /** OrgSummary */
         OrgSummary: {
@@ -8580,12 +10229,16 @@ export interface components {
             name: string;
             /** Pending Domain */
             pending_domain: string | null;
+            /** Plan */
+            plan?: string | null;
             /** Slug */
             slug: string;
             /** Status */
             status: string;
             /** Suspended At */
             suspended_at: string | null;
+            /** Trial Ends At */
+            trial_ends_at?: string | null;
         };
         /** OrgUpdate */
         OrgUpdate: {
@@ -8682,6 +10335,17 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** Page[InvoiceRead] */
+        Page_InvoiceRead_: {
+            /** Items */
+            items: components["schemas"]["InvoiceRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
         /** Page[LeaveRequestRead] */
         Page_LeaveRequestRead_: {
             /** Items */
@@ -8708,6 +10372,17 @@ export interface components {
         Page_ProjectRead_: {
             /** Items */
             items: components["schemas"]["ProjectRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[QuoteRead] */
+        Page_QuoteRead_: {
+            /** Items */
+            items: components["schemas"]["QuoteRead"][];
             /** Limit */
             limit: number;
             /** Offset */
@@ -8856,6 +10531,48 @@ export interface components {
          * @enum {string}
          */
         PartyType: "agency" | "company" | "employee" | "contact";
+        /** PaymentRead */
+        PaymentRead: {
+            /** Amount */
+            amount: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Method */
+            method: string;
+            /** Note */
+            note: string | null;
+            /**
+             * Paid On
+             * Format: date
+             */
+            paid_on: string;
+        };
+        /** PaymentWrite */
+        PaymentWrite: {
+            /** Amount */
+            amount: number | string;
+            /**
+             * Method
+             * @default bank
+             * @enum {string}
+             */
+            method: "bank" | "cash" | "card" | "other";
+            /** Note */
+            note?: string | null;
+            /**
+             * Paid On
+             * Format: date
+             */
+            paid_on: string;
+        };
         /** PermissionCatalog */
         PermissionCatalog: {
             /** Groups */
@@ -8878,6 +10595,15 @@ export interface components {
             position: number;
             /** Scopes */
             scopes: string[];
+        };
+        /** PlanUpdate */
+        PlanUpdate: {
+            /** Plan */
+            plan: string;
+            /** Trial Days */
+            trial_days?: number | null;
+            /** Trial Ends At */
+            trial_ends_at?: string | null;
         };
         /** PortalState */
         PortalState: {
@@ -9253,10 +10979,221 @@ export interface components {
             /** Position */
             position?: number | null;
         };
+        /** ProvisionOrgRequest */
+        ProvisionOrgRequest: {
+            /** Brand Name */
+            brand_name?: string | null;
+            /** Enabled Modules */
+            enabled_modules?: string[] | null;
+            /** Locale */
+            locale?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Owner Email
+             * Format: email
+             */
+            owner_email: string;
+            /** Owner Full Name */
+            owner_full_name?: string | null;
+            /** Owner Password */
+            owner_password?: string | null;
+            /**
+             * Plan
+             * @default trial
+             */
+            plan: string;
+            /** Slug */
+            slug: string;
+            /** Trial Days */
+            trial_days?: number | null;
+        };
+        /** ProvisionedOrg */
+        ProvisionedOrg: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Owner Email */
+            owner_email?: string | null;
+            /** Plan */
+            plan: string | null;
+            /** Slug */
+            slug: string;
+            /** Status */
+            status: string;
+            /** Trial Ends At */
+            trial_ends_at: string | null;
+            /** Url */
+            url: string;
+        };
         /** PurgeRequest */
         PurgeRequest: {
             /** Confirm */
             confirm: string;
+        };
+        /** QuoteCreate */
+        QuoteCreate: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Contact Id */
+            contact_id?: string | null;
+            /** Currency */
+            currency?: string | null;
+            /** Custom */
+            custom?: {
+                [key: string]: unknown;
+            };
+            /** Exchange Rate */
+            exchange_rate?: number | string | null;
+            /** Intro */
+            intro?: string | null;
+            /** Issue Date */
+            issue_date?: string | null;
+            /** Lines */
+            lines?: components["schemas"]["LineWrite"][];
+            /** Locale */
+            locale?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Prices Include Tax */
+            prices_include_tax?: boolean | null;
+            /** Reference */
+            reference?: string | null;
+            /** Template Id */
+            template_id?: string | null;
+            /** Valid Until */
+            valid_until?: string | null;
+        };
+        /** QuoteDecision */
+        QuoteDecision: {
+            /** Note */
+            note?: string | null;
+        };
+        /** QuoteRead */
+        QuoteRead: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /**
+             * Company Name
+             * @default
+             */
+            company_name: string;
+            /** Contact Id */
+            contact_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Currency */
+            currency: string;
+            /** Custom */
+            custom?: {
+                [key: string]: unknown;
+            };
+            customer?: components["schemas"]["CustomerRead"];
+            /** Decided At */
+            decided_at: string | null;
+            /** Decision Note */
+            decision_note: string | null;
+            /** Exchange Rate */
+            exchange_rate: string | null;
+            /**
+             * Expired
+             * @default false
+             */
+            expired: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Intro */
+            intro: string | null;
+            /** Invoice Id */
+            invoice_id: string | null;
+            /** Issue Date */
+            issue_date: string | null;
+            /** Lines */
+            lines?: components["schemas"]["LineRead"][];
+            /** Locale */
+            locale: string;
+            /** Notes */
+            notes: string | null;
+            /** Number */
+            number: string | null;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /** Prices Include Tax */
+            prices_include_tax: boolean;
+            /** Reference */
+            reference: string | null;
+            /** Sent At */
+            sent_at: string | null;
+            status: components["schemas"]["QuoteStatus"];
+            /** Subtotal */
+            subtotal: string;
+            /** Tax Groups */
+            tax_groups?: components["schemas"]["TaxGroupRead"][];
+            /** Tax Total */
+            tax_total: string;
+            /** Template Id */
+            template_id: string | null;
+            /** Total */
+            total: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Valid Until */
+            valid_until: string | null;
+        };
+        /**
+         * QuoteStatus
+         * @enum {string}
+         */
+        QuoteStatus: "draft" | "open" | "accepted" | "rejected" | "expired" | "invoiced";
+        /** QuoteUpdate */
+        QuoteUpdate: {
+            /** Contact Id */
+            contact_id?: string | null;
+            /** Currency */
+            currency?: string | null;
+            /** Custom */
+            custom?: {
+                [key: string]: unknown;
+            } | null;
+            /** Exchange Rate */
+            exchange_rate?: number | string | null;
+            /** Intro */
+            intro?: string | null;
+            /** Issue Date */
+            issue_date?: string | null;
+            /** Lines */
+            lines?: components["schemas"]["LineWrite"][] | null;
+            /** Locale */
+            locale?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Prices Include Tax */
+            prices_include_tax?: boolean | null;
+            /** Reference */
+            reference?: string | null;
+            /** Template Id */
+            template_id?: string | null;
+            /** Valid Until */
+            valid_until?: string | null;
         };
         /** ReadUpdate */
         ReadUpdate: {
@@ -9766,6 +11703,35 @@ export interface components {
             /** User Id */
             user_id?: string | null;
         };
+        /**
+         * SellerDetails
+         * @description The agency's own legal identity on documents — org_settings is branding, this is
+         *     what a factuur must say about its sender.
+         */
+        SellerDetails: {
+            /** Address Line1 */
+            address_line1?: string | null;
+            /** Address Line2 */
+            address_line2?: string | null;
+            /** City */
+            city?: string | null;
+            /** Coc Number */
+            coc_number?: string | null;
+            /** Country */
+            country?: string | null;
+            /** Email */
+            email?: string | null;
+            /** Iban */
+            iban?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Phone */
+            phone?: string | null;
+            /** Postal Code */
+            postal_code?: string | null;
+            /** Vat Number */
+            vat_number?: string | null;
+        };
         /** SeriesData */
         SeriesData: {
             /** Dates */
@@ -9774,6 +11740,50 @@ export interface components {
             metrics?: {
                 [key: string]: number[];
             };
+        };
+        /** ServiceAccessIssued */
+        ServiceAccessIssued: {
+            /**
+             * Active
+             * @default false
+             */
+            active: boolean;
+            /**
+             * Claimed
+             * @default false
+             */
+            claimed: boolean;
+            /** Created At */
+            created_at?: string | null;
+            /** Created By Email */
+            created_by_email?: string | null;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Pin */
+            pin: string;
+            /** Pin Hours */
+            pin_hours: number;
+        };
+        /** ServiceAccessStatus */
+        ServiceAccessStatus: {
+            /**
+             * Active
+             * @default false
+             */
+            active: boolean;
+            /**
+             * Claimed
+             * @default false
+             */
+            claimed: boolean;
+            /** Created At */
+            created_at?: string | null;
+            /** Created By Email */
+            created_by_email?: string | null;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Pin Hours */
+            pin_hours: number;
         };
         /** ServiceAccountCreate */
         ServiceAccountCreate: {
@@ -9815,7 +11825,7 @@ export interface components {
             /** Locale */
             locale?: string | null;
             /** Org Name */
-            org_name: string;
+            org_name?: string | null;
             /**
              * Owner Email
              * Format: email
@@ -9828,7 +11838,7 @@ export interface components {
             /** Primary Color */
             primary_color?: string | null;
             /** Slug */
-            slug: string;
+            slug?: string | null;
             /** Timezone */
             timezone?: string | null;
         };
@@ -9843,6 +11853,16 @@ export interface components {
         SetupStatus: {
             /** Needs Setup */
             needs_setup: boolean;
+        };
+        /** SmsSendOut */
+        SmsSendOut: {
+            /** Phone Masked */
+            phone_masked: string;
+        };
+        /** SmsSetupIn */
+        SmsSetupIn: {
+            /** Phone */
+            phone: string;
         };
         /** SourceMetrics */
         SourceMetrics: {
@@ -10853,6 +12873,132 @@ export interface components {
             visible_to_client?: boolean | null;
         };
         /**
+         * TaxCategory
+         * @description How a rate behaves on a document — vocabulary, not law. ``REVERSE_CHARGE`` prints its
+         *     mandatory notice and charges 0; ``EXEMPT`` charges nothing and reports nothing. What a
+         *     tenant calls them, and which exist at all, is their data.
+         * @enum {string}
+         */
+        TaxCategory: "standard" | "reduced" | "zero" | "exempt" | "reverse_charge";
+        /** TaxGroupRead */
+        TaxGroupRead: {
+            /** Base */
+            base: string;
+            category: components["schemas"]["TaxCategory"];
+            /** Name */
+            name: string;
+            /** Rate Pct */
+            rate_pct: string;
+            /** Tax */
+            tax: string;
+        };
+        /** TaxRateCreate */
+        TaxRateCreate: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** @default standard */
+            category: components["schemas"]["TaxCategory"];
+            /** Country */
+            country?: string | null;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            };
+            /** Ledger Code */
+            ledger_code?: string | null;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /**
+             * Rate
+             * @default 0
+             */
+            rate: number | string;
+        };
+        /** TaxRateRead */
+        TaxRateRead: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** @default standard */
+            category: components["schemas"]["TaxCategory"];
+            /** Country */
+            country?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            };
+            /** Ledger Code */
+            ledger_code?: string | null;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /**
+             * Rate
+             * @default 0
+             */
+            rate: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** TaxRateUpdate */
+        TaxRateUpdate: {
+            /** Active */
+            active?: boolean | null;
+            category?: components["schemas"]["TaxCategory"] | null;
+            /** Country */
+            country?: string | null;
+            /** Is Default */
+            is_default?: boolean | null;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            } | null;
+            /** Ledger Code */
+            ledger_code?: string | null;
+            /** Position */
+            position?: number | null;
+            /** Rate */
+            rate?: number | string | null;
+        };
+        /**
          * TeamLeaveItem
          * @description One (approved or pending) absence for the team calendar / timesheet overlay.
          */
@@ -10919,21 +13065,59 @@ export interface components {
             /** Title */
             title: string;
         };
-        /** TemplateCreate */
-        TemplateCreate: {
+        /**
+         * TemplateColumns
+         * @description Which line columns the rendered document shows.
+         */
+        TemplateColumns: {
             /**
-             * Active
+             * Quantity
              * @default true
              */
-            active: boolean;
-            /** Items */
-            items?: components["schemas"]["TemplateItemBase"][];
-            /** Name */
-            name: string;
-            /** @default manual */
-            trigger: components["schemas"]["TemplateTrigger"];
-            /** Trigger Status */
-            trigger_status?: string | null;
+            quantity: boolean;
+            /**
+             * Tax
+             * @default true
+             */
+            tax: boolean;
+            /**
+             * Unit
+             * @default false
+             */
+            unit: boolean;
+            /**
+             * Unit Price
+             * @default true
+             */
+            unit_price: boolean;
+        };
+        /**
+         * TemplateConfig
+         * @description The design knobs. ``None`` accent color = the tenant's brand color at render time
+         *     (branding is runtime, Golden Rule 4). Text blocks are per-locale dicts, so a document
+         *     in the customer's language gets its own words, not a translation of the org's.
+         */
+        TemplateConfig: {
+            /** Accent Color */
+            accent_color?: string | null;
+            columns?: components["schemas"]["TemplateColumns"];
+            /** Footer I18N */
+            footer_i18n?: {
+                [key: string]: string;
+            };
+            /** Intro I18N */
+            intro_i18n?: {
+                [key: string]: string;
+            };
+            /** Payment I18N */
+            payment_i18n?: {
+                [key: string]: string;
+            };
+            /**
+             * Show Logo
+             * @default true
+             */
+            show_logo: boolean;
         };
         /** TemplateItemBase */
         TemplateItemBase: {
@@ -11008,44 +13192,11 @@ export interface components {
             /** Title */
             title: string;
         };
-        /** TemplateRead */
-        TemplateRead: {
-            /**
-             * Active
-             * @default true
-             */
-            active: boolean;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Items */
-            items?: components["schemas"]["TemplateItemRead"][];
-            /** Name */
-            name: string;
-            /** @default manual */
-            trigger: components["schemas"]["TemplateTrigger"];
-            /** Trigger Status */
-            trigger_status?: string | null;
-        };
         /**
          * TemplateTrigger
          * @enum {string}
          */
         TemplateTrigger: "manual" | "company_status";
-        /** TemplateUpdate */
-        TemplateUpdate: {
-            /** Active */
-            active?: boolean | null;
-            /** Items */
-            items?: components["schemas"]["TemplateItemBase"][] | null;
-            /** Name */
-            name?: string | null;
-            trigger?: components["schemas"]["TemplateTrigger"] | null;
-            /** Trigger Status */
-            trigger_status?: string | null;
-        };
         /** TenantBranding */
         TenantBranding: {
             /** Accent Color */
@@ -11531,6 +13682,78 @@ export interface components {
             /** Event */
             event: string;
         };
+        /** TwoFactorSetupOut */
+        TwoFactorSetupOut: {
+            /** Otpauth Url */
+            otpauth_url: string;
+            /** Qr Svg */
+            qr_svg: string;
+            /** Secret */
+            secret: string;
+        };
+        /** TwoFactorSmsInfo */
+        TwoFactorSmsInfo: {
+            /** Confirmed */
+            confirmed: boolean;
+            /** Phone Masked */
+            phone_masked: string;
+        };
+        /** TwoFactorStatus */
+        TwoFactorStatus: {
+            /**
+             * Backup Codes Remaining
+             * @default 0
+             */
+            backup_codes_remaining: number;
+            /** Enabled */
+            enabled: boolean;
+            /** Pending */
+            pending: boolean;
+            sms?: components["schemas"]["TwoFactorSmsInfo"] | null;
+            /**
+             * Sms Available
+             * @default false
+             */
+            sms_available: boolean;
+        };
+        /** UnbilledEntry */
+        UnbilledEntry: {
+            /** Description */
+            description: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Minutes */
+            minutes: number;
+            /** Project Id */
+            project_id: string | null;
+            /**
+             * Project Name
+             * @default
+             */
+            project_name: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /**
+             * User Name
+             * @default
+             */
+            user_name: string;
+        };
+        /** UnbilledRead */
+        UnbilledRead: {
+            /** Entries */
+            entries: components["schemas"]["UnbilledEntry"][];
+            /** Hourly Rate */
+            hourly_rate: string | null;
+            /** Total Minutes */
+            total_minutes: number;
+        };
         /** UnreadCount */
         UnreadCount: {
             /** Count */
@@ -11927,6 +14150,8 @@ export interface components {
         };
         /** DomainStatus */
         app__core__domains__DomainStatus: {
+            /** Cname Target */
+            cname_target?: string | null;
             /** Custom Domain */
             custom_domain: string | null;
             /** Custom Domain Verified At */
@@ -11946,6 +14171,80 @@ export interface components {
          * @enum {string}
          */
         app__modules__domains__models__DomainStatus: "active" | "redirect" | "parked" | "expired" | "inactive";
+        /** TemplateCreate */
+        app__modules__invoicing__schemas__TemplateCreate: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            config?: components["schemas"]["TemplateConfig"];
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+        };
+        /** TemplateRead */
+        app__modules__invoicing__schemas__TemplateRead: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            config?: components["schemas"]["TemplateConfig"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** TemplateUpdate */
+        app__modules__invoicing__schemas__TemplateUpdate: {
+            /** Active */
+            active?: boolean | null;
+            config?: components["schemas"]["TemplateConfig"] | null;
+            /** Is Default */
+            is_default?: boolean | null;
+            /** Name */
+            name?: string | null;
+            /** Position */
+            position?: number | null;
+        };
         /** LinkCreate */
         app__modules__marketing__schemas__LinkCreate: {
             /**
@@ -12056,6 +14355,55 @@ export interface components {
             title: string | null;
             /** Url */
             url: string;
+        };
+        /** TemplateCreate */
+        app__modules__tasks__schemas__TemplateCreate: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Items */
+            items?: components["schemas"]["TemplateItemBase"][];
+            /** Name */
+            name: string;
+            /** @default manual */
+            trigger: components["schemas"]["TemplateTrigger"];
+            /** Trigger Status */
+            trigger_status?: string | null;
+        };
+        /** TemplateRead */
+        app__modules__tasks__schemas__TemplateRead: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Items */
+            items?: components["schemas"]["TemplateItemRead"][];
+            /** Name */
+            name: string;
+            /** @default manual */
+            trigger: components["schemas"]["TemplateTrigger"];
+            /** Trigger Status */
+            trigger_status?: string | null;
+        };
+        /** TemplateUpdate */
+        app__modules__tasks__schemas__TemplateUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Items */
+            items?: components["schemas"]["TemplateItemBase"][] | null;
+            /** Name */
+            name?: string | null;
+            trigger?: components["schemas"]["TemplateTrigger"] | null;
+            /** Trigger Status */
+            trigger_status?: string | null;
         };
     };
     responses: never;
@@ -12686,6 +15034,291 @@ export interface operations {
             };
         };
     };
+    auth_twofactor_status_api_v1_auth_2fa_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TwoFactorStatus"];
+                };
+            };
+        };
+    };
+    auth_twofactor_backup_codes_api_v1_auth_2fa_backup_codes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CodeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupCodesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    auth_twofactor_challenge_sms_api_v1_auth_2fa_challenge_sms_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChallengeSms"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmsSendOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    auth_twofactor_confirm_api_v1_auth_2fa_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CodeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupCodesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    auth_twofactor_disable_api_v1_auth_2fa_disable_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DisableIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    auth_twofactor_setup_api_v1_auth_2fa_setup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TwoFactorSetupOut"];
+                };
+            };
+        };
+    };
+    auth_twofactor_sms_disable_api_v1_auth_2fa_sms_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    auth_twofactor_sms_confirm_api_v1_auth_2fa_sms_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CodeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    auth_twofactor_sms_setup_api_v1_auth_2fa_sms_setup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SmsSetupIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmsSendOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    auth_twofactor_verify_api_v1_auth_2fa_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChallengeVerify"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     reset_forgot_password_api_v1_auth_forgot_password_post: {
         parameters: {
             query?: never;
@@ -12732,30 +15365,28 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Successful Response */
+            /** @description Password accepted, second factor required — no cookie yet. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["LoginChallenge"];
                 };
             };
-            /** @description No Content */
+            /** @description Logged in; session cookie set. */
             204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description Bad Request */
+            /** @description Bad credentials or inactive user. */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["ErrorModel"];
-                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -16095,6 +18726,90 @@ export interface operations {
             };
         };
     };
+    list_instance_api_keys_api_v1_instance_api_keys_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstanceApiKeyRead"][];
+                };
+            };
+        };
+    };
+    create_instance_api_key_api_v1_instance_api_keys_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstanceApiKeyCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstanceApiKeyCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_instance_api_key_api_v1_instance_api_keys__key_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstanceApiKeyRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_audit_api_v1_instance_audit_get: {
         parameters: {
             query?: {
@@ -16214,6 +18929,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LicenseStatus"];
+                };
+            };
+        };
+    };
+    instance_me_api_v1_instance_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstanceMe"];
                 };
             };
         };
@@ -16535,6 +19270,41 @@ export interface operations {
             };
         };
     };
+    update_org_plan_api_v1_instance_orgs__org_id__plan_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrgPlanUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgPlanRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     purge_org_api_v1_instance_orgs__org_id__purge_post: {
         parameters: {
             query?: never;
@@ -16568,6 +19338,72 @@ export interface operations {
             };
         };
     };
+    org_service_access_api_v1_instance_orgs__org_id__service_access_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgServiceAccess"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    claim_service_pin_api_v1_instance_orgs__org_id__service_access_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaimPinRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgServiceAccess"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     suspend_org_api_v1_instance_orgs__org_id__suspend_post: {
         parameters: {
             query?: never;
@@ -16586,6 +19422,187 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrgSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_provisioned_orgs_api_v1_instance_provisioning_orgs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProvisionedOrg"][];
+                };
+            };
+        };
+    };
+    provision_org_api_v1_instance_provisioning_orgs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProvisionOrgRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProvisionedOrg"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    provisioned_org_api_v1_instance_provisioning_orgs__slug__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProvisionedOrg"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_provisioned_org_api_v1_instance_provisioning_orgs__slug__activate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProvisionedOrg"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_plan_api_v1_instance_provisioning_orgs__slug__plan_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProvisionedOrg"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suspend_provisioned_org_api_v1_instance_provisioning_orgs__slug__suspend_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProvisionedOrg"];
                 };
             };
             /** @description Validation Error */
@@ -16990,6 +20007,1259 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InteractionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_invoices_api_v1_invoicing_invoices_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                /** @description draft | open | paid | cancelled */
+                status?: string | null;
+                company_id?: string | null;
+                /** @description invoice | credit_note */
+                kind?: string | null;
+                /** @description only open invoices past their due date */
+                overdue?: boolean;
+                /** @description matches number and reference */
+                q?: string | null;
+                /** @description number | status | issue_date | due_date | total | created_at */
+                sort?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_InvoiceRead_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_invoice_api_v1_invoicing_invoices_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoiceCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    invoice_from_time_api_v1_invoicing_invoices_from_time_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoiceFromTime"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_invoice_api_v1_invoicing_invoices__invoice_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_invoice_api_v1_invoicing_invoices__invoice_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_invoice_api_v1_invoicing_invoices__invoice_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoiceUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_invoice_api_v1_invoicing_invoices__invoice_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    credit_invoice_api_v1_invoicing_invoices__invoice_id__credit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_invoice_api_v1_invoicing_invoices__invoice_id__export_post: {
+        parameters: {
+            query: {
+                /** @description a registered accounting provider key */
+                provider: string;
+            };
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExternalRefRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    issue_invoice_api_v1_invoicing_invoices__invoice_id__issue_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoiceIssue"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_payment_api_v1_invoicing_invoices__invoice_id__payments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PaymentWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_payment_api_v1_invoicing_invoices__invoice_id__payments__payment_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+                payment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    invoice_refs_api_v1_invoicing_invoices__invoice_id__refs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExternalRefRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remind_invoice_api_v1_invoicing_invoices__invoice_id__remind_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_invoice_api_v1_invoicing_invoices__invoice_id__send_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentSend"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_ubl_api_v1_invoicing_invoices__invoice_id__ubl_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_providers_api_v1_invoicing_providers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
+    list_quotes_api_v1_invoicing_quotes_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                /** @description draft | open | accepted | rejected | expired | invoiced */
+                status?: string | null;
+                company_id?: string | null;
+                /** @description matches number and reference */
+                q?: string | null;
+                /** @description number | status | issue_date | valid_until | total | created_at */
+                sort?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_QuoteRead_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_quote_api_v1_invoicing_quotes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuoteCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_quote_api_v1_invoicing_quotes__quote_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                quote_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_quote_api_v1_invoicing_quotes__quote_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                quote_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_quote_api_v1_invoicing_quotes__quote_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                quote_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuoteUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_quote_api_v1_invoicing_quotes__quote_id__accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                quote_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuoteDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    convert_quote_api_v1_invoicing_quotes__quote_id__convert_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                quote_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    issue_quote_api_v1_invoicing_quotes__quote_id__issue_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                quote_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoiceIssue"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_quote_api_v1_invoicing_quotes__quote_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                quote_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuoteDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_quote_api_v1_invoicing_quotes__quote_id__send_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                quote_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentSend"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_settings_api_v1_invoicing_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicingSettingsRead"];
+                };
+            };
+        };
+    };
+    save_settings_api_v1_invoicing_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicingSettingsWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicingSettingsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    summary_api_v1_invoicing_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicingSummary"];
+                };
+            };
+        };
+    };
+    list_tax_rates_api_v1_invoicing_tax_rates_get: {
+        parameters: {
+            query?: {
+                include_inactive?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxRateRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_tax_rate_api_v1_invoicing_tax_rates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaxRateCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxRateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_tax_rate_api_v1_invoicing_tax_rates__tax_rate_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tax_rate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_tax_rate_api_v1_invoicing_tax_rates__tax_rate_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tax_rate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaxRateUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxRateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_templates_api_v1_invoicing_templates_get: {
+        parameters: {
+            query?: {
+                include_inactive?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app__modules__invoicing__schemas__TemplateRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_template_api_v1_invoicing_templates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["app__modules__invoicing__schemas__TemplateCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app__modules__invoicing__schemas__TemplateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_template_api_v1_invoicing_templates__template_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_template_api_v1_invoicing_templates__template_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["app__modules__invoicing__schemas__TemplateUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app__modules__invoicing__schemas__TemplateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unbilled_api_v1_invoicing_unbilled_get: {
+        parameters: {
+            query: {
+                company_id: string;
+                project_id?: string | null;
+                /** @description org-local date (YYYY-MM-DD), inclusive */
+                until?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnbilledRead"];
                 };
             };
             /** @description Validation Error */
@@ -18733,6 +23003,55 @@ export interface operations {
             };
         };
     };
+    reset_member_two_factor_api_v1_members__membership_id__two_factor_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                membership_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    deployment_meta_api_v1_meta_instance_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstanceMeta"];
+                };
+            };
+        };
+    };
     me_api_v1_meta_me_get: {
         parameters: {
             query?: never;
@@ -20427,6 +24746,66 @@ export interface operations {
             };
         };
     };
+    service_access_status_api_v1_settings_service_access_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceAccessStatus"];
+                };
+            };
+        };
+    };
+    issue_service_pin_api_v1_settings_service_access_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceAccessIssued"];
+                };
+            };
+        };
+    };
+    revoke_service_pin_api_v1_settings_service_access_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceAccessStatus"];
+                };
+            };
+        };
+    };
     get_sso_settings_api_v1_settings_sso_get: {
         parameters: {
             query?: never;
@@ -21719,7 +26098,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TemplateRead"][];
+                    "application/json": components["schemas"]["app__modules__tasks__schemas__TemplateRead"][];
                 };
             };
         };
@@ -21733,7 +26112,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["TemplateCreate"];
+                "application/json": components["schemas"]["app__modules__tasks__schemas__TemplateCreate"];
             };
         };
         responses: {
@@ -21743,7 +26122,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TemplateRead"];
+                    "application/json": components["schemas"]["app__modules__tasks__schemas__TemplateRead"];
                 };
             };
             /** @description Validation Error */
@@ -21774,7 +26153,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TemplateRead"];
+                    "application/json": components["schemas"]["app__modules__tasks__schemas__TemplateRead"];
                 };
             };
             /** @description Validation Error */
@@ -21828,7 +26207,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["TemplateUpdate"];
+                "application/json": components["schemas"]["app__modules__tasks__schemas__TemplateUpdate"];
             };
         };
         responses: {
@@ -21838,7 +26217,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TemplateRead"];
+                    "application/json": components["schemas"]["app__modules__tasks__schemas__TemplateRead"];
                 };
             };
             /** @description Validation Error */
@@ -23226,6 +27605,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    users_change_email_api_v1_users_me_email_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserRead"];
+                };
             };
             /** @description Validation Error */
             422: {

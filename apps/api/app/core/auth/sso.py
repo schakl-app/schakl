@@ -236,7 +236,11 @@ async def fetch_discovery(url: str) -> dict:
     """
     if not valid_http_url(url):
         raise ValueError("not an http(s) URL")
-    async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+    # Do NOT follow redirects (audit F5): a public discovery_url that 302s to an internal address
+    # (169.254.169.254, http://db:5432, …) is the classic SSRF pivot. A private IdP host itself
+    # stays allowed on purpose — self-hosted installs run Keycloak/Authentik on the LAN — so the
+    # fix is closing the redirect hop, not blocking the (intended) private target.
+    async with httpx.AsyncClient(timeout=10.0, follow_redirects=False) as client:
         response = await client.get(url, headers={"accept": "application/json"})
         response.raise_for_status()
         try:

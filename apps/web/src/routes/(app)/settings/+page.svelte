@@ -121,6 +121,11 @@
       t("settings.subscriptions.subtitle"),
     )}
     {@render card(
+      "/settings/invoicing",
+      t("settings.invoicing.title"),
+      t("settings.invoicing.subtitle"),
+    )}
+    {@render card(
       "/settings/dashboard",
       t("settings.dashboard.title"),
       t("settings.dashboard.subtitle"),
@@ -136,6 +141,14 @@
       t("settings.notification_defaults.subtitle"),
     )}
     {@render card("/settings/email", t("settings.email.title"), t("settings.email.subtitle"))}
+    <!-- Cloud only (epic #199): the tenant's switch on platform-support access. -->
+    {#if data.cloud}
+      {@render card(
+        "/settings/service-access",
+        t("settings.service_access.title"),
+        t("settings.service_access.card_subtitle"),
+      )}
+    {/if}
     {@render card(
       "/settings/automation",
       t("settings.automation.title"),

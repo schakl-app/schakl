@@ -1,5 +1,13 @@
 <script lang="ts">
-  import { BadgeEuro, CalendarClock, FileText, Repeat, Trash2, UserMinus } from "@lucide/svelte";
+  import {
+    BadgeEuro,
+    CalendarClock,
+    FileText,
+    Repeat,
+    ShieldOff,
+    Trash2,
+    UserMinus,
+  } from "@lucide/svelte";
   import Avatar from "$lib/core/ui/Avatar.svelte";
 
   import { enhance } from "$app/forms";
@@ -28,6 +36,8 @@
   let showInvite = $state(false);
   let revokeId = $state("");
   let confirmRevoke = $state(false);
+  let resetTwoFactorId = $state("");
+  let confirmResetTwoFactor = $state(false);
   let expanded = $state("");
 
   // The tenant's own roles, fetched once by `settings/+layout.server.ts`. There is no hard-coded
@@ -149,6 +159,19 @@
       });
     }
     if (!member.is_self) {
+      // 2FA reset is the lost-phone escape hatch (docs/TWOFACTOR.md) — only offered where the
+      // member actually has 2FA, and confirmed like every destructive trust change.
+      if (member.two_factor_enabled) {
+        items.push({
+          label: t("settings.users.reset_two_factor"),
+          icon: ShieldOff,
+          danger: true,
+          onclick: () => {
+            resetTwoFactorId = member.membership_id;
+            confirmResetTwoFactor = true;
+          },
+        });
+      }
       items.push({
         label: t("settings.users.revoke"),
         icon: UserMinus,
@@ -281,7 +304,7 @@
                 >{t("settings.users.inactive")}</span
               >
             {/if}
-            {#if data.restrictedMembershipIds.includes(member.membership_id)}
+{#if data.restrictedMembershipIds.includes(member.membership_id)}
               <!-- A visibility restriction (#191) must be visible at a glance — a restricted
                    member quietly seeing "everything they know of" reads as data loss. -->
               <a
@@ -289,6 +312,12 @@
                 class="rounded-full px-2 py-0.5 text-[11px] font-medium text-text-muted ring-1 ring-inset ring-border hover:text-brand"
                 title={t("settings.users.restricted_hint")}
                 >{t("settings.users.restricted")}</a
+              >
+            {/if}
+            {#if member.two_factor_enabled}
+              <span
+                class="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-700 dark:bg-green-950 dark:text-green-300"
+                >{t("settings.users.two_factor_on")}</span
               >
             {/if}
           </div>
@@ -647,6 +676,15 @@
     {/key}
   {/if}
 </Modal>
+
+<ConfirmDialog
+  bind:open={confirmResetTwoFactor}
+  title={t("settings.users.reset_two_factor")}
+  message={t("settings.users.reset_two_factor_confirm")}
+  confirmLabel={t("settings.users.reset_two_factor")}
+  action="?/resetTwoFactor"
+  fields={{ membership_id: resetTwoFactorId }}
+/>
 
 <ConfirmDialog
   bind:open={confirmRevoke}

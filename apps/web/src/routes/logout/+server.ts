@@ -9,4 +9,5 @@ export const POST: RequestHandler = async ({ cookies }) => {
   throw redirect(303, "/login");
 };
 
-export const GET = POST;
+// POST-only on purpose (audit F26): a GET handler let `<img src=".../logout">` force-logout a
+// user cross-site. Logging out is a state change and rides the same Origin protection as any form.

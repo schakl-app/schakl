@@ -15,7 +15,6 @@ Design rules honoured here:
 
 from __future__ import annotations
 
-import ipaddress
 import logging
 import socket
 import uuid
@@ -29,6 +28,7 @@ from sqlalchemy import or_, select
 from app.config import settings
 from app.core.crypto import decrypt
 from app.core.events import EmitContext
+from app.core.net_guard import is_public_address
 from app.modules.notifications.events import CHANNEL_EMAIL
 from app.modules.notifications.models import (
     Notification,
@@ -116,9 +116,8 @@ def check_url_safe(url: str, *, any_scheme: bool = False) -> None:
     except socket.gaierror as exc:
         raise SsrfError(f"host '{host}' does not resolve") from exc
     for info in infos:
-        ip = ipaddress.ip_address(info[4][0])
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
-            raise SsrfError(f"host '{host}' resolves to a blocked address {ip}")
+        if not is_public_address(info[4][0]):
+            raise SsrfError(f"host '{host}' resolves to a blocked address {info[4][0]}")
 
 
 @dataclass

@@ -261,4 +261,17 @@ export const actions: Actions = {
     }
     return { revoked: true };
   },
+
+  /** Reset a member's 2FA — the lost-phone escape hatch (docs/TWOFACTOR.md); audited API-side. */
+  resetTwoFactor: async (event) => {
+    const form = await event.request.formData();
+    const id = String(form.get("membership_id") ?? "");
+    if (id) {
+      const { error } = await apiFor(event).DELETE("/api/v1/members/{membership_id}/two-factor", {
+        params: { path: { membership_id: id } },
+      });
+      if (error) return fail(400, { error: apiErrorKey(error).key });
+    }
+    return { twoFactorReset: true };
+  },
 };
