@@ -27,6 +27,9 @@ from app.modules.invoicing.schemas import (
     InvoicingSettingsWrite,
     InvoicingSummary,
     PaymentWrite,
+    ProductCreate,
+    ProductRead,
+    ProductUpdate,
     QuoteCreate,
     QuoteDecision,
     QuoteRead,
@@ -43,6 +46,7 @@ from app.modules.invoicing.service import (
     ExternalRefService,
     InvoiceService,
     InvoicingSettingsService,
+    ProductService,
     QuoteService,
     TaxRateService,
     TemplateService,
@@ -129,6 +133,58 @@ async def delete_tax_rate(
     ctx: RequestContext = Depends(require_context),
 ) -> None:
     await TaxRateService(ctx).delete(tax_rate_id)
+
+
+# --- products (owner request): default line presets ----------------------------- #
+@router.get(
+    "/products",
+    response_model=list[ProductRead],
+    dependencies=[require_permission("invoicing.invoice.read")],
+)
+async def list_products(
+    include_inactive: bool = Query(False),
+    ctx: RequestContext = Depends(require_context),
+) -> list[ProductRead]:
+    items = await ProductService(ctx).list(include_inactive=include_inactive)
+    return [ProductRead.model_validate(p) for p in items]
+
+
+@router.post(
+    "/products",
+    response_model=ProductRead,
+    status_code=201,
+    dependencies=[require_permission("invoicing.settings.manage")],
+)
+async def create_product(
+    payload: ProductCreate,
+    ctx: RequestContext = Depends(require_context),
+) -> ProductRead:
+    return ProductRead.model_validate(await ProductService(ctx).create(payload))
+
+
+@router.patch(
+    "/products/{product_id}",
+    response_model=ProductRead,
+    dependencies=[require_permission("invoicing.settings.manage")],
+)
+async def update_product(
+    product_id: uuid.UUID,
+    payload: ProductUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> ProductRead:
+    return ProductRead.model_validate(await ProductService(ctx).update(product_id, payload))
+
+
+@router.delete(
+    "/products/{product_id}",
+    status_code=204,
+    dependencies=[require_permission("invoicing.settings.manage")],
+)
+async def delete_product(
+    product_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> None:
+    await ProductService(ctx).delete(product_id)
 
 
 # --- templates ------------------------------------------------------------------ #

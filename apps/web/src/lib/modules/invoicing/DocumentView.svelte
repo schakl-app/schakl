@@ -111,6 +111,7 @@
       {#if seller.coc_number}<p>{t("invoicing.doc.coc_number")} {seller.coc_number}</p>{/if}
       {#if seller.iban}<p>{t("invoicing.doc.iban")} {seller.iban}</p>{/if}
       {#if seller.email}<p>{seller.email}</p>{/if}
+      {#if seller.phone}<p>{seller.phone}</p>{/if}
     </div>
   </header>
 
@@ -131,6 +132,10 @@
           {customer.vat_number}
         </p>
       {/if}
+      {#if customer.coc_number}
+        <p class="text-gray-600">{t("invoicing.doc.coc_number")} {customer.coc_number}</p>
+      {/if}
+      {#if customer.email}<p class="text-gray-600">{customer.email}</p>{/if}
     </div>
     <dl class="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
       <dt class="text-gray-500">
@@ -242,6 +247,17 @@
   {/if}
   {#if paymentText}
     <p class="mt-6 whitespace-pre-line text-sm text-gray-700">{paymentText}</p>
+  {:else if kind === "invoice" && invoice && seller.iban && invoice.kind !== "credit_note"}
+    <!-- No template payment text configured: an invoice still states how to pay (owner
+         feedback) — total, deadline, account, reference. -->
+    <p class="mt-6 text-sm text-gray-700">
+      {t("invoicing.doc.payment_fallback", {
+        total: money(invoice.outstanding ?? doc.total),
+        due: dmy(invoice.due_date),
+        iban: seller.iban,
+        number: doc.number ?? heading,
+      })}
+    </p>
   {/if}
   {#if footerText}
     <p class="mt-8 border-t border-gray-200 pt-3 text-center text-xs text-gray-500">

@@ -27,6 +27,7 @@
     companyDefinitions = [],
     contacts = [] as { id: string; name: string; company_ids: string[] }[],
     taxRates,
+    products = [],
     templates,
     settings,
     locale,
@@ -41,6 +42,15 @@
     companyDefinitions?: FieldDefinition[];
     contacts?: { id: string; name: string; company_ids: string[] }[];
     taxRates: TaxRate[];
+    /** The tenant's default products for the line picker (owner request). */
+    products?: {
+      id: string;
+      name: string;
+      description?: string | null;
+      unit?: string | null;
+      unit_price: string | number;
+      tax_rate_id?: string | null;
+    }[];
     templates: DocTemplate[];
     settings: InvoicingSettings | null;
     locale: string;
@@ -107,6 +117,19 @@
         return !target || c.company_ids.length === 0 || c.company_ids.includes(target);
       })
       .map((c) => ({ value: c.id, label: c.name })),
+  );
+
+  // Show the inherited defaults, don't hide them behind empty fields (docs/UX.md #81): a
+  // fresh document pre-fills today and the org's payment term / quote validity — visibly,
+  // exactly what the API would fall back to at issue time.
+  function isoInDays(days: number): string {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    return d.toISOString().slice(0, 10);
+  }
+  const defaultIssueDate = isoInDays(0);
+  const defaultDeadline = isoInDays(
+    kind === "invoice" ? (settings?.default_due_days ?? 14) : (settings?.quote_valid_days ?? 30),
   );
 
   const inputClass =
@@ -178,7 +201,11 @@
           ? t("invoicing.field.issue_date")
           : t("invoicing.field.quote_date")}</label
       >
-      <DateInput name="issue_date" id="doc-issue-date" value={doc?.issue_date ?? ""} />
+      <DateInput
+        name="issue_date"
+        id="doc-issue-date"
+        value={doc?.issue_date ?? (isNew ? defaultIssueDate : "")}
+      />
     </div>
     <div>
       <label for="doc-deadline" class="mb-1 block text-sm font-medium text-text"
@@ -191,7 +218,7 @@
         id="doc-deadline"
         value={(kind === "invoice"
           ? (doc as Invoice | null)?.due_date
-          : (doc as Quote | null)?.valid_until) ?? ""}
+          : (doc as Quote | null)?.valid_until) ?? (isNew ? defaultDeadline : "")}
       />
     </div>
     <div>
@@ -295,6 +322,7 @@
     <LinesEditor
       bind:lines
       {taxRates}
+      {products}
       defaultTaxRateId={settings?.default_tax_rate_id ?? ""}
       currency={effectiveCurrency}
       {locale}

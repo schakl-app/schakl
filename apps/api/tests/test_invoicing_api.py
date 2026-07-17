@@ -7,6 +7,7 @@ module — tenant isolation across each new table.
 
 from __future__ import annotations
 
+import uuid as uuid_mod
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -500,3 +501,71 @@ async def test_tenant_isolation_across_invoicing_tables(client_for) -> None:
             await cb.get("/api/v1/invoicing/settings", headers=b_headers)
         ).json()
         assert b_settings["company_details"].get("vat_number") is None
+
+
+async def test_products_catalog(client_for) -> None:
+    """Owner request: default products — named line presets with price and tax rate,
+    manageable under settings, readable by anyone who can read invoices, tenant-scoped."""
+    t: Tenant = await make_tenant("inv-products")
+    headers = await auth_cookie(t.user)
+    other: Tenant = await make_tenant("inv-products-b")
+    other_headers = await auth_cookie(other.user)
+    async with client_for(t.host) as c:
+        rates = (await c.get("/api/v1/invoicing/tax-rates", headers=headers)).json()
+        created = await c.post(
+            "/api/v1/invoicing/products",
+            json={
+                "name": "Onderhoud website",
+                "description": "Maandelijks onderhoud",
+                "unit": "maand",
+                "unit_price": "95.00",
+                "tax_rate_id": rates[0]["id"],
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        product = created.json()
+        assert product["tax_rate_id"] == rates[0]["id"]
+
+        listed = (await c.get("/api/v1/invoicing/products", headers=headers)).json()
+        assert [p["name"] for p in listed] == ["Onderhoud website"]
+
+        # A foreign tax rate is refused.
+        bogus = await c.post(
+            "/api/v1/invoicing/products",
+            json={"name": "X", "unit_price": "1.00", "tax_rate_id": str(uuid_mod.uuid4())},
+            headers=headers,
+        )
+        assert bogus.status_code == 422
+
+        # Deactivate: gone from the picker, back with include_inactive.
+        assert (
+            await c.patch(
+                f"/api/v1/invoicing/products/{product['id']}",
+                json={"active": False},
+                headers=headers,
+            )
+        ).status_code == 200
+        assert (await c.get("/api/v1/invoicing/products", headers=headers)).json() == []
+        assert (
+            len(
+                (
+                    await c.get(
+                        "/api/v1/invoicing/products?include_inactive=true", headers=headers
+                    )
+                ).json()
+            )
+            == 1
+        )
+
+    async with client_for(other.host) as cb:
+        assert (
+            await cb.get("/api/v1/invoicing/products", headers=other_headers)
+        ).json() == []
+        assert (
+            await cb.patch(
+                f"/api/v1/invoicing/products/{product['id']}",
+                json={"name": "Kaping"},
+                headers=other_headers,
+            )
+        ).status_code == 404

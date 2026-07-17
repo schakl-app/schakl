@@ -193,6 +193,30 @@ class TaxRate(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
+class Product(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """A default product/service the tenant sells (owner request): a named line preset —
+    description, unit, unit price, tax rate — that the line editor drops onto a document
+    with one pick. The document line still snapshots everything it copies, so re-pricing a
+    product never rewrites an issued invoice (the tax-rate discipline)."""
+
+    __tablename__ = "invoicing_products"
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    #: The line description the pick fills in; empty = use the name.
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    unit: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+    tax_rate_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("invoicing_tax_rates.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
 class DocumentTemplate(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     """A named document design (issue #207) — org-wide, like every template (UX §5).
 

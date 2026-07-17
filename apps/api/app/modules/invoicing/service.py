@@ -46,6 +46,7 @@ from app.modules.invoicing.models import (
     InvoiceStatus,
     InvoiceTimeEntry,
     InvoicingSettings,
+    Product,
     Quote,
     QuoteLine,
     QuoteStatus,
@@ -61,6 +62,8 @@ from app.modules.invoicing.schemas import (
     InvoicingSettingsWrite,
     LineWrite,
     PaymentWrite,
+    ProductCreate,
+    ProductUpdate,
     QuoteCreate,
     QuoteDecision,
     QuoteUpdate,
@@ -307,6 +310,58 @@ class TaxRateService:
 # --------------------------------------------------------------------------- #
 # Templates
 # --------------------------------------------------------------------------- #
+class ProductService:
+    """CRUD for the tenant's default products (owner request) — line presets, org-wide.
+
+    Deleting or re-pricing a product never touches a document: the line editor copies the
+    values onto the line, which snapshots them like everything else it holds.
+    """
+
+    def __init__(self, ctx: RequestContext) -> None:
+        self.ctx = ctx
+        self.repo = ctx.repo(Product)
+
+    async def list(self, *, include_inactive: bool = False) -> Sequence[Product]:
+        stmt = self.repo.scoped_select()
+        if not include_inactive:
+            stmt = stmt.where(Product.active.is_(True))
+        stmt = stmt.order_by(Product.position, func.lower(Product.name))
+        return list((await self.ctx.session.execute(stmt)).scalars().all())
+
+    async def create(self, data: ProductCreate) -> Product:
+        self.ctx.require("invoicing.settings.manage")
+        values = data.model_dump()
+        await self._ensure_tax_rate(values.get("tax_rate_id"))
+        return await self.repo.create(**values)
+
+    async def update(self, product_id: uuid.UUID, data: ProductUpdate) -> Product:
+        self.ctx.require("invoicing.settings.manage")
+        product = await self.repo.get_or_404(product_id)
+        values = data.model_dump(exclude_unset=True)
+        if "tax_rate_id" in values:
+            await self._ensure_tax_rate(values.get("tax_rate_id"))
+        return await self.repo.update(product, **values)
+
+    async def delete(self, product_id: uuid.UUID) -> None:
+        self.ctx.require("invoicing.settings.manage")
+        product = await self.repo.get_or_404(product_id)
+        await self.repo.delete(product)
+
+    async def _ensure_tax_rate(self, tax_rate_id: uuid.UUID | None) -> None:
+        if tax_rate_id is None:
+            return
+        ok = await self.ctx.session.scalar(
+            self.ctx.repo(TaxRate).scoped_select().where(TaxRate.id == tax_rate_id)
+        )
+        if ok is None:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"tax_rate_id": "errors.validation"},
+            )
+
+
 class TemplateService:
     def __init__(self, ctx: RequestContext) -> None:
         self.ctx = ctx

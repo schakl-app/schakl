@@ -9,8 +9,9 @@
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
+  import { getCurrency } from "$lib/core/currency";
   import DocumentView from "$lib/modules/invoicing/DocumentView.svelte";
-  import { taxRateLabel } from "$lib/modules/invoicing/types";
+  import { docMoney, taxRateLabel } from "$lib/modules/invoicing/types";
   import { page } from "$app/state";
 
   let { data, form } = $props();
@@ -29,6 +30,17 @@
   function openRate(rate: TaxRate | null) {
     editingRate = rate;
     rateOpen = true;
+  }
+
+  // --- product dialog (owner request): default line presets ------------------- #
+  type Product = (typeof data.products)[number];
+  let productOpen = $state(false);
+  let editingProduct = $state<Product | null>(null);
+  let deleteProductId = $state("");
+  let confirmDeleteProduct = $state(false);
+  function openProduct(product: Product | null) {
+    editingProduct = product;
+    productOpen = true;
   }
 
   // --- template dialog with live preview -------------------------------------- #
@@ -351,6 +363,72 @@
         </li>
       {/each}
     </ul>
+  </section>
+
+  <!-- Default products (owner request): named line presets for the editors. -->
+  <section class={sectionClass}>
+    <div class="mb-1 flex items-center justify-between gap-3">
+      <h2 class="text-base font-semibold text-text">
+        {t("settings.invoicing.products_heading")}
+      </h2>
+      <button
+        class="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white"
+        onclick={() => openProduct(null)}>{t("settings.invoicing.new_product")}</button
+      >
+    </div>
+    <p class="mb-3 text-sm text-text-muted">{t("settings.invoicing.products_hint")}</p>
+    {#if data.products.length === 0}
+      <p class="py-2 text-sm text-text-muted">{t("settings.invoicing.products_empty")}</p>
+    {:else}
+      <ul class="divide-y divide-border">
+        {#each data.products as product (product.id)}
+          <li class="flex items-center justify-between gap-3 py-2 text-sm">
+            <div class="min-w-0">
+              <span
+                class="font-medium {product.active ? 'text-text' : 'text-text-muted line-through'}"
+                >{product.name}</span
+              >
+              <span class="ml-2 text-xs text-text-muted">
+                {docMoney(Number(product.unit_price), getCurrency(), data.locale)}
+                {#if product.unit}/ {product.unit}{/if}
+              </span>
+            </div>
+            <ActionsMenu
+              compact
+              items={[
+                { label: t("common.edit"), icon: Pencil, onclick: () => openProduct(product) },
+                {
+                  label: product.active ? t("common.deactivate") : t("common.activate"),
+                  onclick: () => {
+                    const formEl = document.getElementById(`toggle-product-${product.id}`);
+                    (formEl as HTMLFormElement | null)?.requestSubmit();
+                  },
+                },
+                {
+                  label: t("common.delete"),
+                  icon: Trash2,
+                  danger: true,
+                  onclick: () => {
+                    deleteProductId = product.id;
+                    confirmDeleteProduct = true;
+                  },
+                },
+              ]}
+            />
+            <form
+              id="toggle-product-{product.id}"
+              method="POST"
+              action="?/toggleProduct"
+              use:enhance
+              class="hidden"
+            >
+              <input type="hidden" name="id" value={product.id} />
+              <input type="hidden" name="active" value={product.active ? "0" : "1"} />
+            </form>
+          </li>
+        {/each}
+      </ul>
+    {/if}
   </section>
 
   <!-- Templates: designs with a live preview. -->
@@ -860,6 +938,115 @@
   </div>
 </Modal>
 
+<Modal
+  bind:open={productOpen}
+  title={editingProduct
+    ? t("settings.invoicing.edit_product")
+    : t("settings.invoicing.new_product")}
+>
+  {#key editingProduct?.id ?? "new"}
+    <form
+      method="POST"
+      action="?/saveProduct"
+      use:enhance={() =>
+        ({ result, update }) => {
+          if (result.type === "success") productOpen = false;
+          void update({ reset: false });
+        }}
+      class="space-y-3"
+    >
+      {#if editingProduct}<input type="hidden" name="id" value={editingProduct.id} />{/if}
+      <div>
+        <label for="product-name" class="mb-1 block text-sm font-medium text-text"
+          >{t("common.name_field")}</label
+        >
+        <input
+          id="product-name"
+          name="name"
+          required
+          maxlength="255"
+          value={editingProduct?.name ?? ""}
+          class={inputClass}
+        />
+      </div>
+      <div>
+        <label for="product-description" class="mb-1 block text-sm font-medium text-text"
+          >{t("settings.invoicing.product_description")}</label
+        >
+        <textarea
+          id="product-description"
+          name="description"
+          rows="2"
+          class={inputClass}
+          placeholder={t("settings.invoicing.product_description_hint")}
+          >{editingProduct?.description ?? ""}</textarea
+        >
+      </div>
+      <div class="grid gap-3 sm:grid-cols-3">
+        <div>
+          <label for="product-price" class="mb-1 block text-sm font-medium text-text"
+            >{t("invoicing.line.unit_price")}</label
+          >
+          <input
+            id="product-price"
+            name="unit_price"
+            type="number"
+            step="0.01"
+            min="0"
+            required
+            value={editingProduct ? Number(editingProduct.unit_price) : ""}
+            class={inputClass}
+          />
+        </div>
+        <div>
+          <label for="product-unit" class="mb-1 block text-sm font-medium text-text"
+            >{t("invoicing.line.unit")}</label
+          >
+          <input
+            id="product-unit"
+            name="unit"
+            maxlength="20"
+            value={editingProduct?.unit ?? ""}
+            placeholder="uur / stuk / maand"
+            class={inputClass}
+          />
+        </div>
+        <div>
+          <label for="product-tax" class="mb-1 block text-sm font-medium text-text"
+            >{t("invoicing.line.tax")}</label
+          >
+          <select id="product-tax" name="tax_rate_id" class={inputClass}>
+            <option value="">—</option>
+            {#each data.taxRates.filter((r) => r.active) as rate (rate.id)}
+              <option value={rate.id} selected={editingProduct?.tax_rate_id === rate.id}
+                >{taxRateLabel(rate, data.locale)}</option
+              >
+            {/each}
+          </select>
+        </div>
+      </div>
+      {#if form?.error}<p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
+      <div class="flex justify-end gap-2">
+        <button
+          type="button"
+          class="rounded-lg border border-border px-4 py-2 text-sm text-text"
+          onclick={() => (productOpen = false)}>{t("common.cancel")}</button
+        >
+        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
+          >{t("common.save")}</button
+        >
+      </div>
+    </form>
+  {/key}
+</Modal>
+
+<ConfirmDialog
+  bind:open={confirmDeleteProduct}
+  title={t("common.delete")}
+  message={t("settings.invoicing.delete_product_confirm")}
+  action="?/deleteProduct"
+  fields={{ id: deleteProductId }}
+/>
 <ConfirmDialog
   bind:open={confirmDeleteRate}
   title={t("common.delete")}

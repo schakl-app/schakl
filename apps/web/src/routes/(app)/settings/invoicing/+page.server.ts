@@ -9,16 +9,18 @@ import type { Actions, PageServerLoad } from "./$types";
 export const load: PageServerLoad = async (event) => {
   if (!can(event.locals.user, "invoicing.settings.manage")) throw redirect(303, "/");
   const api = apiFor(event);
-  const [settings, taxRates, templates, providers] = await Promise.all([
+  const [settings, taxRates, templates, providers, products] = await Promise.all([
     api.GET("/api/v1/invoicing/settings"),
     api.GET("/api/v1/invoicing/tax-rates", { params: { query: { include_inactive: true } } }),
     api.GET("/api/v1/invoicing/templates", { params: { query: { include_inactive: true } } }),
     api.GET("/api/v1/invoicing/providers"),
+    api.GET("/api/v1/invoicing/products", { params: { query: { include_inactive: true } } }),
   ]);
   return {
     settings: settings.data ?? null,
     taxRates: taxRates.data ?? [],
     templates: templates.data ?? [],
+    products: products.data ?? [],
     providers: (providers.data ?? []) as { key: string; label: string }[],
     locale: event.locals.locale,
   };
@@ -119,6 +121,49 @@ export const actions: Actions = {
       return fail(400, { error: e.key, fields: e.fields });
     }
     return { rateSaved: true };
+  },
+  // Default products (owner request): the tenant's line presets.
+  saveProduct: async (event) => {
+    const form = await event.request.formData();
+    const id = String(form.get("id") ?? "");
+    const body = {
+      name: text(form, "name") ?? "",
+      description: text(form, "description") ?? null,
+      unit: text(form, "unit") ?? null,
+      unit_price: text(form, "unit_price") ?? "0",
+      tax_rate_id: text(form, "tax_rate_id") ?? null,
+    };
+    const api = apiFor(event);
+    const { error } = id
+      ? await api.PATCH("/api/v1/invoicing/products/{product_id}", {
+          params: { path: { product_id: id } },
+          body: body as never,
+        })
+      : await api.POST("/api/v1/invoicing/products", { body: body as never });
+    if (error) {
+      const e = apiErrorKey(error);
+      return fail(400, { error: e.key, fields: e.fields });
+    }
+    return { productSaved: true };
+  },
+  toggleProduct: async (event) => {
+    const form = await event.request.formData();
+    const id = String(form.get("id") ?? "");
+    const { error } = await apiFor(event).PATCH("/api/v1/invoicing/products/{product_id}", {
+      params: { path: { product_id: id } },
+      body: { active: form.get("active") === "1" } as never,
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { productSaved: true };
+  },
+  deleteProduct: async (event) => {
+    const form = await event.request.formData();
+    const id = String(form.get("id") ?? "");
+    const { error } = await apiFor(event).DELETE("/api/v1/invoicing/products/{product_id}", {
+      params: { path: { product_id: id } },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { productDeleted: true };
   },
   toggleRate: async (event) => {
     const form = await event.request.formData();

@@ -160,6 +160,46 @@ class TaxRateRead(TaxRateBase):
 
 
 # --------------------------------------------------------------------------- #
+# Products (owner request): default line presets for the editors
+# --------------------------------------------------------------------------- #
+class ProductBase(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=2000)
+    unit: str | None = Field(default=None, max_length=20)
+    unit_price: Decimal = Field(default=Decimal("0"), ge=0)
+    tax_rate_id: uuid.UUID | None = None
+    active: bool = True
+    position: int = 0
+
+    _blank_unit = field_validator("unit", "description", mode="before")(_blank_to_none)
+
+
+class ProductCreate(ProductBase):
+    pass
+
+
+class ProductUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=2000)
+    unit: str | None = Field(default=None, max_length=20)
+    unit_price: Decimal | None = Field(default=None, ge=0)
+    tax_rate_id: uuid.UUID | None = None
+    active: bool | None = None
+    position: int | None = None
+
+    _blank_unit = field_validator("unit", "description", mode="before")(_blank_to_none)
+
+
+class ProductRead(ProductBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    org_id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+# --------------------------------------------------------------------------- #
 # Templates
 # --------------------------------------------------------------------------- #
 class TemplateColumns(BaseModel):

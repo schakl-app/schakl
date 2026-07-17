@@ -80,6 +80,21 @@
       href="/companies/{invoice.company_id}"
       class="truncate text-sm text-text-muted hover:text-brand">{invoice.company_name}</a
     >
+    {#if invoice.subscription_id}
+      <!-- Provenance (owner feedback): a subscription-cycle draft says so, with its period. -->
+      <a
+        href="/subscriptions"
+        class="rounded-md bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand hover:underline"
+        title={t("invoicing.from_subscription_hint")}
+      >
+        {t("invoicing.from_subscription", {
+          period: [invoice.period_start, invoice.period_end]
+            .filter(Boolean)
+            .map((d) => fmtNumericDate(String(d)))
+            .join("–"),
+        })}
+      </a>
+    {/if}
   </div>
   <div class="flex items-center gap-2">
     {#if isDraft && data.canWrite}
@@ -189,6 +204,7 @@
           action="?/save"
           contacts={data.contacts}
           taxRates={data.taxRates}
+          products={data.products}
           templates={data.templates}
           settings={data.settings}
           locale={data.locale}

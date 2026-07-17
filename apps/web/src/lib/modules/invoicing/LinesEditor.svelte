@@ -8,12 +8,23 @@
   import { Trash2 } from "@lucide/svelte";
 
   import { t } from "$lib/core/i18n";
+  import Combobox from "$lib/core/ui/Combobox.svelte";
   import { computePreview, type EditableLine } from "./calc";
   import { docMoney, taxRateLabel, type TaxRate } from "./types";
+
+  interface ProductPreset {
+    id: string;
+    name: string;
+    description?: string | null;
+    unit?: string | null;
+    unit_price: string | number;
+    tax_rate_id?: string | null;
+  }
 
   let {
     lines = $bindable([] as EditableLine[]),
     taxRates,
+    products = [],
     defaultTaxRateId = "",
     currency,
     locale,
@@ -22,6 +33,8 @@
   }: {
     lines: EditableLine[];
     taxRates: TaxRate[];
+    /** The tenant's default products (owner request); empty hides the picker. */
+    products?: ProductPreset[];
     defaultTaxRateId?: string;
     currency: string;
     locale: string;
@@ -54,6 +67,28 @@
       { description: "", quantity: "1", unit: "", unit_price: "", tax_rate_id: defaultTaxRateId },
     ];
   }
+  /** Drop a default product onto the document (owner request): the pick *copies* the
+   *  preset onto a line — the line stays free text and snapshots what it copied. */
+  function addProduct(productId: string) {
+    const product = products.find((p) => p.id === productId);
+    if (!product) return;
+    const line = {
+      description: product.description || product.name,
+      quantity: "1",
+      unit: product.unit ?? "",
+      unit_price: String(Number(product.unit_price)),
+      tax_rate_id: product.tax_rate_id || defaultTaxRateId,
+    };
+    // Replace a still-empty trailing line instead of stacking under it.
+    const last = lines[lines.length - 1];
+    if (last && !last.description.trim() && !last.unit_price) {
+      lines = [...lines.slice(0, -1), line];
+    } else {
+      lines = [...lines, line];
+    }
+    productPick = "";
+  }
+  let productPick = $state("");
   function removeLine(index: number) {
     lines = lines.filter((_, i) => i !== index);
   }
@@ -124,9 +159,27 @@
       </button>
     </div>
   {/each}
-  <button type="button" class="text-sm font-medium text-brand hover:underline" onclick={addLine}>
-    ＋ {t("invoicing.line.add")}
-  </button>
+  <div class="flex flex-wrap items-center gap-3">
+    <button type="button" class="text-sm font-medium text-brand hover:underline" onclick={addLine}>
+      ＋ {t("invoicing.line.add")}
+    </button>
+    {#if products.length > 0}
+      <div class="w-56 min-w-0">
+        <Combobox
+          items={products.map((p) => ({
+            value: p.id,
+            label: p.name,
+            hint: docMoney(Number(p.unit_price), currency, locale),
+          }))}
+          name="_product_pick"
+          bind:value={productPick}
+          id="line-product-pick"
+          placeholder={t("invoicing.line.add_product")}
+          onselect={addProduct}
+        />
+      </div>
+    {/if}
+  </div>
 
   <input type="hidden" name="lines" value={linesJson} form={formId} />
 

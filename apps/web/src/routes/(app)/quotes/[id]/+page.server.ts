@@ -17,20 +17,23 @@ export const load: PageServerLoad = async (event) => {
   const enabled = event.locals.theme?.enabledModules ?? [];
   const panels = entityPanelsFor(enabled, "quote");
 
-  const [quote, contacts, taxRates, templates, settings, ...panelData] = await Promise.all([
-    api.GET("/api/v1/invoicing/quotes/{quote_id}", { params: { path: { quote_id } } }),
-    api.GET("/api/v1/contacts", { params: { query: { limit: 200, count: false } } }),
-    api.GET("/api/v1/invoicing/tax-rates"),
-    api.GET("/api/v1/invoicing/templates", { params: { query: { include_inactive: true } } }),
-    api.GET("/api/v1/invoicing/settings"),
-    ...panels.map((panel) => panel.load(api, context)),
-  ]);
+  const [quote, contacts, taxRates, products, templates, settings, ...panelData] =
+    await Promise.all([
+      api.GET("/api/v1/invoicing/quotes/{quote_id}", { params: { path: { quote_id } } }),
+      api.GET("/api/v1/contacts", { params: { query: { limit: 200, count: false } } }),
+      api.GET("/api/v1/invoicing/tax-rates"),
+      api.GET("/api/v1/invoicing/products"),
+      api.GET("/api/v1/invoicing/templates", { params: { query: { include_inactive: true } } }),
+      api.GET("/api/v1/invoicing/settings"),
+      ...panels.map((panel) => panel.load(api, context)),
+    ]);
   if (!quote.data) throw httpError(404);
 
   return {
     quote: quote.data,
     contacts: contactLookups(contacts.data?.items),
     taxRates: taxRates.data ?? [],
+    products: products.data ?? [],
     templates: templates.data ?? [],
     settings: settings.data ?? null,
     context,

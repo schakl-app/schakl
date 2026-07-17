@@ -56,6 +56,22 @@ export const load: PageServerLoad = async (event) => {
 };
 
 export const actions: Actions = {
+  // Invoice unbilled hours (owner request): the API's from-time bridge, finally reachable.
+  fromTime: async (event) => {
+    const form = await event.request.formData();
+    const company_id = String(form.get("company_id") ?? "");
+    if (!company_id) return fail(400, { fromTimeError: "errors.required" });
+    const { data, error } = await apiFor(event).POST("/api/v1/invoicing/invoices/from-time", {
+      body: {
+        company_id,
+        until: String(form.get("until") ?? "").trim() || null,
+        group_by: (String(form.get("group_by") ?? "") || "project") as "entry" | "day" | "project",
+      },
+    });
+    if (error || !data) return fail(400, { fromTimeError: apiErrorKey(error).key });
+    throw redirect(303, `/invoices/${data.id}`);
+  },
+
   saveTable: async (event) => {
     const form = await event.request.formData();
     await saveTablePref(event, INVOICES_TABLE_ID, parseTablePref(form));

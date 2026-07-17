@@ -22,6 +22,7 @@
     companyDefinitions={data.companyDefinitions}
     contacts={data.contacts}
     taxRates={data.taxRates}
+    products={data.products}
     templates={data.templates}
     settings={data.settings}
     locale={data.locale}

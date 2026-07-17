@@ -11,11 +11,12 @@ import type { Actions, PageServerLoad } from "./$types";
 export const load: PageServerLoad = async (event) => {
   if (!can(event.locals.user, "invoicing.invoice.write")) throw redirect(303, "/invoices");
   const api = apiFor(event);
-  const [companies, contacts, taxRates, templates, settings, companyDefinitions] =
+  const [companies, contacts, taxRates, products, templates, settings, companyDefinitions] =
     await Promise.all([
       api.GET("/api/v1/companies", { params: { query: { limit: 200, count: false } } }),
       api.GET("/api/v1/contacts", { params: { query: { limit: 200, count: false } } }),
       api.GET("/api/v1/invoicing/tax-rates"),
+      api.GET("/api/v1/invoicing/products"),
       api.GET("/api/v1/invoicing/templates"),
       api.GET("/api/v1/invoicing/settings"),
       api.GET("/api/v1/custom-fields/definitions", {
@@ -26,6 +27,7 @@ export const load: PageServerLoad = async (event) => {
     companies: lookupItems(companies, "companies").map((c) => ({ id: c.id, name: c.name })),
     contacts: contactLookups(contacts.data?.items),
     taxRates: taxRates.data ?? [],
+    products: products.data ?? [],
     templates: templates.data ?? [],
     settings: settings.data ?? null,
     companyDefinitions: companyDefinitions.data ?? [],

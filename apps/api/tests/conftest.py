@@ -55,7 +55,7 @@ _DOMAIN_TABLES = (
     "subscription_templates, subscription_types, "
     "invoicing_external_refs, invoice_time_entries, invoice_payments, quote_lines, "
     "invoice_lines, quotes, invoices, invoicing_settings, invoicing_templates, "
-    "invoicing_tax_rates, "
+    "invoicing_products, invoicing_tax_rates, "
     "marketing_metrics_daily, marketing_links, marketing_company_settings, marketing_settings, "
     "interactions, interaction_kinds, "
     "calendar_event_links, google_calendar_events, google_calendar_channels, "
