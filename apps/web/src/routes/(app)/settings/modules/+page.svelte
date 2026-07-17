@@ -5,6 +5,11 @@
   import { moduleLabel } from "$lib/core/registry";
 
   let { data, form } = $props();
+
+  // Component state via bind:group, never one-way checked={…} (docs/UX.md): a checkbox
+  // rendered one-way loses its mark on hydration, and the next save then silently strips
+  // every module the user never touched — only the freshly ticked ones survived.
+  let selected = $state<string[]>([...data.enabled]);
 </script>
 
 <svelte:head>
@@ -20,7 +25,12 @@
 <form
   method="POST"
   action="?/update"
-  use:enhance
+  use:enhance={() =>
+    async ({ update }) => {
+      // Keep the ticked state after save (docs/UX.md): the default reset would wipe the
+      // checkboxes back to their SSR attributes.
+      await update({ reset: false });
+    }}
   class="max-w-lg rounded-xl border border-border bg-surface-raised p-5"
 >
   <ul class="space-y-2">
@@ -43,7 +53,7 @@
             type="checkbox"
             name="modules"
             value={moduleName}
-            checked={data.enabled.includes(moduleName)}
+            bind:group={selected}
             disabled={isHub || locked}
             class="h-4 w-4 rounded border-border text-brand focus:ring-brand"
           />
