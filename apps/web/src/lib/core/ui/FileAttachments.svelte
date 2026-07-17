@@ -25,11 +25,14 @@
     uploadAction,
     deleteAction,
     error = null,
+    readonly = false,
   }: {
     files: StoredFile[];
     uploadAction: string;
     deleteAction: string;
     error?: string | null;
+    /** Download-only: no upload button, no per-row delete — a record's use mode (docs/UX.md §3). */
+    readonly?: boolean;
   } = $props();
 
   let confirmOpen = $state(false);
@@ -61,36 +64,40 @@
           {file.filename}
         </a>
         <span class="shrink-0 text-xs text-text-muted">{fmtSize(file.size_bytes)}</span>
-        <ActionsMenu
-          compact
-          items={[
-            {
-              label: t("common.delete"),
-              icon: Trash2,
-              danger: true,
-              onclick: () => askDelete(file.id),
-            },
-          ]}
-        />
+        {#if !readonly}
+          <ActionsMenu
+            compact
+            items={[
+              {
+                label: t("common.delete"),
+                icon: Trash2,
+                danger: true,
+                onclick: () => askDelete(file.id),
+              },
+            ]}
+          />
+        {/if}
       </li>
     {/each}
   </ul>
 {/if}
 
-<form method="POST" action={uploadAction} enctype="multipart/form-data" use:enhance>
-  <label
-    class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:border-brand hover:text-brand"
-  >
-    <Paperclip size={14} />
-    {t("files.upload")}
-    <input
-      type="file"
-      name="file"
-      class="hidden"
-      onchange={(e) => e.currentTarget.form?.requestSubmit()}
-    />
-  </label>
-</form>
+{#if !readonly}
+  <form method="POST" action={uploadAction} enctype="multipart/form-data" use:enhance>
+    <label
+      class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:border-brand hover:text-brand"
+    >
+      <Paperclip size={14} />
+      {t("files.upload")}
+      <input
+        type="file"
+        name="file"
+        class="hidden"
+        onchange={(e) => e.currentTarget.form?.requestSubmit()}
+      />
+    </label>
+  </form>
+{/if}
 {#if error}
   <p class="mt-1 text-sm text-red-600 dark:text-red-400">{t(error)}</p>
 {/if}

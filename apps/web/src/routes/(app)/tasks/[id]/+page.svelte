@@ -155,8 +155,11 @@
   const companyName = (id?: string | null) => data.companies.find((c) => c.id === id)?.name;
   const projectName = (id?: string | null) => data.projects.find((p) => p.id === id)?.name;
 
-  // Two modes: "use" (default — work the task: tick items, comment, attach) and "edit"
-  // (change its definition), toggled from the ⋯ menu.
+  // Two modes (docs/UX.md §3). "Use" (default) is working the task: change status, tick and
+  // quick-add checklist items, comment, plan, open what's attached. "Edit" (⋯ menu, staff only)
+  // is changing what the task *is*: title, description, relations, due/priority, labels,
+  // recurrence, checklist structure, links and file attachments. Empty structural sections
+  // don't render in use mode at all — their create forms live behind the pencil.
   let editMode = $state(false);
   let confirmDelete = $state(false);
   let editingCommentId = $state<string | null>(null);
@@ -358,21 +361,24 @@
           </h1>
         {/if}
 
-        <ActionsMenu
-          items={[
-            {
-              label: editMode ? t("tasks.detail.done_editing") : t("common.edit"),
-              icon: Pencil,
-              onclick: () => (editMode = !editMode),
-            },
-            {
-              label: t("tasks.detail.delete"),
-              icon: Trash2,
-              danger: true,
-              onclick: () => (confirmDelete = true),
-            },
-          ]}
-        />
+        {#if !isPortal}
+          <!-- A portal contact works the task (read, comment) — never its definition. -->
+          <ActionsMenu
+            items={[
+              {
+                label: editMode ? t("tasks.detail.done_editing") : t("common.edit"),
+                icon: Pencil,
+                onclick: () => (editMode = !editMode),
+              },
+              {
+                label: t("tasks.detail.delete"),
+                icon: Trash2,
+                danger: true,
+                onclick: () => (confirmDelete = true),
+              },
+            ]}
+          />
+        {/if}
       </div>
 
       <div class="mt-2 flex flex-wrap items-center gap-2">
@@ -442,7 +448,11 @@
       canScheduleAny={can(page.data.user, "tasks.schedule.write", "any")}
     />
 
-    <!-- Checklists (always interactive — ticking items is "using") -->
+    <!-- Checklists. Ticking and quick-adding items is "using" (docs/UX.md §3, §5); creating,
+         renaming or deleting a checklist is structure and lives in edit mode. A task without
+         checklists shows no section at all until you edit — an empty card with a create form
+         is exactly the clutter use mode exists to avoid. -->
+    {#if (task.checklists ?? []).length > 0 || editMode}
     <section class="rounded-xl border border-border bg-surface-raised p-5">
       <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
         {t("tasks.checklist.title")}
@@ -459,7 +469,7 @@
               <span class="text-xs tabular-nums text-text-muted"
                 >{t("tasks.checklist.progress", { done: doneCount, total })}</span
               >
-              {#if items.length > 0}
+              {#if editMode && items.length > 0}
                 <form method="POST" action="?/saveChecklistTemplate" use:enhance>
                   <input type="hidden" name="title" value={checklist.title} />
                   <!-- Item titles *and* descriptions, so the saved template carries both (issue #66). -->
@@ -478,29 +488,31 @@
                   </button>
                 </form>
               {/if}
-              <ActionsMenu
-                compact
-                items={[
-                  {
-                    label: t("common.edit"),
-                    icon: Pencil,
-                    onclick: () =>
-                      (editingChecklistId =
-                        editingChecklistId === checklist.id ? null : checklist.id),
-                  },
-                  {
-                    label: t("common.delete"),
-                    icon: Trash2,
-                    danger: true,
-                    onclick: () =>
-                      askDelete(
-                        "?/deleteChecklist",
-                        { checklist_id: checklist.id },
-                        t("tasks.checklist.delete_confirm"),
-                      ),
-                  },
-                ]}
-              />
+              {#if editMode}
+                <ActionsMenu
+                  compact
+                  items={[
+                    {
+                      label: t("common.edit"),
+                      icon: Pencil,
+                      onclick: () =>
+                        (editingChecklistId =
+                          editingChecklistId === checklist.id ? null : checklist.id),
+                    },
+                    {
+                      label: t("common.delete"),
+                      icon: Trash2,
+                      danger: true,
+                      onclick: () =>
+                        askDelete(
+                          "?/deleteChecklist",
+                          { checklist_id: checklist.id },
+                          t("tasks.checklist.delete_confirm"),
+                        ),
+                    },
+                  ]}
+                />
+              {/if}
             </div>
           </div>
           {#if editingChecklistId === checklist.id}
@@ -565,27 +577,30 @@
                       ? 'text-text-muted line-through'
                       : 'text-text'}">{item.title}</span
                   >
-                  <ActionsMenu
-                    compact
-                    items={[
-                      {
-                        label: t("common.edit"),
-                        icon: Pencil,
-                        onclick: () => (editingItemId = editingItemId === item.id ? null : item.id),
-                      },
-                      {
-                        label: t("common.delete"),
-                        icon: Trash2,
-                        danger: true,
-                        onclick: () =>
-                          askDelete(
-                            "?/deleteItem",
-                            { checklist_id: checklist.id, item_id: item.id },
-                            t("tasks.checklist.item_delete_confirm"),
-                          ),
-                      },
-                    ]}
-                  />
+                  {#if editMode}
+                    <ActionsMenu
+                      compact
+                      items={[
+                        {
+                          label: t("common.edit"),
+                          icon: Pencil,
+                          onclick: () =>
+                            (editingItemId = editingItemId === item.id ? null : item.id),
+                        },
+                        {
+                          label: t("common.delete"),
+                          icon: Trash2,
+                          danger: true,
+                          onclick: () =>
+                            askDelete(
+                              "?/deleteItem",
+                              { checklist_id: checklist.id, item_id: item.id },
+                              t("tasks.checklist.item_delete_confirm"),
+                            ),
+                        },
+                      ]}
+                    />
+                  {/if}
                 </div>
                 {#if editingItemId === item.id}
                   <form
@@ -640,51 +655,57 @@
         </div>
       {/each}
 
-      <form method="POST" action="?/addChecklist" use:enhance class="flex gap-2">
-        <!-- `min-w-0`: a flex `<input>` keeps its browser-default width (~228px here) as its
-             min-content floor, so `flex-1` alone cannot shrink it and the row pushed the whole
-             card past a phone's width (issue #36). -->
-        <input
-          name="title"
-          placeholder={t("tasks.checklist.add")}
-          required
-          class="min-w-0 flex-1 rounded-lg border border-dashed border-border px-3 py-1.5 text-sm outline-none focus:border-brand"
-        />
-        <button
-          class="rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:border-brand hover:text-brand"
-        >
-          {t("common.create")}
-        </button>
-      </form>
-      {#if data.checklistTemplates.length > 0}
-        <form method="POST" action="?/addChecklist" use:enhance class="mt-2 flex gap-2">
-          <select
-            name="template_id"
+      {#if editMode}
+        <form method="POST" action="?/addChecklist" use:enhance class="flex gap-2">
+          <!-- `min-w-0`: a flex `<input>` keeps its browser-default width (~228px here) as its
+               min-content floor, so `flex-1` alone cannot shrink it and the row pushed the whole
+               card past a phone's width (issue #36). -->
+          <input
+            name="title"
+            placeholder={t("tasks.checklist.add")}
             required
-            class="flex-1 rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted"
-          >
-            {#each data.checklistTemplates as checklistTemplate (checklistTemplate.id)}
-              <option value={checklistTemplate.id}>
-                {checklistTemplate.title} ({checklistTemplate.items?.length ?? 0})
-              </option>
-            {/each}
-          </select>
+            class="min-w-0 flex-1 rounded-lg border border-dashed border-border px-3 py-1.5 text-sm outline-none focus:border-brand"
+          />
           <button
             class="rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:border-brand hover:text-brand"
           >
-            {t("tasks.checklist.from_template")}
+            {t("common.create")}
           </button>
         </form>
+        {#if data.checklistTemplates.length > 0}
+          <form method="POST" action="?/addChecklist" use:enhance class="mt-2 flex gap-2">
+            <select
+              name="template_id"
+              required
+              class="flex-1 rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted"
+            >
+              {#each data.checklistTemplates as checklistTemplate (checklistTemplate.id)}
+                <option value={checklistTemplate.id}>
+                  {checklistTemplate.title} ({checklistTemplate.items?.length ?? 0})
+                </option>
+              {/each}
+            </select>
+            <button
+              class="rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:border-brand hover:text-brand"
+            >
+              {t("tasks.checklist.from_template")}
+            </button>
+          </form>
+        {/if}
       {/if}
     </section>
+    {/if}
 
-    <!-- Links (URL attachments) -->
+    <!-- Links & attachments. Use mode shows what is attached (open, download); adding a link,
+         uploading a file and deleting either are edit-mode work (docs/UX.md §3). No links and
+         no files → no section, until you edit. -->
+    {#if (task.links ?? []).length > 0 || data.files.length > 0 || editMode}
     <section class="rounded-xl border border-border bg-surface-raised p-5">
       <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
         {t("tasks.links.title")}
       </h3>
       {#if (task.links ?? []).length === 0}
-        <p class="mb-3 text-sm text-text-muted">{t("tasks.links.empty")}</p>
+        {#if editMode}<p class="mb-3 text-sm text-text-muted">{t("tasks.links.empty")}</p>{/if}
       {:else}
         <ul class="mb-3 space-y-1">
           {#each task.links ?? [] as link (link.id)}
@@ -698,65 +719,73 @@
               >
                 {link.title || link.url}
               </a>
-              <ActionsMenu
-                compact
-                items={[
-                  {
-                    label: t("common.delete"),
-                    icon: Trash2,
-                    danger: true,
-                    onclick: () =>
-                      askDelete(
-                        "?/deleteLink",
-                        { link_id: link.id },
-                        t("tasks.links.delete_confirm"),
-                      ),
-                  },
-                ]}
-              />
+              {#if editMode}
+                <ActionsMenu
+                  compact
+                  items={[
+                    {
+                      label: t("common.delete"),
+                      icon: Trash2,
+                      danger: true,
+                      onclick: () =>
+                        askDelete(
+                          "?/deleteLink",
+                          { link_id: link.id },
+                          t("tasks.links.delete_confirm"),
+                        ),
+                    },
+                  ]}
+                />
+              {/if}
             </li>
           {/each}
         </ul>
       {/if}
-      <form
-        method="POST"
-        action="?/addLink"
-        use:enhance={() =>
-          ({ update }) =>
-            void update({ reset: true })}
-        class="flex flex-wrap gap-2"
-      >
-        <input
-          name="url"
-          required
-          placeholder={t("tasks.links.url_placeholder")}
-          class="min-w-[12rem] flex-1 rounded-lg border border-border px-3 py-1.5 text-sm outline-none focus:border-brand"
-        />
-        <input
-          name="title"
-          placeholder={t("tasks.links.title_placeholder")}
-          class="w-40 rounded-lg border border-border px-3 py-1.5 text-sm outline-none focus:border-brand"
-        />
-        <button
-          class="rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:border-brand hover:text-brand"
+      {#if editMode}
+        <form
+          method="POST"
+          action="?/addLink"
+          use:enhance={() =>
+            ({ update }) =>
+              void update({ reset: true })}
+          class="flex flex-wrap gap-2"
         >
-          {t("common.create")}
-        </button>
-      </form>
+          <input
+            name="url"
+            required
+            placeholder={t("tasks.links.url_placeholder")}
+            class="min-w-[12rem] flex-1 rounded-lg border border-border px-3 py-1.5 text-sm outline-none focus:border-brand"
+          />
+          <input
+            name="title"
+            placeholder={t("tasks.links.title_placeholder")}
+            class="w-40 rounded-lg border border-border px-3 py-1.5 text-sm outline-none focus:border-brand"
+          />
+          <button
+            class="rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:border-brand hover:text-brand"
+          >
+            {t("common.create")}
+          </button>
+        </form>
+      {/if}
 
-      {#if !isPortal}
+      {#if !isPortal && (data.files.length > 0 || editMode)}
         <!-- Document uploads through the storage core (#123) — staff-only surface. -->
-        <div class="mt-4 border-t border-border pt-4">
+        <div class="{editMode ? 'mt-4 border-t border-border pt-4' : ''}">
           <FileAttachments
             files={data.files}
             uploadAction="?/uploadFile"
             deleteAction="?/deleteFile"
             error={form?.fileError ?? null}
+            readonly={!editMode}
           />
         </div>
-        <p class="mt-2 text-[11px] text-text-muted">{t("tasks.links.files_hint")}</p>
+        {#if editMode}
+          <p class="mt-2 text-[11px] text-text-muted">{t("tasks.links.files_hint")}</p>
+        {/if}
       {/if}
     </section>
+    {/if}
 
     <!-- Comments -->
     <section class="rounded-xl border border-border bg-surface-raised p-5">
@@ -936,23 +965,29 @@
   <aside class="order-2 min-w-0 space-y-4 lg:order-none lg:col-start-2 lg:row-span-2 lg:row-start-1">
     <section class="rounded-xl border border-border bg-surface-raised p-4">
       <div class="space-y-3">
-        <!-- Status is core workflow → always editable -->
+        <!-- Status is core workflow → always editable for staff; a portal contact reads it. -->
         <div>
           <label for="status" class="mb-1 block text-xs font-medium text-text-muted"
             >{t("tasks.field.status")}</label
           >
-          <form method="POST" action="?/update" use:enhance>
-            <select
-              id="status"
-              name="status"
-              class={inputClass}
-              onchange={(e) => e.currentTarget.form?.requestSubmit()}
-            >
-              {#each statuses as s (s.key)}
-                <option value={s.key} selected={task.status === s.key}>{s.name}</option>
-              {/each}
-            </select>
-          </form>
+          {#if isPortal}
+            <p id="status" class="text-sm text-text">
+              {statuses.find((s) => s.key === task.status)?.name ?? task.status}
+            </p>
+          {:else}
+            <form method="POST" action="?/update" use:enhance>
+              <select
+                id="status"
+                name="status"
+                class={inputClass}
+                onchange={(e) => e.currentTarget.form?.requestSubmit()}
+              >
+                {#each statuses as s (s.key)}
+                  <option value={s.key} selected={task.status === s.key}>{s.name}</option>
+                {/each}
+              </select>
+            </form>
+          {/if}
         </div>
 
         <!-- Time budget -->
@@ -1166,7 +1201,9 @@
       </div>
     </section>
 
-    <!-- Labels -->
+    <!-- Labels — edit-mode only: in use mode the chips already sit under the title, so a second
+         card repeating them (or teaching "no labels yet") is noise (docs/UX.md §3). -->
+    {#if editMode}
     <section class="rounded-xl border border-border bg-surface-raised p-4">
       <div class="mb-2 flex items-center justify-between">
         <h3 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
@@ -1262,6 +1299,7 @@
         </div>
       {/if}
     </section>
+    {/if}
 
     <!-- Recurrence (definition → edit mode only) -->
     {#if editMode}
