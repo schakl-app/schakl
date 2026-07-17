@@ -32,5 +32,6 @@ export const POST: RequestHandler = async (event) => {
   // cache for SSR stamping (see dateformat.ts).
   await apiFor(event).PUT("/api/v1/prefs", { body: { prefs: { format: next } } });
   cookies.set(FORMAT_COOKIE, serializeFormatCookie(next), FORMAT_COOKIE_OPTIONS);
-  throw redirect(303, back || "/");
+  // Only a same-origin relative path — never an absolute or protocol-relative URL (audit F26).
+  throw redirect(303, back.startsWith("/") && !back.startsWith("//") ? back : "/");
 };

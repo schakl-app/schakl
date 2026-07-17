@@ -20,6 +20,8 @@ from email.message import EmailMessage as MimeMessage
 
 import httpx
 
+from app.core.net_guard import SsrfBlocked, assert_host_public_sync
+
 _TIMEOUT = 15.0
 
 
@@ -76,6 +78,13 @@ def _send_smtp_sync(
     security = str(config.get("security") or "starttls")
     username = str(config.get("username") or "")
     password = str(config.get("password") or "")
+    # SSRF (audit F24): an email-settings admin must not point the relay at an internal host to
+    # probe the network. Refuse a non-public SMTP host unless the operator opted the instance into
+    # private targets (an internal MTA is a legitimate but deliberate choice).
+    try:
+        assert_host_public_sync(host)
+    except SsrfBlocked as exc:
+        return False, f"blocked: {exc}"
     try:
         if security == "ssl":
             client: smtplib.SMTP = smtplib.SMTP_SSL(

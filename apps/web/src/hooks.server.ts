@@ -35,6 +35,22 @@ import { paraglideMiddleware } from "$lib/paraglide/server";
 // locale code — never read it back as one. That is what `data-locale` is for.
 const HTML_LANG: Record<string, string> = { nl: "nl", en: "en-GB" };
 
+// Security response headers (audit F14). These directives don't touch script/style *loading* (no
+// `default-src`/`script-src`), so they add clickjacking + MIME-sniffing + base-tag protection
+// without a nonce migration for the inline no-flash theme script. A full script-src CSP with
+// nonces is a worthwhile follow-up.
+const handleSecurityHeaders: Handle = async ({ event, resolve }) => {
+  const response = await resolve(event);
+  response.headers.set("X-Frame-Options", "DENY");
+  response.headers.set("X-Content-Type-Options", "nosniff");
+  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  response.headers.set(
+    "Content-Security-Policy",
+    "frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'",
+  );
+  return response;
+};
+
 const handleContext: Handle = async ({ event, resolve }) => {
   const [theme, user] = await Promise.all([fetchTenant(event), fetchUser(event)]);
   event.locals.theme = theme;
@@ -117,4 +133,4 @@ const handleParaglide: Handle = ({ event, resolve }) =>
     });
   });
 
-export const handle = sequence(handleContext, handleParaglide);
+export const handle = sequence(handleSecurityHeaders, handleContext, handleParaglide);

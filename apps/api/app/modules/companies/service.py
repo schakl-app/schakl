@@ -23,6 +23,7 @@ from app.core.customfields import CustomFieldsService
 from app.core.events import emit
 from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
+from app.core.urls import reject_dangerous_url
 from app.modules.companies.models import Company, CompanyAssignee
 from app.modules.companies.schemas import CompanyCreate, CompanyUpdate
 from app.schemas import CompanyBudgetHours
@@ -31,7 +32,13 @@ ENTITY_TYPE = "company"
 
 # The definition fields whose before/after values the activity trail records (issue #67). Notes
 # (freeform) and custom (its own concern) are deliberately left out of the trail's diff.
-_AUDITED_FIELDS = ("name", "website", "invoice_email", "status", "responsible_user_id")
+_AUDITED_FIELDS = (
+    "name", "website", "invoice_email", "status", "responsible_user_id",
+    # Billing identity (issue #11): what an issued invoice snapshots (#207), so a change
+    # here is exactly the kind of definition edit the trail exists to answer for.
+    "vat_number", "coc_number", "address_line1", "address_line2",
+    "postal_code", "city", "country",
+)
 
 
 def _primary_assignee_name() -> Any:
@@ -214,6 +221,7 @@ class CompanyService:
     async def create(self, data: CompanyCreate) -> Company:
         self.ctx.require("companies.company.write")
         values = data.model_dump()
+        reject_dangerous_url(values.get("website"), field="website")
         values.pop("assignees", None)
         links = self.assignees.normalize(
             data.assignees, fallback_primary=data.responsible_user_id
@@ -248,6 +256,8 @@ class CompanyService:
         previous_status = company.status
         before_fields = snapshot(company, _AUDITED_FIELDS)
         values = data.model_dump(exclude_unset=True)
+        if "website" in values:
+            reject_dangerous_url(values.get("website"), field="website")
         # ``replace`` is delete-then-insert, so who is *new* has to be read before the write.
         roster_touched = "assignees" in values or "responsible_user_id" in values
         before: set[uuid.UUID] = (

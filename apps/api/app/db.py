@@ -42,6 +42,9 @@ INSTANCE_LEVEL_TABLES = frozenset(
     {
         "orgs",
         "users",
+        # user_two_factor: global identity like `users` — a second factor follows the person
+        # across every org they belong to (docs/TWOFACTOR.md).
+        "user_two_factor",
         "instance_audit_log",
         "instance_license",  # one product license per installation (issue #137)
         # Cloud (epic #199): the instance owner's provisioning credentials, and the org-issued

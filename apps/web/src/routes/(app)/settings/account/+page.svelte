@@ -12,6 +12,9 @@
 
   let { data, form } = $props();
 
+  // "Copied" feedback for the one-time backup-codes reveal (the house clipboard pattern).
+  let backupCopied = $state(false);
+
   const account = $derived(data.account);
   const path = $derived(page.url.pathname);
 
@@ -212,7 +215,11 @@
           disabled
           class="w-full cursor-not-allowed rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-muted"
         />
-        <p class="mt-1 text-xs text-text-muted">{t("settings.account.email_help")}</p>
+        <p class="mt-1 text-xs text-text-muted">
+          {data.localLogin
+            ? t("settings.account.email_change_help")
+            : t("settings.account.email_managed_by_sso")}
+        </p>
       </div>
       {#if form?.saved}
         <p class="text-sm text-green-600 dark:text-green-400">{t("settings.account.saved")}</p>
@@ -226,6 +233,63 @@
     </form>
   </section>
 
+  <!-- Change email: the sign-in address moves only with the current password (account.py).
+       Hidden when the org enforces SSO — the IdP owns the address then. -->
+  {#if data.localLogin}
+    <section class="rounded-xl border border-border bg-surface-raised p-5">
+      <h2 class="text-sm font-semibold text-text">{t("settings.account.change_email")}</h2>
+      <p class="mt-1 text-sm text-text-muted">{t("settings.account.email_change_help")}</p>
+      <form
+        method="POST"
+        action="?/changeEmail"
+        use:enhance={() =>
+          ({ update }) =>
+            update({ reset: true })}
+        class="mt-4 space-y-4"
+      >
+        <div>
+          <label for="new-email" class="mb-1 block text-sm font-medium text-text">
+            {t("settings.account.new_email")}
+          </label>
+          <input
+            id="new-email"
+            name="email"
+            type="email"
+            autocomplete="email"
+            required
+            class="w-full rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+          />
+        </div>
+        <div>
+          <label for="email-password" class="mb-1 block text-sm font-medium text-text">
+            {t("settings.account.current_password")}
+          </label>
+          <input
+            id="email-password"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            required
+            class="w-full rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+          />
+        </div>
+        {#if form?.emailChanged}
+          <p class="text-sm text-green-600 dark:text-green-400">
+            {t("settings.account.email_changed")}
+          </p>
+        {/if}
+        {#if form?.emailError}
+          <p class="text-sm text-red-600 dark:text-red-400">{t(form.emailError)}</p>
+        {/if}
+        <button
+          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        >
+          {t("settings.account.change_email")}
+        </button>
+      </form>
+    </section>
+  {/if}
+
   <!-- Change password (#161). Hidden when the org enforces SSO (no local password to change). -->
   {#if data.localLogin}
     <section class="rounded-xl border border-border bg-surface-raised p-5">
@@ -235,7 +299,8 @@
         method="POST"
         action="?/changePassword"
         use:enhance={() =>
-          ({ update }) => update({ reset: true })}
+          ({ update }) =>
+            update({ reset: true })}
         class="mt-4 space-y-4"
       >
         <div>
@@ -274,10 +339,275 @@
         {#if form?.passwordError}
           <p class="text-sm text-red-600 dark:text-red-400">{t(form.passwordError)}</p>
         {/if}
-        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+        <button
+          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        >
           {t("settings.account.change_password")}
         </button>
       </form>
+    </section>
+  {/if}
+
+  <!-- Two-factor authentication (docs/TWOFACTOR.md). Guards the local password login, so it
+       shares its gate: on an SSO-enforced org the status call refused and the card is gone. -->
+  {#if data.localLogin && data.twoFactor}
+    <section class="rounded-xl border border-border bg-surface-raised p-5">
+      <h2 class="text-sm font-semibold text-text">{t("settings.account.two_factor")}</h2>
+      <p class="mt-1 text-sm text-text-muted">{t("settings.account.two_factor_help")}</p>
+
+      {#if form?.twoFactorBackupCodes}
+        <!-- Shown exactly once, right after confirm/regenerate — the API keeps only hashes. -->
+        <div
+          class="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950"
+        >
+          <p class="text-xs font-medium text-amber-800 dark:text-amber-200">
+            {t("settings.account.two_factor_backup_title")}
+          </p>
+          <p class="mt-1 text-xs text-amber-800 dark:text-amber-200">
+            {t("settings.account.two_factor_backup_once")}
+          </p>
+          <div
+            class="mt-2 grid grid-cols-2 gap-1 font-mono text-sm text-amber-900 dark:text-amber-100 sm:grid-cols-5"
+          >
+            {#each form.twoFactorBackupCodes as code (code)}
+              <span>{code}</span>
+            {/each}
+          </div>
+          <button
+            type="button"
+            class="mt-2 rounded border border-amber-300 px-2 py-1 text-xs text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-200 dark:hover:bg-amber-900"
+            onclick={() => {
+              navigator.clipboard.writeText((form?.twoFactorBackupCodes ?? []).join("\n"));
+              backupCopied = true;
+            }}
+          >
+            {backupCopied
+              ? t("settings.account.two_factor_copied")
+              : t("settings.account.two_factor_copy")}
+          </button>
+        </div>
+      {/if}
+
+      {#if form?.twoFactorSetup || form?.twoFactorConfirming}
+        {#if form?.twoFactorSetup}
+          <div class="mt-4 flex flex-col gap-4 sm:flex-row">
+            <!-- Server-generated SVG on a white tile: scannable in dark mode too. -->
+            <div class="h-fit w-fit shrink-0 rounded-lg bg-white p-2 [&_svg]:h-40 [&_svg]:w-40">
+              {@html form.twoFactorSetup.qr_svg}
+            </div>
+            <div class="min-w-0 text-sm">
+              <p class="text-text-muted">{t("settings.account.two_factor_scan")}</p>
+              <p class="mt-2 text-xs font-medium text-text">
+                {t("settings.account.two_factor_manual_key")}
+              </p>
+              <code class="break-all text-xs text-text-muted">{form.twoFactorSetup.secret}</code>
+            </div>
+          </div>
+        {/if}
+        <form method="POST" action="?/confirmTwoFactor" use:enhance class="mt-4 space-y-3">
+          <div>
+            <label for="twofactor-code" class="mb-1 block text-sm font-medium text-text">
+              {t("settings.account.two_factor_code")}
+            </label>
+            <input
+              id="twofactor-code"
+              name="code"
+              type="text"
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              required
+              class="w-40 rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+            />
+          </div>
+          {#if form?.twoFactorError}
+            <p class="text-sm text-red-600 dark:text-red-400">{t(form.twoFactorError)}</p>
+          {/if}
+          <div class="flex gap-2">
+            <button
+              class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+            >
+              {t("settings.account.two_factor_confirm")}
+            </button>
+            <button
+              type="submit"
+              formaction="?/cancelTwoFactorSetup"
+              formnovalidate
+              class="rounded-lg border border-border px-4 py-2 text-sm text-text hover:bg-surface"
+            >
+              {t("settings.account.two_factor_cancel_setup")}
+            </button>
+          </div>
+        </form>
+      {:else if !data.twoFactor.enabled}
+        {#if form?.twoFactorError}
+          <p class="mt-3 text-sm text-red-600 dark:text-red-400">{t(form.twoFactorError)}</p>
+        {/if}
+        <form method="POST" action="?/setupTwoFactor" use:enhance class="mt-4">
+          <p class="mb-3 text-sm text-text-muted">{t("settings.account.two_factor_off")}</p>
+          <button
+            class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+          >
+            {t("settings.account.two_factor_enable")}
+          </button>
+        </form>
+      {:else}
+        <p class="mt-3 text-sm text-green-600 dark:text-green-400">
+          {t("settings.account.two_factor_on")}
+        </p>
+        <p class="mt-1 text-sm text-text-muted">
+          {t("settings.account.two_factor_backup_remaining", {
+            count: data.twoFactor.backup_codes_remaining,
+          })}
+        </p>
+
+        {#if form?.twoFactorError}
+          <p class="mt-3 text-sm text-red-600 dark:text-red-400">{t(form.twoFactorError)}</p>
+        {/if}
+
+        <!-- Fresh backup codes cost a current app code; turning off costs the password. -->
+        <form
+          method="POST"
+          action="?/regenerateBackupCodes"
+          use:enhance={() =>
+            ({ update }) =>
+              update({ reset: true })}
+          class="mt-4 flex flex-wrap items-end gap-2"
+        >
+          <div>
+            <label for="regen-code" class="mb-1 block text-xs text-text-muted">
+              {t("settings.account.two_factor_backup_regenerate_help")}
+            </label>
+            <input
+              id="regen-code"
+              name="code"
+              type="text"
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              required
+              class="w-40 rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+            />
+          </div>
+          <button
+            class="rounded-lg border border-border px-4 py-2 text-sm text-text hover:bg-surface"
+          >
+            {t("settings.account.two_factor_backup_regenerate")}
+          </button>
+        </form>
+
+        <form
+          method="POST"
+          action="?/disableTwoFactor"
+          use:enhance={() =>
+            ({ update }) =>
+              update({ reset: true })}
+          class="mt-4 flex flex-wrap items-end gap-2 border-t border-border pt-4"
+        >
+          <div>
+            <label for="disable-password" class="mb-1 block text-xs text-text-muted">
+              {t("settings.account.two_factor_disable_help")}
+            </label>
+            <input
+              id="disable-password"
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              required
+              class="w-56 rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+            />
+          </div>
+          <button
+            class="rounded-lg border border-red-300 px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950"
+          >
+            {t("settings.account.two_factor_disable")}
+          </button>
+        </form>
+
+        {#if data.twoFactor.sms_available}
+          <div class="mt-4 border-t border-border pt-4">
+            <h3 class="text-sm font-medium text-text">
+              {t("settings.account.two_factor_sms")}
+            </h3>
+            {#if form?.twoFactorSmsError}
+              <p class="mt-2 text-sm text-red-600 dark:text-red-400">
+                {t(form.twoFactorSmsError)}
+              </p>
+            {/if}
+            {#if data.twoFactor.sms?.confirmed && !form?.twoFactorSmsPending}
+              <p class="mt-1 text-sm text-text-muted">
+                {t("settings.account.two_factor_sms_enabled", {
+                  phone: data.twoFactor.sms.phone_masked,
+                })}
+              </p>
+              <form method="POST" action="?/disableTwoFactorSms" use:enhance class="mt-2">
+                <button
+                  class="rounded-lg border border-border px-3 py-1.5 text-sm text-text hover:bg-surface"
+                >
+                  {t("settings.account.two_factor_sms_disable")}
+                </button>
+              </form>
+            {:else if form?.twoFactorSmsPending}
+              <form
+                method="POST"
+                action="?/confirmTwoFactorSms"
+                use:enhance
+                class="mt-2 flex flex-wrap items-end gap-2"
+              >
+                <div>
+                  <label for="sms-code" class="mb-1 block text-xs text-text-muted">
+                    {t("settings.account.two_factor_sms_pending", {
+                      phone: form.twoFactorSmsPending,
+                    })}
+                  </label>
+                  <input
+                    id="sms-code"
+                    name="code"
+                    type="text"
+                    inputmode="numeric"
+                    autocomplete="one-time-code"
+                    required
+                    class="w-40 rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                  />
+                </div>
+                <button
+                  class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                >
+                  {t("settings.account.two_factor_sms_confirm")}
+                </button>
+              </form>
+            {:else}
+              <p class="mt-1 text-sm text-text-muted">
+                {t("settings.account.two_factor_sms_help")}
+              </p>
+              <form
+                method="POST"
+                action="?/setupTwoFactorSms"
+                use:enhance
+                class="mt-2 flex flex-wrap items-end gap-2"
+              >
+                <div>
+                  <label for="sms-phone" class="mb-1 block text-xs text-text-muted">
+                    {t("settings.account.two_factor_sms_phone")} —
+                    {t("settings.account.two_factor_sms_phone_help")}
+                  </label>
+                  <input
+                    id="sms-phone"
+                    name="phone"
+                    type="tel"
+                    placeholder="+31612345678"
+                    required
+                    class="w-56 rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                  />
+                </div>
+                <button
+                  class="rounded-lg border border-border px-4 py-2 text-sm text-text hover:bg-surface"
+                >
+                  {t("settings.account.two_factor_sms_send")}
+                </button>
+              </form>
+            {/if}
+          </div>
+        {/if}
+      {/if}
     </section>
   {/if}
 

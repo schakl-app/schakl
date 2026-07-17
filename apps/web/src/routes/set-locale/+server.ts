@@ -19,5 +19,6 @@ export const POST: RequestHandler = async (event) => {
     // Cookie = the per-browser cache Paraglide reads during SSR and while hydrating.
     cookies.set(LOCALE_COOKIE, locale, LOCALE_COOKIE_OPTIONS);
   }
-  throw redirect(303, back || "/");
+  // Only a same-origin relative path — never an absolute or protocol-relative URL (audit F26).
+  throw redirect(303, back.startsWith("/") && !back.startsWith("//") ? back : "/");
 };

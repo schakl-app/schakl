@@ -17,3 +17,11 @@ class UserCreate(schemas.BaseUserCreate):
 
 class UserUpdate(schemas.BaseUserUpdate):
     full_name: str | None = None
+
+    def create_update_dict(self):  # noqa: ANN201 — FastAPI Users' contract
+        """Email changes go only through the password-guarded ``POST /users/me/email``
+        (``account.py``). Left in the bare PATCH, a stolen session could redirect the account's
+        sign-in address and reset the password to it — a full takeover for free."""
+        values = super().create_update_dict()
+        values.pop("email", None)
+        return values

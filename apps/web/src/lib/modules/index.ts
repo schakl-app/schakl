@@ -8,6 +8,7 @@ import "./contacts";
 import "./tasks";
 import "./projects";
 import "./subscriptions";
+import "./invoicing";
 import "./time";
 import "./leave";
 import "./notifications";

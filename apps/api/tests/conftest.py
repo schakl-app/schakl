@@ -53,6 +53,9 @@ _DOMAIN_TABLES = (
     "leave_holidays, leave_settings, employment_contracts, "
     "subscription_links, subscription_lines, subscription_prices, subscriptions, "
     "subscription_templates, subscription_types, "
+    "invoicing_external_refs, invoice_time_entries, invoice_payments, quote_lines, "
+    "invoice_lines, quotes, invoices, invoicing_settings, invoicing_templates, "
+    "invoicing_tax_rates, "
     "marketing_metrics_daily, marketing_links, marketing_company_settings, marketing_settings, "
     "interactions, interaction_kinds, "
     "calendar_event_links, google_calendar_events, google_calendar_channels, "
@@ -65,12 +68,12 @@ _DOMAIN_TABLES = (
     "email_settings, org_email_templates, org_auth_settings, "
     "role_audit_log, membership_roles, role_permissions, roles, memberships, org_settings, "
     "service_access_grants, instance_api_keys, "
-    "instance_audit_log, users, orgs"
+    "instance_audit_log, user_two_factor, users, orgs"
 )
 _ENABLED_MODULES = [
     "companies", "contacts", "tasks", "projects", "time", "leave", "notifications",
-    "domains", "hosting", "websites", "subscriptions", "automation", "interactions",
-    "google", "marketing",
+    "domains", "hosting", "websites", "subscriptions", "invoicing", "automation",
+    "interactions", "google", "marketing",
 ]
 
 
