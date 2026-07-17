@@ -116,6 +116,11 @@
       t("settings.subscriptions.subtitle"),
     )}
     {@render card(
+      "/settings/invoicing",
+      t("settings.invoicing.title"),
+      t("settings.invoicing.subtitle"),
+    )}
+    {@render card(
       "/settings/dashboard",
       t("settings.dashboard.title"),
       t("settings.dashboard.subtitle"),

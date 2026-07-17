@@ -32,7 +32,13 @@ ENTITY_TYPE = "company"
 
 # The definition fields whose before/after values the activity trail records (issue #67). Notes
 # (freeform) and custom (its own concern) are deliberately left out of the trail's diff.
-_AUDITED_FIELDS = ("name", "website", "invoice_email", "status", "responsible_user_id")
+_AUDITED_FIELDS = (
+    "name", "website", "invoice_email", "status", "responsible_user_id",
+    # Billing identity (issue #11): what an issued invoice snapshots (#207), so a change
+    # here is exactly the kind of definition edit the trail exists to answer for.
+    "vat_number", "coc_number", "address_line1", "address_line2",
+    "postal_code", "city", "country",
+)
 
 
 def _primary_assignee_name() -> Any:

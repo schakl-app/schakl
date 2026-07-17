@@ -53,6 +53,20 @@ class Company(
     # Invoices routinely go to a different mailbox than the day-to-day contact person;
     # read by subscriptions/invoicing (#30), SnelStart export (#31), and PDF reports.
     invoice_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    # Billing identity (issue #11): what an invoice header and an accounting export (UBL,
+    # #31/#207) need to know about the client. All optional here — "enough to invoice" is
+    # judged where a document is issued, never on the company form. Issued documents
+    # *snapshot* these into their own bill-to block, so a later address change can never
+    # rewrite an invoice already sent.
+    vat_number: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    coc_number: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    address_line1: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    address_line2: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    postal_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # ISO 3166-1 alpha-2, like org tax country — drives which tax treatment a document
+    # suggests (domestic / intra-EU reverse charge / export), never hardcodes any law.
+    country: Mapped[str | None] = mapped_column(String(2), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default=CompanyStatus.ACTIVE.value, index=True
