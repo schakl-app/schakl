@@ -38,9 +38,9 @@ and their web counterparts — currently:
 - `apps/web/src/lib/modules/projects/`
 - `apps/web/src/lib/modules/subscriptions/`
 - `apps/web/src/lib/modules/time/`
+- `apps/web/src/lib/modules/websites/`
 - `apps/web/src/routes/(cloud)/`
 - `apps/web/src/routes/(app)/domains/`
-- `apps/web/src/routes/(app)/hosting/`
 - `apps/web/src/routes/(app)/interactions/`
 - `apps/web/src/routes/(app)/invoices/`
 - `apps/web/src/routes/(app)/leave/`
@@ -49,8 +49,10 @@ and their web counterparts — currently:
 - `apps/web/src/routes/(app)/quotes/`
 - `apps/web/src/routes/(app)/subscriptions/`
 - `apps/web/src/routes/(app)/time/`
+- `apps/web/src/routes/(app)/websites/`
 - `apps/web/src/routes/(app)/settings/automation/`
 - `apps/web/src/routes/(app)/settings/google/`
+- `apps/web/src/routes/(app)/settings/hosting/`
 - `apps/web/src/routes/(app)/settings/interaction-kinds/`
 - `apps/web/src/routes/(app)/settings/invoicing/`
 - `apps/web/src/routes/(app)/settings/leave/`

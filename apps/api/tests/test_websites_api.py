@@ -69,3 +69,29 @@ async def test_website_tenant_isolation(client_for) -> None:
             "/api/v1/websites", json={"domain_id": domain}, headers=b_headers
         )
         assert blocked.status_code == 404
+
+
+async def test_website_company_filter_and_panel(client_for) -> None:
+    """Owner request: websites read per client — the ?company_id filter (the websites page's
+    deep link) and the company panel that replaced hosting's on the client page."""
+    t = await make_tenant("web-company")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company, domain = await _domain(c, headers, "klant.nl")
+        created = await c.post("/api/v1/websites", json={"domain_id": domain}, headers=headers)
+        assert created.status_code == 201, created.text
+        assert created.json()["company_id"] == company
+        assert created.json()["company_name"] == "Acme"
+
+        listing = await c.get(f"/api/v1/websites?company_id={company}", headers=headers)
+        assert listing.json()["total"] == 1
+        other = (
+            await c.post("/api/v1/companies", json={"name": "Leeg BV"}, headers=headers)
+        ).json()["id"]
+        assert (
+            await c.get(f"/api/v1/websites?company_id={other}", headers=headers)
+        ).json()["total"] == 0
+
+        panels = await c.get(f"/api/v1/companies/{company}/panels", headers=headers)
+        websites_panel = next(p for p in panels.json() if p["key"] == "websites.company")
+        assert websites_panel["data"]["websites"][0]["name"] == "klant.nl"

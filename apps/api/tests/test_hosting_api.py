@@ -35,10 +35,10 @@ async def test_hosting_crud_with_provider_and_contact(client_for) -> None:
         assert hosting["company_name"] == "Acme"
         assert hosting["contact"]["type"] == "agency"
 
-        # Appears on the company panel.
+        # Hosting contributes no company panel (owner feedback): the client page shows the
+        # client's websites instead, and hosting is administered under Instellingen.
         panels = await c.get(f"/api/v1/companies/{company}/panels", headers=headers)
-        hosting_panel = next(p for p in panels.json() if p["key"] == "hosting.company")
-        assert hosting_panel["data"]["hosting"][0]["name"] == "prod cluster"
+        assert all(p["key"] != "hosting.company" for p in panels.json())
 
 
 async def test_hosting_tenant_isolation(client_for) -> None:

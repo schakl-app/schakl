@@ -1,25 +1,8 @@
-import { Server } from "@lucide/svelte";
-
-import { t } from "$lib/core/i18n";
 import { registerWebModule } from "$lib/core/registry";
 
-import HostingPanel from "./HostingPanel.svelte";
-
+// Hosting contributes no main-nav item and no company panel (owner feedback): agencies
+// reuse the same hosting, so the list is administered under Instellingen → Hosting, and the
+// client page shows the client's *websites* (each naming its hosting) instead.
 registerWebModule({
   name: "hosting",
-  nav: [
-    {
-      key: "hosting",
-      href: "/hosting",
-      label: () => t("nav.hosting"),
-      module: "hosting",
-      group: "assets",
-      icon: Server,
-      position: 41,
-      requiresPermission: "hosting.hosting.read",
-    },
-  ],
-  companyPanels: [
-    { key: "hosting.company", module: "hosting", component: HostingPanel, position: 50 },
-  ],
 });

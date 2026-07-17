@@ -6,6 +6,7 @@ shared registry. It contributes no company panel — a website renders under *it
 
 from __future__ import annotations
 
+from app.modules.websites.panels import websites_company_panel
 from app.modules.websites.permissions import WEBSITE_PERMISSIONS
 from app.modules.websites.router import router
 from app.registry import ModuleDescriptor, registry
@@ -17,6 +18,7 @@ module = ModuleDescriptor(
     # Licensed module (issue #137). Its own sku — the web-assets trio (domains, websites,
     # hosting) is bundled in *license documents* (a plan lists all three skus), never in code.
     sku="websites",
+    panels=[websites_company_panel],
     permissions=WEBSITE_PERMISSIONS,
 )
 

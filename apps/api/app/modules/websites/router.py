@@ -28,9 +28,12 @@ async def list_websites(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     domain_id: uuid.UUID | None = Query(None),
+    company_id: uuid.UUID | None = Query(None),
     ctx: RequestContext = Depends(require_context),
 ) -> Page[WebsiteRead]:
-    items, total = await WebsiteService(ctx).list(limit=limit, offset=offset, domain_id=domain_id)
+    items, total = await WebsiteService(ctx).list(
+        limit=limit, offset=offset, domain_id=domain_id, company_id=company_id
+    )
     return Page(
         items=[WebsiteRead.model_validate(w) for w in items],
         total=total,

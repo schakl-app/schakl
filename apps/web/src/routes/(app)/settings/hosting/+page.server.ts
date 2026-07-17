@@ -1,7 +1,8 @@
-import { fail } from "@sveltejs/kit";
+import { fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey, lookupItems } from "$lib/core/errors";
 import { parseParty } from "$lib/core/party";
+import { can } from "$lib/core/permissions";
 import {
   createCompanyAction,
   createContactAction,
@@ -20,6 +21,8 @@ function parseCustom(raw: FormDataEntryValue | null): Record<string, unknown> {
 }
 
 export const load: PageServerLoad = async (event) => {
+  // A settings screen guards itself (#19); the API enforces the permission too.
+  if (!can(event.locals.user, "hosting.hosting.read")) throw redirect(303, "/settings");
   const api = apiFor(event);
   const [
     hosting,

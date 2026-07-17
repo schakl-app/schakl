@@ -43,10 +43,22 @@ class WebsiteService:
         limit: int,
         offset: int,
         domain_id: uuid.UUID | None = None,
+        company_id: uuid.UUID | None = None,
     ) -> tuple[Sequence[Website], int]:
         conditions = []
         if domain_id is not None:
             conditions.append(Website.domain_id == domain_id)
+        if company_id is not None:
+            # A website's client is its parent domain's (§6 bare-table bridge, no import).
+            company_domains = (
+                await self.ctx.session.scalars(
+                    text("SELECT id FROM domains WHERE org_id = :oid AND company_id = :cid"),
+                    {"oid": self._org_id, "cid": company_id},
+                )
+            ).all()
+            if not company_domains:
+                return [], 0
+            conditions.append(Website.domain_id.in_(company_domains))
         stmt = (
             self.repo.scoped_select()
             .where(*conditions)
@@ -173,6 +185,9 @@ class WebsiteService:
         hosting_names = await self._hosting_names(
             {w.hosting_id for w in websites if w.hosting_id is not None}
         )
+        company_names = await self._company_names(
+            {cid for cid in domain_company.values() if cid is not None}
+        )
         resolved = await self.party.resolve_many(
             [
                 (
@@ -186,12 +201,23 @@ class WebsiteService:
         for i, w in enumerate(websites):
             w.domain_name = domain_names.get(w.domain_id, "")  # type: ignore[attr-defined]
             w.hosting_name = hosting_names.get(w.hosting_id)  # type: ignore[attr-defined]
+            w.company_id = domain_company.get(w.domain_id)  # type: ignore[attr-defined]
+            w.company_name = company_names.get(domain_company.get(w.domain_id))  # type: ignore[attr-defined]
             w.technical_owner = resolved[i]  # type: ignore[attr-defined]
 
     async def _hosting_names(self, ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
         if not ids:
             return {}
         stmt = text("SELECT id, name FROM hosting WHERE id IN :ids").bindparams(
+            bindparam("ids", expanding=True)
+        )
+        rows = (await self.ctx.session.execute(stmt, {"ids": list(ids)})).all()
+        return {row[0]: row[1] for row in rows}
+
+    async def _company_names(self, ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
+        if not ids:
+            return {}
+        stmt = text("SELECT id, name FROM companies WHERE id IN :ids").bindparams(
             bindparam("ids", expanding=True)
         )
         rows = (await self.ctx.session.execute(stmt, {"ids": list(ids)})).all()

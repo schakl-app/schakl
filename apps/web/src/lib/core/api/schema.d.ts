@@ -13962,6 +13962,10 @@ export interface components {
         };
         /** WebsiteRead */
         WebsiteRead: {
+            /** Company Id */
+            company_id?: string | null;
+            /** Company Name */
+            company_name?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -27833,6 +27837,7 @@ export interface operations {
                 limit?: number;
                 offset?: number;
                 domain_id?: string | null;
+                company_id?: string | null;
             };
             header?: never;
             path?: never;

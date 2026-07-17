@@ -94,6 +94,9 @@
       t("settings.providers.title"),
       t("settings.providers.subtitle"),
     )}
+    <!-- Hosting is shared infrastructure (owner feedback): administered here, out of the
+         main menu — the client page shows websites, each naming its hosting. -->
+    {@render card("/settings/hosting", t("nav.hosting"), t("settings.hosting.subtitle"))}
     {@render card("/settings/impex", t("impex.settings.title"), t("impex.settings.subtitle"))}
   </div>
 

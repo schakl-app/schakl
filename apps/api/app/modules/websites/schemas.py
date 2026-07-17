@@ -38,6 +38,9 @@ class WebsiteRead(BaseModel):
     org_id: uuid.UUID
     domain_id: uuid.UUID
     domain_name: str = ""
+    #: The parent domain's client — a website has no company FK of its own.
+    company_id: uuid.UUID | None = None
+    company_name: str | None = None
     root: bool
     technical_owner: PartyReadRef | None = None
     hosting_id: uuid.UUID | None = None
