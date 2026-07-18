@@ -1,5 +1,54 @@
 # Changelog
 
+## v0.13.0 — 2026-07-18
+
+The commercial release: most extension modules move behind the license key, the invoicing module grows into a complete billing flow (products, server-rendered PDFs, the time and subscription bridges in the UI), websites take hosting's place in the menu and on the client page, and a broad UX pass lands breadcrumbs on every page and fixes a whole class of silent form-save bugs.
+
+### Licensing
+
+- Seven previously free modules are now licensed skus: time, projects, domains, websites, hosting, interactions and HR — joining leave, subscriptions, invoicing, automation, marketing and Google Workspace. The existing semantics apply unchanged: enabling needs a covering key, past expiry+grace a module goes read-only, and exports always work.
+- The bootstrap-grace clock restarts at upgrade time, so an installation whose original trial window lapsed gets the standard two weeks of full function for the newly licensed modules instead of losing time tracking mid-flight.
+- Writing crons of the newly licensed modules stand down while their sku is not writable; the paid set is pinned by a test so it only ever changes on purpose.
+
+### Invoicing
+
+- **Default products**: named line presets (description, unit, price, tax rate) under Instellingen → Facturatie, dropped onto an invoice or quote with one pick. Lines keep snapshotting what they copy, so re-pricing a product never rewrites an issued document.
+- **Server-rendered PDF**: the API renders the invoice/quote document itself (template columns and texts, seller and bill-to blocks, totals, the document's own locale). Sending an invoice or quote now **attaches its PDF** — previously the customer received only a text summary — and both detail pages get a Download PDF action. All four mail transports gained attachment support.
+- **Time tracking, reachable**: the invoices page gets "Uren factureren" — pick the client, see the open approved/billable hours live, choose the grouping, land on the draft. The bridge existed in the API; no screen called it.
+- **Subscriptions, visible**: an invoice drafted by the subscription cycle now carries a chip with its billing period instead of looking hand-made.
+- The editor pre-fills issue date and the org's payment term / quote validity; the rendered document prints the seller's phone and the client's e-mail and CoC number, and an invoice without template payment text still states how to pay (total, deadline, IBAN, reference).
+
+### Websites and the client hub
+
+- Hosting moves out of the main menu to Instellingen → Hosting (agencies reuse the same hosting); the assets group gets a **Websites** page instead — every client website in one list, created by connecting it to a domain.
+- The client page swaps its hosting panel for a websites panel with quick-add, the contacts panel gets an add button in use mode, the time panel a "log hours" shortcut and the invoicing panel a "new invoice" shortcut, both with the client preset.
+- Time entries can link to the subscription the hours are worked under (optional picker on the entry form and the report's edit modal); subscription usage counts directly linked entries alongside the linked-project roll-up.
+- Marketing reads per website: the Marketing page, the client's marketing tab and the client-portal dashboard get website tabs (all sites, per site, client-wide).
+
+### E-mail
+
+- Org-wide HTML signature under Instellingen → E-mail, appended automatically to every outgoing mail (sanitised on write and on send); text-only mails are promoted to HTML so the signature renders as authored.
+- Tenant e-mail templates are edited one language at a time behind a switcher.
+
+### Privacy
+
+- Pending (unreviewed) Gmail interactions are now private to their mailbox owner with **no admin escape**: `read_all` no longer opens other users' pending queues, and a pending row is absent — not forbidden — for everyone else.
+
+### UX
+
+- **Breadcrumbs on every page**, rendered once by the layout: module roots, settings screens and record names ("Klanten › Acme › Marketing"), replacing 45 hand-written back links.
+- A whole class of silent save bugs is gone: every submitting checkbox and radio in the app was rendered one-way and could lose its mark on hydration, stripping stored state on the next save (roles, org modules, task labels, settings toggles, …). All of them now hold their state in the component, via the shared `FormCheckbox` and `bind:group`.
+- Tenant translations are always optional: label editors (contact types, leave types, custom fields, tax rates, roles, …) show one field with an NL/EN switcher, and a missing language falls back at render time.
+- Nine new dashboard widgets across two rounds: recurring revenue, outstanding invoices, open quotes, project budget burn and who's off today, in the set widget styling.
+
+### Upgrade notes
+
+- Four additive database migrations apply automatically: the bootstrap-grace restart, the time-entry subscription link, the e-mail signature column, and the products table. No destructive changes; rollback to v0.12.0 is safe.
+- The API gains one dependency, `fpdf2` (pure Python) for the PDF renderer; the Docker image needs no system packages (it uses the DejaVu font when present and degrades gracefully otherwise).
+- License keys minted before this release do not cover the newly licensed skus. Reissue customer keys with the modules they use before their bootstrap-grace window (14 days from upgrade) runs out.
+- The hosting page moved to `/settings/hosting`; `/websites` is new. Saved bookmarks to `/hosting` will 404.
+
+
 ## v0.12.0 — 2026-07-17
 
 A large release: five parallel work streams merged — the security audit remediation, two-factor authentication, the invoicing and quotes module, the cloud (multi-org) posture, and the client-hub batch covering issues #190 through #198 plus the portal, HR and mobile work that followed it.
