@@ -92,6 +92,11 @@
     } else if (e.key === "Escape") {
       open = false;
       query = selectedLabel;
+    } else if (e.key === "Tab") {
+      // Commit the highlighted option and let focus move on naturally — never
+      // preventDefault here. `highlighted` only ever indexes `filtered`, so this
+      // can't accidentally trigger the create-row action.
+      if (filtered[highlighted]) choose(filtered[highlighted]);
     }
   }
 
