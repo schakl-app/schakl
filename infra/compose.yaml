@@ -14,7 +14,7 @@ x-api-env: &api-env
   # Required — no baked-in fallback. A publicly-known signing key means forgeable sessions and a
   # decryptable secret vault (security audit F1). Set it in infra/.env; generate with
   # `openssl rand -hex 32`. The API additionally refuses to boot on a weak key in production.
-  SCHAKL_SECRET_KEY: ${SCHAKL_SECRET_KEY:?SCHAKL_SECRET_KEY must be set (see infra/.env.example; generate with: openssl rand -hex 32)}
+  SCHAKL_SECRET_KEY: "${SCHAKL_SECRET_KEY:?SCHAKL_SECRET_KEY must be set (see infra/.env.example; generate with openssl rand -hex 32)}"
   SCHAKL_BASE_DOMAIN: ${SCHAKL_BASE_DOMAIN:-localhost}
   SCHAKL_ENVIRONMENT: ${SCHAKL_ENVIRONMENT:-development}
   # Cross-tenant admin surface (issue #26): off by default; instance owners only.
