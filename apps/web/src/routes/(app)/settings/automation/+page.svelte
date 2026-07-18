@@ -3,6 +3,7 @@
 
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
 
@@ -23,7 +24,7 @@
 </script>
 
 <svelte:head>
-  <title>{t("automation.title")}</title>
+  <title>{pageTitle(t("automation.title"))}</title>
 </svelte:head>
 
 <div class="mb-6">

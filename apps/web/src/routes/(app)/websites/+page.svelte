@@ -18,6 +18,7 @@
   import Modal from "$lib/core/ui/Modal.svelte";
   import PartyPicker from "$lib/core/ui/PartyPicker.svelte";
   import ProviderQuickCreate from "$lib/core/ui/ProviderQuickCreate.svelte";
+  import { navLabel, pageTitle } from "$lib/core/title";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
   import DomainQuickCreate from "$lib/modules/domains/DomainQuickCreate.svelte";
@@ -106,12 +107,12 @@
 </script>
 
 <svelte:head>
-  <title>{t("nav.websites")}</title>
+  <title>{pageTitle(navLabel("websites", t("nav.websites")))}</title>
 </svelte:head>
 
 <div class="mb-6 flex flex-wrap items-center justify-between gap-2">
   <div>
-    <h1 class="text-xl font-semibold text-text">{t("nav.websites")}</h1>
+    <h1 class="text-xl font-semibold text-text">{navLabel("websites", t("nav.websites"))}</h1>
     <p class="mt-1 text-sm text-text-muted">{t("websites.count", { count: data.total })}</p>
   </div>
   {#if can(page.data.user, "websites.website.write")}

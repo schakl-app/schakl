@@ -4,6 +4,7 @@
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
@@ -61,7 +62,7 @@
 </script>
 
 <svelte:head>
-  <title>{t("hosting.title")}</title>
+  <title>{pageTitle(t("hosting.title"))}</title>
 </svelte:head>
 
 <div class="mb-6 flex items-center justify-between">

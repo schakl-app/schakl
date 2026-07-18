@@ -6,7 +6,7 @@
    */
   import { goto } from "$app/navigation";
   import { t } from "$lib/core/i18n";
-  import { pageTitle } from "$lib/core/title";
+  import { navLabel, pageTitle } from "$lib/core/title";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import MarketingSourceSection from "$lib/modules/marketing/MarketingSourceSection.svelte";
   import type { CompanyMarketing, MarketingSource } from "$lib/modules/marketing/types";
@@ -26,7 +26,11 @@
   // "client" narrows to client-level links, a website id narrows to that site's links.
   const sources = $derived(
     allSources.filter((s) =>
-      !data.website ? true : data.website === "client" ? !s.website_id : s.website_id === data.website,
+      !data.website
+        ? true
+        : data.website === "client"
+          ? !s.website_id
+          : s.website_id === data.website,
     ),
   );
   const websites = $derived(marketing?.websites ?? []);
@@ -54,11 +58,11 @@
 </script>
 
 <svelte:head>
-  <title>{pageTitle(t("nav.marketing"))}</title>
+  <title>{pageTitle(navLabel("marketing", t("nav.marketing")))}</title>
 </svelte:head>
 
 <div class="mb-4">
-  <h1 class="text-xl font-semibold text-text">{t("nav.marketing")}</h1>
+  <h1 class="text-xl font-semibold text-text">{navLabel("marketing", t("nav.marketing"))}</h1>
   <p class="mt-1 text-sm text-text-muted">{t("marketing.page.subtitle")}</p>
 </div>
 
@@ -82,15 +86,16 @@
   </div>
 {:else}
   <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
-    <a
-      href={`/companies/${data.companyId}`}
-      class="text-sm text-text-muted hover:text-text"
-    >
+    <a href={`/companies/${data.companyId}`} class="text-sm text-text-muted hover:text-text">
       {selectedName} ↗
     </a>
     <div class="flex flex-wrap items-center gap-1" data-sveltekit-preload-data="hover">
       {#each RANGES as r (r)}
-        <a href={urlFor(data.companyId, r)} class={rangeClass(data.range === r)} data-sveltekit-noscroll>
+        <a
+          href={urlFor(data.companyId, r)}
+          class={rangeClass(data.range === r)}
+          data-sveltekit-noscroll
+        >
           {t(`marketing.range.${r}`)}
         </a>
       {/each}
@@ -128,7 +133,9 @@
   {/if}
 
   {#if marketing?.needs_connection}
-    <div class="rounded-xl border border-dashed border-border bg-surface-raised p-8 text-sm text-text-muted">
+    <div
+      class="rounded-xl border border-dashed border-border bg-surface-raised p-8 text-sm text-text-muted"
+    >
       {#if marketing.can_manage}
         <p>{t("marketing.empty.needs_connection")}</p>
       {:else}

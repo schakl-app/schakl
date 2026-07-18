@@ -8,7 +8,7 @@
   import { t } from "$lib/core/i18n";
   import ImportCsvModal from "$lib/core/impex/ImportCsvModal.svelte";
   import { can } from "$lib/core/permissions";
-  import { pageTitle } from "$lib/core/title";
+  import { navLabel, pageTitle } from "$lib/core/title";
   import { customFieldColumns } from "$lib/core/table/columns";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
@@ -192,14 +192,14 @@
 {/snippet}
 
 <svelte:head>
-  <title>{pageTitle(t("contacts.title"))}</title>
+  <title>{pageTitle(navLabel("contacts", t("contacts.title")))}</title>
 </svelte:head>
 
 <!-- Wraps: "Nieuwe contactpersoon" is a 192px button, and a phone has ~312px of content width
      once the title has had its share. The Dutch label is the long one, so English never shows it. -->
 <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
   <div>
-    <h1 class="text-xl font-semibold text-text">{t("contacts.title")}</h1>
+    <h1 class="text-xl font-semibold text-text">{navLabel("contacts", t("contacts.title"))}</h1>
     <p class="mt-1 text-sm text-text-muted">{t("contacts.count", { count: data.total })}</p>
   </div>
   <button
@@ -256,7 +256,11 @@
   </div>
 </div>
 
-<ImportCsvModal bind:open={showImport} report={form?.impex ?? null} error={form?.impexError ?? null} />
+<ImportCsvModal
+  bind:open={showImport}
+  report={form?.impex ?? null}
+  error={form?.impexError ?? null}
+/>
 
 {#if data.types.length > 0}
   <div class="mb-4 flex flex-wrap gap-1.5">

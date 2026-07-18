@@ -15,6 +15,9 @@
  * brand-stamping the login page did by hand, now generalised to every tab.
  */
 import { page } from "$app/state";
+
+import { getLocale } from "$lib/paraglide/runtime";
+
 import { t } from "./i18n";
 
 /**
@@ -26,6 +29,24 @@ import { t } from "./i18n";
 export function renderTabTitle(template: string, segment: string, brand: string): string {
   const rendered = template.replaceAll("{page}", segment).replaceAll("{brand}", brand);
   return brand ? rendered.trim() : rendered.replace(/^[\s·—|:•-]+|[\s·—|:•-]+$/g, "").trim();
+}
+
+/**
+ * A page's own title/heading, honouring the org's custom nav label (#169). The (app) layout
+ * loads the resolved nav prefs (`page.data.navPref`); a module page passes its nav key and the
+ * string it would otherwise show, and gets the tenant's rename when there is one, else the
+ * fallback unchanged — so a page title tracks whatever the sidebar entry was renamed to.
+ */
+export function navLabel(key: string, fallback: string): string {
+  const items = (page.data.navPref?.items ?? []) as {
+    key: string;
+    label?: Record<string, string> | null;
+  }[];
+  const custom = items.find((item) => item.key === key)?.label;
+  if (!custom) return fallback;
+  const loc = getLocale();
+  const other = loc === "nl" ? "en" : "nl";
+  return custom[loc]?.trim() || custom[other]?.trim() || fallback;
 }
 
 export function pageTitle(segment: string): string {

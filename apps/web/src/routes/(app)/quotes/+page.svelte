@@ -7,7 +7,7 @@
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
-  import { pageTitle } from "$lib/core/title";
+  import { navLabel, pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
@@ -51,11 +51,11 @@
 </script>
 
 <svelte:head>
-  <title>{pageTitle(t("invoicing.quotes"))}</title>
+  <title>{pageTitle(navLabel("invoicing", t("invoicing.quotes")))}</title>
 </svelte:head>
 
 <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-  <h1 class="text-xl font-semibold text-text">{t("invoicing.title")}</h1>
+  <h1 class="text-xl font-semibold text-text">{navLabel("invoicing", t("invoicing.title"))}</h1>
   {#if data.canWrite}
     <a
       href="/quotes/new"

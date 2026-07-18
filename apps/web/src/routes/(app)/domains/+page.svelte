@@ -8,6 +8,7 @@
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import ProviderQuickCreate from "$lib/core/ui/ProviderQuickCreate.svelte";
+  import { navLabel, pageTitle } from "$lib/core/title";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
   import DomainForm from "$lib/modules/domains/DomainForm.svelte";
@@ -55,12 +56,12 @@
 </script>
 
 <svelte:head>
-  <title>{t("domains.title")}</title>
+  <title>{pageTitle(navLabel("domains", t("domains.title")))}</title>
 </svelte:head>
 
 <div class="mb-6 flex items-center justify-between">
   <div>
-    <h1 class="text-xl font-semibold text-text">{t("domains.title")}</h1>
+    <h1 class="text-xl font-semibold text-text">{navLabel("domains", t("domains.title"))}</h1>
     <p class="mt-1 text-sm text-text-muted">{t("domains.count", { count: data.total })}</p>
   </div>
   <button

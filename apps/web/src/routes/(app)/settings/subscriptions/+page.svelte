@@ -4,6 +4,7 @@
   import { enhance } from "$app/forms";
   import { fmtMoney } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
@@ -75,7 +76,10 @@
 
   const activeTypes = $derived(data.types.filter((st) => st.active));
   const typeLabel = (id: string | null | undefined) =>
-    subscriptionTypeLabel(data.types.find((st) => st.id === id), data.locale);
+    subscriptionTypeLabel(
+      data.types.find((st) => st.id === id),
+      data.locale,
+    );
   const money = (value: string | null | undefined) =>
     value == null ? "—" : fmtMoney(Number(value));
 
@@ -84,7 +88,7 @@
 </script>
 
 <svelte:head>
-  <title>{t("settings.subscriptions.title")}</title>
+  <title>{pageTitle(t("settings.subscriptions.title"))}</title>
 </svelte:head>
 
 <div class="mb-6">
@@ -196,9 +200,7 @@
 <!-- Type create/edit -->
 <Modal
   bind:open={showTypeModal}
-  title={editingType
-    ? t("settings.subscriptions.edit_type")
-    : t("settings.subscriptions.new_type")}
+  title={editingType ? t("settings.subscriptions.edit_type") : t("settings.subscriptions.new_type")}
 >
   {#key editingType?.id ?? "new"}
     <form
@@ -244,8 +246,8 @@
                   type="button"
                   class="text-text-muted hover:text-red-600 dark:hover:text-red-400"
                   aria-label={t("common.delete")}
-                  onclick={() =>
-                    (spawnTemplates = spawnTemplates.filter((s) => s.id !== tpl.id))}>✕</button
+                  onclick={() => (spawnTemplates = spawnTemplates.filter((s) => s.id !== tpl.id))}
+                  >✕</button
                 >
               </span>
             {/each}

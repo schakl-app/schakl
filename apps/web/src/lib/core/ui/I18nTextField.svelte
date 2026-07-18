@@ -19,6 +19,7 @@
     textarea = false,
     rows = 3,
     hint = true,
+    placeholder = "",
   }: {
     /** The field's visible label (e.g. "Label", "Naam"). */
     label: string;
@@ -32,6 +33,8 @@
     rows?: number;
     /** Show the one-line "translations are optional" hint under the field. */
     hint?: boolean;
+    /** Placeholder shown when a locale is blank — e.g. the value it would fall back to. */
+    placeholder?: string;
   } = $props();
 
   let active = $state(locales[0]);
@@ -73,12 +76,14 @@
           id={`${idPrefix}-${locale}`}
           name={`${basename}_${locale}`}
           {rows}
+          {placeholder}
           bind:value={texts[locale]}
           class={inputClass}></textarea>
       {:else}
         <input
           id={`${idPrefix}-${locale}`}
           name={`${basename}_${locale}`}
+          {placeholder}
           bind:value={texts[locale]}
           class={inputClass}
         />

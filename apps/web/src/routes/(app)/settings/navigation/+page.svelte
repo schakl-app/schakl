@@ -13,12 +13,25 @@
 
   // Every module nav item the org has enabled, in declared order — not filtered by the
   // admin's own permissions: the default is for everyone.
-  const candidates = $derived(
+  const navItems = $derived(
     enabledWebModules(page.data.theme?.enabledModules ?? [])
       .flatMap((m) => m.nav ?? [])
-      .sort((a, b) => (a.position ?? 100) - (b.position ?? 100))
-      .map((item) => ({ key: item.key, label: item.label() })),
+      .sort((a, b) => (a.position ?? 100) - (b.position ?? 100)),
   );
+  const candidates = $derived(navItems.map((item) => ({ key: item.key, label: item.label() })));
+  // The distinct groups those items declare (today: "assets"), with their declared heading as
+  // the placeholder — so an admin can rename a group the same way as an item (#169).
+  const groups = $derived.by(() => {
+    const seen = new Set<string>();
+    const out: { key: string; label: string }[] = [];
+    for (const item of navItems) {
+      if (item.group && !seen.has(item.group)) {
+        seen.add(item.group);
+        out.push({ key: item.group, label: t(`nav.group.${item.group}`) });
+      }
+    }
+    return out;
+  });
 </script>
 
 <svelte:head>
@@ -37,5 +50,12 @@
 {/if}
 
 {#key data.defaultItems}
-  <NavPrefEditor {candidates} initial={data.defaultItems} action="?/saveDefault" />
+  <NavPrefEditor
+    {candidates}
+    initial={data.defaultItems}
+    {groups}
+    initialGroups={data.defaultGroups}
+    renamable
+    action="?/saveDefault"
+  />
 {/key}

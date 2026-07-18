@@ -6,7 +6,7 @@
   import { page } from "$app/state";
   import { fmtMoney, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
-  import { pageTitle } from "$lib/core/title";
+  import { navLabel, pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
@@ -62,7 +62,10 @@
     activeTypes.map((st) => ({ value: st.id, label: subscriptionTypeLabel(st, data.locale) })),
   );
   function typeLabel(id: string | null | undefined): string {
-    return subscriptionTypeLabel(data.types.find((st) => st.id === id), data.locale);
+    return subscriptionTypeLabel(
+      data.types.find((st) => st.id === id),
+      data.locale,
+    );
   }
   // All filters ride URL params and the API applies them (#153) — the list is paginated.
   function setFilter(key: string, value: string) {
@@ -159,11 +162,13 @@
 </script>
 
 <svelte:head>
-  <title>{pageTitle(t("subscriptions.title"))}</title>
+  <title>{pageTitle(navLabel("subscriptions", t("subscriptions.title")))}</title>
 </svelte:head>
 
 <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
-  <h1 class="text-xl font-semibold text-text">{t("subscriptions.title")}</h1>
+  <h1 class="text-xl font-semibold text-text">
+    {navLabel("subscriptions", t("subscriptions.title"))}
+  </h1>
   <button
     class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
     onclick={openCreate}>{t("subscriptions.add")}</button
@@ -363,9 +368,7 @@
         <option value={status}>{t(`subscriptions.status.${status}`)}</option>
       {/each}
     </select>
-    <button
-      class="rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
-    >
+    <button class="rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white hover:opacity-90">
       {t("subscriptions.bulk.set_status")}
     </button>
   </form>
@@ -404,10 +407,7 @@
 />
 
 <!-- One form for create and edit (use vs edit mode: definition changes live here). -->
-<Modal
-  bind:open={showForm}
-  title={editing ? t("common.edit") : t("subscriptions.add")}
->
+<Modal bind:open={showForm} title={editing ? t("common.edit") : t("subscriptions.add")}>
   <!-- Prefill from a preset (#142). Outside the {#key} so picking one survives the rekey. -->
   {#if !editing && data.templates.length > 0}
     <div class="mb-4">
@@ -575,8 +575,8 @@
                   type="button"
                   class="text-text-muted hover:text-red-600 dark:hover:text-red-400"
                   aria-label={t("common.delete")}
-                  onclick={() =>
-                    (linkedProjects = linkedProjects.filter((p) => p.id !== proj.id))}>✕</button
+                  onclick={() => (linkedProjects = linkedProjects.filter((p) => p.id !== proj.id))}
+                  >✕</button
                 >
               </span>
             {/each}

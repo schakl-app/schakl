@@ -10,6 +10,7 @@
   import PartyPicker from "$lib/core/ui/PartyPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ProviderQuickCreate from "$lib/core/ui/ProviderQuickCreate.svelte";
+  import { pageTitle } from "$lib/core/title";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
   import DomainForm from "$lib/modules/domains/DomainForm.svelte";
@@ -68,7 +69,7 @@
 </script>
 
 <svelte:head>
-  <title>{domain.name}</title>
+  <title>{pageTitle(domain.name)}</title>
 </svelte:head>
 
 <div class="mb-6">

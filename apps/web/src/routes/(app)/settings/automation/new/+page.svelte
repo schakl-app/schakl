@@ -1,12 +1,13 @@
 <script lang="ts">
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import RuleForm from "$lib/modules/automation/RuleForm.svelte";
 
   let { data, form } = $props();
 </script>
 
 <svelte:head>
-  <title>{t("automation.new_rule")}</title>
+  <title>{pageTitle(t("automation.new_rule"))}</title>
 </svelte:head>
 
 <div class="mb-6">
