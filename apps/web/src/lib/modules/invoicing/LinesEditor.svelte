@@ -57,6 +57,7 @@
           unit: line.unit || null,
           unit_price: line.unit_price || "0",
           tax_rate_id: line.tax_rate_id || null,
+          ...(line.time_entry_id ? { time_entry_id: line.time_entry_id } : {}),
         })),
     ),
   );

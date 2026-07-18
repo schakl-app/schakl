@@ -15,6 +15,12 @@ export interface EditableLine {
   unit: string;
   unit_price: string;
   tax_rate_id: string;
+  /** The unbilled time entry this line was prefilled from (new-invoice form). Posted so the
+   *  API bills that entry; absent on hand-typed lines. */
+  time_entry_id?: string;
+  /** Client-only: this line was auto-added from unbilled time, so a client change may replace
+   *  it — hand-typed lines (falsy) are never clobbered. Never serialized to the API. */
+  auto?: boolean;
 }
 
 export interface PreviewGroup {

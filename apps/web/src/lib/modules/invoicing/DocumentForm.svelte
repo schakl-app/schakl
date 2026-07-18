@@ -103,6 +103,66 @@
     }
   });
 
+  // Auto-fill a fresh invoice with the client's unbilled time (owner request): every
+  // approved, billable, not-yet-invoiced entry becomes a line, its own description in the
+  // description field. The user edits or removes any before saving; a removed line's entry
+  // simply stays unbilled. Invoices only — quotes never bill time.
+  type UnbilledEntry = {
+    id: string;
+    minutes: number;
+    description: string | null;
+    project_name: string;
+    rate: string | number;
+  };
+  let autoAddedCount = $state(0);
+  //: The company we last prefilled for — so re-picking the same client doesn't refetch, and
+  //: switching clients replaces *only* the previous auto lines, never hand-typed ones.
+  let prefilledFor = $state<string | null>(null); // null: first resolved client always prefills
+
+  async function fetchUnbilled(target: string): Promise<UnbilledEntry[]> {
+    try {
+      const res = await fetch(`/invoices/unbilled?company_id=${encodeURIComponent(target)}`);
+      if (!res.ok) return [];
+      const data = (await res.json()) as { entries?: UnbilledEntry[] };
+      return data.entries ?? [];
+    } catch {
+      return []; // no permission / offline: the form just doesn't prefill
+    }
+  }
+
+  function toLine(entry: UnbilledEntry): EditableLine {
+    return {
+      description:
+        entry.description?.trim() || entry.project_name || t("invoicing.new.time_line_fallback"),
+      quantity: (entry.minutes / 60).toFixed(2),
+      unit: t("invoicing.from_time.hours_unit"),
+      unit_price: String(Number(entry.rate)),
+      tax_rate_id: settings?.default_tax_rate_id ?? "",
+      time_entry_id: entry.id,
+      auto: true,
+    };
+  }
+
+  $effect(() => {
+    if (kind !== "invoice" || !isNew) return;
+    const target = createdCompanyId || companyId;
+    if (target === prefilledFor) return;
+    prefilledFor = target;
+    if (!target) {
+      // Client cleared: drop any auto lines, keep what was typed by hand.
+      lines = lines.filter((line) => !line.auto);
+      autoAddedCount = 0;
+      return;
+    }
+    void fetchUnbilled(target).then((entries) => {
+      // A slower earlier fetch must not clobber a later client pick.
+      if (prefilledFor !== target) return;
+      const manual = lines.filter((line) => !line.auto);
+      lines = [...entries.map(toLine), ...manual];
+      autoAddedCount = entries.length;
+    });
+  });
+
   // Bound state, not a one-way checked (docs/UX.md): the mark must survive hydration, and
   // the line calculations must follow the toggle live — a derived-only value did neither.
   // svelte-ignore state_referenced_locally
@@ -319,6 +379,11 @@
   </div>
 
   {#if !locked}
+    {#if autoAddedCount > 0}
+      <p class="text-sm text-text-muted">
+        {t("invoicing.new.time_prefill_note", { count: autoAddedCount })}
+      </p>
+    {/if}
     <LinesEditor
       bind:lines
       {taxRates}

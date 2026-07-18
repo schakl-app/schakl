@@ -793,6 +793,12 @@ class InvoiceService(_DocumentService):
         )
         await self._replace_lines(invoice, line_rows)
         await ActivityService(self.ctx).record_created(self.entity_type, invoice.id)
+        # Lines prefilled from unbilled time (the new-invoice form) carry their entry: bill
+        # exactly those, stamping them invoiced. Invalid/foreign/already-billed ids are
+        # skipped (see ``_link_time_entries``); ``from_time``'s own lines carry none.
+        await self._link_time_entries(
+            invoice, [line.time_entry_id for line in data.lines if line.time_entry_id]
+        )
         await self._attach([invoice], payments=True)
         return invoice
 
@@ -1111,6 +1117,7 @@ class InvoiceService(_DocumentService):
         await _company_row(self.ctx, company_id)
         rows = await self._unbilled_rows(company_id, project_id=project_id, until=until)
         settings_row = await self.settings.row()
+        default_rate = settings_row.default_hourly_rate or Decimal(0)
         return {
             "entries": [
                 {
@@ -1121,6 +1128,11 @@ class InvoiceService(_DocumentService):
                     "project_id": row["project_id"],
                     "project_name": row["project_name"] or "",
                     "user_name": row["user_name"] or "",
+                    "rate": (
+                        Decimal(row["project_rate"])
+                        if row["project_rate"] is not None
+                        else default_rate
+                    ),
                 }
                 for row in rows
             ],
@@ -1250,11 +1262,47 @@ class InvoiceService(_DocumentService):
         invoice = await self.create(
             InvoiceCreate(company_id=data.company_id, lines=lines)
         )
-        entry_ids = [row["id"] for row in rows]
+        # ``create`` links nothing here (these lines carry no ``time_entry_id``); this build
+        # picks its own set. The rows came from ``_unbilled_rows`` so all are still billable.
+        await self._link_time_entries(invoice, [row["id"] for row in rows])
+        return invoice
+
+    async def _link_time_entries(
+        self, invoice: Invoice, time_entry_ids: Sequence[uuid.UUID]
+    ) -> None:
+        """Bill exactly these time entries onto the (draft) invoice — the mirror of
+        ``_release_time_entries``: create the ``invoice_time_entries`` links, stamp
+        ``invoiced_at``, and record ``time_attached``, all in the writing transaction.
+
+        Every id is re-validated against the same set ``_unbilled_rows`` selects (this org,
+        this invoice's company, approved + billable + ended + not-yet-invoiced): a stale
+        form, a foreign id, or a double-submit can only ever bill *less*, never 500 on the
+        ``uq_invoice_time_entries_entry`` constraint (``invoiced_at IS NULL`` ⇔ unlinked)."""
+        wanted = list(dict.fromkeys(eid for eid in time_entry_ids if eid is not None))
+        if not wanted:
+            return
+        valid = set(
+            (
+                await self.ctx.session.execute(
+                    text(
+                        """
+                        SELECT te.id FROM time_entries te
+                        WHERE te.org_id = :oid AND te.company_id = :cid
+                          AND te.ended_at IS NOT NULL AND te.billable
+                          AND te.approved_at IS NOT NULL AND te.invoiced_at IS NULL
+                          AND te.minutes > 0 AND te.id IN :ids
+                        """  # noqa: S608 - static clauses, bound params only
+                    ).bindparams(bindparam("ids", expanding=True)),
+                    {"oid": self.ctx.org.id, "cid": invoice.company_id, "ids": wanted},
+                )
+            ).scalars()
+        )
+        entry_ids = [eid for eid in wanted if eid in valid]
+        if not entry_ids:
+            return
+        links = self.ctx.repo(InvoiceTimeEntry)
         for entry_id in entry_ids:
-            await self.ctx.repo(InvoiceTimeEntry).create(
-                invoice_id=invoice.id, time_entry_id=entry_id
-            )
+            await links.create(invoice_id=invoice.id, time_entry_id=entry_id)
         # Stamp through the published column, tenant-scoped (§6) — "invoiced implies
         # approved" already holds because the selection required approved_at.
         await self.ctx.session.execute(
@@ -1267,7 +1315,6 @@ class InvoiceService(_DocumentService):
         await ActivityService(self.ctx).record(
             self.entity_type, invoice.id, "time_attached", {"entries": len(entry_ids)}
         )
-        return invoice
 
     async def _release_time_entries(self, invoice_id: uuid.UUID) -> None:
         """Un-bill exactly the entries this invoice billed (delete/cancel path)."""
