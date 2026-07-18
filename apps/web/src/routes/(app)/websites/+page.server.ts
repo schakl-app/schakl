@@ -35,6 +35,7 @@ export const load: PageServerLoad = async (event) => {
     contacts,
     definitions,
     hostingDefinitions,
+    domainDefinitions,
     companyDefinitions,
     contactDefinitions,
   ] = await Promise.all([
@@ -50,9 +51,12 @@ export const load: PageServerLoad = async (event) => {
     api.GET("/api/v1/custom-fields/definitions", {
       params: { query: { entity_type: "website" } },
     }),
-    // For the inline hosting quick-create (#115): its full dialog includes custom fields.
+    // For the inline hosting/domain quick-creates (#115): their full dialogs include custom fields.
     api.GET("/api/v1/custom-fields/definitions", {
       params: { query: { entity_type: "hosting" } },
+    }),
+    api.GET("/api/v1/custom-fields/definitions", {
+      params: { query: { entity_type: "domain" } },
     }),
     api.GET("/api/v1/custom-fields/definitions", {
       params: { query: { entity_type: "company" } },
@@ -80,6 +84,7 @@ export const load: PageServerLoad = async (event) => {
     })),
     definitions: definitions.data ?? [],
     hostingDefinitions: hostingDefinitions.data ?? [],
+    domainDefinitions: domainDefinitions.data ?? [],
     companyDefinitions: companyDefinitions.data ?? [],
     contactDefinitions: contactDefinitions.data ?? [],
     agencyLabel: event.locals.theme?.brandName ?? "",
@@ -145,5 +150,34 @@ export const actions: Actions = {
     const { data, error } = await apiFor(event).POST("/api/v1/hosting", { body });
     if (error || !data) return fail(400, { qcError: apiErrorKey(error).key });
     return { inlineCreated: { slot: "hosting_account", id: data.id } };
+  },
+
+  // Inline-create for the domain picker (#115): the full DomainForm in a modal. The new domain
+  // is unclaimed, so the refreshed load re-lists it for the website's domain Combobox.
+  createDomain: async (event) => {
+    const form = await event.request.formData();
+    const name = String(form.get("name") ?? "").trim();
+    const company_id = String(form.get("company_id") ?? "");
+    if (!name || !company_id) return fail(400, { qcError: "errors.required" });
+    const email_enabled = form.get("email_enabled") === "on";
+    const { data, error } = await apiFor(event).POST("/api/v1/domains", {
+      body: {
+        name,
+        company_id,
+        status: String(form.get("status") ?? "active") as never,
+        redirect_url: String(form.get("redirect_url") ?? "").trim() || null,
+        registrar_provider_id: String(form.get("registrar_provider_id") ?? "") || null,
+        dns_provider_id: String(form.get("dns_provider_id") ?? "") || null,
+        registry_contact: parseParty(form.get("registry_contact")),
+        email_enabled,
+        email_provider_id: email_enabled
+          ? String(form.get("email_provider_id") ?? "") || null
+          : null,
+        email_contact: email_enabled ? parseParty(form.get("email_contact")) : null,
+        custom: parseCustom(form.get("custom")),
+      },
+    });
+    if (error || !data) return fail(400, { qcError: apiErrorKey(error).key });
+    return { inlineCreated: { slot: "domain", id: data.id } };
   },
 };

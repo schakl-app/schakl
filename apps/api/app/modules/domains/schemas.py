@@ -26,6 +26,7 @@ class MxRecord(BaseModel):
 class DomainBase(BaseModel):
     name: str = Field(min_length=1, max_length=253)
     status: DomainStatus = DomainStatus.ACTIVE
+    redirect_url: str | None = Field(default=None, max_length=512)
     registrar_provider_id: uuid.UUID | None = None
     dns_provider_id: uuid.UUID | None = None
     registry_contact: PartyRef | None = None
@@ -43,6 +44,7 @@ class DomainUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=253)
     company_id: uuid.UUID | None = None
     status: DomainStatus | None = None
+    redirect_url: str | None = Field(default=None, max_length=512)
     registrar_provider_id: uuid.UUID | None = None
     dns_provider_id: uuid.UUID | None = None
     registry_contact: PartyRef | None = None
@@ -61,6 +63,7 @@ class DomainRead(BaseModel):
     company_id: uuid.UUID
     company_name: str = ""
     status: DomainStatus
+    redirect_url: str | None = None
     registrar_provider_id: uuid.UUID | None = None
     registrar_provider_name: str | None = None
     dns_provider_id: uuid.UUID | None = None

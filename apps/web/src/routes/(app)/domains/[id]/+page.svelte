@@ -32,7 +32,8 @@
   let qcContactName = $state("");
   let qcContactSlot = $state("contact");
   let qcProviderOpen = $state(false);
-  let qcProviderKind = $state<"registrar" | "dns" | "email">("registrar");
+  // Includes "hosting" for the website form's hosting dialog, which shares this one provider modal.
+  let qcProviderKind = $state<"registrar" | "dns" | "email" | "hosting">("registrar");
   let qcProviderName = $state("");
   let qcHostingOpen = $state(false);
   let qcHostingName = $state("");
@@ -147,6 +148,21 @@
           <dt class="text-text-muted">{t("domains.status")}</dt>
           <dd class="text-text">{t(`domains.status.${domain.status}`)}</dd>
         </div>
+        {#if domain.status === "redirect"}
+          <div class="flex justify-between gap-4">
+            <dt class="text-text-muted">{t("domains.redirect_url")}</dt>
+            <dd class="min-w-0 truncate text-text">
+              {#if domain.redirect_url}
+                <a
+                  href={domain.redirect_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="text-brand hover:underline">{domain.redirect_url}</a
+                >
+              {:else}—{/if}
+            </dd>
+          </div>
+        {/if}
         <div class="flex justify-between">
           <dt class="text-text-muted">{t("domains.registrar")}</dt>
           <dd class="text-text">{domain.registrar_provider_name ?? "—"}</dd>
@@ -373,6 +389,28 @@
   {/if}
 </section>
 
+<!-- The hosting dialog sits over the (inline) website form; the provider/company/contact dialogs
+     below it are rendered last so they stack above it (equal z-index → DOM order wins). -->
+<HostingQuickCreate
+  bind:open={qcHostingOpen}
+  name={qcHostingName}
+  companies={data.companies}
+  providers={data.providers}
+  employees={data.employees}
+  contacts={data.contacts}
+  agencyLabel={data.agencyLabel}
+  definitions={data.hostingDefinitions}
+  locale={data.locale}
+  error={form?.qcError ?? null}
+  oncreatecompany={quickCreateCompany}
+  oncreatecontact={quickCreateContact}
+  oncreateprovider={(kind, name) => {
+    qcProviderKind = kind;
+    qcProviderName = name;
+    qcProviderOpen = true;
+  }}
+  created={form?.inlineCreated ?? null}
+/>
 <CompanyQuickCreate
   bind:open={qcCompanyOpen}
   name={qcCompanyName}
@@ -393,18 +431,6 @@
   bind:open={qcProviderOpen}
   kind={qcProviderKind}
   name={qcProviderName}
-  error={form?.qcError ?? null}
-/>
-<HostingQuickCreate
-  bind:open={qcHostingOpen}
-  name={qcHostingName}
-  companies={data.companies}
-  providers={data.providers}
-  employees={data.employees}
-  contacts={data.contacts}
-  agencyLabel={data.agencyLabel}
-  definitions={data.hostingDefinitions}
-  locale={data.locale}
   error={form?.qcError ?? null}
 />
 

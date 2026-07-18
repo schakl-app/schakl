@@ -83,6 +83,7 @@ export const actions: Actions = {
         name,
         company_id,
         status: String(form.get("status") ?? "active") as never,
+        redirect_url: String(form.get("redirect_url") ?? "").trim() || null,
         registrar_provider_id: String(form.get("registrar_provider_id") ?? "") || null,
         dns_provider_id: String(form.get("dns_provider_id") ?? "") || null,
         registry_contact: parseParty(form.get("registry_contact")),

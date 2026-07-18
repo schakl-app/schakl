@@ -65,6 +65,53 @@ async def test_domain_crud_with_providers_and_party(client_for) -> None:
         assert body["email_contact"] is None
 
 
+async def test_domain_redirect_url_create_and_update(client_for) -> None:
+    t = await make_tenant("dom-redirect")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = await _company(c, headers)
+
+        # Create a redirect domain carrying its target.
+        created = await c.post(
+            "/api/v1/domains",
+            json={
+                "name": "oud.nl",
+                "company_id": company,
+                "status": "redirect",
+                "redirect_url": "  https://nieuw.nl  ",
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        domain = created.json()
+        assert domain["status"] == "redirect"
+        # Stored as typed, only trimmed.
+        assert domain["redirect_url"] == "https://nieuw.nl"
+
+        # Update the target.
+        patched = await c.patch(
+            f"/api/v1/domains/{domain['id']}",
+            json={"redirect_url": "https://elders.nl"},
+            headers=headers,
+        )
+        assert patched.status_code == 200, patched.text
+        assert patched.json()["redirect_url"] == "https://elders.nl"
+
+        # Clearing it (empty string) stores NULL.
+        cleared = await c.patch(
+            f"/api/v1/domains/{domain['id']}", json={"redirect_url": ""}, headers=headers
+        )
+        assert cleared.json()["redirect_url"] is None
+
+        # A script-executing scheme is refused at the API boundary.
+        bad = await c.patch(
+            f"/api/v1/domains/{domain['id']}",
+            json={"redirect_url": "javascript:alert(1)"},
+            headers=headers,
+        )
+        assert bad.status_code == 422
+
+
 async def test_domain_rejects_wrong_provider_kind(client_for) -> None:
     t = await make_tenant("dom-kind")
     headers = await auth_cookie(t.user)

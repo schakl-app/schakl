@@ -17,8 +17,10 @@
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import PartyPicker from "$lib/core/ui/PartyPicker.svelte";
+  import ProviderQuickCreate from "$lib/core/ui/ProviderQuickCreate.svelte";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
+  import DomainQuickCreate from "$lib/modules/domains/DomainQuickCreate.svelte";
   import HostingQuickCreate from "$lib/modules/hosting/HostingQuickCreate.svelte";
 
   type Website = components["schemas"]["WebsiteRead"];
@@ -36,12 +38,19 @@
   // Inline-create over the modal (#115): full dialogs, prefilled with what was typed.
   let qcHostingOpen = $state(false);
   let qcHostingName = $state("");
+  let qcDomainOpen = $state(false);
+  let qcDomainName = $state("");
   let qcCompanyOpen = $state(false);
   let qcCompanyName = $state("");
   let qcCompanySlot = $state("company");
   let qcContactOpen = $state(false);
   let qcContactName = $state("");
   let qcContactSlot = $state("contact");
+  // One provider dialog serves both nested forms — the hosting dialog's provider picker and
+  // the domain dialog's registrar/DNS/email pickers — so it carries the kind that asked.
+  let qcProviderOpen = $state(false);
+  let qcProviderName = $state("");
+  let qcProviderKind = $state<"registrar" | "dns" | "email" | "hosting">("hosting");
 
   function quickCreateCompany(name: string, slot = "company") {
     qcCompanyName = name;
@@ -52,6 +61,11 @@
     qcContactName = name;
     qcContactSlot = slot;
     qcContactOpen = true;
+  }
+  function quickCreateProvider(kind: "registrar" | "dns" | "email" | "hosting", name: string) {
+    qcProviderKind = kind;
+    qcProviderName = name;
+    qcProviderOpen = true;
   }
 
   // A domain carries at most one website, so the picker offers only unclaimed domains.
@@ -65,6 +79,11 @@
   const hostingItems = $derived(data.hosting.map((h) => ({ value: h.id, label: h.name })));
   const hostingCreated = $derived(
     form?.inlineCreated?.slot === "hosting_account" ? form.inlineCreated.id : "",
+  );
+  // A domain created from the picker (#115): the refreshed load re-lists it as unclaimed, so the
+  // Combobox resolves this id to its label and auto-selects it.
+  const domainCreated = $derived(
+    form?.inlineCreated?.slot === "domain" ? form.inlineCreated.id : "",
   );
 
   // Radio selection is component state, never a one-way checked (docs/UX.md).
@@ -172,8 +191,13 @@
             <Combobox
               items={domainItems}
               name="domain_id"
+              value={domainCreated || undefined}
               id="website-domain"
               placeholder={t("websites.field.domain")}
+              oncreate={(name) => {
+                qcDomainName = name;
+                qcDomainOpen = true;
+              }}
             />
             <p class="mt-1 text-xs text-text-muted">{t("websites.domain_hint")}</p>
           </div>
@@ -268,6 +292,27 @@
   definitions={data.hostingDefinitions}
   locale={data.locale}
   error={form?.qcError ?? null}
+  oncreatecompany={quickCreateCompany}
+  oncreatecontact={quickCreateContact}
+  oncreateprovider={quickCreateProvider}
+  created={form?.inlineCreated ?? null}
+/>
+<DomainQuickCreate
+  bind:open={qcDomainOpen}
+  name={qcDomainName}
+  companies={data.companies}
+  providers={data.providers}
+  employees={data.employees}
+  contacts={data.contacts}
+  agencyLabel={data.agencyLabel}
+  definitions={data.domainDefinitions}
+  locale={data.locale}
+  {initialCompanyId}
+  error={form?.qcError ?? null}
+  oncreatecompany={quickCreateCompany}
+  oncreatecontact={quickCreateContact}
+  oncreateprovider={quickCreateProvider}
+  created={form?.inlineCreated ?? null}
 />
 <CompanyQuickCreate
   bind:open={qcCompanyOpen}
@@ -283,6 +328,12 @@
   pickerSlot={qcContactSlot}
   definitions={data.contactDefinitions}
   locale={data.locale}
+  error={form?.qcError ?? null}
+/>
+<ProviderQuickCreate
+  bind:open={qcProviderOpen}
+  kind={qcProviderKind}
+  name={qcProviderName}
   error={form?.qcError ?? null}
 />
 <ConfirmDialog

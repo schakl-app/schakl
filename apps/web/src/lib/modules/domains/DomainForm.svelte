@@ -24,6 +24,7 @@
     definitions,
     locale,
     idPrefix = "domain",
+    nameDefault = "",
     initialCompanyId = "",
     oncreatecompany,
     oncreatecontact,
@@ -39,6 +40,8 @@
     definitions: Definition[];
     locale: string;
     idPrefix?: string;
+    /** Prefills the name on create — for quick-create from another form's picker (#115). */
+    nameDefault?: string;
     /** Preselects the client on a fresh form (quick-create from a client page). */
     initialCompanyId?: string;
     /** Inline-create (#115, docs/UX.md): typing an unknown name offers "＋ … toevoegen".
@@ -80,7 +83,7 @@
       id="{idPrefix}-name"
       name="name"
       required
-      value={domain?.name ?? ""}
+      value={domain?.name ?? nameDefault}
       placeholder="example.nl"
       class="w-full rounded-lg border border-border px-3 py-2 text-sm text-text outline-none focus:border-brand"
     />
@@ -112,6 +115,23 @@
       {/each}
     </div>
   </div>
+
+  {#if statusChoice === "redirect"}
+    <div>
+      <label for="{idPrefix}-redirect-url" class="mb-1 block text-sm text-text"
+        >{t("domains.redirect_url")}</label
+      >
+      <input
+        id="{idPrefix}-redirect-url"
+        name="redirect_url"
+        type="url"
+        value={domain?.redirect_url ?? ""}
+        placeholder="https://example.nl"
+        class="w-full rounded-lg border border-border px-3 py-2 text-sm text-text outline-none focus:border-brand"
+      />
+      <p class="mt-1 text-xs text-text-muted">{t("domains.redirect_url_hint")}</p>
+    </div>
+  {/if}
 
   <div class="grid gap-4 sm:grid-cols-2">
     <div>

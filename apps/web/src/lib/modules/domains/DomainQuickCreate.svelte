@@ -1,15 +1,19 @@
 <script lang="ts">
   /**
-   * The full new-hosting dialog behind the website form's hosting picker (#115, docs/UX.md):
-   * the real `HostingForm` field set (incl. the tenant's hosting custom fields), name prefilled
-   * with what was typed. Posts to the caller's `createHosting`-style action, which answers with
-   * `inlineCreated: { slot: "hosting_account", id }` / `qcError`.
+   * The full new-domain dialog behind the website form's domain picker (#115, docs/UX.md):
+   * the real `DomainForm` field set (incl. the tenant's domain custom fields), name prefilled
+   * with what was typed. Posts to the caller's `createDomain`-style action, which answers with
+   * `inlineCreated: { slot: "domain", id }` / `qcError`.
+   *
+   * Its own pickers can inline-create too (registrar/DNS/email provider, client, contact): the
+   * caller passes those callbacks straight through to `DomainForm`, so those dialogs stack over
+   * this one.
    */
   import { enhance } from "$app/forms";
   import type { components } from "$lib/core/api/schema";
   import { t } from "$lib/core/i18n";
   import Modal from "$lib/core/ui/Modal.svelte";
-  import HostingForm from "$lib/modules/hosting/HostingForm.svelte";
+  import DomainForm from "$lib/modules/domains/DomainForm.svelte";
 
   type Provider = components["schemas"]["ProviderRead"];
   type Definition = components["schemas"]["CustomFieldDefinitionRead"];
@@ -25,7 +29,8 @@
     agencyLabel,
     definitions,
     locale,
-    action = "?/createHosting",
+    initialCompanyId = "",
+    action = "?/createDomain",
     error = null,
     oncreatecompany,
     oncreatecontact,
@@ -42,19 +47,20 @@
     agencyLabel: string;
     definitions: Definition[];
     locale: string;
+    /** Preselects the client when the website dialog was scoped to one. */
+    initialCompanyId?: string;
     action?: string;
     /** The page's `form?.qcError`. */
     error?: string | null;
-    /** Inline-create from this dialog's own pickers (#115): the caller opens those dialogs
-     * (stacked over this one) and hands the created entity back through `created`. */
     oncreatecompany?: (name: string, slot?: string) => void;
     oncreatecontact?: (name: string, slot: string) => void;
-    oncreateprovider?: (kind: "hosting", name: string) => void;
+    oncreateprovider?: (kind: "registrar" | "dns" | "email", name: string) => void;
+    /** The entity a nested quick-create just made; auto-selected inside the form. */
     created?: { slot: string; id: string } | null;
   } = $props();
 </script>
 
-<Modal bind:open title={t("hosting.new")}>
+<Modal bind:open title={t("domains.new")}>
   {#key name + String(open)}
     <form
       method="POST"
@@ -65,16 +71,17 @@
           void update({ reset: false });
         }}
     >
-      <HostingForm
-        nameDefault={name}
-        {companies}
-        {providers}
-        {employees}
-        {contacts}
+      <DomainForm
+        companies={companies}
+        providers={providers}
+        employees={employees}
+        contacts={contacts}
         {agencyLabel}
         {definitions}
         {locale}
-        idPrefix="qc-hosting"
+        idPrefix="qc-domain"
+        nameDefault={name}
+        {initialCompanyId}
         {oncreatecompany}
         {oncreatecontact}
         {oncreateprovider}

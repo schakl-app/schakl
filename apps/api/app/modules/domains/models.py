@@ -70,6 +70,9 @@ class Domain(
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default=DomainStatus.ACTIVE.value, index=True
     )
+    # Where a ``redirect``-status domain points. Stored as typed (a bare host is fine); NULL for
+    # other statuses. Never coupled to ``status`` at the DB layer — the form only shows it there.
+    redirect_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     # --- providers (catalog, §89): SET NULL so deleting a provider never deletes a domain --- #
     registrar_provider_id: Mapped[uuid.UUID | None] = mapped_column(
