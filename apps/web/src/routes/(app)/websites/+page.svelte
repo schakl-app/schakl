@@ -78,14 +78,20 @@
       .map((d) => ({ value: d.id, label: d.name })),
   );
   const hostingItems = $derived(data.hosting.map((h) => ({ value: h.id, label: h.name })));
-  const hostingCreated = $derived(
-    form?.inlineCreated?.slot === "hosting_account" ? form.inlineCreated.id : "",
-  );
-  // A domain created from the picker (#115): the refreshed load re-lists it as unclaimed, so the
-  // Combobox resolves this id to its label and auto-selects it.
-  const domainCreated = $derived(
-    form?.inlineCreated?.slot === "domain" ? form.inlineCreated.id : "",
-  );
+  // Inline-created records auto-select per slot and *stay* selected (#115): remembered in a
+  // map, because `form.inlineCreated` only holds the latest create — a derived read straight
+  // off it would clear the domain the moment a hosting account is quick-created after it.
+  // A domain created from the picker: the refreshed load re-lists it as unclaimed, so the
+  // Combobox resolves the id to its label.
+  let createdBySlot = $state<Record<string, string>>({});
+  $effect(() => {
+    const created = form?.inlineCreated;
+    if (created?.id && createdBySlot[created.slot] !== created.id) {
+      createdBySlot = { ...createdBySlot, [created.slot]: created.id };
+    }
+  });
+  const hostingCreated = $derived(createdBySlot["hosting_account"] ?? "");
+  const domainCreated = $derived(createdBySlot["domain"] ?? "");
 
   // Radio selection is component state, never a one-way checked (docs/UX.md).
   let hostChoice = $state<"root" | "www">("root");
@@ -93,11 +99,13 @@
   function openCreate() {
     editing = null;
     hostChoice = "root";
+    createdBySlot = {};
     showModal = true;
   }
   function openEdit(w: Website) {
     editing = w;
     hostChoice = w.root ? "root" : "www";
+    createdBySlot = {};
     showModal = true;
   }
   function requestDelete(id: string) {
