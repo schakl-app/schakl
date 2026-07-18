@@ -37,9 +37,11 @@ from app.modules.marketing.layout import (
     GA4_KEY_EVENT_DRILLDOWN,
     GA4_KEY_EVENT_TILES,
     CompanyLayout,
+    resolve_event_label,
     resolved_drilldowns,
     resolved_primary,
     resolved_tiles,
+    source_hidden,
     source_layout,
     validate_layout,
 )
@@ -583,27 +585,33 @@ class MarketingService:
         # The client's websites: group labels for linked sources + options for the pickers.
         websites = await self._company_websites(company_id)
         website_names = {w.id: w.name for w in websites}
+        can_manage = self.ctx.can("marketing.link.manage")
         sources: list[SourceMetrics] = []
         if links:
             metrics_by_link = await self._metrics_for_links(
                 [link.id for link in links], prev_start, cur_end
             )
             for link in links:
-                sources.append(
-                    self._source_metrics(
-                        link,
-                        metrics_by_link.get(link.id, {}),
-                        connections,
-                        cur_start,
-                        cur_end,
-                        prev_start,
-                        prev_end,
-                        show_key_events=show_key_events,
-                        layout=layout,
-                        website_names=website_names,
-                    )
+                hidden = source_hidden(layout, link.source)
+                # A hidden source is dropped from the payload entirely, so the portal/client
+                # never receives it (#192). A manager keeps it, flagged, so edit mode can list
+                # every linked source and offer to re-enable it.
+                if hidden and not can_manage:
+                    continue
+                sm = self._source_metrics(
+                    link,
+                    metrics_by_link.get(link.id, {}),
+                    connections,
+                    cur_start,
+                    cur_end,
+                    prev_start,
+                    prev_end,
+                    show_key_events=show_key_events,
+                    layout=layout,
+                    website_names=website_names,
                 )
-        can_manage = self.ctx.can("marketing.link.manage")
+                sm.hidden = hidden
+                sources.append(sm)
         return CompanyMarketing(
             company_id=company_id,
             range_days=range_days,
@@ -780,9 +788,13 @@ class MarketingService:
         cached = await redis.get(cache_key)
         if cached is not None:
             payload = json.loads(cached)
+            raw_rows = [DrilldownRowOut(**row) for row in payload["rows"]]
+            # Labels ride the *layout*, not the cached Google rows, and are applied here on the
+            # way out — so a relabel shows immediately instead of waiting for the TTL (#192).
             return DrilldownResponse(
                 source=source, kind=kind, columns=payload["columns"],
-                rows=[DrilldownRowOut(**row) for row in payload["rows"]], deep_link=deep_link,
+                rows=self._label_event_rows(raw_rows, link.source, kind, src_layout),
+                deep_link=deep_link,
             )
         ads_token = (
             await self._resolve_ads_developer_token()
@@ -819,18 +831,47 @@ class MarketingService:
                 source=source, kind=kind, available=False, unavailable_reason=reason,
                 deep_link=deep_link,
             )
-        rows = [
+        # Cache the *raw* Google rows (label = the event name), label-independent, so a relabel
+        # never has to wait for the TTL — the custom labels are applied after retrieval (#192).
+        raw_rows = [
             DrilldownRowOut(label=row.label, href=row.href, metrics=row.metrics)
             for row in table.rows
         ]
         await redis.set(
             cache_key,
-            json.dumps({"columns": table.columns, "rows": [r.model_dump() for r in rows]}),
+            json.dumps({"columns": table.columns, "rows": [r.model_dump() for r in raw_rows]}),
             ex=_DRILLDOWN_TTL,
         )
         return DrilldownResponse(
-            source=source, kind=kind, columns=table.columns, rows=rows, deep_link=deep_link
+            source=source, kind=kind, columns=table.columns,
+            rows=self._label_event_rows(raw_rows, link.source, kind, src_layout),
+            deep_link=deep_link,
         )
+
+    def _label_event_rows(
+        self,
+        rows: list[DrilldownRowOut],
+        source: str,
+        kind: str,
+        src_layout: Any,
+    ) -> list[DrilldownRowOut]:
+        """Apply the client's per-key-event labels to a GA4 ``key_events`` drill-down (#192).
+
+        Each row's raw ``eventName`` is kept as ``key`` (the stable id the editor keys on) and its
+        ``label`` becomes the tenant's custom name when one is set, else the raw event name. A
+        no-op for every other source/kind, which carry no per-event labels."""
+        if source != MarketingSource.GA4.value or kind != GA4_KEY_EVENT_DRILLDOWN:
+            return rows
+        locale = "nl" if (self.ctx.user.locale or "nl").startswith("nl") else "en"
+        return [
+            DrilldownRowOut(
+                label=resolve_event_label(src_layout, row.label, locale) or row.label,
+                key=row.label,
+                href=row.href,
+                metrics=row.metrics,
+            )
+            for row in rows
+        ]
 
     # --- cross-client overview (#133), stored data only ----------------------------------- #
     async def overview(self, range_days: int, sort: str | None) -> OverviewResponse:

@@ -7,7 +7,8 @@
    * charted metric. One save per editing surface (docs/UX.md): the whole source posts as one
    * serialized layout through the page's `?/saveLayout` action.
    */
-  import { ArrowDown, ArrowUp } from "@lucide/svelte";
+  import { ArrowDown, ArrowUp, X } from "@lucide/svelte";
+  import { onMount } from "svelte";
 
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
@@ -23,11 +24,14 @@
 
   let {
     companyId,
+    linkId,
     source,
     layout,
     ondone,
   }: {
     companyId: string;
+    /** The source's link id — used to fetch its live key-event names for the labels editor. */
+    linkId: string;
     source: MarketingSource;
     /** The company's full stored layout — this editor replaces only its own source entry. */
     layout: CompanyLayout | null | undefined;
@@ -66,6 +70,59 @@
   );
   let drilldowns = $state<string[]>([...(stored.drilldowns ?? allDrilldowns)]);
   let chartMetric = $state(stored.chart_metric ?? "");
+  // "Show this source on the dashboard": the inverse of the layout's `hidden` flag (default on).
+  let shown = $state(!(stored.hidden ?? false));
+
+  // Per-key-event labels (GA4 only): each row keyed by the raw GA4 eventName. Seeded from stored
+  // labels, then topped up on mount with the live top events so the agency can name what a client
+  // actually triggers (contactformulier, aankoop, …) instead of the raw `generate_lead`.
+  interface EventRow {
+    key: string;
+    nl: string;
+    en: string;
+  }
+  // svelte-ignore state_referenced_locally
+  let eventRows = $state<EventRow[]>(
+    Object.entries(stored.event_labels ?? {}).map(([key, l]) => ({
+      key,
+      nl: l.nl ?? "",
+      en: l.en ?? "",
+    })),
+  );
+  // svelte-ignore state_referenced_locally
+  let eventsLoading = $state(source === "ga4");
+
+  onMount(() => {
+    if (source !== "ga4") return;
+    (async () => {
+      try {
+        const params = new URLSearchParams({
+          company_id: companyId,
+          link_id: linkId,
+          kind: "key_events",
+          range_days: "30",
+        });
+        const res = await fetch(`/marketing/drilldown?${params}`);
+        const data = await res.json();
+        const names: string[] = (data?.rows ?? [])
+          .map((r: { key?: string | null; label?: string }) => r.key ?? r.label)
+          .filter((n: unknown): n is string => typeof n === "string" && n.length > 0);
+        const have = new Set(eventRows.map((r) => r.key));
+        const add = names
+          .filter((n) => !have.has(n))
+          .map((key) => ({ key, nl: "", en: "" }));
+        if (add.length) eventRows = [...eventRows, ...add];
+      } catch {
+        // A failed/empty fetch still leaves the stored rows editable — never blocks the editor.
+      } finally {
+        eventsLoading = false;
+      }
+    })();
+  });
+
+  function removeEvent(key: string) {
+    eventRows = eventRows.filter((r) => r.key !== key);
+  }
 
   function move(index: number, delta: number) {
     const target = index + delta;
@@ -98,6 +155,17 @@
       chart_metric:
         chartMetric && visible.some((r) => r.key === chartMetric) ? chartMetric : null,
     };
+    if (!shown) src.hidden = true;
+    if (source === "ga4") {
+      const eventLabels: Record<string, Record<string, string>> = {};
+      for (const row of eventRows) {
+        const entry: Record<string, string> = {};
+        if (row.nl.trim()) entry.nl = row.nl.trim();
+        if (row.en.trim()) entry.en = row.en.trim();
+        if (Object.keys(entry).length) eventLabels[row.key] = entry;
+      }
+      if (Object.keys(eventLabels).length) src.event_labels = eventLabels;
+    }
     return JSON.stringify({
       sources: { ...(layout?.sources ?? {}), [source]: src },
     });
@@ -121,6 +189,11 @@
   >
     <input type="hidden" name="company_id" value={companyId} />
     <input type="hidden" name="layout" value={serialized} />
+
+    <label class="flex items-center gap-2 text-sm text-text">
+      <input type="checkbox" bind:checked={shown} />
+      {t("marketing.layout.show_source")}
+    </label>
 
     <fieldset>
       <legend class="mb-2 text-sm font-medium text-text">{t("marketing.layout.tiles")}</legend>
@@ -208,6 +281,50 @@
         </select>
       </div>
     </div>
+
+    {#if source === "ga4"}
+      <fieldset>
+        <legend class="mb-1 text-sm font-medium text-text">
+          {t("marketing.layout.key_events")}
+        </legend>
+        <p class="mb-2 text-xs text-text-muted">{t("marketing.layout.key_events_hint")}</p>
+        {#if eventsLoading && eventRows.length === 0}
+          <p class="text-sm text-text-muted">{t("marketing.loading")}</p>
+        {:else if eventRows.length === 0}
+          <p class="text-sm text-text-muted">{t("marketing.layout.no_key_events")}</p>
+        {:else}
+          <ul class="space-y-1.5">
+            {#each eventRows as row (row.key)}
+              <li class="flex flex-wrap items-center gap-2 rounded-lg border border-border px-2 py-1.5">
+                <code class="min-w-28 break-all text-xs text-text-muted">{row.key}</code>
+                <span class="ml-auto flex min-w-0 flex-wrap items-center gap-1">
+                  <input
+                    bind:value={row.nl}
+                    placeholder="{t('marketing.layout.label_nl')}: {row.key}"
+                    maxlength="80"
+                    class="w-44 min-w-0 rounded border border-border bg-surface px-2 py-1 text-xs text-text outline-none focus:border-brand"
+                  />
+                  <input
+                    bind:value={row.en}
+                    placeholder={t("marketing.layout.label_en")}
+                    maxlength="80"
+                    class="w-36 min-w-0 rounded border border-border bg-surface px-2 py-1 text-xs text-text outline-none focus:border-brand"
+                  />
+                  <button
+                    type="button"
+                    class="rounded p-1 text-text-muted hover:text-red-600 dark:hover:text-red-400"
+                    aria-label={t("marketing.layout.remove_event", { event: row.key })}
+                    onclick={() => removeEvent(row.key)}
+                  >
+                    <X size={14} />
+                  </button>
+                </span>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </fieldset>
+    {/if}
 
     <div class="flex gap-2">
       <button class="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white hover:opacity-90">

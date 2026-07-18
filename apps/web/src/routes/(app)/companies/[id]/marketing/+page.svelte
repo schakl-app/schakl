@@ -8,16 +8,26 @@
   import type { CompanyMarketing, SourceMetrics } from "$lib/modules/marketing/types";
 
   let { data } = $props();
+
+  // Use vs edit mode (docs/UX.md, #192): the pencil turns the curated tab into its editor —
+  // reorder/hide/relabel tiles per source, relabel key events, hide a whole source. Gated on
+  // marketing.link.manage (can_manage). Declared here so `sources` can read it below.
+  let editMode = $state(false);
+  let editingSource = $state<string | null>(null);
+
   const company = $derived(data.company);
   const marketing = $derived(data.metrics as CompanyMarketing | null);
   const allSources = $derived(marketing?.sources ?? []);
   // Website filter (owner feedback): marketing reads per site. "" shows everything,
   // "client" narrows to client-level links, a website id narrows to that site.
-  const sources = $derived(
+  const filteredByWebsite = $derived(
     allSources.filter((s) =>
       !data.website ? true : data.website === "client" ? !s.website_id : s.website_id === data.website,
     ),
   );
+  // A hidden source (#192) is only present in the payload for a manager; it shows in edit mode
+  // (with a re-enable toggle) but stays out of the read/use view, matching what the client sees.
+  const sources = $derived(filteredByWebsite.filter((s) => editMode || !s.hidden));
   const websites = $derived(marketing?.websites ?? []);
   const hasClientLevel = $derived(allSources.some((s) => !s.website_id));
 
@@ -51,11 +61,6 @@
   });
   const showGroupHeadings = $derived(groups.some((g) => g.id !== null));
 
-  // Use vs edit mode (docs/UX.md, #192): the pencil turns the curated tab into its editor —
-  // reorder/hide/relabel tiles per source. Gated on marketing.link.manage (can_manage).
-  let editMode = $state(false);
-  let editingSource = $state<string | null>(null);
-
   const RANGES = ["30d", "month", "quarter", "90d", "yoy"] as const;
   const rangeClass = (active: boolean) =>
     `rounded-lg px-3 py-1.5 text-sm font-medium ${
@@ -70,7 +75,7 @@
 <div class="mb-6">
   <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
     <h1 class="text-xl font-semibold text-text">{t("marketing.tab.title")}</h1>
-    {#if marketing?.can_manage && sources.length > 0}
+    {#if marketing?.can_manage && filteredByWebsite.length > 0}
       <button
         type="button"
         class="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-sm text-text hover:border-brand"
@@ -149,21 +154,29 @@
             {#if editMode && editingSource === src.source}
               <MarketingLayoutEditor
                 companyId={company.id}
+                linkId={src.link_id}
                 source={src.source}
                 layout={marketing.layout}
                 ondone={() => (editingSource = null)}
               />
             {:else}
-              <div class="relative">
+              <div class="relative {editMode && src.hidden ? 'opacity-60' : ''}">
                 {#if editMode}
-                  <button
-                    type="button"
-                    class="absolute right-4 top-4 z-10 flex items-center gap-1.5 rounded-lg border border-border bg-surface-raised px-2.5 py-1.5 text-sm text-text hover:border-brand"
-                    onclick={() => (editingSource = src.source)}
-                  >
-                    <Pencil size={13} />
-                    {t("marketing.layout.edit_source")}
-                  </button>
+                  <div class="absolute right-4 top-4 z-10 flex items-center gap-1.5">
+                    {#if src.hidden}
+                      <span class="rounded-lg bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                        {t("marketing.layout.source_hidden")}
+                      </span>
+                    {/if}
+                    <button
+                      type="button"
+                      class="flex items-center gap-1.5 rounded-lg border border-border bg-surface-raised px-2.5 py-1.5 text-sm text-text hover:border-brand"
+                      onclick={() => (editingSource = src.source)}
+                    >
+                      <Pencil size={13} />
+                      {t("marketing.layout.edit_source")}
+                    </button>
+                  </div>
                 {/if}
                 <MarketingSourceSection companyId={company.id} {src} rangeDays={data.rangeDays} />
               </div>

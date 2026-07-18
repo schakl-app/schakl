@@ -44,6 +44,11 @@ GA4_KEY_EVENT_DRILLDOWN = "key_events"
 
 _LOCALES = ("nl", "en")
 
+#: Caps for the free-text tenant data below, so a layout can't grow unbounded.
+_MAX_LABEL_LEN = 80  # one tile / event label (per locale)
+_MAX_EVENT_LABELS = 50  # distinct GA4 event names a client may relabel
+_MAX_EVENT_NAME_LEN = 100  # a GA4 eventName is the stable id we key on
+
 
 class SourceLayout(BaseModel):
     """One source's curated shape. ``None`` fields mean "not curated" (defaults apply)."""
@@ -52,6 +57,13 @@ class SourceLayout(BaseModel):
     labels: dict[str, dict[str, str]] = Field(default_factory=dict)
     drilldowns: list[str] | None = None
     chart_metric: str | None = None
+    #: GA4 only: per key-event display labels keyed by the GA4 ``eventName`` (the stable id),
+    #: ``{eventName: {locale: label}}`` (#192). The key-event drill-down prints these instead of
+    #: the raw event name so a client reads "Aanvragen via de website", not ``generate_lead``.
+    event_labels: dict[str, dict[str, str]] = Field(default_factory=dict)
+    #: Drop this whole source section from the client's dashboard (panel/tab/overview), not just
+    #: its tiles — a client that shouldn't see a Google Ads section at all (#192). Default off.
+    hidden: bool = False
 
 
 class CompanyLayout(BaseModel):
@@ -89,8 +101,29 @@ def validate_layout(layout: CompanyLayout) -> None:
             if metric not in metrics:
                 raise bad("layout")
             for locale, label in labels.items():
-                if locale not in _LOCALES or not isinstance(label, str) or len(label) > 80:
+                if (
+                    locale not in _LOCALES
+                    or not isinstance(label, str)
+                    or len(label) > _MAX_LABEL_LEN
+                ):
                     raise bad("layout")
+        # Per-event labels are a GA4-only concept (the key-event drill-down keyed on eventName);
+        # any other source carrying them is a malformed layout, refused like a stray metric.
+        if src.event_labels:
+            if source != "ga4" or len(src.event_labels) > _MAX_EVENT_LABELS:
+                raise bad("layout")
+            for event_name, labels in src.event_labels.items():
+                if not isinstance(event_name, str) or not (
+                    0 < len(event_name) <= _MAX_EVENT_NAME_LEN
+                ):
+                    raise bad("layout")
+                for locale, label in labels.items():
+                    if (
+                        locale not in _LOCALES
+                        or not isinstance(label, str)
+                        or len(label) > _MAX_LABEL_LEN
+                    ):
+                        raise bad("layout")
 
 
 def source_layout(layout: dict | None, source: str) -> SourceLayout | None:
@@ -132,6 +165,26 @@ def resolved_drilldowns(
     if GA4_KEY_EVENT_DRILLDOWN in kinds and source == "ga4" and "keyEvents" not in tiles:
         kinds.remove(GA4_KEY_EVENT_DRILLDOWN)
     return kinds
+
+
+def source_hidden(layout: dict | None, source: str) -> bool:
+    """Whether the client's layout drops this whole source section (#192)."""
+    src = source_layout(layout, source)
+    return bool(src is not None and src.hidden)
+
+
+def resolve_event_label(src: SourceLayout | None, event_name: str, locale: str) -> str | None:
+    """A key event's custom display label in ``locale``, or ``None`` when the tenant set none.
+
+    Same fallback as the tile labels: the requested locale wins, then the other locale — the
+    override is optional per language (tenant data), so a nl-only label still shows for an en
+    viewer rather than falling back to the raw event name here (#192, docs/UX.md)."""
+    if src is None:
+        return None
+    labels = src.event_labels.get(event_name)
+    if not labels:
+        return None
+    return labels.get(locale) or labels.get("nl") or labels.get("en") or None
 
 
 def resolved_primary(source: str, src: SourceLayout | None, tiles: list[str]) -> str:
