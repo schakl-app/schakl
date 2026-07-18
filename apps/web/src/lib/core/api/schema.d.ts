@@ -3970,7 +3970,10 @@ export interface paths {
          * @description The effective layout for the current user: own row → org default → none.
          */
         get: operations["get_prefs_api_v1_nav_prefs_get"];
-        /** Set Prefs */
+        /**
+         * Set Prefs
+         * @description A member's personal order/visibility. Labels/groups are org config — stripped here.
+         */
         put: operations["set_prefs_api_v1_nav_prefs_put"];
         post?: never;
         /**
@@ -3993,7 +3996,8 @@ export interface paths {
         get?: never;
         /**
          * Set Default Prefs
-         * @description The org-wide default that members inherit (``settings.nav.manage``).
+         * @description The org-wide default that members inherit, plus tenant item/group labels
+         *     (``settings.nav.manage``).
          */
         put: operations["set_default_prefs_api_v1_nav_prefs_default_put"];
         post?: never;
@@ -7271,6 +7275,8 @@ export interface components {
             email_provider_id?: string | null;
             /** Name */
             name: string;
+            /** Redirect Url */
+            redirect_url?: string | null;
             /** Registrar Provider Id */
             registrar_provider_id?: string | null;
             registry_contact?: components["schemas"]["PartyRef"] | null;
@@ -7332,6 +7338,8 @@ export interface components {
              * Format: uuid
              */
             org_id: string;
+            /** Redirect Url */
+            redirect_url?: string | null;
             /** Registrar Provider Id */
             registrar_provider_id?: string | null;
             /** Registrar Provider Name */
@@ -7367,6 +7375,8 @@ export interface components {
             email_provider_id?: string | null;
             /** Name */
             name?: string | null;
+            /** Redirect Url */
+            redirect_url?: string | null;
             /** Registrar Provider Id */
             registrar_provider_id?: string | null;
             registry_contact?: components["schemas"]["PartyRef"] | null;
@@ -7420,6 +7430,8 @@ export interface components {
         DrilldownRowOut: {
             /** Href */
             href?: string | null;
+            /** Key */
+            key?: string | null;
             /** Label */
             label: string;
             /** Metrics */
@@ -9841,6 +9853,8 @@ export interface components {
             quantity: number | string;
             /** Tax Rate Id */
             tax_rate_id?: string | null;
+            /** Time Entry Id */
+            time_entry_id?: string | null;
             /** Unit */
             unit?: string | null;
             /**
@@ -10124,6 +10138,18 @@ export interface components {
             /** Gmail Sync Enabled */
             gmail_sync_enabled?: boolean | null;
         };
+        /**
+         * NavGroupPref
+         * @description A tenant label for a sidebar *group* heading (e.g. ``assets`` → "Hosting & domeinen").
+         */
+        NavGroupPref: {
+            /** Key */
+            key: string;
+            /** Label */
+            label?: {
+                [key: string]: string;
+            } | null;
+        };
         /** NavPrefItem */
         NavPrefItem: {
             /**
@@ -10133,9 +10159,15 @@ export interface components {
             hidden: boolean;
             /** Key */
             key: string;
+            /** Label */
+            label?: {
+                [key: string]: string;
+            } | null;
         };
         /** NavPrefs */
         NavPrefs: {
+            /** Groups */
+            groups?: components["schemas"]["NavGroupPref"][] | null;
             /** Items */
             items: components["schemas"]["NavPrefItem"][] | null;
             /** Source */
@@ -10143,6 +10175,8 @@ export interface components {
         };
         /** NavPrefsUpdate */
         NavPrefsUpdate: {
+            /** Groups */
+            groups?: components["schemas"]["NavGroupPref"][];
             /** Items */
             items: components["schemas"]["NavPrefItem"][];
         };
@@ -12054,6 +12088,11 @@ export interface components {
              * @default pending
              */
             health: string;
+            /**
+             * Hidden
+             * @default false
+             */
+            hidden: boolean;
             /** Kpis */
             kpis?: {
                 [key: string]: components["schemas"]["KpiValue"];
@@ -13910,6 +13949,11 @@ export interface components {
              * @default
              */
             project_name: string;
+            /**
+             * Rate
+             * @default 0
+             */
+            rate: string;
             /**
              * Started At
              * Format: date-time
