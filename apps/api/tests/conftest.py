@@ -26,6 +26,11 @@ os.environ.setdefault(
     "postgresql+asyncpg://schakl_app:schakl_app@localhost:5432/schakl",
 )
 os.environ.setdefault("SCHAKL_BASE_DOMAIN", "localhost")
+# The whole suite logs in far more than any human would per minute and shares one client IP
+# under the ASGI transport, so the pre-auth brute-force limits are off by default here. The
+# dedicated test (test_login_rate_limit.py) sets its own ceiling and its own fake Redis.
+os.environ.setdefault("SCHAKL_LOGIN_RATE_LIMIT_PER_MINUTE", "0")
+os.environ.setdefault("SCHAKL_PASSWORD_RESET_RATE_LIMIT_PER_MINUTE", "0")
 
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 from pwdlib import PasswordHash  # noqa: E402

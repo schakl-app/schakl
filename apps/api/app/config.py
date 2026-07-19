@@ -170,6 +170,16 @@ class Settings(BaseSettings):
     # Seconds a login's 2FA challenge token stays redeemable (password re-entry after that).
     twofactor_challenge_lifetime_seconds: int = 300
 
+    # --- Pre-auth brute-force limits (Redis fixed window, per client IP, per tenant) ---
+    # A firm ceiling on password guessing at the login form: a human types a handful of
+    # attempts a minute, never dozens. Shared Redis, so the limit holds across api replicas,
+    # and fails open if Redis is down (a safeguard, not an availability dependency). Set to 0
+    # to disable (the test environment does). See app/core/auth/ratelimit.py.
+    login_rate_limit_per_minute: int = 10
+    # Password-reset requests are cheaper to abuse (e-mail bombing a victim's inbox), so the
+    # forgot/reset routes get a tighter, separate budget.
+    password_reset_rate_limit_per_minute: int = 5
+
     # --- Google Workspace OAuth (stub for P3) ---
     google_client_id: str | None = None
     google_client_secret: str | None = None

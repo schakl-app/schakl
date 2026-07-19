@@ -59,6 +59,11 @@ export const actions: Actions = {
     }
 
     const result = await apiLogin(event, email, password);
+    if (result.kind === "rate_limited") {
+      // Too many attempts from this client — the API throttled us. Say so plainly rather than
+      // "wrong password", which would be misleading (the credentials were never checked).
+      return fail(429, { error: "errors.rate_limited", email });
+    }
     if (result.kind === "failed") {
       return fail(400, { error: "auth.invalid_credentials", email });
     }
