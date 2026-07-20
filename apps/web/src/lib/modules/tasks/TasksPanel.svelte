@@ -1,5 +1,6 @@
 <script lang="ts">
   /** Company-detail panel: the client's task overview (CLAUDE.md §6). */
+  import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import { fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
@@ -75,9 +76,12 @@
     {t("tasks.panel.view_all")}
   </a>
   {#if can(page.data.user, "tasks.task.create")}
-    <!-- Quick-create from the client page: opens the task form with this client set. -->
-    <a href={`/tasks?company_id=${companyId}&new=1`} class="text-xs text-brand hover:underline">
-      ＋ {t("tasks.new")}
-    </a>
+    <!-- Quick-create from the client page (#230): a POST — never a link, which would create on
+         hover-preload — that makes a minimal task pre-linked to this client, then lands on its
+         detail page in edit mode. -->
+    <form method="POST" action="/tasks?/create" use:enhance>
+      <input type="hidden" name="company_id" value={companyId} />
+      <button class="text-xs text-brand hover:underline">＋ {t("tasks.new")}</button>
+    </form>
   {/if}
 </div>

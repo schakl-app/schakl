@@ -59,6 +59,21 @@ class ProjectUpdate(BaseModel):
     custom: dict | None = None
 
 
+class ProjectHoursSource(BaseModel):
+    """A subscription this project's hour budget derives from (issue #225).
+
+    ``included_hours`` is per the subscription's own billing interval; ``monthly_hours`` is
+    its monthly equivalent — the figure the derived budget sums.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    subscription_id: uuid.UUID
+    name: str
+    included_hours: float
+    monthly_hours: float
+
+
 class ProjectRead(ProjectBase):
     model_config = ConfigDict(from_attributes=True)
 
@@ -70,3 +85,8 @@ class ProjectRead(ProjectBase):
     assignees: list[AssigneeRead] = Field(default_factory=list)
     # Budget burn for the current period. Only present when asked for (``?hours=true``).
     hours: BudgetHours | None = None
+    # Non-empty ⇒ ``budget_hours`` is subscription-backed: the effective budget is the sum of
+    # ``monthly_hours``, the period is forced to monthly, and direct writes are refused (#225).
+    # Populated on the detail read and wherever ``hours`` is; the stored ``budget_hours`` stays
+    # visible as the dormant fallback that returns when the link is removed.
+    budget_sources: list[ProjectHoursSource] = Field(default_factory=list)

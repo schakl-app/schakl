@@ -110,7 +110,12 @@
   let linkTasks = $state<TaskOption[]>([]);
   $effect(() => {
     if (!showLinkPickers) return;
-    void loadLinkLookups().then((l) => {
+    // Only host-pinned dims scope the fetch (#222): they never change, while an unpinned
+    // picker's own pick must not re-fetch — the derivations below narrow client-side.
+    void loadLinkLookups({
+      companyId: pinned("company_id") ? (prefill.company_id as string) : null,
+      projectId: pinned("project_id") ? (prefill.project_id as string) : null,
+    }).then((l) => {
       linkCompanies = l.companies;
       linkProjects = l.projects;
       linkTasks = l.tasks;
@@ -130,7 +135,11 @@
       : linkProjects,
   );
   const taskOptions = $derived(
-    effProject ? linkTasks.filter((task) => task.project_id === effProject) : linkTasks,
+    effProject
+      ? linkTasks.filter((task) => task.project_id === effProject)
+      : effCompany
+        ? linkTasks.filter((task) => !task.company_id || task.company_id === effCompany)
+        : linkTasks,
   );
   function onProjectPicked(id: string) {
     fProject = id;

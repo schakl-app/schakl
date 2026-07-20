@@ -196,6 +196,76 @@ async def test_due_cron_emits_and_advances(client_for) -> None:
         assert after["next_invoice_date"] == _iso(add_months(today, 1))
 
 
+async def test_activation_derives_next_invoice_date(client_for) -> None:
+    """#223: the create form no longer asks for the first invoice date — the service derives
+    it (``start_date`` + one period) on the first transition into ``active``, so the cron
+    never silently skips a new agreement."""
+    t = await make_tenant("subs-derive")
+    headers = await auth_cookie(t.user)
+    today = datetime.now(UTC).date()
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Derive BV"}, headers=headers)
+        ).json()
+
+        def body(**extra) -> dict:
+            return {"company_id": company["id"], "amount": "300.00", **extra}
+
+        # Created active without a date: the first cycle boundary is derived, per interval.
+        sub = (
+            await c.post(
+                "/api/v1/subscriptions",
+                json=body(name="Kwartaal", status="active", interval="quarterly",
+                          start_date=_iso(today)),
+                headers=headers,
+            )
+        ).json()
+        assert sub["next_invoice_date"] == _iso(add_months(today, 3))
+
+        # An explicit date is the operator's call — never overwritten.
+        explicit = (
+            await c.post(
+                "/api/v1/subscriptions",
+                json=body(name="Handmatig", status="active", interval="monthly",
+                          start_date=_iso(today),
+                          next_invoice_date=_iso(today + timedelta(days=3))),
+                headers=headers,
+            )
+        ).json()
+        assert explicit["next_invoice_date"] == _iso(today + timedelta(days=3))
+
+        # A draft has nothing to invoice yet; the date arrives on its first activation
+        # (the same seam the edit modal and the bulk status action go through).
+        draft = (
+            await c.post(
+                "/api/v1/subscriptions",
+                json=body(name="Concept", interval="monthly", start_date=_iso(today)),
+                headers=headers,
+            )
+        ).json()
+        assert draft["next_invoice_date"] is None
+        activated = (
+            await c.patch(
+                f"/api/v1/subscriptions/{draft['id']}",
+                json={"status": "active"},
+                headers=headers,
+            )
+        ).json()
+        assert activated["next_invoice_date"] == _iso(add_months(today, 1))
+
+        # An agreement already over before its first boundary stays uninvoiced — the cron's
+        # own past-the-end rule.
+        ended = (
+            await c.post(
+                "/api/v1/subscriptions",
+                json=body(name="Kort", status="active", interval="monthly",
+                          start_date=_iso(today), end_date=_iso(today + timedelta(days=14))),
+                headers=headers,
+            )
+        ).json()
+        assert ended["next_invoice_date"] is None
+
+
 async def test_subscriptions_tenant_isolation_and_permission(client_for) -> None:
     a = await make_tenant("subs-iso-a")
     b = await make_tenant("subs-iso-b")

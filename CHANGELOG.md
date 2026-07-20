@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+## v0.17.0 — 2026-07-20
+
+### Added
+
+- **Creating a task lands on the task, not a form.** Every "new task" entry point (the tasks page, the client page's header action and its tasks panel) creates a minimal task — placeholder title, assigned to its creator, pre-linked to the client the entry point knew — and opens the detail page in edit mode, so creating and editing are one surface and the duplicated inline form is gone. An abandoned placeholder stays a real, deletable task.
+- **A project covered by a subscription gets its hours from the agreement.** When an active subscription with included hours is linked, the project's hours budget derives from it (several agreements sum, each converted to its monthly equivalent), the field locks in the edit form with the source named, and the API refuses direct writes. The project's own value returns on unlink; budget amount and hourly rate stay editable.
+- **The client portal shows what the client may open.** The portal navigation now renders from the same permission-filtered registry staff use, so tasks, projects, websites, domains, hosting and contacts granted to the client role are reachable — every row still scoped server-side to the client's companies and per-task visibility. Calendar, settings, overview and notifications stay staff-only.
+
+### Changed
+
+- MRR and ARR are spelled out in Dutch: "Maandelijks/Jaarlijks terugkerende inkomsten".
+
+### Fixed
+
+- **The task picker on a new contact moment offered every client's tasks.** Opening "Contactmoment vastleggen" from a client page listed the whole org's tasks until a project was picked; the picker — and the move/koppel dialog — now narrows to the current client.
+- **A subscription created without a next-invoice date was silently never invoiced.** The "Volgende factuur" field is gone from the create modal (there is nothing to anchor it against yet); the date is now derived on the first transition into active — start date plus one billing period — for create-as-active, the edit modal, the bulk status action and pre-existing empty drafts alike. An explicitly set date is never overwritten.
+- **Portal clients no longer pass for staff.** The team list (Instellingen → Gebruikers) hides portal logins, and every assignee/staff picker stops offering them — only memberships holding a non-client role are pickable.
+- **A portal login could read the org's whole address book.** Contacts carry no direct client link, so the portal's company horizon never filtered them; they are now scoped through their company links like every other portal read.
+
+### Upgrade notes
+
+- No database migration; API and web only. Rollback to v0.16.0 is safe.
+
 ## v0.16.0 — 2026-07-20
 
 ### Added

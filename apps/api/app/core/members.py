@@ -27,7 +27,12 @@ from app.core.auth.users import get_user_manager
 from app.core.email.service import email_configured
 from app.core.models import Membership
 from app.core.permissions import audit
-from app.core.permissions.catalog import PRIVILEGE_ORDER, ROLE_OWNER, permission_keys
+from app.core.permissions.catalog import (
+    PRIVILEGE_ORDER,
+    ROLE_CLIENT,
+    ROLE_OWNER,
+    permission_keys,
+)
 from app.core.permissions.deps import no_permission_required, require_permission
 from app.core.permissions.models import MembershipRole
 from app.core.permissions.models import Role as RoleRow
@@ -42,6 +47,7 @@ from app.core.permissions.service import (
     role_manager_count,
     set_membership_roles,
 )
+from app.core.portal import portal_user_ids
 from app.core.tenancy import RequestContext, require_context
 from app.errors import AppError
 
@@ -169,6 +175,12 @@ async def ensure_a_role_manager_remains(ctx: RequestContext) -> None:
     dependencies=[require_permission("members.member.read")],
 )
 async def list_members(ctx: RequestContext = Depends(require_context)) -> list[MemberRead]:
+    """The team, for Instellingen → Gebruikers — **staff only**.
+
+    A contact-linked portal membership (#193) is managed from its contact's portal section;
+    listing it here invites role/2FA/revoke actions that belong there. Directly-invited
+    ``client``-role members (no contact link) stay listed — hiding them would orphan them.
+    """
     rows = (
         await ctx.session.execute(
             select(Membership, User)
@@ -177,6 +189,8 @@ async def list_members(ctx: RequestContext = Depends(require_context)) -> list[M
             .order_by(User.email.asc())
         )
     ).all()
+    portal = await portal_user_ids(ctx.session, ctx.org.id, {u.id for _, u in rows})
+    rows = [(m, u) for m, u in rows if u.id not in portal]
     # One grouped query for the whole team, not one per member (docs/PERFORMANCE.md).
     held: dict[uuid.UUID, list[uuid.UUID]] = {}
     for membership_id, role_id in await ctx.session.execute(
@@ -220,9 +234,21 @@ async def lookup_members(
             "everyone in the org."
         ),
     ),
+    include_clients: bool = Query(
+        False,
+        description=(
+            "Also return client-role memberships (portal users). Off by default: every picker "
+            "built on this endpoint means *staff*."
+        ),
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> list[MemberLookup]:
-    """Name/email of org members, for assignee/approver pickers. Open to every member.
+    """Name/email of org **staff**, for assignee/approver pickers. Open to every member.
+
+    A portal-enabled contact holds a membership too (`client` system role, issue #221), but a
+    client is not a colleague: by default only memberships holding at least one non-``client``
+    role appear, so portal users never surface as assignees. ``include_clients=true`` is the
+    explicit opt-in for a picker that genuinely means "everyone with an account".
 
     Filtering by ``permission`` is what stops a picker from offering people who could never do
     the thing being picked. It is one indexed, ``DISTINCT`` query: a user holding two granting
@@ -234,6 +260,17 @@ async def lookup_members(
         .where(Membership.org_id == ctx.org.id)
         .order_by(User.full_name.asc().nulls_last(), User.email.asc())
     )
+    if not include_clients:
+        stmt = stmt.where(
+            Membership.id.in_(
+                select(MembershipRole.membership_id)
+                .join(RoleRow, RoleRow.id == MembershipRole.role_id)
+                .where(
+                    MembershipRole.org_id == ctx.org.id,
+                    RoleRow.key != ROLE_CLIENT,
+                )
+            )
+        )
     if permission is not None:
         if permission not in set(permission_keys()):
             raise AppError(

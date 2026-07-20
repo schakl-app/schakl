@@ -573,16 +573,20 @@
           >
           <DateInput name="start_date" id="sub-start" required value={editing?.start_date ?? ""} />
         </div>
-        <div>
-          <label for="sub-next" class="mb-1 block text-sm font-medium text-text"
-            >{t("subscriptions.field.next_invoice")}</label
-          >
-          <DateInput
-            name="next_invoice_date"
-            id="sub-next"
-            value={editing?.next_invoice_date ?? ""}
-          />
-        </div>
+        <!-- Edit only (#223): on create there is nothing to anchor a "next invoice" against —
+             the API derives the first cycle boundary (start + one period) on activation. -->
+        {#if editing}
+          <div>
+            <label for="sub-next" class="mb-1 block text-sm font-medium text-text"
+              >{t("subscriptions.field.next_invoice")}</label
+            >
+            <DateInput
+              name="next_invoice_date"
+              id="sub-next"
+              value={editing?.next_invoice_date ?? ""}
+            />
+          </div>
+        {/if}
       </div>
       <div>
         <span class="mb-1 block text-sm font-medium text-text"

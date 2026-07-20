@@ -159,7 +159,8 @@ class Subscription(
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     #: When the next ``subscription.due`` fires; the cron advances it by the interval. NULL on
-    #: drafts (nothing to invoice yet).
+    #: drafts (nothing to invoice yet). Left unset by the operator, the first activation
+    #: derives it as ``start_date`` + one period (#223) — the create form doesn't ask for it.
     next_invoice_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     #: Hours of work the fee includes per period; consumption is measured against the time
     #: logged on the *linked* projects (the same aggregate every budget bar reads, #25).

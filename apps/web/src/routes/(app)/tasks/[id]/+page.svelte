@@ -3,6 +3,7 @@
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
+  import { editIntent } from "$lib/core/edit-intent";
   import { fmtDateTime, fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
@@ -176,7 +177,9 @@
   // is changing what the task *is*: title, description, relations, due/priority, labels,
   // recurrence, checklist structure, links and file attachments. Empty structural sections
   // don't render in use mode at all — their create forms live behind the pencil.
-  let editMode = $state(false);
+  // Arriving with the `?edit=1` marker (#78; a fresh create lands here with it, #230) opens
+  // edit mode once — never for a portal login, whose surface is use-only.
+  let editMode = $state(editIntent() && !(page.data.user?.isPortal ?? false));
   let confirmDelete = $state(false);
   // Inline create from the relation pickers (#115, docs/UX.md — per-picker definition of
   // done): the dialog posts to ?/createCompany / ?/createProject and the new record

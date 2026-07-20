@@ -3697,7 +3697,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Members */
+        /**
+         * List Members
+         * @description The team, for Instellingen → Gebruikers — **staff only**.
+         *
+         *     A contact-linked portal membership (#193) is managed from its contact's portal section;
+         *     listing it here invites role/2FA/revoke actions that belong there. Directly-invited
+         *     ``client``-role members (no contact link) stay listed — hiding them would orphan them.
+         */
         get: operations["list_members_api_v1_members_get"];
         put?: never;
         post?: never;
@@ -3733,7 +3740,12 @@ export interface paths {
         };
         /**
          * Lookup Members
-         * @description Name/email of org members, for assignee/approver pickers. Open to every member.
+         * @description Name/email of org **staff**, for assignee/approver pickers. Open to every member.
+         *
+         *     A portal-enabled contact holds a membership too (`client` system role, issue #221), but a
+         *     client is not a colleague: by default only memberships holding at least one non-``client``
+         *     role appear, so portal users never surface as assignees. ``include_clients=true`` is the
+         *     explicit opt-in for a picker that genuinely means "everyone with an account".
          *
          *     Filtering by ``permission`` is what stops a picker from offering people who could never do
          *     the thing being picked. It is one indexed, ``DISTINCT`` query: a user holding two granting
@@ -11120,6 +11132,26 @@ export interface components {
             /** @default active */
             status: components["schemas"]["ProjectStatus"];
         };
+        /**
+         * ProjectHoursSource
+         * @description A subscription this project's hour budget derives from (issue #225).
+         *
+         *     ``included_hours`` is per the subscription's own billing interval; ``monthly_hours`` is
+         *     its monthly equivalent — the figure the derived budget sums.
+         */
+        ProjectHoursSource: {
+            /** Included Hours */
+            included_hours: number;
+            /** Monthly Hours */
+            monthly_hours: number;
+            /** Name */
+            name: string;
+            /**
+             * Subscription Id
+             * Format: uuid
+             */
+            subscription_id: string;
+        };
         /** ProjectRead */
         ProjectRead: {
             /** Assignees */
@@ -11138,6 +11170,8 @@ export interface components {
              * @default total
              */
             budget_period: string;
+            /** Budget Sources */
+            budget_sources?: components["schemas"]["ProjectHoursSource"][];
             /** Color */
             color?: string | null;
             /** Company Id */
@@ -23388,6 +23422,8 @@ export interface operations {
             query?: {
                 /** @description Only members who hold this permission at some scope — e.g. `tasks.task.write` for an assignee picker, `leave.request.approve` for an approver picker. Omit for everyone in the org. */
                 permission?: string | null;
+                /** @description Also return client-role memberships (portal users). Off by default: every picker built on this endpoint means *staff*. */
+                include_clients?: boolean;
             };
             header?: never;
             path?: never;
