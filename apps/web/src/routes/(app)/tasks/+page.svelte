@@ -14,10 +14,7 @@
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
-  import DateInput from "$lib/core/ui/DateInput.svelte";
-  import Modal from "$lib/core/ui/Modal.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
-  import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import { TASK_COLUMNS } from "$lib/modules/tasks/columns";
   import { labelChipClass } from "$lib/modules/tasks/labels";
   import {
@@ -34,13 +31,9 @@
 
   type Task = (typeof data.tasks)[number];
 
-  // Quick-create from a client page (?new=1&company_id=): the form opens with the client set.
-  let showCreate = $state(page.url.searchParams.has("new"));
   let deleteId = $state("");
   let confirmDelete = $state(false);
-  const userId = $derived(page.data.user?.id ?? "");
 
-  const priorities = ["low", "normal", "high"] as const;
   const dueOptions = ["overdue", "today", "week"] as const;
 
   const today = new Date().toISOString().slice(0, 10);
@@ -104,35 +97,6 @@
     data.members.map((m) => ({ value: m.user_id, label: m.full_name || m.email })),
   );
 
-  // Create-form state: the project pick narrows to that project's client automatically.
-  let fCompany = $state(page.url.searchParams.get("company_id") ?? "");
-  let fProject = $state("");
-  const createProjects = $derived(
-    fCompany
-      ? data.projects.filter((p) => p.company_id === fCompany || !p.company_id)
-      : data.projects,
-  );
-  function onProjectPicked(projectId: string) {
-    const project = data.projects.find((p) => p.id === projectId);
-    if (project?.company_id) fCompany = project.company_id;
-  }
-
-  // Inline create from the pickers (#115, docs/UX.md — per-picker definition of done): the
-  // dialog posts to ?/createCompany / ?/createProject and the new record auto-selects here.
-  let qcCompanyOpen = $state(false);
-  let qcCompanyName = $state("");
-  let qcProjectOpen = $state(false);
-  let qcProjectName = $state("");
-  $effect(() => {
-    const created = form?.inlineCreated;
-    if (created?.slot === "company") fCompany = created.id;
-    if (created?.slot === "project") {
-      fProject = created.id;
-      // Same narrowing a manual pick applies: adopt the new project's client.
-      onProjectPicked(created.id);
-    }
-  });
-
   function setFilter(key: string, value: string) {
     const url = new URL(page.url);
     if (value) url.searchParams.set(key, value);
@@ -145,9 +109,6 @@
   // the actual tasks a full screen down. Open when arriving with a filter in the URL.
   // svelte-ignore state_referenced_locally
   let showFilters = $state(Object.values(data.filters).some(Boolean));
-
-  const inputClass =
-    "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
 
 <svelte:head>
@@ -168,13 +129,18 @@
       {/if}
     </p>
   </div>
-  <button
-    class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-    onclick={() => (showCreate = !showCreate)}
-  >
-    {t("tasks.new")}
-  </button>
+  <!-- Create-then-edit (#230): the server creates a minimal task and redirects to its detail
+       page in edit mode — creating and editing share one surface (docs/UX.md Principle 3). -->
+  <form method="POST" action="?/create" use:enhance>
+    <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+      {t("tasks.new")}
+    </button>
+  </form>
 </div>
+
+{#if form?.error}
+  <p class="mb-4 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
+{/if}
 
 <!-- Filter bar. Collapsed behind one toggle below `sm` (docs/UX.md: a phone is not a smaller
      desktop) — always expanded from `sm` up. -->
@@ -251,103 +217,6 @@
     >
   {/if}
 </div>
-
-{#if showCreate}
-  <form
-    method="POST"
-    action="?/create"
-    use:enhance={() =>
-      ({ update }) => {
-        void update().then(() => (showCreate = false));
-      }}
-    class="mb-6 rounded-xl border border-border bg-surface-raised p-4"
-  >
-    <div class="grid gap-3 sm:grid-cols-2">
-      <div class="sm:col-span-2">
-        <label for="title" class="mb-1 block text-sm font-medium text-text"
-          >{t("tasks.field.title")}</label
-        >
-        <input id="title" name="title" required class={inputClass} />
-      </div>
-      <div class="sm:col-span-2">
-        <label for="description" class="mb-1 block text-sm font-medium text-text"
-          >{t("tasks.field.description")}</label
-        >
-        <textarea id="description" name="description" rows="2" class={inputClass}></textarea>
-      </div>
-      <div>
-        <label for="create-project" class="mb-1 block text-sm font-medium text-text"
-          >{t("tasks.field.project")}</label
-        >
-        <Combobox
-          items={createProjects.map((p) => ({ value: p.id, label: p.name }))}
-          name="project_id"
-          bind:value={fProject}
-          id="create-project"
-          onselect={onProjectPicked}
-          oncreate={(name) => {
-            qcProjectName = name;
-            qcProjectOpen = true;
-          }}
-        />
-      </div>
-      <div>
-        <label for="create-company" class="mb-1 block text-sm font-medium text-text"
-          >{t("tasks.field.company")}</label
-        >
-        <Combobox
-          items={companyItems}
-          name="company_id"
-          bind:value={fCompany}
-          id="create-company"
-          oncreate={(name) => {
-            qcCompanyName = name;
-            qcCompanyOpen = true;
-          }}
-        />
-        <label class="mt-2 flex items-center gap-2 text-sm text-text">
-          <input type="checkbox" name="visible_to_client" value="true" />
-          {t("tasks.field.visible_to_client")}
-        </label>
-      </div>
-      <div>
-        <label for="create-assignee" class="mb-1 block text-sm font-medium text-text"
-          >{t("tasks.field.assignee")}</label
-        >
-        <Combobox items={memberItems} name="assignee_user_id" value={userId} id="create-assignee" />
-      </div>
-      <div class="grid grid-cols-2 gap-3">
-        <div>
-          <label for="priority" class="mb-1 block text-sm font-medium text-text"
-            >{t("tasks.field.priority")}</label
-          >
-          <select id="priority" name="priority" class={inputClass}>
-            {#each priorities as p (p)}
-              <option value={p} selected={p === "normal"}>{t(`tasks.priority.${p}`)}</option>
-            {/each}
-          </select>
-        </div>
-        <div>
-          <label for="due_date" class="mb-1 block text-sm font-medium text-text"
-            >{t("tasks.field.due_date")}</label
-          >
-          <DateInput id="due_date" name="due_date" />
-        </div>
-      </div>
-    </div>
-    {#if form?.error}<p class="mt-2 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
-    <div class="mt-4 flex gap-2">
-      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >{t("common.save")}</button
-      >
-      <button
-        type="button"
-        class="rounded-lg border border-border px-4 py-2 text-sm"
-        onclick={() => (showCreate = false)}>{t("common.cancel")}</button
-      >
-    </div>
-  </form>
-{/if}
 
 <!-- Cells. The complete toggle stays a real <form> inside its <td>: it works with no JS, and
      `use:enhance` only upgrades it. Everything else that used to be a badge on `TaskRow` is now
@@ -542,78 +411,3 @@
   action="?/delete"
   fields={{ id: deleteId }}
 />
-
-<CompanyQuickCreate
-  bind:open={qcCompanyOpen}
-  name={qcCompanyName}
-  definitions={data.companyDefinitions}
-  locale={data.locale}
-  error={form?.qcError ?? null}
-/>
-
-<!-- Inline project create from the form's picker (docs/UX.md — per-picker definition of done). -->
-<Modal bind:open={qcProjectOpen} title={t("time.quick_create.project")}>
-  {#key qcProjectName + String(qcProjectOpen)}
-    <form
-      method="POST"
-      action="?/createProject"
-      use:enhance={() =>
-        ({ result, update }) => {
-          if (result.type === "success") qcProjectOpen = false;
-          void update({ reset: false });
-        }}
-      class="space-y-3"
-    >
-      <div>
-        <label for="qc-task-project-name" class="mb-1 block text-sm font-medium text-text"
-          >{t("projects.field.name")}</label
-        >
-        <input
-          id="qc-task-project-name"
-          name="name"
-          value={qcProjectName}
-          required
-          class={inputClass}
-        />
-      </div>
-      <div>
-        <label for="qc-task-project-company" class="mb-1 block text-sm font-medium text-text"
-          >{t("projects.field.company")}</label
-        >
-        <Combobox
-          items={companyItems}
-          name="company_id"
-          value={fCompany}
-          id="qc-task-project-company"
-          placeholder={t("projects.field.company")}
-        />
-      </div>
-      <div>
-        <label for="qc-task-project-rate" class="mb-1 block text-sm font-medium text-text"
-          >{t("projects.field.hourly_rate")}</label
-        >
-        <input
-          id="qc-task-project-rate"
-          name="hourly_rate"
-          type="number"
-          min="0"
-          step="0.01"
-          class={inputClass}
-        />
-      </div>
-      {#if form?.qcError}
-        <p class="text-sm text-red-600 dark:text-red-400">{t(form.qcError)}</p>
-      {/if}
-      <div class="flex justify-end gap-2">
-        <button
-          type="button"
-          class="rounded-lg border border-border px-4 py-2 text-sm text-text"
-          onclick={() => (qcProjectOpen = false)}>{t("common.cancel")}</button
-        >
-        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-          >{t("common.create")}</button
-        >
-      </div>
-    </form>
-  {/key}
-</Modal>

@@ -467,6 +467,7 @@
   "tasks.title": "Taken",
   "tasks.singular": "Taak",
   "tasks.new": "Nieuwe taak",
+  "tasks.untitled": "Naamloze taak",
   "tasks.count": "Totaal: {count}",
   "tasks.empty": "Nog geen taken",
   "tasks.empty_hint": "Maak je eerste taak aan om te beginnen.",

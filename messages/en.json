@@ -467,6 +467,7 @@
   "tasks.title": "Tasks",
   "tasks.singular": "Task",
   "tasks.new": "New task",
+  "tasks.untitled": "Untitled task",
   "tasks.count": "Total: {count}",
   "tasks.empty": "No tasks yet",
   "tasks.empty_hint": "Create your first task to get started.",

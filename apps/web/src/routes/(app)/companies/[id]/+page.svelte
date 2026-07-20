@@ -102,12 +102,19 @@
           {t("interactions.add")}
         </button>
       {/if}
-      <a
-        href={`/tasks?company_id=${company.id}`}
-        class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"
-      >
-        {t("companies.actions.new_task")}
-      </a>
+      {#if can(page.data.user, "tasks.task.create")}
+        <!-- Create-then-edit (#230): a POST that makes a minimal task pre-linked to this client
+             and lands on its detail page in edit mode — never a link, which would create on
+             hover-preload. -->
+        <form method="POST" action="/tasks?/create" use:enhance>
+          <input type="hidden" name="company_id" value={company.id} />
+          <button
+            class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"
+          >
+            {t("companies.actions.new_task")}
+          </button>
+        </form>
+      {/if}
       <a
         href="/time"
         class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"

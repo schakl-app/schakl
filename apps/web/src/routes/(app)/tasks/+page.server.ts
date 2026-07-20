@@ -1,7 +1,8 @@
-import { fail } from "@sveltejs/kit";
+import { fail, redirect } from "@sveltejs/kit";
 
+import { editHref } from "$lib/core/edit-intent";
 import { apiErrorKey } from "$lib/core/errors";
-import { createCompanyAction } from "$lib/core/quickcreate.server";
+import { t } from "$lib/core/i18n";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
@@ -31,22 +32,15 @@ export const load: PageServerLoad = async (event) => {
   const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
 
   // Lookups (companies/projects/labels/members) come from the /tasks layout load.
-  const [{ data: tasks }, { data: companyDefinitions }] = await Promise.all([
-    api.GET("/api/v1/tasks", {
-      params: { query: { limit: 200, offset: 0, sort, ...filters } },
-    }),
-    // For the inline company quick-create (#115): the full dialog includes custom fields.
-    api.GET("/api/v1/custom-fields/definitions", {
-      params: { query: { entity_type: "company" } },
-    }),
-  ]);
+  const { data: tasks } = await api.GET("/api/v1/tasks", {
+    params: { query: { limit: 200, offset: 0, sort, ...filters } },
+  });
 
   return {
     tasks: tasks?.items ?? [],
     total: tasks?.total ?? 0,
     filters,
     table: { pref, sort: sort ?? null, widths: resolved.widths },
-    companyDefinitions: companyDefinitions ?? [],
   };
 };
 
@@ -58,28 +52,32 @@ export const actions: Actions = {
     return { tableSaved: true };
   },
 
+  /**
+   * Create-then-edit (#230, docs/UX.md Principle 3): a new task is created minimal —
+   * placeholder title, assigned to its creator, optionally pre-linked to the client/project
+   * the entry point knew — and the user lands on the detail page in edit mode (#78's
+   * `?edit=1` marker), the one surface where a task's definition is edited. No inline
+   * creation form duplicates those fields anymore.
+   */
   create: async (event) => {
     const form = await event.request.formData();
-    const title = String(form.get("title") ?? "").trim();
-    if (!title) return fail(400, { error: "errors.required" });
-
-    const { error } = await apiFor(event).POST("/api/v1/tasks", {
+    const { data, error } = await apiFor(event).POST("/api/v1/tasks", {
       body: {
-        title,
-        description: String(form.get("description") ?? "").trim() || null,
+        // The API requires a non-empty title; the placeholder is stored in the creator's
+        // locale and replaced the moment they type a real one on the detail page.
+        title: t("tasks.untitled"),
         // Status is omitted so the API assigns the org's default status (issue #62).
-        priority: String(form.get("priority") ?? "normal") as "low" | "normal" | "high",
+        priority: "normal",
         company_id: String(form.get("company_id") ?? "").trim() || null,
         project_id: String(form.get("project_id") ?? "").trim() || null,
-        assignee_user_id: String(form.get("assignee_user_id") ?? "").trim() || null,
-        due_date: String(form.get("due_date") ?? "").trim() || null,
+        assignee_user_id: event.locals.user?.id ?? null,
         // New tasks don't demand a closing contact moment; toggled later on the task page (#157).
         requires_interaction: false,
-        visible_to_client: form.get("visible_to_client") === "true",
+        visible_to_client: false,
       },
     });
-    if (error) return fail(400, { error: apiErrorKey(error).key });
-    return { created: true };
+    if (error || !data) return fail(400, { error: apiErrorKey(error).key });
+    throw redirect(303, editHref(`/tasks/${data.id}`));
   },
 
   toggle: async (event) => {
@@ -106,29 +104,4 @@ export const actions: Actions = {
     }
     return { deleted: true };
   },
-
-  /** Inline project create from the form's picker (docs/UX.md — per-picker definition of
-   *  done). Returns `inlineCreated` so the page auto-selects the new project. */
-  createProject: async (event) => {
-    const form = await event.request.formData();
-    const name = String(form.get("name") ?? "").trim();
-    if (!name) return fail(400, { qcError: "errors.required" });
-    const rate = Number(String(form.get("hourly_rate") ?? "").trim());
-    const { data, error } = await apiFor(event).POST("/api/v1/projects", {
-      body: {
-        name,
-        company_id: String(form.get("company_id") ?? "").trim() || null,
-        status: "active",
-        budget_period: "total",
-        currency: event.locals.theme.currency,
-        billable_default: true,
-        hourly_rate: Number.isFinite(rate) && rate > 0 ? rate : null,
-        custom: {},
-      },
-    });
-    if (error || !data) return fail(400, { qcError: apiErrorKey(error).key });
-    return { inlineCreated: { slot: "project", id: data.id, name: data.name } };
-  },
-
-  createCompany: createCompanyAction,
 };
