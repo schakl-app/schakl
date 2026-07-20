@@ -49,6 +49,9 @@
       ? `${data.theme.appIconUrl}?size=180`
       : "/icons/apple-touch-icon.png"}
   />
+  <!-- Both spellings: the generic one is the standard (Chrome warns without it), the
+       apple- one is still what iOS Safari reads. -->
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   {#if data.theme.brandName}
