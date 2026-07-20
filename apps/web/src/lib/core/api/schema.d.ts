@@ -3733,7 +3733,12 @@ export interface paths {
         };
         /**
          * Lookup Members
-         * @description Name/email of org members, for assignee/approver pickers. Open to every member.
+         * @description Name/email of org **staff**, for assignee/approver pickers. Open to every member.
+         *
+         *     A portal-enabled contact holds a membership too (`client` system role, issue #221), but a
+         *     client is not a colleague: by default only memberships holding at least one non-``client``
+         *     role appear, so portal users never surface as assignees. ``include_clients=true`` is the
+         *     explicit opt-in for a picker that genuinely means "everyone with an account".
          *
          *     Filtering by ``permission`` is what stops a picker from offering people who could never do
          *     the thing being picked. It is one indexed, ``DISTINCT`` query: a user holding two granting
@@ -23388,6 +23393,8 @@ export interface operations {
             query?: {
                 /** @description Only members who hold this permission at some scope — e.g. `tasks.task.write` for an assignee picker, `leave.request.approve` for an approver picker. Omit for everyone in the org. */
                 permission?: string | null;
+                /** @description Also return client-role memberships (portal users). Off by default: every picker built on this endpoint means *staff*. */
+                include_clients?: boolean;
             };
             header?: never;
             path?: never;

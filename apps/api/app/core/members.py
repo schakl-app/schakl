@@ -27,7 +27,12 @@ from app.core.auth.users import get_user_manager
 from app.core.email.service import email_configured
 from app.core.models import Membership
 from app.core.permissions import audit
-from app.core.permissions.catalog import PRIVILEGE_ORDER, ROLE_OWNER, permission_keys
+from app.core.permissions.catalog import (
+    PRIVILEGE_ORDER,
+    ROLE_CLIENT,
+    ROLE_OWNER,
+    permission_keys,
+)
 from app.core.permissions.deps import no_permission_required, require_permission
 from app.core.permissions.models import MembershipRole
 from app.core.permissions.models import Role as RoleRow
@@ -220,9 +225,21 @@ async def lookup_members(
             "everyone in the org."
         ),
     ),
+    include_clients: bool = Query(
+        False,
+        description=(
+            "Also return client-role memberships (portal users). Off by default: every picker "
+            "built on this endpoint means *staff*."
+        ),
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> list[MemberLookup]:
-    """Name/email of org members, for assignee/approver pickers. Open to every member.
+    """Name/email of org **staff**, for assignee/approver pickers. Open to every member.
+
+    A portal-enabled contact holds a membership too (`client` system role, issue #221), but a
+    client is not a colleague: by default only memberships holding at least one non-``client``
+    role appear, so portal users never surface as assignees. ``include_clients=true`` is the
+    explicit opt-in for a picker that genuinely means "everyone with an account".
 
     Filtering by ``permission`` is what stops a picker from offering people who could never do
     the thing being picked. It is one indexed, ``DISTINCT`` query: a user holding two granting
@@ -234,6 +251,17 @@ async def lookup_members(
         .where(Membership.org_id == ctx.org.id)
         .order_by(User.full_name.asc().nulls_last(), User.email.asc())
     )
+    if not include_clients:
+        stmt = stmt.where(
+            Membership.id.in_(
+                select(MembershipRole.membership_id)
+                .join(RoleRow, RoleRow.id == MembershipRole.role_id)
+                .where(
+                    MembershipRole.org_id == ctx.org.id,
+                    RoleRow.key != ROLE_CLIENT,
+                )
+            )
+        )
     if permission is not None:
         if permission not in set(permission_keys()):
             raise AppError(

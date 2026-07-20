@@ -194,6 +194,28 @@ async def test_portal_user_excluded_from_notification_fanout(client_for) -> None
     assert portal_user.id not in kept
 
 
+async def test_portal_user_excluded_from_staff_pickers(client_for) -> None:
+    """#221: enabling the portal grants a `client` membership, but a client is not staff — the
+    contact must not surface in the assignee/staff pickers fed by /members/lookup. Not even a
+    permission-filtered lookup may leak them: the portal defaults grant marketing.metrics.read,
+    so that filter alone would have matched."""
+    t, headers, contact, _ = await _tenant_with_contact(client_for, "portal-picker")
+    async with client_for(t.host) as c:
+        await c.post(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)
+
+        lookup = (await c.get("/api/v1/members/lookup", headers=headers)).json()
+        emails = {m["email"] for m in lookup}
+        assert contact["email"] not in emails
+        assert t.user.email in emails
+
+        filtered = await c.get(
+            "/api/v1/members/lookup",
+            params={"permission": "marketing.metrics.read"},
+            headers=headers,
+        )
+        assert contact["email"] not in {m["email"] for m in filtered.json()}
+
+
 async def test_portal_state_is_tenant_scoped(client_for) -> None:
     t, headers, contact, _ = await _tenant_with_contact(client_for, "portal-iso")
     other = await make_tenant("portal-iso-other")

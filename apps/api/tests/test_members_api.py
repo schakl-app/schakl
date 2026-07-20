@@ -196,6 +196,28 @@ async def test_lookup_open_to_plain_members(client_for) -> None:
         assert set(rows[0].keys()) == {"user_id", "full_name", "email", "avatar_url"}
 
 
+async def test_lookup_is_staff_only(client_for) -> None:
+    """#221: a `client`-role membership (a portal user) is not a colleague — it never surfaces
+    in the pickers built on /members/lookup; `include_clients=true` is the explicit opt-in."""
+    t = await make_tenant("mem-lookup-staff")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        await c.post(
+            "/api/v1/members/invite",
+            json={"email": "portal@example.com", "role": "client"},
+            headers=headers,
+        )
+        lookup = (await c.get("/api/v1/members/lookup", headers=headers)).json()
+        emails = {m["email"] for m in lookup}
+        assert "portal@example.com" not in emails
+        assert t.user.email in emails
+
+        both = await c.get(
+            "/api/v1/members/lookup", params={"include_clients": "true"}, headers=headers
+        )
+        assert "portal@example.com" in {m["email"] for m in both.json()}
+
+
 async def test_invite_reports_missing_email_transport(client_for) -> None:
     """#161: the invite stands, but a missing org transport is said out loud — the settings
     hint used to point at a mail that could never be sent."""
