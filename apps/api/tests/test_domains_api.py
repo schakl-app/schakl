@@ -112,6 +112,45 @@ async def test_domain_redirect_url_create_and_update(client_for) -> None:
         assert bad.status_code == 422
 
 
+async def test_domain_name_normalized_to_root(client_for) -> None:
+    """A pasted URL or a habitual "www." stores the bare root domain (schemas.py)."""
+    t = await make_tenant("dom-norm")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = await _company(c, headers)
+
+        created = await c.post(
+            "/api/v1/domains",
+            json={"name": "https://www.Example.NL/pagina?x=1", "company_id": company},
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        assert created.json()["name"] == "example.nl"
+
+        # The normalized form collides with what "www.example.nl" reduces to.
+        dup = await c.post(
+            "/api/v1/domains",
+            json={"name": "www.example.nl", "company_id": company},
+            headers=headers,
+        )
+        assert dup.status_code == 409
+
+        # Update normalizes the same way.
+        patched = await c.patch(
+            f"/api/v1/domains/{created.json()['id']}",
+            json={"name": "WWW.Nieuw.NL."},
+            headers=headers,
+        )
+        assert patched.status_code == 200, patched.text
+        assert patched.json()["name"] == "nieuw.nl"
+
+        # A value that strips to nothing is a validation error, not an empty row.
+        empty = await c.post(
+            "/api/v1/domains", json={"name": "www.", "company_id": company}, headers=headers
+        )
+        assert empty.status_code == 422
+
+
 async def test_domain_rejects_wrong_provider_kind(client_for) -> None:
     t = await make_tenant("dom-kind")
     headers = await auth_cookie(t.user)
