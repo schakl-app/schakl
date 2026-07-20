@@ -7,7 +7,7 @@
   import { page } from "$app/state";
   import { fmtDayMonth, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
-  import { pageTitle } from "$lib/core/title";
+  import { navLabel, pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
@@ -96,7 +96,6 @@
   const companyName = (id?: string | null) => data.companies.find((c) => c.id === id)?.name ?? "";
   const isOverdue = (task: Task) => !isDone(task) && !!task.due_date && task.due_date < today;
 
-
   const companyItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
   const projectItems = $derived(data.projects.map((p) => ({ value: p.id, label: p.name })));
   const memberItems = $derived(
@@ -134,14 +133,14 @@
 </script>
 
 <svelte:head>
-  <title>{pageTitle(t("tasks.title"))}</title>
+  <title>{pageTitle(navLabel("tasks", t("tasks.title")))}</title>
 </svelte:head>
 
 <TasksNav />
 
 <div class="mb-6 flex items-center justify-between">
   <div>
-    <h1 class="text-xl font-semibold text-text">{t("tasks.title")}</h1>
+    <h1 class="text-xl font-semibold text-text">{navLabel("tasks", t("tasks.title"))}</h1>
     <p class="mt-1 text-sm text-text-muted">
       {t("tasks.count", { count: data.total })}
       {#if overdueCount > 0}

@@ -8,7 +8,7 @@
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import GoogleAccountCard from "$lib/modules/google/GoogleAccountCard.svelte";
   import NavPrefEditor from "$lib/core/ui/NavPrefEditor.svelte";
-  import { navItemsFor } from "$lib/core/registry";
+  import { navItemsFor, resolveLabel, type NavLabelMap } from "$lib/core/registry";
 
   let { data, form } = $props();
 
@@ -30,11 +30,21 @@
   );
   const sampleTime = $derived(data.currentFormat.clock === "12h" ? "2:05 PM" : "14:05");
 
-  // Personal sidebar layout (#169): the module items this person can see, in effective order.
+  // Personal sidebar layout (#169): the module items this person can see, in declared order (not
+  // filtered by the personal pref — the editor must still offer hidden items to unhide). The row
+  // text shows the org's custom label when set, resolved by key from the merged nav prefs.
+  const navLabels = $derived(
+    new Map<string, NavLabelMap>(
+      ((page.data.navPref?.items ?? []) as { key: string; label?: NavLabelMap }[]).map((i) => [
+        i.key,
+        i.label,
+      ]),
+    ),
+  );
   const navCandidates = $derived(
     navItemsFor(page.data.theme?.enabledModules ?? [], page.data.user).map((item) => ({
       key: item.key,
-      label: item.label(),
+      label: resolveLabel(navLabels.get(item.key), item.label)(),
     })),
   );
 </script>

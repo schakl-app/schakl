@@ -14,7 +14,7 @@
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
-  import { pageTitle } from "$lib/core/title";
+  import { navLabel, pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
@@ -196,11 +196,13 @@
 </script>
 
 <svelte:head>
-  <title>{pageTitle(t("interactions.title"))}</title>
+  <title>{pageTitle(navLabel("interactions", t("interactions.title")))}</title>
 </svelte:head>
 
 <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-  <h1 class="text-xl font-semibold text-text">{t("interactions.title")}</h1>
+  <h1 class="text-xl font-semibold text-text">
+    {navLabel("interactions", t("interactions.title"))}
+  </h1>
   {#if canWrite}
     <button
       type="button"

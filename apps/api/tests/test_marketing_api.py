@@ -12,11 +12,14 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
+from pwdlib import PasswordHash
 from sqlalchemy import select
 
 from app.core.activity.models import ActivityLog
+from app.core.auth.models import User
 from app.core.crypto import decrypt
 from app.db import async_session_maker, set_current_org
+from app.modules.marketing.layout import SourceLayout, resolve_event_label
 from app.modules.marketing.models import (
     MarketingLink,
     MarketingMetricDaily,
@@ -25,7 +28,27 @@ from app.modules.marketing.models import (
 from app.modules.marketing.service import resolve_ads_developer_token
 from app.modules.marketing.sources import gads
 from app.modules.marketing.sources.ga4 import GA4Adapter
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import add_membership, auth_cookie, make_tenant
+
+_ph = PasswordHash.recommended()
+
+
+async def _add_member(org_id, email: str, role: str = "member") -> User:
+    """A second employee on the same org (a member: reads marketing but cannot manage links)."""
+    async with async_session_maker() as session:
+        user = User(
+            id=uuid.uuid4(),
+            email=email,
+            hashed_password=_ph.hash("secret1234"),
+            is_active=True,
+            is_verified=True,
+        )
+        session.add(user)
+        await session.flush()
+        await set_current_org(session, org_id)
+        await add_membership(session, org_id, user.id, role)
+        await session.commit()
+        return User(id=user.id, email=user.email, hashed_password="", is_active=True)
 
 
 async def _seed_metrics(org_id, link_id: uuid.UUID, rows: dict[date, dict]) -> None:
@@ -852,6 +875,156 @@ async def test_layout_tenant_isolation(client_for) -> None:
             headers=b_headers,
         )
         assert res.status_code == 404
+
+
+async def test_event_labels_roundtrip_and_validation(client_for) -> None:
+    """Per-key-event custom labels (#192): a GA4 layout may relabel events keyed on the GA4
+    ``eventName``; the labels round-trip on the manager's layout payload. Non-GA4 sources reject
+    them, and oversized maps / bad locales / over-long names or labels are 422s like any stray
+    layout key."""
+    t = await make_tenant("mktg-eventlabels")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Events BV"}, headers=headers)
+        ).json()
+        settings_url = f"/api/v1/marketing/companies/{company['id']}/settings"
+
+        # Accept: GA4 event labels, keyed on the eventName, per-locale and optional-per-locale.
+        good = {
+            "sources": {
+                "ga4": {
+                    "tiles": ["keyEvents", "sessions"],
+                    "event_labels": {
+                        "generate_lead": {"nl": "Aanvragen via de website", "en": "Enquiries"},
+                        "purchase": {"nl": "Aankopen"},
+                    },
+                }
+            }
+        }
+        saved = await c.put(settings_url, json={"layout": good}, headers=headers)
+        assert saved.status_code == 200, saved.text
+        stored = saved.json()["layout"]["sources"]["ga4"]["event_labels"]
+        assert stored["generate_lead"]["nl"] == "Aanvragen via de website"
+        assert stored["purchase"] == {"nl": "Aankopen"}
+
+        # The manager's metrics payload echoes the layout (editor reads event_labels from it).
+        body = (
+            await c.get(
+                f"/api/v1/marketing/companies/{company['id']}/metrics",
+                params={"range_days": 30},
+                headers=headers,
+            )
+        ).json()
+        echoed = body["layout"]["sources"]["ga4"]["event_labels"]
+        assert echoed["generate_lead"]["en"] == "Enquiries"
+
+        # Reject: event labels on a non-GA4 source, a bad locale, an over-long label, an
+        # over-long event name, and an oversized map.
+        for bad in (
+            {"sources": {"gsc": {"event_labels": {"click": {"nl": "Kliks"}}}}},
+            {"sources": {"ga4": {"event_labels": {"generate_lead": {"fr": "Prospects"}}}}},
+            {"sources": {"ga4": {"event_labels": {"generate_lead": {"nl": "x" * 81}}}}},
+            {"sources": {"ga4": {"event_labels": {"e" * 101: {"nl": "Naam"}}}}},
+            {
+                "sources": {
+                    "ga4": {
+                        "event_labels": {
+                            f"event_{i}": {"nl": "Naam"} for i in range(51)
+                        }
+                    }
+                }
+            },
+        ):
+            res = await c.put(settings_url, json={"layout": bad}, headers=headers)
+            assert res.status_code == 422, bad
+
+
+def test_resolve_event_label_locale_fallback() -> None:
+    """The requested locale wins, then the other locale (an override is optional per language);
+    a missing/absent event resolves to ``None`` so the caller keeps the raw event name (#192)."""
+    src = SourceLayout(
+        event_labels={"generate_lead": {"nl": "Aanvraag"}, "purchase": {"en": "Purchase"}}
+    )
+    assert resolve_event_label(src, "generate_lead", "nl") == "Aanvraag"
+    # nl-only label still shows for an en viewer (fallback to the other locale), never the raw id.
+    assert resolve_event_label(src, "generate_lead", "en") == "Aanvraag"
+    assert resolve_event_label(src, "purchase", "nl") == "Purchase"
+    assert resolve_event_label(src, "unknown_event", "nl") is None
+    assert resolve_event_label(None, "generate_lead", "nl") is None
+
+
+async def test_hidden_source_omitted_for_client_kept_for_manager(client_for) -> None:
+    """A source marked ``hidden`` (#192) is dropped from the payload for a viewer who cannot
+    manage links (the portal/client) but kept — flagged ``hidden`` — for a manager, so edit mode
+    can list every linked source and re-enable it."""
+    t = await make_tenant("mktg-hidesrc")
+    headers = await auth_cookie(t.user)
+    member = await _add_member(t.org.id, "member@mktg-hidesrc.test")
+    member_headers = await auth_cookie(member)
+    today = date.today()
+
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Hide BV"}, headers=headers)
+        ).json()
+        ga4 = (
+            await c.post(
+                "/api/v1/marketing/links",
+                json={
+                    "company_id": company["id"],
+                    "source": "ga4",
+                    "external_id": "properties/55",
+                    "display_name": "Hide — GA4",
+                },
+                headers=headers,
+            )
+        ).json()
+        gsc = (
+            await c.post(
+                "/api/v1/marketing/links",
+                json={
+                    "company_id": company["id"],
+                    "source": "gsc",
+                    "external_id": "sc-domain:hide.nl",
+                    "display_name": "hide.nl",
+                },
+                headers=headers,
+            )
+        ).json()
+        await _seed_metrics(
+            t.org.id, uuid.UUID(ga4["id"]), {today - timedelta(days=2): {"sessions": 10}}
+        )
+        await _seed_metrics(
+            t.org.id, uuid.UUID(gsc["id"]), {today - timedelta(days=2): {"clicks": 5}}
+        )
+        await _mark_synced(t.org.id, uuid.UUID(ga4["id"]))
+        await _mark_synced(t.org.id, uuid.UUID(gsc["id"]))
+
+        metrics_url = f"/api/v1/marketing/companies/{company['id']}/metrics"
+
+        # Hide the GSC section entirely.
+        put = await c.put(
+            f"/api/v1/marketing/companies/{company['id']}/settings",
+            json={"layout": {"sources": {"gsc": {"hidden": True}}}},
+            headers=headers,
+        )
+        assert put.status_code == 200, put.text
+
+        # Manager: GSC still present, flagged hidden; GA4 present and visible.
+        mgr = (await c.get(metrics_url, params={"range_days": 30}, headers=headers)).json()
+        by_source = {s["source"]: s for s in mgr["sources"]}
+        assert set(by_source) == {"ga4", "gsc"}
+        assert by_source["gsc"]["hidden"] is True
+        assert by_source["ga4"]["hidden"] is False
+
+        # Member (marketing.metrics.read but not link.manage): the hidden source is gone.
+        cli = (
+            await c.get(metrics_url, params={"range_days": 30}, headers=member_headers)
+        ).json()
+        assert [s["source"] for s in cli["sources"]] == ["ga4"]
+        # A member never receives the manager-only layout either.
+        assert cli["layout"] is None
 
 
 async def test_link_attaches_to_client_website(client_for) -> None:

@@ -30,6 +30,8 @@ export const load: LayoutServerLoad = async (event) => {
     user: event.locals.user,
     prefs: prefs.data?.prefs ?? {},
     unreadCount: unread?.data?.count ?? 0,
-    navPref: navPrefs.data ?? { items: null, source: "none" },
+    // Order + visibility, plus the org's custom item/group labels (#169) — resolved by the API
+    // and carried here so the sidebar and every page title can read the tenant's own words.
+    navPref: navPrefs.data ?? { items: null, groups: null, source: "none" },
   };
 };

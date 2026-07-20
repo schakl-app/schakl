@@ -17,8 +17,11 @@
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import PartyPicker from "$lib/core/ui/PartyPicker.svelte";
+  import ProviderQuickCreate from "$lib/core/ui/ProviderQuickCreate.svelte";
+  import { navLabel, pageTitle } from "$lib/core/title";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
+  import DomainQuickCreate from "$lib/modules/domains/DomainQuickCreate.svelte";
   import HostingQuickCreate from "$lib/modules/hosting/HostingQuickCreate.svelte";
 
   type Website = components["schemas"]["WebsiteRead"];
@@ -36,12 +39,19 @@
   // Inline-create over the modal (#115): full dialogs, prefilled with what was typed.
   let qcHostingOpen = $state(false);
   let qcHostingName = $state("");
+  let qcDomainOpen = $state(false);
+  let qcDomainName = $state("");
   let qcCompanyOpen = $state(false);
   let qcCompanyName = $state("");
   let qcCompanySlot = $state("company");
   let qcContactOpen = $state(false);
   let qcContactName = $state("");
   let qcContactSlot = $state("contact");
+  // One provider dialog serves both nested forms — the hosting dialog's provider picker and
+  // the domain dialog's registrar/DNS/email pickers — so it carries the kind that asked.
+  let qcProviderOpen = $state(false);
+  let qcProviderName = $state("");
+  let qcProviderKind = $state<"registrar" | "dns" | "email" | "hosting">("hosting");
 
   function quickCreateCompany(name: string, slot = "company") {
     qcCompanyName = name;
@@ -53,6 +63,11 @@
     qcContactSlot = slot;
     qcContactOpen = true;
   }
+  function quickCreateProvider(kind: "registrar" | "dns" | "email" | "hosting", name: string) {
+    qcProviderKind = kind;
+    qcProviderName = name;
+    qcProviderOpen = true;
+  }
 
   // A domain carries at most one website, so the picker offers only unclaimed domains.
   const takenDomainIds = $derived(new Set(data.websites.map((w) => w.domain_id)));
@@ -63,9 +78,20 @@
       .map((d) => ({ value: d.id, label: d.name })),
   );
   const hostingItems = $derived(data.hosting.map((h) => ({ value: h.id, label: h.name })));
-  const hostingCreated = $derived(
-    form?.inlineCreated?.slot === "hosting_account" ? form.inlineCreated.id : "",
-  );
+  // Inline-created records auto-select per slot and *stay* selected (#115): remembered in a
+  // map, because `form.inlineCreated` only holds the latest create — a derived read straight
+  // off it would clear the domain the moment a hosting account is quick-created after it.
+  // A domain created from the picker: the refreshed load re-lists it as unclaimed, so the
+  // Combobox resolves the id to its label.
+  let createdBySlot = $state<Record<string, string>>({});
+  $effect(() => {
+    const created = form?.inlineCreated;
+    if (created?.id && createdBySlot[created.slot] !== created.id) {
+      createdBySlot = { ...createdBySlot, [created.slot]: created.id };
+    }
+  });
+  const hostingCreated = $derived(createdBySlot["hosting_account"] ?? "");
+  const domainCreated = $derived(createdBySlot["domain"] ?? "");
 
   // Radio selection is component state, never a one-way checked (docs/UX.md).
   let hostChoice = $state<"root" | "www">("root");
@@ -73,11 +99,13 @@
   function openCreate() {
     editing = null;
     hostChoice = "root";
+    createdBySlot = {};
     showModal = true;
   }
   function openEdit(w: Website) {
     editing = w;
     hostChoice = w.root ? "root" : "www";
+    createdBySlot = {};
     showModal = true;
   }
   function requestDelete(id: string) {
@@ -87,12 +115,12 @@
 </script>
 
 <svelte:head>
-  <title>{t("nav.websites")}</title>
+  <title>{pageTitle(navLabel("websites", t("nav.websites")))}</title>
 </svelte:head>
 
 <div class="mb-6 flex flex-wrap items-center justify-between gap-2">
   <div>
-    <h1 class="text-xl font-semibold text-text">{t("nav.websites")}</h1>
+    <h1 class="text-xl font-semibold text-text">{navLabel("websites", t("nav.websites"))}</h1>
     <p class="mt-1 text-sm text-text-muted">{t("websites.count", { count: data.total })}</p>
   </div>
   {#if can(page.data.user, "websites.website.write")}
@@ -172,8 +200,13 @@
             <Combobox
               items={domainItems}
               name="domain_id"
+              value={domainCreated || undefined}
               id="website-domain"
               placeholder={t("websites.field.domain")}
+              oncreate={(name) => {
+                qcDomainName = name;
+                qcDomainOpen = true;
+              }}
             />
             <p class="mt-1 text-xs text-text-muted">{t("websites.domain_hint")}</p>
           </div>
@@ -268,6 +301,27 @@
   definitions={data.hostingDefinitions}
   locale={data.locale}
   error={form?.qcError ?? null}
+  oncreatecompany={quickCreateCompany}
+  oncreatecontact={quickCreateContact}
+  oncreateprovider={quickCreateProvider}
+  created={form?.inlineCreated ?? null}
+/>
+<DomainQuickCreate
+  bind:open={qcDomainOpen}
+  name={qcDomainName}
+  companies={data.companies}
+  providers={data.providers}
+  employees={data.employees}
+  contacts={data.contacts}
+  agencyLabel={data.agencyLabel}
+  definitions={data.domainDefinitions}
+  locale={data.locale}
+  {initialCompanyId}
+  error={form?.qcError ?? null}
+  oncreatecompany={quickCreateCompany}
+  oncreatecontact={quickCreateContact}
+  oncreateprovider={quickCreateProvider}
+  created={form?.inlineCreated ?? null}
 />
 <CompanyQuickCreate
   bind:open={qcCompanyOpen}
@@ -283,6 +337,12 @@
   pickerSlot={qcContactSlot}
   definitions={data.contactDefinitions}
   locale={data.locale}
+  error={form?.qcError ?? null}
+/>
+<ProviderQuickCreate
+  bind:open={qcProviderOpen}
+  kind={qcProviderKind}
+  name={qcProviderName}
   error={form?.qcError ?? null}
 />
 <ConfirmDialog

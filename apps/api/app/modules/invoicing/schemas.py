@@ -270,6 +270,11 @@ class LineWrite(BaseModel):
     #: May be negative: a discount line is an ordinary line with a negative price.
     unit_price: Decimal = Field(default=Decimal(0))
     tax_rate_id: uuid.UUID | None = None
+    #: When a line was prefilled from an unbilled time entry (the new-invoice form), the
+    #: entry it came from — so ``InvoiceService.create`` bills exactly that entry and stamps
+    #: it invoiced. Validated server-side; a stale/foreign id is silently skipped. Ignored by
+    #: quotes and by line snapshotting (it is not a document-line column).
+    time_entry_id: uuid.UUID | None = None
 
     _blank_unit = field_validator("unit", mode="before")(_blank_to_none)
 
@@ -475,6 +480,9 @@ class UnbilledEntry(BaseModel):
     project_id: uuid.UUID | None
     project_name: str = ""
     user_name: str = ""
+    #: The rate that would be billed for this entry: the project's hourly rate, else the
+    #: org default, else 0 — the same chain ``from_time`` applies (minus a per-build override).
+    rate: Decimal = Decimal(0)
 
 
 class UnbilledRead(BaseModel):

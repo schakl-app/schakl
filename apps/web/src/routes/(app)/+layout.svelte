@@ -23,6 +23,7 @@
   import { setContext } from "svelte";
 
   import { page } from "$app/state";
+  import { getLocale } from "$lib/paraglide/runtime";
   import { AI_CONTEXT_KEY, aiEnabled, type AIFeature, type AssistantEntity } from "$lib/core/ai";
   import AssistantPanel from "$lib/core/ai/AssistantPanel.svelte";
   import { breadcrumbsFor } from "$lib/core/breadcrumbs";
@@ -73,6 +74,21 @@
       label: record?.name ?? record?.title ?? null,
     };
   });
+
+  // A group heading shows the org's custom label when set (#169), the tenant's own words for
+  // "Hosting & domeinen", else the declared `nav.group.<key>` i18n string. Same locale fallback
+  // as the item labels (active locale → the other → the declared key).
+  const navGroups = $derived(
+    (page.data.navPref?.groups ?? []) as { key: string; label?: Record<string, string> | null }[],
+  );
+  function groupLabel(key: string): string {
+    const custom = navGroups.find((g) => g.key === key)?.label;
+    const fallback = t(`nav.group.${key}`);
+    if (!custom) return fallback;
+    const loc = getLocale();
+    const other = loc === "nl" ? "en" : "nl";
+    return custom[loc]?.trim() || custom[other]?.trim() || fallback;
+  }
 
   // Grouped nav: a group renders once, where its first item would sit, holding all members.
   type NavEntry =
@@ -223,7 +239,7 @@
             aria-expanded={open}
           >
             <Handshake size={18} class="shrink-0 text-text-muted" />
-            <span class="flex-1 truncate text-left">{t(`nav.group.${entry.key}`)}</span>
+            <span class="flex-1 truncate text-left">{groupLabel(entry.key)}</span>
             {#if open}
               <ChevronDown size={14} class="shrink-0 text-text-muted" />
             {:else}

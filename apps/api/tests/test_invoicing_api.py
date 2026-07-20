@@ -390,6 +390,113 @@ async def test_invoice_from_unbilled_time_and_release(client_for) -> None:
         assert released["total_minutes"] == 120
 
 
+async def test_invoice_create_links_time_entries_by_id(client_for) -> None:
+    """The new-invoice form auto-adds unbilled entries as lines carrying ``time_entry_id``:
+    creating the invoice bills exactly those entries, and an invalid/foreign/already-billed
+    id is silently skipped (never a 500 on the unique constraint)."""
+    tenant: Tenant = await make_tenant("inv-line-time")
+    headers = await auth_cookie(tenant.user)
+    async with client_for(tenant.host) as client:
+        await _setup_org(client, headers)
+        company_id = await _company(client, headers)
+        project = (
+            await client.post(
+                "/api/v1/projects",
+                json={"name": "Retainer", "company_id": company_id, "hourly_rate": 80},
+                headers=headers,
+            )
+        ).json()
+
+        start = datetime.now(UTC) - timedelta(days=1)
+        entry_ids = []
+        for minutes in (60, 30):
+            entry = await client.post(
+                "/api/v1/time/entries",
+                json={
+                    "company_id": company_id,
+                    "project_id": project["id"],
+                    "description": "Ontwerp",
+                    "started_at": start.isoformat(),
+                    "minutes": minutes,
+                    "billable": True,
+                },
+                headers=headers,
+            )
+            assert entry.status_code == 201, entry.text
+            entry_ids.append(entry.json()["id"])
+        await client.post(
+            "/api/v1/time/entries/approve",
+            json={"entry_ids": entry_ids, "approved": True},
+            headers=headers,
+        )
+
+        # The unbilled preview now carries a resolved per-entry rate (project's €80).
+        unbilled = (
+            await client.get(
+                f"/api/v1/invoicing/unbilled?company_id={company_id}", headers=headers
+            )
+        ).json()
+        assert len(unbilled["entries"]) == 2
+        assert all(e["rate"] == "80.00" for e in unbilled["entries"])
+
+        # Create with two valid time-entry lines plus a foreign id and a plain line: all
+        # lines land, but only the two real entries get billed; the bogus id is skipped.
+        created = await client.post(
+            "/api/v1/invoicing/invoices",
+            json={
+                "company_id": company_id,
+                "lines": [
+                    {"description": "Ontwerp 1", "quantity": "1", "unit_price": "80",
+                     "time_entry_id": entry_ids[0]},
+                    {"description": "Ontwerp 2", "quantity": "0.5", "unit_price": "80",
+                     "time_entry_id": entry_ids[1]},
+                    {"description": "Los", "quantity": "1", "unit_price": "10",
+                     "time_entry_id": str(uuid_mod.uuid4())},
+                    {"description": "Nog los", "quantity": "1", "unit_price": "5"},
+                ],
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        invoice = created.json()
+        assert len(invoice["lines"]) == 4
+
+        # Both real entries are stamped; nothing unbilled remains, and a re-bill is a no-op.
+        after = (
+            await client.get(
+                f"/api/v1/invoicing/unbilled?company_id={company_id}", headers=headers
+            )
+        ).json()
+        assert after["total_minutes"] == 0
+
+        # An already-billed id on a second invoice is silently skipped (no 500), and the
+        # entry stays bound to the first invoice.
+        again = await client.post(
+            "/api/v1/invoicing/invoices",
+            json={
+                "company_id": company_id,
+                "lines": [
+                    {"description": "Dubbel", "quantity": "1", "unit_price": "80",
+                     "time_entry_id": entry_ids[0]},
+                ],
+            },
+            headers=headers,
+        )
+        assert again.status_code == 201, again.text
+
+        # Deleting the first draft releases exactly its two entries.
+        await client.delete(f"/api/v1/invoicing/invoices/{invoice['id']}", headers=headers)
+        released = (
+            await client.get(
+                f"/api/v1/invoicing/unbilled?company_id={company_id}", headers=headers
+            )
+        ).json()
+        assert released["total_minutes"] == 90
+
+        # The second (skip-only) invoice bound nothing, so deleting it releases nothing.
+        await client.delete(f"/api/v1/invoicing/invoices/{again.json()['id']}", headers=headers)
+
+
 async def test_summary_counts(client_for) -> None:
     tenant: Tenant = await make_tenant("inv-sum")
     headers = await auth_cookie(tenant.user)

@@ -37,6 +37,9 @@ export interface SourceMetrics {
   tile_labels: Record<string, Record<string, string>>;
   /** Enabled drill-down kinds after the layout applied (#192). */
   drilldowns: string[];
+  /** This source is hidden from the client's dashboard (#192) — only ever set for a manager,
+   *  so edit mode can list it and offer to re-enable it. The portal never receives it. */
+  hidden?: boolean;
 }
 
 /** One source's stored layout (#192); `null`/absent fields mean "not curated". */
@@ -45,6 +48,10 @@ export interface SourceLayout {
   labels?: Record<string, Record<string, string>>;
   drilldowns?: string[] | null;
   chart_metric?: string | null;
+  /** GA4 only: per key-event display labels keyed by the GA4 `eventName`, `{eventName: {locale: label}}`. */
+  event_labels?: Record<string, Record<string, string>>;
+  /** Drop this whole source section from the client's dashboard (not just its tiles). */
+  hidden?: boolean;
 }
 
 export interface CompanyLayout {
@@ -86,6 +93,8 @@ export interface AccountsResponse {
 
 export interface DrilldownRow {
   label: string;
+  /** The row's stable id — for GA4 key events the raw `eventName` (#192); `null` otherwise. */
+  key?: string | null;
   href: string | null;
   metrics: Record<string, number>;
 }

@@ -5,6 +5,7 @@
 
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
@@ -41,7 +42,7 @@
 </script>
 
 <svelte:head>
-  <title>{t("settings.time_entry_types.title")}</title>
+  <title>{pageTitle(t("settings.time_entry_types.title"))}</title>
 </svelte:head>
 
 <div class="mb-6 flex items-start justify-between">

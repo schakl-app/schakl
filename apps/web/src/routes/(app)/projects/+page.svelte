@@ -7,7 +7,7 @@
   import { editHref } from "$lib/core/edit-intent";
   import { fmtNumber, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
-  import { pageTitle } from "$lib/core/title";
+  import { navLabel, pageTitle } from "$lib/core/title";
   import { customFieldColumns } from "$lib/core/table/columns";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
@@ -197,12 +197,12 @@
 {/snippet}
 
 <svelte:head>
-  <title>{pageTitle(t("projects.title"))}</title>
+  <title>{pageTitle(navLabel("projects", t("projects.title")))}</title>
 </svelte:head>
 
 <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
   <div>
-    <h1 class="text-xl font-semibold text-text">{t("projects.title")}</h1>
+    <h1 class="text-xl font-semibold text-text">{navLabel("projects", t("projects.title"))}</h1>
     <p class="mt-1 text-sm text-text-muted">{t("projects.count", { count: data.total })}</p>
   </div>
   <button
@@ -266,7 +266,12 @@
         <label for="company_id" class="mb-1 block text-sm font-medium text-text">
           {t("projects.field.company")}
         </label>
-        <select id="company_id" name="company_id" bind:value={newProjectCompanyId} class={inputClass}>
+        <select
+          id="company_id"
+          name="company_id"
+          bind:value={newProjectCompanyId}
+          class={inputClass}
+        >
           <option value="">{t("common.none")}</option>
           {#each data.companies as company (company.id)}
             <option value={company.id}>{company.name}</option>

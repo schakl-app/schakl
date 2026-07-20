@@ -136,9 +136,7 @@ class OrgSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     # Browser-tab title template (#97, #71 tier 2): free text with {page} / {brand} tokens,
     # e.g. "{page} · {brand}". NULL = the built-in i18n format. Branding, so it lives here.
     tab_title_template: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    enabled_modules: Mapped[list[str]] = mapped_column(
-        ARRAY(String), nullable=False, default=list
-    )
+    enabled_modules: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False, default=list)
     # Which permission-catalog keys this org's system roles have already been offered (issue
     # #19). A module that ships later adds keys, which the startup reconciler grants exactly
     # once — so a tenant who unticked a permission keeps it unticked.
@@ -205,7 +203,11 @@ class NavPref(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     )
     # Ordered ``{"key": ..., "hidden": bool}`` entries; unknown keys are ignored, and a nav
     # item absent from the list (a module enabled later) falls back to its declared position.
-    items: Mapped[list[dict]] = mapped_column(
+    # The org-default row may instead hold ``{"items": [...], "groups": [...]}`` where an item
+    # or group carries a tenant ``label`` (``{nl, en}``) — the org's own name for a nav entry
+    # or group heading (#169). A legacy plain list is read as items-only (no migration —
+    # JSONB), and a personal row stays a plain ``{key, hidden}`` list (labels are org config).
+    items: Mapped[list[dict] | dict] = mapped_column(
         JSONB, nullable=False, default=list, server_default="[]"
     )
 
@@ -226,9 +228,7 @@ class UserPref(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
         nullable=False,
         index=True,
     )
-    prefs: Mapped[dict] = mapped_column(
-        JSONB, nullable=False, default=dict, server_default="{}"
-    )
+    prefs: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
 
 
 class InstanceLicense(Base):

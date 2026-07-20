@@ -6,7 +6,7 @@
   import { fmtPeriod } from "$lib/core/format";
   import { can } from "$lib/core/permissions";
   import { t } from "$lib/core/i18n";
-  import { pageTitle } from "$lib/core/title";
+  import { navLabel, pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
@@ -169,12 +169,12 @@
 </script>
 
 <svelte:head>
-  <title>{pageTitle(t("leave.team.title"))}</title>
+  <title>{pageTitle(navLabel("leave", t("leave.team.title")))}</title>
 </svelte:head>
 
 <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
   <div class="flex items-center gap-3">
-    <h1 class="text-xl font-semibold text-text">{t("leave.team.title")}</h1>
+    <h1 class="text-xl font-semibold text-text">{navLabel("leave", t("leave.team.title"))}</h1>
     <div class="flex items-center gap-1 text-sm" data-sveltekit-preload-data="hover">
       <a href="?year={data.year - 1}" class="rounded px-1.5 py-0.5 text-text-muted hover:text-brand"
         >‹</a

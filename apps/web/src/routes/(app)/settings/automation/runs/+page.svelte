@@ -2,6 +2,7 @@
   import { goto } from "$app/navigation";
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { pageTitle } from "$lib/core/title";
 
   let { data } = $props();
 
@@ -32,7 +33,7 @@
 </script>
 
 <svelte:head>
-  <title>{t("automation.runs")}</title>
+  <title>{pageTitle(t("automation.runs"))}</title>
 </svelte:head>
 
 <div class="mb-6">

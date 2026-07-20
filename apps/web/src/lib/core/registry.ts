@@ -7,6 +7,8 @@
  */
 import type { Component } from "svelte";
 
+import { getLocale } from "$lib/paraglide/runtime";
+
 import type { ApiClient } from "./api/client";
 import { t } from "./i18n";
 import { can } from "./permissions";
@@ -288,10 +290,29 @@ export function enabledWebModules(enabled: string[]): WebModule[] {
   return enabled.map((name) => _modules.get(name)).filter((m): m is WebModule => Boolean(m));
 }
 
-/** One saved sidebar entry (#169): a module nav key, optionally hidden. */
+/** A tenant's per-locale label for a nav entry / group (#169); `null`/absent = use the declared. */
+export type NavLabelMap = Record<string, string> | null | undefined;
+
+/** One saved sidebar entry (#169): a module nav key, optionally hidden, optionally renamed. */
 export interface NavPrefItem {
   key: string;
   hidden?: boolean;
+  /** The org's own label for this item (org-default row only); merged in by the API. */
+  label?: NavLabelMap;
+}
+
+/**
+ * Resolve a tenant nav label for the active locale, falling back to the other locale, then the
+ * module's declared label (#169). Returns a *function* so it stays locale-reactive like the
+ * declared `label()` it stands in for.
+ */
+export function resolveLabel(custom: NavLabelMap, fallback: () => string): () => string {
+  if (!custom) return fallback;
+  return () => {
+    const loc = getLocale();
+    const other = loc === "nl" ? "en" : "nl";
+    return custom[loc]?.trim() || custom[other]?.trim() || fallback();
+  };
 }
 
 export function navItemsFor(
@@ -299,11 +320,18 @@ export function navItemsFor(
   user?: SessionUser | null,
   pref?: NavPrefItem[] | null,
 ): NavItem[] {
+  // The org's custom labels ride on the pref (org default, merged by the API). Applied to every
+  // returned item so the sidebar renders the tenant's own words, declared label as the fallback.
+  const labelByKey = new Map((pref ?? []).map((item) => [item.key, item.label]));
+  const withLabel = (item: NavItem): NavItem =>
+    labelByKey.has(item.key)
+      ? { ...item, label: resolveLabel(labelByKey.get(item.key), item.label) }
+      : item;
   const base = enabledWebModules(enabled)
     .flatMap((m) => m.nav ?? [])
     .filter((item) => !item.requiresPermission || can(user, item.requiresPermission));
   if (!pref || pref.length === 0) {
-    return base.sort((a, b) => (a.position ?? 100) - (b.position ?? 100));
+    return base.sort((a, b) => (a.position ?? 100) - (b.position ?? 100)).map(withLabel);
   }
   // A saved layout (#169) orders and hides *module* items; anything the pref doesn't know —
   // a module enabled after it was saved — falls back to its declared position, after the
@@ -318,7 +346,8 @@ export function navItemsFor(
       if (ia !== undefined && ib !== undefined) return ia - ib;
       if (ia !== undefined || ib !== undefined) return ia !== undefined ? -1 : 1;
       return (a.position ?? 100) - (b.position ?? 100);
-    });
+    })
+    .map(withLabel);
 }
 
 export function companyPanelComponent(

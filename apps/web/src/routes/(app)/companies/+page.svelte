@@ -9,7 +9,7 @@
   import { t } from "$lib/core/i18n";
   import ImportCsvModal from "$lib/core/impex/ImportCsvModal.svelte";
   import { can } from "$lib/core/permissions";
-  import { pageTitle } from "$lib/core/title";
+  import { navLabel, pageTitle } from "$lib/core/title";
   import { customFieldColumns } from "$lib/core/table/columns";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
@@ -184,12 +184,12 @@
 {/snippet}
 
 <svelte:head>
-  <title>{pageTitle(t("companies.title"))}</title>
+  <title>{pageTitle(navLabel("companies", t("companies.title")))}</title>
 </svelte:head>
 
 <div class="mb-6 flex items-center justify-between">
   <div>
-    <h1 class="text-xl font-semibold text-text">{t("companies.title")}</h1>
+    <h1 class="text-xl font-semibold text-text">{navLabel("companies", t("companies.title"))}</h1>
     <p class="mt-1 text-sm text-text-muted">{t("companies.count", { count: data.total })}</p>
   </div>
   <button
@@ -259,7 +259,11 @@
   </div>
 </div>
 
-<ImportCsvModal bind:open={showImport} report={form?.impex ?? null} error={form?.impexError ?? null} />
+<ImportCsvModal
+  bind:open={showImport}
+  report={form?.impex ?? null}
+  error={form?.impexError ?? null}
+/>
 
 {#if showCreate}
   <!-- Same field set as the edit surface (CompanyForm), plus the contact persons — which only a

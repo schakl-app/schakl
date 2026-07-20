@@ -25,6 +25,7 @@ from app.core.providers import ProviderService
 from app.core.providers.models import Provider, ProviderKind
 from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
+from app.core.urls import reject_dangerous_url
 from app.errors import AppError
 from app.modules.domains.dns import fetch_dns
 from app.modules.domains.models import Domain
@@ -130,6 +131,7 @@ class DomainService:
             name=data.name.strip(),
             company_id=data.company_id,
             status=data.status.value,
+            redirect_url=self._clean_redirect_url(data.redirect_url),
             registrar_provider_id=registrar_id,
             dns_provider_id=dns_id,
             registry_contact_party_type=rc_type,
@@ -168,6 +170,8 @@ class DomainService:
             values["company_id"] = data.company_id
         if "status" in sent and data.status is not None:
             values["status"] = data.status.value
+        if "redirect_url" in sent:
+            values["redirect_url"] = self._clean_redirect_url(data.redirect_url)
         if "registrar_provider_id" in sent:
             values["registrar_provider_id"] = await self.providers.ensure(
                 data.registrar_provider_id, kind=ProviderKind.REGISTRAR
@@ -234,6 +238,13 @@ class DomainService:
         return domain
 
     # --- internals ----------------------------------------------------------- #
+    @staticmethod
+    def _clean_redirect_url(value: str | None) -> str | None:
+        """Strip, empty → NULL, store as typed; only refuse script-executing schemes (it's
+        rendered as an ``href`` in the detail view)."""
+        cleaned = (value or "").strip() or None
+        return reject_dangerous_url(cleaned, field="redirect_url")
+
     async def _ensure_company(self, company_id: uuid.UUID) -> None:
         ok = await self.ctx.session.scalar(
             text("SELECT 1 FROM companies WHERE id = :cid AND org_id = :oid"),

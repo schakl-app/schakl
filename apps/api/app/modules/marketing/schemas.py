@@ -122,6 +122,10 @@ class SourceMetrics(BaseModel):
     tile_labels: dict[str, dict[str, str]] = Field(default_factory=dict)
     #: The enabled drill-down kinds after the layout applied (#192).
     drilldowns: list[str] = Field(default_factory=list)
+    #: This source is hidden from the client's dashboard (#192). Only ever ``True`` in the payload
+    #: for a manager (the portal/client never receives a hidden source at all); it lets edit mode
+    #: show the section with a re-enable toggle.
+    hidden: bool = False
 
 
 class CompanyMarketing(BaseModel):
@@ -184,6 +188,10 @@ class MarketingSettingsWrite(BaseModel):
 
 class DrilldownRowOut(BaseModel):
     label: str
+    #: The row's stable id — for GA4 key events, the raw ``eventName`` (e.g. ``generate_lead``),
+    #: kept alongside a custom ``label`` so the editor can key its per-event labels on it (#192).
+    #: ``None`` for drill-downs that have no such id (top pages/queries/campaigns).
+    key: str | None = None
     href: str | None = None
     metrics: dict[str, float] = Field(default_factory=dict)
 

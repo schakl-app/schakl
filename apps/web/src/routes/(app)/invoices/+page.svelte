@@ -1,21 +1,18 @@
 <script lang="ts">
   import { Pencil, Trash2 } from "@lucide/svelte";
 
-  import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { editHref } from "$lib/core/edit-intent";
   import { fmtMoney, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
-  import { pageTitle } from "$lib/core/title";
+  import { navLabel, pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
-  import DateInput from "$lib/core/ui/DateInput.svelte";
-  import Modal from "$lib/core/ui/Modal.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import { INVOICE_COLUMNS } from "$lib/modules/invoicing/columns";
   import DocTabs from "$lib/modules/invoicing/DocTabs.svelte";
@@ -28,32 +25,6 @@
   const STATUSES = ["draft", "open", "paid", "cancelled"] as const;
   let deleteId = $state("");
   let confirmDelete = $state(false);
-
-  // Invoice unbilled hours (owner request): pick the client, see what's open, draft it.
-  let fromTimeOpen = $state(false);
-  let ftCompany = $state("");
-  let ftUntil = $state("");
-  let ftPreview = $state<{ total_minutes: number; entries: unknown[] } | null>(null);
-  let ftLoading = $state(false);
-  async function loadUnbilled() {
-    ftPreview = null;
-    if (!ftCompany) return;
-    ftLoading = true;
-    try {
-      const params = new URLSearchParams({ company_id: ftCompany });
-      if (ftUntil) params.set("until", ftUntil);
-      const res = await fetch(`/invoices/unbilled?${params}`);
-      if (res.ok) ftPreview = await res.json();
-    } finally {
-      ftLoading = false;
-    }
-  }
-  $effect(() => {
-    void ftCompany;
-    void ftUntil;
-    if (fromTimeOpen) void loadUnbilled();
-  });
-  const ftHours = $derived(ftPreview ? (ftPreview.total_minutes / 60).toFixed(1) : "0");
 
   function setFilter(key: string, value: string) {
     const url = new URL(page.url);
@@ -85,27 +56,18 @@
 </script>
 
 <svelte:head>
-  <title>{pageTitle(t("invoicing.invoices"))}</title>
+  <title>{pageTitle(navLabel("invoicing", t("invoicing.invoices")))}</title>
 </svelte:head>
 
 <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-  <h1 class="text-xl font-semibold text-text">{t("invoicing.title")}</h1>
+  <h1 class="text-xl font-semibold text-text">{navLabel("invoicing", t("invoicing.title"))}</h1>
   {#if data.canWrite}
-    <div class="flex flex-wrap items-center gap-2">
-      <button
-        type="button"
-        class="rounded-lg border border-border px-4 py-2 text-sm font-medium text-text hover:border-brand"
-        onclick={() => (fromTimeOpen = true)}
-      >
-        {t("invoicing.from_time.button")}
-      </button>
-      <a
-        href="/invoices/new"
-        data-sveltekit-preload-data="hover"
-        class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >{t("invoicing.new_invoice")}</a
-      >
-    </div>
+    <a
+      href="/invoices/new"
+      data-sveltekit-preload-data="hover"
+      class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+      >{t("invoicing.new_invoice")}</a
+    >
   {/if}
 </div>
 
@@ -318,73 +280,6 @@
   onsort={table.onSort}
   onresize={table.onResize}
 />
-
-<Modal bind:open={fromTimeOpen} title={t("invoicing.from_time.title")}>
-  <form method="POST" action="?/fromTime" use:enhance class="space-y-4">
-    <p class="text-sm text-text-muted">{t("invoicing.from_time.hint")}</p>
-    <div>
-      <label for="ft-company" class="mb-1 block text-sm font-medium text-text"
-        >{t("invoicing.field.company")}</label
-      >
-      <Combobox
-        items={companyItems}
-        name="company_id"
-        bind:value={ftCompany}
-        id="ft-company"
-        placeholder={t("invoicing.field.company")}
-      />
-    </div>
-    <div class="grid gap-3 sm:grid-cols-2">
-      <div>
-        <label for="ft-until" class="mb-1 block text-sm font-medium text-text"
-          >{t("invoicing.from_time.until")}</label
-        >
-        <DateInput name="until" id="ft-until" bind:value={ftUntil} />
-      </div>
-      <div>
-        <label for="ft-group" class="mb-1 block text-sm font-medium text-text"
-          >{t("invoicing.from_time.group_by")}</label
-        >
-        <select
-          id="ft-group"
-          name="group_by"
-          class="w-full rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm"
-        >
-          <option value="project">{t("invoicing.from_time.group_project")}</option>
-          <option value="day">{t("invoicing.from_time.group_day")}</option>
-          <option value="entry">{t("invoicing.from_time.group_entry")}</option>
-        </select>
-      </div>
-    </div>
-    {#if ftCompany}
-      <p
-        class="text-sm {ftPreview && ftPreview.total_minutes > 0 ? 'text-text' : 'text-text-muted'}"
-      >
-        {#if ftLoading}
-          …
-        {:else if ftPreview}
-          {t("invoicing.from_time.preview", { hours: ftHours, count: ftPreview.entries.length })}
-        {/if}
-      </p>
-    {/if}
-    {#if form?.fromTimeError}
-      <p class="text-sm text-red-600 dark:text-red-400">{t(form.fromTimeError)}</p>
-    {/if}
-    <div class="flex justify-end gap-2">
-      <button
-        type="button"
-        class="rounded-lg border border-border px-4 py-2 text-sm text-text"
-        onclick={() => (fromTimeOpen = false)}>{t("common.cancel")}</button
-      >
-      <button
-        class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-        disabled={!ftCompany || !ftPreview || ftPreview.total_minutes === 0}
-      >
-        {t("invoicing.from_time.submit")}
-      </button>
-    </div>
-  </form>
-</Modal>
 
 <ConfirmDialog
   bind:open={confirmDelete}
