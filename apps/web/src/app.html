@@ -31,8 +31,11 @@
       })();
     </script>
     <!-- Per-tenant PWA manifest is resolved at runtime (Golden Rule 4); the favicon link is
-         rendered by the root layout so the tenant's icon is the only one on the page. -->
-    <link rel="manifest" href="/manifest.webmanifest" />
+         rendered by the root layout so the tenant's icon is the only one on the page.
+         use-credentials: browsers fetch a manifest anonymously by default, so an instance
+         behind an authenticating proxy (Cloudflare Access) sees the request bounced to a
+         login page and the console fills with CORS errors; sending cookies lets it pass. -->
+    <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" />
     %sveltekit.head%
   </head>
   <body data-sveltekit-preload-data="hover">
