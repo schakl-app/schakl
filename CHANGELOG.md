@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## v0.15.2 — 2026-07-20
+
+### Fixed
+
+- **PWA manifest behind an authenticating proxy.** Browsers fetch the web-app manifest without cookies, so an instance behind Cloudflare Access saw the request bounced to the Access login and rejected on CORS, on every page load. The manifest link now carries `crossorigin="use-credentials"`, which sends the session cookie and lets the request through the proxy.
+- The app declares the standard `mobile-web-app-capable` meta alongside the `apple-` prefixed one, silencing Chrome's deprecation warning while iOS Safari keeps the spelling it reads.
+
 ## v0.15.1 — 2026-07-20
 
 ### Fixed
