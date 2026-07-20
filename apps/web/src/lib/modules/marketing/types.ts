@@ -58,6 +58,24 @@ export interface CompanyLayout {
   sources: Record<string, SourceLayout>;
 }
 
+/** One source's in-progress edit state while the dashboard's edit mode is on. Owned by
+ *  `MarketingDashboard`, mutated in place by the section it hands it to; every mutation
+ *  calls back so the whole layout persists at once (like the My Day board). */
+export interface SourceEditState {
+  /** Visible tiles in display order — the dnd items (`svelte-dnd-action` needs `{id}`). */
+  tiles: { id: string }[];
+  /** Per-tile label overrides for every metric key (empty string = no override). */
+  labels: Record<string, { nl: string; en: string }>;
+  /** Enabled drill-down kinds. */
+  drilldowns: string[];
+  /** Default charted metric ("" = automatic). */
+  chart_metric: string;
+  /** GA4 only: per key-event labels keyed by the raw `eventName`. */
+  event_labels: Record<string, { nl: string; en: string }>;
+  /** Hide this whole source from the client's dashboard. */
+  hidden: boolean;
+}
+
 export interface CompanyMarketing {
   company_id: string;
   range_days: number;
