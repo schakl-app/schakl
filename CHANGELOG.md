@@ -2,9 +2,44 @@
 
 ## Unreleased
 
+## v0.14.0 — 2026-07-20
+
+A smaller release: brute-force protection on login, a batch of domains, marketing and invoicing polish, and multi-arch container images.
+
+### Security
+
+- **Rate limiting on login and password reset.** The login endpoint had no throttle, so a client could fire 100+ password guesses a minute. A Redis fixed-window limiter now caps attempts per client IP per tenant (10/min for login, 5/min for forgot/reset, separate budgets), reusing the pattern already proven for API keys so the ceiling holds across API replicas. It fails open on a Redis outage so sign-in never blocks, and the web app surfaces a 429 as "too many attempts" instead of "wrong password."
+
+### Domains and websites
+
+- A domain with status "redirect" now carries the address it redirects to, shown as a field on the form and a link on the detail view.
+- The new-website form's domain picker and the hosting quick-create dialog now follow the inline-create rule everywhere (docs/UX.md, #115): typing an unknown domain or provider opens the full create form in a dialog and auto-selects the result.
+- Fixed: quick-creating a second entity (e.g. a hosting account right after a domain) no longer clears the first picker's selection.
+
+### Marketing
+
+- The curated per-client dashboard layout (#192) gains per-key-event labels (a client-friendly name per locale for each GA4 key event) and a toggle to hide a whole source from the client/portal view while keeping it available to re-enable in edit mode.
+
+### Core
+
+- Instellingen → Navigatie can now rename module nav items and sidebar group headings per locale. The renamed label follows through everywhere — sidebar, group headings, and every module page's heading and browser title.
+
+### Invoicing
+
+- Picking a client on a new invoice now prefills one line per unbilled approved time entry (description, hours, rate), replacing the separate "Uren factureren" bridge button. Prefilled lines are ordinary lines you can edit or remove before saving.
+
+### UX
+
+- Fixed: Tab now commits the highlighted option in a combobox instead of discarding it, matching Enter, while still moving focus to the next field.
+
 ### Infrastructure
 
 - **Multi-arch container images.** The release workflow now builds both `schakl-api` and `schakl-web` for `linux/amd64` (x86-64) **and** `linux/arm64` (ARM), publishing each tag as a manifest list on GHCR. Self-hosters can run schakl unchanged on ARM hosts (Hetzner Ampere/CAX, AWS Graviton, Apple Silicon); `docker pull` selects the right variant automatically. No Dockerfile or compose changes were needed — the base images and all dependencies already ship arm64 artefacts.
+- Fixed: the `SCHAKL_SECRET_KEY` guard in `compose.yaml` quoted its error message incorrectly, which strict YAML parsers (Compose v5) rejected as an invalid nested mapping.
+
+### Upgrade notes
+
+- One additive database migration (domains gain a nullable `redirect_url`); no destructive changes, rollback to v0.13.0 is safe.
 
 ## v0.13.0 — 2026-07-18
 
