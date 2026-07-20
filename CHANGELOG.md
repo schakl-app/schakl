@@ -17,6 +17,7 @@
 ### Fixed
 
 - **The task picker on a new contact moment offered every client's tasks.** Opening "Contactmoment vastleggen" from a client page listed the whole org's tasks until a project was picked; the picker — and the move/koppel dialog — now narrows to the current client.
+- **Logging a contact moment from a task or project page pre-fills the client and project.** The form opened with empty pickers even though the host task (or project) fixed both; they now preset from the host's own links — still repointable — and the saved moment carries them explicitly instead of relying on server-side derivation.
 - **A subscription created without a next-invoice date was silently never invoiced.** The "Volgende factuur" field is gone from the create modal (there is nothing to anchor it against yet); the date is now derived on the first transition into active — start date plus one billing period — for create-as-active, the edit modal, the bulk status action and pre-existing empty drafts alike. An explicitly set date is never overwritten.
 - **Portal clients no longer pass for staff.** The team list (Instellingen → Gebruikers) hides portal logins, and every assignee/staff picker stops offering them — only memberships holding a non-client role are pickable.
 - **A portal login could read the org's whole address book.** Contacts carry no direct client link, so the portal's company horizon never filtered them; they are now scoped through their company links like every other portal read.

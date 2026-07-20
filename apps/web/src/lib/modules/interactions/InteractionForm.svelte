@@ -76,7 +76,8 @@
 
   // A dimension is *pinned* when the host page already fixed it (its hidden prefill input);
   // an unpinned one gets a picker below (#183 follow-up) — all three on the Interacties page,
-  // project+task on a company page, none on a task page. contact_id is always a picker (#173).
+  // project+task on a company page, client+project on a task page (preset from the task's own
+  // links, see below). contact_id is always a picker (#173).
   const pinned = (field: string) =>
     typeof prefill[field] === "string" && (prefill[field] as string).length > 0;
   const showCompany = $derived(!interaction && !pinned("company_id"));
@@ -120,6 +121,37 @@
       linkProjects = l.projects;
       linkTasks = l.tasks;
     });
+  });
+  // A pinned task/project implies the levels above it: resolve the host row once, when the
+  // form opens, and preset the pickers — visible and repointable, unlike a pinned dim. The
+  // API derives a missing client from the task on save either way, but the form should show
+  // where the moment will land, not an empty picker.
+  $effect(() => {
+    if (!showLinkPickers) return;
+    const pinnedTask = pinned("task_id") ? (prefill.task_id as string) : "";
+    const pinnedProject = pinned("project_id") ? (prefill.project_id as string) : "";
+    if (!pinnedTask && !pinnedProject) return;
+    void (async () => {
+      let company: string;
+      let project = "";
+      if (pinnedTask) {
+        const response = await fetch(`/api/v1/tasks/${pinnedTask}`, {
+          headers: { accept: "application/json" },
+        });
+        if (!response.ok) return;
+        const task = await response.json();
+        company = task.company_id ?? "";
+        project = task.project_id ?? "";
+      } else {
+        const response = await fetch(`/api/v1/projects/${pinnedProject}`, {
+          headers: { accept: "application/json" },
+        });
+        if (!response.ok) return;
+        company = (await response.json()).company_id ?? "";
+      }
+      if (project && showProject && !fProject) fProject = project;
+      if (company && showCompany && !fCompany) fCompany = company;
+    })();
   });
   // Cascade the way the move dialog does: a client narrows projects, a project narrows tasks,
   // and picking deeper backfills above — accounting for a dim the host already pinned.
