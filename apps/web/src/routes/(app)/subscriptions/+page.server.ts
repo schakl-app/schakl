@@ -6,10 +6,8 @@ import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
-import {
-  SUBSCRIPTION_COLUMNS,
-  SUBSCRIPTIONS_TABLE_ID,
-} from "$lib/modules/subscriptions/columns";
+import { SUBSCRIPTION_COLUMNS, SUBSCRIPTIONS_TABLE_ID } from "$lib/modules/subscriptions/columns";
+import { manageActions, parseLabelI18n } from "$lib/modules/subscriptions/manage.server";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -24,7 +22,9 @@ function parseCustom(raw: FormDataEntryValue | null): Record<string, unknown> {
 }
 
 /** The modal posts its linked projects as one JSON field (single-save surface). */
-function parseLinks(raw: FormDataEntryValue | null): { entity_type: "project"; entity_id: string }[] {
+function parseLinks(
+  raw: FormDataEntryValue | null,
+): { entity_type: "project"; entity_id: string }[] {
   try {
     const parsed = JSON.parse(String(raw ?? "[]"));
     if (!Array.isArray(parsed)) return [];
@@ -34,6 +34,24 @@ function parseLinks(raw: FormDataEntryValue | null): { entity_type: "project"; e
   } catch {
     return [];
   }
+}
+
+const PRICE_MODES = ["percent", "amount", "set"] as const;
+
+/** The bulk price-increase fields, shared by preview and apply. `null` = invalid. */
+function priceIncreaseBody(form: FormData) {
+  const mode = String(form.get("mode") ?? "");
+  const value = String(form.get("value") ?? "").trim();
+  const valid_from = String(form.get("valid_from") ?? "").trim();
+  if (!PRICE_MODES.includes(mode as (typeof PRICE_MODES)[number])) return null;
+  if (!value || Number.isNaN(Number(value)) || !valid_from) return null;
+  return {
+    mode: mode as (typeof PRICE_MODES)[number],
+    value,
+    valid_from,
+    subscription_type_id: String(form.get("subscription_type_id") ?? "").trim() || null,
+    include_templates: form.get("include_templates") === "on",
+  };
 }
 
 /** The recurring-agreement fields both actions share (#30). */
@@ -58,6 +76,8 @@ function subscriptionBody(form: FormData) {
 export const load: PageServerLoad = async (event) => {
   if (!can(event.locals.user, "subscriptions.subscription.read")) throw redirect(303, "/");
   const api = apiFor(event);
+  const canManageTypes = can(event.locals.user, "subscriptions.type.manage");
+  const canManageTemplates = can(event.locals.user, "subscriptions.template.manage");
   // The saved layout decides how the *server* sorts (#24); the URL wins so a sorted list
   // stays shareable. Filters live in URL params and the API applies them (#153).
   const { prefs } = await event.parent();
@@ -68,8 +88,17 @@ export const load: PageServerLoad = async (event) => {
   const companyFilter = event.url.searchParams.get("company") || undefined;
   const statusFilter = event.url.searchParams.get("status") || undefined;
 
-  const [subscriptions, summary, types, templates, companies, projects, definitions, companyDefinitions] =
-    await Promise.all([
+  const [
+    subscriptions,
+    summary,
+    types,
+    templates,
+    companies,
+    projects,
+    definitions,
+    companyDefinitions,
+    taskTemplates,
+  ] = await Promise.all([
     api.GET("/api/v1/subscriptions", {
       params: {
         query: {
@@ -83,7 +112,10 @@ export const load: PageServerLoad = async (event) => {
       },
     }),
     api.GET("/api/v1/subscriptions/summary"),
-    api.GET("/api/v1/subscriptions/types"),
+    // Managers also see the beheer sections below the list, which show inactive types too.
+    api.GET("/api/v1/subscriptions/types", {
+      params: { query: { include_inactive: canManageTypes || canManageTemplates } },
+    }),
     api.GET("/api/v1/subscriptions/templates"),
     api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
     api.GET("/api/v1/projects", { params: { query: { limit: 200, offset: 0, count: false } } }),
@@ -94,6 +126,10 @@ export const load: PageServerLoad = async (event) => {
     api.GET("/api/v1/custom-fields/definitions", {
       params: { query: { entity_type: "company" } },
     }),
+    // The type modal's spawn-on-activation picker — only fetched for who can open it.
+    canManageTypes
+      ? api.GET("/api/v1/tasks/templates")
+      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
   ]);
 
   return {
@@ -102,12 +138,14 @@ export const load: PageServerLoad = async (event) => {
     summary: summary.data ?? null,
     types: types.data ?? [],
     templates: templates.data ?? [],
+    taskTemplates: (taskTemplates.data ?? []).map((tpl) => ({ id: tpl.id, name: tpl.name })),
     typeFilter: typeFilter ?? "",
     companyFilter: companyFilter ?? "",
     statusFilter: statusFilter ?? "",
     table: { pref, sort: sort ?? null, widths: resolved.widths },
-    canManageTypes: can(event.locals.user, "subscriptions.type.manage"),
-    canManageTemplates: can(event.locals.user, "subscriptions.template.manage"),
+    canManageTypes,
+    canManageTemplates,
+    canWrite: can(event.locals.user, "subscriptions.subscription.write"),
     companies: lookupItems(companies, "companies").map((c) => ({ id: c.id, name: c.name })),
     projects: lookupItems(projects, "projects").map((p) => ({ id: p.id, name: p.name })),
     definitions: definitions.data ?? [],
@@ -234,46 +272,51 @@ export const actions: Actions = {
   },
 
   /** Inline type create from the form's picker (docs/UX.md — per-picker definition of done).
-   *  The full type dialog minus the spawn list, which lives in Instellingen → Abonnementen. */
+   *  The full type dialog minus the spawn list. One label language is enough (docs/UX.md):
+   *  a missing locale falls back at render time. */
   createType: async (event) => {
     const form = await event.request.formData();
     const key = String(form.get("key") ?? "").trim();
-    const label_i18n = {
-      nl: String(form.get("label_nl") ?? "").trim(),
-      en: String(form.get("label_en") ?? "").trim(),
-    };
-    if (!key || !label_i18n.nl || !label_i18n.en) return fail(400, { qcError: "errors.required" });
+    const label_i18n = parseLabelI18n(form);
+    if (!key || Object.keys(label_i18n).length === 0) {
+      return fail(400, { qcError: "errors.required" });
+    }
     const { data, error } = await apiFor(event).POST("/api/v1/subscriptions/types", {
       body: { key, label_i18n, position: 0, active: true, task_template_ids: [] },
     });
     if (error || !data) return fail(400, { qcError: apiErrorKey(error).key });
-    return { inlineCreated: { slot: "subscription_type", id: data.id, name: label_i18n.nl } };
+    const name = label_i18n.nl || label_i18n.en || key;
+    return { inlineCreated: { slot: "subscription_type", id: data.id, name } };
   },
 
-  /** "Opslaan als sjabloon" on a row (UX rule 5: templates are creatable from where you
-   *  work). The row posts its own preset values; managing them lives under Instellingen. */
-  saveTemplate: async (event) => {
+  /** Bulk price increase: preview shows every in-scope agreement with its would-be amount;
+   *  apply appends the dated price rows (and optionally bumps template defaults). */
+  previewPriceIncrease: async (event) => {
     const form = await event.request.formData();
-    const name = String(form.get("name") ?? "").trim();
-    if (!name) return fail(400, { error: "errors.required" });
-    const amount = String(form.get("amount") ?? "").trim();
-    const included = String(form.get("included_hours") ?? "").trim();
-    const notice = String(form.get("notice_period_days") ?? "").trim();
-    const { error } = await apiFor(event).POST("/api/v1/subscriptions/templates", {
-      body: {
-        name,
-        subscription_type_id: String(form.get("subscription_type_id") ?? "").trim() || null,
-        interval: String(form.get("interval") ?? "monthly") as "monthly",
-        interval_count: Number(form.get("interval_count") ?? 1) || 1,
-        amount: amount || null,
-        included_hours: included || null,
-        notice_period_days: notice ? Number(notice) : null,
-        notes: String(form.get("notes") ?? "").trim() || null,
-      } as never,
+    const body = priceIncreaseBody(form);
+    if (!body) return fail(400, { priceError: "errors.required" });
+    const { data, error } = await apiFor(event).POST(
+      "/api/v1/subscriptions/price-increase/preview",
+      { body: body as never },
+    );
+    if (error || !data) return fail(400, { priceError: apiErrorKey(error).key });
+    return { pricePreview: data };
+  },
+
+  applyPriceIncrease: async (event) => {
+    const form = await event.request.formData();
+    const body = priceIncreaseBody(form);
+    if (!body) return fail(400, { priceError: "errors.required" });
+    const { data, error } = await apiFor(event).POST("/api/v1/subscriptions/price-increase", {
+      body: body as never,
     });
-    if (error) return fail(400, { error: apiErrorKey(error).key });
-    return { templateSaved: true };
+    if (error || !data) return fail(400, { priceError: apiErrorKey(error).key });
+    return { priceApplied: data.items.length };
   },
 
   createCompany: createCompanyAction,
+
+  // Types + templates beheer, shared with Instellingen → Abonnementen (manage.server.ts).
+  // Its `saveTemplate` also serves the row's "Opslaan als sjabloon" hidden form.
+  ...manageActions,
 };

@@ -9,6 +9,8 @@ from fastapi import APIRouter, Depends, Query
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
 from app.modules.subscriptions.schemas import (
+    PriceIncreaseRequest,
+    PriceIncreaseResult,
     PriceRead,
     SubscriptionCreate,
     SubscriptionRead,
@@ -183,6 +185,35 @@ async def list_subscriptions(
 async def summary(ctx: RequestContext = Depends(require_context)) -> SubscriptionSummary:
     """MRR/ARR + the invoices due within a month, for Overzicht → Omzet."""
     return SubscriptionSummary.model_validate(await SubscriptionService(ctx).summary())
+
+
+# --- bulk price increase ------------------------------------------------------ #
+# Also declared before ``/{subscription_id}`` so the literal segment never parses as an id.
+@router.post(
+    "/price-increase/preview",
+    response_model=PriceIncreaseResult,
+    dependencies=[require_permission("subscriptions.subscription.write")],
+)
+async def preview_price_increase(
+    payload: PriceIncreaseRequest,
+    ctx: RequestContext = Depends(require_context),
+) -> PriceIncreaseResult:
+    """Every in-scope subscription with its current and would-be amount — nothing written."""
+    return await SubscriptionService(ctx).price_increase(payload, apply=False)
+
+
+@router.post(
+    "/price-increase",
+    response_model=PriceIncreaseResult,
+    dependencies=[require_permission("subscriptions.subscription.write")],
+)
+async def apply_price_increase(
+    payload: PriceIncreaseRequest,
+    ctx: RequestContext = Depends(require_context),
+) -> PriceIncreaseResult:
+    """Apply the increase: one price-history row per subscription (and optionally the
+    matching templates' default amounts)."""
+    return await SubscriptionService(ctx).price_increase(payload, apply=True)
 
 
 @router.get(

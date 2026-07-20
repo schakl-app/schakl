@@ -239,3 +239,49 @@ class SubscriptionSummary(BaseModel):
     arr: float
     active_count: int
     upcoming: list[UpcomingInvoice]
+
+
+class PriceIncreaseRequest(BaseModel):
+    """A bulk price change over the running subscriptions (and optionally the templates).
+
+    ``mode``: ``percent`` multiplies, ``amount`` adds a fixed sum, ``set`` overwrites. The
+    base is the price in effect on ``valid_from`` — so a change effective 1 January builds on
+    what the customer pays *then*, not on today's row. Preview and apply share this shape;
+    apply appends one history row per subscription (same-day rows are corrected in place,
+    like a manual edit).
+    """
+
+    mode: Literal["percent", "amount", "set"]
+    #: Percent (5 = +5%) or a currency amount, after ``mode``. Negative = a decrease.
+    value: Decimal = Field(gt=Decimal(-100))
+    valid_from: date
+    #: Optional scope: only subscriptions carrying this type (and, with
+    #: ``include_templates``, only that type's templates).
+    subscription_type_id: uuid.UUID | None = None
+    #: Also change the matching templates' default ``amount`` so new agreements start at the
+    #: new price.
+    include_templates: bool = False
+
+
+class PriceIncreaseItem(BaseModel):
+    subscription_id: uuid.UUID
+    name: str
+    company_name: str = ""
+    currency: str
+    current_amount: Decimal
+    new_amount: Decimal
+
+
+class PriceIncreaseTemplateItem(BaseModel):
+    template_id: uuid.UUID
+    name: str
+    current_amount: Decimal
+    new_amount: Decimal
+
+
+class PriceIncreaseResult(BaseModel):
+    """What a price increase touches: returned by preview (nothing written) and by apply
+    (these amounts are now history rows / template defaults)."""
+
+    items: list[PriceIncreaseItem]
+    templates: list[PriceIncreaseTemplateItem]
