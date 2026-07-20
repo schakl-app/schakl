@@ -123,7 +123,7 @@ class SubscriptionTemplateRead(SubscriptionTemplateBase):
 class SubscriptionBase(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     subscription_type_id: uuid.UUID | None = None
-    status: SubscriptionStatus = SubscriptionStatus.DRAFT
+    status: SubscriptionStatus = SubscriptionStatus.ACTIVE
     currency: str = Field(default="EUR", min_length=3, max_length=3)
     interval: SubscriptionInterval = SubscriptionInterval.MONTHLY
     interval_count: int = Field(default=1, ge=1, le=12)

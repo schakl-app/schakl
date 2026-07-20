@@ -60,7 +60,7 @@ function subscriptionBody(form: FormData) {
   return {
     name: String(form.get("name") ?? "").trim(),
     subscription_type_id: String(form.get("subscription_type_id") ?? "").trim() || null,
-    status: String(form.get("status") ?? "draft") as "draft",
+    status: String(form.get("status") ?? "active") as "active",
     interval: String(form.get("interval") ?? "monthly") as "monthly",
     start_date: String(form.get("start_date") ?? "").trim(),
     end_date: String(form.get("end_date") ?? "").trim() || null,

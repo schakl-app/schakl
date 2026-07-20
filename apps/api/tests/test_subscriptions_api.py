@@ -234,12 +234,26 @@ async def test_activation_derives_next_invoice_date(client_for) -> None:
         ).json()
         assert explicit["next_invoice_date"] == _iso(today + timedelta(days=3))
 
-        # A draft has nothing to invoice yet; the date arrives on its first activation
-        # (the same seam the edit modal and the bulk status action go through).
+        # No status at all: a new agreement is live by default (#224), so the date derives
+        # straight away — creation *is* the first activation.
+        defaulted = (
+            await c.post(
+                "/api/v1/subscriptions",
+                json=body(name="Standaard", interval="monthly", start_date=_iso(today)),
+                headers=headers,
+            )
+        ).json()
+        assert defaulted["status"] == "active"
+        assert defaulted["activated_at"] is not None
+        assert defaulted["next_invoice_date"] == _iso(add_months(today, 1))
+
+        # An explicit draft has nothing to invoice yet; the date arrives on its first
+        # activation (the same seam the edit modal and the bulk status action go through).
         draft = (
             await c.post(
                 "/api/v1/subscriptions",
-                json=body(name="Concept", interval="monthly", start_date=_iso(today)),
+                json=body(name="Concept", status="draft", interval="monthly",
+                          start_date=_iso(today)),
                 headers=headers,
             )
         ).json()

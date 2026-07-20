@@ -518,7 +518,7 @@
           >
           <select id="sub-status" name="status" class={inputClass}>
             {#each STATUSES as status (status)}
-              <option value={status} selected={(editing?.status ?? "draft") === status}
+              <option value={status} selected={(editing?.status ?? "active") === status}
                 >{t(`subscriptions.status.${status}`)}</option
               >
             {/each}
