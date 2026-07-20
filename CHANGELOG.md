@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.15.1 — 2026-07-20
+
+### Fixed
+
+- **Marketing: the key-events label editor froze on "Loading" with real GA4 data.** The v0.15.0 editor created a missing label entry while the table was rendering, which Svelte rejects as a state mutation during render; the card then never finished loading, so key events could not be renamed. Label entries are now created on the first keystroke instead. No migration; web-only.
+
 ## v0.15.0 — 2026-07-20
 
 One feature: the marketing dashboard rework. The top-level Marketing page and the client's marketing tab become the same screen, and curating a client's dashboard now works like arranging your own My Day board.
