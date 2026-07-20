@@ -39,6 +39,9 @@
     contacts = [],
     id = name,
     formId,
+    types,
+    typeLabels,
+    companyPickable = true,
     oncreatecompany,
     oncreatecontact,
     created = null,
@@ -51,6 +54,15 @@
     contacts?: Contact[];
     id?: string;
     formId?: string;
+    /** Which party types to offer (default all). A stored value outside the list still
+     * renders, so restricting a picker never silently rewrites old records. */
+    types?: PartyType[];
+    /** Button-label overrides — e.g. the actual org and client names instead of the
+     * generic "Bureau" / "Klant". */
+    typeLabels?: Partial<Record<PartyType, string>>;
+    /** false: "company" means the record's own client — a fixed choice (id null), no
+     * entity combobox, labelled with the client's name via `typeLabels`. */
+    companyPickable?: boolean;
     /** Inline-create (#115): typing an unknown company offers "＋ … toevoegen". */
     oncreatecompany?: (query: string, slot: string) => void;
     /** Inline-create (#115): typing an unknown contact offers "＋ … toevoegen". */
@@ -77,12 +89,23 @@
     }
   });
 
-  const TYPES: { key: PartyType; label: () => string }[] = [
+  const ALL_TYPES: { key: PartyType; label: () => string }[] = [
     { key: "agency", label: () => t("party.agency") },
     { key: "company", label: () => t("party.company") },
     { key: "employee", label: () => t("party.employee") },
     { key: "contact", label: () => t("party.contact") },
   ];
+  // Restricted pickers keep the stored value's type on offer so old data stays visible.
+  const TYPES = $derived(
+    ALL_TYPES.filter((o) => !types || types.includes(o.key) || o.key === type),
+  );
+  function typeLabel(option: { key: PartyType; label: () => string }): string {
+    if (typeLabels?.[option.key]) return typeLabels[option.key]!;
+    if (option.key === "company" && !companyPickable) return t("party.own_company");
+    return option.label();
+  }
+  // A fixed company is like the agency: the button is the whole choice, id posts null.
+  const fixedChoice = $derived(type === "agency" || (type === "company" && !companyPickable));
 
   const items = $derived(
     type === "company"
@@ -123,13 +146,15 @@
           {type === option.key
           ? 'border-brand bg-brand/10 font-medium text-brand'
           : 'border-border text-text-muted hover:text-text'}"
-        onclick={() => pickType(option.key)}>{option.label()}</button
+        onclick={() => pickType(option.key)}>{typeLabel(option)}</button
       >
     {/each}
   </div>
 
-  {#if type === "agency"}
-    <p class="text-xs text-text-muted">{agencyLabel}</p>
+  {#if fixedChoice}
+    {#if type === "agency" && !typeLabels?.agency}
+      <p class="text-xs text-text-muted">{agencyLabel}</p>
+    {/if}
   {:else}
     <Combobox
       {items}
