@@ -8052,6 +8052,11 @@ export interface components {
              * @default false
              */
             gmail_enabled: boolean;
+            /**
+             * Gmail Log Internal
+             * @default false
+             */
+            gmail_log_internal: boolean;
             /** @default inherit_pending */
             gmail_thread_followup: components["schemas"]["GmailThreadFollowup"];
             /**
@@ -8096,6 +8101,11 @@ export interface components {
              * @default false
              */
             gmail_enabled: boolean;
+            /**
+             * Gmail Log Internal
+             * @default false
+             */
+            gmail_log_internal: boolean;
             /** @default inherit_pending */
             gmail_thread_followup: components["schemas"]["GmailThreadFollowup"];
         };

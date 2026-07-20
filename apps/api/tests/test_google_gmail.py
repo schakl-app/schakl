@@ -200,7 +200,13 @@ def _message(
     }
 
 
-async def _seed(tenant, *, approval_mode: str = "approval_required", history_id: str = "5"):
+async def _seed(
+    tenant,
+    *,
+    approval_mode: str = "approval_required",
+    history_id: str = "5",
+    log_internal: bool = False,
+):
     async with async_session_maker() as session:
         await set_current_org(session, tenant.org.id)
         session.add(
@@ -208,6 +214,7 @@ async def _seed(tenant, *, approval_mode: str = "approval_required", history_id:
                 org_id=tenant.org.id,
                 gmail_enabled=True,
                 gmail_approval_mode=approval_mode,
+                gmail_log_internal=log_internal,
             )
         )
         connection = GoogleConnection(
@@ -345,6 +352,66 @@ async def test_portal_contact_mail_still_logs(client_for, monkeypatch) -> None:
         row = (await session.execute(select(Interaction))).scalar_one()
         assert row.status == "pending"
         assert row.company_id == uuid.UUID(company["id"])
+
+
+async def test_internal_mail_dropped_by_default(client_for, monkeypatch) -> None:
+    """Colleague-to-colleague mail stays out unless the org opts in."""
+    from tests.test_notification_channels import _member
+
+    t = await make_tenant("gmail-internal-off")
+    connection_id = await _seed(t)
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await _member(c, headers, "collega@gmail-internal-off-example.nl")
+
+    stub = _StubGmail(
+        history=["msg-int"],
+        messages={
+            "msg-int": _message(
+                "msg-int",
+                sender="Collega <collega@gmail-internal-off-example.nl>",
+                to=t.user.email,
+            )
+        },
+        history_id="9300",
+    )
+    assert await _poll(t, connection_id, stub, monkeypatch) == 0
+
+
+async def test_internal_mail_logs_pending_when_opted_in(client_for, monkeypatch) -> None:
+    """With ``gmail_log_internal`` on, colleague mail is ingested — but always *pending*,
+    even under auto-approve: there is no contact to map from, so filing it onto a client or
+    project is the reviewer's call. Unknown external mail stays out either way."""
+    from tests.test_notification_channels import _member
+
+    t = await make_tenant("gmail-internal-on")
+    connection_id = await _seed(t, approval_mode="auto_approve", log_internal=True)
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await _member(c, headers, "collega@gmail-internal-on-example.nl")
+
+    stub = _StubGmail(
+        history=["msg-int", "msg-stranger"],
+        messages={
+            "msg-int": _message(
+                "msg-int",
+                sender="Collega <collega@gmail-internal-on-example.nl>",
+                to=t.user.email,
+            ),
+            "msg-stranger": _message(
+                "msg-stranger", sender="onbekend@elders.nl", to=t.user.email, thread="thr-2"
+            ),
+        },
+        history_id="9400",
+    )
+    assert await _poll(t, connection_id, stub, monkeypatch) == 1
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        row = (await session.execute(select(Interaction))).scalar_one()
+        assert row.gmail_message_id == "msg-int"
+        assert row.status == "pending"  # forced despite auto_approve — unmapped internal
+        assert row.company_id is None and row.contact_id is None
 
 
 async def test_poison_message_does_not_wedge_the_poll(client_for, monkeypatch) -> None:

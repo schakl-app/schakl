@@ -2207,6 +2207,8 @@
   "settings.google.thread_followup": "Follow-ups in a mapped conversation",
   "settings.google.thread_followup_inherit_pending": "Inherit the mapping, still ask for approval",
   "settings.google.thread_followup_inherit_approve": "Inherit the mapping and log immediately",
+  "settings.google.log_internal": "Also pick up email between colleagues",
+  "settings.google.log_internal_hint": "Internal email always waits for review first: link it to a client or project when approving. Expect a busier review queue.",
   "settings.google.saved": "Saved.",
   "google.account.title": "Google account",
   "google.account.hint": "Connect your Google account for the calendar, files and email logging. You can disconnect at any time.",

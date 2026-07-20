@@ -59,6 +59,7 @@ class GoogleSettingsService:
             ),
             gmail_approval_mode=(row.gmail_approval_mode if row else "approval_required"),
             gmail_thread_followup=(row.gmail_thread_followup if row else "inherit_pending"),
+            gmail_log_internal=bool(row and row.gmail_log_internal),
             callback_url=callback_url(self.ctx.org),
             weak_encryption_key=_weak_encryption_key(),
         )
@@ -108,6 +109,7 @@ class GoogleSettingsService:
             automation_connection_user_id=data.automation_connection_user_id,
             gmail_approval_mode=data.gmail_approval_mode.value,
             gmail_thread_followup=data.gmail_thread_followup.value,
+            gmail_log_internal=data.gmail_log_internal,
         )
         if row is None:
             row = GoogleSettings(org_id=self.ctx.org.id, **values)

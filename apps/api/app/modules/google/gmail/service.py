@@ -203,12 +203,15 @@ async def _ingest_message(
         return 0  # a colleague's mailbox already logged this email — one timeline entry
 
     participants = matching.parse_participants(headers)
-    if not participants or matching.internal_only(
-        participants, await _member_emails(session, org.id)
-    ):
+    if not participants:
+        return 0
+    internal = matching.internal_only(participants, await _member_emails(session, org.id))
+    if internal and not settings_row.gmail_log_internal:
         return 0
     matches = await _match_contacts(session, org.id, participants)
-    if not matches:
+    if not matches and not internal:
+        # External mail still needs a known contact; without the internal opt-in nothing
+        # changes here — every newsletter and cold email stays out.
         return 0
 
     inherited = (
@@ -220,6 +223,11 @@ async def _ingest_message(
         settings_row.gmail_thread_followup,
         inherited=inherited is not None,
     )
+    if internal and not mappings:
+        # An opted-in internal mail has no contact to map from, so there is nothing to
+        # auto-file it under: it always waits for its owner, whatever the approval mode.
+        # Once approved onto a client/project, thread follow-ups inherit as usual.
+        pending = True
 
     internal_date = message.get("internalDate")
     occurred_at = (

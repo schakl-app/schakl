@@ -2207,6 +2207,8 @@
   "settings.google.thread_followup": "Vervolgberichten in een gekoppeld gesprek",
   "settings.google.thread_followup_inherit_pending": "Koppeling overnemen, wel eerst goedkeuren",
   "settings.google.thread_followup_inherit_approve": "Koppeling overnemen en direct vastleggen",
+  "settings.google.log_internal": "Ook e-mail tussen collega's oppikken",
+  "settings.google.log_internal_hint": "Interne e-mail wacht altijd eerst op beoordeling: koppel deze bij goedkeuring aan een klant of project. Houd rekening met een drukkere beoordelingslijst.",
   "settings.google.saved": "Opgeslagen.",
   "google.account.title": "Google-account",
   "google.account.hint": "Koppel je Google-account voor de agenda, bestanden en e-mailregistratie. Ontkoppelen kan altijd.",
