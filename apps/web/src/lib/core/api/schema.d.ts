@@ -3697,7 +3697,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Members */
+        /**
+         * List Members
+         * @description The team, for Instellingen → Gebruikers — **staff only**.
+         *
+         *     A contact-linked portal membership (#193) is managed from its contact's portal section;
+         *     listing it here invites role/2FA/revoke actions that belong there. Directly-invited
+         *     ``client``-role members (no contact link) stay listed — hiding them would orphan them.
+         */
         get: operations["list_members_api_v1_members_get"];
         put?: never;
         post?: never;

@@ -21,7 +21,7 @@ from app.core.activity import ActivityService
 from app.core.activity.service import snapshot
 from app.core.customfields import CustomFieldsService
 from app.core.sorting import apply_sort
-from app.core.tenancy import RequestContext
+from app.core.tenancy import RequestContext, TenantScopedRepository
 from app.errors import AppError
 from app.modules.contacts.models import CompanyContact, Contact, ContactType
 from app.modules.contacts.schemas import (
@@ -87,10 +87,39 @@ SORTABLE = {
 }
 
 
+def _linked_in_scope(scope: frozenset[uuid.UUID] | None):  # noqa: ANN202 — SQLA condition
+    """A contact is inside the horizon when a ``company_contacts`` link points at a company
+    the membership may see. ``Contact`` carries no ``company_id`` column, so the repository's
+    generic horizon filter (#191) cannot express this — the module owns the shape."""
+    return (
+        select(CompanyContact.id)
+        .where(
+            CompanyContact.contact_id == Contact.id,
+            CompanyContact.company_id.in_(scope or frozenset()),
+        )
+        .exists()
+    )
+
+
 class ContactService:
+    class _PortalContactRepository(TenantScopedRepository):
+        """The contact repo a portal login gets (#193): every read demands a link to a company
+        inside the horizon, on the same ``_scoped()`` seam org filtering rides — a client reads
+        their companies' people, never the org's whole address book. Unlinked contacts are
+        invisible too: for a portal user they are someone else's drafts, not shared data."""
+
+        def _scoped(self):  # noqa: ANN202 — mirrors the base signature
+            return super()._scoped().where(_linked_in_scope(self.company_scope))
+
     def __init__(self, ctx: RequestContext) -> None:
         self.ctx = ctx
-        self.repo = ctx.repo(Contact)
+        self.repo = (
+            self._PortalContactRepository(
+                ctx.session, ctx.org.id, Contact, company_scope=ctx.company_scope
+            )
+            if ctx.is_portal
+            else ctx.repo(Contact)
+        )
         self.links = ctx.repo(CompanyContact)
         self.custom_fields = CustomFieldsService(ctx)
 
@@ -120,6 +149,12 @@ class ContactService:
                     Contact.email.ilike(pattern),
                 )
             )
+        if self.ctx.is_portal and company_id is not None and company_id not in (
+            self.ctx.company_scope or frozenset()
+        ):
+            # Filtering on a company outside the horizon answers 404, like reading that
+            # company does (#191) — an empty list would confirm the company exists.
+            raise AppError("not_found", "errors.not_found", status_code=404)
 
         stmt = self.repo.scoped_select().where(*conditions)
         count_stmt = (
@@ -127,6 +162,10 @@ class ContactService:
             .select_from(Contact)
             .where(Contact.org_id == self._org_id, *conditions)
         )
+        if self.ctx.is_portal:
+            # The count statement is hand-built (it can't ride ``scoped_select``), so the
+            # portal horizon is AND'd here; the main statement gets it from the repo.
+            count_stmt = count_stmt.where(_linked_in_scope(self.ctx.company_scope))
         # A type filter matches a person who holds that type at *any* company (the type lives on
         # the link, §91), so it joins ``company_contacts`` and de-duplicates like the company one.
         if company_id is not None or contact_type_id is not None:

@@ -216,6 +216,81 @@ async def test_portal_user_excluded_from_staff_pickers(client_for) -> None:
         assert contact["email"] not in {m["email"] for m in filtered.json()}
 
 
+async def test_portal_user_hidden_from_team_list(client_for) -> None:
+    """A portal membership is managed from its contact's portal section, not Instellingen →
+    Gebruikers: the members list is staff-only. A directly-invited client-role member (no
+    contact link) stays listed — hiding them would orphan them."""
+    t, headers, contact, _ = await _tenant_with_contact(client_for, "portal-team")
+    async with client_for(t.host) as c:
+        await c.post(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)
+        await c.post(
+            "/api/v1/members/invite",
+            json={"email": "extern@example.com", "role": "client"},
+            headers=headers,
+        )
+        emails = {m["email"] for m in (await c.get("/api/v1/members", headers=headers)).json()}
+        assert contact["email"] not in emails
+        assert "extern@example.com" in emails
+        assert t.user.email in emails
+
+
+async def test_portal_reads_only_their_companies_contacts(client_for) -> None:
+    """Contacts carry no ``company_id`` column, so the generic horizon filter (#191) never
+    touched them — a portal login could read the org's whole address book. Now a client sees
+    only people linked to a company inside the horizon; other companies' people and unlinked
+    contacts are absent, and out-of-horizon reads answer 404, never 403."""
+    t, headers, contact, _ = await _tenant_with_contact(client_for, "portal-abook")
+    async with client_for(t.host) as c:
+        other_company = (
+            await c.post("/api/v1/companies", json={"name": "Other BV"}, headers=headers)
+        ).json()
+        other_contact = (
+            await c.post(
+                "/api/v1/contacts",
+                json={
+                    "first_name": "Truus",
+                    "last_name": "Anders",
+                    "company_ids": [other_company["id"]],
+                },
+                headers=headers,
+            )
+        ).json()
+        unlinked = (
+            await c.post(
+                "/api/v1/contacts",
+                json={"first_name": "Zwevend", "last_name": "Niemand"},
+                headers=headers,
+            )
+        ).json()
+
+        await c.post(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)
+        async with async_session_maker() as session:
+            portal_user = await session.scalar(
+                select(User).where(User.email == contact["email"])
+            )
+        portal_headers = await auth_cookie(portal_user)
+
+        listed = (await c.get("/api/v1/contacts", headers=portal_headers)).json()
+        ids = {row["id"] for row in listed["items"]}
+        assert contact["id"] in ids
+        assert other_contact["id"] not in ids
+        assert unlinked["id"] not in ids
+        assert listed["total"] == 1
+
+        # Get-by-id outside the horizon: 404, the same answer a nonexistent id gets.
+        r = await c.get(f"/api/v1/contacts/{other_contact['id']}", headers=portal_headers)
+        assert r.status_code == 404
+        # Filtering on an out-of-horizon company answers 404, like reading the company does.
+        r = await c.get(
+            "/api/v1/contacts",
+            params={"company_id": other_company["id"]},
+            headers=portal_headers,
+        )
+        assert r.status_code == 404
+        # Staff reads are untouched: the owner still sees the whole address book.
+        assert (await c.get("/api/v1/contacts", headers=headers)).json()["total"] == 3
+
+
 async def test_portal_state_is_tenant_scoped(client_for) -> None:
     t, headers, contact, _ = await _tenant_with_contact(client_for, "portal-iso")
     other = await make_tenant("portal-iso-other")
