@@ -288,11 +288,13 @@
     method="POST"
     action="?/create"
     use:enhance={() =>
-      ({ update }) => {
-        void update().then(() => {
+      ({ result, update }) => {
+        // Close only on success: a 409 (duplicate email) must stay visible in the form.
+        if (result.type === "success") {
           showCreate = false;
           linkedCompanyIds = [];
-        });
+        }
+        void update({ reset: false });
       }}
     class="mb-6 rounded-xl border border-border bg-surface-raised p-4"
   >

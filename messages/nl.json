@@ -1213,6 +1213,7 @@
   "errors.demo_blocked": "Deze actie is uitgeschakeld in de demo.",
   "demo.banner": "Dit is een live demo: iedereen kan bewerken en alle gegevens worden elke {minutes} minuten gewist.",
   "errors.conflict": "Dit conflicteert met bestaande gegevens.",
+  "errors.contact_email_exists": "Er bestaat al een contactpersoon met dit e-mailadres.",
   "errors.status_in_use": "Deze status bevat nog taken; verplaats of verwijder ze eerst.",
   "errors.status_last": "Dit is de laatste status; een taak heeft er minstens één nodig.",
   "errors.approved_locked": "Deze uren zijn goedgekeurd en vergrendeld. Een beheerder kan ze aanpassen of de goedkeuring ongedaan maken.",

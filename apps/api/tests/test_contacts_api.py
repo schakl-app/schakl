@@ -90,3 +90,64 @@ async def test_contacts_tenant_isolation(client_for) -> None:
         assert (await cb.get("/api/v1/contacts", headers=b_headers)).json()["total"] == 0
         fetch = await cb.get(f"/api/v1/contacts/{a_contact_id}", headers=b_headers)
         assert fetch.status_code == 404
+
+
+async def test_contact_duplicate_email_rejected(client_for) -> None:
+    """One address, one contact: a duplicate email is a 409, case-insensitively; the same
+    tenant may still hold email-less contacts, and another tenant may reuse the address."""
+    t = await make_tenant("con-dup")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        first = await c.post(
+            "/api/v1/contacts",
+            json={"first_name": "Ada", "email": "ada@example.nl"},
+            headers=headers,
+        )
+        assert first.status_code == 201
+
+        dup = await c.post(
+            "/api/v1/contacts",
+            json={"first_name": "Ada2", "email": "  Ada@Example.NL "},
+            headers=headers,
+        )
+        assert dup.status_code == 409
+        body = dup.json()["error"]
+        assert body["message"] == "errors.contact_email_exists"
+        assert body["fields"] == {"email": "errors.contact_email_exists"}
+
+        # No email at all stays allowed, any number of times.
+        for name in ("NoMailOne", "NoMailTwo"):
+            r = await c.post("/api/v1/contacts", json={"first_name": name}, headers=headers)
+            assert r.status_code == 201
+
+        # An update cannot steal another contact's address either…
+        other = await c.post(
+            "/api/v1/contacts",
+            json={"first_name": "Bob", "email": "bob@example.nl"},
+            headers=headers,
+        )
+        patched = await c.patch(
+            f"/api/v1/contacts/{other.json()['id']}",
+            json={"email": "ADA@example.nl"},
+            headers=headers,
+        )
+        assert patched.status_code == 409
+
+        # …but re-saving a contact's own address is not a conflict with itself.
+        own = await c.patch(
+            f"/api/v1/contacts/{first.json()['id']}",
+            json={"email": "ada@example.nl", "job_title": "CTO"},
+            headers=headers,
+        )
+        assert own.status_code == 200, own.text
+
+    # A different tenant may hold the same address.
+    other_tenant = await make_tenant("con-dup-b")
+    other_headers = await auth_cookie(other_tenant.user)
+    async with client_for(other_tenant.host) as cb:
+        r = await cb.post(
+            "/api/v1/contacts",
+            json={"first_name": "Ada", "email": "ada@example.nl"},
+            headers=other_headers,
+        )
+        assert r.status_code == 201

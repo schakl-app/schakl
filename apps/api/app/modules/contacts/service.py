@@ -188,10 +188,35 @@ class ContactService:
         return list((await self.ctx.session.execute(stmt)).scalars().all())
 
     # --- writes -------------------------------------------------------------- #
+    async def _ensure_email_unique(
+        self, email: str | None, *, exclude_id: uuid.UUID | None = None
+    ) -> None:
+        """One person, one contact row: the same address twice is a duplicate, not a namesake.
+
+        Case-insensitive and service-level (no DB constraint — existing tenants may already
+        hold duplicates, and a unique index would abort their unattended upgrade).
+        """
+        if not email:
+            return
+        stmt = select(Contact.id).where(
+            Contact.org_id == self._org_id, func.lower(Contact.email) == email.lower()
+        )
+        if exclude_id is not None:
+            stmt = stmt.where(Contact.id != exclude_id)
+        if await self.ctx.session.scalar(stmt):
+            raise AppError(
+                "conflict",
+                "errors.contact_email_exists",
+                status_code=409,
+                fields={"email": "errors.contact_email_exists"},
+            )
+
     async def create(self, data: ContactCreate) -> Contact:
         self.ctx.require("contacts.contact.write")
         values = data.model_dump()
         company_ids = values.pop("company_ids", None) or []
+        values["email"] = (values.get("email") or "").strip() or None
+        await self._ensure_email_unique(values["email"])
         values["custom"] = await self.custom_fields.validate(
             ENTITY_TYPE, values.get("custom") or {}
         )
@@ -207,6 +232,9 @@ class ContactService:
         contact = await self.repo.get_or_404(contact_id)
         before = snapshot(contact, _AUDITED_FIELDS)
         values = data.model_dump(exclude_unset=True)
+        if "email" in values:
+            values["email"] = (values.get("email") or "").strip() or None
+            await self._ensure_email_unique(values["email"], exclude_id=contact.id)
         if "custom" in values:
             values["custom"] = await self.custom_fields.validate(
                 ENTITY_TYPE, values.get("custom") or {}
