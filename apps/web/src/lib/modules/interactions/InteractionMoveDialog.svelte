@@ -40,6 +40,7 @@
   }
   interface TaskOption extends Option {
     project_id: string | null;
+    company_id: string | null;
   }
   interface ProjectOption extends Option {
     company_id: string | null;
@@ -63,7 +64,11 @@
     companyId ? projects.filter((p) => !p.company_id || p.company_id === companyId) : projects,
   );
   const taskOptions = $derived(
-    projectId ? tasks.filter((task) => task.project_id === projectId) : tasks,
+    projectId
+      ? tasks.filter((task) => task.project_id === projectId)
+      : companyId
+        ? tasks.filter((task) => !task.company_id || task.company_id === companyId)
+        : tasks,
   );
 
   function onProjectPicked(id: string) {
@@ -120,13 +125,19 @@
   let handledCreate = $state("");
   $effect(() => {
     const created = page.form?.inlineCreated as
-      { slot: string; id: string; project_id?: string | null } | undefined;
+      | { slot: string; id: string; project_id?: string | null; company_id?: string | null }
+      | undefined;
     if (created?.slot !== "move_task" || created.id === handledCreate) return;
     handledCreate = created.id;
     if (!tasks.some((option) => option.value === created.id)) {
       tasks = [
         ...tasks,
-        { value: created.id, label: taskDraft || "—", project_id: created.project_id ?? null },
+        {
+          value: created.id,
+          label: taskDraft || "—",
+          project_id: created.project_id ?? null,
+          company_id: created.company_id ?? null,
+        },
       ];
     }
     onTaskPicked(created.id);
@@ -168,10 +179,16 @@
         }),
       );
       tasks = (tasksPage.items ?? []).map(
-        (task: { id: string; title: string; project_id?: string | null }) => ({
+        (task: {
+          id: string;
+          title: string;
+          project_id?: string | null;
+          company_id?: string | null;
+        }) => ({
           value: task.id,
           label: task.title,
           project_id: task.project_id ?? null,
+          company_id: task.company_id ?? null,
         }),
       );
       contacts = (contactsPage.items ?? []).map(
