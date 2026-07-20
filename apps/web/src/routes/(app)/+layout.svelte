@@ -39,13 +39,13 @@
   const theme = $derived(page.data.theme);
   const user = $derived(page.data.user);
   // The portal shell (#193): a contact-linked login gets a reduced frame — their homepage is
-  // the curated dashboard, module nav shrinks to what the client role can read, no bell/AI.
-  // UX only; the API's deny-by-default permissions and the company horizon are the boundary.
+  // the curated dashboard, no bell/AI/settings/calendar. The module nav is the same
+  // permission-filtered registry as staff, so it shrinks to what the client role can read;
+  // the company horizon scopes every row server-side. UX only; the API's deny-by-default
+  // permissions and the horizon are the boundary.
   const isPortal = $derived(user?.isPortal ?? false);
   const nav = $derived(
-    isPortal
-      ? []
-      : navItemsFor(theme?.enabledModules ?? [], user, page.data.navPref?.items ?? null),
+    navItemsFor(theme?.enabledModules ?? [], user, page.data.navPref?.items ?? null),
   );
   const path = $derived(page.url.pathname);
   const showOverview = $derived(!isPortal && can(user, "time.report.read"));
