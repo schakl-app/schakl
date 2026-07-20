@@ -21,7 +21,7 @@ from app.core.email.senders import OutgoingEmail
 from app.core.email.service import send_org_email
 from app.core.email.templates import build_email_content, resolve_template
 from app.core.models import OrgSettings
-from app.core.tenancy import resolve_org
+from app.core.tenancy import request_hostname, resolve_org
 from app.db import set_current_org
 from app.i18n import resolve_locale
 
@@ -40,7 +40,10 @@ async def send_password_email(
     """``(sent, error)`` — the error is an i18n key for a missing transport, provider text
     otherwise. The org resolves from the request host (§5); the link lands on the org's own
     address (``org_base_url``), in the recipient's locale (§8)."""
-    host = (request.headers.get("host") or "").split(":")[0] if request is not None else ""
+    # The same host rule as ``require_context``: ``X-Forwarded-Host`` first. The SSR web app
+    # calls the API on its internal address, so the raw ``Host`` header of a forgot-password
+    # or invite request is the service name — resolving on it finds no org and drops the mail.
+    host = request_hostname(request) if request is not None else ""
     org = await resolve_org(session, host) if host else None
     if org is None:
         logger.warning(

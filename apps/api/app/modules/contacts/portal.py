@@ -225,7 +225,11 @@ class PortalService:
         request.state.password_email_kind = "invite"
         try:
             await user_manager.forgot_password(user, request)
-            state.invite_email_sent = True
+            sent, send_error = getattr(
+                request.state, "password_email_result", (True, None)
+            )
+            state.invite_email_sent = sent
+            state.invite_email_error = send_error
         except Exception:  # noqa: BLE001 — the enable itself must stand
             logger.exception("Portal invite email for %s failed", user.email)
             state.invite_email_sent = False

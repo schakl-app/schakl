@@ -70,8 +70,9 @@ async def test_reset_has_its_own_independent_budget(client_for, monkeypatch) -> 
     fake = _FakeRedis()
     monkeypatch.setattr(ratelimit, "get_redis", lambda: fake)
 
-    async def _no_email(*args, **kwargs) -> None:  # noqa: ANN002, ANN003
-        return None
+    async def _no_email(*args, **kwargs) -> tuple[bool, str | None]:  # noqa: ANN002, ANN003
+        # Honour the real contract — the manager unpacks (sent, error).
+        return True, None
 
     monkeypatch.setattr(auth_emails, "send_password_email", _no_email)
 
