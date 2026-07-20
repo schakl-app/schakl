@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Infrastructure
+
+- **Multi-arch container images.** The release workflow now builds both `schakl-api` and `schakl-web` for `linux/amd64` (x86-64) **and** `linux/arm64` (ARM), publishing each tag as a manifest list on GHCR. Self-hosters can run schakl unchanged on ARM hosts (Hetzner Ampere/CAX, AWS Graviton, Apple Silicon); `docker pull` selects the right variant automatically. No Dockerfile or compose changes were needed — the base images and all dependencies already ship arm64 artefacts.
+
 ## v0.13.0 — 2026-07-18
 
 The commercial release: most extension modules move behind the license key, the invoicing module grows into a complete billing flow (products, server-rendered PDFs, the time and subscription bridges in the UI), websites take hosting's place in the menu and on the client page, and a broad UX pass lands breadcrumbs on every page and fixes a whole class of silent form-save bugs.

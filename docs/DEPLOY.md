@@ -229,6 +229,15 @@ git tag -a v1.2.3 -m "..." && git push origin v1.2.3
 That publishes `1.2.3`, `1.2`, `latest`, and `sha-<commit>`, and opens a GitHub Release.
 `latest` follows the newest **stable** tag; a pre-release (`v1.2.3-rc.1`) never moves it.
 
+Each tag is a **multi-arch manifest list** covering `linux/amd64` (x86-64) and `linux/arm64`
+(ARM) — so the same image runs on an Intel/AMD host and on ARM (Hetzner Ampere/CAX, AWS
+Graviton, Apple Silicon). `docker pull` selects the variant matching the host automatically;
+no per-arch tag and no compose change is needed. Confirm what a tag carries with:
+
+```bash
+docker buildx imagetools inspect ghcr.io/schakl-app/schakl-api:1.2.3
+```
+
 **Pin `SCHAKL_TAG` to an exact version in production.** `latest` is a reasonable default for a
 fresh install and a poor one for a host you upgrade — a redeploy would silently pull a newer
 app than the one you tested.
