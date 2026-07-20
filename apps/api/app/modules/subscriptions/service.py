@@ -11,7 +11,8 @@ The decisions the issue demanded be made explicitly, made and encoded:
 - **Overage is flagged, not billed** (v1): the usage payload reports it; #31's accounting
   integration decides what to do with it.
 - **Proration: unsupported in v1**, on purpose. The first ``subscription.due`` fires on
-  ``next_invoice_date`` for a full period.
+  ``next_invoice_date`` for a full period; left unset, the first activation derives it as
+  ``start_date`` + one period (#223).
 - **Rollover is stored tenant config** (``RolloverRule``); the carry *computation* lands with
   the invoicing consumer (#31), which owns per-period settlement.
 """
@@ -558,10 +559,24 @@ class SubscriptionService:
         The stamp is never cleared, so pause→resume (or cancel→reactivate) fires nothing — the
         tasks module spawns the type's onboarding templates exactly once per agreement (#142).
         Template ids ride in the payload so consumers stay ignorant of this module's tables.
+
+        Also the moment a missing ``next_invoice_date`` is derived (#223): the create form no
+        longer asks for one, and an active agreement the cron never sees is a silent billing
+        hole. The first cycle boundary is ``start_date`` + one period — the cron's own
+        semantics (``subscription.due`` on date X covers ``[X − period, X]``); proration stays
+        v1-unsupported, the operator adjusts the date in edit. An end before the first
+        boundary leaves it NULL, mirroring the cron's past-the-end rule.
         """
         if sub.status != SubscriptionStatus.ACTIVE.value or sub.activated_at is not None:
             return
-        await self.repo.update(sub, activated_at=datetime.now(UTC))
+        values: dict[str, Any] = {"activated_at": datetime.now(UTC)}
+        if sub.next_invoice_date is None:
+            next_date = add_months(
+                sub.start_date, period_months(sub.interval, sub.interval_count)
+            )
+            if sub.end_date is None or next_date <= sub.end_date:
+                values["next_invoice_date"] = next_date
+        await self.repo.update(sub, **values)
         template_ids: list[str] = []
         if sub.subscription_type_id is not None:
             sub_type = await self.ctx.session.scalar(
