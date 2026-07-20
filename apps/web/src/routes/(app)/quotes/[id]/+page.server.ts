@@ -2,6 +2,7 @@ import { error as httpError, fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
+import { createContactAction } from "$lib/core/quickcreate.server";
 import { entityPanelsFor } from "$lib/core/registry";
 import { apiFor } from "$lib/core/session";
 import "$lib/modules";
@@ -17,16 +18,27 @@ export const load: PageServerLoad = async (event) => {
   const enabled = event.locals.theme?.enabledModules ?? [];
   const panels = entityPanelsFor(enabled, "quote");
 
-  const [quote, contacts, taxRates, products, templates, settings, ...panelData] =
-    await Promise.all([
-      api.GET("/api/v1/invoicing/quotes/{quote_id}", { params: { path: { quote_id } } }),
-      api.GET("/api/v1/contacts", { params: { query: { limit: 200, count: false } } }),
-      api.GET("/api/v1/invoicing/tax-rates"),
-      api.GET("/api/v1/invoicing/products"),
-      api.GET("/api/v1/invoicing/templates", { params: { query: { include_inactive: true } } }),
-      api.GET("/api/v1/invoicing/settings"),
-      ...panels.map((panel) => panel.load(api, context)),
-    ]);
+  const [
+    quote,
+    contacts,
+    taxRates,
+    products,
+    templates,
+    settings,
+    contactDefinitions,
+    ...panelData
+  ] = await Promise.all([
+    api.GET("/api/v1/invoicing/quotes/{quote_id}", { params: { path: { quote_id } } }),
+    api.GET("/api/v1/contacts", { params: { query: { limit: 200, count: false } } }),
+    api.GET("/api/v1/invoicing/tax-rates"),
+    api.GET("/api/v1/invoicing/products"),
+    api.GET("/api/v1/invoicing/templates", { params: { query: { include_inactive: true } } }),
+    api.GET("/api/v1/invoicing/settings"),
+    api.GET("/api/v1/custom-fields/definitions", {
+      params: { query: { entity_type: "contact" } },
+    }),
+    ...panels.map((panel) => panel.load(api, context)),
+  ]);
   if (!quote.data) throw httpError(404);
 
   return {
@@ -36,6 +48,7 @@ export const load: PageServerLoad = async (event) => {
     products: products.data ?? [],
     templates: templates.data ?? [],
     settings: settings.data ?? null,
+    contactDefinitions: contactDefinitions.data ?? [],
     context,
     panels: panels.map((panel, i) => ({
       key: panel.key,
@@ -55,6 +68,7 @@ function pathFor(event: { params: { id: string } }) {
 }
 
 export const actions: Actions = {
+  createContact: createContactAction,
   save: async (event) => {
     const form = await event.request.formData();
     const draft = String(form.get("_status") ?? "") === "draft";

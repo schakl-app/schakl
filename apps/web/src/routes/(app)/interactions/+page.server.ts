@@ -1,6 +1,8 @@
-import { redirect } from "@sveltejs/kit";
+import { fail, redirect } from "@sveltejs/kit";
 
+import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
+import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
@@ -34,7 +36,7 @@ export const load: PageServerLoad = async (event) => {
   const offset = Math.max(0, Number(params.get("offset") ?? 0) || 0);
 
   const api = apiFor(event);
-  const [list, kinds, members] = await Promise.all([
+  const [list, kinds, members, companyDefinitions] = await Promise.all([
     api.GET("/api/v1/interactions", {
       params: {
         query: {
@@ -50,6 +52,10 @@ export const load: PageServerLoad = async (event) => {
     }),
     api.GET("/api/v1/interactions/kinds", { params: { query: { include_inactive: true } } }),
     api.GET("/api/v1/members/lookup"),
+    // For the inline company quick-create (#115): the full dialog includes custom fields.
+    api.GET("/api/v1/custom-fields/definitions", {
+      params: { query: { entity_type: "company" } },
+    }),
   ]);
 
   return {
@@ -59,6 +65,7 @@ export const load: PageServerLoad = async (event) => {
     limit: PAGE_SIZE,
     kinds: kinds.data ?? [],
     members: members.data ?? [],
+    companyDefinitions: companyDefinitions.data ?? [],
     canReadAll,
     filters: { q: q ?? "", kind: kind ?? null, pending, mine, owner: owner ?? null },
     table: { pref, sort: null, widths: resolved.widths },
@@ -73,5 +80,40 @@ export const actions: Actions = {
     await saveTablePref(event, INTERACTIONS_TABLE_ID, parseTablePref(form));
     return { tableSaved: true };
   },
+
+  /** Inline company create behind the form's client picker (#115, docs/UX.md). */
+  createCompany: createCompanyAction,
+
+  /** Inline project create behind the form's project picker (docs/UX.md — per-picker
+   *  definition of done). Answers `inlineCreated` so the picker that asked auto-selects it;
+   *  `name`/`company_id` ride along so the form can label the option and run its cascade. */
+  createProject: async (event) => {
+    const form = await event.request.formData();
+    const name = String(form.get("name") ?? "").trim();
+    if (!name) return fail(400, { qcError: "errors.required" });
+    const rate = Number(String(form.get("hourly_rate") ?? "").trim());
+    const { data, error } = await apiFor(event).POST("/api/v1/projects", {
+      body: {
+        name,
+        company_id: String(form.get("company_id") ?? "").trim() || null,
+        status: "active",
+        budget_period: "total",
+        currency: event.locals.theme.currency,
+        billable_default: true,
+        hourly_rate: Number.isFinite(rate) && rate > 0 ? rate : null,
+        custom: {},
+      },
+    });
+    if (error || !data) return fail(400, { qcError: apiErrorKey(error).key });
+    return {
+      inlineCreated: {
+        slot: "interaction_project",
+        id: data.id,
+        name: data.name,
+        company_id: data.company_id ?? null,
+      },
+    };
+  },
+
   ...interactionActions,
 };

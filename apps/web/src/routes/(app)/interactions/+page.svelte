@@ -18,10 +18,12 @@
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
+  import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
+  import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import { INTERACTION_COLUMNS } from "$lib/modules/interactions/columns";
   import {
     dayLabel,
@@ -111,6 +113,32 @@
   let showCreate = $state(false);
   let showEdit = $state(false);
   let editing = $state<InteractionItem | null>(null);
+
+  // Inline company / project create from the form's pickers (#115, docs/UX.md — per-picker
+  // definition of done). The form passes what was typed out; the dialogs live here and answer
+  // through `inlineCreated` (slots interaction_company / interaction_project) so the form
+  // auto-selects the new row.
+  let qcCompanyOpen = $state(false);
+  let qcCompanyName = $state("");
+  let qcProjectOpen = $state(false);
+  let qcProjectName = $state("");
+  // The project dialog's own client picker: fetched on first open, never on page load
+  // (docs/PERFORMANCE.md — a rarely opened dialog must not tax every load).
+  let qcCompanyItems = $state<{ value: string; label: string }[]>([]);
+  let qcCompaniesLoaded = false;
+  async function openProjectQuickCreate(name: string) {
+    qcProjectName = name;
+    qcProjectOpen = true;
+    if (qcCompaniesLoaded) return;
+    qcCompaniesLoaded = true;
+    const response = await fetch("/api/v1/companies?limit=200&count=false", {
+      headers: { accept: "application/json" },
+    });
+    const items: { id: string; name: string }[] = response.ok
+      ? ((await response.json()).items ?? [])
+      : [];
+    qcCompanyItems = items.map((c) => ({ value: c.id, label: c.name }));
+  }
   let showMove = $state(false);
   let moving = $state<InteractionItem | null>(null);
   let deleteId = $state("");
@@ -410,7 +438,15 @@
 {/if}
 
 <Modal bind:open={showCreate} title={t("interactions.add")}>
-  <InteractionForm mentions={mentionCandidates} onsaved={() => (showCreate = false)} />
+  <InteractionForm
+    mentions={mentionCandidates}
+    onsaved={() => (showCreate = false)}
+    oncreatecompany={(name) => {
+      qcCompanyName = name;
+      qcCompanyOpen = true;
+    }}
+    oncreateproject={(name) => void openProjectQuickCreate(name)}
+  />
 </Modal>
 
 <Modal bind:open={showEdit} title={t("interactions.edit")}>
@@ -491,3 +527,78 @@
      reads with its line breaks and no sideways scroll, and a pending gmail row is assigned +
      approved (or rejected) here instead of a bare one-click approve. -->
 <InteractionDetailModal bind:open={showDetail} item={detailItem} />
+
+<CompanyQuickCreate
+  bind:open={qcCompanyOpen}
+  name={qcCompanyName}
+  definitions={data.companyDefinitions}
+  locale={data.locale}
+  pickerSlot="interaction_company"
+  error={form?.qcError ?? null}
+/>
+
+<!-- Inline project create from the form's picker (docs/UX.md — per-picker definition of done). -->
+<Modal bind:open={qcProjectOpen} title={t("time.quick_create.project")}>
+  {#key qcProjectName + String(qcProjectOpen)}
+    <form
+      method="POST"
+      action="?/createProject"
+      use:enhance={() =>
+        ({ result, update }) => {
+          if (result.type === "success") qcProjectOpen = false;
+          void update({ reset: false });
+        }}
+      class="space-y-3"
+    >
+      <div>
+        <label for="qc-int-project-name" class="mb-1 block text-sm font-medium text-text"
+          >{t("projects.field.name")}</label
+        >
+        <input
+          id="qc-int-project-name"
+          name="name"
+          value={qcProjectName}
+          required
+          class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+        />
+      </div>
+      <div>
+        <label for="qc-int-project-company" class="mb-1 block text-sm font-medium text-text"
+          >{t("projects.field.company")}</label
+        >
+        <Combobox
+          items={qcCompanyItems}
+          name="company_id"
+          id="qc-int-project-company"
+          placeholder={t("projects.field.company")}
+        />
+      </div>
+      <div>
+        <label for="qc-int-project-rate" class="mb-1 block text-sm font-medium text-text"
+          >{t("projects.field.hourly_rate")}</label
+        >
+        <input
+          id="qc-int-project-rate"
+          name="hourly_rate"
+          type="number"
+          min="0"
+          step="0.01"
+          class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+        />
+      </div>
+      {#if form?.qcError}
+        <p class="text-sm text-red-600 dark:text-red-400">{t(form.qcError)}</p>
+      {/if}
+      <div class="flex justify-end gap-2">
+        <button
+          type="button"
+          class="rounded-lg border border-border px-4 py-2 text-sm text-text"
+          onclick={() => (qcProjectOpen = false)}>{t("common.cancel")}</button
+        >
+        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
+          >{t("common.create")}</button
+        >
+      </div>
+    </form>
+  {/key}
+</Modal>

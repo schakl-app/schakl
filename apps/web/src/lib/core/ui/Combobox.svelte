@@ -60,6 +60,16 @@
     oncreate?.(draft);
   }
 
+  /** The persistent ＋ next to the field: create without typing first. Prefills only a
+   * live typed draft — never the already-selected label, which would seed the dialog with
+   * an entity that exists. */
+  function startCreateFromButton() {
+    const draft = open ? query.trim() : "";
+    open = false;
+    query = selectedLabel;
+    oncreate?.(draft && draft !== selectedLabel ? draft : "");
+  }
+
   // Keep the visible text in sync when the selection changes from outside.
   $effect(() => {
     if (!open) query = selectedLabel;
@@ -129,7 +139,9 @@
       aria-expanded={open}
       aria-controls="{id}-listbox"
       {placeholder}
-      class="w-full rounded-lg border border-border px-3 py-2 pr-8 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+      class="w-full rounded-lg border border-border px-3 py-2 {oncreate
+        ? 'pr-14'
+        : 'pr-8'} text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand"
       onfocus={() => {
         open = true;
         query = "";
@@ -142,7 +154,9 @@
       <button
         type="button"
         tabindex="-1"
-        class="absolute inset-y-0 right-2 text-text-muted hover:text-text"
+        class="absolute inset-y-0 {oncreate
+          ? 'right-8'
+          : 'right-2'} text-text-muted hover:text-text"
         aria-label={t("common.clear")}
         onmousedown={(e) => {
           e.preventDefault();
@@ -151,8 +165,25 @@
         }}>×</button
       >
     {:else}
-      <span class="pointer-events-none absolute inset-y-0 right-2 flex items-center text-text-muted"
-        >▾</span
+      <span
+        class="pointer-events-none absolute inset-y-0 {oncreate
+          ? 'right-8'
+          : 'right-2'} flex items-center text-text-muted">▾</span
+      >
+    {/if}
+    {#if oncreate}
+      <!-- Inline-create is per-picker definition of done (docs/UX.md); the ＋ makes the
+           path visible without typing an unknown name first. -->
+      <button
+        type="button"
+        tabindex="-1"
+        class="absolute inset-y-0 right-2 flex items-center font-medium text-text-muted hover:text-brand"
+        aria-label={t("common.create")}
+        title={t("common.create")}
+        onmousedown={(e) => {
+          e.preventDefault();
+          startCreateFromButton();
+        }}>＋</button
       >
     {/if}
   </div>

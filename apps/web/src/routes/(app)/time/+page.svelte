@@ -87,10 +87,28 @@
   }
 
   // --- quick-create dialogs (opened by typing an unknown name in a picker) --------
+  // The slot names the picker that asked, so `inlineCreated` auto-selects only there
+  // (docs/UX.md) — a client created from the timer never lands in the entry form's picker.
   let showNewCompany = $state(false);
   let showNewProject = $state(false);
   let draftCompanyName = $state("");
   let draftProjectName = $state("");
+  let companySlot = $state("entry_company");
+  let projectSlot = $state("entry_project");
+  // The project modal's own client picker; bound so a stacked company create selects here.
+  let qcProjectCompany = $state("");
+
+  function quickCreateCompany(name: string, slot: string) {
+    draftCompanyName = name;
+    companySlot = slot;
+    showNewCompany = true;
+  }
+  function quickCreateProject(name: string, slot: string) {
+    draftProjectName = name;
+    projectSlot = slot;
+    qcProjectCompany = "";
+    showNewProject = true;
+  }
 
   // --- "add hours" jump button ----------------------------------------------------
   let panelEl: HTMLElement | undefined = $state();
@@ -291,6 +309,21 @@
     ).map((p) => ({ value: p.id, label: p.name })),
   );
 
+  // A quick-create answers with `inlineCreated` (server create → auto-select): only the
+  // slot that asked gets the new id. The entry form's pickers keep their own wiring.
+  $effect(() => {
+    const created = form?.inlineCreated;
+    if (!created?.id) return;
+    if (created.slot === "timer_company") timerCompany = created.id;
+    if (created.slot === "project_company") qcProjectCompany = created.id;
+    if (created.slot === "timer_project") {
+      timerProject = created.id;
+      // Back-fill the client like picking one would: the new project may belong to a
+      // client the timer hadn't picked, and would otherwise be filtered out of the list.
+      if ("company_id" in created && created.company_id) timerCompany = created.company_id;
+    }
+  });
+
   // --- live running-timer clock ---------------------------------------------
   let nowMs = $state(Date.now());
   $effect(() => {
@@ -390,6 +423,7 @@
             bind:value={timerCompany}
             id="timer-company"
             placeholder={t("time.field.company")}
+            oncreate={(name) => quickCreateCompany(name, "timer_company")}
           />
         </div>
         <div class="w-40">
@@ -399,6 +433,7 @@
             bind:value={timerProject}
             id="timer-project"
             placeholder={t("time.field.project")}
+            oncreate={(name) => quickCreateProject(name, "timer_project")}
           />
         </div>
         <button
@@ -686,14 +721,8 @@
           error={form?.error ?? null}
           oncancel={() => (editingId = null)}
           ondone={() => (editingId = null)}
-          oncreatecompany={(name) => {
-            draftCompanyName = name;
-            showNewCompany = true;
-          }}
-          oncreateproject={(name) => {
-            draftProjectName = name;
-            showNewProject = true;
-          }}
+          oncreatecompany={(name) => quickCreateCompany(name, "entry_company")}
+          oncreateproject={(name) => quickCreateProject(name, "entry_project")}
         />
       {/key}
     {:else}
@@ -717,14 +746,8 @@
             aiPrefill = null;
             aiParsedSummary = null;
           }}
-          oncreatecompany={(name) => {
-            draftCompanyName = name;
-            showNewCompany = true;
-          }}
-          oncreateproject={(name) => {
-            draftProjectName = name;
-            showNewProject = true;
-          }}
+          oncreatecompany={(name) => quickCreateCompany(name, "entry_company")}
+          oncreateproject={(name) => quickCreateProject(name, "entry_project")}
         />
       {/key}
     {/if}
@@ -732,19 +755,109 @@
 </div>
 
 <!-- Quick-create: a full new client/project without leaving the timesheet. Custom fields
-     (incl. required ones) come from the tenant's definitions via the API. -->
+     (incl. required ones) come from the tenant's definitions via the API. The company modal
+     renders last so it stacks *above* the project modal, whose own client picker can open it. -->
+<Modal bind:open={showNewProject} title={t("time.quick_create.project")}>
+  {#key draftProjectName + String(showNewProject)}
+    <form
+      method="POST"
+      action="?/createProject"
+      use:enhance={() =>
+        ({ result, update }) => {
+          if (result.type === "success") showNewProject = false;
+          void update({ reset: false });
+        }}
+      class="space-y-3"
+    >
+      <input type="hidden" name="slot" value={projectSlot} />
+      <div class="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label for="qc-project-name" class="mb-1 block text-sm font-medium text-text"
+            >{t("projects.field.name")}</label
+          >
+          <input
+            id="qc-project-name"
+            name="name"
+            value={draftProjectName}
+            required
+            class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+          />
+        </div>
+        <div>
+          <label for="qc-project-company" class="mb-1 block text-sm font-medium text-text"
+            >{t("projects.field.company")}</label
+          >
+          <Combobox
+            items={data.companies.map((c) => ({ value: c.id, label: c.name }))}
+            name="company_id"
+            bind:value={qcProjectCompany}
+            id="qc-project-company"
+            placeholder={t("time.field.company")}
+            oncreate={(name) => quickCreateCompany(name, "project_company")}
+          />
+        </div>
+        <div>
+          <label for="qc-project-rate" class="mb-1 block text-sm font-medium text-text"
+            >{t("projects.field.hourly_rate")}</label
+          >
+          <input
+            id="qc-project-rate"
+            name="hourly_rate"
+            type="number"
+            min="0"
+            step="0.01"
+            class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+          />
+        </div>
+        <div class="flex items-center gap-2 pt-6">
+          <input
+            id="qc-project-billable"
+            name="billable_default"
+            type="checkbox"
+            checked
+            class="h-4 w-4 rounded border-border text-brand focus:ring-brand"
+          />
+          <label for="qc-project-billable" class="text-sm font-medium text-text"
+            >{t("projects.field.billable_default")}</label
+          >
+        </div>
+      </div>
+      {#if data.projectDefinitions.length > 0}
+        <CustomFieldsForm definitions={data.projectDefinitions} locale={data.locale} />
+      {:else}
+        <input type="hidden" name="custom" value={"{}"} />
+      {/if}
+      {#if form?.qcError}<p class="text-sm text-red-600 dark:text-red-400">
+          {t(form.qcError)}
+        </p>{/if}
+      <div class="flex justify-end gap-2">
+        <button
+          type="button"
+          class="rounded-lg border border-border px-4 py-2 text-sm"
+          onclick={() => (showNewProject = false)}>{t("common.cancel")}</button
+        >
+        <button
+          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+          >{t("common.create")}</button
+        >
+      </div>
+    </form>
+  {/key}
+</Modal>
+
 <Modal bind:open={showNewCompany} title={t("time.quick_create.company")}>
   {#key draftCompanyName + String(showNewCompany)}
     <form
       method="POST"
       action="?/createCompany"
       use:enhance={() =>
-        ({ update }) => {
-          showNewCompany = false;
-          void update();
+        ({ result, update }) => {
+          if (result.type === "success") showNewCompany = false;
+          void update({ reset: false });
         }}
       class="space-y-3"
     >
+      <input type="hidden" name="slot" value={companySlot} />
       <div class="grid gap-3 sm:grid-cols-2">
         <div>
           <label for="qc-company-name" class="mb-1 block text-sm font-medium text-text"
@@ -791,95 +904,14 @@
       {:else}
         <input type="hidden" name="custom" value={"{}"} />
       {/if}
-      {#if form?.error}<p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
+      {#if form?.qcError}<p class="text-sm text-red-600 dark:text-red-400">
+          {t(form.qcError)}
+        </p>{/if}
       <div class="flex justify-end gap-2">
         <button
           type="button"
           class="rounded-lg border border-border px-4 py-2 text-sm"
           onclick={() => (showNewCompany = false)}>{t("common.cancel")}</button
-        >
-        <button
-          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-          >{t("common.create")}</button
-        >
-      </div>
-    </form>
-  {/key}
-</Modal>
-
-<Modal bind:open={showNewProject} title={t("time.quick_create.project")}>
-  {#key draftProjectName + String(showNewProject)}
-    <form
-      method="POST"
-      action="?/createProject"
-      use:enhance={() =>
-        ({ update }) => {
-          showNewProject = false;
-          void update();
-        }}
-      class="space-y-3"
-    >
-      <div class="grid gap-3 sm:grid-cols-2">
-        <div>
-          <label for="qc-project-name" class="mb-1 block text-sm font-medium text-text"
-            >{t("projects.field.name")}</label
-          >
-          <input
-            id="qc-project-name"
-            name="name"
-            value={draftProjectName}
-            required
-            class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-          />
-        </div>
-        <div>
-          <label for="qc-project-company" class="mb-1 block text-sm font-medium text-text"
-            >{t("projects.field.company")}</label
-          >
-          <Combobox
-            items={data.companies.map((c) => ({ value: c.id, label: c.name }))}
-            name="company_id"
-            id="qc-project-company"
-            placeholder={t("time.field.company")}
-          />
-        </div>
-        <div>
-          <label for="qc-project-rate" class="mb-1 block text-sm font-medium text-text"
-            >{t("projects.field.hourly_rate")}</label
-          >
-          <input
-            id="qc-project-rate"
-            name="hourly_rate"
-            type="number"
-            min="0"
-            step="0.01"
-            class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-          />
-        </div>
-        <div class="flex items-center gap-2 pt-6">
-          <input
-            id="qc-project-billable"
-            name="billable_default"
-            type="checkbox"
-            checked
-            class="h-4 w-4 rounded border-border text-brand focus:ring-brand"
-          />
-          <label for="qc-project-billable" class="text-sm font-medium text-text"
-            >{t("projects.field.billable_default")}</label
-          >
-        </div>
-      </div>
-      {#if data.projectDefinitions.length > 0}
-        <CustomFieldsForm definitions={data.projectDefinitions} locale={data.locale} />
-      {:else}
-        <input type="hidden" name="custom" value={"{}"} />
-      {/if}
-      {#if form?.error}<p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
-      <div class="flex justify-end gap-2">
-        <button
-          type="button"
-          class="rounded-lg border border-border px-4 py-2 text-sm"
-          onclick={() => (showNewProject = false)}>{t("common.cancel")}</button
         >
         <button
           class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"

@@ -33,6 +33,7 @@
     locale,
     form,
     oncancel,
+    oncreatecontact,
     initialCompanyId = "",
   }: {
     kind: "invoice" | "quote";
@@ -56,6 +57,9 @@
     locale: string;
     form: Record<string, unknown> | null;
     oncancel?: () => void;
+    /** Inline-create for the contact picker (#115): the host wires this to its
+     *  ContactQuickCreate dialog (slot "contact"); the ＋ only shows when passed. */
+    oncreatecontact?: (name: string) => void;
     /** Preset client for a fresh document (the client page's "＋ nieuwe factuur"). */
     initialCompanyId?: string;
   } = $props();
@@ -68,12 +72,16 @@
   // svelte-ignore state_referenced_locally
   let companyId = $state(initialCompanyId);
   let createdCompanyId = $state("");
+  // One "contact" slot: the two contact pickers below are the same field in mutually
+  // exclusive states (new document vs editable draft), never rendered together.
+  let createdContactId = $state("");
   let qcCompanyOpen = $state(false);
   let qcCompanyName = $state("");
   $effect(() => {
     const created = (form as { inlineCreated?: { slot: string; id: string } } | null)
       ?.inlineCreated;
     if (created?.slot === "company") createdCompanyId = created.id;
+    else if (created?.slot === "contact") createdContactId = created.id;
   });
 
   let currency = $state("");
@@ -233,9 +241,10 @@
         <Combobox
           items={contactItems}
           name="contact_id"
-          value=""
+          value={createdContactId}
           id="doc-contact"
           placeholder={t("invoicing.field.contact")}
+          oncreate={oncreatecontact}
         />
       </div>
     </div>
@@ -247,9 +256,10 @@
       <Combobox
         items={contactItems}
         name="contact_id"
-        value={doc?.contact_id ?? ""}
+        value={createdContactId || (doc?.contact_id ?? "")}
         id="doc-contact"
         placeholder={t("invoicing.field.contact")}
+        oncreate={oncreatecontact}
       />
     </div>
   {/if}

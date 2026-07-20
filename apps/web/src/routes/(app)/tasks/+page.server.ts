@@ -1,13 +1,13 @@
 import { fail } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
+import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { TASK_COLUMNS, TASKS_TABLE_ID } from "$lib/modules/tasks/columns";
 
 import type { Actions, PageServerLoad } from "./$types";
-
 
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
@@ -31,15 +31,22 @@ export const load: PageServerLoad = async (event) => {
   const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
 
   // Lookups (companies/projects/labels/members) come from the /tasks layout load.
-  const { data: tasks } = await api.GET("/api/v1/tasks", {
-    params: { query: { limit: 200, offset: 0, sort, ...filters } },
-  });
+  const [{ data: tasks }, { data: companyDefinitions }] = await Promise.all([
+    api.GET("/api/v1/tasks", {
+      params: { query: { limit: 200, offset: 0, sort, ...filters } },
+    }),
+    // For the inline company quick-create (#115): the full dialog includes custom fields.
+    api.GET("/api/v1/custom-fields/definitions", {
+      params: { query: { entity_type: "company" } },
+    }),
+  ]);
 
   return {
     tasks: tasks?.items ?? [],
     total: tasks?.total ?? 0,
     filters,
     table: { pref, sort: sort ?? null, widths: resolved.widths },
+    companyDefinitions: companyDefinitions ?? [],
   };
 };
 
@@ -99,4 +106,29 @@ export const actions: Actions = {
     }
     return { deleted: true };
   },
+
+  /** Inline project create from the form's picker (docs/UX.md — per-picker definition of
+   *  done). Returns `inlineCreated` so the page auto-selects the new project. */
+  createProject: async (event) => {
+    const form = await event.request.formData();
+    const name = String(form.get("name") ?? "").trim();
+    if (!name) return fail(400, { qcError: "errors.required" });
+    const rate = Number(String(form.get("hourly_rate") ?? "").trim());
+    const { data, error } = await apiFor(event).POST("/api/v1/projects", {
+      body: {
+        name,
+        company_id: String(form.get("company_id") ?? "").trim() || null,
+        status: "active",
+        budget_period: "total",
+        currency: event.locals.theme.currency,
+        billable_default: true,
+        hourly_rate: Number.isFinite(rate) && rate > 0 ? rate : null,
+        custom: {},
+      },
+    });
+    if (error || !data) return fail(400, { qcError: apiErrorKey(error).key });
+    return { inlineCreated: { slot: "project", id: data.id, name: data.name } };
+  },
+
+  createCompany: createCompanyAction,
 };

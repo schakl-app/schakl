@@ -4,6 +4,7 @@ import { error, fail, redirect } from "@sveltejs/kit";
 
 import { apiBaseUrl } from "$lib/core/api/client";
 import { apiErrorKey } from "$lib/core/errors";
+import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { entityPanelsFor } from "$lib/core/registry";
 import { apiFor } from "$lib/core/session";
 import { driveActions } from "$lib/modules/google/drive-actions.server";
@@ -38,6 +39,7 @@ export const load: PageServerLoad = async (event) => {
     { data: files },
     { data: hostActivity },
     { data: schedules },
+    { data: companyDefinitions },
     ...panelData
   ] = await Promise.all([
     api.GET("/api/v1/tasks/{task_id}", { params: { path: { task_id } } }),
@@ -51,6 +53,10 @@ export const load: PageServerLoad = async (event) => {
     // Every planned block for this task (#188) — no date window, the panel wants the lot. A
     // viewer without schedule.read simply gets an empty list.
     api.GET("/api/v1/tasks/schedules", { params: { query: { task_id } } }),
+    // For the inline company quick-create (#115): the full dialog includes custom fields.
+    api.GET("/api/v1/custom-fields/definitions", {
+      params: { query: { entity_type: "company" } },
+    }),
     ...panels.map((panel) => panel.load(api, context)),
   ]);
   if (!task) throw error(404, { code: "not_found", message: "errors.not_found" });
@@ -61,6 +67,7 @@ export const load: PageServerLoad = async (event) => {
     files: files ?? [],
     hostActivity: hostActivity ?? [],
     schedules: schedules ?? [],
+    companyDefinitions: companyDefinitions ?? [],
     context,
     panels: panels.map((panel, index) => ({
       key: panel.key,
@@ -444,6 +451,31 @@ export const actions: Actions = {
     const result = await logScheduleTimeAction(event);
     return result.error ? fail(400, { error: result.error }) : { timeLogged: true };
   },
+
+  /** Inline project create from the edit surface's picker (docs/UX.md — per-picker definition
+   *  of done). Returns `inlineCreated` so the picker auto-selects the new project. */
+  createProject: async (event) => {
+    const form = await event.request.formData();
+    const name = String(form.get("name") ?? "").trim();
+    if (!name) return fail(400, { qcError: "errors.required" });
+    const rate = Number(String(form.get("hourly_rate") ?? "").trim());
+    const { data, error: apiError } = await apiFor(event).POST("/api/v1/projects", {
+      body: {
+        name,
+        company_id: String(form.get("company_id") ?? "").trim() || null,
+        status: "active",
+        budget_period: "total",
+        currency: event.locals.theme.currency,
+        billable_default: true,
+        hourly_rate: Number.isFinite(rate) && rate > 0 ? rate : null,
+        custom: {},
+      },
+    });
+    if (apiError || !data) return fail(400, { qcError: apiErrorKey(apiError).key });
+    return { inlineCreated: { slot: "project", id: data.id, name: data.name } };
+  },
+
+  createCompany: createCompanyAction,
 
   // Contactmomenten + Drive panel contracts (the panels post to their host page).
   ...interactionActions,

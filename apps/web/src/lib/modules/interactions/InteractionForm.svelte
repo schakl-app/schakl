@@ -34,6 +34,8 @@
     prefill = {},
     mentions = [],
     onsaved,
+    oncreatecompany,
+    oncreateproject,
   }: {
     /** Existing row when editing; null for create. */
     interaction?: InteractionItem | null;
@@ -42,6 +44,13 @@
     /** Org members offered by the note editor's @ autocomplete (#151). */
     mentions?: { id: string; name: string }[];
     onsaved?: () => void;
+    /**
+     * Inline-create for the unpinned company / project pickers (docs/UX.md): the host page
+     * owns the dialogs (slots `interaction_company` / `interaction_project`), so it passes a
+     * handler that receives what was typed. Absent → the picker offers no ＋.
+     */
+    oncreatecompany?: (query: string) => void;
+    oncreateproject?: (query: string) => void;
   } = $props();
 
   const local = interaction ? instantToLocal(interaction.occurred_at) : null;
@@ -217,16 +226,52 @@
     }
     qcOpen = true;
   }
-  // The quick-create action answers with the new contact's id; auto-select it (docs/UX.md).
+  // Company/project quick-create (docs/UX.md): the dialogs live on the host page; remember
+  // what was typed so the auto-selected option can be labelled before the lookups refresh.
+  let companyQuery = $state("");
+  let projectQuery = $state("");
+  function quickCreateCompany(query: string) {
+    companyQuery = query;
+    oncreatecompany?.(query);
+  }
+  function quickCreateProject(query: string) {
+    projectQuery = query;
+    oncreateproject?.(query);
+  }
+  // A quick-create action answers with the new row's id; auto-select it in the picker that
+  // asked — the slot names are the contract with the host page's dialogs (docs/UX.md).
   let handledCreate = $state("");
   $effect(() => {
-    const created = page.form?.inlineCreated as { slot: string; id: string } | undefined;
-    if (created?.slot !== "interaction_contact" || created.id === handledCreate) return;
-    handledCreate = created.id;
-    if (!contactOptions.some((c) => c.value === created.id)) {
-      contactOptions = [...contactOptions, { value: created.id, label: qcName || "—" }];
+    const created = page.form?.inlineCreated as
+      { slot: string; id: string; name?: string; company_id?: string | null } | undefined;
+    if (!created || created.id === handledCreate) return;
+    if (created.slot === "interaction_contact") {
+      handledCreate = created.id;
+      if (!contactOptions.some((c) => c.value === created.id)) {
+        contactOptions = [...contactOptions, { value: created.id, label: qcName || "—" }];
+      }
+      contactId = created.id;
+    } else if (created.slot === "interaction_company") {
+      handledCreate = created.id;
+      if (!linkCompanies.some((c) => c.value === created.id)) {
+        linkCompanies = [...linkCompanies, { value: created.id, label: companyQuery || "—" }];
+      }
+      fCompany = created.id;
+    } else if (created.slot === "interaction_project") {
+      handledCreate = created.id;
+      if (!linkProjects.some((p) => p.value === created.id)) {
+        linkProjects = [
+          ...linkProjects,
+          {
+            value: created.id,
+            label: created.name ?? (projectQuery || "—"),
+            company_id: created.company_id ?? null,
+          },
+        ];
+      }
+      // Reuse the picker's own cascade so a project created under a client backfills it.
+      onProjectPicked(created.id);
     }
-    contactId = created.id;
   });
 </script>
 
@@ -329,6 +374,7 @@
             value={fCompany}
             placeholder={t("common.none")}
             onselect={(v) => (fCompany = v)}
+            oncreate={oncreatecompany ? quickCreateCompany : undefined}
           />
         </label>
       {/if}
@@ -341,6 +387,7 @@
             value={fProject}
             placeholder={t("common.none")}
             onselect={onProjectPicked}
+            oncreate={oncreateproject ? quickCreateProject : undefined}
           />
         </label>
       {/if}
