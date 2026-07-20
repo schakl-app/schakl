@@ -103,6 +103,12 @@ class GoogleSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
         default=GmailThreadFollowup.INHERIT_PENDING.value,
         server_default=GmailThreadFollowup.INHERIT_PENDING.value,
     )
+    #: Also ingest colleague-to-colleague mail (off by default: it is high-volume and has no
+    #: contact to map from). An internal mail always arrives *pending*, whatever the approval
+    #: mode — logging it is the reviewer's call, made by filing it onto a client/project.
+    gmail_log_internal: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
 
 
 class GoogleConnection(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):

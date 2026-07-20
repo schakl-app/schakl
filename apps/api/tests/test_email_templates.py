@@ -23,8 +23,10 @@ _BREVO = {
 class _Req:
     """The minimal shape send_password_email reads off the request."""
 
-    def __init__(self, host: str) -> None:
+    def __init__(self, host: str, forwarded_host: str | None = None) -> None:
         self.headers = {"host": host}
+        if forwarded_host is not None:
+            self.headers["x-forwarded-host"] = forwarded_host
 
 
 async def test_list_returns_every_slot_with_defaults(client_for) -> None:
@@ -200,3 +202,38 @@ async def test_saved_template_overrides_sent_mail(client_for, monkeypatch) -> No
     assert "reset-password?token=tok-abc123" in message.html
     # Plaintext part always keeps the working link (the catalog body), even with custom HTML.
     assert "reset-password?token=tok-abc123" in message.text
+
+
+async def test_password_email_resolves_org_behind_ssr_proxy(client_for, monkeypatch) -> None:
+    """The SSR web app calls the API on its internal service address: ``Host`` is the service
+    name and the tenant hostname rides ``X-Forwarded-Host`` — the ``require_context`` rule.
+    The reset/invite mail must resolve the org the same way; resolving on the raw ``Host``
+    finds no org and silently drops every forgot-password and invite mail, while the
+    test-mail path (which runs under ``require_context``) keeps working."""
+    t = await make_tenant("emailtpl-fwdhost")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        assert (
+            await c.put("/api/v1/settings/email", json=_BREVO, headers=headers)
+        ).status_code == 200
+
+    captured: dict = {}
+
+    async def _capture(provider, config, sender, message):  # noqa: ANN001, ARG001
+        captured["message"] = message
+        return True, None
+
+    monkeypatch.setattr("app.core.email.service.send_email", _capture)
+
+    async with async_session_maker() as session:
+        sent, error = await send_password_email(
+            session,
+            t.user,
+            "tok-fwd456",
+            _Req("api:8000", forwarded_host=t.host),
+            kind="invite",
+        )
+    assert sent is True, error
+    assert "reset-password?token=tok-fwd456" in captured["message"].text
+    # The link lands on the org's own address, not the internal service name.
+    assert "api:8000" not in captured["message"].text

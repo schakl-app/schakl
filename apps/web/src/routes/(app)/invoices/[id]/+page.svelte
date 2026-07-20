@@ -13,6 +13,7 @@
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
+  import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
   import DocumentForm from "$lib/modules/invoicing/DocumentForm.svelte";
   import DocumentView from "$lib/modules/invoicing/DocumentView.svelte";
   import { docMoney } from "$lib/modules/invoicing/types";
@@ -36,6 +37,10 @@
   let deletePaymentId = $state("");
   let confirmDeletePayment = $state(false);
   let remindForm: HTMLFormElement | undefined = $state();
+
+  // Inline-create from the edit form's contact picker (#115): "＋ … toevoegen" opens this dialog.
+  let qcContactOpen = $state(false);
+  let qcContactName = $state("");
 
   const template = $derived(data.templates.find((tpl) => tpl.id === invoice.template_id) ?? null);
   const theme = $derived(page.data.theme);
@@ -215,6 +220,10 @@
           locale={data.locale}
           {form}
           oncancel={() => (editing = false)}
+          oncreatecontact={(name) => {
+            qcContactName = name;
+            qcContactOpen = true;
+          }}
         />
         <!-- The API refuses money edits after issue; this marker tells the save action to
              send only the process fields. -->
@@ -484,3 +493,12 @@
     </div>
   </form>
 </Modal>
+
+<ContactQuickCreate
+  bind:open={qcContactOpen}
+  name={qcContactName}
+  pickerSlot="contact"
+  definitions={data.contactDefinitions}
+  locale={data.locale}
+  error={form?.qcError ?? null}
+/>

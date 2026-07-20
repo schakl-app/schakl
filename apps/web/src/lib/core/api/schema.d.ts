@@ -4636,6 +4636,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/subscriptions/price-increase": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Price Increase
+         * @description Apply the increase: one price-history row per subscription (and optionally the
+         *     matching templates' default amounts).
+         */
+        post: operations["apply_price_increase_api_v1_subscriptions_price_increase_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/subscriptions/price-increase/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Price Increase
+         * @description Every in-scope subscription with its current and would-be amount — nothing written.
+         */
+        post: operations["preview_price_increase_api_v1_subscriptions_price_increase_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/subscriptions/summary": {
         parameters: {
             query?: never;
@@ -8011,6 +8052,11 @@ export interface components {
              * @default false
              */
             gmail_enabled: boolean;
+            /**
+             * Gmail Log Internal
+             * @default false
+             */
+            gmail_log_internal: boolean;
             /** @default inherit_pending */
             gmail_thread_followup: components["schemas"]["GmailThreadFollowup"];
             /**
@@ -8055,6 +8101,11 @@ export interface components {
              * @default false
              */
             gmail_enabled: boolean;
+            /**
+             * Gmail Log Internal
+             * @default false
+             */
+            gmail_log_internal: boolean;
             /** @default inherit_pending */
             gmail_thread_followup: components["schemas"]["GmailThreadFollowup"];
         };
@@ -10792,6 +10843,83 @@ export interface components {
             /** Events */
             events?: components["schemas"]["PreferenceRowWrite"][];
             general?: components["schemas"]["GeneralPreferenceWrite"] | null;
+        };
+        /** PriceIncreaseItem */
+        PriceIncreaseItem: {
+            /**
+             * Company Name
+             * @default
+             */
+            company_name: string;
+            /** Currency */
+            currency: string;
+            /** Current Amount */
+            current_amount: string;
+            /** Name */
+            name: string;
+            /** New Amount */
+            new_amount: string;
+            /**
+             * Subscription Id
+             * Format: uuid
+             */
+            subscription_id: string;
+        };
+        /**
+         * PriceIncreaseRequest
+         * @description A bulk price change over the running subscriptions (and optionally the templates).
+         *
+         *     ``mode``: ``percent`` multiplies, ``amount`` adds a fixed sum, ``set`` overwrites. The
+         *     base is the price in effect on ``valid_from`` — so a change effective 1 January builds on
+         *     what the customer pays *then*, not on today's row. Preview and apply share this shape;
+         *     apply appends one history row per subscription (same-day rows are corrected in place,
+         *     like a manual edit).
+         */
+        PriceIncreaseRequest: {
+            /**
+             * Include Templates
+             * @default false
+             */
+            include_templates: boolean;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "percent" | "amount" | "set";
+            /** Subscription Type Id */
+            subscription_type_id?: string | null;
+            /**
+             * Valid From
+             * Format: date
+             */
+            valid_from: string;
+            /** Value */
+            value: number | string;
+        };
+        /**
+         * PriceIncreaseResult
+         * @description What a price increase touches: returned by preview (nothing written) and by apply
+         *     (these amounts are now history rows / template defaults).
+         */
+        PriceIncreaseResult: {
+            /** Items */
+            items: components["schemas"]["PriceIncreaseItem"][];
+            /** Templates */
+            templates: components["schemas"]["PriceIncreaseTemplateItem"][];
+        };
+        /** PriceIncreaseTemplateItem */
+        PriceIncreaseTemplateItem: {
+            /** Current Amount */
+            current_amount: string;
+            /** Name */
+            name: string;
+            /** New Amount */
+            new_amount: string;
+            /**
+             * Template Id
+             * Format: uuid
+             */
+            template_id: string;
         };
         /** PriceRead */
         PriceRead: {
@@ -25408,6 +25536,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SubscriptionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_price_increase_api_v1_subscriptions_price_increase_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PriceIncreaseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PriceIncreaseResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_price_increase_api_v1_subscriptions_price_increase_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PriceIncreaseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PriceIncreaseResult"];
                 };
             };
             /** @description Validation Error */

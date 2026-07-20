@@ -48,7 +48,13 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
 
         # An invite (#161) rides the same token; the caller marks the flavour on the request.
         kind = getattr(request.state, "password_email_kind", "reset") if request else "reset"
-        await send_password_email(self.user_db.session, user, token, request, kind=kind)
+        sent, error = await send_password_email(
+            self.user_db.session, user, token, request, kind=kind
+        )
+        # FastAPI Users' hook returns nothing, so the outcome rides the request state — the
+        # invite endpoints read it to report honestly instead of assuming the mail went out.
+        if request is not None:
+            request.state.password_email_result = (sent, error)
 
     async def on_after_reset_password(self, user: User, request: Request | None = None) -> None:
         """Setting a password through the emailed link proves the mailbox — that IS

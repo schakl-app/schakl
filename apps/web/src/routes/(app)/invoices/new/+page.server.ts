@@ -2,7 +2,7 @@ import { fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey, lookupItems } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
-import { createCompanyAction } from "$lib/core/quickcreate.server";
+import { createCompanyAction, createContactAction } from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
 import { contactLookups, documentBody } from "$lib/modules/invoicing/form.server";
 
@@ -11,18 +11,29 @@ import type { Actions, PageServerLoad } from "./$types";
 export const load: PageServerLoad = async (event) => {
   if (!can(event.locals.user, "invoicing.invoice.write")) throw redirect(303, "/invoices");
   const api = apiFor(event);
-  const [companies, contacts, taxRates, products, templates, settings, companyDefinitions] =
-    await Promise.all([
-      api.GET("/api/v1/companies", { params: { query: { limit: 200, count: false } } }),
-      api.GET("/api/v1/contacts", { params: { query: { limit: 200, count: false } } }),
-      api.GET("/api/v1/invoicing/tax-rates"),
-      api.GET("/api/v1/invoicing/products"),
-      api.GET("/api/v1/invoicing/templates"),
-      api.GET("/api/v1/invoicing/settings"),
-      api.GET("/api/v1/custom-fields/definitions", {
-        params: { query: { entity_type: "company" } },
-      }),
-    ]);
+  const [
+    companies,
+    contacts,
+    taxRates,
+    products,
+    templates,
+    settings,
+    companyDefinitions,
+    contactDefinitions,
+  ] = await Promise.all([
+    api.GET("/api/v1/companies", { params: { query: { limit: 200, count: false } } }),
+    api.GET("/api/v1/contacts", { params: { query: { limit: 200, count: false } } }),
+    api.GET("/api/v1/invoicing/tax-rates"),
+    api.GET("/api/v1/invoicing/products"),
+    api.GET("/api/v1/invoicing/templates"),
+    api.GET("/api/v1/invoicing/settings"),
+    api.GET("/api/v1/custom-fields/definitions", {
+      params: { query: { entity_type: "company" } },
+    }),
+    api.GET("/api/v1/custom-fields/definitions", {
+      params: { query: { entity_type: "contact" } },
+    }),
+  ]);
   return {
     companies: lookupItems(companies, "companies").map((c) => ({ id: c.id, name: c.name })),
     contacts: contactLookups(contacts.data?.items),
@@ -31,6 +42,7 @@ export const load: PageServerLoad = async (event) => {
     templates: templates.data ?? [],
     settings: settings.data ?? null,
     companyDefinitions: companyDefinitions.data ?? [],
+    contactDefinitions: contactDefinitions.data ?? [],
     locale: event.locals.locale,
   };
 };
@@ -55,4 +67,5 @@ export const actions: Actions = {
     throw redirect(303, `/invoices/${data.id}`);
   },
   createCompany: createCompanyAction,
+  createContact: createContactAction,
 };

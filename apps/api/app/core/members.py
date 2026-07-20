@@ -321,7 +321,11 @@ async def invite_member(
             request.state.password_email_kind = "invite"
             try:
                 await user_manager.forgot_password(user, request)
-                member.invite_email_sent = True
+                sent, send_error = getattr(
+                    request.state, "password_email_result", (True, None)
+                )
+                member.invite_email_sent = sent
+                member.invite_email_error = send_error
             except Exception:  # noqa: BLE001 — the invite itself must stand
                 logger.exception("Invite email for %s failed", email)
                 member.invite_email_sent = False

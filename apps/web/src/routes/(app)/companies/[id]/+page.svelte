@@ -8,6 +8,7 @@
   import { editIntent } from "$lib/core/edit-intent";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
+  import { can } from "$lib/core/permissions";
   import { companyPanelComponent } from "$lib/core/registry";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import AvatarStack from "$lib/core/ui/AvatarStack.svelte";
@@ -16,6 +17,7 @@
   import CompanyForm from "$lib/modules/companies/CompanyForm.svelte";
   import { statusPillClass } from "$lib/modules/companies/status";
   import ContactDraftField from "$lib/modules/contacts/ContactDraftField.svelte";
+  import InteractionForm from "$lib/modules/interactions/InteractionForm.svelte";
 
   let { data, form } = $props();
 
@@ -37,6 +39,16 @@
   // Opened straight into edit when reached from the overview's ⋯ → Bewerken (#78).
   let showEdit = $state(editIntent());
   let confirmDelete = $state(false);
+
+  // Log a contactmoment from the header — quick-add where the user is (docs/UX.md), with the
+  // client pinned. The panel's own ＋ stays; this is the reachable top-of-page entry.
+  let showLogInteraction = $state(false);
+  const canLogInteraction = $derived(
+    enabled.includes("interactions") && can(page.data.user, "interactions.interaction.write"),
+  );
+  const mentionCandidates = $derived(
+    data.members.map((m) => ({ id: m.user_id, name: m.full_name || m.email })),
+  );
 
   // AI digest + report drafts (#130): rendered only when the reporting feature is on.
   const hasReporting = $derived(aiEnabled(page.data.user, "reporting"));
@@ -81,6 +93,15 @@
       {/if}
     </div>
     <div class="flex flex-wrap items-center gap-2">
+      {#if canLogInteraction}
+        <button
+          type="button"
+          onclick={() => (showLogInteraction = true)}
+          class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"
+        >
+          {t("interactions.add")}
+        </button>
+      {/if}
       <a
         href={`/tasks?company_id=${company.id}`}
         class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"
@@ -152,6 +173,14 @@
     </section>
   {/each}
 </div>
+
+<Modal bind:open={showLogInteraction} title={t("interactions.add")}>
+  <InteractionForm
+    prefill={{ company_id: company.id }}
+    mentions={mentionCandidates}
+    onsaved={() => (showLogInteraction = false)}
+  />
+</Modal>
 
 <Modal bind:open={showEdit} title={t("companies.edit")}>
   <form

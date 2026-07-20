@@ -16,6 +16,7 @@
   import Markdown from "$lib/core/ui/Markdown.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
+  import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import { LABEL_COLORS, labelChipClass, labelDotClass } from "$lib/modules/tasks/labels";
   import TaskSchedulePanel from "$lib/modules/tasks/TaskSchedulePanel.svelte";
   import { formatMinutes } from "$lib/modules/time/format";
@@ -177,6 +178,21 @@
   // don't render in use mode at all — their create forms live behind the pencil.
   let editMode = $state(false);
   let confirmDelete = $state(false);
+  // Inline create from the relation pickers (#115, docs/UX.md — per-picker definition of
+  // done): the dialog posts to ?/createCompany / ?/createProject and the new record
+  // auto-selects in the picker that asked. The created ids reset on the edit-mode toggle so
+  // a stale pick never overrides the stored relation on a later edit session.
+  let qcCompanyOpen = $state(false);
+  let qcCompanyName = $state("");
+  let createdCompanyId = $state("");
+  let qcProjectOpen = $state(false);
+  let qcProjectName = $state("");
+  let createdProjectId = $state("");
+  $effect(() => {
+    const created = form?.inlineCreated;
+    if (created?.slot === "company") createdCompanyId = created.id;
+    if (created?.slot === "project") createdProjectId = created.id;
+  });
   let editingCommentId = $state<string | null>(null);
   // Inline description editing for a checklist / a checklist item (issue #66), one at a time.
   let editingChecklistId = $state<string | null>(null);
@@ -343,8 +359,7 @@
   <title>{pageTitle(task.title)}</title>
 </svelte:head>
 
-<div class="mb-4">
-</div>
+<div class="mb-4"></div>
 
 <!-- Phone vs desktop order: a flex column below `lg` puts the details card (status, assignee,
      due date) straight after the title — on a phone those are what you came to change, and they
@@ -382,7 +397,11 @@
               {
                 label: editMode ? t("tasks.detail.done_editing") : t("common.edit"),
                 icon: Pencil,
-                onclick: () => (editMode = !editMode),
+                onclick: () => {
+                  createdCompanyId = "";
+                  createdProjectId = "";
+                  editMode = !editMode;
+                },
               },
               {
                 label: t("tasks.detail.delete"),
@@ -1106,9 +1125,13 @@
             <Combobox
               items={projectItems}
               name="project_id"
-              value={task.project_id ?? ""}
+              value={createdProjectId || (task.project_id ?? "")}
               id="project"
               formId="task-edit"
+              oncreate={(name) => {
+                qcProjectName = name;
+                qcProjectOpen = true;
+              }}
             />
           </div>
           <div>
@@ -1118,9 +1141,13 @@
             <Combobox
               items={companyItems}
               name="company_id"
-              value={task.company_id ?? ""}
+              value={createdCompanyId || (task.company_id ?? "")}
               id="company"
               formId="task-edit"
+              oncreate={(name) => {
+                qcCompanyName = name;
+                qcCompanyOpen = true;
+              }}
             />
           </div>
           <div>
@@ -1498,4 +1525,79 @@
       </form>
     </div>
   {/if}
+</Modal>
+
+<CompanyQuickCreate
+  bind:open={qcCompanyOpen}
+  name={qcCompanyName}
+  definitions={data.companyDefinitions}
+  locale={data.locale}
+  error={form?.qcError ?? null}
+/>
+
+<!-- Inline project create from the edit surface's picker (docs/UX.md — per-picker rule). -->
+<Modal bind:open={qcProjectOpen} title={t("time.quick_create.project")}>
+  {#key qcProjectName + String(qcProjectOpen)}
+    <form
+      method="POST"
+      action="?/createProject"
+      use:enhance={() =>
+        ({ result, update }) => {
+          if (result.type === "success") qcProjectOpen = false;
+          void update({ reset: false });
+        }}
+      class="space-y-3"
+    >
+      <div>
+        <label for="qc-task-project-name" class="mb-1 block text-sm font-medium text-text"
+          >{t("projects.field.name")}</label
+        >
+        <input
+          id="qc-task-project-name"
+          name="name"
+          value={qcProjectName}
+          required
+          class={inputClass}
+        />
+      </div>
+      <div>
+        <label for="qc-task-project-company" class="mb-1 block text-sm font-medium text-text"
+          >{t("projects.field.company")}</label
+        >
+        <Combobox
+          items={companyItems}
+          name="company_id"
+          value={createdCompanyId || (task.company_id ?? "")}
+          id="qc-task-project-company"
+          placeholder={t("projects.field.company")}
+        />
+      </div>
+      <div>
+        <label for="qc-task-project-rate" class="mb-1 block text-sm font-medium text-text"
+          >{t("projects.field.hourly_rate")}</label
+        >
+        <input
+          id="qc-task-project-rate"
+          name="hourly_rate"
+          type="number"
+          min="0"
+          step="0.01"
+          class={inputClass}
+        />
+      </div>
+      {#if form?.qcError}
+        <p class="text-sm text-red-600 dark:text-red-400">{t(form.qcError)}</p>
+      {/if}
+      <div class="flex justify-end gap-2">
+        <button
+          type="button"
+          class="rounded-lg border border-border px-4 py-2 text-sm text-text"
+          onclick={() => (qcProjectOpen = false)}>{t("common.cancel")}</button
+        >
+        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
+          >{t("common.create")}</button
+        >
+      </div>
+    </form>
+  {/key}
 </Modal>

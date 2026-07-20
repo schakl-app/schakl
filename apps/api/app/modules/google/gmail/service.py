@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events import SystemContext
 from app.core.models import Org
+from app.core.portal import portal_user_ids
 from app.modules.google.client import acting_as, mark_connection_error
 from app.modules.google.gmail import matching
 from app.modules.google.gmail.models import GmailSuppression
@@ -69,15 +70,35 @@ async def poll_connection(
             excluded_label_id = await _excluded_label_id(client, connection)
             logged = 0
             for message_id in message_ids:
-                logged += await _ingest_message(
-                    session,
-                    org,
-                    connection,
-                    settings_row,
-                    client,
-                    message_id,
-                    excluded_label_id,
-                )
+                try:
+                    # Savepoint per message: a failed ingest rolls back only its own writes,
+                    # so a DB error cannot abort the transaction for the messages after it.
+                    async with session.begin_nested():
+                        logged += await _ingest_message(
+                            session,
+                            org,
+                            connection,
+                            settings_row,
+                            client,
+                            message_id,
+                            excluded_label_id,
+                        )
+                except Exception as ingest_exc:  # noqa: BLE001 — a poison message must not wedge the mailbox
+                    # A dead grant is the *connection's* problem: let the outer handler mark
+                    # it, so the owner is notified instead of every message "failing".
+                    from app.modules.google.client import is_oauth_error
+
+                    if await is_oauth_error(ingest_exc):
+                        raise
+                    # historyId only advances after the loop, so a message that kept raising
+                    # would re-abort every poll and silently stop the whole feed. Skipping it
+                    # loses one email (loudly, below); wedging loses every email after it.
+                    logger.exception(
+                        "Gmail ingest failed for message %s on connection %s (org %s); skipped",
+                        message_id,
+                        connection.id,
+                        org.id,
+                    )
             if latest_history_id:
                 connection.gmail_history_id = latest_history_id[:32]
     except Exception as exc:
@@ -182,12 +203,15 @@ async def _ingest_message(
         return 0  # a colleague's mailbox already logged this email — one timeline entry
 
     participants = matching.parse_participants(headers)
-    if not participants or matching.internal_only(
-        participants, await _member_emails(session, org.id)
-    ):
+    if not participants:
+        return 0
+    internal = matching.internal_only(participants, await _member_emails(session, org.id))
+    if internal and not settings_row.gmail_log_internal:
         return 0
     matches = await _match_contacts(session, org.id, participants)
-    if not matches:
+    if not matches and not internal:
+        # External mail still needs a known contact; without the internal opt-in nothing
+        # changes here — every newsletter and cold email stays out.
         return 0
 
     inherited = (
@@ -199,6 +223,11 @@ async def _ingest_message(
         settings_row.gmail_thread_followup,
         inherited=inherited is not None,
     )
+    if internal and not mappings:
+        # An opted-in internal mail has no contact to map from, so there is nothing to
+        # auto-file it under: it always waits for its owner, whatever the approval mode.
+        # Once approved onto a client/project, thread follow-ups inherit as usual.
+        pending = True
 
     internal_date = message.get("internalDate")
     occurred_at = (
@@ -283,14 +312,24 @@ async def _owner_name(session: AsyncSession, user_id: uuid.UUID) -> str | None:
 
 
 async def _member_emails(session: AsyncSession, org_id: uuid.UUID) -> set[str]:
+    """The *staff* addresses, for the colleague-chatter filter (``internal_only``).
+
+    A portal login (#193) is an ordinary membership whose user is a client's contact — so a
+    naive all-memberships set makes every portal-invited client look like a colleague, and
+    ``internal_only`` then silently drops their entire correspondence (polls succeed,
+    ``logged:0`` forever). Portal users are excluded through the core seam; they keep
+    matching as *contacts*, which is what they are.
+    """
     rows = await session.execute(
         text(
-            "SELECT lower(u.email) FROM users u "
+            "SELECT u.id, lower(u.email) FROM users u "
             "JOIN memberships m ON m.user_id = u.id WHERE m.org_id = :oid"
         ),
         {"oid": org_id},
     )
-    return {row[0] for row in rows}
+    pairs = [(row[0], row[1]) for row in rows]
+    portal = await portal_user_ids(session, org_id, {uid for uid, _ in pairs})
+    return {email for uid, email in pairs if uid not in portal}
 
 
 async def _match_contacts(

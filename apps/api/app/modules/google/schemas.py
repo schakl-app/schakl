@@ -26,6 +26,7 @@ class GoogleSettingsRead(BaseModel):
     automation_connection_user_id: uuid.UUID | None = None
     gmail_approval_mode: GmailApprovalMode = GmailApprovalMode.APPROVAL_REQUIRED
     gmail_thread_followup: GmailThreadFollowup = GmailThreadFollowup.INHERIT_PENDING
+    gmail_log_internal: bool = False
     #: The redirect URI to register on the Google Cloud OAuth client (derived, never typed).
     callback_url: str
     weak_encryption_key: bool = False
@@ -45,6 +46,7 @@ class GoogleSettingsWrite(BaseModel):
     automation_connection_user_id: uuid.UUID | None = None
     gmail_approval_mode: GmailApprovalMode = GmailApprovalMode.APPROVAL_REQUIRED
     gmail_thread_followup: GmailThreadFollowup = GmailThreadFollowup.INHERIT_PENDING
+    gmail_log_internal: bool = False
 
 
 class ConnectionRead(BaseModel):

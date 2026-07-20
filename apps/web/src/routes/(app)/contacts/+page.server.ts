@@ -2,6 +2,7 @@ import { fail } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
 import { importCsvAction } from "$lib/core/impex/actions.server";
+import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
@@ -24,12 +25,16 @@ export const load: PageServerLoad = async (event) => {
   // Client filter (#154) — applied by the API; the URL keeps it shareable.
   const company_id = event.url.searchParams.get("company") || undefined;
 
-  const [contacts, definitions, companies, types] = await Promise.all([
+  const [contacts, definitions, companyDefinitions, companies, types] = await Promise.all([
     api.GET("/api/v1/contacts", {
       params: { query: { limit: 100, offset: 0, q, sort, contact_type_id, company_id } },
     }),
     api.GET("/api/v1/custom-fields/definitions", {
       params: { query: { entity_type: "contact" } },
+    }),
+    // For the picker's inline company create (#115, docs/UX.md): the full dialog, real fields.
+    api.GET("/api/v1/custom-fields/definitions", {
+      params: { query: { entity_type: "company" } },
     }),
     // For the create form's "connected companies" picker (#80). Lean list — no counts.
     api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
@@ -39,6 +44,7 @@ export const load: PageServerLoad = async (event) => {
     contacts: contacts.data?.items ?? [],
     total: contacts.data?.total ?? 0,
     definitions: definitions.data ?? [],
+    companyDefinitions: companyDefinitions.data ?? [],
     companies: companies.data?.items ?? [],
     types: types.data ?? [],
     typeFilter: contact_type_id ?? "",
@@ -76,6 +82,9 @@ export const actions: Actions = {
 
   /** CSV import (issue #77): dry-run preview by default, all-or-nothing commit on demand. */
   importCsv: (event) => importCsvAction(event, "/api/v1/impex/contact/import"),
+
+  /** Inline company create from the "connected companies" picker (#115). */
+  createCompany: createCompanyAction,
 
   create: async (event) => {
     const form = await event.request.formData();

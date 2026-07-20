@@ -21,7 +21,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, date, datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from pydantic import BaseModel
@@ -46,6 +46,10 @@ from app.modules.subscriptions.models import (
     SubscriptionType,
 )
 from app.modules.subscriptions.schemas import (
+    PriceIncreaseItem,
+    PriceIncreaseRequest,
+    PriceIncreaseResult,
+    PriceIncreaseTemplateItem,
     SubscriptionCreate,
     SubscriptionLineWrite,
     SubscriptionLinkWrite,
@@ -307,6 +311,155 @@ class SubscriptionService:
             .order_by(SubscriptionPrice.valid_from.desc())
         )
         return (await self.ctx.session.execute(stmt)).scalars().all()
+
+    # --- bulk price increase --------------------------------------------------- #
+    def _bumped(self, current: Decimal, data: PriceIncreaseRequest) -> Decimal:
+        if data.mode == "percent":
+            new = current * (1 + data.value / 100)
+        elif data.mode == "amount":
+            new = current + data.value
+        else:
+            new = data.value
+        # Floored at zero: the preview shows the 0,00 rather than the API refusing the batch.
+        return max(Decimal("0.00"), new.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+    async def price_increase(
+        self, data: PriceIncreaseRequest, *, apply: bool
+    ) -> PriceIncreaseResult:
+        """Compute (and with ``apply`` write) a bulk price change (#30's history model).
+
+        Cancelled agreements are left alone; a subscription that has no price yet on
+        ``valid_from`` (it starts later) is skipped rather than given a base of nothing.
+        Writes are the manual edit's semantics per row: a row already on ``valid_from`` is
+        corrected in place, otherwise the history gains a row — and each written change lands
+        on the subscription's activity trail.
+        """
+        self.ctx.require("subscriptions.subscription.write")
+        conditions = [Subscription.status != SubscriptionStatus.CANCELLED.value]
+        if data.subscription_type_id is not None:
+            await self._ensure_type(data.subscription_type_id)
+            conditions.append(Subscription.subscription_type_id == data.subscription_type_id)
+        subs = list(
+            (
+                await self.ctx.session.execute(
+                    self.repo.scoped_select()
+                    .where(*conditions)
+                    .order_by(func.lower(Subscription.name))
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        # The base per subscription: the newest price *strictly before* the effective date —
+        # so re-running with a corrected value replaces the on-date row instead of
+        # compounding on it (the manual edit's same-day-correction semantics). A subscription
+        # that starts on the date itself falls back to that opening row as its base.
+        base: dict[uuid.UUID, Decimal] = {}
+        on_date: dict[uuid.UUID, SubscriptionPrice] = {}
+        if subs:
+            price_rows = (
+                await self.ctx.session.execute(
+                    self.prices.scoped_select()
+                    .where(
+                        SubscriptionPrice.subscription_id.in_([s.id for s in subs]),
+                        SubscriptionPrice.valid_from <= data.valid_from,
+                    )
+                    .order_by(
+                        SubscriptionPrice.subscription_id,
+                        SubscriptionPrice.valid_from.desc(),
+                    )
+                )
+            ).scalars()
+            for price in price_rows:
+                if price.valid_from == data.valid_from:
+                    on_date[price.subscription_id] = price
+                else:
+                    base.setdefault(price.subscription_id, price.amount)
+            for sub_id, price in on_date.items():
+                base.setdefault(sub_id, price.amount)
+
+        company_names: dict[uuid.UUID, str] = {}
+        if subs:
+            rows = (
+                await self.ctx.session.execute(
+                    text("SELECT id, name FROM companies WHERE org_id = :oid AND id IN :ids")
+                    .bindparams(bindparam("ids", expanding=True)),
+                    {"oid": self._org_id, "ids": [s.company_id for s in subs]},
+                )
+            ).all()
+            company_names = {row[0]: row[1] for row in rows}
+
+        items: list[PriceIncreaseItem] = []
+        activity = ActivityService(self.ctx)
+        for sub in subs:
+            current = base.get(sub.id)
+            if current is None:
+                continue
+            new = self._bumped(current, data)
+            items.append(
+                PriceIncreaseItem(
+                    subscription_id=sub.id,
+                    name=sub.name,
+                    company_name=company_names.get(sub.company_id, ""),
+                    currency=sub.currency,
+                    current_amount=current,
+                    new_amount=new,
+                )
+            )
+            if not apply or new == current:
+                continue
+            existing = on_date.get(sub.id)
+            if existing is not None:
+                await self.prices.update(existing, amount=new)
+            else:
+                await self.prices.create(
+                    subscription_id=sub.id, amount=new, valid_from=data.valid_from
+                )
+            await activity.record(
+                ENTITY_TYPE,
+                sub.id,
+                "price_increased",
+                {
+                    "from": str(current),
+                    "to": str(new),
+                    "valid_from": data.valid_from.isoformat(),
+                },
+            )
+
+        templates: list[PriceIncreaseTemplateItem] = []
+        if data.include_templates:
+            template_repo = self.ctx.repo(SubscriptionTemplate)
+            t_conditions = [SubscriptionTemplate.amount.is_not(None)]
+            if data.subscription_type_id is not None:
+                t_conditions.append(
+                    SubscriptionTemplate.subscription_type_id == data.subscription_type_id
+                )
+            template_rows = list(
+                (
+                    await self.ctx.session.execute(
+                        template_repo.scoped_select()
+                        .where(*t_conditions)
+                        .order_by(SubscriptionTemplate.position)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            for template in template_rows:
+                new = self._bumped(template.amount, data)
+                templates.append(
+                    PriceIncreaseTemplateItem(
+                        template_id=template.id,
+                        name=template.name,
+                        current_amount=template.amount,
+                        new_amount=new,
+                    )
+                )
+                if apply and new != template.amount:
+                    await template_repo.update(template, amount=new)
+
+        return PriceIncreaseResult(items=items, templates=templates)
 
     # --- Omzet summary --------------------------------------------------------- #
     async def summary(self) -> dict[str, Any]:

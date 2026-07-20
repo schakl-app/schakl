@@ -92,6 +92,9 @@ export const load: PageServerLoad = async (event) => {
     panels: panels.map((panel, index) => ({
       key: panel.key,
       titleKey: panel.titleKey,
+      // Carried so the page can hold the trail (90) under To-dos/Documents — history sits
+      // below the working surfaces (docs/UX.md principle 4).
+      position: panel.position ?? 100,
       data: panelData[index],
     })),
     locale: event.locals.locale,
@@ -108,7 +111,7 @@ export const actions: Actions = {
         description: String(form.get("description") ?? "").trim() || null,
         assignees: parseAssignees(form.get("assignees")),
         status: String(form.get("status") ?? "active") as "active",
-        billable_default: form.get("billable_default") === "on",
+        billable_default: form.get("billable_default") !== null,
         budget_period: String(form.get("budget_period") ?? "total") as "total",
         budget_hours: numberOrNull(form.get("budget_hours")),
         budget_amount: numberOrNull(form.get("budget_amount")),

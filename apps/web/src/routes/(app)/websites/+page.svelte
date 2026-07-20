@@ -93,6 +93,19 @@
   const hostingCreated = $derived(createdBySlot["hosting_account"] ?? "");
   const domainCreated = $derived(createdBySlot["domain"] ?? "");
 
+  // The technical owner offers exactly two choices — the agency or the client — labelled
+  // with their actual names. The client is the picked domain's company, so the picker's
+  // label follows the domain selection; before a domain is picked it reads "Deze klant".
+  let selectedDomainId = $state("");
+  $effect(() => {
+    if (domainCreated) selectedDomainId = domainCreated;
+  });
+  const ownerCompanyName = $derived.by(() => {
+    if (editing) return editing.company_name ?? "";
+    const domain = data.domains.find((d) => d.id === selectedDomainId);
+    return data.companies.find((c) => c.id === domain?.company_id)?.name ?? "";
+  });
+
   // Radio selection is component state, never a one-way checked (docs/UX.md).
   let hostChoice = $state<"root" | "www">("root");
 
@@ -100,12 +113,14 @@
     editing = null;
     hostChoice = "root";
     createdBySlot = {};
+    selectedDomainId = "";
     showModal = true;
   }
   function openEdit(w: Website) {
     editing = w;
     hostChoice = w.root ? "root" : "www";
     createdBySlot = {};
+    selectedDomainId = "";
     showModal = true;
   }
   function requestDelete(id: string) {
@@ -200,7 +215,7 @@
             <Combobox
               items={domainItems}
               name="domain_id"
-              value={domainCreated || undefined}
+              bind:value={selectedDomainId}
               id="website-domain"
               placeholder={t("websites.field.domain")}
               oncreate={(name) => {
@@ -232,6 +247,12 @@
             companies={data.companies}
             employees={data.employees}
             contacts={data.contacts}
+            types={["agency", "company"]}
+            typeLabels={{
+              agency: data.agencyLabel,
+              company: ownerCompanyName || undefined,
+            }}
+            companyPickable={false}
             id="website-owner"
             oncreatecompany={quickCreateCompany}
             oncreatecontact={quickCreateContact}

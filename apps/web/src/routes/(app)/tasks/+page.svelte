@@ -15,7 +15,9 @@
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
+  import Modal from "$lib/core/ui/Modal.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
+  import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import { TASK_COLUMNS } from "$lib/modules/tasks/columns";
   import { labelChipClass } from "$lib/modules/tasks/labels";
   import {
@@ -114,6 +116,22 @@
     const project = data.projects.find((p) => p.id === projectId);
     if (project?.company_id) fCompany = project.company_id;
   }
+
+  // Inline create from the pickers (#115, docs/UX.md — per-picker definition of done): the
+  // dialog posts to ?/createCompany / ?/createProject and the new record auto-selects here.
+  let qcCompanyOpen = $state(false);
+  let qcCompanyName = $state("");
+  let qcProjectOpen = $state(false);
+  let qcProjectName = $state("");
+  $effect(() => {
+    const created = form?.inlineCreated;
+    if (created?.slot === "company") fCompany = created.id;
+    if (created?.slot === "project") {
+      fProject = created.id;
+      // Same narrowing a manual pick applies: adopt the new project's client.
+      onProjectPicked(created.id);
+    }
+  });
 
   function setFilter(key: string, value: string) {
     const url = new URL(page.url);
@@ -267,6 +285,10 @@
           bind:value={fProject}
           id="create-project"
           onselect={onProjectPicked}
+          oncreate={(name) => {
+            qcProjectName = name;
+            qcProjectOpen = true;
+          }}
         />
       </div>
       <div>
@@ -278,6 +300,10 @@
           name="company_id"
           bind:value={fCompany}
           id="create-company"
+          oncreate={(name) => {
+            qcCompanyName = name;
+            qcCompanyOpen = true;
+          }}
         />
         <label class="mt-2 flex items-center gap-2 text-sm text-text">
           <input type="checkbox" name="visible_to_client" value="true" />
@@ -516,3 +542,78 @@
   action="?/delete"
   fields={{ id: deleteId }}
 />
+
+<CompanyQuickCreate
+  bind:open={qcCompanyOpen}
+  name={qcCompanyName}
+  definitions={data.companyDefinitions}
+  locale={data.locale}
+  error={form?.qcError ?? null}
+/>
+
+<!-- Inline project create from the form's picker (docs/UX.md — per-picker definition of done). -->
+<Modal bind:open={qcProjectOpen} title={t("time.quick_create.project")}>
+  {#key qcProjectName + String(qcProjectOpen)}
+    <form
+      method="POST"
+      action="?/createProject"
+      use:enhance={() =>
+        ({ result, update }) => {
+          if (result.type === "success") qcProjectOpen = false;
+          void update({ reset: false });
+        }}
+      class="space-y-3"
+    >
+      <div>
+        <label for="qc-task-project-name" class="mb-1 block text-sm font-medium text-text"
+          >{t("projects.field.name")}</label
+        >
+        <input
+          id="qc-task-project-name"
+          name="name"
+          value={qcProjectName}
+          required
+          class={inputClass}
+        />
+      </div>
+      <div>
+        <label for="qc-task-project-company" class="mb-1 block text-sm font-medium text-text"
+          >{t("projects.field.company")}</label
+        >
+        <Combobox
+          items={companyItems}
+          name="company_id"
+          value={fCompany}
+          id="qc-task-project-company"
+          placeholder={t("projects.field.company")}
+        />
+      </div>
+      <div>
+        <label for="qc-task-project-rate" class="mb-1 block text-sm font-medium text-text"
+          >{t("projects.field.hourly_rate")}</label
+        >
+        <input
+          id="qc-task-project-rate"
+          name="hourly_rate"
+          type="number"
+          min="0"
+          step="0.01"
+          class={inputClass}
+        />
+      </div>
+      {#if form?.qcError}
+        <p class="text-sm text-red-600 dark:text-red-400">{t(form.qcError)}</p>
+      {/if}
+      <div class="flex justify-end gap-2">
+        <button
+          type="button"
+          class="rounded-lg border border-border px-4 py-2 text-sm text-text"
+          onclick={() => (qcProjectOpen = false)}>{t("common.cancel")}</button
+        >
+        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
+          >{t("common.create")}</button
+        >
+      </div>
+    </form>
+  {/key}
+</Modal>

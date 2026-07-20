@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+## v0.16.0 — 2026-07-20
+
+### Added
+
+- **Log a contact moment from the client and project page headers.** Both detail pages carry a "Contactmoment vastleggen" button that opens the interaction form with the client (or project and its client) already set.
+- **Close or create a task while approving an email.** The review dialog offers "Rond de taak af met dit contactmoment" whenever a task is picked (one finished status is applied silently, several offer a pick), and the task picker creates a new task inline — prefilled, auto-selected, with the dialog's client and project carried along.
+- **Long email conversations fold.** An email's quoted history (earlier replies, forwarded blocks) collapses behind Gmail's own ⋯ gesture; the current message stays readable on its own.
+- **Opt-in logging of colleague-to-colleague email** (Instellingen → Google). Internal mail always arrives pending — filing it onto a client or project is the reviewer's call — and unknown external senders stay out as before. Off by default.
+- **Subscriptions: in-page catalog management** — subscription types, templates and prices are edited where they are used, with template-locked names, one-language labels and a bulk price increase.
+- **Websites: the technical owner** can be recorded as the agency or the client, by name.
+- **Domains: a typed domain reduces to its bare root** (`www.example.nl/page` → `example.nl`) on entry.
+- **Contacts: duplicate email addresses are rejected** with a clear error instead of silently creating a second person.
+- **Pickers show a visible ＋ button** wherever inline-create is available, instead of only revealing it after typing an unknown name.
+
+### Changed
+
+- **Detail pages are ordered by use.** Contactmomenten moved up beside contacts/projects/tasks on the client page (and under Uren on a project); Websites and Domeinen sank to the bottom as rarely-consulted assets; the activity trail now always renders last — on the project page it previously sat above the to-dos.
+
+### Fixed
+
+- **Password-reset and invite emails send again.** The API resolved the tenant from the raw `Host` header, which for requests proxied by the web server is the internal service name — every reset and invite mail was silently dropped while the test mail worked. Both invite surfaces also report honestly now when a send fails.
+- **Gmail polling: a client invited to the portal no longer silences their email.** A portal login is a membership, and the colleague-chatter filter counted every membership as staff — so inviting a contact to the portal dropped their entire correspondence before matching. Portal logins are excluded from the staff set.
+- **Gmail polling: one broken message can no longer wedge a mailbox.** A message whose ingest kept failing re-aborted every poll at the same point and the feed silently stopped; each message now ingests independently and a failure is logged and skipped.
+- **Checkbox settings save correctly again.** The shared form checkbox posts a different value than a raw one, and several settings pages (Google surfaces, SSO, verloftypen, huisstijl, taaksjablonen, Gmail sync, a project's billable default) still compared against the old value — saving them silently unchecked every box. All checkbox reads are presence-based now.
+
 ## v0.15.2 — 2026-07-20
 
 ### Fixed

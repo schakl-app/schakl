@@ -8,6 +8,7 @@
   import PartyPicker from "$lib/core/ui/PartyPicker.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import type { components } from "$lib/core/api/schema";
+  import { normalizeDomainName } from "$lib/modules/domains/normalize";
 
   type Domain = components["schemas"]["DomainRead"];
   type Provider = components["schemas"]["ProviderRead"];
@@ -83,9 +84,10 @@
       id="{idPrefix}-name"
       name="name"
       required
-      value={domain?.name ?? nameDefault}
+      value={domain?.name ?? normalizeDomainName(nameDefault)}
       placeholder="example.nl"
       class="w-full rounded-lg border border-border px-3 py-2 text-sm text-text outline-none focus:border-brand"
+      onchange={(e) => (e.currentTarget.value = normalizeDomainName(e.currentTarget.value))}
     />
   </div>
 

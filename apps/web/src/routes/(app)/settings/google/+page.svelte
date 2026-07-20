@@ -263,6 +263,18 @@
           </select>
         </div>
       </div>
+      <label class="flex items-start gap-2 text-sm text-text">
+        <FormCheckbox
+          name="gmail_log_internal"
+          checked={settings?.gmail_log_internal ?? false}
+          class="mt-0.5"
+        />
+        <span>
+          {t("settings.google.log_internal")}
+          <span class="block text-xs text-text-muted">{t("settings.google.log_internal_hint")}</span
+          >
+        </span>
+      </label>
     </fieldset>
 
     {#if form?.error}

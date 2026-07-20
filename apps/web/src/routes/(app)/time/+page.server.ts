@@ -1,6 +1,7 @@
 import { fail } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
+import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
 import { holidayName } from "$lib/modules/leave/format";
 
@@ -184,44 +185,38 @@ export const actions: Actions = {
     return { updated: true };
   },
 
-  // Quick-create from the entry form: log hours for a brand-new client/project without
-  // leaving the page. Custom fields are validated by the API against the tenant's
-  // definitions; write rights are enforced there too (clients get 403).
-  createCompany: async (event) => {
-    const form = await event.request.formData();
-    const name = String(form.get("name") ?? "").trim();
-    if (!name) return fail(400, { error: "errors.required" });
-    const { error } = await apiFor(event).POST("/api/v1/companies", {
-      body: {
-        name,
-        website: String(form.get("website") ?? "").trim() || null,
-        status: String(form.get("status") ?? "active") as "active",
-        custom: parseCustom(form.get("custom")),
-      },
-    });
-    if (error) return fail(400, { error: apiErrorKey(error).key });
-    return { companyCreated: true };
-  },
+  // Quick-create from a picker: log hours for a brand-new client/project without leaving
+  // the page. Custom fields are validated by the API against the tenant's definitions;
+  // write rights are enforced there too (clients get 403). Success answers with
+  // `inlineCreated: { slot, id }` so only the picker that asked auto-selects (docs/UX.md).
+  createCompany: createCompanyAction,
 
   createProject: async (event) => {
     const form = await event.request.formData();
     const name = String(form.get("name") ?? "").trim();
-    if (!name) return fail(400, { error: "errors.required" });
+    if (!name) return fail(400, { qcError: "errors.required" });
     const rate = Number(String(form.get("hourly_rate") ?? "").trim());
-    const { error } = await apiFor(event).POST("/api/v1/projects", {
+    const { data, error } = await apiFor(event).POST("/api/v1/projects", {
       body: {
         name,
         company_id: String(form.get("company_id") ?? "").trim() || null,
         status: "active",
         budget_period: "total",
         currency: event.locals.theme.currency,
-        billable_default: form.get("billable_default") === "on",
+        billable_default: form.get("billable_default") !== null,
         hourly_rate: Number.isFinite(rate) && rate > 0 ? rate : null,
         custom: parseCustom(form.get("custom")),
       },
     });
-    if (error) return fail(400, { error: apiErrorKey(error).key });
-    return { projectCreated: true };
+    if (error || !data) return fail(400, { qcError: apiErrorKey(error).key });
+    // company_id rides along so the timer can back-fill its client picker on auto-select.
+    return {
+      inlineCreated: {
+        slot: String(form.get("slot") ?? "") || "entry_project",
+        id: data.id,
+        company_id: data.company_id ?? null,
+      },
+    };
   },
 
   deleteEntry: async (event) => {

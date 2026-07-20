@@ -9,8 +9,11 @@
    * a rarely opened dialog must not tax every detail-page render with four lookups.
    */
   import { enhance } from "$app/forms";
+  import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import { can } from "$lib/core/permissions";
   import Combobox from "$lib/core/ui/Combobox.svelte";
+  import TaskQuickCreate from "$lib/modules/tasks/TaskQuickCreate.svelte";
 
   import type { InteractionItem } from "./format";
 
@@ -76,6 +79,63 @@
     if (task?.project_id) onProjectPicked(task.project_id);
   }
 
+  // --- close the task with this contact moment, while approving (#157 in the review) ------- //
+  interface StatusDef {
+    id: string;
+    key: string;
+    name: string;
+    is_terminal: boolean;
+  }
+  let closeTask = $state(false);
+  let terminal = $state<StatusDef[]>([]);
+  let terminalLoaded = $state(false);
+  let closeStatus = $state("");
+  // Offered whenever a task is picked — whether or not that task *requires* a closing moment;
+  // the guard mirrors the API (a close is a task write), which stays the boundary.
+  const canCloseTask = $derived(canApprove && can(page.data.user, "tasks.task.write"));
+  // Terminal statuses load when the box is first ticked — never on page load (PERFORMANCE.md).
+  $effect(() => {
+    if (closeTask && !terminalLoaded) {
+      terminalLoaded = true;
+      void loadTerminal();
+    }
+  });
+  async function loadTerminal() {
+    try {
+      const response = await fetch("/api/v1/tasks/statuses", {
+        headers: { accept: "application/json" },
+      });
+      const statuses: StatusDef[] = response.ok ? await response.json() : [];
+      terminal = statuses.filter((status) => status.is_terminal);
+      closeStatus = terminal[0]?.key ?? "";
+    } catch {
+      terminal = [];
+    }
+  }
+
+  // --- inline-create behind the task picker (docs/UX.md) ------------------------------------ //
+  const canCreateTask = $derived(can(page.data.user, "tasks.task.create"));
+  let taskCreateOpen = $state(false);
+  let taskDraft = $state("");
+  let handledCreate = $state("");
+  $effect(() => {
+    const created = page.form?.inlineCreated as
+      { slot: string; id: string; project_id?: string | null } | undefined;
+    if (created?.slot !== "move_task" || created.id === handledCreate) return;
+    handledCreate = created.id;
+    if (!tasks.some((option) => option.value === created.id)) {
+      tasks = [
+        ...tasks,
+        { value: created.id, label: taskDraft || "—", project_id: created.project_id ?? null },
+      ];
+    }
+    onTaskPicked(created.id);
+  });
+
+  // Approve succeeded but the close PATCH bounced (e.g. a status policy): say exactly that —
+  // a plain error here would read as "the approve failed", which it did not.
+  let closeFailedAfterApprove = $state(false);
+
   $effect(() => {
     void loadCandidates();
   });
@@ -135,10 +195,12 @@
   use:enhance={() =>
     async ({ result, update }) => {
       if (result.type === "failure") {
+        closeFailedAfterApprove = Boolean(result.data?.approvedButCloseFailed);
         error = String(result.data?.error ?? "errors.validation");
         return;
       }
       error = "";
+      closeFailedAfterApprove = false;
       await update({ reset: false });
       onsaved?.();
     }}
@@ -180,6 +242,12 @@
           value={taskId}
           placeholder={t("common.none")}
           onselect={onTaskPicked}
+          oncreate={canCreateTask
+            ? (query) => {
+                taskDraft = query;
+                taskCreateOpen = true;
+              }
+            : undefined}
           id="move-task"
         />
       </label>
@@ -195,8 +263,44 @@
         />
       </label>
     </div>
+
+    {#if canCloseTask && taskId}
+      <!-- Close the task with this contact moment while approving (#157): offered for any
+           picked task, required-close or not; the status pick mirrors CloseTaskDialog. -->
+      <div class="space-y-2 rounded-lg border border-border p-3">
+        <label class="flex items-center gap-2 text-sm text-text">
+          <input type="checkbox" name="close_task" value="1" bind:checked={closeTask} />
+          {t("interactions.approve_close_task")}
+        </label>
+        {#if closeTask}
+          {#if terminalLoaded && terminal.length === 0}
+            <p class="text-sm text-red-600">{t("interactions.close_task_no_terminal")}</p>
+          {:else if terminal.length > 1}
+            <fieldset class="space-y-1.5 pl-6">
+              <legend class="sr-only">{t("interactions.close_task_pick_status")}</legend>
+              {#each terminal as status (status.id)}
+                <label class="flex items-center gap-2 text-sm text-text">
+                  <input
+                    type="radio"
+                    name="close_status"
+                    value={status.key}
+                    bind:group={closeStatus}
+                  />
+                  {status.name}
+                </label>
+              {/each}
+            </fieldset>
+          {:else if terminal.length === 1}
+            <input type="hidden" name="close_status" value={closeStatus} />
+          {/if}
+        {/if}
+      </div>
+    {/if}
   {/if}
 
+  {#if closeFailedAfterApprove}
+    <p class="text-sm text-red-600">{t("interactions.close_after_approve_failed")}</p>
+  {/if}
   {#if error}
     <p class="text-sm text-red-600">{t(error)}</p>
   {/if}
@@ -226,3 +330,15 @@
     {/if}
   </div>
 </form>
+
+<TaskQuickCreate
+  bind:open={taskCreateOpen}
+  title={taskDraft}
+  companyId={companyId || null}
+  projectId={projectId || null}
+  members={(page.data.members as
+    { user_id: string; full_name: string | null; email: string }[] | undefined) ?? []}
+  action="?/createInteractionTask"
+  error={(page.form?.qcError as string | undefined) ?? null}
+  pickerSlot="move_task"
+/>

@@ -11,6 +11,7 @@
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
+  import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
   import DocumentForm from "$lib/modules/invoicing/DocumentForm.svelte";
   import DocumentView from "$lib/modules/invoicing/DocumentView.svelte";
 
@@ -29,6 +30,10 @@
   let sendOpen = $state(false);
   let decisionOpen = $state(false);
   let decisionAction = $state<"accept" | "reject">("accept");
+
+  // Inline-create from the edit form's contact picker (#115): "＋ … toevoegen" opens this dialog.
+  let qcContactOpen = $state(false);
+  let qcContactName = $state("");
 
   const template = $derived(data.templates.find((tpl) => tpl.id === quote.template_id) ?? null);
   const theme = $derived(page.data.theme);
@@ -180,6 +185,10 @@
         locale={data.locale}
         {form}
         oncancel={() => (editing = false)}
+        oncreatecontact={(name) => {
+          qcContactName = name;
+          qcContactOpen = true;
+        }}
       />
       <input type="hidden" name="_status" value={quote.status} form="doc-form-quote" />
     </div>
@@ -309,3 +318,12 @@
     </div>
   </form>
 </Modal>
+
+<ContactQuickCreate
+  bind:open={qcContactOpen}
+  name={qcContactName}
+  pickerSlot="contact"
+  definitions={data.contactDefinitions}
+  locale={data.locale}
+  error={form?.qcError ?? null}
+/>

@@ -100,7 +100,7 @@ export const actions: Actions = {
       root: form.get("root") !== "www",
       technical_owner: parseParty(form.get("technical_owner")),
       hosting_id: String(form.get("hosting_id") ?? "") || null,
-      uptime_enabled: form.get("uptime_enabled") === "on",
+      uptime_enabled: form.get("uptime_enabled") !== null,
       custom: parseCustom(form.get("custom")),
     };
     if (website_id) {
@@ -159,7 +159,7 @@ export const actions: Actions = {
     const name = String(form.get("name") ?? "").trim();
     const company_id = String(form.get("company_id") ?? "");
     if (!name || !company_id) return fail(400, { qcError: "errors.required" });
-    const email_enabled = form.get("email_enabled") === "on";
+    const email_enabled = form.get("email_enabled") !== null;
     const { data, error } = await apiFor(event).POST("/api/v1/domains", {
       body: {
         name,

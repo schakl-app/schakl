@@ -200,7 +200,13 @@ def _message(
     }
 
 
-async def _seed(tenant, *, approval_mode: str = "approval_required", history_id: str = "5"):
+async def _seed(
+    tenant,
+    *,
+    approval_mode: str = "approval_required",
+    history_id: str = "5",
+    log_internal: bool = False,
+):
     async with async_session_maker() as session:
         await set_current_org(session, tenant.org.id)
         session.add(
@@ -208,6 +214,7 @@ async def _seed(tenant, *, approval_mode: str = "approval_required", history_id:
                 org_id=tenant.org.id,
                 gmail_enabled=True,
                 gmail_approval_mode=approval_mode,
+                gmail_log_internal=log_internal,
             )
         )
         connection = GoogleConnection(
@@ -295,6 +302,159 @@ async def test_poll_matches_contact_and_logs_pending(client_for, monkeypatch) ->
 
     # A second poll over the same history is a no-op (message ids already imported).
     assert await _poll(t, connection_id, stub, monkeypatch) == 0
+
+
+async def test_portal_contact_mail_still_logs(client_for, monkeypatch) -> None:
+    """A portal login (#193) is a membership whose user is a *client's contact* — it must not
+    count as a colleague. With the naive all-memberships set, inviting a client to the portal
+    made ``internal_only`` classify their entire correspondence as internal chatter: every
+    poll succeeded with ``logged:0`` and the feed silently went dark for that client."""
+    t = await make_tenant("gmail-portal")
+    connection_id = await _seed(t)
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Client NL"}, headers=headers)
+        ).json()
+        contact = (
+            await c.post(
+                "/api/v1/contacts",
+                json={
+                    "first_name": "Klant",
+                    "email": "klant@client.nl",
+                    "company_ids": [company["id"]],
+                },
+                headers=headers,
+            )
+        ).json()
+        # Portal access creates a user + client-role membership for the contact's address.
+        assert (
+            await c.post(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)
+        ).status_code == 200
+
+    # Mail between the owner and the portal-enabled contact — ``to`` must be the owner's
+    # *login* address (not the default stub address, which belongs to no member): only then
+    # is every participant a membership holder, the exact shape that was dropped as
+    # internal-only.
+    stub = _StubGmail(
+        history=["msg-portal"],
+        messages={
+            "msg-portal": _message(
+                "msg-portal", sender="Klant <klant@client.nl>", to=t.user.email
+            )
+        },
+        history_id="9200",
+    )
+    assert await _poll(t, connection_id, stub, monkeypatch) == 1
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        row = (await session.execute(select(Interaction))).scalar_one()
+        assert row.status == "pending"
+        assert row.company_id == uuid.UUID(company["id"])
+
+
+async def test_internal_mail_dropped_by_default(client_for, monkeypatch) -> None:
+    """Colleague-to-colleague mail stays out unless the org opts in."""
+    from tests.test_notification_channels import _member
+
+    t = await make_tenant("gmail-internal-off")
+    connection_id = await _seed(t)
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await _member(c, headers, "collega@gmail-internal-off-example.nl")
+
+    stub = _StubGmail(
+        history=["msg-int"],
+        messages={
+            "msg-int": _message(
+                "msg-int",
+                sender="Collega <collega@gmail-internal-off-example.nl>",
+                to=t.user.email,
+            )
+        },
+        history_id="9300",
+    )
+    assert await _poll(t, connection_id, stub, monkeypatch) == 0
+
+
+async def test_internal_mail_logs_pending_when_opted_in(client_for, monkeypatch) -> None:
+    """With ``gmail_log_internal`` on, colleague mail is ingested — but always *pending*,
+    even under auto-approve: there is no contact to map from, so filing it onto a client or
+    project is the reviewer's call. Unknown external mail stays out either way."""
+    from tests.test_notification_channels import _member
+
+    t = await make_tenant("gmail-internal-on")
+    connection_id = await _seed(t, approval_mode="auto_approve", log_internal=True)
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await _member(c, headers, "collega@gmail-internal-on-example.nl")
+
+    stub = _StubGmail(
+        history=["msg-int", "msg-stranger"],
+        messages={
+            "msg-int": _message(
+                "msg-int",
+                sender="Collega <collega@gmail-internal-on-example.nl>",
+                to=t.user.email,
+            ),
+            "msg-stranger": _message(
+                "msg-stranger", sender="onbekend@elders.nl", to=t.user.email, thread="thr-2"
+            ),
+        },
+        history_id="9400",
+    )
+    assert await _poll(t, connection_id, stub, monkeypatch) == 1
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        row = (await session.execute(select(Interaction))).scalar_one()
+        assert row.gmail_message_id == "msg-int"
+        assert row.status == "pending"  # forced despite auto_approve — unmapped internal
+        assert row.company_id is None and row.contact_id is None
+
+
+async def test_poison_message_does_not_wedge_the_poll(client_for, monkeypatch) -> None:
+    """One message whose ingest raises is skipped (loudly logged): the rest of the batch
+    still imports and historyId advances. Before the per-message guard, the poll re-aborted
+    on the same message every 5 minutes and the whole feed silently stopped."""
+    t = await make_tenant("gmail-poison")
+    connection_id = await _seed(t)
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Client NL"}, headers=headers)
+        ).json()
+        await c.post(
+            "/api/v1/contacts",
+            json={
+                "first_name": "Klant",
+                "email": "klant@client.nl",
+                "company_ids": [company["id"]],
+            },
+            headers=headers,
+        )
+
+    class _PoisonGmail(_StubGmail):
+        async def get(self, url: str, **kwargs) -> _StubResponse:
+            if url.rsplit("/", 1)[-1] == "msg-poison":
+                raise RuntimeError("malformed payload")
+            return await super().get(url, **kwargs)
+
+    # Poison first, so surviving it proves the loop continues past the failure.
+    stub = _PoisonGmail(
+        history=["msg-poison", "msg-good"],
+        messages={"msg-good": _message("msg-good", sender="Klant <klant@client.nl>")},
+        history_id="9100",
+    )
+    assert await _poll(t, connection_id, stub, monkeypatch) == 1
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        row = (await session.execute(select(Interaction))).scalar_one()
+        assert row.gmail_message_id == "msg-good"
+        connection = await session.get(GoogleConnection, connection_id)
+        assert connection.gmail_history_id == "9100"
 
 
 async def test_first_poll_baselines_without_backfill(monkeypatch) -> None:

@@ -19,6 +19,7 @@
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import { page } from "$app/state";
+  import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import { CONTACT_COLUMNS } from "$lib/modules/contacts/columns";
   import { contactTypeLabel } from "$lib/modules/contacts/types";
 
@@ -79,6 +80,21 @@
   function removeCompany(id: string) {
     linkedCompanyIds = linkedCompanyIds.filter((x) => x !== id);
   }
+
+  // Inline-create from the picker (#115): "＋ … toevoegen" opens the full client dialog.
+  let qcCompanyOpen = $state(false);
+  let qcCompanyName = $state("");
+  // Apply each `inlineCreated` once (the PartyPicker rule): the new client joins the chips
+  // exactly like a picked one, and removing it later must never re-add it.
+  let qcApplied = $state<{ slot: string; id: string } | null>(null);
+  $effect(() => {
+    const created = form?.inlineCreated;
+    if (!created || created === qcApplied) return;
+    if (created.slot === "company") {
+      addCompany(created.id);
+      qcApplied = created;
+    }
+  });
 
   function fullName(c: { first_name: string; last_name?: string | null }) {
     return [c.first_name, c.last_name].filter(Boolean).join(" ");
@@ -288,11 +304,13 @@
     method="POST"
     action="?/create"
     use:enhance={() =>
-      ({ update }) => {
-        void update().then(() => {
+      ({ result, update }) => {
+        // Close only on success: a 409 (duplicate email) must stay visible in the form.
+        if (result.type === "success") {
           showCreate = false;
           linkedCompanyIds = [];
-        });
+        }
+        void update({ reset: false });
       }}
     class="mb-6 rounded-xl border border-border bg-surface-raised p-4"
   >
@@ -383,6 +401,10 @@
           placeholder={t("contacts.add_client")}
           allowEmpty={false}
           onselect={addCompany}
+          oncreate={(name) => {
+            qcCompanyName = name;
+            qcCompanyOpen = true;
+          }}
         />
       </div>
     </div>
@@ -432,4 +454,13 @@
   message={t("contacts.delete_confirm", { name: deleteName })}
   action="?/delete"
   fields={{ id: deleteId }}
+/>
+
+<CompanyQuickCreate
+  bind:open={qcCompanyOpen}
+  name={qcCompanyName}
+  pickerSlot="company"
+  definitions={data.companyDefinitions}
+  locale={data.locale}
+  error={form?.qcError ?? null}
 />

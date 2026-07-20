@@ -86,7 +86,7 @@ function templateBody(form: FormData) {
     trigger,
     trigger_status:
       trigger === "company_status" ? String(form.get("trigger_status") ?? "").trim() || null : null,
-    active: form.get("active") === "on",
+    active: form.get("active") !== null,
     items: parseItems(String(form.get("items_json") ?? "[]")),
   };
 }
