@@ -109,11 +109,25 @@ export const interactionActions = {
             LINK_FIELDS.map((field) => [field, String(form.get(field) ?? "").trim() || null]),
           )
         : undefined;
-    const { error } = await apiFor(event).POST("/api/v1/interactions/{interaction_id}/approve", {
+    const api = apiFor(event);
+    const { error } = await api.POST("/api/v1/interactions/{interaction_id}/approve", {
       params: { path: { interaction_id: id } },
       ...(body ? { body } : {}),
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
+    // "Close the task with this contact moment" ticked in the review dialog (#157 extended):
+    // the approve stands on its own — a close failure reports, it never rolls the approve back.
+    const task_id = String(form.get("task_id") ?? "").trim();
+    const close_status = String(form.get("close_status") ?? "").trim();
+    if (form.get("close_task") === "1" && task_id && close_status) {
+      const { error: closeError } = await api.PATCH("/api/v1/tasks/{task_id}", {
+        params: { path: { task_id } },
+        body: { status: close_status, closing_interaction_id: id },
+      });
+      if (closeError) {
+        return fail(400, { error: apiErrorKey(closeError).key, approvedButCloseFailed: true });
+      }
+    }
     return { ok: true };
   },
 
@@ -198,6 +212,42 @@ export const interactionActions = {
     if (error || !data) return fail(400, { qcError: apiErrorKey(error).key });
     return {
       inlineCreated: { slot: String(form.get("slot") ?? "") || "interaction_contact", id: data.id },
+    };
+  },
+
+  /**
+   * Inline-create behind the review dialog's task picker (docs/UX.md): creates the task
+   * immediately and answers with `inlineCreated` so the picker auto-selects it. The dialog's
+   * current client/project ride along, so the new task lands where the email is being filed.
+   */
+  createInteractionTask: async (event: RequestEvent) => {
+    const form = await event.request.formData();
+    const title = String(form.get("title") ?? "").trim();
+    if (!title) return fail(400, { qcError: "errors.required" });
+    const company_id = String(form.get("company_id") ?? "").trim();
+    const project_id = String(form.get("project_id") ?? "").trim();
+    const assignee_user_id = String(form.get("assignee_user_id") ?? "").trim();
+    const due_date = String(form.get("due_date") ?? "").trim();
+    const { data, error } = await apiFor(event).POST("/api/v1/tasks", {
+      body: {
+        title,
+        company_id: company_id || undefined,
+        project_id: project_id || undefined,
+        assignee_user_id: assignee_user_id || undefined,
+        due_date: due_date || undefined,
+        priority: "normal",
+        requires_interaction: false,
+        visible_to_client: false,
+      },
+    });
+    if (error || !data) return fail(400, { qcError: apiErrorKey(error).key });
+    return {
+      inlineCreated: {
+        slot: String(form.get("slot") ?? "") || "move_task",
+        id: data.id,
+        project_id: data.project_id ?? null,
+        company_id: data.company_id ?? null,
+      },
     };
   },
 

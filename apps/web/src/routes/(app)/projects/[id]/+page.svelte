@@ -11,6 +11,7 @@
   import { fmtNumber, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
+  import { can } from "$lib/core/permissions";
   import { entityPanelsFor } from "$lib/core/registry";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import AssigneePicker from "$lib/core/ui/AssigneePicker.svelte";
@@ -19,6 +20,8 @@
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import FileAttachments from "$lib/core/ui/FileAttachments.svelte";
+  import Modal from "$lib/core/ui/Modal.svelte";
+  import InteractionForm from "$lib/modules/interactions/InteractionForm.svelte";
   import { terminalKeys } from "$lib/modules/tasks/statuses";
   import TaskRow from "$lib/modules/tasks/TaskRow.svelte";
 
@@ -40,6 +43,16 @@
   // opened straight into edit when reached from the overview's ⋯ → Bewerken (#78).
   let editing = $state(editIntent());
   let confirmDelete = $state(false);
+
+  // Log a contactmoment from the header — quick-add where the user is (docs/UX.md), with the
+  // project (and its client) pinned. Renders only when the interactions module is enabled.
+  let showLogInteraction = $state(false);
+  const canLogInteraction = $derived(
+    enabled.includes("interactions") && can(page.data.user, "interactions.interaction.write"),
+  );
+  const mentionCandidates = $derived(
+    data.members.map((m) => ({ id: m.user_id, name: m.full_name || m.email })),
+  );
 
   const STATUSES = ["active", "on_hold", "completed", "archived"] as const;
   const inputClass =
@@ -128,21 +141,32 @@
       {/if}
     </p>
   </div>
-  <ActionsMenu
-    items={[
-      {
-        label: editing ? t("common.cancel") : t("common.edit"),
-        icon: Pencil,
-        onclick: () => (editing = !editing),
-      },
-      {
-        label: t("common.delete"),
-        icon: Trash2,
-        danger: true,
-        onclick: () => (confirmDelete = true),
-      },
-    ]}
-  />
+  <div class="flex flex-wrap items-center gap-2">
+    {#if canLogInteraction}
+      <button
+        type="button"
+        onclick={() => (showLogInteraction = true)}
+        class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"
+      >
+        {t("interactions.add")}
+      </button>
+    {/if}
+    <ActionsMenu
+      items={[
+        {
+          label: editing ? t("common.cancel") : t("common.edit"),
+          icon: Pencil,
+          onclick: () => (editing = !editing),
+        },
+        {
+          label: t("common.delete"),
+          icon: Trash2,
+          danger: true,
+          onclick: () => (confirmDelete = true),
+        },
+      ]}
+    />
+  </div>
 </div>
 
 <div class="grid gap-4 lg:grid-cols-2">
@@ -438,15 +462,19 @@
 
 <!-- Panels contributed by enabled modules — the Uren panel answers the budget bar above it.
      Every number opens (docs/UX.md principle 7). -->
-{#each data.panels as panel (panel.key)}
-  {@const PanelComponent = panelComponent(panel.key)}
-  {#if PanelComponent}
-    <section class="mt-4 rounded-xl border border-border bg-surface-raised p-5">
-      <h2 class="mb-3 text-sm font-semibold text-text">{t(panel.titleKey)}</h2>
-      <PanelComponent data={panel.data} context={data.context} lookups={panelLookups} />
-    </section>
-  {/if}
-{/each}
+{#snippet panelSections(specs: typeof data.panels)}
+  {#each specs as panel (panel.key)}
+    {@const PanelComponent = panelComponent(panel.key)}
+    {#if PanelComponent}
+      <section class="mt-4 rounded-xl border border-border bg-surface-raised p-5">
+        <h2 class="mb-3 text-sm font-semibold text-text">{t(panel.titleKey)}</h2>
+        <PanelComponent data={panel.data} context={data.context} lookups={panelLookups} />
+      </section>
+    {/if}
+  {/each}
+{/snippet}
+
+{@render panelSections(data.panels.filter((panel) => panel.position < 90))}
 
 <!-- To-dos -->
 <section class="mt-4 rounded-xl border border-border bg-surface-raised p-5">
@@ -511,6 +539,18 @@
     error={form?.fileError ?? null}
   />
 </section>
+
+<!-- The activity trail hangs last — history sits under the working surfaces, never between
+     them and the to-dos (docs/UX.md principle 4). -->
+{@render panelSections(data.panels.filter((panel) => panel.position >= 90))}
+
+<Modal bind:open={showLogInteraction} title={t("interactions.add")}>
+  <InteractionForm
+    prefill={{ project_id: project.id, company_id: project.company_id ?? null }}
+    mentions={mentionCandidates}
+    onsaved={() => (showLogInteraction = false)}
+  />
+</Modal>
 
 <ConfirmDialog
   bind:open={confirmDelete}

@@ -36,5 +36,6 @@ websites_company_panel = PanelSpec(
     entity_type="company",
     title_key="websites.panel.title",
     provider=_websites_provider,
-    position=50,
+    # Rarely-consulted asset panel: near the bottom with domains, before only the trail.
+    position=70,
 )

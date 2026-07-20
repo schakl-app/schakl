@@ -60,5 +60,7 @@ interactions_company_panel = PanelSpec(
     entity_type="company",
     title_key="interactions.panel.title",
     provider=_interactions_provider,
-    position=60,
+    # Right under the working surfaces (contacts/projects/tasks): the communication timeline
+    # is daily-use, unlike the asset panels (websites/domains) that sit near the bottom.
+    position=35,
 )

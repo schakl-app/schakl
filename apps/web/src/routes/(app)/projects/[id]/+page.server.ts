@@ -92,6 +92,9 @@ export const load: PageServerLoad = async (event) => {
     panels: panels.map((panel, index) => ({
       key: panel.key,
       titleKey: panel.titleKey,
+      // Carried so the page can hold the trail (90) under To-dos/Documents — history sits
+      // below the working surfaces (docs/UX.md principle 4).
+      position: panel.position ?? 100,
       data: panelData[index],
     })),
     locale: event.locals.locale,

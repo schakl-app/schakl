@@ -26,13 +26,19 @@ const ENTITY_FIELDS = {
   task: "task_id",
 } as const;
 
+/** On a project the communication timeline is daily-use: right after Uren (10), above the
+ *  subscriptions (20) and Drive (55) reference panels. Contact/task pages keep the default. */
+const ENTITY_POSITIONS: Partial<Record<keyof typeof ENTITY_FIELDS, number>> = {
+  project: 15,
+};
+
 const entityPanels: EntityPanelSpec[] = Object.entries(ENTITY_FIELDS).map(
   ([entityType, field]) => ({
     key: `interactions.${entityType}`,
     module: "interactions",
     entityType,
     titleKey: "interactions.panel.title",
-    position: POSITION,
+    position: ENTITY_POSITIONS[entityType as keyof typeof ENTITY_FIELDS] ?? POSITION,
     load: async (api, { entityId }) => {
       const { data } = await api.GET("/api/v1/interactions", {
         params: {

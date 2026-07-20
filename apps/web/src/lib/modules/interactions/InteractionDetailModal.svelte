@@ -13,7 +13,7 @@
    */
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
-  import { ExternalLink, Paperclip, Plus } from "@lucide/svelte";
+  import { Ellipsis, ExternalLink, Paperclip, Plus } from "@lucide/svelte";
 
   import ActivityFeed from "$lib/core/activity/ActivityFeed.svelte";
   import { fmtDateTime } from "$lib/core/format";
@@ -27,6 +27,7 @@
 
   import type { InteractionItem } from "./format";
   import InteractionMoveDialog from "./InteractionMoveDialog.svelte";
+  import { splitQuotedTrail } from "./quoted";
 
   let {
     open = $bindable(false),
@@ -90,8 +91,18 @@
     if (open && item && item.source === "gmail" && item.status === "logged") {
       void loadAttachments(item.id);
     }
-    if (open) trailFor = null;
+    if (open) {
+      trailFor = null;
+      quotedExpanded = false;
+    }
   });
+
+  // A long email conversation shows only the current message; the quoted history folds
+  // behind the ⋯ toggle, Gmail's own trimmed-content gesture. Collapsed again per open.
+  let quotedExpanded = $state(false);
+  const bodyParts = $derived(
+    item && item.source === "gmail" && item.body_text ? splitQuotedTrail(item.body_text) : null,
+  );
 
   // --- unknown participant → contact quick-create (#160) ------------------------------------ //
   let showParticipantCreate = $state(false);
@@ -108,8 +119,7 @@
     participantDraft = {
       name: participant.name ?? "",
       email: participant.email,
-      company:
-        i.company_id && i.company_name ? { id: i.company_id, name: i.company_name } : null,
+      company: i.company_id && i.company_name ? { id: i.company_id, name: i.company_name } : null,
     };
     if (contactDefinitions === null) {
       const response = await fetch("/api/v1/custom-fields/definitions?entity_type=contact", {
@@ -201,7 +211,32 @@
         {#if di.body_text}
           {#if di.source === "gmail"}
             <!-- break-words so a lone long URL can't scroll the modal sideways (#184). -->
-            <p class="whitespace-pre-wrap break-words text-sm text-text">{di.body_text}</p>
+            <p class="whitespace-pre-wrap break-words text-sm text-text">
+              {bodyParts?.head ?? di.body_text}
+            </p>
+            {#if bodyParts?.trail}
+              <button
+                type="button"
+                onclick={() => (quotedExpanded = !quotedExpanded)}
+                aria-expanded={quotedExpanded}
+                title={quotedExpanded
+                  ? t("interactions.quoted_hide")
+                  : t("interactions.quoted_show")}
+                class="inline-flex items-center rounded-full border border-border bg-surface px-2 py-0.5 text-text-muted hover:border-brand hover:text-brand"
+              >
+                <Ellipsis size={14} aria-hidden="true" />
+                <span class="sr-only">
+                  {quotedExpanded ? t("interactions.quoted_hide") : t("interactions.quoted_show")}
+                </span>
+              </button>
+              {#if quotedExpanded}
+                <p
+                  class="whitespace-pre-wrap break-words border-l-2 border-border pl-3 text-sm text-text-muted"
+                >
+                  {bodyParts.trail}
+                </p>
+              {/if}
+            {/if}
           {:else}
             <Markdown value={di.body_text} />
           {/if}
