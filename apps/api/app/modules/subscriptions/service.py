@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
@@ -110,6 +111,22 @@ def add_months(day: date, months: int) -> date:
     return date(year, month, min(day.day, last_day))
 
 
+@dataclass(frozen=True)
+class SubscriptionHours:
+    """A covering agreement's hours contribution to a linked project (issue #225).
+
+    Published so `projects` can derive a linked project's budget without importing our
+    models (CLAUDE.md §6). ``monthly_hours`` is the monthly equivalent of ``included_hours``
+    (the ``monthly_equivalent`` rule the money side already uses), because a project budget
+    period has no quarterly/yearly shape to mirror the billing interval with.
+    """
+
+    subscription_id: uuid.UUID
+    name: str
+    included_hours: float
+    monthly_hours: float
+
+
 class SubscriptionService:
     def __init__(self, ctx: RequestContext) -> None:
         self.ctx = ctx
@@ -187,6 +204,50 @@ class SubscriptionService:
         if usage:
             sub.usage = await self._usage(sub)  # type: ignore[attr-defined]
         return sub
+
+    async def hours_for_projects(
+        self, project_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, list[SubscriptionHours]]:
+        """The **active, hours-bearing** agreements covering each project (issue #225).
+
+        A non-empty list is what makes a project's ``budget_hours`` derived and read-only.
+        Draft/paused/cancelled agreements, and links without ``included_hours``, source
+        nothing. One grouped query for the whole page, never one per row.
+        """
+        if not project_ids:
+            return {}
+        stmt = (
+            select(
+                SubscriptionLink.entity_id,
+                Subscription.id,
+                Subscription.name,
+                Subscription.included_hours,
+                Subscription.interval,
+                Subscription.interval_count,
+            )
+            .join(Subscription, Subscription.id == SubscriptionLink.subscription_id)
+            .where(
+                SubscriptionLink.org_id == self._org_id,
+                Subscription.org_id == self._org_id,
+                SubscriptionLink.entity_type == "project",
+                SubscriptionLink.entity_id.in_(project_ids),
+                Subscription.status == SubscriptionStatus.ACTIVE.value,
+                Subscription.included_hours.is_not(None),
+            )
+            .order_by(func.lower(Subscription.name))
+        )
+        grouped: dict[uuid.UUID, list[SubscriptionHours]] = {}
+        for row in (await self.ctx.session.execute(stmt)).all():
+            months = period_months(row[4], row[5])
+            grouped.setdefault(row[0], []).append(
+                SubscriptionHours(
+                    subscription_id=row[1],
+                    name=row[2],
+                    included_hours=float(row[3]),
+                    monthly_hours=round(float(row[3]) / months, 2),
+                )
+            )
+        return grouped
 
     async def for_company(self, company_id: uuid.UUID) -> Sequence[Subscription]:
         stmt = (

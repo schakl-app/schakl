@@ -112,8 +112,14 @@ export const actions: Actions = {
         assignees: parseAssignees(form.get("assignees")),
         status: String(form.get("status") ?? "active") as "active",
         billable_default: form.get("billable_default") !== null,
-        budget_period: String(form.get("budget_period") ?? "total") as "total",
-        budget_hours: numberOrNull(form.get("budget_hours")),
+        // Absent when a linked subscription sources the hours (#225): the fields render
+        // disabled, a disabled input never posts, and the API refuses the write anyway.
+        budget_period: form.has("budget_period")
+          ? (String(form.get("budget_period") ?? "total") as "total")
+          : undefined,
+        budget_hours: form.has("budget_hours")
+          ? numberOrNull(form.get("budget_hours"))
+          : undefined,
         budget_amount: numberOrNull(form.get("budget_amount")),
         hourly_rate: numberOrNull(form.get("hourly_rate")),
         start_date: String(form.get("start_date") ?? "").trim() || null,

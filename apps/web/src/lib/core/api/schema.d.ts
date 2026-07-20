@@ -11132,6 +11132,26 @@ export interface components {
             /** @default active */
             status: components["schemas"]["ProjectStatus"];
         };
+        /**
+         * ProjectHoursSource
+         * @description A subscription this project's hour budget derives from (issue #225).
+         *
+         *     ``included_hours`` is per the subscription's own billing interval; ``monthly_hours`` is
+         *     its monthly equivalent — the figure the derived budget sums.
+         */
+        ProjectHoursSource: {
+            /** Included Hours */
+            included_hours: number;
+            /** Monthly Hours */
+            monthly_hours: number;
+            /** Name */
+            name: string;
+            /**
+             * Subscription Id
+             * Format: uuid
+             */
+            subscription_id: string;
+        };
         /** ProjectRead */
         ProjectRead: {
             /** Assignees */
@@ -11150,6 +11170,8 @@ export interface components {
              * @default total
              */
             budget_period: string;
+            /** Budget Sources */
+            budget_sources?: components["schemas"]["ProjectHoursSource"][];
             /** Color */
             color?: string | null;
             /** Company Id */

@@ -26,6 +26,7 @@ from app.core.events import emit
 from app.core.parent import ensure_parent_in_tenant
 from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
+from app.errors import AppError
 from app.modules.projects.budget import period_bound, period_start_date
 from app.modules.projects.models import Project, ProjectAssignee, ProjectStatus
 from app.modules.projects.schemas import ProjectCreate, ProjectUpdate
@@ -118,28 +119,60 @@ class ProjectService:
         for project in projects:
             project.assignees = grouped.get(project.id, [])
 
+    async def _attach_subscription_sources(self, projects: Sequence[Project]) -> dict:
+        """The active subscriptions each project's hours derive from (issue #225), attached as
+        ``budget_sources``. One grouped query, via the subscriptions module's published service
+        — imported lazily like `time`, never its internals (CLAUDE.md §6).
+        """
+        if not projects:
+            return {}
+        from app.modules.subscriptions.service import SubscriptionService
+
+        sources = await SubscriptionService(self.ctx).hours_for_projects(
+            [p.id for p in projects]
+        )
+        for project in projects:
+            project.budget_sources = sources.get(project.id, [])
+        return sources
+
     async def _attach_hours(self, projects: Sequence[Project]) -> None:
         """Budget burn for the page, in one grouped query. Only runs when the column is visible.
 
         The time module is reached through its published service, imported here rather than at
         module scope: nothing outside this branch should drag `time` in, and a module must never
         import another's internals (CLAUDE.md §6).
+
+        A project covered by an active subscription with included hours (#225) burns against
+        the sum of those subscriptions' **monthly-equivalent** hours instead of its own stored
+        ``budget_hours``, and its period is monthly — one source of truth for "how many hours
+        does this project have".
         """
         if not projects:
             return
         from app.modules.time.service import LoggedMinutes, TimeService
 
-        periods = {p.id: period_bound(p.budget_period) for p in projects}
+        sources = await self._attach_subscription_sources(projects)
+
+        def effective_period(project: Project) -> str:
+            return "monthly" if sources.get(project.id) else project.budget_period
+
+        periods = {p.id: period_bound(effective_period(p)) for p in projects}
         logged = await TimeService(self.ctx).minutes_by_project(periods)
         for project in projects:
             minutes = logged.get(project.id, LoggedMinutes())
-            budget = float(project.budget_hours) if project.budget_hours is not None else None
+            if covering := sources.get(project.id):
+                budget = round(sum(s.monthly_hours for s in covering), 2)
+            elif project.budget_hours is not None:
+                budget = float(project.budget_hours)
+            else:
+                budget = None
+            period = effective_period(project)
             spent = _hours(minutes.total)
             project.hours = BudgetHours(
-                period=project.budget_period,
+                period=period,
                 # The local day the period began — what a client sends back as `date_from` to list
                 # the entries behind this number (#43). Never the UTC instant's `.date()`.
-                period_start=period_start_date(project.budget_period),
+                period_start=period_start_date(period),
                 budget_hours=budget,
                 spent_hours=spent,
                 billable_hours=_hours(minutes.billable),
@@ -235,6 +268,10 @@ class ProjectService:
         # a year.
         if hours:
             await self._attach_hours([project])
+        else:
+            # The detail read always says where the budget comes from (#225): the edit form
+            # needs the locked state even when the burn aggregate wasn't asked for.
+            await self._attach_subscription_sources([project])
         return project
 
     async def primary_assignee(self, project_id: uuid.UUID) -> uuid.UUID | None:
@@ -310,6 +347,22 @@ class ProjectService:
         previous_status = project.status
         before_fields = snapshot(project, _AUDITED_FIELDS)
         values = data.model_dump(exclude_unset=True)
+        # While an active subscription sources the hours (#225), the project's own
+        # ``budget_hours`` is not writable — the API guards it, not just the form, so an MCP
+        # or script client can't create the drift the UI prevents. Echoing the stored value
+        # back is a no-op and passes (clients that PATCH whole objects stay unaffected); the
+        # stored value itself stays put as the fallback for when the link is removed.
+        sources = await self._attach_subscription_sources([project])
+        if "budget_hours" in values and sources.get(project_id):
+            current = float(project.budget_hours) if project.budget_hours is not None else None
+            if values["budget_hours"] != current:
+                raise AppError(
+                    "conflict",
+                    "errors.projects_budget_hours_locked",
+                    status_code=409,
+                    fields={"budget_hours": "errors.projects_budget_hours_locked"},
+                )
+            values.pop("budget_hours")
         if "company_id" in values:
             await ensure_parent_in_tenant(
                 self.ctx.session, "companies", values.get("company_id"), self.ctx.org.id

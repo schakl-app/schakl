@@ -66,6 +66,13 @@
 
   const assignees = $derived(project.assignees ?? []);
 
+  // Hours sourced from covering subscriptions (#225): non-empty locks the budget fields and
+  // the effective figure is the API's derived one, not the stored (dormant) budget_hours.
+  const budgetSources = $derived(project.budget_sources ?? []);
+  const subscriptionBacked = $derived(budgetSources.length > 0);
+  const budgetSourceNames = $derived(budgetSources.map((s) => s.name).join(", "));
+  const budgetHours = $derived(project.hours?.budget_hours ?? project.budget_hours ?? null);
+
   // Drag-to-reorder: local mirror of the task list for the dnd zone; a drop PATCHes the
   // moved task's position to the fractional midpoint of its new neighbours.
   type TaskItem = (typeof data.tasks)[number];
@@ -100,10 +107,11 @@
   const companyName = $derived(
     project.company_id ? (data.companies.find((c) => c.id === project.company_id)?.name ?? "") : "",
   );
-  // Planned billable value from the hours budget × rate (fallback to the amount budget).
+  // Planned billable value from the (effective) hours budget × rate (fallback to the amount
+  // budget) — a subscription-backed project plans with the derived hours (#225).
   const plannedValue = $derived(
-    project.budget_hours != null && project.hourly_rate != null
-      ? project.budget_hours * project.hourly_rate
+    budgetHours != null && project.hourly_rate != null
+      ? budgetHours * project.hourly_rate
       : (project.budget_amount ?? null),
   );
 
@@ -116,7 +124,7 @@
   );
   // The one burn scale (core/burn.ts, docs/UX.md). Unclamped: this used to `Math.min(100, …)`,
   // so a project 40 % over budget drew exactly like one that had just landed on it.
-  const budgetPct = $derived(burnPct(loggedHours, project.budget_hours));
+  const budgetPct = $derived(burnPct(loggedHours, budgetHours));
 
   const money = (n: number) =>
     new Intl.NumberFormat("nl-NL", {
@@ -177,9 +185,17 @@
       <div>
         <dt class="text-text-muted">{t("projects.field.budget_hours")}</dt>
         <dd class="mt-0.5 font-medium text-text">
-          {project.budget_hours != null
-            ? `${project.budget_hours} ${t("projects.hours_unit")}`
-            : "—"}
+          {budgetHours != null ? `${budgetHours} ${t("projects.hours_unit")}` : "—"}
+          {#if subscriptionBacked}
+            <!-- At-a-glance connection state (#225): the hours are subscription-backed. -->
+            <a
+              href="/subscriptions"
+              title={budgetSourceNames}
+              class="ml-1 inline-block rounded-md bg-surface px-2 py-0.5 text-xs font-medium text-text-muted hover:text-brand"
+            >
+              {t("projects.hours_from_subscription")}
+            </a>
+          {/if}
         </dd>
       </div>
       <div>
@@ -203,15 +219,15 @@
     </dl>
     <div class="mt-4 border-t border-border pt-4">
       <div class="flex items-end justify-between text-sm">
+        <!-- The API's effective period: forced to monthly when a subscription sources the
+             hours (#225), the project's own otherwise. -->
         <span class="text-text-muted"
-          >{t(`projects.logged_period.${project.budget_period ?? "total"}`)}</span
+          >{t(`projects.logged_period.${project.hours?.period ?? project.budget_period ?? "total"}`)}</span
         >
         <span class="font-medium text-text">
           {loggedHours}
-          {t("projects.hours_unit")}{#if project.budget_hours != null}
-            <span class="text-text-muted">
-              / {project.budget_hours} {t("projects.hours_unit")}</span
-            >
+          {t("projects.hours_unit")}{#if budgetHours != null}
+            <span class="text-text-muted"> / {budgetHours} {t("projects.hours_unit")}</span>
           {/if}
         </span>
       </div>
@@ -316,23 +332,44 @@
             <label for="budget_hours" class="mb-1 block text-sm font-medium text-text"
               >{t("projects.field.budget_hours")}</label
             >
+            <!-- Subscription-backed hours are read-only here (#225): a disabled input never
+                 posts, so the action omits the field and the API guard never trips. -->
             <input
               id="budget_hours"
               name="budget_hours"
               type="number"
               min="0"
               step="0.5"
-              value={project.budget_hours ?? ""}
-              class={inputClass}
+              value={subscriptionBacked ? (budgetHours ?? "") : (project.budget_hours ?? "")}
+              disabled={subscriptionBacked}
+              class="{inputClass} disabled:bg-surface disabled:text-text-muted"
             />
+            {#if subscriptionBacked}
+              <p class="mt-1 text-xs text-text-muted">
+                {t("projects.hours_from_subscription_hint")}
+                <a href="/subscriptions" class="text-brand hover:underline"
+                  >{budgetSourceNames}</a
+                >
+              </p>
+            {/if}
           </div>
           <div>
             <label for="budget_period" class="mb-1 block text-sm font-medium text-text"
               >{t("projects.field.budget_period")}</label
             >
-            <select id="budget_period" name="budget_period" class={inputClass}>
+            <select
+              id="budget_period"
+              name="budget_period"
+              disabled={subscriptionBacked}
+              class="{inputClass} disabled:bg-surface disabled:text-text-muted"
+            >
               {#each ["total", "monthly", "weekly", "daily"] as period (period)}
-                <option value={period} selected={(project.budget_period ?? "total") === period}>
+                <option
+                  value={period}
+                  selected={(subscriptionBacked
+                    ? "monthly"
+                    : (project.budget_period ?? "total")) === period}
+                >
                   {t(`projects.budget_period.${period}`)}
                 </option>
               {/each}
