@@ -773,8 +773,13 @@ class TimeService:
     async def revenue(self, *, year: int) -> dict[str, object]:
         """Omzet per month (selected + previous year) and per client (selected year).
 
-        Joins ``projects`` by table name only (mirroring the FK convention — no import of
-        the projects module); both sides carry the explicit org filter and RLS backs it up.
+        Billable time is priced at the rate of the employee who logged it (#226): the
+        personal ``leave_profiles.hourly_rate``, else ``leave_settings.default_hourly_rate``
+        — the same chain ``project_cost`` uses, joined by table name only (no import of the
+        leave module); every side carries the explicit org filter and RLS backs it up. A
+        project is not part of the price, so billable entries without one count too. Entries
+        whose logger has no rate anywhere are excluded, like the unrated-project entries
+        were before — the per-project view surfaces them as ``unrated_minutes``.
         """
         self.ctx.require("time.report.read")
         params = {
@@ -788,12 +793,17 @@ class TimeService:
                     """
                     SELECT CAST(date_part('year', te.started_at) AS int) AS y,
                            CAST(date_part('month', te.started_at) AS int) AS m,
-                           COALESCE(SUM(te.minutes / 60.0 * p.hourly_rate), 0) AS revenue
+                           COALESCE(SUM(
+                               te.minutes / 60.0
+                               * COALESCE(lp.hourly_rate, ls.default_hourly_rate)
+                           ), 0) AS revenue
                     FROM time_entries te
-                    JOIN projects p ON p.id = te.project_id AND p.org_id = te.org_id
+                    LEFT JOIN leave_profiles lp
+                           ON lp.org_id = te.org_id AND lp.user_id = te.user_id
+                    LEFT JOIN leave_settings ls ON ls.org_id = te.org_id
                     WHERE te.org_id = :org_id
                       AND te.billable AND te.ended_at IS NOT NULL
-                      AND p.hourly_rate IS NOT NULL
+                      AND COALESCE(lp.hourly_rate, ls.default_hourly_rate) IS NOT NULL
                       AND te.started_at >= :start AND te.started_at < :end
                     GROUP BY 1, 2
                     """
@@ -812,12 +822,17 @@ class TimeService:
                 sql_text(
                     """
                     SELECT te.company_id,
-                           COALESCE(SUM(te.minutes / 60.0 * p.hourly_rate), 0) AS revenue
+                           COALESCE(SUM(
+                               te.minutes / 60.0
+                               * COALESCE(lp.hourly_rate, ls.default_hourly_rate)
+                           ), 0) AS revenue
                     FROM time_entries te
-                    JOIN projects p ON p.id = te.project_id AND p.org_id = te.org_id
+                    LEFT JOIN leave_profiles lp
+                           ON lp.org_id = te.org_id AND lp.user_id = te.user_id
+                    LEFT JOIN leave_settings ls ON ls.org_id = te.org_id
                     WHERE te.org_id = :org_id
                       AND te.billable AND te.ended_at IS NOT NULL
-                      AND p.hourly_rate IS NOT NULL
+                      AND COALESCE(lp.hourly_rate, ls.default_hourly_rate) IS NOT NULL
                       AND te.started_at >= :year_start AND te.started_at < :year_end
                     GROUP BY te.company_id
                     ORDER BY revenue DESC
@@ -846,13 +861,14 @@ class TimeService:
         }
 
     async def project_cost(self, project_id: uuid.UUID) -> dict[str, object]:
-        """Cost of a project's logged time from the people who did the work (#111).
+        """A project's logged time in money, priced per logger (#111, #226).
 
         Σ minutes × the employee's *effective* rate (#113: personal rate → org default),
         joining ``leave_profiles``/``leave_settings`` by table name only — the same
-        no-imports rule ``revenue()`` follows with ``projects``. The **decision recorded on
-        the issue**: the employee rate prices *cost/margin*; revenue keeps billing at the
-        project rate, and the money burn-down is unchanged.
+        no-imports rule ``revenue()`` follows. Since #226 the employee rate prices
+        *everything* — there is no project rate — so this one query carries both figures:
+        ``cost`` (all logged time) and ``billable_amount`` (the billable subset, what those
+        hours bill the client).
 
         Salary-derived money: gated on the manager report grant *and* the any-scope rate
         read, since a per-project cost aggregates exactly what ``/leave/rates`` exposes.
@@ -869,6 +885,10 @@ class TimeService:
                                te.minutes / 60.0
                                * COALESCE(lp.hourly_rate, ls.default_hourly_rate)
                            ), 0) AS cost,
+                           COALESCE(SUM(
+                               te.minutes / 60.0
+                               * COALESCE(lp.hourly_rate, ls.default_hourly_rate)
+                           ) FILTER (WHERE te.billable), 0) AS billable_amount,
                            COALESCE(SUM(te.minutes) FILTER (
                                WHERE lp.hourly_rate IS NULL
                                  AND ls.default_hourly_rate IS NULL
@@ -888,7 +908,8 @@ class TimeService:
         return {
             "project_id": project_id,
             "cost": round(float(row[0]), 2),
-            "unrated_minutes": int(row[1]),
+            "billable_amount": round(float(row[1]), 2),
+            "unrated_minutes": int(row[2]),
         }
 
     async def _entries_by_ids(self, entry_ids: list[uuid.UUID]) -> Sequence[TimeEntry]:

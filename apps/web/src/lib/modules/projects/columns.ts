@@ -37,7 +37,6 @@ export const PROJECT_COLUMNS: ColumnMeta[] = [
     sortKey: "budget_hours",
     align: "right",
   },
-  { key: "hourly_rate", labelKey: "projects.field.hourly_rate", align: "right" },
   {
     key: "start_date",
     labelKey: "projects.field.start_date",

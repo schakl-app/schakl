@@ -458,7 +458,6 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const name = String(form.get("name") ?? "").trim();
     if (!name) return fail(400, { qcError: "errors.required" });
-    const rate = Number(String(form.get("hourly_rate") ?? "").trim());
     const { data, error: apiError } = await apiFor(event).POST("/api/v1/projects", {
       body: {
         name,
@@ -467,7 +466,6 @@ export const actions: Actions = {
         budget_period: "total",
         currency: event.locals.theme.currency,
         billable_default: true,
-        hourly_rate: Number.isFinite(rate) && rate > 0 ? rate : null,
         custom: {},
       },
     });

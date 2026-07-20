@@ -573,19 +573,6 @@
           placeholder={t("projects.field.company")}
         />
       </div>
-      <div>
-        <label for="qc-int-project-rate" class="mb-1 block text-sm font-medium text-text"
-          >{t("projects.field.hourly_rate")}</label
-        >
-        <input
-          id="qc-int-project-rate"
-          name="hourly_rate"
-          type="number"
-          min="0"
-          step="0.01"
-          class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
-        />
-      </div>
       {#if form?.qcError}
         <p class="text-sm text-red-600 dark:text-red-400">{t(form.qcError)}</p>
       {/if}

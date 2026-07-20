@@ -107,21 +107,11 @@
   const companyName = $derived(
     project.company_id ? (data.companies.find((c) => c.id === project.company_id)?.name ?? "") : "",
   );
-  // Planned billable value from the (effective) hours budget × rate (fallback to the amount
-  // budget) — a subscription-backed project plans with the derived hours (#225).
-  const plannedValue = $derived(
-    budgetHours != null && project.hourly_rate != null
-      ? budgetHours * project.hourly_rate
-      : (project.budget_amount ?? null),
-  );
-
   // Actuals from logged time (team-wide) against the budget, computed by the API over the budget's
   // current period — the same figures the projects list column shows, and the same period the Uren
-  // panel below lists the entries for.
+  // panel below lists the entries for. Money is priced per logger (#226): the API's employee-rate
+  // query carries the billable value and the cost, loaded only for rate-money readers.
   const loggedHours = $derived(project.hours?.spent_hours ?? 0);
-  const billableValue = $derived(
-    project.hourly_rate != null ? (project.hours?.billable_hours ?? 0) * project.hourly_rate : null,
-  );
   // The one burn scale (core/burn.ts, docs/UX.md). Unclamped: this used to `Math.min(100, …)`,
   // so a project 40 % over budget drew exactly like one that had just landed on it.
   const budgetPct = $derived(burnPct(loggedHours, budgetHours));
@@ -199,15 +189,9 @@
         </dd>
       </div>
       <div>
-        <dt class="text-text-muted">{t("projects.field.hourly_rate")}</dt>
+        <dt class="text-text-muted">{t("projects.field.budget_amount")}</dt>
         <dd class="mt-0.5 font-medium text-text">
-          {project.hourly_rate != null ? money(project.hourly_rate) : "—"}
-        </dd>
-      </div>
-      <div>
-        <dt class="text-text-muted">{t("projects.planned_value")}</dt>
-        <dd class="mt-0.5 font-medium text-text">
-          {plannedValue != null ? money(plannedValue) : "—"}
+          {project.budget_amount != null ? money(project.budget_amount) : "—"}
         </dd>
       </div>
       <div>
@@ -222,7 +206,9 @@
         <!-- The API's effective period: forced to monthly when a subscription sources the
              hours (#225), the project's own otherwise. -->
         <span class="text-text-muted"
-          >{t(`projects.logged_period.${project.hours?.period ?? project.budget_period ?? "total"}`)}</span
+          >{t(
+            `projects.logged_period.${project.hours?.period ?? project.budget_period ?? "total"}`,
+          )}</span
         >
         <span class="font-medium text-text">
           {loggedHours}
@@ -240,28 +226,18 @@
           ></div>
         </div>
       {/if}
-      {#if billableValue != null}
+      <!-- Money from employee rates (#111, #226): every hour is priced at its logger's rate,
+           so billable value and cost come from the same API query. Only loaded (and rendered)
+           for someone the API lets read rate-derived money. -->
+      {#if data.cost}
         <div class="mt-3 flex items-center justify-between text-sm">
           <span class="text-text-muted">{t("projects.billable_value")}</span>
-          <span class="font-medium text-text">{money(billableValue)}</span>
+          <span class="font-medium text-text">{money(data.cost.billable_amount)}</span>
         </div>
-      {/if}
-      <!-- Cost from employee rates (#111) — the project rate bills, people cost. Only loaded
-           (and rendered) for someone the API lets read salary-derived money. -->
-      {#if data.cost}
         <div class="mt-2 flex items-center justify-between text-sm">
           <span class="text-text-muted">{t("projects.cost")}</span>
           <span class="font-medium text-text">{money(data.cost.cost)}</span>
         </div>
-        {#if billableValue != null}
-          {@const margin = billableValue - data.cost.cost}
-          <div class="mt-2 flex items-center justify-between text-sm">
-            <span class="text-text-muted">{t("projects.margin")}</span>
-            <span class="font-medium {margin < 0 ? 'text-red-600 dark:text-red-400' : 'text-text'}">
-              {money(margin)}
-            </span>
-          </div>
-        {/if}
         {#if data.cost.unrated_minutes > 0}
           <p class="mt-1 text-xs text-text-muted">
             {t("projects.cost_unrated", {
@@ -347,9 +323,7 @@
             {#if subscriptionBacked}
               <p class="mt-1 text-xs text-text-muted">
                 {t("projects.hours_from_subscription_hint")}
-                <a href="/subscriptions" class="text-brand hover:underline"
-                  >{budgetSourceNames}</a
-                >
+                <a href="/subscriptions" class="text-brand hover:underline">{budgetSourceNames}</a>
               </p>
             {/if}
           </div>
@@ -374,20 +348,6 @@
                 </option>
               {/each}
             </select>
-          </div>
-          <div>
-            <label for="hourly_rate" class="mb-1 block text-sm font-medium text-text"
-              >{t("projects.field.hourly_rate")}</label
-            >
-            <input
-              id="hourly_rate"
-              name="hourly_rate"
-              type="number"
-              min="0"
-              step="0.01"
-              value={project.hourly_rate ?? ""}
-              class={inputClass}
-            />
           </div>
           <div>
             <label for="budget_amount" class="mb-1 block text-sm font-medium text-text"

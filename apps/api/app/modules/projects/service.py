@@ -43,7 +43,6 @@ _AUDITED_FIELDS = (
     "responsible_user_id",
     "budget_hours",
     "budget_amount",
-    "hourly_rate",
     "budget_period",
     "start_date",
     "end_date",

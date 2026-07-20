@@ -1117,6 +1117,8 @@ class InvoiceService(_DocumentService):
         await _company_row(self.ctx, company_id)
         rows = await self._unbilled_rows(company_id, project_id=project_id, until=until)
         settings_row = await self.settings.row()
+        # Per-entry rate = the logger's effective rate (#226); the invoicing default is the
+        # last resort for orgs that haven't configured employee rates yet.
         default_rate = settings_row.default_hourly_rate or Decimal(0)
         return {
             "entries": [
@@ -1129,8 +1131,8 @@ class InvoiceService(_DocumentService):
                     "project_name": row["project_name"] or "",
                     "user_name": row["user_name"] or "",
                     "rate": (
-                        Decimal(row["project_rate"])
-                        if row["project_rate"] is not None
+                        Decimal(row["employee_rate"])
+                        if row["employee_rate"] is not None
                         else default_rate
                     ),
                 }
@@ -1149,6 +1151,8 @@ class InvoiceService(_DocumentService):
     ) -> list[Any]:
         # Bare-table reads over published columns (§6): the time module's "to invoice" set is
         # approved AND billable AND not invoiced (time/models.py), joined for display names.
+        # ``employee_rate`` is the logger's effective rate (#226: personal → leave org
+        # default) — the rate the client is billed at; there is no project rate.
         clauses = """
             te.org_id = :oid AND te.company_id = :cid AND te.ended_at IS NOT NULL
             AND te.billable AND te.approved_at IS NOT NULL AND te.invoiced_at IS NULL
@@ -1167,10 +1171,14 @@ class InvoiceService(_DocumentService):
         stmt = text(
             f"""
             SELECT te.id, te.started_at, te.minutes, te.description, te.project_id,
-                   p.name AS project_name, p.hourly_rate AS project_rate,
+                   p.name AS project_name,
+                   COALESCE(lp.hourly_rate, ls.default_hourly_rate) AS employee_rate,
                    u.full_name AS user_name
             FROM time_entries te
             LEFT JOIN projects p ON p.id = te.project_id AND p.org_id = te.org_id
+            LEFT JOIN leave_profiles lp
+                   ON lp.org_id = te.org_id AND lp.user_id = te.user_id
+            LEFT JOIN leave_settings ls ON ls.org_id = te.org_id
             LEFT JOIN users u ON u.id = te.user_id
             WHERE {clauses}
             ORDER BY te.started_at
@@ -1196,22 +1204,27 @@ class InvoiceService(_DocumentService):
         ) or Decimal(0)
 
         def rate_for(row: Any) -> Decimal:
+            # Manual per-build override → the logger's effective rate (#226) → the org's
+            # invoicing default, the last resort when no employee rate is configured.
             if data.hourly_rate is not None:
                 return data.hourly_rate
-            if row["project_rate"] is not None:
-                return Decimal(row["project_rate"])
+            if row["employee_rate"] is not None:
+                return Decimal(row["employee_rate"])
             return Decimal(fallback_rate)
 
         def hours(minutes: int) -> Decimal:
             return (Decimal(minutes) / Decimal(60)).quantize(Decimal("0.01"))
 
+        # Grouped lines key on the rate as well: two people on one project may bill at two
+        # rates (#226), and a group priced at its first entry's rate would misbill the rest.
         lines: list[LineWrite] = []
         if data.group_by == "project":
             groups: dict[Any, dict[str, Any]] = {}
             for row in rows:
+                rate = rate_for(row)
                 bucket = groups.setdefault(
-                    row["project_id"],
-                    {"name": row["project_name"], "minutes": 0, "rate": rate_for(row)},
+                    (row["project_id"], rate),
+                    {"name": row["project_name"], "minutes": 0, "rate": rate},
                 )
                 bucket["minutes"] += row["minutes"]
             for bucket in groups.values():
@@ -1224,14 +1237,15 @@ class InvoiceService(_DocumentService):
                     )
                 )
         elif data.group_by == "day":
-            by_day: dict[tuple[Any, Any], dict[str, Any]] = {}
+            by_day: dict[tuple[Any, Any, Any], dict[str, Any]] = {}
             for row in rows:
                 day = row["started_at"].date()
+                rate = rate_for(row)
                 bucket = by_day.setdefault(
-                    (day, row["project_id"]),
+                    (day, row["project_id"], rate),
                     {
                         "day": day, "name": row["project_name"], "minutes": 0,
-                        "rate": rate_for(row),
+                        "rate": rate,
                     },
                 )
                 bucket["minutes"] += row["minutes"]

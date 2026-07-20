@@ -41,7 +41,6 @@ async def test_project_crud_with_budget_and_custom_fields(client_for) -> None:
                 "company_id": company_id,
                 "budget_hours": 40,
                 "budget_amount": 4000,
-                "hourly_rate": 100,
                 "billable_default": True,
                 "custom": {"po_number": "PO-42"},
             },
@@ -50,7 +49,8 @@ async def test_project_crud_with_budget_and_custom_fields(client_for) -> None:
         assert created.status_code == 201
         project = created.json()
         assert project["budget_hours"] == 40.0
-        assert project["hourly_rate"] == 100.0
+        # No project rate exists anymore (#226): money is priced per employee.
+        assert "hourly_rate" not in project
         assert project["custom"] == {"po_number": "PO-42"}
         assert project["status"] == "active"
         project_id = project["id"]

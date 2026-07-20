@@ -73,8 +73,7 @@ export interface DemoLabels {
   // Projects
   budget: string;
   logged: string;
-  margin: string;
-  hourlyRate: string;
+  cost: string;
   billableValue: string;
   hoursUnit: string; // "u" / "h"
   projActive: string;
@@ -159,8 +158,7 @@ export const labels: Record<Locale, DemoLabels> = {
     total: 'Totaal',
     budget: 'Budget',
     logged: 'Geboekt',
-    margin: 'Marge',
-    hourlyRate: 'Uurtarief',
+    cost: 'Kosten (medewerkerstarieven)',
     billableValue: 'Facturabele waarde',
     hoursUnit: 'u',
     projActive: 'Actief',
@@ -240,8 +238,7 @@ export const labels: Record<Locale, DemoLabels> = {
     total: 'Total',
     budget: 'Budget',
     logged: 'Logged',
-    margin: 'Margin',
-    hourlyRate: 'Hourly rate',
+    cost: 'Cost (employee rates)',
     billableValue: 'Billable value',
     hoursUnit: 'h',
     projActive: 'Active',

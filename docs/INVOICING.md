@@ -69,8 +69,9 @@ for accounting packages.
 
 - **Time (module `time`)**: "to invoice" = approved AND billable AND `invoiced_at IS NULL`
   (the time module's own definition). `POST /invoicing/invoices/from-time` builds a draft
-  (grouped per project / day / entry; rate = the project's `hourly_rate`, else the request's,
-  else the org default), stamps `invoiced_at` through the published column, and remembers
+  (grouped per project / day / entry; rate = the request's override, else the logger's
+  effective employee rate (#226: personal → leave org default), else the invoicing org
+  default — grouped lines split per rate), stamps `invoiced_at` through the published column, and remembers
   exactly which entries in `invoice_time_entries` — so deleting/cancelling the draft un-bills
   exactly those and nothing else. `GET /invoicing/unbilled` feeds the dialog. An entry can
   be on one invoice, ever (unique constraint).

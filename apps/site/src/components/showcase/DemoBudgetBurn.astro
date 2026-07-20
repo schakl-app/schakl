@@ -32,8 +32,7 @@ const rows = [
     <div class="bn-card__h">{l.budget}</div>
     <div class="bn-dl">
       <div><span class="muted">{locale === 'nl' ? 'Budget (uren)' : 'Budget (hours)'}</span><b>40 {u}</b></div>
-      <div><span class="muted">{l.hourlyRate}</span><b>{eur(locale, 87.5, 2)}</b></div>
-      <div><span class="muted">{locale === 'nl' ? 'Geplande waarde' : 'Planned value'}</span><b>{eur(locale, 3500)}</b></div>
+      <div><span class="muted">{locale === 'nl' ? 'Budget (bedrag)' : 'Budget (amount)'}</span><b>{eur(locale, 3500)}</b></div>
       <div><span class="muted">{locale === 'nl' ? 'Standaard facturabel' : 'Billable by default'}</span><b>{locale === 'nl' ? 'Ja' : 'Yes'}</b></div>
     </div>
     <div class="bn-logged">
@@ -48,7 +47,7 @@ const rows = [
     <div class="burn bn-track"><div class="burn__fill bn-fill"></div></div>
     <div class="bn-money">
       <div><span class="muted">{l.billableValue}</span><b>{eur(locale, 4025)}</b></div>
-      <div><span class="muted">{l.margin}</span><b class="over-ink">− {eur(locale, 525)}</b></div>
+      <div><span class="muted">{l.cost}</span><b>{eur(locale, 4310)}</b></div>
     </div>
   </div>
 

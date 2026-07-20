@@ -11070,12 +11070,15 @@ export interface components {
         };
         /**
          * ProjectCost
-         * @description What a project's logged time *costs* (#111): Σ minutes × the employee's effective rate
-         *     (#113: personal rate → org default). Distinct from revenue, which bills at the project
-         *     rate. ``unrated_minutes`` counts time by people with no rate at all — reported rather than
+         * @description A project's logged time in money (#111): Σ minutes × the employee's effective rate
+         *     (#113: personal rate → org default). Since #226 that same rate prices billing too, so
+         *     ``billable_amount`` (the billable subset — what those hours bill the client) rides along.
+         *     ``unrated_minutes`` counts time by people with no rate at all — reported rather than
          *     silently priced at zero.
          */
         ProjectCost: {
+            /** Billable Amount */
+            billable_amount: number;
             /** Cost */
             cost: number;
             /**
@@ -11121,8 +11124,6 @@ export interface components {
             description?: string | null;
             /** End Date */
             end_date?: string | null;
-            /** Hourly Rate */
-            hourly_rate?: number | null;
             /** Name */
             name: string;
             /** Responsible User Id */
@@ -11194,8 +11195,6 @@ export interface components {
             description?: string | null;
             /** End Date */
             end_date?: string | null;
-            /** Hourly Rate */
-            hourly_rate?: number | null;
             hours?: components["schemas"]["BudgetHours"] | null;
             /**
              * Id
@@ -11252,8 +11251,6 @@ export interface components {
             description?: string | null;
             /** End Date */
             end_date?: string | null;
-            /** Hourly Rate */
-            hourly_rate?: number | null;
             /** Name */
             name?: string | null;
             /** Responsible User Id */
@@ -11687,8 +11684,8 @@ export interface components {
         };
         /**
          * RevenueStats
-         * @description Omzet = billable minutes × the project's hourly rate (entries without a rated
-         *     project contribute nothing — noted in the UI).
+         * @description Omzet = billable minutes × the logging employee's effective rate (#226: personal
+         *     rate → org default; entries whose logger has no rate contribute nothing).
          */
         RevenueStats: {
             /** Months Current */
@@ -12505,7 +12502,7 @@ export interface components {
              * Format: date
              */
             start_date: string;
-            /** @default draft */
+            /** @default active */
             status: components["schemas"]["SubscriptionStatus"];
             /** Subscription Type Id */
             subscription_type_id?: string | null;

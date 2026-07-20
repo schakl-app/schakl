@@ -33,8 +33,8 @@
           "en": "On the client, with a budget"
         },
         "body": {
-          "nl": "Een project is een opdracht van een klant: het hangt aan de klantpagina (de hub), naast contactpersonen, domeinen en afspraken. Het draagt een urenbudget (de capaciteit), een geldbudget en een uurtarief, allemaal optioneel, want dit zijn planningsgetallen en geen boekingen. Taken en geregistreerde uren horen bij het project, zodat geboekt versus budget vanzelf blijft kloppen.",
-          "en": "A project is a client engagement: it hangs off the client page (the hub), alongside contacts, domains and appointments. It carries an hour budget (the capacity), a money budget and an hourly rate, all optional, because these are planning figures and not ledger entries. Tasks and logged time belong to the project, so logged-versus-budget stays true on its own."
+          "nl": "Een project is een opdracht van een klant: het hangt aan de klantpagina (de hub), naast contactpersonen, domeinen en afspraken. Het draagt een urenbudget (de capaciteit) en een geldbudget, allebei optioneel, want dit zijn planningsgetallen en geen boekingen. Taken en geregistreerde uren horen bij het project, zodat geboekt versus budget vanzelf blijft kloppen.",
+          "en": "A project is a client engagement: it hangs off the client page (the hub), alongside contacts, domains and appointments. It carries an hour budget (the capacity) and a money budget, both optional, because these are planning figures and not ledger entries. Tasks and logged time belong to the project, so logged-versus-budget stays true on its own."
         }
       },
       {
@@ -81,12 +81,12 @@
       },
       {
         "heading": {
-          "nl": "Geplande waarde, facturabele waarde, marge",
-          "en": "Planned value, billable value, margin"
+          "nl": "Geld uit medewerkerstarieven",
+          "en": "Money from employee rates"
         },
         "body": {
-          "nl": "Uit het uurtarief en de uren rekent schakl drie getallen af. Geplande waarde is het urenbudget maal het tarief; facturabele waarde is wat de facturabele uren tot nu toe waard zijn tegen datzelfde tarief. Daarnaast staan de kosten: geboekte tijd maal het tarief van de medewerker (het persoonlijke tarief, anders het orgtarief). Marge is facturabele waarde min kosten en kleurt rood zodra ze negatief wordt. Uren van mensen zonder tarief worden apart gemeld, niet stilletjes op nul geprijsd.",
-          "en": "From the hourly rate and the hours, schakl derives three figures. Planned value is the hour budget times the rate; billable value is what the billable hours are worth so far at that same rate. Alongside them sits cost: logged time times the employee's rate (their personal rate, otherwise the org default). Margin is billable value minus cost, and turns red the moment it goes negative. Hours by people with no rate are reported separately, never quietly priced at zero."
+          "nl": "Geld rekent schakl altijd af tegen het tarief van de medewerker die de uren schreef: het persoonlijke tarief, anders het standaardtarief van de organisatie. Zo laat een project zien wat de facturabele uren tot nu toe waard zijn en wat alle geboekte tijd kost, en een factuur uit uren rekent met precies dezelfde tarieven. Uren van mensen zonder tarief worden apart gemeld, niet stilletjes op nul geprijsd.",
+          "en": "schakl always prices money at the rate of the employee who logged the hours: their personal rate, otherwise the organisation's default. A project shows what its billable hours are worth so far and what all logged time adds up to, and an invoice built from hours uses exactly those same rates. Hours by people with no rate are reported separately, never quietly priced at zero."
         }
       }
     ]

@@ -1,6 +1,8 @@
 """Pydantic schemas for the projects module (CLAUDE.md §6, §9).
 
-Budgets/rate are exposed as floats (planning figures) even though stored as ``Numeric``.
+Budgets are exposed as floats (planning figures) even though stored as ``Numeric``. There is
+no project ``hourly_rate`` (#226): money is always priced at the rate of the employee who
+logged the time (leave profile → org default).
 """
 
 from __future__ import annotations
@@ -26,7 +28,6 @@ class ProjectBase(BaseModel):
     budget_period: str = Field(default="total", pattern="^(total|monthly|weekly|daily)$")
     budget_hours: float | None = Field(default=None, ge=0)
     budget_amount: float | None = Field(default=None, ge=0)
-    hourly_rate: float | None = Field(default=None, ge=0)
     currency: str = Field(default="EUR", min_length=3, max_length=3)
     color: str | None = Field(default=None, max_length=20)
     start_date: date | None = None
@@ -51,7 +52,6 @@ class ProjectUpdate(BaseModel):
     budget_period: str | None = Field(default=None, pattern="^(total|monthly|weekly|daily)$")
     budget_hours: float | None = Field(default=None, ge=0)
     budget_amount: float | None = Field(default=None, ge=0)
-    hourly_rate: float | None = Field(default=None, ge=0)
     currency: str | None = Field(default=None, min_length=3, max_length=3)
     color: str | None = Field(default=None, max_length=20)
     start_date: date | None = None
