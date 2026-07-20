@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## v0.15.0 — 2026-07-20
+
+One feature: the marketing dashboard rework. The top-level Marketing page and the client's marketing tab become the same screen, and curating a client's dashboard now works like arranging your own My Day board.
+
+### Marketing
+
+- **One dashboard, two entrances.** The top-level Marketing page and a client's marketing tab render the same shared dashboard component. The layout editor is available from both — previously it existed only on the client tab, so curating from the Marketing page meant knowing to go through the client page first.
+- **Edit in place, like My Day.** The pencil turns the real dashboard editable instead of swapping it for a form: drag tiles by their grip to reorder, hide a tile with its cross (hidden tiles wait in a strip below to re-add with one click), and rename tiles inline in both languages on the tile itself. Drill-downs toggle on their own cards, with disabled ones shown as quiet placeholders that cost no Google call. The default chart metric is a select, and the whole source can be hidden from the client via the section header. Every change saves immediately; there is no separate save step to forget.
+- **Key-event labels, typed where the events show.** Each GA4 key event gets its client-friendly name (per locale) directly in the key-events table rows. Labels whose event did not surface in the current range stay editable below the table, and an event can be added by its raw GA4 name, so labeling never depends on a live Google call.
+
+### Upgrade notes
+
+- No database migration; the change is web-only. Rollback to v0.14.0 is safe.
+- Stored layouts (tile order, names, hidden tiles and sources, key-event labels) carry over unchanged; only the editing surface is new.
+
 ## v0.14.0 — 2026-07-20
 
 A smaller release: brute-force protection on login, a batch of domains, marketing and invoicing polish, and multi-arch container images.
