@@ -71,13 +71,17 @@
     void load();
   });
 
-  function labelFor(key: string): { nl: string; en: string } {
-    if (edit && !edit.event_labels[key]) edit.event_labels[key] = { nl: "", en: "" };
-    return edit!.event_labels[key];
+  /** Pure read for the template. Creating a missing entry here would mutate state during
+   *  render — Svelte 5 rejects that (state_unsafe_mutation), which froze this card on
+   *  "Loading" the moment the fetch returned real rows. Entries are created in setLabel,
+   *  which only ever runs from an input event. */
+  function labelValue(key: string, locale: "nl" | "en"): string {
+    return edit?.event_labels[key]?.[locale] ?? "";
   }
   function setLabel(key: string, locale: "nl" | "en", value: string) {
     if (!edit) return;
-    labelFor(key)[locale] = value;
+    const entry = (edit.event_labels[key] ??= { nl: "", en: "" });
+    entry[locale] = value;
   }
   function removeLabel(key: string) {
     if (!edit) return;
@@ -154,7 +158,7 @@
                     <div class="space-y-1">
                       <code class="block break-all text-xs text-text-muted">{row.key}</code>
                       <input
-                        value={labelFor(row.key).nl}
+                        value={labelValue(row.key, "nl")}
                         oninput={(e) => setLabel(row.key!, "nl", e.currentTarget.value)}
                         onchange={() => onchange?.()}
                         placeholder="{t('marketing.layout.label_nl')}: {row.key}"
@@ -162,7 +166,7 @@
                         class="w-full min-w-32 rounded border border-border bg-surface px-1.5 py-0.5 text-xs text-text outline-none focus:border-brand"
                       />
                       <input
-                        value={labelFor(row.key).en}
+                        value={labelValue(row.key, "en")}
                         oninput={(e) => setLabel(row.key!, "en", e.currentTarget.value)}
                         onchange={() => onchange?.()}
                         placeholder={t("marketing.layout.label_en")}
@@ -200,7 +204,7 @@
               <code class="min-w-24 break-all text-xs text-text-muted">{key}</code>
               <span class="ml-auto flex min-w-0 flex-wrap items-center gap-1">
                 <input
-                  value={labelFor(key).nl}
+                  value={labelValue(key, "nl")}
                   oninput={(e) => setLabel(key, "nl", e.currentTarget.value)}
                   onchange={() => onchange?.()}
                   placeholder="{t('marketing.layout.label_nl')}: {key}"
@@ -208,7 +212,7 @@
                   class="w-36 min-w-0 rounded border border-border bg-surface px-1.5 py-0.5 text-xs text-text outline-none focus:border-brand"
                 />
                 <input
-                  value={labelFor(key).en}
+                  value={labelValue(key, "en")}
                   oninput={(e) => setLabel(key, "en", e.currentTarget.value)}
                   onchange={() => onchange?.()}
                   placeholder={t("marketing.layout.label_en")}
