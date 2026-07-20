@@ -1,9 +1,10 @@
-import { redirect } from "@sveltejs/kit";
+import { fail, redirect } from "@sveltejs/kit";
 
+import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 
-import type { PageServerLoad } from "./$types";
+import type { Actions, PageServerLoad } from "./$types";
 
 const PRESET_DAYS: Record<string, number> = { "30d": 30, "90d": 90, quarter: 90, yoy: 365 };
 
@@ -43,4 +44,26 @@ export const load: PageServerLoad = async (event) => {
     rangeDays: range_days,
     website,
   };
+};
+
+export const actions: Actions = {
+  // Save the client's curated layout (#192) — the same action the client tab's dashboard posts,
+  // so editing works identically on both surfaces. The API enforces marketing.link.manage.
+  saveLayout: async (event) => {
+    const form = await event.request.formData();
+    const company_id = String(form.get("company_id") ?? "");
+    if (!company_id) return fail(400, { error: "errors.validation" });
+    let layout: Record<string, unknown>;
+    try {
+      layout = JSON.parse(String(form.get("layout") ?? "{}")) as Record<string, unknown>;
+    } catch {
+      return fail(400, { error: "errors.validation" });
+    }
+    const { error: apiError } = await apiFor(event).PUT(
+      "/api/v1/marketing/companies/{company_id}/settings",
+      { params: { path: { company_id } }, body: { layout } },
+    );
+    if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
+    return { saved: true };
+  },
 };
