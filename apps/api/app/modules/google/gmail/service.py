@@ -69,15 +69,35 @@ async def poll_connection(
             excluded_label_id = await _excluded_label_id(client, connection)
             logged = 0
             for message_id in message_ids:
-                logged += await _ingest_message(
-                    session,
-                    org,
-                    connection,
-                    settings_row,
-                    client,
-                    message_id,
-                    excluded_label_id,
-                )
+                try:
+                    # Savepoint per message: a failed ingest rolls back only its own writes,
+                    # so a DB error cannot abort the transaction for the messages after it.
+                    async with session.begin_nested():
+                        logged += await _ingest_message(
+                            session,
+                            org,
+                            connection,
+                            settings_row,
+                            client,
+                            message_id,
+                            excluded_label_id,
+                        )
+                except Exception as ingest_exc:  # noqa: BLE001 — a poison message must not wedge the mailbox
+                    # A dead grant is the *connection's* problem: let the outer handler mark
+                    # it, so the owner is notified instead of every message "failing".
+                    from app.modules.google.client import is_oauth_error
+
+                    if await is_oauth_error(ingest_exc):
+                        raise
+                    # historyId only advances after the loop, so a message that kept raising
+                    # would re-abort every poll and silently stop the whole feed. Skipping it
+                    # loses one email (loudly, below); wedging loses every email after it.
+                    logger.exception(
+                        "Gmail ingest failed for message %s on connection %s (org %s); skipped",
+                        message_id,
+                        connection.id,
+                        org.id,
+                    )
             if latest_history_id:
                 connection.gmail_history_id = latest_history_id[:32]
     except Exception as exc:

@@ -297,6 +297,49 @@ async def test_poll_matches_contact_and_logs_pending(client_for, monkeypatch) ->
     assert await _poll(t, connection_id, stub, monkeypatch) == 0
 
 
+async def test_poison_message_does_not_wedge_the_poll(client_for, monkeypatch) -> None:
+    """One message whose ingest raises is skipped (loudly logged): the rest of the batch
+    still imports and historyId advances. Before the per-message guard, the poll re-aborted
+    on the same message every 5 minutes and the whole feed silently stopped."""
+    t = await make_tenant("gmail-poison")
+    connection_id = await _seed(t)
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Client NL"}, headers=headers)
+        ).json()
+        await c.post(
+            "/api/v1/contacts",
+            json={
+                "first_name": "Klant",
+                "email": "klant@client.nl",
+                "company_ids": [company["id"]],
+            },
+            headers=headers,
+        )
+
+    class _PoisonGmail(_StubGmail):
+        async def get(self, url: str, **kwargs) -> _StubResponse:
+            if url.rsplit("/", 1)[-1] == "msg-poison":
+                raise RuntimeError("malformed payload")
+            return await super().get(url, **kwargs)
+
+    # Poison first, so surviving it proves the loop continues past the failure.
+    stub = _PoisonGmail(
+        history=["msg-poison", "msg-good"],
+        messages={"msg-good": _message("msg-good", sender="Klant <klant@client.nl>")},
+        history_id="9100",
+    )
+    assert await _poll(t, connection_id, stub, monkeypatch) == 1
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        row = (await session.execute(select(Interaction))).scalar_one()
+        assert row.gmail_message_id == "msg-good"
+        connection = await session.get(GoogleConnection, connection_id)
+        assert connection.gmail_history_id == "9100"
+
+
 async def test_first_poll_baselines_without_backfill(monkeypatch) -> None:
     t = await make_tenant("gmail-baseline")
     connection_id = await _seed(t, history_id=None)  # type: ignore[arg-type]
