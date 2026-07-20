@@ -88,7 +88,7 @@ export const load: PageServerLoad = async (event) => {
 export const actions: Actions = {
   update: async (event) => {
     const form = await event.request.formData();
-    const email_enabled = form.get("email_enabled") === "on";
+    const email_enabled = form.get("email_enabled") !== null;
     const { error: err } = await apiFor(event).PATCH("/api/v1/domains/{domain_id}", {
       params: { path: { domain_id: event.params.id } },
       body: {
@@ -129,7 +129,7 @@ export const actions: Actions = {
       root: form.get("root") !== "www",
       technical_owner: parseParty(form.get("technical_owner")),
       hosting_id: String(form.get("hosting_id") ?? "") || null,
-      uptime_enabled: form.get("uptime_enabled") === "on",
+      uptime_enabled: form.get("uptime_enabled") !== null,
       custom: parseCustom(form.get("custom")),
     };
     if (website_id) {

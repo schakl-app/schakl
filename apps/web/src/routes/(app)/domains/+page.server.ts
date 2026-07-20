@@ -76,7 +76,7 @@ export const actions: Actions = {
     const name = String(form.get("name") ?? "").trim();
     const company_id = String(form.get("company_id") ?? "");
     if (!name || !company_id) return fail(400, { error: "errors.required" });
-    const email_enabled = form.get("email_enabled") === "on";
+    const email_enabled = form.get("email_enabled") !== null;
 
     const { error } = await apiFor(event).POST("/api/v1/domains", {
       body: {

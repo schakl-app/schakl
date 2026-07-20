@@ -203,7 +203,7 @@ export const actions: Actions = {
         status: "active",
         budget_period: "total",
         currency: event.locals.theme.currency,
-        billable_default: form.get("billable_default") === "on",
+        billable_default: form.get("billable_default") !== null,
         hourly_rate: Number.isFinite(rate) && rate > 0 ? rate : null,
         custom: parseCustom(form.get("custom")),
       },

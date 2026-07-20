@@ -90,7 +90,7 @@ export const actions: Actions = {
         status: String(form.get("status") ?? "active") as "active",
         budget_period: "total",
         currency: event.locals.theme.currency,
-        billable_default: form.get("billable_default") === "on",
+        billable_default: form.get("billable_default") !== null,
         budget_hours: numberOrNull(form.get("budget_hours")),
         budget_amount: numberOrNull(form.get("budget_amount")),
         hourly_rate: numberOrNull(form.get("hourly_rate")),

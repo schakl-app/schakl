@@ -111,7 +111,7 @@ export const actions: Actions = {
         description: String(form.get("description") ?? "").trim() || null,
         assignees: parseAssignees(form.get("assignees")),
         status: String(form.get("status") ?? "active") as "active",
-        billable_default: form.get("billable_default") === "on",
+        billable_default: form.get("billable_default") !== null,
         budget_period: String(form.get("budget_period") ?? "total") as "total",
         budget_hours: numberOrNull(form.get("budget_hours")),
         budget_amount: numberOrNull(form.get("budget_amount")),

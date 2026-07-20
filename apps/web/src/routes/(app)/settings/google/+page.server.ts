@@ -34,13 +34,13 @@ export const actions: Actions = {
         client_id: text("client_id"),
         // Empty means "keep the stored secret" — the API never returns it.
         client_secret: text("client_secret"),
-        calendar_enabled: form.get("calendar_enabled") === "on",
-        drive_enabled: form.get("drive_enabled") === "on",
-        gmail_enabled: form.get("gmail_enabled") === "on",
+        calendar_enabled: form.get("calendar_enabled") !== null,
+        drive_enabled: form.get("drive_enabled") !== null,
+        gmail_enabled: form.get("gmail_enabled") !== null,
         drive_shared_drive_id: text("drive_shared_drive_id"),
         drive_parent_folder_id: text("drive_parent_folder_id"),
         drive_template_folder_id: text("drive_template_folder_id"),
-        drive_auto_provision: form.get("drive_auto_provision") === "on",
+        drive_auto_provision: form.get("drive_auto_provision") !== null,
         automation_connection_user_id: text("automation_connection_user_id"),
         gmail_approval_mode: String(
           form.get("gmail_approval_mode") ?? "approval_required",
@@ -48,6 +48,7 @@ export const actions: Actions = {
         gmail_thread_followup: String(
           form.get("gmail_thread_followup") ?? "inherit_pending",
         ) as "inherit_pending",
+        gmail_log_internal: form.get("gmail_log_internal") !== null,
       },
     });
     if (error) {

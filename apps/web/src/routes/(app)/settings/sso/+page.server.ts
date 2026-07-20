@@ -24,15 +24,15 @@ export const actions: Actions = {
 
     const { error } = await apiFor(event).PUT("/api/v1/settings/sso", {
       body: {
-        enabled: form.get("enabled") === "on",
-        enforced: form.get("enforced") === "on",
+        enabled: form.get("enabled") !== null,
+        enforced: form.get("enforced") !== null,
         name,
         discovery_url: text("discovery_url"),
         client_id: text("client_id"),
         // Empty means "keep the stored secret" — the API never returns it.
         client_secret: text("client_secret"),
         default_role,
-        auto_provision: form.get("auto_provision") === "on",
+        auto_provision: form.get("auto_provision") !== null,
       },
     });
     if (error) {

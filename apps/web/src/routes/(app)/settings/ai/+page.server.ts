@@ -33,7 +33,7 @@ export const actions: Actions = {
     const features: Record<string, { enabled: boolean; model: string | null }> = {};
     for (const feature of FEATURES) {
       features[feature] = {
-        enabled: form.get(`feature_${feature}`) === "on",
+        enabled: form.get(`feature_${feature}`) !== null,
         model: text(`model_${feature}`),
       };
     }

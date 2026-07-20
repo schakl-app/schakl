@@ -335,7 +335,7 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const { error } = await apiFor(event).PATCH("/api/v1/google/connections/me", {
       body: {
-        gmail_sync_enabled: form.get("gmail_sync_enabled") === "on",
+        gmail_sync_enabled: form.get("gmail_sync_enabled") !== null,
         gmail_excluded_label: String(form.get("gmail_excluded_label") ?? "").trim() || null,
       },
     });

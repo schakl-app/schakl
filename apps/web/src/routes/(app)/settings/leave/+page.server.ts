@@ -65,11 +65,11 @@ function typeBody(form: FormData) {
       en: String(form.get("label_en") ?? "").trim(),
     },
     color: String(form.get("color") ?? "emerald"),
-    paid: form.get("paid") === "on",
-    tracks_balance: form.get("tracks_balance") === "on",
-    requires_approval: form.get("requires_approval") === "on",
+    paid: form.get("paid") !== null,
+    tracks_balance: form.get("tracks_balance") !== null,
+    requires_approval: form.get("requires_approval") !== null,
     // Roostervrij/ADV (#65): entitlement is the scheduled−contract gap, not default_weeks.
-    accrues_schedule_gap: form.get("accrues_schedule_gap") === "on",
+    accrues_schedule_gap: form.get("accrues_schedule_gap") !== null,
     default_weeks: weeks ? Number(weeks) : null,
     carry_over_months: carry ? Number(carry) : null,
     position: Number(form.get("position") ?? 0) || 0,
@@ -141,7 +141,7 @@ export const actions: Actions = {
   savePolicy: async (event) => {
     const form = await event.request.formData();
     const { error } = await apiFor(event).PUT("/api/v1/leave/settings", {
-      body: { self_approval: form.get("self_approval") === "on" },
+      body: { self_approval: form.get("self_approval") !== null },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { policySaved: true };

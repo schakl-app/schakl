@@ -85,7 +85,7 @@ export const actions: Actions = {
     const { error } = await apiFor(event).PATCH("/api/v1/meta/tenant", {
       body: {
         brand_name,
-        show_brand_name: form.get("show_brand_name") === "on",
+        show_brand_name: form.get("show_brand_name") !== null,
         logo_url,
         favicon_url,
         app_icon_url,

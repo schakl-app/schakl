@@ -56,7 +56,7 @@ export const actions: Actions = {
         key,
         data_type: data_type as "text",
         label_i18n: { nl: label_nl || key, en: label_en || label_nl || key },
-        required: form.get("required") === "on",
+        required: form.get("required") !== null,
         options_json: SELECT_TYPES.has(data_type) ? parseOptions(form.get("options")) : [],
         config_json: {},
         position: Number(form.get("position") ?? 0) || 0,
@@ -87,7 +87,7 @@ export const actions: Actions = {
         params: { path: { definition_id: id } },
         body: {
           label_i18n: { nl: label_nl || key, en: label_en || label_nl || key },
-          required: form.get("required") === "on",
+          required: form.get("required") !== null,
           options_json: SELECT_TYPES.has(data_type) ? parseOptions(form.get("options")) : undefined,
           position: Number(form.get("position") ?? 0) || 0,
         },

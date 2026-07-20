@@ -50,7 +50,7 @@ function priceIncreaseBody(form: FormData) {
     value,
     valid_from,
     subscription_type_id: String(form.get("subscription_type_id") ?? "").trim() || null,
-    include_templates: form.get("include_templates") === "on",
+    include_templates: form.get("include_templates") !== null,
   };
 }
 
