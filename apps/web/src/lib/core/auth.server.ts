@@ -17,13 +17,22 @@ export const AUTH_COOKIE_NAME = "schakl_auth";
 export type LoginResult =
   | { kind: "session"; token: string }
   | { kind: "challenge"; challengeToken: string; methods: string[] }
+  | { kind: "rate_limited" }
   | { kind: "failed" };
 
 function apiHeaders(event: ApiEvent): Record<string, string> {
-  return {
+  const headers: Record<string, string> = {
     "content-type": "application/x-www-form-urlencoded",
     "x-forwarded-host": event.request.headers.get("host") ?? "",
   };
+  // Forward the caller's address (as Traefik/Cloudflare set it on the request that reached us)
+  // so the API's brute-force limiter buckets per real client. Without it, every SSR login shares
+  // the web container's one IP, so a single fumbling user would throttle everyone.
+  const forwardedFor = event.request.headers.get("x-forwarded-for");
+  if (forwardedFor) headers["x-forwarded-for"] = forwardedFor;
+  const cfConnectingIp = event.request.headers.get("cf-connecting-ip");
+  if (cfConnectingIp) headers["cf-connecting-ip"] = cfConnectingIp;
+  return headers;
 }
 
 function tokenFromSetCookie(res: Response): string | null {
@@ -45,6 +54,7 @@ export async function apiLogin(
     headers: apiHeaders(event),
     body: new URLSearchParams({ username: email, password }),
   });
+  if (res.status === 429) return { kind: "rate_limited" };
   if (res.status !== 200 && res.status !== 204) return { kind: "failed" };
 
   const token = tokenFromSetCookie(res);

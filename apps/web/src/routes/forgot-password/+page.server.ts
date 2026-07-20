@@ -23,6 +23,7 @@ export const actions: Actions = {
       body: { email },
     });
     if (response.status === 403) return fail(403, { error: "auth.local_login_disabled" });
+    if (response.status === 429) return fail(429, { error: "errors.rate_limited" });
     return { sent: true };
   },
 };

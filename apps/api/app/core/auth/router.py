@@ -18,6 +18,7 @@ from app.config import settings
 from app.core.auth.account import router as account_router
 from app.core.auth.backend import auth_backend
 from app.core.auth.oidc import router as oidc_router
+from app.core.auth.ratelimit import rate_limit
 from app.core.auth.schemas import UserCreate, UserRead, UserUpdate
 from app.core.auth.sso import require_local_login
 from app.core.auth.twofactor_router import login_router as twofactor_login_router
@@ -29,6 +30,13 @@ from app.core.permissions.deps import exempt_routes
 def build_auth_router() -> APIRouter:
     router = APIRouter()
     local_login_guard = [Depends(require_local_login)]
+    # Brute-force ceilings on the pre-auth surface (ratelimit.py). Login guards against password
+    # guessing; the reset routes get their own, tighter budget so one flow can't spend the
+    # other's. Both fail open if Redis is down.
+    login_limit = [Depends(rate_limit("login", lambda: settings.login_rate_limit_per_minute))]
+    reset_limit = [
+        Depends(rate_limit("reset", lambda: settings.password_reset_rate_limit_per_minute))
+    ]
 
     # FastAPI Users' auth router minus its /login: the 2FA-aware replacement
     # (twofactor_router.py) owns that path — same name, same contract for accounts without a
@@ -38,7 +46,10 @@ def build_auth_router() -> APIRouter:
         r for r in framework_auth.routes if r.name != f"auth:{auth_backend.name}.login"
     ]
     router.include_router(
-        twofactor_login_router, prefix="/auth", tags=["auth"], dependencies=local_login_guard
+        twofactor_login_router,
+        prefix="/auth",
+        tags=["auth"],
+        dependencies=local_login_guard + login_limit,
     )
     router.include_router(
         framework_auth,
@@ -63,7 +74,7 @@ def build_auth_router() -> APIRouter:
         fastapi_users.get_reset_password_router(),
         prefix="/auth",
         tags=["auth"],
-        dependencies=local_login_guard,
+        dependencies=local_login_guard + reset_limit,
     )
     router.include_router(
         fastapi_users.get_verify_router(UserRead),
