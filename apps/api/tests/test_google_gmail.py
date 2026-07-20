@@ -297,6 +297,56 @@ async def test_poll_matches_contact_and_logs_pending(client_for, monkeypatch) ->
     assert await _poll(t, connection_id, stub, monkeypatch) == 0
 
 
+async def test_portal_contact_mail_still_logs(client_for, monkeypatch) -> None:
+    """A portal login (#193) is a membership whose user is a *client's contact* — it must not
+    count as a colleague. With the naive all-memberships set, inviting a client to the portal
+    made ``internal_only`` classify their entire correspondence as internal chatter: every
+    poll succeeded with ``logged:0`` and the feed silently went dark for that client."""
+    t = await make_tenant("gmail-portal")
+    connection_id = await _seed(t)
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Client NL"}, headers=headers)
+        ).json()
+        contact = (
+            await c.post(
+                "/api/v1/contacts",
+                json={
+                    "first_name": "Klant",
+                    "email": "klant@client.nl",
+                    "company_ids": [company["id"]],
+                },
+                headers=headers,
+            )
+        ).json()
+        # Portal access creates a user + client-role membership for the contact's address.
+        assert (
+            await c.post(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)
+        ).status_code == 200
+
+    # Mail between the owner and the portal-enabled contact — ``to`` must be the owner's
+    # *login* address (not the default stub address, which belongs to no member): only then
+    # is every participant a membership holder, the exact shape that was dropped as
+    # internal-only.
+    stub = _StubGmail(
+        history=["msg-portal"],
+        messages={
+            "msg-portal": _message(
+                "msg-portal", sender="Klant <klant@client.nl>", to=t.user.email
+            )
+        },
+        history_id="9200",
+    )
+    assert await _poll(t, connection_id, stub, monkeypatch) == 1
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        row = (await session.execute(select(Interaction))).scalar_one()
+        assert row.status == "pending"
+        assert row.company_id == uuid.UUID(company["id"])
+
+
 async def test_poison_message_does_not_wedge_the_poll(client_for, monkeypatch) -> None:
     """One message whose ingest raises is skipped (loudly logged): the rest of the batch
     still imports and historyId advances. Before the per-message guard, the poll re-aborted

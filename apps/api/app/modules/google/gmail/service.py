@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events import SystemContext
 from app.core.models import Org
+from app.core.portal import portal_user_ids
 from app.modules.google.client import acting_as, mark_connection_error
 from app.modules.google.gmail import matching
 from app.modules.google.gmail.models import GmailSuppression
@@ -303,14 +304,24 @@ async def _owner_name(session: AsyncSession, user_id: uuid.UUID) -> str | None:
 
 
 async def _member_emails(session: AsyncSession, org_id: uuid.UUID) -> set[str]:
+    """The *staff* addresses, for the colleague-chatter filter (``internal_only``).
+
+    A portal login (#193) is an ordinary membership whose user is a client's contact — so a
+    naive all-memberships set makes every portal-invited client look like a colleague, and
+    ``internal_only`` then silently drops their entire correspondence (polls succeed,
+    ``logged:0`` forever). Portal users are excluded through the core seam; they keep
+    matching as *contacts*, which is what they are.
+    """
     rows = await session.execute(
         text(
-            "SELECT lower(u.email) FROM users u "
+            "SELECT u.id, lower(u.email) FROM users u "
             "JOIN memberships m ON m.user_id = u.id WHERE m.org_id = :oid"
         ),
         {"oid": org_id},
     )
-    return {row[0] for row in rows}
+    pairs = [(row[0], row[1]) for row in rows]
+    portal = await portal_user_ids(session, org_id, {uid for uid, _ in pairs})
+    return {email for uid, email in pairs if uid not in portal}
 
 
 async def _match_contacts(
