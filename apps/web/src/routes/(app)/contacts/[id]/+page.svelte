@@ -6,6 +6,7 @@
   import { editIntent } from "$lib/core/edit-intent";
   import { t } from "$lib/core/i18n";
   import { formatPhone } from "$lib/core/phone";
+  import { can } from "$lib/core/permissions";
   import { entityPanelsFor } from "$lib/core/registry";
   import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
@@ -24,6 +25,10 @@
 
   // Opened straight into edit when reached from the overview's ⋯ → Bewerken (#78).
   let editing = $state(editIntent());
+
+  // Header actions render only for holders of the matching permission (#253).
+  const canWrite = $derived(can(page.data.user, "contacts.contact.write"));
+  const canDelete = $derived(can(page.data.user, "contacts.contact.delete"));
   let confirmDelete = $state(false);
   const contact = $derived(data.contact);
   const custom = $derived((contact.custom ?? {}) as Record<string, unknown>);
@@ -78,21 +83,31 @@
   <div>
     <h1 class="mt-2 text-xl font-semibold text-text">{fullName}</h1>
   </div>
-  <ActionsMenu
-    items={[
-      {
-        label: editing ? t("common.cancel") : t("common.edit"),
-        icon: Pencil,
-        onclick: () => (editing = !editing),
-      },
-      {
-        label: t("common.delete"),
-        icon: Trash2,
-        danger: true,
-        onclick: () => (confirmDelete = true),
-      },
-    ]}
-  />
+  {#if canWrite || canDelete}
+    <ActionsMenu
+      items={[
+        ...(canWrite
+          ? [
+              {
+                label: editing ? t("common.cancel") : t("common.edit"),
+                icon: Pencil,
+                onclick: () => (editing = !editing),
+              },
+            ]
+          : []),
+        ...(canDelete
+          ? [
+              {
+                label: t("common.delete"),
+                icon: Trash2,
+                danger: true,
+                onclick: () => (confirmDelete = true),
+              },
+            ]
+          : []),
+      ]}
+    />
+  {/if}
 </div>
 
 <!-- Linked clients: chips navigate in use mode; attaching, detaching and promoting appear only
@@ -119,7 +134,7 @@
   />
 </section>
 
-{#if editing}
+{#if editing && canWrite}
   <form
     method="POST"
     action="?/update"

@@ -44,6 +44,10 @@
   // Use mode vs edit mode (UX §3): the definition is edited behind the ⋯ → Bewerken toggle, or
   // opened straight into edit when reached from the overview's ⋯ → Bewerken (#78).
   let editing = $state(editIntent());
+
+  // Header actions render only for holders of the matching permission (#253).
+  const canWrite = $derived(can(page.data.user, "projects.project.write"));
+  const canDelete = $derived(can(page.data.user, "projects.project.delete"));
   let confirmDelete = $state(false);
 
   // Log a contactmoment from the header — quick-add where the user is (docs/UX.md), with the
@@ -151,21 +155,31 @@
         {t("interactions.add")}
       </button>
     {/if}
-    <ActionsMenu
-      items={[
-        {
-          label: editing ? t("common.cancel") : t("common.edit"),
-          icon: Pencil,
-          onclick: () => (editing = !editing),
-        },
-        {
-          label: t("common.delete"),
-          icon: Trash2,
-          danger: true,
-          onclick: () => (confirmDelete = true),
-        },
-      ]}
-    />
+    {#if canWrite || canDelete}
+      <ActionsMenu
+        items={[
+          ...(canWrite
+            ? [
+                {
+                  label: editing ? t("common.cancel") : t("common.edit"),
+                  icon: Pencil,
+                  onclick: () => (editing = !editing),
+                },
+              ]
+            : []),
+          ...(canDelete
+            ? [
+                {
+                  label: t("common.delete"),
+                  icon: Trash2,
+                  danger: true,
+                  onclick: () => (confirmDelete = true),
+                },
+              ]
+            : []),
+        ]}
+      />
+    {/if}
   </div>
 </div>
 
@@ -253,7 +267,7 @@
 
   <!-- Details (use mode) / Edit (edit mode) -->
   <section class="rounded-xl border border-border bg-surface-raised p-5">
-    {#if editing}
+    {#if editing && canWrite}
       <h2 class="mb-4 text-sm font-semibold text-text">{t("common.edit")}</h2>
       <form
         method="POST"

@@ -119,12 +119,14 @@
           </button>
         </form>
       {/if}
-      <a
-        href="/time"
-        class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"
-      >
-        {t("companies.actions.log_time")}
-      </a>
+      {#if can(page.data.user, "time.entry.write")}
+        <a
+          href="/time"
+          class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"
+        >
+          {t("companies.actions.log_time")}
+        </a>
+      {/if}
       {#if hasReporting}
         <CompanyAIActions companyId={company.id} companyName={company.name} />
       {/if}
@@ -201,72 +203,76 @@
   />
 </Modal>
 
-<Modal bind:open={showEdit} title={t("companies.edit")}>
-  <form
-    method="POST"
-    action="?/update"
-    enctype="multipart/form-data"
-    use:enhance={() =>
-      ({ update }) => {
-        showEdit = false;
-        void update();
-      }}
-    class="space-y-3"
-  >
-    <!-- Same component the create form uses: one definition of a client's fields. Every editable
+{#if canWrite}
+  <Modal bind:open={showEdit} title={t("companies.edit")}>
+    <form
+      method="POST"
+      action="?/update"
+      enctype="multipart/form-data"
+      use:enhance={() =>
+        ({ update }) => {
+          showEdit = false;
+          void update();
+        }}
+      class="space-y-3"
+    >
+      <!-- Same component the create form uses: one definition of a client's fields. Every editable
          field is here, contact persons included — an edit surface that hides a field the view
          shows sends you hunting for it (docs/UX.md). -->
-    <CompanyForm
-      {company}
-      members={data.members}
-      definitions={data.definitions}
-      locale={data.locale}
-      idPrefix="edit-company"
-    >
-      <ContactDraftField
-        contacts={data.contacts}
-        definitions={data.contactDefinitions}
+      <CompanyForm
+        {company}
+        members={data.members}
+        definitions={data.definitions}
         locale={data.locale}
-        value={companyContacts}
-        id="edit-company-contacts"
-      />
-    </CompanyForm>
-    <div>
-      <!-- Per-client logo (#196): shown on this page's header and on the client's portal
+        idPrefix="edit-company"
+      >
+        <ContactDraftField
+          contacts={data.contacts}
+          definitions={data.contactDefinitions}
+          locale={data.locale}
+          value={companyContacts}
+          id="edit-company-contacts"
+        />
+      </CompanyForm>
+      <div>
+        <!-- Per-client logo (#196): shown on this page's header and on the client's portal
            dashboard. Not the agency's branding — that lives under Instellingen. -->
-      <label for="edit-company-logo" class="mb-1 block text-sm font-medium text-text"
-        >{t("companies.logo.label")}</label
-      >
-      <input
-        id="edit-company-logo"
-        name="logo_file"
-        type="file"
-        accept="image/png,image/jpeg,image/webp,image/gif"
-        class="block w-full text-sm text-text-muted file:mr-3 file:cursor-pointer file:rounded-lg file:border file:border-solid file:border-border file:bg-transparent file:px-3 file:py-1.5 file:text-sm file:text-text hover:file:border-brand"
-      />
-      {#if company.logo_file_id}
-        <label class="mt-2 flex items-center gap-2 text-sm text-text">
-          <input type="checkbox" name="logo_remove" value="1" />
-          {t("companies.logo.remove")}
-        </label>
-      {/if}
-      <p class="mt-1 text-xs text-text-muted">{t("companies.logo.hint")}</p>
-    </div>
-    {#if form?.error}<p class="text-sm text-red-600">{t(form.error)}</p>{/if}
-    <div class="flex justify-end gap-2 pt-1">
-      <button
-        type="button"
-        class="rounded-lg border border-border px-4 py-2 text-sm"
-        onclick={() => (showEdit = false)}
-      >
-        {t("common.cancel")}
-      </button>
-      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
-        {t("common.save")}
-      </button>
-    </div>
-  </form>
-</Modal>
+        <label for="edit-company-logo" class="mb-1 block text-sm font-medium text-text"
+          >{t("companies.logo.label")}</label
+        >
+        <input
+          id="edit-company-logo"
+          name="logo_file"
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          class="block w-full text-sm text-text-muted file:mr-3 file:cursor-pointer file:rounded-lg file:border file:border-solid file:border-border file:bg-transparent file:px-3 file:py-1.5 file:text-sm file:text-text hover:file:border-brand"
+        />
+        {#if company.logo_file_id}
+          <label class="mt-2 flex items-center gap-2 text-sm text-text">
+            <input type="checkbox" name="logo_remove" value="1" />
+            {t("companies.logo.remove")}
+          </label>
+        {/if}
+        <p class="mt-1 text-xs text-text-muted">{t("companies.logo.hint")}</p>
+      </div>
+      {#if form?.error}<p class="text-sm text-red-600">{t(form.error)}</p>{/if}
+      <div class="flex justify-end gap-2 pt-1">
+        <button
+          type="button"
+          class="rounded-lg border border-border px-4 py-2 text-sm"
+          onclick={() => (showEdit = false)}
+        >
+          {t("common.cancel")}
+        </button>
+        <button
+          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        >
+          {t("common.save")}
+        </button>
+      </div>
+    </form>
+  </Modal>
+{/if}
 
 <ConfirmDialog
   bind:open={confirmDelete}

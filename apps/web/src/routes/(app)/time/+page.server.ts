@@ -1,6 +1,7 @@
-import { fail } from "@sveltejs/kit";
+import { fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
+import { can } from "$lib/core/permissions";
 import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
 import { holidayName } from "$lib/modules/leave/format";
@@ -57,6 +58,9 @@ function leaveHoursForWeek(
 }
 
 export const load: PageServerLoad = async (event) => {
+  // A viewer without time access (a client-role login) has no business here — the nav item
+  // is already hidden, so a direct URL redirects instead of erroring (#253).
+  if (!can(event.locals.user, "time.entry.read")) throw redirect(303, "/");
   const api = apiFor(event);
   const selectedDate = event.url.searchParams.get("date") || todayIso();
   const week_start = event.url.searchParams.get("week") || weekStartOf(selectedDate);

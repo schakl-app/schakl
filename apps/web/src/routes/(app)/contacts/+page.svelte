@@ -43,6 +43,10 @@
   let confirmDelete = $state(false);
   let showImport = $state(false);
 
+  // Row actions render only for holders of the matching permission (#253).
+  const canWrite = $derived(can(page.data.user, "contacts.contact.write"));
+  const canDelete = $derived(can(page.data.user, "contacts.contact.delete"));
+
   // The Export link carries the page's current filters, so the file holds exactly the
   // filtered list on screen — the whole set, not just the loaded page (issue #77).
   const exportHref = $derived.by(() => {
@@ -180,13 +184,19 @@
 {#snippet rowActions(contact: Contact)}
   <ActionsMenu
     items={[
-      { label: t("common.edit"), icon: Pencil, href: editHref(`/contacts/${contact.id}`) },
-      {
-        label: t("common.delete"),
-        icon: Trash2,
-        danger: true,
-        onclick: () => confirmDeleteOf(contact),
-      },
+      ...(canWrite
+        ? [{ label: t("common.edit"), icon: Pencil, href: editHref(`/contacts/${contact.id}`) }]
+        : []),
+      ...(canDelete
+        ? [
+            {
+              label: t("common.delete"),
+              icon: Trash2,
+              danger: true,
+              onclick: () => confirmDeleteOf(contact),
+            },
+          ]
+        : []),
     ]}
   />
 {/snippet}
@@ -200,7 +210,9 @@
         <span class="mt-0.5 block truncate text-sm text-text-muted">{contact.email}</span>
       {/if}
     </a>
-    {@render rowActions(contact)}
+    {#if canWrite || canDelete}
+      {@render rowActions(contact)}
+    {/if}
   </div>
 {/snippet}
 
@@ -441,7 +453,7 @@
   definitions={data.definitions}
   locale={data.locale}
   rowHref={(contact) => `/contacts/${contact.id}`}
-  actions={rowActions}
+  actions={canWrite || canDelete ? rowActions : undefined}
   {mobileRow}
   empty={emptyState}
   onsort={table.onSort}
