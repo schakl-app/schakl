@@ -315,8 +315,18 @@
   leave; Google Calendar plugs into the same seam in P3. Pending items render muted with a
   "?"; on mobile the grid becomes a per-day agenda list.
 - Sections with multiple surfaces use **submenu tabs** at the top (Taken | Sjablonen;
-  Verlof: Mijn verlof | Team; Overzicht: Uren | Productiviteit | Omzet) — not nested
-  sidebars.
+  Verlof: Mijn verlof | Team; Overzicht: Uren | Productiviteit | Omzet; Abonnementen:
+  Abonnementen | Standaardabonnementen | Abonnementstypes) — not nested sidebars. The
+  convention (owner call, #229): the tab row sits at the **very top of the section, above
+  the page heading**, rendered by the section's `+layout.svelte` as pill-styled `<a>` links
+  to sub-routes, each tab gated on its own permission — `/overview/+layout.svelte` is the
+  reference. Plain links, no Tabs primitive; a viewer whose permissions leave only one tab
+  gets no tab row at all. Every tab that lists rows is a full `DataTable` (filters, sort,
+  personal columns), not a card list.
+- **A catalog staff touches day-to-day is a tab on the working page, not an Instellingen
+  screen** (#229, after the task-templates precedent). The Instellingen index card deep-links
+  to the tab (`/subscriptions/templates`, like `/tasks/templates`), and a retired settings
+  route 301-redirects there so old links keep working.
 - The header holds only the profile menu (avatar → name, personal settings, logout).
   Language lives in personal settings, not the header.
 

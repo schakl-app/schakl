@@ -97,7 +97,6 @@ export const load: PageServerLoad = async (event) => {
     projects,
     definitions,
     companyDefinitions,
-    taskTemplates,
   ] = await Promise.all([
     api.GET("/api/v1/subscriptions", {
       params: {
@@ -112,7 +111,7 @@ export const load: PageServerLoad = async (event) => {
       },
     }),
     api.GET("/api/v1/subscriptions/summary"),
-    // Managers also see the beheer sections below the list, which show inactive types too.
+    // Managers get inactive types too, so a row referencing one still shows its label.
     api.GET("/api/v1/subscriptions/types", {
       params: { query: { include_inactive: canManageTypes || canManageTemplates } },
     }),
@@ -126,10 +125,6 @@ export const load: PageServerLoad = async (event) => {
     api.GET("/api/v1/custom-fields/definitions", {
       params: { query: { entity_type: "company" } },
     }),
-    // The type modal's spawn-on-activation picker — only fetched for who can open it.
-    canManageTypes
-      ? api.GET("/api/v1/tasks/templates")
-      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
   ]);
 
   return {
@@ -138,7 +133,6 @@ export const load: PageServerLoad = async (event) => {
     summary: summary.data ?? null,
     types: types.data ?? [],
     templates: templates.data ?? [],
-    taskTemplates: (taskTemplates.data ?? []).map((tpl) => ({ id: tpl.id, name: tpl.name })),
     typeFilter: typeFilter ?? "",
     companyFilter: companyFilter ?? "",
     statusFilter: statusFilter ?? "",

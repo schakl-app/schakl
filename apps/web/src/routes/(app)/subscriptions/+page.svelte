@@ -21,7 +21,6 @@
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import { SUBSCRIPTION_COLUMNS } from "$lib/modules/subscriptions/columns";
   import { subscriptionTypeLabel } from "$lib/modules/subscriptions/types";
-  import TypesTemplatesSections from "$lib/modules/subscriptions/TypesTemplatesSections.svelte";
 
   let { data, form } = $props();
 
@@ -800,22 +799,6 @@
   action="?/delete"
   fields={{ id: deleteId }}
 />
-
-<!-- The catalog behind the list (owner request): standard subscriptions and types managed
-     right here, without the trip through Instellingen. Same shared tabs as the settings page. -->
-{#if data.canManageTypes || data.canManageTemplates}
-  <div class="mt-10">
-    <TypesTemplatesSections
-      types={data.types}
-      templates={data.templates}
-      taskTemplates={data.taskTemplates}
-      locale={data.locale}
-      canManageTypes={data.canManageTypes}
-      canManageTemplates={data.canManageTemplates}
-      error={form?.error ?? null}
-    />
-  </div>
-{/if}
 
 <!-- Bulk price increase: the preview is the API's own computation, so the numbers shown
      are exactly the history rows an apply writes. -->
