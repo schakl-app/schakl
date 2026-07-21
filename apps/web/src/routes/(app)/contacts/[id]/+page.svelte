@@ -13,7 +13,9 @@
   import CustomFieldsView from "$lib/core/customfields/CustomFieldsView.svelte";
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
   import LinkField from "$lib/core/ui/LinkField.svelte";
+  import Markdown from "$lib/core/ui/Markdown.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
+  import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import CompanyForm from "$lib/modules/companies/CompanyForm.svelte";
 
   let { data, form } = $props();
@@ -49,6 +51,11 @@
     companyLinks.map((c) => ({ id: c.company_id, label: c.name, is_primary: c.is_primary })),
   );
   const linkedIds = $derived(new Set(companyLinks.map((c) => c.company_id)));
+  // The primary client scopes the notes editor's @/# candidates (#237): that company's
+  // contacts and tasks, the same host-link rule the task page applies.
+  const primaryCompanyId = $derived(
+    (companyLinks.find((c) => c.is_primary) ?? companyLinks[0])?.company_id ?? null,
+  );
   const candidateCompanies = $derived(
     data.companies.filter((c) => !linkedIds.has(c.id)).map((c) => ({ value: c.id, label: c.name })),
   );
@@ -178,11 +185,28 @@
           class="w-full rounded-lg border border-border px-3 py-2 text-sm"
         />
       </div>
+      <div class="sm:col-span-2">
+        <label for="contact-notes" class="mb-1 block text-sm font-medium text-text"
+          >{t("contacts.notes")}</label
+        >
+        <RichTextEditor
+          id="contact-notes"
+          name="notes"
+          rows={3}
+          value={contact.notes ?? ""}
+          scope={{ companyId: primaryCompanyId }}
+        />
+      </div>
     </div>
 
     {#if data.definitions.length > 0}
       <div class="mt-4 border-t border-border pt-4">
-        <CustomFieldsForm definitions={data.definitions} values={custom} locale={data.locale} />
+        <CustomFieldsForm
+          definitions={data.definitions}
+          values={custom}
+          locale={data.locale}
+          scope={{ companyId: primaryCompanyId }}
+        />
       </div>
     {/if}
 
@@ -220,6 +244,16 @@
           </dt>
           <dd class="mt-1 text-sm text-text">{contact.job_title ?? "—"}</dd>
         </div>
+        {#if contact.notes}
+          <div class="sm:col-span-2">
+            <dt class="text-xs font-medium uppercase tracking-wide text-text-muted">
+              {t("contacts.notes")}
+            </dt>
+            <dd class="mt-1">
+              <Markdown value={contact.notes} />
+            </dd>
+          </div>
+        {/if}
       </dl>
     </section>
 

@@ -125,7 +125,7 @@ class InvoicingSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Bas
         ForeignKey("invoicing_templates.id", ondelete="SET NULL", use_alter=True),
         nullable=True,
     )
-    #: Fallback rate for invoice-from-time when no project/entry rate applies.
+    #: Last-resort rate for invoice-from-time when the logger has no employee rate (#226).
     default_hourly_rate: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
 
     # --- numbering ------------------------------------------------------------- #

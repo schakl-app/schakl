@@ -14,6 +14,7 @@
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
   import { t } from "$lib/core/i18n";
   import AssigneePicker from "$lib/core/ui/AssigneePicker.svelte";
+  import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import { COMPANY_STATUSES } from "$lib/modules/companies/status";
 
   interface Member {
@@ -22,6 +23,8 @@
     email: string;
   }
   interface CompanyValues {
+    /** Present when editing an existing client; scopes the notes editor's #task candidates. */
+    id?: string;
     name?: string;
     website?: string | null;
     invoice_email?: string | null;
@@ -209,14 +212,23 @@
       <label for="{idPrefix}-notes" class="mb-1 block text-sm font-medium text-neutral-700">
         {t("companies.notes")}
       </label>
-      <textarea id="{idPrefix}-notes" name="notes" rows="3" class={inputClass}
-        >{company.notes ?? ""}</textarea
-      >
+      <RichTextEditor
+        id="{idPrefix}-notes"
+        name="notes"
+        rows={3}
+        value={company.notes ?? ""}
+        scope={{ companyId: company.id ?? null }}
+      />
     </div>
   </div>
 
   {#if definitions.length > 0}
-    <CustomFieldsForm {definitions} values={company.custom ?? {}} {locale} />
+    <CustomFieldsForm
+      {definitions}
+      values={company.custom ?? {}}
+      {locale}
+      scope={{ companyId: company.id ?? null }}
+    />
   {:else}
     <input type="hidden" name="custom" value={JSON.stringify(company.custom ?? {})} />
   {/if}

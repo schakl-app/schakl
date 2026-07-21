@@ -1,34 +1,44 @@
 <script lang="ts">
   /**
-   * Shared markdown editor (issue #66, docs/UX.md). A plain `<textarea>` with a small toolbar
-   * (bold / italic / link) and a Write ↔ Preview toggle, so the value stored is markdown *source*
-   * and the user never has to type the syntax by hand. WYSIWYG was deliberately not chosen — a
-   * heavy editor bundle fights the "snappy over clever" rule (docs/PERFORMANCE.md).
+   * Shared markdown editor (issues #66, #228, #255; docs/UX.md). A WYSIWYG view (Tiptap,
+   * lazy-loaded) over a value that is and stays markdown *source*: headings, lists, links and
+   * mention chips render styled while you type — `### `, `- `, `1. `, `**bold**` convert as you
+   * type, Enter continues a list — but what is stored and submitted never stops being markdown.
    *
-   * Progressive enhancement: with JS off it degrades to exactly the textarea it replaces (the
-   * toolbar and preview are inert), and the `name`/`form` attributes still submit the value. So it
-   * drops into the existing form-action pages unchanged.
+   * Progressive enhancement: SSR and no-JS render exactly the textarea this component replaced
+   * (raw source, `name`/`form` submit unchanged). After hydration the editor chunk loads async —
+   * ProseMirror never weighs on first paint — and takes over from whatever the textarea holds at
+   * that moment, so a fast typist loses nothing.
    *
-   * Mentions (issue #103): the textarea shows `@Name`, never the `@[Name](mention:<uuid>)` marker.
-   * The marker form is what's stored and submitted — via the hidden input (JS on) or the textarea
-   * itself (JS off, which then shows raw source) — and what `onchange` reports.
+   * Mentions (issues #63, #103, #165, #197): the editor shows chips; the serialized value holds
+   * the `@[Name](mention:<uuid>)` / `#[Title](mention:task:<uuid>)` markers, same as ever.
    */
   import {
     Bold,
     CircleStop,
-    Eye,
+    ExternalLink,
+    Heading as HeadingIcon,
     Italic,
     Link as LinkIcon,
-    Pencil,
+    List,
+    ListOrdered,
     Sparkles,
   } from "@lucide/svelte";
-  import { getContext } from "svelte";
+  import { getContext, onMount } from "svelte";
 
   import { browser } from "$app/environment";
   import { AI_CONTEXT_KEY, type AIContext } from "$lib/core/ai";
   import { streamAI } from "$lib/core/ai/stream";
+  import { fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { renderMarkdown } from "$lib/core/markdown";
   import Markdown from "$lib/core/ui/Markdown.svelte";
+  import {
+    loadMentionCandidates,
+    loadTaskCandidates,
+    type CandidateScope,
+  } from "$lib/core/richtext/candidates";
+  import type { Candidate, Editor, SuggestState } from "$lib/core/richtext/editor";
 
   let {
     value = "",
@@ -41,6 +51,7 @@
     class: klass = "",
     mentions = [],
     tasks = [],
+    scope,
     onchange,
   }: {
     value?: string;
@@ -52,234 +63,215 @@
     placeholder?: string;
     required?: boolean;
     class?: string;
-    /** @mention candidates (issue #63). Two kinds since #165: org members (default) and
-     *  contacts, the latter with a subtitle (their company) and a distinct chip. */
+    /** @mention candidates (issue #63): org members (default) and contacts (#165). */
     mentions?: { id: string; name: string; kind?: "user" | "contact"; subtitle?: string }[];
-    /** #task reference candidates (#197): a parallel trigger keyed on `#`, matched on the task
-     *  title, stored as `#[Title](mention:task:<uuid>)` and rendered as a deep link. */
-    tasks?: { id: string; name: string; subtitle?: string }[];
+    /** #task reference candidates (#197), stored as `#[Title](mention:task:<uuid>)`. */
+    tasks?: {
+      id: string;
+      name: string;
+      subtitle?: string;
+      assignee?: string;
+      due?: string;
+      overdue?: boolean;
+    }[];
+    /** Host context for the default candidate fetch (#237): tasks of this project/company,
+     *  contacts of this company. Only read where no explicit list is passed. */
+    scope?: CandidateScope;
     onchange?: (value: string) => void;
   } = $props();
 
-  // --- mention display ↔ source mapping (issue #103) --------------------------
-  // The textarea shows *display text* where a mention reads `@Name`; the stored/submitted value is
-  // markdown *source* holding `@[Name](mention:<uuid>)`. `known` maps a display name back to its
-  // id — filled from markers in the initial value (so a departed member's mention survives an
-  // edit round-trip) and from picks. A hand-typed `@Name` that exactly matches a known member
-  // serializes into a real mention; two members sharing one display name resolve to one of them —
-  // the price of showing names instead of ids.
-  const UUID_RE = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
-  // A known display name maps back to its id *and* kind (#165): a contact's marker carries a
-  // `contact:` prefix, a colleague's stays bare so pre-#165 bodies round-trip unchanged.
-  const known = new Map<string, { id: string; kind: "user" | "contact" }>();
-  // #task references (#197) keep their own map: `@Jan` and a task titled "Jan" must never
-  // collide, so the two trigger characters never share a namespace. A plain object, like the
-  // maps above it is a non-reactive cache — nothing renders from it.
-  const knownTasks: Record<string, string> = {};
+  // Default candidates (issue #237): a surface that passes no lists still gets @ and # — org
+  // members, host-scoped contacts and recent tasks, fetched on first focus so a page never
+  // pays for an editor nobody touches (docs/PERFORMANCE.md). An explicit prop always wins
+  // (the task page passes its own scoped, status-named lists).
+  let armed = $state(false);
+  let autoMentions = $state<Candidate[]>([]);
+  let autoTasks = $state<Candidate[]>([]);
+  $effect(() => {
+    if (!armed) return;
+    const wanted = { companyId: scope?.companyId ?? null, projectId: scope?.projectId ?? null };
+    if (mentions.length === 0) {
+      void loadMentionCandidates(wanted).then((found) => (autoMentions = found));
+    }
+    if (tasks.length === 0) {
+      void loadTaskCandidates(wanted).then((found) => (autoTasks = found));
+    }
+  });
 
-  function toDisplay(source: string): string {
-    return source
-      .replace(
-        new RegExp(`@\\[([^\\]]+)\\]\\(mention:(?:(user|contact):)?(${UUID_RE})\\)`, "g"),
-        (_all, mentionName: string, kind: string | undefined, id: string) => {
-          known.set(mentionName, { id, kind: kind === "contact" ? "contact" : "user" });
-          return `@${mentionName}`;
+  // The markdown source of record: seeds the hidden input, then tracks every editor update.
+  let serialized = $state(value);
+  let ready = $state(false);
+  let host: HTMLDivElement | undefined = $state();
+  let fallback: HTMLTextAreaElement | undefined = $state();
+  let editor: Editor | null = null;
+  let rt: typeof import("$lib/core/richtext/editor") | null = null;
+  // Bumped per transaction so the toolbar's active states re-derive.
+  let tick = $state(0);
+
+  // --- suggestion dropdown (state lives here; the plugin only reports) ---------
+  let suggest = $state<SuggestState | null>(null);
+  let suggestIndex = $state(0);
+
+  const bridge = {
+    onSuggestOpen: (s: SuggestState) => {
+      suggest = s;
+      suggestIndex = 0;
+    },
+    onSuggestUpdate: (s: SuggestState) => {
+      suggest = s;
+      suggestIndex = 0;
+    },
+    onSuggestKey: (event: KeyboardEvent): boolean => {
+      if (!suggest || suggest.items.length === 0) {
+        if (event.key === "Escape" && suggest) {
+          suggest = null;
+          return true;
+        }
+        return false;
+      }
+      if (event.key === "ArrowDown") {
+        suggestIndex = (suggestIndex + 1) % suggest.items.length;
+        return true;
+      }
+      if (event.key === "ArrowUp") {
+        suggestIndex = (suggestIndex - 1 + suggest.items.length) % suggest.items.length;
+        return true;
+      }
+      if (event.key === "Enter" || event.key === "Tab") {
+        suggest.command(suggest.items[suggestIndex]);
+        return true;
+      }
+      if (event.key === "Escape") {
+        suggest = null;
+        return true;
+      }
+      return false;
+    },
+    onSuggestClose: () => {
+      suggest = null;
+    },
+  };
+
+  onMount(() => {
+    if (!browser) return;
+    let cancelled = false;
+    void (async () => {
+      const mod = await import("$lib/core/richtext/editor");
+      if (cancelled || !host) return;
+      rt = mod;
+      // Take over from whatever the textarea holds — pre-hydration typing survives.
+      const source = fallback?.value ?? value;
+      editor = mod.createRichTextEditor({
+        element: host,
+        content: source,
+        placeholder,
+        people: () => (mentions.length > 0 ? (mentions as Candidate[]) : autoMentions),
+        tasks: () =>
+          (tasks.length > 0 ? tasks : autoTasks).map((task) => ({
+            ...task,
+            kind: "task" as const,
+          })),
+        bridge,
+        onUpdate: (markdown) => {
+          serialized = markdown;
+          onchange?.(markdown);
         },
-      )
-      .replace(
-        new RegExp(`#\\[([^\\]]+)\\]\\(mention:task:(${UUID_RE})\\)`, "g"),
-        (_all, title: string, id: string) => {
-          knownTasks[title] = id;
-          return `#${title}`;
+        onTransaction: () => {
+          tick += 1;
+          // An existing-link popover follows the caret: leave the link, and it goes. Insert-mode
+          // popovers stay — the caret is on plain text there by definition.
+          if (linkOpen && linkExisting && !editor?.isActive("link")) linkOpen = false;
         },
-      );
-  }
-
-  function marker(entry: { id: string; kind: "user" | "contact" }): string {
-    return entry.kind === "contact" ? `mention:contact:${entry.id}` : `mention:${entry.id}`;
-  }
-
-  function escapeRe(s: string): string {
-    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  }
-
-  function toSource(display: string): string {
-    const ids = new Map(
-      mentions.map((m) => [m.name, { id: m.id, kind: (m.kind ?? "user") as "user" | "contact" }]),
-    );
-    for (const [n, entry] of known) ids.set(n, entry);
-    let source = display;
-    if (ids.size > 0) {
-      // Longest name first so "Jan van Dam" beats "Jan"; same word-boundary rules as detectTrigger.
-      const alternation = [...ids.keys()]
-        .sort((a, b) => b.length - a.length)
-        .map(escapeRe)
-        .join("|");
-      source = source.replace(
-        new RegExp(`(^|\\s)@(${alternation})(?!\\w)`, "g"),
-        (_all, pre: string, mentionName: string) =>
-          `${pre}@[${mentionName}](${marker(ids.get(mentionName)!)})`,
-      );
-    }
-    const taskIds: Record<string, string> = { ...knownTasks };
-    for (const task of tasks) taskIds[task.name] = task.id;
-    const taskNames = Object.keys(taskIds);
-    if (taskNames.length > 0) {
-      const alternation = taskNames
-        .sort((a, b) => b.length - a.length)
-        .map(escapeRe)
-        .join("|");
-      source = source.replace(
-        new RegExp(`(^|\\s)#(${alternation})(?!\\w)`, "g"),
-        (_all, pre: string, title: string) =>
-          `${pre}#[${title}](mention:task:${taskIds[title]})`,
-      );
-    }
-    return source;
-  }
-
-  // SSR keeps raw source in the textarea so a JS-less form still submits the markers verbatim;
-  // in the browser the textarea shows display text and a hidden input carries the source.
-  const initialText = (v: string) => (browser ? toDisplay(v) : v);
-  let content = $state(initialText(value));
-  let textarea: HTMLTextAreaElement | undefined = $state();
-  let preview = $state(false);
-
-  const serialized = $derived(toSource(content));
-
-  function change(next: string) {
-    content = next;
-    onchange?.(toSource(next));
-  }
-
-  // --- @mention / #task autocomplete (issues #63, #197) -----------------------
-  // A picked member is written into the source as `@[Name](mention:<uuid>)`; a picked task as
-  // `#[Title](mention:task:<uuid>)`. The API extracts the id from the marker and the renderer
-  // chips/links it, so nothing depends on fuzzy name matching.
-  let mentionOpen = $state(false);
-  let mentionQuery = $state("");
-  let mentionStart = $state(-1);
-  let mentionIndex = $state(0);
-  // Which trigger opened the dropdown: `@` lists people, `#` lists tasks (#197).
-  let mentionTrigger = $state<"@" | "#">("@");
-
-  type Candidate = { id: string; name: string; kind?: "user" | "contact" | "task"; subtitle?: string };
-
-  const mentionMatches = $derived<Candidate[]>(
-    mentionOpen
-      ? (mentionTrigger === "#"
-          ? tasks.map((task) => ({ ...task, kind: "task" as const }))
-          : mentions
-        )
-          .filter((m) => m.name.toLowerCase().includes(mentionQuery.toLowerCase()))
-          .slice(0, 6)
-      : [],
-  );
-
-  function detectMention() {
-    const el = textarea;
-    if (!el || (mentions.length === 0 && tasks.length === 0)) {
-      mentionOpen = false;
-      return;
-    }
-    const caret = el.selectionStart;
-    const before = content.slice(0, caret);
-    // The nearer of the two trigger characters owns the dropdown (#197).
-    const at = mentions.length > 0 ? before.lastIndexOf("@") : -1;
-    const hash = tasks.length > 0 ? before.lastIndexOf("#") : -1;
-    const start = Math.max(at, hash);
-    if (start < 0) {
-      mentionOpen = false;
-      return;
-    }
-    // The trigger must open a word (start of line or after whitespace), and the query so far must
-    // hold no whitespace or bracket — otherwise the caret has moved past a mention.
-    const prev = start === 0 ? " " : before[start - 1];
-    const query = before.slice(start + 1);
-    if (!/\s/.test(prev) || /[\s[\]]/.test(query)) {
-      mentionOpen = false;
-      return;
-    }
-    mentionTrigger = hash > at ? "#" : "@";
-    mentionStart = start;
-    mentionQuery = query;
-    mentionIndex = 0;
-    mentionOpen = true;
-  }
-
-  function pickMention(member: Candidate) {
-    const el = textarea;
-    if (!el) return;
-    const caret = el.selectionStart;
-    if (member.kind === "task") {
-      knownTasks[member.name] = member.id;
-    } else {
-      known.set(member.name, {
-        id: member.id,
-        kind: member.kind === "contact" ? "contact" : "user",
+        // Clicking a blue label is how a hidden URL is reached: open the popover prefilled.
+        // No focus steal — the caret stays where the user clicked.
+        onLinkClick: (href) => {
+          linkExisting = true;
+          linkUrl = href;
+          linkOpen = true;
+        },
       });
-    }
-    const token = `${member.kind === "task" ? "#" : "@"}${member.name} `;
-    change(content.slice(0, mentionStart) + token + content.slice(caret));
-    mentionOpen = false;
-    queueMicrotask(() => {
-      el.focus();
-      const pos = mentionStart + token.length;
-      el.selectionStart = el.selectionEnd = pos;
-    });
-  }
+      serialized = source;
+      ready = true;
+    })();
+    return () => {
+      cancelled = true;
+      editor?.destroy();
+      editor = null;
+    };
+  });
 
-  function onMentionKeydown(event: KeyboardEvent) {
-    if (!mentionOpen || mentionMatches.length === 0) return;
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      mentionIndex = (mentionIndex + 1) % mentionMatches.length;
-    } else if (event.key === "ArrowUp") {
-      event.preventDefault();
-      mentionIndex = (mentionIndex - 1 + mentionMatches.length) % mentionMatches.length;
-    } else if (event.key === "Enter" || event.key === "Tab") {
-      event.preventDefault();
-      pickMention(mentionMatches[mentionIndex]);
-    } else if (event.key === "Escape") {
-      event.preventDefault();
-      mentionOpen = false;
+  const active = $derived.by(() => {
+    void tick;
+    if (!editor) {
+      return {
+        bold: false,
+        italic: false,
+        link: false,
+        heading: false,
+        bullet: false,
+        ordered: false,
+      };
     }
-  }
+    return {
+      bold: editor.isActive("bold"),
+      italic: editor.isActive("italic"),
+      link: editor.isActive("link"),
+      heading: editor.isActive("heading"),
+      bullet: editor.isActive("bulletList"),
+      ordered: editor.isActive("orderedList"),
+    };
+  });
 
   const toolbarButton =
     "flex h-7 w-7 items-center justify-center rounded text-text-muted hover:bg-surface hover:text-brand disabled:opacity-40";
+  const activeClass = " bg-surface text-brand";
 
-  /** Wrap the current selection (or the caret) in `before`/`after`, keeping the selection. */
-  function surround(before: string, after: string = before) {
-    const el = textarea;
-    if (!el) return;
-    const start = el.selectionStart;
-    const end = el.selectionEnd;
-    const selected = content.slice(start, end);
-    change(content.slice(0, start) + before + selected + after + content.slice(end));
-    // Restore a selection that still hugs the original text, now inside the markers.
-    queueMicrotask(() => {
-      el.focus();
-      el.selectionStart = start + before.length;
-      el.selectionEnd = end + before.length;
-    });
+  // --- link popover -------------------------------------------------------------
+  // Inline UI under the toolbar button (issue #228) — never `window.prompt`. With the caret on
+  // an existing link it edits that link (prefilled URL, remove button); otherwise it inserts.
+  let linkOpen = $state(false);
+  let linkUrl = $state("");
+  let linkExisting = $state(false);
+  let linkInput: HTMLInputElement | undefined = $state();
+
+  function toggleLink() {
+    if (linkOpen) {
+      linkOpen = false;
+      return;
+    }
+    if (!editor) return;
+    linkExisting = editor.isActive("link");
+    linkUrl = linkExisting ? String(editor.getAttributes("link").href ?? "") : "";
+    linkOpen = true;
+    queueMicrotask(() => linkInput?.focus());
   }
 
   function insertLink() {
-    const el = textarea;
-    if (!el) return;
-    const url = window.prompt(t("richtext.link_prompt"));
-    if (!url) return;
-    const start = el.selectionStart;
-    const end = el.selectionEnd;
-    const label = content.slice(start, end) || t("richtext.link_text");
-    const snippet = `[${label}](${url})`;
-    change(content.slice(0, start) + snippet + content.slice(end));
-    queueMicrotask(() => {
-      el.focus();
-      el.selectionStart = start + 1;
-      el.selectionEnd = start + 1 + label.length;
-    });
+    const url = linkUrl.trim();
+    if (!url || !editor) return;
+    linkOpen = false;
+    const { empty } = editor.state.selection;
+    if (empty && !linkExisting) {
+      // No selection to wrap: insert a labelled link and leave the caret after it — with the
+      // stored mark cleared, so the very next keystroke is plain text, not more link.
+      editor
+        .chain()
+        .focus()
+        .insertContent({
+          type: "text",
+          text: t("richtext.link_text"),
+          marks: [{ type: "link", attrs: { href: url } }],
+        })
+        .unsetMark("link")
+        .run();
+    } else {
+      editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
+    }
+  }
+
+  function removeLink() {
+    linkOpen = false;
+    editor?.chain().focus().extendMarkRange("link").unsetLink().run();
   }
 
   // --- writing assist (#128) --------------------------------------------------
@@ -313,25 +305,23 @@
   let assistAbort: AbortController | null = null;
 
   async function runAssist(item: { action: string; target?: string }, override = false) {
-    const el = textarea;
-    if (!el || assist?.running) return;
+    if (!editor || !rt || assist?.running) return;
     assistMenuOpen = false;
     // A selection scopes the action; no selection means the whole field (#128).
-    let start = el.selectionStart;
-    let end = el.selectionEnd;
-    if (start === end) {
-      start = 0;
-      end = content.length;
+    let { from, to } = editor.state.selection;
+    if (from === to) {
+      from = 0;
+      to = editor.state.doc.content.size;
     }
-    const text = toSource(content.slice(start, end)).trim();
+    const text = rt.serializeRange(editor, from, to).trim();
     if (!text) return;
     assist = {
       running: true,
       result: "",
       error: null,
       budget: false,
-      start,
-      end,
+      start: from,
+      end: to,
       request: item,
     };
     assistAbort = new AbortController();
@@ -368,19 +358,22 @@
     }
   }
 
-  /** Apply the previewed result — always an explicit act, never automatic (#128). Uses
-   *  `insertText` so the native undo stack survives the apply. */
+  /** Apply the previewed result — always an explicit act, never automatic (#128). ProseMirror's
+   *  history makes the apply a single undo step. */
   function applyAssist(mode: "replace" | "insert") {
-    const el = textarea;
-    if (!el || !assist || assist.running || !assist.result.trim()) return;
-    const display = toDisplay(assist.result.trim());
-    const insertion = mode === "insert" ? `\n\n${display}` : display;
-    el.focus();
-    if (mode === "replace") el.setSelectionRange(assist.start, assist.end);
-    else el.setSelectionRange(assist.end, assist.end);
-    if (!document.execCommand("insertText", false, insertion)) {
-      const from = mode === "replace" ? assist.start : assist.end;
-      change(content.slice(0, from) + insertion + content.slice(assist.end));
+    if (!editor || !assist || assist.running || !assist.result.trim()) return;
+    const html = renderMarkdown(assist.result.trim());
+    const end = Math.min(assist.end, editor.state.doc.content.size);
+    const start = Math.min(assist.start, end);
+    if (mode === "replace") {
+      editor
+        .chain()
+        .focus()
+        .deleteRange({ from: start, to: end })
+        .insertContentAt(start, html)
+        .run();
+    } else {
+      editor.chain().focus().insertContentAt(end, html).run();
     }
     assist = null;
   }
@@ -392,44 +385,138 @@
   }
 </script>
 
-<div class="relative rounded-lg border border-border focus-within:border-brand {klass}">
+<div
+  class="relative rounded-lg border border-border focus-within:border-brand {klass}"
+  onfocusin={() => (armed = true)}
+>
   <div class="flex items-center gap-1 border-b border-border px-1.5 py-1">
     <button
       type="button"
-      class={toolbarButton}
-      disabled={preview}
+      class={toolbarButton + (active.bold ? activeClass : "")}
+      disabled={!ready}
       aria-label={t("richtext.bold")}
       title={t("richtext.bold")}
-      onclick={() => surround("**")}
+      aria-pressed={active.bold}
+      onclick={() => editor?.chain().focus().toggleBold().run()}
     >
       <Bold size={15} />
     </button>
     <button
       type="button"
-      class={toolbarButton}
-      disabled={preview}
+      class={toolbarButton + (active.italic ? activeClass : "")}
+      disabled={!ready}
       aria-label={t("richtext.italic")}
       title={t("richtext.italic")}
-      onclick={() => surround("_")}
+      aria-pressed={active.italic}
+      onclick={() => editor?.chain().focus().toggleItalic().run()}
     >
       <Italic size={15} />
     </button>
+    <div class="relative">
+      <button
+        type="button"
+        class={toolbarButton + (active.link ? activeClass : "")}
+        disabled={!ready}
+        aria-label={t("richtext.link")}
+        title={t("richtext.link")}
+        aria-haspopup="dialog"
+        aria-expanded={linkOpen}
+        onclick={toggleLink}
+      >
+        <LinkIcon size={15} />
+      </button>
+      {#if linkOpen}
+        <div
+          class="absolute left-0 top-full z-30 mt-1 flex w-72 items-center gap-1.5 rounded-lg border border-border bg-surface-raised p-1.5 shadow-lg"
+          role="dialog"
+          aria-label={t("richtext.link_prompt")}
+        >
+          <input
+            bind:this={linkInput}
+            bind:value={linkUrl}
+            type="url"
+            placeholder={t("richtext.link_prompt")}
+            aria-label={t("richtext.link_prompt")}
+            class="min-w-0 flex-1 rounded border border-border bg-transparent px-2 py-1 text-sm outline-none focus:border-brand"
+            onkeydown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                insertLink();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                linkOpen = false;
+                editor?.chain().focus().run();
+              }
+            }}
+          />
+          <button
+            type="button"
+            class="rounded bg-brand px-2 py-1 text-xs font-medium text-white hover:opacity-90"
+            onclick={insertLink}
+          >
+            {t("common.add")}
+          </button>
+          {#if linkExisting}
+            <a
+              href={linkUrl}
+              target="_blank"
+              rel="noopener noreferrer nofollow"
+              class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-text-muted hover:text-brand"
+              aria-label={t("richtext.link_open")}
+              title={t("richtext.link_open")}
+            >
+              <ExternalLink size={14} />
+            </a>
+            <button
+              type="button"
+              class="rounded px-2 py-1 text-xs text-text-muted hover:text-red-600 dark:hover:text-red-400"
+              onclick={removeLink}
+            >
+              {t("richtext.link_remove")}
+            </button>
+          {/if}
+        </div>
+      {/if}
+    </div>
     <button
       type="button"
-      class={toolbarButton}
-      disabled={preview}
-      aria-label={t("richtext.link")}
-      title={t("richtext.link")}
-      onclick={insertLink}
+      class={toolbarButton + (active.heading ? activeClass : "")}
+      disabled={!ready}
+      aria-label={t("richtext.heading")}
+      title={t("richtext.heading")}
+      aria-pressed={active.heading}
+      onclick={() => editor?.chain().focus().toggleHeading({ level: 3 }).run()}
     >
-      <LinkIcon size={15} />
+      <HeadingIcon size={15} />
+    </button>
+    <button
+      type="button"
+      class={toolbarButton + (active.bullet ? activeClass : "")}
+      disabled={!ready}
+      aria-label={t("richtext.bullet_list")}
+      title={t("richtext.bullet_list")}
+      aria-pressed={active.bullet}
+      onclick={() => editor?.chain().focus().toggleBulletList().run()}
+    >
+      <List size={15} />
+    </button>
+    <button
+      type="button"
+      class={toolbarButton + (active.ordered ? activeClass : "")}
+      disabled={!ready}
+      aria-label={t("richtext.numbered_list")}
+      title={t("richtext.numbered_list")}
+      aria-pressed={active.ordered}
+      onclick={() => editor?.chain().focus().toggleOrderedList().run()}
+    >
+      <ListOrdered size={15} />
     </button>
     {#if assistAvailable}
       <div class="relative" data-assist-menu>
         <button
           type="button"
           class={toolbarButton}
-          disabled={preview || assist?.running}
+          disabled={!ready || assist?.running}
           aria-label={t("ai.assist.title")}
           title={t("ai.assist.title")}
           aria-haspopup="menu"
@@ -459,59 +546,37 @@
         {/if}
       </div>
     {/if}
-    <div class="ml-auto">
-      <button
-        type="button"
-        class="flex h-7 items-center gap-1 rounded px-2 text-xs text-text-muted hover:bg-surface hover:text-brand"
-        aria-pressed={preview}
-        onclick={() => (preview = !preview)}
-      >
-        {#if preview}
-          <Pencil size={13} /> {t("richtext.write")}
-        {:else}
-          <Eye size={13} /> {t("richtext.preview")}
-        {/if}
-      </button>
-    </div>
   </div>
 
-  {#if preview}
-    <div class="min-h-[4rem] px-3 py-2">
-      {#if content.trim()}
-        <Markdown value={serialized} />
-      {:else}
-        <p class="text-sm text-text-muted">{t("richtext.preview_empty")}</p>
-      {/if}
-    </div>
-  {/if}
-  <!-- The textarea stays mounted (just hidden) in preview so its value is always submitted. -->
   <!-- With JS the source travels in the hidden input; without, the textarea (holding raw
        source straight from SSR) keeps its name and submits as before. -->
   {#if browser && name}
     <input type="hidden" {name} {form} value={serialized} />
   {/if}
-  <textarea
-    bind:this={textarea}
-    bind:value={content}
-    oninput={(e) => {
-      onchange?.(toSource(e.currentTarget.value));
-      detectMention();
-    }}
-    onkeydown={onMentionKeydown}
-    onblur={() => queueMicrotask(() => (mentionOpen = false))}
-    name={browser ? null : name}
-    {id}
-    {form}
-    {rows}
-    {placeholder}
-    {required}
-    class="block w-full resize-y rounded-b-lg bg-transparent px-3 py-2 text-sm outline-none {preview
-      ? 'hidden'
-      : ''}"></textarea>
+
+  <!-- The WYSIWYG view. The textarea below stands in until the editor chunk arrives. -->
+  <div
+    bind:this={host}
+    id={ready ? id : undefined}
+    class="rt-body {ready ? '' : 'hidden'}"
+    style="--rt-min: {rows * 1.4 + 1.2}rem"
+  ></div>
+  {#if !ready}
+    <textarea
+      bind:this={fallback}
+      name={browser ? null : name}
+      {id}
+      {form}
+      {rows}
+      {placeholder}
+      {required}
+      class="block w-full resize-y rounded-b-lg bg-transparent px-3 py-2 text-sm outline-none"
+      >{value}</textarea
+    >
+  {/if}
 
   {#if assist}
-    <!-- The result streams into a preview and is applied only by an explicit click; the
-         native undo stack survives the apply (#128). -->
+    <!-- The result streams into a preview and is applied only by an explicit click (#128). -->
     <div class="border-t border-border px-3 py-2">
       <p class="mb-1 flex items-center gap-1.5 text-xs font-medium text-text-muted">
         <Sparkles size={12} />
@@ -569,30 +634,43 @@
     </div>
   {/if}
 
-  {#if mentionOpen && mentionMatches.length > 0}
+  {#if suggest && suggest.items.length > 0}
     <!-- Anchored under the editor; a phone still reaches it without a caret-precise popover. -->
     <ul
       class="absolute left-0 right-0 top-full z-30 mt-1 max-h-52 overflow-auto rounded-lg border border-border bg-surface-raised py-1 shadow-lg"
     >
-      {#each mentionMatches as member, i ((member.kind ?? "user") + member.id)}
+      {#each suggest.items as member, i ((member.kind ?? "user") + member.id)}
         <li>
           <button
             type="button"
             class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-surface
-              {i === mentionIndex ? 'bg-surface text-brand' : 'text-text'}"
+              {i === suggestIndex ? 'bg-surface text-brand' : 'text-text'}"
             onmousedown={(e) => {
               e.preventDefault();
-              pickMention(member);
+              suggest?.command(member);
             }}
           >
             <span class="min-w-0 flex-1">
-              <span class="block truncate"
-                >{member.kind === "task" ? "#" : "@"}{member.name}</span
-              >
-              {#if member.subtitle}
-                <!-- A contact's company (#165) / a task's context (#197): the list itself says
-                     which kind you're picking. -->
-                <span class="block truncate text-xs text-text-muted">{member.subtitle}</span>
+              <span class="block truncate">{suggest.trigger}{member.name}</span>
+              {#if member.subtitle || member.assignee || member.due}
+                <!-- A contact's company (#165) / a task's status, assignee and due date (#197,
+                     #237): the list itself says which record you're about to pick. -->
+                <span class="flex items-baseline gap-1 text-xs text-text-muted">
+                  {#if member.subtitle}<span class="truncate">{member.subtitle}</span>{/if}
+                  {#if member.assignee}
+                    {#if member.subtitle}<span aria-hidden="true">·</span>{/if}
+                    <span class="truncate">{member.assignee}</span>
+                  {/if}
+                  {#if member.due}
+                    {#if member.subtitle || member.assignee}<span aria-hidden="true">·</span>{/if}
+                    <!-- Overdue reads red here like everywhere else (docs/UX.md, Principle 4). -->
+                    <span
+                      class="shrink-0 tabular-nums {member.overdue
+                        ? 'text-red-600 dark:text-red-400'
+                        : ''}">{fmtDayMonth(member.due)}</span
+                    >
+                  {/if}
+                </span>
               {/if}
             </span>
             {#if member.kind === "contact"}
@@ -614,3 +692,106 @@
     </ul>
   {/if}
 </div>
+
+<style>
+  /* The editable document. Mirrors Markdown.svelte's reading styles so writing and reading
+     look identical; `{@html}` still lives only in Markdown.svelte — Tiptap builds real DOM. */
+  .rt-body :global(.rt-prose) {
+    min-height: var(--rt-min);
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    color: var(--color-text);
+    outline: none;
+  }
+  .rt-body :global(.rt-prose p) {
+    margin: 0;
+  }
+  .rt-body :global(.rt-prose p + p),
+  .rt-body :global(.rt-prose ul),
+  .rt-body :global(.rt-prose ol),
+  .rt-body :global(.rt-prose blockquote),
+  .rt-body :global(.rt-prose pre),
+  .rt-body :global(.rt-prose h3),
+  .rt-body :global(.rt-prose h4),
+  .rt-body :global(.rt-prose h5),
+  .rt-body :global(.rt-prose h6) {
+    margin-top: 0.5rem;
+  }
+  .rt-body :global(.rt-prose strong) {
+    font-weight: 600;
+  }
+  .rt-body :global(.rt-prose em) {
+    font-style: italic;
+  }
+  .rt-body :global(.rt-prose a) {
+    color: var(--color-brand);
+    text-decoration: underline;
+  }
+  .rt-body :global(.rt-prose ul) {
+    list-style: disc;
+    padding-left: 1.25rem;
+  }
+  .rt-body :global(.rt-prose ol) {
+    list-style: decimal;
+    padding-left: 1.25rem;
+  }
+  .rt-body :global(.rt-prose h3),
+  .rt-body :global(.rt-prose h4),
+  .rt-body :global(.rt-prose h5),
+  .rt-body :global(.rt-prose h6) {
+    font-weight: 600;
+  }
+  .rt-body :global(.rt-prose h3) {
+    font-size: 1.15em;
+  }
+  .rt-body :global(.rt-prose h4) {
+    font-size: 1.05em;
+  }
+  .rt-body :global(.rt-prose code) {
+    border-radius: 0.25rem;
+    background: var(--color-surface);
+    padding: 0.05rem 0.3rem;
+    font-size: 0.85em;
+  }
+  .rt-body :global(.rt-prose pre) {
+    overflow-x: auto;
+    border-radius: 0.5rem;
+    background: var(--color-surface);
+    padding: 0.6rem 0.75rem;
+  }
+  .rt-body :global(.rt-prose pre code) {
+    background: transparent;
+    padding: 0;
+  }
+  .rt-body :global(.rt-prose blockquote) {
+    border-left: 3px solid var(--color-border);
+    padding-left: 0.75rem;
+    color: var(--color-text-muted);
+  }
+  /* @mention chip (issue #63) and its contact/task variants (#165, #197). */
+  .rt-body :global(.rt-prose .mention) {
+    border-radius: 0.25rem;
+    background: color-mix(in srgb, var(--color-brand) 12%, transparent);
+    padding: 0 0.2rem;
+    font-weight: 500;
+    color: var(--color-brand);
+  }
+  .rt-body :global(.rt-prose .mention-contact) {
+    background: transparent;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-brand) 45%, transparent);
+    color: var(--color-text);
+  }
+  .rt-body :global(.rt-prose a.mention-task) {
+    background: color-mix(in srgb, var(--color-text) 8%, transparent);
+    color: var(--color-text);
+    text-decoration: none;
+  }
+  /* Placeholder (from the Placeholder extension's data attribute). */
+  .rt-body :global(.rt-prose p.is-editor-empty:first-child::before) {
+    content: attr(data-placeholder);
+    float: left;
+    height: 0;
+    pointer-events: none;
+    color: var(--color-text-muted);
+  }
+</style>

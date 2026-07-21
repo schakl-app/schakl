@@ -145,7 +145,7 @@ class Subscription(
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default=SubscriptionStatus.DRAFT.value, index=True
+        String(20), nullable=False, default=SubscriptionStatus.ACTIVE.value, index=True
     )
     #: Stamped on the *first* transition into ``active`` and never cleared — the once-only
     #: guard for ``subscription.activated`` (#142): pause→resume must not respawn onboarding.

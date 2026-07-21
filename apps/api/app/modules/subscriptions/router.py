@@ -152,7 +152,11 @@ async def list_subscriptions(
     company_id: uuid.UUID | None = Query(None),
     status: str | None = Query(None),
     subscription_type_id: uuid.UUID | None = Query(None),
-    sort: str | None = Query(None, description="name | status | next_invoice_date | start_date"),
+    sort: str | None = Query(
+        None,
+        description="name | status | next_invoice_date | start_date | company | type"
+        " | amount | included_hours",
+    ),
     entity_type: str | None = Query(None, description="with entity_id: linked-entity filter"),
     entity_id: uuid.UUID | None = Query(None),
     usage: bool = Query(False, description="include current-period usage per row"),

@@ -3,6 +3,7 @@
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
+  import PasswordInput from "$lib/core/ui/PasswordInput.svelte";
 
   let { data, form } = $props();
 
@@ -125,14 +126,7 @@
           <label for="password" class="mb-1 block text-sm font-medium text-text">
             {t("auth.password")}
           </label>
-          <input
-            id="password"
-            name="password"
-            type="password"
-            required
-            autocomplete="current-password"
-            class={inputClass}
-          />
+          <PasswordInput id="password" name="password" required />
         </div>
 
         {#if form?.error}

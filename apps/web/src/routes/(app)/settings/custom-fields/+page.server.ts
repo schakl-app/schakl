@@ -3,6 +3,7 @@ import { fail, redirect } from "@sveltejs/kit";
 import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
+import { createErrorKey, slugify } from "$lib/core/slug";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -44,18 +45,20 @@ export const actions: Actions = {
   create: async (event) => {
     const form = await event.request.formData();
     const entity_type = String(form.get("entity_type") ?? "").trim();
-    const key = String(form.get("key") ?? "").trim();
     const data_type = String(form.get("data_type") ?? "text").trim();
     const label_nl = String(form.get("label_nl") ?? "").trim();
     const label_en = String(form.get("label_en") ?? "").trim();
-    if (!key || !entity_type) return fail(400, { error: "errors.required" });
+    if (!entity_type || (!label_nl && !label_en)) return fail(400, { error: "errors.required" });
+    // The API demands `^[a-z][a-z0-9_]*$`, so the slug must open with a letter.
+    const key = slugify(label_nl || label_en).replace(/^[^a-z]+/, "");
+    if (!key) return fail(400, { error: "errors.label_no_key_letter" });
 
-    const { error } = await apiFor(event).POST("/api/v1/custom-fields/definitions", {
+    const { error, response } = await apiFor(event).POST("/api/v1/custom-fields/definitions", {
       body: {
         entity_type,
         key,
         data_type: data_type as "text",
-        label_i18n: { nl: label_nl || key, en: label_en || label_nl || key },
+        label_i18n: { nl: label_nl || label_en, en: label_en || label_nl },
         required: form.get("required") !== null,
         options_json: SELECT_TYPES.has(data_type) ? parseOptions(form.get("options")) : [],
         config_json: {},
@@ -63,10 +66,7 @@ export const actions: Actions = {
         active: true,
       },
     });
-    if (error) {
-      const e = apiErrorKey(error);
-      return fail(400, { error: e.key, fields: e.fields });
-    }
+    if (error) return fail(400, { error: createErrorKey(error, response) });
     return { created: true };
   },
 

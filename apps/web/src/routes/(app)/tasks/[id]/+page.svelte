@@ -126,7 +126,9 @@
   // #task reference candidates (#197): host-scoped like the contact list — the task's project,
   // else its company, else the org's recent tasks — fetched lazily in the browser so the SSR
   // load pays nothing (docs/PERFORMANCE.md: meta=false&count=false skips discarded aggregates).
-  let taskCandidates = $state<{ id: string; name: string; subtitle?: string }[]>([]);
+  let taskCandidates = $state<
+    { id: string; name: string; subtitle?: string; assignee?: string; due?: string; overdue?: boolean }[]
+  >([]);
   $effect(() => {
     const scope = task.project_id
       ? `&project_id=${task.project_id}`
@@ -142,11 +144,26 @@
         id: string;
         title: string;
         status: string;
+        assignee_user_id?: string | null;
+        due_date?: string | null;
       }
       const items: TaskRow[] = (await response.json()).items ?? [];
+      // Assignee and due date ride along (#237) so the dropdown says which task you mean —
+      // two "Bellen met klant" rows are indistinguishable by title alone.
+      const today = new Date().toISOString().slice(0, 10);
       taskCandidates = items
         .filter((row) => row.id !== task.id)
-        .map((row) => ({ id: row.id, name: row.title, subtitle: statusName(row.status) }));
+        .map((row) => ({
+          id: row.id,
+          name: row.title,
+          subtitle: statusName(row.status),
+          assignee: memberName(row.assignee_user_id) ?? undefined,
+          due: row.due_date ?? undefined,
+          overdue:
+            !!row.due_date &&
+            row.due_date < today &&
+            !(statuses.find((s) => s.key === row.status)?.is_terminal ?? false),
+        }));
     })();
   });
   const mentionCandidates = $derived([
@@ -161,10 +178,46 @@
   const freqs = ["daily", "weekly", "monthly", "quarterly", "yearly"] as const;
 
   const companyItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
-  const projectItems = $derived(data.projects.map((p) => ({ value: p.id, label: p.name })));
   const memberItems = $derived(
     data.members.map((m) => ({ value: m.user_id, label: m.full_name || m.email })),
   );
+
+  // Live company/project picks for the edit form (#227): the client narrows the project list
+  // and a picked project backfills its client, like every create-side pairing of these two
+  // pickers (time's EntryForm, the interaction forms). Re-armed from the stored task on the
+  // edit-mode toggle and when navigating to another task — a mid-session reload (a comment,
+  // a quick-create) must not clobber a live pick.
+  // svelte-ignore state_referenced_locally
+  let fCompany = $state(task.company_id ?? "");
+  // svelte-ignore state_referenced_locally
+  let fProject = $state(task.project_id ?? "");
+  // svelte-ignore state_referenced_locally
+  let pickedTaskId = task.id;
+  $effect(() => {
+    if (task.id !== pickedTaskId) {
+      pickedTaskId = task.id;
+      fCompany = task.company_id ?? "";
+      fProject = task.project_id ?? "";
+    }
+  });
+  const projectItems = $derived(
+    (fCompany
+      ? data.projects.filter((p) => p.company_id === fCompany || !p.company_id)
+      : data.projects
+    ).map((p) => ({ value: p.id, label: p.name })),
+  );
+  function onCompanyPicked(id: string) {
+    fCompany = id;
+    // A selected project of another client drops out of the narrowed list yet would still be
+    // posted by its hidden input — clear it instead (the API stores the pair as given).
+    const project = data.projects.find((p) => p.id === fProject);
+    if (id && project?.company_id && project.company_id !== id) fProject = "";
+  }
+  function onProjectPicked(id: string) {
+    fProject = id;
+    const project = data.projects.find((p) => p.id === id);
+    if (project?.company_id) fCompany = project.company_id;
+  }
   const memberName = (id?: string | null) => {
     const m = data.members.find((mm) => mm.user_id === id);
     return m ? m.full_name || m.email : null;
@@ -183,18 +236,15 @@
   let confirmDelete = $state(false);
   // Inline create from the relation pickers (#115, docs/UX.md — per-picker definition of
   // done): the dialog posts to ?/createCompany / ?/createProject and the new record
-  // auto-selects in the picker that asked. The created ids reset on the edit-mode toggle so
-  // a stale pick never overrides the stored relation on a later edit session.
+  // auto-selects in the picker that asked, narrowing and backfilling like a manual pick.
   let qcCompanyOpen = $state(false);
   let qcCompanyName = $state("");
-  let createdCompanyId = $state("");
   let qcProjectOpen = $state(false);
   let qcProjectName = $state("");
-  let createdProjectId = $state("");
   $effect(() => {
     const created = form?.inlineCreated;
-    if (created?.slot === "company") createdCompanyId = created.id;
-    if (created?.slot === "project") createdProjectId = created.id;
+    if (created?.slot === "company") onCompanyPicked(created.id);
+    if (created?.slot === "project") onProjectPicked(created.id);
   });
   let editingCommentId = $state<string | null>(null);
   // Inline description editing for a checklist / a checklist item (issue #66), one at a time.
@@ -401,8 +451,10 @@
                 label: editMode ? t("tasks.detail.done_editing") : t("common.edit"),
                 icon: Pencil,
                 onclick: () => {
-                  createdCompanyId = "";
-                  createdProjectId = "";
+                  // Re-arm the relation picks so a stale pick never overrides the stored
+                  // relation on a later edit session.
+                  fCompany = task.company_id ?? "";
+                  fProject = task.project_id ?? "";
                   editMode = !editMode;
                 },
               },
@@ -453,6 +505,8 @@
             form="task-edit"
             rows={4}
             value={task.description ?? ""}
+            mentions={mentionCandidates}
+            tasks={taskCandidates}
           />
         {:else if task.description}
           <Markdown value={task.description} />
@@ -569,6 +623,8 @@
                   rows={2}
                   value={checklist.description ?? ""}
                   placeholder={t("tasks.checklist.description_placeholder")}
+                  mentions={mentionCandidates}
+                  tasks={taskCandidates}
                 />
                 <div class="flex gap-2">
                   <button class="rounded-lg bg-brand px-2 py-1 text-xs font-medium text-white"
@@ -675,6 +731,8 @@
                         rows={2}
                         value={item.description ?? ""}
                         placeholder={t("tasks.checklist.description_placeholder")}
+                        mentions={mentionCandidates}
+                        tasks={taskCandidates}
                       />
                       <div class="flex gap-2">
                         <button class="rounded-lg bg-brand px-2 py-1 text-xs font-medium text-white"
@@ -1128,9 +1186,10 @@
             <Combobox
               items={projectItems}
               name="project_id"
-              value={createdProjectId || (task.project_id ?? "")}
+              value={fProject}
               id="project"
               formId="task-edit"
+              onselect={onProjectPicked}
               oncreate={(name) => {
                 qcProjectName = name;
                 qcProjectOpen = true;
@@ -1144,9 +1203,10 @@
             <Combobox
               items={companyItems}
               name="company_id"
-              value={createdCompanyId || (task.company_id ?? "")}
+              value={fCompany}
               id="company"
               formId="task-edit"
+              onselect={onCompanyPicked}
               oncreate={(name) => {
                 qcCompanyName = name;
                 qcCompanyOpen = true;
@@ -1570,22 +1630,9 @@
         <Combobox
           items={companyItems}
           name="company_id"
-          value={createdCompanyId || (task.company_id ?? "")}
+          value={fCompany}
           id="qc-task-project-company"
           placeholder={t("projects.field.company")}
-        />
-      </div>
-      <div>
-        <label for="qc-task-project-rate" class="mb-1 block text-sm font-medium text-text"
-          >{t("projects.field.hourly_rate")}</label
-        >
-        <input
-          id="qc-task-project-rate"
-          name="hourly_rate"
-          type="number"
-          min="0"
-          step="0.01"
-          class={inputClass}
         />
       </div>
       {#if form?.qcError}

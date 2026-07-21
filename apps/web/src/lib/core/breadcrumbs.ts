@@ -83,6 +83,14 @@ const TAILS: Record<string, string> = {
   productivity: "overview.tab.productivity",
 };
 
+/** Root-specific tail labels — the same segment reads differently per section (#229). */
+const TAILS_BY_ROOT: Record<string, Record<string, string>> = {
+  subscriptions: {
+    templates: "settings.subscriptions.templates_heading",
+    types: "settings.subscriptions.types_heading",
+  },
+};
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** The loaded record's display name, tried against every detail-page data key in use. */
@@ -129,7 +137,8 @@ export function breadcrumbsFor(pathname: string, data: Record<string, unknown>):
     } else if (UUID_RE.test(segment)) {
       label = entityLabel(data) ?? "…";
     } else {
-      label = TAILS[segment] ? t(TAILS[segment]) : prettify(segment);
+      const key = TAILS_BY_ROOT[segments[0]]?.[segment] ?? TAILS[segment];
+      label = key ? t(key) : prettify(segment);
     }
     crumbs.push({ label, href });
   });

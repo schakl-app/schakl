@@ -311,10 +311,16 @@ async def test_invoice_from_unbilled_time_and_release(client_for) -> None:
     async with client_for(tenant.host) as client:
         await _setup_org(client, headers)
         company_id = await _company(client, headers)
+        # Rates live on the employee, never the project (#226): the owner bills at €90/h.
+        await client.put(
+            f"/api/v1/leave/rate/{tenant.user.id}",
+            json={"hourly_rate": "90.00"},
+            headers=headers,
+        )
         project = (
             await client.post(
                 "/api/v1/projects",
-                json={"name": "Retainer", "company_id": company_id, "hourly_rate": 90},
+                json={"name": "Retainer", "company_id": company_id},
                 headers=headers,
             )
         ).json()
@@ -360,7 +366,7 @@ async def test_invoice_from_unbilled_time_and_release(client_for) -> None:
         invoice = built.json()
         assert invoice["status"] == "draft"
         assert len(invoice["lines"]) == 1
-        # 120 minutes at the project's €90: 2.00 h × 90 = 180 net.
+        # 120 minutes at the logger's €90: 2.00 h × 90 = 180 net.
         assert invoice["lines"][0]["quantity"] == "2.00"
         assert invoice["lines"][0]["unit_price"] == "90.00"
         assert invoice["subtotal"] == "180.00"
@@ -390,6 +396,87 @@ async def test_invoice_from_unbilled_time_and_release(client_for) -> None:
         assert released["total_minutes"] == 120
 
 
+async def test_invoice_from_time_prices_each_logger_at_their_own_rate(client_for) -> None:
+    """#226: two people on one project bill at two rates — the grouped build splits the
+    project into one line per rate instead of pricing everyone at the first entry's."""
+    from tests.test_task_subresources import add_member
+
+    tenant: Tenant = await make_tenant("inv-time-rates")
+    headers = await auth_cookie(tenant.user)
+    member = await add_member(tenant)
+    member_headers = await auth_cookie(member)
+    async with client_for(tenant.host) as client:
+        await _setup_org(client, headers)
+        company_id = await _company(client, headers)
+        # Owner bills at a personal €90/h; the member has none and falls back to the
+        # leave org default of €60/h (#113) — never the invoicing default of €10.
+        await client.put(
+            f"/api/v1/leave/rate/{tenant.user.id}",
+            json={"hourly_rate": "90.00"},
+            headers=headers,
+        )
+        await client.put(
+            "/api/v1/leave/settings",
+            json={"default_hourly_rate": "60.00"},
+            headers=headers,
+        )
+        await client.put(
+            "/api/v1/invoicing/settings",
+            json={"default_hourly_rate": "10.00"},
+            headers=headers,
+        )
+        project = (
+            await client.post(
+                "/api/v1/projects",
+                json={"name": "Retainer", "company_id": company_id},
+                headers=headers,
+            )
+        ).json()
+
+        start = datetime.now(UTC) - timedelta(days=1)
+        entry_ids = []
+        for who, minutes in ((headers, 60), (member_headers, 90)):
+            entry = await client.post(
+                "/api/v1/time/entries",
+                json={
+                    "company_id": company_id,
+                    "project_id": project["id"],
+                    "started_at": start.isoformat(),
+                    "minutes": minutes,
+                    "billable": True,
+                },
+                headers=who,
+            )
+            assert entry.status_code == 201, entry.text
+            entry_ids.append(entry.json()["id"])
+        await client.post(
+            "/api/v1/time/entries/approve",
+            json={"entry_ids": entry_ids, "approved": True},
+            headers=headers,
+        )
+
+        # The preview resolves each entry to its logger's rate.
+        unbilled = (
+            await client.get(
+                f"/api/v1/invoicing/unbilled?company_id={company_id}", headers=headers
+            )
+        ).json()
+        assert sorted(e["rate"] for e in unbilled["entries"]) == ["60.00", "90.00"]
+
+        built = await client.post(
+            "/api/v1/invoicing/invoices/from-time",
+            json={"company_id": company_id, "group_by": "project"},
+            headers=headers,
+        )
+        assert built.status_code == 201, built.text
+        lines = built.json()["lines"]
+        assert len(lines) == 2
+        priced = sorted((line["unit_price"], line["quantity"]) for line in lines)
+        # 90 min at the member's €60 and 60 min at the owner's €90.
+        assert priced == [("60.00", "1.50"), ("90.00", "1.00")]
+        assert built.json()["subtotal"] == "180.00"
+
+
 async def test_invoice_create_links_time_entries_by_id(client_for) -> None:
     """The new-invoice form auto-adds unbilled entries as lines carrying ``time_entry_id``:
     creating the invoice bills exactly those entries, and an invalid/foreign/already-billed
@@ -399,10 +486,16 @@ async def test_invoice_create_links_time_entries_by_id(client_for) -> None:
     async with client_for(tenant.host) as client:
         await _setup_org(client, headers)
         company_id = await _company(client, headers)
+        # No personal rate here: the leave org default (#113) is the effective rate (#226).
+        await client.put(
+            "/api/v1/leave/settings",
+            json={"default_hourly_rate": "80.00"},
+            headers=headers,
+        )
         project = (
             await client.post(
                 "/api/v1/projects",
-                json={"name": "Retainer", "company_id": company_id, "hourly_rate": 80},
+                json={"name": "Retainer", "company_id": company_id},
                 headers=headers,
             )
         ).json()
@@ -430,7 +523,7 @@ async def test_invoice_create_links_time_entries_by_id(client_for) -> None:
             headers=headers,
         )
 
-        # The unbilled preview now carries a resolved per-entry rate (project's €80).
+        # The unbilled preview carries a resolved per-entry rate (leave org default €80).
         unbilled = (
             await client.get(
                 f"/api/v1/invoicing/unbilled?company_id={company_id}", headers=headers

@@ -109,3 +109,76 @@ async def test_long_text_custom_field_stripped_of_html(client_for) -> None:
         stored = company["custom"]["notes"]
         assert "<script>" not in stored
         assert "**keep**" in stored
+
+
+async def test_notes_fields_stripped_of_html(client_for) -> None:
+    """The notes fields the editor rolled out to (#228) strip raw HTML on write too."""
+    t = await make_tenant("rt-notes")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Acme", "notes": _XSS}, headers=headers)
+        ).json()
+        assert "<script>" not in company["notes"]
+        assert "**keep**" in company["notes"]
+
+        contact = (
+            await c.post(
+                "/api/v1/contacts", json={"first_name": "Jan", "notes": _XSS}, headers=headers
+            )
+        ).json()
+        assert "<script>" not in contact["notes"]
+        assert "**keep**" in contact["notes"]
+        edited = (
+            await c.patch(
+                f"/api/v1/contacts/{contact['id']}", json={"notes": _XSS}, headers=headers
+            )
+        ).json()
+        assert "<script>" not in edited["notes"]
+
+        sub = (
+            await c.post(
+                "/api/v1/subscriptions",
+                json={
+                    "company_id": company["id"],
+                    "name": "Onderhoud",
+                    "interval": "monthly",
+                    "start_date": "2026-01-01",
+                    "amount": "100.00",
+                    "notes": _XSS,
+                },
+                headers=headers,
+            )
+        ).json()
+        assert "<script>" not in sub["notes"]
+        assert "**keep**" in sub["notes"]
+
+        invoice = (
+            await c.post(
+                "/api/v1/invoicing/invoices",
+                json={
+                    "company_id": company["id"],
+                    "notes": _XSS,
+                    "lines": [{"description": "Werk", "quantity": "1", "unit_price": "10"}],
+                },
+                headers=headers,
+            )
+        ).json()
+        assert "<script>" not in invoice["notes"]
+        assert "**keep**" in invoice["notes"]
+
+        project = (
+            await c.post(
+                "/api/v1/projects",
+                json={"name": "Site", "company_id": company["id"], "description": _XSS},
+                headers=headers,
+            )
+        ).json()
+        assert "<script>" not in project["description"]
+        assert "**keep**" in project["description"]
+        edited_project = (
+            await c.patch(
+                f"/api/v1/projects/{project['id']}", json={"description": _XSS}, headers=headers
+            )
+        ).json()
+        assert "<script>" not in edited_project["description"]

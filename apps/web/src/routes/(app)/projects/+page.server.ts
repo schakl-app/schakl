@@ -93,7 +93,6 @@ export const actions: Actions = {
         billable_default: form.get("billable_default") !== null,
         budget_hours: numberOrNull(form.get("budget_hours")),
         budget_amount: numberOrNull(form.get("budget_amount")),
-        hourly_rate: numberOrNull(form.get("hourly_rate")),
         start_date: String(form.get("start_date") ?? "").trim() || null,
         end_date: String(form.get("end_date") ?? "").trim() || null,
         color: String(form.get("color") ?? "").trim() || null,

@@ -298,6 +298,7 @@
             value={draft.content}
             name={null}
             rows={12}
+            scope={{ companyId }}
             onchange={(next) => {
               if (draft) draft.content = next;
             }}

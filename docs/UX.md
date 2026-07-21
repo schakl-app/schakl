@@ -224,6 +224,12 @@
   reassuring zero.
 - **Forms are SSR form actions** with `use:enhance`. Mind the default reset: forms whose
   inputs must keep their values after save use `update({ reset: false })`.
+- **A password reveal (eye) toggle sits on user-password fields only** (#235, owner call): login,
+  setup, reset-password and the account page's password fields use the shared
+  `core/ui/PasswordInput` — the places where a mistyped password locks someone out. Write-only
+  admin secrets (SMTP password/API key, Google & SSO client secret, AI key, Ads developer token)
+  stay plain `type="password"` inputs: they are pasted rather than typed, the stored value is
+  never displayed anyway, and the toggle just adds chrome to Instellingen.
 - **An edit surface shows every field the view shows.** If a record's page displays it, its edit
   modal edits it — a field the view has and the editor hides sends the user hunting for a second
   surface. The client's edit modal therefore carries its contact persons alongside name, status and
@@ -277,13 +283,34 @@
   and rendered through the shared `Markdown` component — never a bare `<textarea>`, and never
   `{@html}` outside that one component. Store the markdown *source* in the existing `Text` column;
   never store pre-rendered HTML, or a later sanitizer fix cannot protect the rows already written.
-  The editor is markdown-with-preview, not WYSIWYG — a small bold/italic/link toolbar so nobody
-  types syntax, and a Write ↔ Preview toggle — because a heavy editor bundle fights *"snappy over
-  clever"* on an SSR/PWA shell. This is the design-language rule; it is not a task feature.
+  The editor is **WYSIWYG over markdown source** (#255, reversing the earlier
+  markdown-with-preview decision once the owner had used it): a Tiptap view, lazy-loaded after
+  hydration so ProseMirror never weighs on first paint — SSR/no-JS still render a plain textarea
+  with the raw source, and the *stored value never stops being markdown*
+  (`lib/core/richtext/editor.ts` parses through `renderMarkdown` and serializes back the house
+  conventions, mention markers included). Headings, lists, links and mention chips render styled
+  while typing; `### `, `- `, `1. `, `**bold**` convert as you type; Enter continues a list and
+  exits on an empty item; links show as blue label text with the URL behind the toolbar's inline
+  popover (never `window.prompt`, #228 — with the caret on a link it edits/removes it). There is
+  no Write ↔ Preview toggle anymore: the editor is the preview. This is the design-language rule;
+  it is not a task feature.
   **Which fields get it, and which stay plain:** the *long-form* ones — a task/checklist/checklist-
-  item description, a comment, project/company/contact notes, a custom-field `LONG_TEXT` — get the
-  editor. One-liners do **not**: a title, a `TimeEntry` description, a leave note. Rich text is for
-  text that has structure to gain from it, not for every string.
+  item description, a comment, project/company/contact notes, invoice/quote/subscription notes,
+  a custom-field `LONG_TEXT` — get the editor, **including the same field inside a template**
+  (a subscription template's notes, a task template item's description, #228). One-liners do
+  **not**: a title, a `TimeEntry` description, a leave note. Rich text is for text that has
+  structure to gain from it, not for every string. Headings render `###` and deeper only —
+  `h1`/`h2` stay stripped everywhere (`core/markdown.ts`): notes and descriptions are supporting
+  text, and a uniform rule beats a per-field exception.
+  **`@` and `#` work in every editor, not just where a page wired them** (#237). `@` mentions a
+  colleague or contact, `#` references a task as a deep link — and both belong to the editor, not
+  to the surface it happens to sit on. A `RichTextEditor` given no explicit candidate lists
+  fetches the defaults itself on first focus (`core/richtext/candidates.ts`: org members, plus
+  the host company's contacts and the host project/company's recent tasks via the `scope` prop —
+  a page pays nothing for an editor nobody touches). The `#` dropdown names each task's status,
+  assignee and due date — two "Bellen met klant" rows are indistinguishable by title alone — and
+  an overdue date reads red like everywhere else. Only the task page passes its own lists (its
+  scoped, status-named candidates); a new surface should pass `scope` and nothing more.
   **Rendering is the security boundary.** `{@html}` lives only in `Markdown.svelte`, and everything
   it prints has been through DOMPurify in `core/markdown.ts`; the API also strips raw HTML on write
   (`core/richtext.py`) so a stored value is inert even for a consumer that renders it another way.
@@ -309,8 +336,18 @@
   leave; Google Calendar plugs into the same seam in P3. Pending items render muted with a
   "?"; on mobile the grid becomes a per-day agenda list.
 - Sections with multiple surfaces use **submenu tabs** at the top (Taken | Sjablonen;
-  Verlof: Mijn verlof | Team; Overzicht: Uren | Productiviteit | Omzet) — not nested
-  sidebars.
+  Verlof: Mijn verlof | Team; Overzicht: Uren | Productiviteit | Omzet; Abonnementen:
+  Abonnementen | Standaardabonnementen | Abonnementstypes) — not nested sidebars. The
+  convention (owner call, #229): the tab row sits at the **very top of the section, above
+  the page heading**, rendered by the section's `+layout.svelte` as pill-styled `<a>` links
+  to sub-routes, each tab gated on its own permission — `/overview/+layout.svelte` is the
+  reference. Plain links, no Tabs primitive; a viewer whose permissions leave only one tab
+  gets no tab row at all. Every tab that lists rows is a full `DataTable` (filters, sort,
+  personal columns), not a card list.
+- **A catalog staff touches day-to-day is a tab on the working page, not an Instellingen
+  screen** (#229, after the task-templates precedent). The Instellingen index card deep-links
+  to the tab (`/subscriptions/templates`, like `/tasks/templates`), and a retired settings
+  route 301-redirects there so old links keep working.
 - The header holds only the profile menu (avatar → name, personal settings, logout).
   Language lives in personal settings, not the header.
 

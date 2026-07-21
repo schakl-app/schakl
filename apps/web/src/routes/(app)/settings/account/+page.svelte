@@ -8,6 +8,7 @@
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import GoogleAccountCard from "$lib/modules/google/GoogleAccountCard.svelte";
   import NavPrefEditor from "$lib/core/ui/NavPrefEditor.svelte";
+  import PasswordInput from "$lib/core/ui/PasswordInput.svelte";
   import { navItemsFor, resolveLabel, type NavLabelMap } from "$lib/core/registry";
 
   let { data, form } = $props();
@@ -273,14 +274,7 @@
           <label for="email-password" class="mb-1 block text-sm font-medium text-text">
             {t("settings.account.current_password")}
           </label>
-          <input
-            id="email-password"
-            name="password"
-            type="password"
-            autocomplete="current-password"
-            required
-            class="w-full rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-          />
+          <PasswordInput id="email-password" name="password" required />
         </div>
         {#if form?.emailChanged}
           <p class="text-sm text-green-600 dark:text-green-400">
@@ -316,28 +310,24 @@
           <label for="new-password" class="mb-1 block text-sm font-medium text-text">
             {t("settings.account.new_password")}
           </label>
-          <input
+          <PasswordInput
             id="new-password"
             name="password"
-            type="password"
             autocomplete="new-password"
             required
-            minlength="8"
-            class="w-full rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+            minlength={8}
           />
         </div>
         <div>
           <label for="confirm-password" class="mb-1 block text-sm font-medium text-text">
             {t("settings.account.confirm_password")}
           </label>
-          <input
+          <PasswordInput
             id="confirm-password"
             name="password_confirm"
-            type="password"
             autocomplete="new-password"
             required
-            minlength="8"
-            class="w-full rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+            minlength={8}
           />
         </div>
         {#if form?.passwordChanged}
@@ -515,14 +505,7 @@
             <label for="disable-password" class="mb-1 block text-xs text-text-muted">
               {t("settings.account.two_factor_disable_help")}
             </label>
-            <input
-              id="disable-password"
-              name="password"
-              type="password"
-              autocomplete="current-password"
-              required
-              class="w-56 rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-            />
+            <PasswordInput id="disable-password" name="password" required class="w-56" />
           </div>
           <button
             class="rounded-lg border border-red-300 px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950"

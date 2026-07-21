@@ -123,7 +123,7 @@ class SubscriptionTemplateRead(SubscriptionTemplateBase):
 class SubscriptionBase(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     subscription_type_id: uuid.UUID | None = None
-    status: SubscriptionStatus = SubscriptionStatus.DRAFT
+    status: SubscriptionStatus = SubscriptionStatus.ACTIVE
     currency: str = Field(default="EUR", min_length=3, max_length=3)
     interval: SubscriptionInterval = SubscriptionInterval.MONTHLY
     interval_count: int = Field(default=1, ge=1, le=12)
@@ -242,13 +242,19 @@ class SubscriptionSummary(BaseModel):
 
 
 class PriceIncreaseRequest(BaseModel):
-    """A bulk price change over the running subscriptions (and optionally the templates).
+    """A price change over the running subscriptions (and optionally the templates).
 
     ``mode``: ``percent`` multiplies, ``amount`` adds a fixed sum, ``set`` overwrites. The
     base is the price in effect on ``valid_from`` — so a change effective 1 January builds on
     what the customer pays *then*, not on today's row. Preview and apply share this shape;
     apply appends one history row per subscription (same-day rows are corrected in place,
     like a manual edit).
+
+    Scope is exactly one of: everything (the default), one type, one subscription, or one
+    template (#231). The single-row scopes are the row shortcut's contract and stay strictly
+    separate — combining them with each other, with the type filter, or with
+    ``include_templates`` is a validation error, so a targeted bump can never silently drag
+    a template default (or the whole book) along.
     """
 
     mode: Literal["percent", "amount", "set"]
@@ -258,8 +264,13 @@ class PriceIncreaseRequest(BaseModel):
     #: Optional scope: only subscriptions carrying this type (and, with
     #: ``include_templates``, only that type's templates).
     subscription_type_id: uuid.UUID | None = None
+    #: Narrow to exactly one agreement (the row's ⋮ shortcut, #231).
+    subscription_id: uuid.UUID | None = None
+    #: Change exactly one template's default ``amount`` (#231). Templates carry no price
+    #: history, so this is a direct mutation with ``valid_from`` only feeding the arithmetic.
+    subscription_template_id: uuid.UUID | None = None
     #: Also change the matching templates' default ``amount`` so new agreements start at the
-    #: new price.
+    #: new price. All/by-type scope only.
     include_templates: bool = False
 
 

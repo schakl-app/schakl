@@ -6,6 +6,7 @@ import { fail, type RequestEvent } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
 import { apiFor } from "$lib/core/session";
+import { createErrorKey, slugify } from "$lib/core/slug";
 
 function parseIds(raw: FormDataEntryValue | null): string[] {
   try {
@@ -40,12 +41,13 @@ export const manageActions = {
       });
       if (error) return fail(400, { error: apiErrorKey(error).key });
     } else {
-      const key = String(form.get("key") ?? "").trim();
-      if (!key) return fail(400, { error: "errors.required" });
-      const { error } = await apiFor(event).POST("/api/v1/subscriptions/types", {
+      // The tenant only types the label; the immutable key is derived from it (#234).
+      const key = slugify(label_i18n.nl || label_i18n.en || "");
+      if (!key) return fail(400, { error: "errors.label_no_key" });
+      const { error, response } = await apiFor(event).POST("/api/v1/subscriptions/types", {
         body: { key, label_i18n, position, active: true, task_template_ids },
       });
-      if (error) return fail(400, { error: apiErrorKey(error).key });
+      if (error) return fail(400, { error: createErrorKey(error, response) });
     }
     return { saved: true };
   },

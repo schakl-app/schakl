@@ -155,19 +155,8 @@
   <h2 class="mb-4 text-sm font-semibold text-text">{t("settings.custom_fields.new")}</h2>
   <input type="hidden" name="entity_type" value={data.entityType} />
   <div class="grid gap-3 sm:grid-cols-2">
-    <div>
-      <label for="key" class="mb-1 block text-sm font-medium text-text"
-        >{t("settings.custom_fields.key")}</label
-      >
-      <input
-        id="key"
-        name="key"
-        required
-        pattern="[a-z][a-z0-9_]*"
-        placeholder="vat_number"
-        class="w-full rounded-lg border border-border px-3 py-2 text-sm"
-      />
-      <p class="mt-1 text-xs text-text-muted">{t("settings.custom_fields.key_hint")}</p>
+    <div class="sm:col-span-2">
+      <I18nTextField label={t("common.label_field")} basename="label" idPrefix="label" />
     </div>
     <div>
       <label for="data_type" class="mb-1 block text-sm font-medium text-text"
@@ -181,9 +170,6 @@
       >
         {#each TYPES as ty (ty)}<option value={ty}>{t(`customfields.type.${ty}`)}</option>{/each}
       </select>
-    </div>
-    <div class="sm:col-span-2">
-      <I18nTextField label={t("common.label_field")} basename="label" idPrefix="label" />
     </div>
     {#if showOptions}
       <div class="sm:col-span-2">

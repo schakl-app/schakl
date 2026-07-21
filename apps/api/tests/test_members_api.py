@@ -258,7 +258,7 @@ async def test_invite_sends_welcome_mail_with_set_password_link(client_for, monk
 
     sent = []
 
-    async def _capture(session, org_id, message):  # noqa: ANN001, ARG001
+    async def _capture(session, org_id, message, **kwargs):  # noqa: ANN001, ARG001
         sent.append(message)
         return True, None
 

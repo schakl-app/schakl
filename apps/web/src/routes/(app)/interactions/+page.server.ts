@@ -34,6 +34,14 @@ export const load: PageServerLoad = async (event) => {
   const mine = params.get("mine") === "1";
   const owner = canReadAll ? params.get("owner") || undefined : undefined;
   const offset = Math.max(0, Number(params.get("offset") ?? 0) || 0);
+  // Date navigation (#238): `from`/`to` are org-local calendar days; the week switcher and
+  // month filter are just fast ways of writing this one range into the URL.
+  const isoDay = (value: string | null) =>
+    /^\d{4}-\d{2}-\d{2}$/.test(value ?? "") ? value! : undefined;
+  const from = isoDay(params.get("from"));
+  const to = isoDay(params.get("to"));
+  // The URL wins over the saved default so a sorted list stays shareable (docs/UX.md).
+  const sort = params.get("sort") ?? resolved.sort ?? undefined;
 
   const api = apiFor(event);
   const [list, kinds, members, companyDefinitions] = await Promise.all([
@@ -47,6 +55,9 @@ export const load: PageServerLoad = async (event) => {
           status: pending ? "pending" : undefined,
           mine: mine || undefined,
           owner_user_id: !mine ? owner : undefined,
+          date_from: from,
+          date_to: to,
+          sort,
         },
       },
     }),
@@ -67,8 +78,16 @@ export const load: PageServerLoad = async (event) => {
     members: members.data ?? [],
     companyDefinitions: companyDefinitions.data ?? [],
     canReadAll,
-    filters: { q: q ?? "", kind: kind ?? null, pending, mine, owner: owner ?? null },
-    table: { pref, sort: null, widths: resolved.widths },
+    filters: {
+      q: q ?? "",
+      kind: kind ?? null,
+      pending,
+      mine,
+      owner: owner ?? null,
+      from: from ?? null,
+      to: to ?? null,
+    },
+    table: { pref, sort: sort ?? null, widths: resolved.widths },
     locale: event.locals.locale,
   };
 };
@@ -91,7 +110,6 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const name = String(form.get("name") ?? "").trim();
     if (!name) return fail(400, { qcError: "errors.required" });
-    const rate = Number(String(form.get("hourly_rate") ?? "").trim());
     const { data, error } = await apiFor(event).POST("/api/v1/projects", {
       body: {
         name,
@@ -100,7 +118,6 @@ export const actions: Actions = {
         budget_period: "total",
         currency: event.locals.theme.currency,
         billable_default: true,
-        hourly_rate: Number.isFinite(rate) && rate > 0 ? rate : null,
         custom: {},
       },
     });

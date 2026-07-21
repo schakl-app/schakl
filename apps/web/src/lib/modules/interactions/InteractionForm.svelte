@@ -11,6 +11,7 @@
   import { page } from "$app/state";
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
   import { t } from "$lib/core/i18n";
+  import { can } from "$lib/core/permissions";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
@@ -76,7 +77,8 @@
 
   // A dimension is *pinned* when the host page already fixed it (its hidden prefill input);
   // an unpinned one gets a picker below (#183 follow-up) — all three on the Interacties page,
-  // project+task on a company page, none on a task page. contact_id is always a picker (#173).
+  // project+task on a company page, client+project on a task page (preset from the task's own
+  // links, see below). contact_id is always a picker (#173).
   const pinned = (field: string) =>
     typeof prefill[field] === "string" && (prefill[field] as string).length > 0;
   const showCompany = $derived(!interaction && !pinned("company_id"));
@@ -121,6 +123,37 @@
       linkTasks = l.tasks;
     });
   });
+  // A pinned task/project implies the levels above it: resolve the host row once, when the
+  // form opens, and preset the pickers — visible and repointable, unlike a pinned dim. The
+  // API derives a missing client from the task on save either way, but the form should show
+  // where the moment will land, not an empty picker.
+  $effect(() => {
+    if (!showLinkPickers) return;
+    const pinnedTask = pinned("task_id") ? (prefill.task_id as string) : "";
+    const pinnedProject = pinned("project_id") ? (prefill.project_id as string) : "";
+    if (!pinnedTask && !pinnedProject) return;
+    void (async () => {
+      let company: string;
+      let project = "";
+      if (pinnedTask) {
+        const response = await fetch(`/api/v1/tasks/${pinnedTask}`, {
+          headers: { accept: "application/json" },
+        });
+        if (!response.ok) return;
+        const task = await response.json();
+        company = task.company_id ?? "";
+        project = task.project_id ?? "";
+      } else {
+        const response = await fetch(`/api/v1/projects/${pinnedProject}`, {
+          headers: { accept: "application/json" },
+        });
+        if (!response.ok) return;
+        company = (await response.json()).company_id ?? "";
+      }
+      if (project && showProject && !fProject) fProject = project;
+      if (company && showCompany && !fCompany) fCompany = company;
+    })();
+  });
   // Cascade the way the move dialog does: a client narrows projects, a project narrows tasks,
   // and picking deeper backfills above — accounting for a dim the host already pinned.
   const effCompany = $derived(
@@ -152,6 +185,45 @@
     const task = linkTasks.find((option) => option.value === id);
     if (task?.project_id) onProjectPicked(task.project_id);
   }
+
+  // --- close the picked task with this contact moment (#232, the approve dialog's #157
+  // affordance on the plain create form) --------------------------------------------------- //
+  interface StatusDef {
+    id: string;
+    key: string;
+    name: string;
+    is_terminal: boolean;
+  }
+  let closeTask = $state(false);
+  let terminal = $state<StatusDef[]>([]);
+  let terminalLoaded = $state(false);
+  let closeStatus = $state("");
+  // Offered once a task is picked; the guard mirrors the API (a close is a task write),
+  // which stays the boundary.
+  const canCloseTask = $derived(Boolean(fTask) && can(page.data.user, "tasks.task.write"));
+  // Terminal statuses load when the box is first ticked — never on page load (PERFORMANCE.md).
+  $effect(() => {
+    if (closeTask && !terminalLoaded) {
+      terminalLoaded = true;
+      void loadTerminal();
+    }
+  });
+  async function loadTerminal() {
+    try {
+      const response = await fetch("/api/v1/tasks/statuses", {
+        headers: { accept: "application/json" },
+      });
+      const statuses: StatusDef[] = response.ok ? await response.json() : [];
+      terminal = statuses.filter((status) => status.is_terminal);
+      closeStatus = terminal[0]?.key ?? "";
+    } catch {
+      terminal = [];
+    }
+  }
+
+  // Create succeeded but the close PATCH bounced (e.g. a status policy): say exactly that —
+  // a plain error here would read as "the save failed", which it did not.
+  let closeFailedAfterCreate = $state(false);
 
   // --- contact person (#173): pick, clear, or inline-create — never leave the form ------- //
   const hostCompanyId = $derived(
@@ -291,10 +363,12 @@
   use:enhance={() =>
     async ({ result, update }) => {
       if (result.type === "failure") {
+        closeFailedAfterCreate = Boolean(result.data?.createdButCloseFailed);
         error = String(result.data?.error ?? "errors.validation");
         return;
       }
       error = "";
+      closeFailedAfterCreate = false;
       await update({ reset: false });
       onsaved?.();
     }}
@@ -413,6 +487,39 @@
         </label>
       {/if}
     </div>
+
+    {#if canCloseTask}
+      <!-- Close the picked task with this contact moment (#232): the approve dialog's #157
+           affordance while logging; the status pick mirrors CloseTaskDialog. -->
+      <div class="space-y-2 rounded-lg border border-border p-3">
+        <label class="flex items-center gap-2 text-sm text-text">
+          <input type="checkbox" name="close_task" value="1" bind:checked={closeTask} />
+          {t("interactions.close_task")}
+        </label>
+        {#if closeTask}
+          {#if terminalLoaded && terminal.length === 0}
+            <p class="text-sm text-red-600">{t("interactions.close_task_no_terminal")}</p>
+          {:else if terminal.length > 1}
+            <fieldset class="space-y-1.5 pl-6">
+              <legend class="sr-only">{t("interactions.close_task_pick_status")}</legend>
+              {#each terminal as status (status.id)}
+                <label class="flex items-center gap-2 text-sm text-text">
+                  <input
+                    type="radio"
+                    name="close_status"
+                    value={status.key}
+                    bind:group={closeStatus}
+                  />
+                  {status.name}
+                </label>
+              {/each}
+            </fieldset>
+          {:else if terminal.length === 1}
+            <input type="hidden" name="close_status" value={closeStatus} />
+          {/if}
+        {/if}
+      </div>
+    {/if}
   {/if}
 
   <div class="block text-sm">
@@ -443,14 +550,23 @@
 
   <div class="text-sm">
     <span class="mb-1 block font-medium text-text">{t("interactions.field.notes")}</span>
+    <!-- #task references (#237) resolve against the moment's own links: the picked (or
+         stored) project, else the client — same deeper-link-wins rule as the task picker. -->
     <RichTextEditor
       name="body_text"
       value={interaction?.body_text ?? ""}
       rows={4}
       mentions={editorMentions}
+      scope={{
+        companyId: (interaction?.company_id ?? effCompany) || null,
+        projectId: (interaction?.project_id ?? effProject) || null,
+      }}
     />
   </div>
 
+  {#if closeFailedAfterCreate}
+    <p class="text-sm text-red-600">{t("interactions.close_after_create_failed")}</p>
+  {/if}
   {#if error}
     <p class="text-sm text-red-600">{t(error)}</p>
   {/if}

@@ -22,6 +22,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.crypto import decrypt
+from app.core.email.branding import EmailBrand, apply_branding, load_brand
 from app.core.email.senders import OutgoingEmail, Sender, send_email
 from app.core.email.service import get_row
 from app.errors import AppError
@@ -97,14 +98,21 @@ async def load_transport(
     )
 
 
-async def deliver(ctx: Any, message: OutgoingEmail) -> None:
+async def deliver(ctx: Any, message: OutgoingEmail, brand: EmailBrand | None = None) -> None:
     """Request-path send: transport read first, network inside ``release_db``, honest
-    failure. Callers write their bookkeeping (sent_at, counts) *after* this returns."""
+    failure. Callers write their bookkeeping (sent_at, counts) *after* this returns.
+
+    This path bypasses ``send_org_email`` (the release-db dance), so the branded chrome
+    (#236) is applied here — like the transport, the brand is read *before* the network call.
+    """
     transport = await load_transport(ctx.session, ctx.org.id)
     if transport is None:
         raise AppError(
             "email_not_configured", "errors.email_not_configured", status_code=400
         )
+    if brand is None:
+        brand = await load_brand(ctx.session, ctx.org)
+    message = apply_branding(brand, message)
     provider, config, sender = transport
     async with ctx.release_db():
         ok, error = await send_email(provider, config, sender, message)

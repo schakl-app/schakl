@@ -117,11 +117,8 @@ export const actions: Actions = {
         budget_period: form.has("budget_period")
           ? (String(form.get("budget_period") ?? "total") as "total")
           : undefined,
-        budget_hours: form.has("budget_hours")
-          ? numberOrNull(form.get("budget_hours"))
-          : undefined,
+        budget_hours: form.has("budget_hours") ? numberOrNull(form.get("budget_hours")) : undefined,
         budget_amount: numberOrNull(form.get("budget_amount")),
-        hourly_rate: numberOrNull(form.get("hourly_rate")),
         start_date: String(form.get("start_date") ?? "").trim() || null,
         end_date: String(form.get("end_date") ?? "").trim() || null,
         custom: parseCustom(form.get("custom")),

@@ -45,8 +45,12 @@ async def test_productivity_stats(client_for) -> None:
 
 
 async def test_revenue_stats(client_for) -> None:
+    """#226: revenue prices billable minutes at the logger's effective rate — a project is
+    no longer part of the price, and a logger with no rate anywhere contributes nothing."""
     t = await make_tenant("stats-rev")
     headers = await auth_cookie(t.user)
+    member = await add_member(t)
+    member_headers = await auth_cookie(member)
     now = datetime.now(UTC)
 
     async with client_for(t.host) as c:
@@ -56,16 +60,16 @@ async def test_revenue_stats(client_for) -> None:
         project = (
             await c.post(
                 "/api/v1/projects",
-                json={
-                    "name": "Retainer",
-                    "company_id": company["id"],
-                    "hourly_rate": 100,
-                    "currency": "EUR",
-                },
+                json={"name": "Retainer", "company_id": company["id"], "currency": "EUR"},
                 headers=headers,
             )
         ).json()
-        # 90 billable minutes at €100/h → €150; plus 60 non-billable minutes → no revenue.
+        await c.put(
+            f"/api/v1/leave/rate/{t.user.id}",
+            json={"hourly_rate": "100.00"},
+            headers=headers,
+        )
+        # 90 billable minutes at the owner's €100/h → €150; 60 non-billable minutes → nothing.
         await c.post(
             "/api/v1/time/entries",
             json={
@@ -87,15 +91,35 @@ async def test_revenue_stats(client_for) -> None:
             },
             headers=headers,
         )
+        # 30 billable minutes with no project at all → €50: the logger prices it, not the
+        # project. And the member has no rate anywhere, so their hour is excluded.
+        await c.post(
+            "/api/v1/time/entries",
+            json={
+                "started_at": now.isoformat(),
+                "minutes": 30,
+                "company_id": company["id"],
+            },
+            headers=headers,
+        )
+        await c.post(
+            "/api/v1/time/entries",
+            json={
+                "started_at": now.isoformat(),
+                "minutes": 60,
+                "company_id": company["id"],
+            },
+            headers=member_headers,
+        )
 
         stats = (
             await c.get("/api/v1/time/stats/revenue", params={"year": now.year}, headers=headers)
         ).json()
-        assert stats["months_current"][now.month - 1] == 150.0
-        assert stats["total_current"] == 150.0
+        assert stats["months_current"][now.month - 1] == 200.0
+        assert stats["total_current"] == 200.0
         assert stats["total_previous"] == 0.0
         assert stats["top_clients"][0]["company_id"] == company["id"]
-        assert stats["top_clients"][0]["revenue"] == 150.0
+        assert stats["top_clients"][0]["revenue"] == 200.0
         assert stats["other_revenue"] == 0.0
 
 
@@ -124,14 +148,25 @@ async def test_project_cost_from_employee_rates(client_for) -> None:
         project = (
             await c.post(
                 "/api/v1/projects",
-                json={"name": "Bouw", "hourly_rate": 100, "currency": "EUR"},
+                json={"name": "Bouw", "currency": "EUR"},
                 headers=owner_headers,
             )
         ).json()
-        # Owner at a personal €120/h for 60 min; member logs 30 min with no rate anywhere.
+        # Owner at a personal €120/h: 60 billable + 30 non-billable minutes; the member
+        # logs 30 billable minutes with no rate anywhere.
         await c.put(
             f"/api/v1/leave/rate/{t.user.id}",
             json={"hourly_rate": "120.00"},
+            headers=owner_headers,
+        )
+        await c.post(
+            "/api/v1/time/entries",
+            json={
+                "started_at": now.isoformat(),
+                "minutes": 30,
+                "billable": False,
+                "project_id": project["id"],
+            },
             headers=owner_headers,
         )
         for headers, minutes in ((owner_headers, 60), (member_headers, 30)):
@@ -161,7 +196,8 @@ async def test_project_cost_from_employee_rates(client_for) -> None:
                 headers=owner_headers,
             )
         ).json()
-        assert cost["cost"] == 120.0  # 60 min × €120/h; the member's 30 min carry no rate
+        assert cost["cost"] == 180.0  # 90 min × €120/h; the member's 30 min carry no rate
+        assert cost["billable_amount"] == 120.0  # only the owner's billable hour (#226)
         assert cost["unrated_minutes"] == 30
 
         # The org default (#113) picks the member up; unrated drops to zero.
@@ -177,5 +213,6 @@ async def test_project_cost_from_employee_rates(client_for) -> None:
                 headers=owner_headers,
             )
         ).json()
-        assert cost["cost"] == 150.0  # 120 + 30 min × €60/h
+        assert cost["cost"] == 210.0  # 180 + 30 min × €60/h
+        assert cost["billable_amount"] == 150.0  # 120 + the member's billable half hour
         assert cost["unrated_minutes"] == 0

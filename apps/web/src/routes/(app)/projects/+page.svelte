@@ -69,7 +69,6 @@
       assignees: assigneesCell,
       hours: hoursCell,
       budget_hours: budgetCell,
-      hourly_rate: rateCell,
       start_date: startCell,
       end_date: endCell,
     }),
@@ -133,12 +132,6 @@
 {#snippet budgetCell(project: Project)}
   {#if project.budget_hours != null}
     <span class="text-text">{fmtNumber(project.budget_hours)} u</span>
-  {:else}<span class="text-text-muted">—</span>{/if}
-{/snippet}
-
-{#snippet rateCell(project: Project)}
-  {#if project.hourly_rate != null}
-    <span class="text-text">{fmtNumber(project.hourly_rate)}</span>
   {:else}<span class="text-text-muted">—</span>{/if}
 {/snippet}
 
@@ -323,19 +316,6 @@
         <input
           id="budget_amount"
           name="budget_amount"
-          type="number"
-          min="0"
-          step="0.01"
-          class={inputClass}
-        />
-      </div>
-      <div>
-        <label for="hourly_rate" class="mb-1 block text-sm font-medium text-text">
-          {t("projects.field.hourly_rate")}
-        </label>
-        <input
-          id="hourly_rate"
-          name="hourly_rate"
           type="number"
           min="0"
           step="0.01"

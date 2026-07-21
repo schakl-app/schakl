@@ -28,11 +28,14 @@ from typing import Any
 
 from pydantic import BaseModel
 from sqlalchemy import bindparam, func, select, text
+from sqlalchemy.sql.expression import column as sa_column
+from sqlalchemy.sql.expression import table as sa_table
 
 from app.core.activity import ActivityService
 from app.core.activity.service import snapshot
 from app.core.customfields import CustomFieldsService
 from app.core.events import emit
+from app.core.richtext import sanitize_markdown
 from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_zoneinfo
@@ -81,11 +84,64 @@ DEFAULT_SUBSCRIPTION_TYPES: list[dict] = [
     {"key": "support", "label_i18n": {"nl": "Support", "en": "Support"}, "position": 40},
 ]
 
+# A lightweight table ref, like the interactions module's ``_contacts`` — never the companies
+# module's internals (CLAUDE.md §6). Only what the sort expression touches.
+_companies = sa_table("companies", sa_column("id"), sa_column("org_id"), sa_column("name"))
+
+
+def _company_sort_name() -> Any:
+    """Order by the company's name — the label the cell prints (docs/UX.md: a column sorts by
+    what it prints, never by the FK). Correlated, so a row is never multiplied."""
+    return (
+        select(func.lower(_companies.c.name))
+        .where(
+            _companies.c.org_id == Subscription.org_id,
+            _companies.c.id == Subscription.company_id,
+        )
+        .scalar_subquery()
+    )
+
+
+def _type_sort_position() -> Any:
+    """Types are a tenant-defined vocabulary (#142), so they sort by *meaning*: the tenant's
+    declared ``position`` — the order the type pickers show — not alphabetically, which the
+    per-locale JSONB labels could not express server-side anyway (docs/UX.md)."""
+    return (
+        select(SubscriptionType.position)
+        .where(
+            SubscriptionType.org_id == Subscription.org_id,
+            SubscriptionType.id == Subscription.subscription_type_id,
+        )
+        .scalar_subquery()
+    )
+
+
+def _amount_sort(today: date) -> Any:
+    """Order by the *current* price — the newest ``valid_from <= today``, the same rule
+    ``_attach`` prints — so the column sorts by the number it shows, not the opening price."""
+    return (
+        select(SubscriptionPrice.amount)
+        .where(
+            SubscriptionPrice.org_id == Subscription.org_id,
+            SubscriptionPrice.subscription_id == Subscription.id,
+            SubscriptionPrice.valid_from <= today,
+        )
+        .order_by(SubscriptionPrice.valid_from.desc())
+        .limit(1)
+        .scalar_subquery()
+    )
+
+
+# ``amount`` is also sortable, but its expression needs the org-local "today" — ``list``
+# adds it per request rather than pinning a process-start date here.
 SORTABLE = {
     "name": func.lower(Subscription.name),
     "status": Subscription.status,
     "next_invoice_date": Subscription.next_invoice_date,
     "start_date": Subscription.start_date,
+    "company": _company_sort_name(),
+    "type": _type_sort_position(),
+    "included_hours": Subscription.included_hours,
 }
 
 #: Months per interval — the one place the calendar arithmetic lives.
@@ -178,7 +234,10 @@ class SubscriptionService:
                 )
             )
         stmt = self.repo.scoped_select().where(*conditions)
-        stmt = apply_sort(stmt, sort, SORTABLE, default=func.lower(Subscription.name))
+        sortable: dict[str, Any] = dict(SORTABLE)
+        if sort and sort.removeprefix("-") == "amount":
+            sortable["amount"] = _amount_sort(await self._org_today())
+        stmt = apply_sort(stmt, sort, sortable, default=func.lower(Subscription.name))
         items = list(
             (await self.ctx.session.execute(stmt.limit(limit).offset(offset))).scalars().all()
         )
@@ -280,7 +339,8 @@ class SubscriptionService:
             included_hours=data.included_hours,
             rollover=data.rollover.model_dump(),
             notice_period_days=data.notice_period_days,
-            notes=data.notes,
+            # Markdown source (issue #66/#228): raw HTML is stripped on write.
+            notes=sanitize_markdown(data.notes),
             custom=custom,
         )
         # The opening price: history starts at the subscription's own start.
@@ -310,6 +370,8 @@ class SubscriptionService:
                 values[field] = value.value if hasattr(value, "value") else value
         if "name" in values:
             values["name"] = values["name"].strip()
+        if "notes" in values:
+            values["notes"] = sanitize_markdown(values["notes"])
         if "company_id" in sent and data.company_id is not None:
             await self._ensure_company(data.company_id)
             values["company_id"] = data.company_id
@@ -388,19 +450,39 @@ class SubscriptionService:
     async def price_increase(
         self, data: PriceIncreaseRequest, *, apply: bool
     ) -> PriceIncreaseResult:
-        """Compute (and with ``apply`` write) a bulk price change (#30's history model).
+        """Compute (and with ``apply`` write) a price change (#30's history model).
 
-        Cancelled agreements are left alone; a subscription that has no price yet on
-        ``valid_from`` (it starts later) is skipped rather than given a base of nothing.
-        Writes are the manual edit's semantics per row: a row already on ``valid_from`` is
-        corrected in place, otherwise the history gains a row — and each written change lands
-        on the subscription's activity trail.
+        Cancelled agreements are left alone — also when targeted directly (#231): a targeted
+        bump of a dead agreement would write history nothing reads. A subscription that has
+        no price yet on ``valid_from`` (it starts later) is skipped rather than given a base
+        of nothing. Writes are the manual edit's semantics per row: a row already on
+        ``valid_from`` is corrected in place, otherwise the history gains a row — and each
+        written change lands on the subscription's activity trail.
         """
         self.ctx.require("subscriptions.subscription.write")
+        scopes = [
+            data.subscription_type_id, data.subscription_id, data.subscription_template_id,
+        ]
+        if sum(s is not None for s in scopes) > 1 or (
+            data.include_templates
+            and (data.subscription_id or data.subscription_template_id) is not None
+        ):
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=400,
+                fields={"scope": "errors.validation"},
+            )
+        if data.subscription_template_id is not None:
+            return await self._template_price_increase(data, apply=apply)
         conditions = [Subscription.status != SubscriptionStatus.CANCELLED.value]
         if data.subscription_type_id is not None:
             await self._ensure_type(data.subscription_type_id)
             conditions.append(Subscription.subscription_type_id == data.subscription_type_id)
+        if data.subscription_id is not None:
+            # Tenant-scoped existence check: a foreign id is a 404, never an empty preview.
+            await self.repo.get_or_404(data.subscription_id)
+            conditions.append(Subscription.id == data.subscription_id)
         subs = list(
             (
                 await self.ctx.session.execute(
@@ -522,6 +604,31 @@ class SubscriptionService:
                     await template_repo.update(template, amount=new)
 
         return PriceIncreaseResult(items=items, templates=templates)
+
+    async def _template_price_increase(
+        self, data: PriceIncreaseRequest, *, apply: bool
+    ) -> PriceIncreaseResult:
+        """The single-template scope (#231): a template edit in disguise, so it demands the
+        catalog grant on top of the route's — a subscription-writer must not reach template
+        defaults through this side door. A template without an ``amount`` has no base to bump
+        and previews empty, like a subscription that starts after the effective date."""
+        self.ctx.require("subscriptions.template.manage")
+        template_repo = self.ctx.repo(SubscriptionTemplate)
+        template = await template_repo.get_or_404(data.subscription_template_id)
+        templates: list[PriceIncreaseTemplateItem] = []
+        if template.amount is not None:
+            new = self._bumped(template.amount, data)
+            templates.append(
+                PriceIncreaseTemplateItem(
+                    template_id=template.id,
+                    name=template.name,
+                    current_amount=template.amount,
+                    new_amount=new,
+                )
+            )
+            if apply and new != template.amount:
+                await template_repo.update(template, amount=new)
+        return PriceIncreaseResult(items=[], templates=templates)
 
     # --- Omzet summary --------------------------------------------------------- #
     async def summary(self) -> dict[str, Any]:
@@ -934,6 +1041,9 @@ class SubscriptionTemplateService:
         a json-mode dump — ``json.dumps`` cannot serialize a raw Decimal line amount."""
         if values.get("name"):
             values["name"] = values["name"].strip()
+        if values.get("notes"):
+            # Markdown source (issue #66/#228): raw HTML is stripped on write.
+            values["notes"] = sanitize_markdown(values["notes"])
         if values.get("currency"):
             values["currency"] = values["currency"].upper()
         if values.get("interval") is not None:

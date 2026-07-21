@@ -31,6 +31,7 @@ from app.core.activity.service import snapshot
 from app.core.customfields import CustomFieldsService
 from app.core.events import emit
 from app.core.models import OrgSettings
+from app.core.richtext import sanitize_markdown
 from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_zoneinfo
@@ -784,7 +785,8 @@ class InvoiceService(_DocumentService):
             locale=doc_locale,
             reference=data.reference,
             intro=data.intro,
-            notes=data.notes,
+            # Markdown source (issue #66/#228): raw HTML is stripped on write.
+            notes=sanitize_markdown(data.notes),
             template_id=data.template_id or settings_row.default_template_id,
             issue_date=data.issue_date,
             due_date=data.due_date,
@@ -820,6 +822,8 @@ class InvoiceService(_DocumentService):
         ):
             if field in sent:
                 values[field] = sent[field]
+        if "notes" in values:
+            values["notes"] = sanitize_markdown(values["notes"])
         if "locale" in sent and data.locale is not None:
             values["locale"] = data.locale
         if "currency" in sent and data.currency is not None:
@@ -986,11 +990,13 @@ class InvoiceService(_DocumentService):
                 raise AppError(
                     "validation", "errors.invoicing.no_recipient", status_code=400
                 )
+            from app.core.email.branding import load_brand
             from app.core.email.senders import EmailAttachment
             from app.modules.invoicing import emails
 
+            brand = await load_brand(self.ctx.session, self.ctx.org)
             message = emails.compose_invoice_email(
-                invoice, self.ctx.org.name, data.message
+                invoice, brand.brand_name, data.message
             )
             message.to = to
             # The mail carries the document (owner feedback): a text summary is not an
@@ -1000,7 +1006,7 @@ class InvoiceService(_DocumentService):
             message.attachments.append(
                 EmailAttachment(filename=filename, content=content, mimetype="application/pdf")
             )
-            await emails.deliver(self.ctx, message)
+            await emails.deliver(self.ctx, message, brand=brand)
         invoice = await self.repo.update(invoice, sent_at=datetime.now(UTC))
         await ActivityService(self.ctx).record(
             self.entity_type, invoice.id, "sent",
@@ -1020,11 +1026,13 @@ class InvoiceService(_DocumentService):
             raise AppError("validation", "errors.invoicing.no_recipient", status_code=400)
         today = await org_today(self.ctx)
         days = (today - invoice.due_date).days if invoice.due_date else 0
+        from app.core.email.branding import load_brand
         from app.modules.invoicing import emails
 
-        message = emails.compose_reminder_email(invoice, self.ctx.org.name, max(days, 0))
+        brand = await load_brand(self.ctx.session, self.ctx.org)
+        message = emails.compose_reminder_email(invoice, brand.brand_name, max(days, 0))
         message.to = to
-        await emails.deliver(self.ctx, message)
+        await emails.deliver(self.ctx, message, brand=brand)
         invoice = await self.repo.update(
             invoice,
             reminder_count=invoice.reminder_count + 1,
@@ -1117,6 +1125,8 @@ class InvoiceService(_DocumentService):
         await _company_row(self.ctx, company_id)
         rows = await self._unbilled_rows(company_id, project_id=project_id, until=until)
         settings_row = await self.settings.row()
+        # Per-entry rate = the logger's effective rate (#226); the invoicing default is the
+        # last resort for orgs that haven't configured employee rates yet.
         default_rate = settings_row.default_hourly_rate or Decimal(0)
         return {
             "entries": [
@@ -1129,8 +1139,8 @@ class InvoiceService(_DocumentService):
                     "project_name": row["project_name"] or "",
                     "user_name": row["user_name"] or "",
                     "rate": (
-                        Decimal(row["project_rate"])
-                        if row["project_rate"] is not None
+                        Decimal(row["employee_rate"])
+                        if row["employee_rate"] is not None
                         else default_rate
                     ),
                 }
@@ -1149,6 +1159,8 @@ class InvoiceService(_DocumentService):
     ) -> list[Any]:
         # Bare-table reads over published columns (§6): the time module's "to invoice" set is
         # approved AND billable AND not invoiced (time/models.py), joined for display names.
+        # ``employee_rate`` is the logger's effective rate (#226: personal → leave org
+        # default) — the rate the client is billed at; there is no project rate.
         clauses = """
             te.org_id = :oid AND te.company_id = :cid AND te.ended_at IS NOT NULL
             AND te.billable AND te.approved_at IS NOT NULL AND te.invoiced_at IS NULL
@@ -1167,10 +1179,14 @@ class InvoiceService(_DocumentService):
         stmt = text(
             f"""
             SELECT te.id, te.started_at, te.minutes, te.description, te.project_id,
-                   p.name AS project_name, p.hourly_rate AS project_rate,
+                   p.name AS project_name,
+                   COALESCE(lp.hourly_rate, ls.default_hourly_rate) AS employee_rate,
                    u.full_name AS user_name
             FROM time_entries te
             LEFT JOIN projects p ON p.id = te.project_id AND p.org_id = te.org_id
+            LEFT JOIN leave_profiles lp
+                   ON lp.org_id = te.org_id AND lp.user_id = te.user_id
+            LEFT JOIN leave_settings ls ON ls.org_id = te.org_id
             LEFT JOIN users u ON u.id = te.user_id
             WHERE {clauses}
             ORDER BY te.started_at
@@ -1196,22 +1212,27 @@ class InvoiceService(_DocumentService):
         ) or Decimal(0)
 
         def rate_for(row: Any) -> Decimal:
+            # Manual per-build override → the logger's effective rate (#226) → the org's
+            # invoicing default, the last resort when no employee rate is configured.
             if data.hourly_rate is not None:
                 return data.hourly_rate
-            if row["project_rate"] is not None:
-                return Decimal(row["project_rate"])
+            if row["employee_rate"] is not None:
+                return Decimal(row["employee_rate"])
             return Decimal(fallback_rate)
 
         def hours(minutes: int) -> Decimal:
             return (Decimal(minutes) / Decimal(60)).quantize(Decimal("0.01"))
 
+        # Grouped lines key on the rate as well: two people on one project may bill at two
+        # rates (#226), and a group priced at its first entry's rate would misbill the rest.
         lines: list[LineWrite] = []
         if data.group_by == "project":
             groups: dict[Any, dict[str, Any]] = {}
             for row in rows:
+                rate = rate_for(row)
                 bucket = groups.setdefault(
-                    row["project_id"],
-                    {"name": row["project_name"], "minutes": 0, "rate": rate_for(row)},
+                    (row["project_id"], rate),
+                    {"name": row["project_name"], "minutes": 0, "rate": rate},
                 )
                 bucket["minutes"] += row["minutes"]
             for bucket in groups.values():
@@ -1224,14 +1245,15 @@ class InvoiceService(_DocumentService):
                     )
                 )
         elif data.group_by == "day":
-            by_day: dict[tuple[Any, Any], dict[str, Any]] = {}
+            by_day: dict[tuple[Any, Any, Any], dict[str, Any]] = {}
             for row in rows:
                 day = row["started_at"].date()
+                rate = rate_for(row)
                 bucket = by_day.setdefault(
-                    (day, row["project_id"]),
+                    (day, row["project_id"], rate),
                     {
                         "day": day, "name": row["project_name"], "minutes": 0,
-                        "rate": rate_for(row),
+                        "rate": rate,
                     },
                 )
                 bucket["minutes"] += row["minutes"]
@@ -1515,7 +1537,8 @@ class QuoteService(_DocumentService):
             locale=doc_locale,
             reference=data.reference,
             intro=data.intro,
-            notes=data.notes,
+            # Markdown source (issue #66/#228): raw HTML is stripped on write.
+            notes=sanitize_markdown(data.notes),
             template_id=data.template_id or settings_row.default_template_id,
             issue_date=data.issue_date,
             valid_until=data.valid_until,
@@ -1544,6 +1567,8 @@ class QuoteService(_DocumentService):
                       "exchange_rate"):
             if field in sent:
                 values[field] = sent[field]
+        if "notes" in values:
+            values["notes"] = sanitize_markdown(values["notes"])
         if "locale" in sent and data.locale is not None:
             values["locale"] = data.locale
         if "currency" in sent and data.currency is not None:
@@ -1653,17 +1678,19 @@ class QuoteService(_DocumentService):
                 raise AppError(
                     "validation", "errors.invoicing.no_recipient", status_code=400
                 )
+            from app.core.email.branding import load_brand
             from app.core.email.senders import EmailAttachment
             from app.modules.invoicing import emails
 
-            message = emails.compose_quote_email(quote, self.ctx.org.name, data.message)
+            brand = await load_brand(self.ctx.session, self.ctx.org)
+            message = emails.compose_quote_email(quote, brand.brand_name, data.message)
             message.to = to
             await self._attach([quote])
             content, filename = await self.document_pdf(quote, "quote")
             message.attachments.append(
                 EmailAttachment(filename=filename, content=content, mimetype="application/pdf")
             )
-            await emails.deliver(self.ctx, message)
+            await emails.deliver(self.ctx, message, brand=brand)
         quote = await self.repo.update(quote, sent_at=datetime.now(UTC))
         await ActivityService(self.ctx).record(
             self.entity_type, quote.id, "sent",

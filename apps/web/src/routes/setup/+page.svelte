@@ -3,6 +3,7 @@
   import { localeLabel, t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
   import { moduleLabel } from "$lib/core/registry";
+  import PasswordInput from "$lib/core/ui/PasswordInput.svelte";
 
   let { data, form } = $props();
 
@@ -180,14 +181,12 @@
         </div>
         <div>
           <label for="owner_password" class={labelClass}>{t("auth.password")}</label>
-          <input
+          <PasswordInput
             id="owner_password"
             name="owner_password"
-            type="password"
             required
-            minlength="8"
+            minlength={8}
             autocomplete="new-password"
-            class={inputClass}
           />
           <p class="mt-1 text-xs text-text-muted">{t("setup.password_hint")}</p>
         </div>

@@ -9,6 +9,7 @@
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import TasksNav from "$lib/modules/tasks/TasksNav.svelte";
 
   let { data, form } = $props();
@@ -24,6 +25,9 @@
   const priorities = ["low", "normal", "high"] as const;
 
   interface ItemDraft {
+    /** Identity for the keyed {#each}: the description editor is stateful, so removing or
+     *  reordering a row must move the component with its draft, never reuse it by index. */
+    key: number;
     title: string;
     description: string;
     priority: string;
@@ -60,8 +64,11 @@
   let deleteId = $state("");
   let confirmDelete = $state(false);
 
+  let draftKey = 0;
+
   function blankItem(): ItemDraft {
     return {
+      key: draftKey++,
       title: "",
       description: "",
       priority: "normal",
@@ -84,6 +91,7 @@
     editing = template;
     trigger = template.trigger;
     items = (template.items ?? []).map((item) => ({
+      key: draftKey++,
       title: item.title,
       description: item.description ?? "",
       priority: item.priority ?? "normal",
@@ -218,7 +226,7 @@
       {t("tasks.templates.items")}
     </h3>
     <div class="space-y-3">
-      {#each items as item, i (i)}
+      {#each items as item, i (item.key)}
         <div class="rounded-lg border border-border p-3">
           <div class="grid gap-2 sm:grid-cols-[1fr_auto_auto_auto_auto]">
             <input
@@ -280,11 +288,15 @@
             </div>
           </div>
           <div class="mt-2 grid gap-2 sm:grid-cols-2">
-            <textarea
+            <!-- The template's own editor matches the checklist item it becomes (#228): the
+                 applied task already renders this description as markdown. -->
+            <RichTextEditor
+              name={null}
+              rows={2}
+              value={item.description}
               placeholder={t("tasks.field.description")}
-              bind:value={item.description}
-              rows="1"
-              class={inputClass}></textarea>
+              onchange={(v) => (item.description = v)}
+            />
             <select
               bind:value={item.assignee_user_id}
               class={inputClass}

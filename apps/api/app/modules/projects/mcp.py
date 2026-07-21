@@ -104,20 +104,21 @@ async def _budget_status(ctx: RequestContext, args: dict[str, Any]) -> ToolResul
             else None
         ),
     }
-    # Money is gated exactly like the rest of the platform's budget money: the time module's
-    # revenue reports require ``time.report.read``, and the web hides monetary budget figures
-    # behind the same key. Hours above stay free; these fields exist only for report readers.
-    if ctx.can("time.report.read"):
-        rate = float(project.hourly_rate) if project.hourly_rate is not None else None
+    # Money is priced at the rate of the employee who logged each hour (#226), so it is gated
+    # like the rest of the employee-rate money: the manager report grant plus the any-scope
+    # rate read — the same pair ``/time/cost`` requires. Hours above stay free.
+    if ctx.can("time.report.read") and ctx.can("leave.rate.read", scope="any"):
+        from app.modules.time.service import TimeService
+
+        cost = await TimeService(ctx).project_cost(project.id)
         data["currency"] = project.currency
         data["budget_amount"] = (
             float(project.budget_amount) if project.budget_amount is not None else None
         )
-        data["hourly_rate"] = rate
-        # Same formula as the time module's revenue report: billable hours × the project rate.
-        data["billable_amount"] = (
-            round(hours.billable_hours * rate, 2) if rate is not None else None
-        )
+        # Billable hours priced per logger — the same figure the project page shows.
+        data["billable_amount"] = cost["billable_amount"]
+        data["cost"] = cost["cost"]
+        data["unrated_minutes"] = cost["unrated_minutes"]
     return ToolResult(data=data, sources=(_source(project),))
 
 

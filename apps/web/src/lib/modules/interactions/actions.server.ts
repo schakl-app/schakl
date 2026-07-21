@@ -50,7 +50,8 @@ export const interactionActions = {
       form.get("log_time") === "1" && date && logStart && logEnd
         ? { started_at: `${date}T${logStart}:00Z`, ended_at: `${date}T${logEnd}:00Z` }
         : undefined;
-    const { error } = await apiFor(event).POST("/api/v1/interactions", {
+    const api = apiFor(event);
+    const { data, error } = await api.POST("/api/v1/interactions", {
       body: {
         kind: String(form.get("kind") ?? "note"),
         occurred_at: occurred,
@@ -61,7 +62,20 @@ export const interactionActions = {
         ...links(form),
       },
     });
-    if (error) return fail(400, { error: apiErrorKey(error).key });
+    if (error || !data) return fail(400, { error: apiErrorKey(error).key });
+    // "Close task with this" ticked in the create form (#232, mirroring the approve flow):
+    // the create stands on its own — a close failure reports, it never rolls the create back.
+    const task_id = String(form.get("task_id") ?? "").trim();
+    const close_status = String(form.get("close_status") ?? "").trim();
+    if (form.get("close_task") === "1" && task_id && close_status) {
+      const { error: closeError } = await api.PATCH("/api/v1/tasks/{task_id}", {
+        params: { path: { task_id } },
+        body: { status: close_status, closing_interaction_id: data.id },
+      });
+      if (closeError) {
+        return fail(400, { error: apiErrorKey(closeError).key, createdButCloseFailed: true });
+      }
+    }
     return { ok: true };
   },
 

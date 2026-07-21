@@ -20,6 +20,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.activity import ActivityService
+from app.core.email.branding import apply_branding, load_brand
 from app.core.email.senders import send_email
 from app.core.events import SystemContext
 from app.core.jobs import run_per_org
@@ -97,7 +98,7 @@ async def _remind_org(org: Org, session: AsyncSession) -> None:
         return
 
     transport = await load_transport(session, org.id)
-    brand = org.name
+    brand = await load_brand(session, org)
     for invoice in due:
         if invoice.reminder_count >= len(schedule):
             continue  # the schedule is exhausted — escalation is a human's call now
@@ -125,7 +126,9 @@ async def _remind_org(org: Org, session: AsyncSession) -> None:
                 )
             continue
         provider, config, sender = transport
-        message = compose_reminder_email(invoice, brand, days_past)
+        message = apply_branding(
+            brand, compose_reminder_email(invoice, brand.brand_name, days_past)
+        )
         message.to = to
         ok, error = await send_email(provider, config, sender, message)
         if not ok:

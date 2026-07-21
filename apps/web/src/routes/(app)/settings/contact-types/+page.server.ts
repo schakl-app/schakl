@@ -3,6 +3,7 @@ import { fail, redirect } from "@sveltejs/kit";
 import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
+import { createErrorKey, slugify } from "$lib/core/slug";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -23,7 +24,7 @@ export const actions: Actions = {
       en: String(form.get("label_en") ?? "").trim(),
     };
     const position = Number(form.get("position") ?? 0) || 0;
-    if (!label_i18n.nl || !label_i18n.en) return fail(400, { error: "errors.required" });
+    if (!label_i18n.nl && !label_i18n.en) return fail(400, { error: "errors.required" });
 
     if (type_id) {
       const { error } = await apiFor(event).PATCH("/api/v1/contacts/types/{type_id}", {
@@ -32,12 +33,13 @@ export const actions: Actions = {
       });
       if (error) return fail(400, { error: apiErrorKey(error).key });
     } else {
-      const key = String(form.get("key") ?? "").trim();
-      if (!key) return fail(400, { error: "errors.required" });
-      const { error } = await apiFor(event).POST("/api/v1/contacts/types", {
+      // The tenant only types the label; the immutable key is derived from it (#234).
+      const key = slugify(label_i18n.nl || label_i18n.en);
+      if (!key) return fail(400, { error: "errors.label_no_key" });
+      const { error, response } = await apiFor(event).POST("/api/v1/contacts/types", {
         body: { key, label_i18n, position, active: true },
       });
-      if (error) return fail(400, { error: apiErrorKey(error).key });
+      if (error) return fail(400, { error: createErrorKey(error, response) });
     }
     return { saved: true };
   },

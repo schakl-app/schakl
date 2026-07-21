@@ -166,7 +166,9 @@ Per-org settings drive branding at runtime — no rebuild:
 `org_settings(org_id, brand_name, logo_url, favicon_url, primary_color, accent_color,
 default_locale, enabled_modules[])`.
 The web app loads the tenant theme on first render and applies it via CSS custom properties.
-Emails and generated PDFs use the same tenant branding. Tenant resolution: **verified**
+Emails and generated PDFs use the same tenant branding — every outgoing mail is wrapped in
+the tenant's branded HTML chrome at the send seam (`docs/EMAIL.md` holds the architecture
+and the HTML e-mail template rules). Tenant resolution: **verified**
 `orgs.custom_domain` or `<slug>.SCHAKL_BASE_DOMAIN` → org. The custom domain lives on
 `orgs`, not `org_settings`: resolution runs *before* RLS is bound, so it may only read
 tables without RLS — and a claimed domain routes traffic only after DNS TXT verification.

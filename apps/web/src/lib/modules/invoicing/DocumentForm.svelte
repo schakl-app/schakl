@@ -10,6 +10,7 @@
   import { LOCALES, t } from "$lib/core/i18n";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
+  import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
 
   import LinesEditor from "./LinesEditor.svelte";
@@ -410,7 +411,13 @@
     <label for="doc-notes" class="mb-1 block text-sm font-medium text-text"
       >{t("invoicing.field.notes")}</label
     >
-    <textarea id="doc-notes" name="notes" rows="2" class={inputClass}>{doc?.notes ?? ""}</textarea>
+    <RichTextEditor
+      id="doc-notes"
+      name="notes"
+      rows={2}
+      value={doc?.notes ?? ""}
+      scope={{ companyId: (createdCompanyId || companyId || doc?.company_id) ?? null }}
+    />
   </div>
 
   {#if form?.error}

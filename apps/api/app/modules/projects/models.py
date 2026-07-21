@@ -5,8 +5,10 @@ nullable ``company_id``. Tasks belong to a project (``tasks.project_id``); time 
 in Gate ③ so logged-vs-budget can be reported. Customizable (per-tenant custom fields, §13).
 
 Budgets are planning figures, not ledger entries — stored as ``Numeric``, exposed as floats:
-``budget_hours`` (capacity), ``budget_amount`` + ``hourly_rate`` (money), all optional.
-``billable_default`` seeds the billable flag on new time entries; ``color`` tints the calendar.
+``budget_hours`` (capacity) and ``budget_amount`` (money), both optional. Money is never priced
+off the project: every calculation uses the rate of the employee who logged the time (#226), so
+there is no project rate here. ``billable_default`` seeds the billable flag on new time entries;
+``color`` tints the calendar.
 """
 
 from __future__ import annotations
@@ -86,7 +88,9 @@ class Project(
     billable_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     budget_hours: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     budget_amount: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
-    hourly_rate: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    # ``hourly_rate`` is deliberately unmapped: money is priced per employee (#226). The column
+    # itself still exists — contract half of the expand/contract drop lands next release
+    # (docs/WORKFLOW.md), so the previous image can still run against this schema.
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="EUR")
     color: Mapped[str | None] = mapped_column(String(20), nullable=True)
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True)

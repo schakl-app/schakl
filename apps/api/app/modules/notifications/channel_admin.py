@@ -189,9 +189,17 @@ class ChannelService:
         does synchronous network I/O, because it is an explicit admin action, not the hot path."""
         self.ctx.require("notifications.channels.manage")
         channel = await self.channels.get_or_404(channel_id)
-        brand = getattr(self.ctx.org, "name", None) or "schakl"
+        from app.core.email.branding import load_brand
+        from app.i18n import resolve_locale, translate
+
+        brand = await load_brand(self.ctx.session, self.ctx.org)
+        locale = resolve_locale(getattr(self.ctx.user, "locale", None))
         message = RenderedMessage(
-            title=f"{brand}: test", body="This is a test notification from schakl."
+            title=f"{brand.brand_name}: "
+            + translate("settings.notifications.test_subject", locale),
+            body=translate(
+                "settings.notifications.test_body", locale, brand=brand.brand_name
+            ),
         )
         try:
             if channel.kind == "email":
@@ -204,6 +212,7 @@ class ChannelService:
                     OutgoingEmail(
                         to=decrypt(channel.url_enc), subject=message.title, text=message.body
                     ),
+                    brand=brand,
                 )
             else:
                 ok, error = await send_via_apprise(decrypt(channel.url_enc), message)

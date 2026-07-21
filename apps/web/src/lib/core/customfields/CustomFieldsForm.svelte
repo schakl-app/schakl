@@ -8,6 +8,7 @@
    * through `onchange`.
    */
   import { t } from "$lib/core/i18n";
+  import type { CandidateScope } from "$lib/core/richtext/candidates";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import type { CustomFieldDefinition } from "./types";
   import { fieldLabel, optionLabel } from "./types";
@@ -17,6 +18,7 @@
     values = {},
     locale,
     name = "custom",
+    scope,
     onchange,
   }: {
     definitions: CustomFieldDefinition[];
@@ -24,6 +26,8 @@
     locale: string;
     /** Name of the hidden input; `null` renders none, for use outside a form (report via `onchange`). */
     name?: string | null;
+    /** Host context for the long-text editors' @/# candidates (#237). */
+    scope?: CandidateScope;
     onchange?: (values: Record<string, unknown>) => void;
   } = $props();
 
@@ -79,6 +83,7 @@
             name={null}
             rows={3}
             value={String(fieldValues[def.key] ?? "")}
+            {scope}
             onchange={(v) => setValue(def.key, v)}
           />
         {:else if def.data_type === "boolean"}

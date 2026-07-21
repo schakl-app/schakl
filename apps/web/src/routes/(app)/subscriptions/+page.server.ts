@@ -4,10 +4,12 @@ import { apiErrorKey, lookupItems } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
+import { createErrorKey, slugify } from "$lib/core/slug";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { SUBSCRIPTION_COLUMNS, SUBSCRIPTIONS_TABLE_ID } from "$lib/modules/subscriptions/columns";
 import { manageActions, parseLabelI18n } from "$lib/modules/subscriptions/manage.server";
+import { priceIncreaseActions } from "$lib/modules/subscriptions/priceincrease.server";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -36,31 +38,13 @@ function parseLinks(
   }
 }
 
-const PRICE_MODES = ["percent", "amount", "set"] as const;
-
-/** The bulk price-increase fields, shared by preview and apply. `null` = invalid. */
-function priceIncreaseBody(form: FormData) {
-  const mode = String(form.get("mode") ?? "");
-  const value = String(form.get("value") ?? "").trim();
-  const valid_from = String(form.get("valid_from") ?? "").trim();
-  if (!PRICE_MODES.includes(mode as (typeof PRICE_MODES)[number])) return null;
-  if (!value || Number.isNaN(Number(value)) || !valid_from) return null;
-  return {
-    mode: mode as (typeof PRICE_MODES)[number],
-    value,
-    valid_from,
-    subscription_type_id: String(form.get("subscription_type_id") ?? "").trim() || null,
-    include_templates: form.get("include_templates") !== null,
-  };
-}
-
 /** The recurring-agreement fields both actions share (#30). */
 function subscriptionBody(form: FormData) {
   const amount = String(form.get("amount") ?? "").trim();
   return {
     name: String(form.get("name") ?? "").trim(),
     subscription_type_id: String(form.get("subscription_type_id") ?? "").trim() || null,
-    status: String(form.get("status") ?? "draft") as "draft",
+    status: String(form.get("status") ?? "active") as "active",
     interval: String(form.get("interval") ?? "monthly") as "monthly",
     start_date: String(form.get("start_date") ?? "").trim(),
     end_date: String(form.get("end_date") ?? "").trim() || null,
@@ -97,7 +81,6 @@ export const load: PageServerLoad = async (event) => {
     projects,
     definitions,
     companyDefinitions,
-    taskTemplates,
   ] = await Promise.all([
     api.GET("/api/v1/subscriptions", {
       params: {
@@ -112,7 +95,7 @@ export const load: PageServerLoad = async (event) => {
       },
     }),
     api.GET("/api/v1/subscriptions/summary"),
-    // Managers also see the beheer sections below the list, which show inactive types too.
+    // Managers get inactive types too, so a row referencing one still shows its label.
     api.GET("/api/v1/subscriptions/types", {
       params: { query: { include_inactive: canManageTypes || canManageTemplates } },
     }),
@@ -126,10 +109,6 @@ export const load: PageServerLoad = async (event) => {
     api.GET("/api/v1/custom-fields/definitions", {
       params: { query: { entity_type: "company" } },
     }),
-    // The type modal's spawn-on-activation picker — only fetched for who can open it.
-    canManageTypes
-      ? api.GET("/api/v1/tasks/templates")
-      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
   ]);
 
   return {
@@ -138,7 +117,6 @@ export const load: PageServerLoad = async (event) => {
     summary: summary.data ?? null,
     types: types.data ?? [],
     templates: templates.data ?? [],
-    taskTemplates: (taskTemplates.data ?? []).map((tpl) => ({ id: tpl.id, name: tpl.name })),
     typeFilter: typeFilter ?? "",
     companyFilter: companyFilter ?? "",
     statusFilter: statusFilter ?? "",
@@ -243,7 +221,6 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const name = String(form.get("name") ?? "").trim();
     if (!name) return fail(400, { qcError: "errors.required" });
-    const rate = Number(String(form.get("hourly_rate") ?? "").trim());
     const { data, error } = await apiFor(event).POST("/api/v1/projects", {
       body: {
         name,
@@ -252,7 +229,6 @@ export const actions: Actions = {
         budget_period: "total",
         currency: event.locals.theme.currency,
         billable_default: true,
-        hourly_rate: Number.isFinite(rate) && rate > 0 ? rate : null,
         custom: {},
       },
     });
@@ -276,43 +252,24 @@ export const actions: Actions = {
    *  a missing locale falls back at render time. */
   createType: async (event) => {
     const form = await event.request.formData();
-    const key = String(form.get("key") ?? "").trim();
     const label_i18n = parseLabelI18n(form);
-    if (!key || Object.keys(label_i18n).length === 0) {
+    if (Object.keys(label_i18n).length === 0) {
       return fail(400, { qcError: "errors.required" });
     }
-    const { data, error } = await apiFor(event).POST("/api/v1/subscriptions/types", {
+    // The tenant only types the label; the immutable key is derived from it (#234).
+    const key = slugify(label_i18n.nl || label_i18n.en || "");
+    if (!key) return fail(400, { qcError: "errors.label_no_key" });
+    const { data, error, response } = await apiFor(event).POST("/api/v1/subscriptions/types", {
       body: { key, label_i18n, position: 0, active: true, task_template_ids: [] },
     });
-    if (error || !data) return fail(400, { qcError: apiErrorKey(error).key });
+    if (error || !data) return fail(400, { qcError: createErrorKey(error, response) });
     const name = label_i18n.nl || label_i18n.en || key;
     return { inlineCreated: { slot: "subscription_type", id: data.id, name } };
   },
 
-  /** Bulk price increase: preview shows every in-scope agreement with its would-be amount;
-   *  apply appends the dated price rows (and optionally bumps template defaults). */
-  previewPriceIncrease: async (event) => {
-    const form = await event.request.formData();
-    const body = priceIncreaseBody(form);
-    if (!body) return fail(400, { priceError: "errors.required" });
-    const { data, error } = await apiFor(event).POST(
-      "/api/v1/subscriptions/price-increase/preview",
-      { body: body as never },
-    );
-    if (error || !data) return fail(400, { priceError: apiErrorKey(error).key });
-    return { pricePreview: data };
-  },
-
-  applyPriceIncrease: async (event) => {
-    const form = await event.request.formData();
-    const body = priceIncreaseBody(form);
-    if (!body) return fail(400, { priceError: "errors.required" });
-    const { data, error } = await apiFor(event).POST("/api/v1/subscriptions/price-increase", {
-      body: body as never,
-    });
-    if (error || !data) return fail(400, { priceError: apiErrorKey(error).key });
-    return { priceApplied: data.items.length };
-  },
+  // Price increase (#231): preview + apply over an all / type / subscription / template
+  // scope, shared with the standard-subscriptions tab (priceincrease.server.ts).
+  ...priceIncreaseActions,
 
   createCompany: createCompanyAction,
 

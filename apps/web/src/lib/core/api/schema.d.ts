@@ -10879,13 +10879,19 @@ export interface components {
         };
         /**
          * PriceIncreaseRequest
-         * @description A bulk price change over the running subscriptions (and optionally the templates).
+         * @description A price change over the running subscriptions (and optionally the templates).
          *
          *     ``mode``: ``percent`` multiplies, ``amount`` adds a fixed sum, ``set`` overwrites. The
          *     base is the price in effect on ``valid_from`` — so a change effective 1 January builds on
          *     what the customer pays *then*, not on today's row. Preview and apply share this shape;
          *     apply appends one history row per subscription (same-day rows are corrected in place,
          *     like a manual edit).
+         *
+         *     Scope is exactly one of: everything (the default), one type, one subscription, or one
+         *     template (#231). The single-row scopes are the row shortcut's contract and stay strictly
+         *     separate — combining them with each other, with the type filter, or with
+         *     ``include_templates`` is a validation error, so a targeted bump can never silently drag
+         *     a template default (or the whole book) along.
          */
         PriceIncreaseRequest: {
             /**
@@ -10898,6 +10904,10 @@ export interface components {
              * @enum {string}
              */
             mode: "percent" | "amount" | "set";
+            /** Subscription Id */
+            subscription_id?: string | null;
+            /** Subscription Template Id */
+            subscription_template_id?: string | null;
             /** Subscription Type Id */
             subscription_type_id?: string | null;
             /**
@@ -11070,12 +11080,15 @@ export interface components {
         };
         /**
          * ProjectCost
-         * @description What a project's logged time *costs* (#111): Σ minutes × the employee's effective rate
-         *     (#113: personal rate → org default). Distinct from revenue, which bills at the project
-         *     rate. ``unrated_minutes`` counts time by people with no rate at all — reported rather than
+         * @description A project's logged time in money (#111): Σ minutes × the employee's effective rate
+         *     (#113: personal rate → org default). Since #226 that same rate prices billing too, so
+         *     ``billable_amount`` (the billable subset — what those hours bill the client) rides along.
+         *     ``unrated_minutes`` counts time by people with no rate at all — reported rather than
          *     silently priced at zero.
          */
         ProjectCost: {
+            /** Billable Amount */
+            billable_amount: number;
             /** Cost */
             cost: number;
             /**
@@ -11121,8 +11134,6 @@ export interface components {
             description?: string | null;
             /** End Date */
             end_date?: string | null;
-            /** Hourly Rate */
-            hourly_rate?: number | null;
             /** Name */
             name: string;
             /** Responsible User Id */
@@ -11194,8 +11205,6 @@ export interface components {
             description?: string | null;
             /** End Date */
             end_date?: string | null;
-            /** Hourly Rate */
-            hourly_rate?: number | null;
             hours?: components["schemas"]["BudgetHours"] | null;
             /**
              * Id
@@ -11252,8 +11261,6 @@ export interface components {
             description?: string | null;
             /** End Date */
             end_date?: string | null;
-            /** Hourly Rate */
-            hourly_rate?: number | null;
             /** Name */
             name?: string | null;
             /** Responsible User Id */
@@ -11687,8 +11694,8 @@ export interface components {
         };
         /**
          * RevenueStats
-         * @description Omzet = billable minutes × the project's hourly rate (entries without a rated
-         *     project contribute nothing — noted in the UI).
+         * @description Omzet = billable minutes × the logging employee's effective rate (#226: personal
+         *     rate → org default; entries whose logger has no rate contribute nothing).
          */
         RevenueStats: {
             /** Months Current */
@@ -12505,7 +12512,7 @@ export interface components {
              * Format: date
              */
             start_date: string;
-            /** @default draft */
+            /** @default active */
             status: components["schemas"]["SubscriptionStatus"];
             /** Subscription Type Id */
             subscription_type_id?: string | null;
@@ -20018,6 +20025,12 @@ export interface operations {
                 include?: string | null;
                 /** @description Free text over subject/snippet/body */
                 q?: string | null;
+                /** @description Occurred on/after this org-local day */
+                date_from?: string | null;
+                /** @description Occurred on/before this org-local day */
+                date_to?: string | null;
+                /** @description occurred_at | subject | kind | contact | owner, '-' desc */
+                sort?: string | null;
                 limit?: number;
                 offset?: number;
             };
@@ -25518,7 +25531,7 @@ export interface operations {
                 company_id?: string | null;
                 status?: string | null;
                 subscription_type_id?: string | null;
-                /** @description name | status | next_invoice_date | start_date */
+                /** @description name | status | next_invoice_date | start_date | company | type | amount | included_hours */
                 sort?: string | null;
                 /** @description with entity_id: linked-entity filter */
                 entity_type?: string | null;

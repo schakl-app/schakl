@@ -20,6 +20,7 @@ from typing import Any
 
 from fpdf import FPDF
 
+from app.core.richtext import markdown_to_plaintext
 from app.i18n import translate
 
 _FONT_DIRS = (
@@ -303,7 +304,8 @@ def render_document_pdf(
         pdf.ln(3)
         pdf.font(9)
         pdf.set_text_color(*_DARK)
-        pdf.multi_cell(content_w, 4.8, pdf.txt(doc.notes))
+        # Notes are markdown source (#228); fpdf renders text, so flatten — words, not syntax.
+        pdf.multi_cell(content_w, 4.8, pdf.txt(markdown_to_plaintext(doc.notes)))
 
     payment_text = (config.get("payment_i18n") or {}).get(locale, "")
     fallback_ok = (

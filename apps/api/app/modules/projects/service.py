@@ -24,6 +24,7 @@ from app.core.auth.models import User
 from app.core.customfields import CustomFieldsService
 from app.core.events import emit
 from app.core.parent import ensure_parent_in_tenant
+from app.core.richtext import sanitize_markdown
 from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
 from app.errors import AppError
@@ -43,7 +44,6 @@ _AUDITED_FIELDS = (
     "responsible_user_id",
     "budget_hours",
     "budget_amount",
-    "hourly_rate",
     "budget_period",
     "start_date",
     "end_date",
@@ -281,6 +281,8 @@ class ProjectService:
     async def create(self, data: ProjectCreate) -> Project:
         self.ctx.require("projects.project.write")
         values = data.model_dump()
+        # The description is markdown source (issue #66/#255): strip raw HTML on write.
+        values["description"] = sanitize_markdown(values.get("description"))
         values.pop("assignees", None)
         await ensure_parent_in_tenant(
             self.ctx.session, "companies", values.get("company_id"), self.ctx.org.id
@@ -347,6 +349,8 @@ class ProjectService:
         previous_status = project.status
         before_fields = snapshot(project, _AUDITED_FIELDS)
         values = data.model_dump(exclude_unset=True)
+        if "description" in values:
+            values["description"] = sanitize_markdown(values.get("description"))
         # While an active subscription sources the hours (#225), the project's own
         # ``budget_hours`` is not writable — the API guards it, not just the form, so an MCP
         # or script client can't create the drift the UI prevents. Echoing the stored value

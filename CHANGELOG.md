@@ -2,21 +2,38 @@
 
 ## Unreleased
 
-## v0.17.0 — 2026-07-20
+## v0.17.0 — 2026-07-21
 
 ### Added
 
+- **The shared text editor is now WYSIWYG.** Headings render styled instead of showing `###`, links show as blue label text, Enter continues a bullet or numbered list (an empty item exits it), and typing `### `, `- `, `1. ` or `**bold**` converts as you type. The Write/Preview toggle is gone because the editor is the preview. Clicking a link opens an inline popover to edit, open or remove it, and typing after a link is plain text again instead of silently extending the link. The stored value never stops being markdown, so the API sanitizer, the renderer, PDF/UBL flattening and the activity log are untouched; the editor loads lazily after hydration, and without JavaScript the plain textarea renders exactly as before.
+- **Every long-form notes field uses the editor.** Company notes, contact notes (which previously had no edit surface at all), invoice and quote notes, subscription notes, the project description and the template variants all get the shared editor, which grows heading, bullet-list and numbered-list toolbar buttons and an inline link popover in place of the browser prompt. The fields render as markdown on their detail views, and the two consumers that print words rather than markup — the invoice PDF and the UBL note — flatten to plain text so customer documents never show literal asterisks.
+- **@ mentions and # task references work in every rich-text editor.** The editor fetches its own candidates on first focus (org members, host-scoped contacts and tasks), so every surface gets both triggers without per-page wiring. The # dropdown now also names each task's status, assignee and due date, so two same-titled tasks are distinguishable.
+- **Every outgoing e-mail leaves as branded HTML.** Password-reset, invite, notification, invoicing and test mails are wrapped in the tenant's branding — logo, brand name, primary color — at the one send seam. Notification e-mails render the same sentences as the in-app feed, with deep links, instead of raw event codes; invoice, quote and reminder mails use the tenant's brand name rather than the internal org name; and a failed brand resolve sends the mail unstyled rather than not at all.
+- **The interactions list is navigable.** Sortable columns (date, subject, type, contact, owner), a week switcher, a twelve-month filter and a free date range that all drive the same URL parameters, with date bounds interpreted as org-local calendar days. The contact and company chips read at full strength again — who before when.
+- **Close a task while logging a contact moment.** Picking a task in the create form reveals the "close the task with this" checkbox; saving records the moment and moves the task to a finished status, and a failed close never takes the saved moment down with it — the form says what was saved and why the close bounced.
+- **A price increase can target a single subscription or standard subscription.** The bulk price increase now takes exactly one scope — everything, one type, one subscription or one standard subscription — and subscription and standard-subscription rows carry a shortcut that opens the modal locked to that row. A single-row change never silently drags a template default along.
+- **Show/hide toggle on password fields.** Login, setup, password reset, the cloud console and the account page get an eye toggle so a typo cannot lock you out. Write-only admin secrets (SMTP password, API keys, client secrets, the Ads developer token) deliberately stay plain password fields.
+- **Technical keys are derived from the label, never hand-typed.** Custom fields, leave types, roles, contact types, interaction kinds, time-entry types and subscription types no longer ask for an immutable key slug next to the label — the key is generated from the label, a duplicate is reported against the label the tenant actually typed, and a conflict inside the roles dialog is now visible in the dialog instead of behind it. Labels are required in only one language; the other falls back.
 - **Creating a task lands on the task, not a form.** Every "new task" entry point (the tasks page, the client page's header action and its tasks panel) creates a minimal task — placeholder title, assigned to its creator, pre-linked to the client the entry point knew — and opens the detail page in edit mode, so creating and editing are one surface and the duplicated inline form is gone. An abandoned placeholder stays a real, deletable task.
 - **A project covered by a subscription gets its hours from the agreement.** When an active subscription with included hours is linked, the project's hours budget derives from it (several agreements sum, each converted to its monthly equivalent), the field locks in the edit form with the source named, and the API refuses direct writes. The project's own value returns on unlink; budget amount and hourly rate stay editable.
 - **The client portal shows what the client may open.** The portal navigation now renders from the same permission-filtered registry staff use, so tasks, projects, websites, domains, hosting and contacts granted to the client role are reachable — every row still scoped server-side to the client's companies and per-task visibility. Calendar, settings, overview and notifications stay staff-only.
 
 ### Changed
 
+- **All money is priced at the employee rate.** Cost, revenue and invoicing now price a logged hour at the rate of the employee who logged it (falling back to the org default), never a project-configured rate. Billable entries without a project now count toward revenue, invoicing from time groups its lines per person so two people on one project bill at their own rates, and the project page's planned-value and margin figures are retired — with one rate source they no longer mean anything.
+- **Subscription templates are now "standard subscriptions".** The developer word "template" is gone from the interface. The catalog — standard subscriptions and subscription types — moved from a widget under the live list to sub-route tabs at the top of the Subscriptions section, as full tables with search, filters, sorting and the personal column picker. Instellingen → Abonnementen is retired; the old route redirects to the new one.
+- **A new subscription starts active.** An agency records an agreement when it starts, so creation now stamps the activation, spawns the type's onboarding tasks and derives the next invoice date immediately — unless another status is picked explicitly in the modal. Imports still default to draft, so a bulk import cannot silently go live.
+- **The subscriptions overview sorts on every column it shows**, including client, type, amount (at today's price) and included hours.
 - MRR and ARR are spelled out in Dutch: "Maandelijks/Jaarlijks terugkerende inkomsten".
+- Marketing site: the demo buttons open a small "demo is on its way" dialog instead of linking to a demo instance that does not exist yet.
 
 ### Fixed
 
+- **The task edit form's project picker ignored the selected client.** The company and project pickers were fully independent lists; the client now narrows the project list, picking a project backfills its client, and switching to a client that does not own the selected project clears that pick instead of silently saving a cross-client pair.
+- **Dutch wording when a task needs a contact moment before closing.** The prompt strung "vastleggen" into the location phrase, which misparsed; it now reads "Registreer er eerst een onder Contactmomenten".
 - **The task picker on a new contact moment offered every client's tasks.** Opening "Contactmoment vastleggen" from a client page listed the whole org's tasks until a project was picked; the picker — and the move/koppel dialog — now narrows to the current client.
+- **Logging a contact moment from a task or project page pre-fills the client and project.** The form opened with empty pickers even though the host task (or project) fixed both; they now preset from the host's own links — still repointable — and the saved moment carries them explicitly instead of relying on server-side derivation.
 - **A subscription created without a next-invoice date was silently never invoiced.** The "Volgende factuur" field is gone from the create modal (there is nothing to anchor it against yet); the date is now derived on the first transition into active — start date plus one billing period — for create-as-active, the edit modal, the bulk status action and pre-existing empty drafts alike. An explicitly set date is never overwritten.
 - **Portal clients no longer pass for staff.** The team list (Instellingen → Gebruikers) hides portal logins, and every assignee/staff picker stops offering them — only memberships holding a non-client role are pickable.
 - **A portal login could read the org's whole address book.** Contacts carry no direct client link, so the portal's company horizon never filtered them; they are now scoped through their company links like every other portal read.
@@ -24,6 +41,7 @@
 ### Upgrade notes
 
 - No database migration; API and web only. Rollback to v0.16.0 is safe.
+- Pricing behaviour changes with the employee-rate switch: project-level hourly rates are no longer read or written anywhere. The `projects.hourly_rate` column stays in the schema this release (expand/contract) and is dropped in a following one.
 
 ## v0.16.0 — 2026-07-20
 

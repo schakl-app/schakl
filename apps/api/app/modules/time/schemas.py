@@ -142,8 +142,8 @@ class ClientRevenue(BaseModel):
 
 
 class RevenueStats(BaseModel):
-    """Omzet = billable minutes × the project's hourly rate (entries without a rated
-    project contribute nothing — noted in the UI)."""
+    """Omzet = billable minutes × the logging employee's effective rate (#226: personal
+    rate → org default; entries whose logger has no rate contribute nothing)."""
 
     year: int
     months_current: list[float]  # index 0 = January
@@ -155,13 +155,15 @@ class RevenueStats(BaseModel):
 
 
 class ProjectCost(BaseModel):
-    """What a project's logged time *costs* (#111): Σ minutes × the employee's effective rate
-    (#113: personal rate → org default). Distinct from revenue, which bills at the project
-    rate. ``unrated_minutes`` counts time by people with no rate at all — reported rather than
+    """A project's logged time in money (#111): Σ minutes × the employee's effective rate
+    (#113: personal rate → org default). Since #226 that same rate prices billing too, so
+    ``billable_amount`` (the billable subset — what those hours bill the client) rides along.
+    ``unrated_minutes`` counts time by people with no rate at all — reported rather than
     silently priced at zero."""
 
     project_id: uuid.UUID
     cost: float
+    billable_amount: float
     unrated_minutes: int
 
 

@@ -8,7 +8,7 @@
   import { beforeNavigate } from "$app/navigation";
   import { page } from "$app/state";
   import { burnBarClass, burnBarWidth, burnPct } from "$lib/core/burn";
-  import { fmtDateTime, fmtMoney, fmtNumber } from "$lib/core/format";
+  import { fmtDateTime, fmtNumber } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
@@ -35,8 +35,6 @@
     project_id?: string | null;
     allocated_minutes?: number | null;
     // Budget burn (#112): present when the caller's lookup asked the API for `hours=true`.
-    budget_amount?: number | null;
-    hourly_rate?: number | null;
     hours?: {
       budget_hours?: number | null;
       spent_hours?: number;
@@ -77,7 +75,6 @@
     defaultProjectId = "",
     error = null,
     deleteAction = null,
-    canSeeMoney = false,
     draftDate = null,
     draftInitial = null,
     draftSavedAt = null,
@@ -99,8 +96,6 @@
     error?: string | null;
     /** When set (edit mode), renders a delete button submitting to this action. */
     deleteAction?: string | null;
-    /** Show the euro budget-remaining next to the hours bar (#112) — manager-gated by the caller. */
-    canSeeMoney?: boolean;
     /** The day this form autosaves its draft under (#44); null disables autosave (edit mode,
      *  report modal). Create-only — an existing entry is its own persistence. */
     draftDate?: string | null;
@@ -216,8 +211,8 @@
 
   // Budget feedback where the hours are spent (#112): the person logging sees how much of the
   // picked project's budget is left *before* saving, not on another screen afterwards. Hours
-  // are team-visible (the same aggregate every budget bar draws); the euro figure is passed in
-  // only for holders of the manager report permission.
+  // only — money is priced per logging employee (#226), so there is no client-side rate to
+  // draw a euro figure from here.
   const pickedProject = $derived(fProject ? projects.find((p) => p.id === fProject) : undefined);
   const pickedBurn = $derived.by(() => {
     const hours = pickedProject?.hours;
@@ -227,12 +222,6 @@
       budget: hours.budget_hours,
       pct: burnPct(hours.spent_hours ?? 0, hours.budget_hours),
     };
-  });
-  const pickedMoneyLeft = $derived.by(() => {
-    if (!canSeeMoney || !pickedProject) return null;
-    const { budget_amount, hourly_rate, hours } = pickedProject;
-    if (budget_amount == null || hourly_rate == null || !hours) return null;
-    return budget_amount - (hours.billable_hours ?? 0) * hourly_rate;
   });
 
   // --- draft autosave (#44) ---------------------------------------------------
@@ -534,13 +523,6 @@
               budget: fmtNumber(pickedBurn.budget, 1),
             })}
           </span>
-          {#if pickedMoneyLeft != null}
-            <span
-              class="tabular-nums {pickedMoneyLeft < 0 ? 'text-red-600 dark:text-red-400' : ''}"
-            >
-              {t("time.budget.money_left", { amount: fmtMoney(pickedMoneyLeft) })}
-            </span>
-          {/if}
         </div>
         {#if pickedBurn.pct != null}
           <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-surface">

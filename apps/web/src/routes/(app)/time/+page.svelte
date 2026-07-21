@@ -717,7 +717,6 @@
           projects={data.projects}
           tasks={data.tasks}
           subscriptions={data.subscriptions}
-          canSeeMoney={data.canSeeBudgetMoney}
           error={form?.error ?? null}
           oncancel={() => (editingId = null)}
           ondone={() => (editingId = null)}
@@ -735,7 +734,6 @@
           projects={data.projects}
           tasks={data.tasks}
           subscriptions={data.subscriptions}
-          canSeeMoney={data.canSeeBudgetMoney}
           draftDate={data.selectedDate}
           draftInitial={aiPrefill ?? data.day?.draft?.payload ?? null}
           draftSavedAt={aiPrefill ? null : (data.day?.draft?.updated_at ?? null)}
@@ -794,19 +792,6 @@
             id="qc-project-company"
             placeholder={t("time.field.company")}
             oncreate={(name) => quickCreateCompany(name, "project_company")}
-          />
-        </div>
-        <div>
-          <label for="qc-project-rate" class="mb-1 block text-sm font-medium text-text"
-            >{t("projects.field.hourly_rate")}</label
-          >
-          <input
-            id="qc-project-rate"
-            name="hourly_rate"
-            type="number"
-            min="0"
-            step="0.01"
-            class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
           />
         </div>
         <div class="flex items-center gap-2 pt-6">

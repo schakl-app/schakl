@@ -468,7 +468,7 @@ class InvoiceFromTime(BaseModel):
     #: Only entries started on/before this org-local date (inclusive); None = everything.
     until: date | None = None
     group_by: Literal["entry", "day", "project"] = "project"
-    #: Overrides the org's default_hourly_rate for this build.
+    #: Overrides every rate for this build — employee rates and the org default alike (#226).
     hourly_rate: Decimal | None = Field(default=None, ge=0)
 
 
@@ -480,8 +480,9 @@ class UnbilledEntry(BaseModel):
     project_id: uuid.UUID | None
     project_name: str = ""
     user_name: str = ""
-    #: The rate that would be billed for this entry: the project's hourly rate, else the
-    #: org default, else 0 — the same chain ``from_time`` applies (minus a per-build override).
+    #: The rate that would be billed for this entry: the logger's effective employee rate
+    #: (#226: personal → leave org default), else the invoicing default, else 0 — the same
+    #: chain ``from_time`` applies (minus a per-build override).
     rate: Decimal = Decimal(0)
 
 

@@ -462,6 +462,72 @@ async def test_list_free_text_search(client_for) -> None:
         ] == 0
 
 
+async def test_list_sort_and_date_window(client_for) -> None:
+    """#238: server-side sort over the allow-list, and date bounds that are *org-local* days —
+    a late-evening UTC instant belongs to the Amsterdam day after."""
+    t = await make_tenant("inter-sort")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        anna = (
+            await c.post(
+                "/api/v1/contacts",
+                json={"first_name": "Anna", "last_name": "de Vries"},
+                headers=headers,
+            )
+        ).json()
+        bob = (
+            await c.post(
+                "/api/v1/contacts",
+                json={"first_name": "Bob", "last_name": "Zomer"},
+                headers=headers,
+            )
+        ).json()
+        rows = (
+            # subject, kind (position), contact, occurred_at (UTC)
+            ("Bezoek", "physical_meeting", bob["id"], datetime(2026, 7, 8, 9, 0, tzinfo=UTC)),
+            ("Notitie", "note", anna["id"], datetime(2026, 7, 10, 14, 30, tzinfo=UTC)),
+            # 22:30 UTC = 00:30 the next day on the org clock (Europe/Amsterdam, DST).
+            ("Storing", "call", None, datetime(2026, 6, 30, 22, 30, tzinfo=UTC)),
+        )
+        for subject, kind, contact_id, occurred in rows:
+            assert (
+                await c.post(
+                    "/api/v1/interactions",
+                    json={
+                        "kind": kind,
+                        "occurred_at": occurred.isoformat(),
+                        "subject": subject,
+                        "contact_id": contact_id,
+                    },
+                    headers=headers,
+                )
+            ).status_code == 201
+
+        async def subjects(**params) -> list[str]:
+            page = (await c.get("/api/v1/interactions", params=params, headers=headers)).json()
+            return [row["subject"] for row in page["items"]]
+
+        # Newest-first stays the default; an explicit sort orders the whole set server-side.
+        assert await subjects() == ["Notitie", "Bezoek", "Storing"]
+        assert await subjects(sort="occurred_at") == ["Storing", "Bezoek", "Notitie"]
+        # By who it was with — display name, never the FK — with contactless rows last.
+        assert await subjects(sort="contact") == ["Notitie", "Bezoek", "Storing"]
+        assert await subjects(sort="-contact") == ["Bezoek", "Notitie", "Storing"]
+        # Kinds sort by their tenant-declared position (meeting 30 < call 40 < note 50).
+        assert await subjects(sort="kind") == ["Bezoek", "Storing", "Notitie"]
+        # The allow-list is the boundary: an unknown key is rejected, not interpolated.
+        bogus = await c.get("/api/v1/interactions", params={"sort": "evil"}, headers=headers)
+        assert bogus.status_code == 400
+
+        # The window is org-local days: 30 June 22:30 UTC is already 1 July in Amsterdam.
+        assert await subjects(date_from="2026-07-01", date_to="2026-07-08") == [
+            "Bezoek",
+            "Storing",
+        ]
+        assert await subjects(date_to="2026-06-30") == []
+        assert await subjects(date_from="2026-07-09") == ["Notitie"]
+
+
 async def test_gmail_review_is_strictly_owner_only(client_for) -> None:
     t = await make_tenant("inter-review")  # t.user = owner, holds "*"
     owner_headers = await auth_cookie(t.user)
