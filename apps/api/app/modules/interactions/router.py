@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date
 
 from fastapi import APIRouter, Depends, Query
 
@@ -100,6 +101,11 @@ async def list_interactions(
         description="Roll-up: 'tasks' with project_id also returns the project's tasks' rows",
     ),
     q: str | None = Query(None, max_length=200, description="Free text over subject/snippet/body"),
+    date_from: date | None = Query(None, description="Occurred on/after this org-local day"),
+    date_to: date | None = Query(None, description="Occurred on/before this org-local day"),
+    sort: str | None = Query(
+        None, description="occurred_at | subject | kind | contact | owner, '-' desc"
+    ),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     ctx: RequestContext = Depends(require_context),
@@ -116,6 +122,9 @@ async def list_interactions(
         owner_user_id=ctx.user.id if mine else owner_user_id,
         include=include,
         q=q,
+        date_from=date_from,
+        date_to=date_to,
+        sort=sort,
     )
     return Page(
         items=[InteractionRead.model_validate(i) for i in items],

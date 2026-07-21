@@ -20025,6 +20025,12 @@ export interface operations {
                 include?: string | null;
                 /** @description Free text over subject/snippet/body */
                 q?: string | null;
+                /** @description Occurred on/after this org-local day */
+                date_from?: string | null;
+                /** @description Occurred on/before this org-local day */
+                date_to?: string | null;
+                /** @description occurred_at | subject | kind | contact | owner, '-' desc */
+                sort?: string | null;
                 limit?: number;
                 offset?: number;
             };

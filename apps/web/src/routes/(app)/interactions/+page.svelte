@@ -3,15 +3,17 @@
    * Interacties (#168): the full, searchable list of contactmomenten in the shared
    * `DataTable` — the narrow pending-email queue grew into this page, and the review flow
    * (approve / reject / move) is now just its `?status=pending` filter state. Row actions
-   * reuse the exact dialogs the per-record panels use; day sections follow the API's one
-   * order (the timeline), so sections and sort can never disagree.
+   * reuse the exact dialogs the per-record panels use. Columns sort server-side like every
+   * other list (#238); the day sections only render while the order is the timeline, so
+   * sections and sort can never disagree.
    */
   import { ArrowRightLeft, Pencil, Plus, Trash2, X } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
-  import { fmtDateTime } from "$lib/core/format";
+  import { addMonths, isoAddDays, mondayOnOrBefore, monthOf } from "$lib/core/calendar";
+  import { fmtDateTime, fmtMonthYear, fmtPeriod } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
   import { navLabel, pageTitle } from "$lib/core/title";
@@ -21,6 +23,7 @@
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
+  import DateInput from "$lib/core/ui/DateInput.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
@@ -65,7 +68,11 @@
     }),
   });
 
+  // Day sections only make sense while the rows *are* a timeline: any other sort would put
+  // one day's rows in several sections, so the sections stand down instead of lying (#238).
+  const timelineOrder = $derived(!table.sort || table.sort.replace(/^-/, "") === "occurred_at");
   const groups = $derived.by(() => {
+    if (!timelineOrder) return undefined;
     const out: { key: string; label: string; collapsible: boolean }[] = [];
     for (const item of items) {
       const key = localDay(item.occurred_at);
@@ -98,6 +105,32 @@
     `rounded-lg px-3 py-1.5 text-sm ${
       active ? "bg-surface font-medium text-text" : "text-text-muted hover:text-text"
     }`;
+
+  // --- date navigation (#238): week switcher, month filter, free range ---------- //
+  // All three write the same `from`/`to` URL params; the SSR load turns them into the API's
+  // `date_from`/`date_to`. The bounds are org-local days, like the day-group headers.
+  const dateFrom = $derived((data.filters.from as string | null) ?? "");
+  const dateTo = $derived((data.filters.to as string | null) ?? "");
+  const todayIso = localDay(new Date().toISOString());
+  const lastDayOf = (month: string) => isoAddDays(`${addMonths(month, 1)}-01`, -1);
+  /** The active range is exactly one Mon–Sun week. */
+  const weekActive = $derived(
+    !!dateFrom && dateFrom === mondayOnOrBefore(dateFrom) && dateTo === isoAddDays(dateFrom, 6),
+  );
+  /** The active range is exactly one calendar month → its "yyyy-mm", else "". */
+  const monthActive = $derived.by(() => {
+    if (!dateFrom || !dateTo) return "";
+    const month = monthOf(dateFrom);
+    return dateFrom === `${month}-01` && dateTo === lastDayOf(month) ? month : "";
+  });
+  function weekHref(delta: -1 | 0 | 1): string {
+    // The arrows step from the active week (or from today's); the label always resets to now.
+    const base = delta !== 0 && weekActive ? dateFrom : mondayOnOrBefore(todayIso);
+    const start = isoAddDays(base, delta * 7);
+    return filterHref({ from: start, to: isoAddDays(start, 6) });
+  }
+  /** The last twelve months, newest first — the month filter's options. */
+  const monthOptions = Array.from({ length: 12 }, (_, i) => addMonths(monthOf(todayIso), -i));
 
   // --- row actions: the panel body's rules, on table rows ----------------------- //
   const isOwner = (item: InteractionItem) =>
@@ -293,6 +326,72 @@
   </div>
 </div>
 
+<!-- Date navigation (#238): jump to a week, filter a month, or type any range — three ways of
+     writing the same `from`/`to` params. Wraps on its own line so a phone never scrolls (#36). -->
+<div class="mb-3 flex flex-wrap items-center gap-2" data-sveltekit-preload-data="hover">
+  <div class="flex items-center gap-1">
+    <a
+      href={weekHref(-1)}
+      aria-label={t("interactions.filter.prev_week")}
+      class="rounded-lg border border-border px-2 py-1 text-sm text-text hover:bg-surface"
+    >
+      ←
+    </a>
+    <a href={weekHref(0)} class={tabClass(weekActive)}>
+      {weekActive ? fmtPeriod(dateFrom, dateTo) : t("interactions.filter.this_week")}
+    </a>
+    <a
+      href={weekHref(1)}
+      aria-label={t("interactions.filter.next_week")}
+      class="rounded-lg border border-border px-2 py-1 text-sm text-text hover:bg-surface"
+    >
+      →
+    </a>
+  </div>
+  <select
+    value={monthActive}
+    onchange={(e) => {
+      const month = e.currentTarget.value;
+      applyFilter(month ? { from: `${month}-01`, to: lastDayOf(month) } : { from: null, to: null });
+    }}
+    class="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm text-text"
+    aria-label={t("interactions.filter.month")}
+  >
+    <option value="">{t("interactions.filter.all_months")}</option>
+    {#each monthOptions as month (month)}
+      <option value={month}>{fmtMonthYear(month)}</option>
+    {/each}
+  </select>
+  <label for="int-date-from" class="sr-only">{t("interactions.filter.date_from")}</label>
+  <div class="w-36">
+    <DateInput
+      name="_f_from"
+      id="int-date-from"
+      value={dateFrom}
+      onchange={(v) => applyFilter({ from: v || null })}
+    />
+  </div>
+  <span class="text-xs text-text-muted">–</span>
+  <label for="int-date-to" class="sr-only">{t("interactions.filter.date_to")}</label>
+  <div class="w-36">
+    <DateInput
+      name="_f_to"
+      id="int-date-to"
+      value={dateTo}
+      onchange={(v) => applyFilter({ to: v || null })}
+    />
+  </div>
+  {#if dateFrom || dateTo}
+    <a
+      href={filterHref({ from: null, to: null })}
+      class="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm text-text-muted hover:text-text"
+    >
+      <X size={14} aria-hidden="true" />
+      {t("interactions.filter.clear_dates")}
+    </a>
+  {/if}
+</div>
+
 {#snippet subjectCell(item: InteractionItem)}
   <span class="block min-w-0">
     <span class="flex items-center gap-2">
@@ -324,10 +423,12 @@
 {#snippet linkedCell(item: InteractionItem)}
   <span class="flex flex-wrap gap-1">
     {#each linkChips(item) as chip (chip.href)}
-      <!-- `relative z-10` keeps the chip clickable above the row's stretched link (#59). -->
+      <!-- `relative z-10` keeps the chip clickable above the row's stretched link (#59).
+           Who the moment was with must not read quieter than its timestamp (#238): the chip
+           carries full text colour at `text-xs`, above the muted date beside it. -->
       <a
         href={chip.href}
-        class="relative z-10 rounded-full bg-surface px-2 py-0.5 text-[11px] text-text-muted ring-1 ring-inset ring-border hover:text-brand"
+        class="relative z-10 rounded-full bg-surface px-2 py-0.5 text-xs text-text ring-1 ring-inset ring-border hover:text-brand"
       >
         {chip.label}
       </a>
@@ -340,7 +441,8 @@
 {/snippet}
 
 {#snippet whenCell(item: InteractionItem)}
-  <span class="whitespace-nowrap text-text-muted">{fmtDateTime(item.occurred_at)}</span>
+  <!-- Quieter than the chips on purpose (#238): a reader scans who first, then when. -->
+  <span class="whitespace-nowrap text-xs text-text-muted">{fmtDateTime(item.occurred_at)}</span>
 {/snippet}
 
 {#snippet rowActions(item: InteractionItem)}
@@ -402,7 +504,7 @@
   {mobileRow}
   {empty}
   {groups}
-  groupBy={(item) => localDay(item.occurred_at)}
+  groupBy={timelineOrder ? (item) => localDay(item.occurred_at) : undefined}
   onsort={table.onSort}
   onresize={table.onResize}
 />

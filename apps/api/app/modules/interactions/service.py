@@ -10,10 +10,12 @@ capability tier. Manual rows follow the ordinary own/any write/delete scopes.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime, time, timedelta
 from typing import Any
 
 from sqlalchemy import bindparam, func, or_, select, text
+from sqlalchemy.sql.expression import column as sa_column
+from sqlalchemy.sql.expression import table as sa_table
 
 from app.core.activity import ActivityService
 from app.core.activity.service import snapshot
@@ -21,6 +23,7 @@ from app.core.auth.models import User
 from app.core.events import emit
 from app.core.models import Membership
 from app.core.richtext import extract_contact_mention_ids, extract_mention_ids, sanitize_markdown
+from app.core.sorting import apply_sort, user_sort_name
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_zoneinfo
 from app.errors import AppError
@@ -66,6 +69,56 @@ _LINK_TABLES = {
 #: like the gmail feed's ``PENDING_EVENT``, never a cross-module import (CLAUDE.md §6).
 MENTIONED_EVENT = "interactions.mentioned"
 
+# A lightweight table ref, like ``_LINK_TABLES``' raw SQL — never the contacts module's
+# internals (CLAUDE.md §6). Only what the sort expression touches.
+_contacts = sa_table(
+    "contacts",
+    sa_column("id"),
+    sa_column("org_id"),
+    sa_column("first_name"),
+    sa_column("last_name"),
+)
+
+
+def _contact_sort_name() -> Any:
+    """Order by the contact's display name — the label the chip prints (docs/UX.md: a column
+    sorts by what it prints, never by the FK). Correlated, so a row is never multiplied."""
+    full_name = func.trim(
+        func.concat(_contacts.c.first_name, " ", func.coalesce(_contacts.c.last_name, ""))
+    )
+    return (
+        select(func.lower(full_name))
+        .where(_contacts.c.org_id == Interaction.org_id, _contacts.c.id == Interaction.contact_id)
+        .scalar_subquery()
+    )
+
+
+def _kind_sort_position() -> Any:
+    """Kinds are a tenant-defined vocabulary (#174), so they sort by *meaning*: the tenant's
+    declared ``position`` — the order the kind dropdown shows — not alphabetically, which the
+    per-locale JSONB labels could not express server-side anyway (docs/UX.md)."""
+    return (
+        select(InteractionKindDef.position)
+        .where(
+            InteractionKindDef.org_id == Interaction.org_id,
+            InteractionKindDef.key == Interaction.kind,
+        )
+        .scalar_subquery()
+    )
+
+
+# Columns a client may sort by; anything else in ``?sort=`` is rejected (app/core/sorting.py).
+# The owner falls back to the snapshotted name so a departed user's rows still file by name (#64).
+SORTABLE = {
+    "occurred_at": Interaction.occurred_at,
+    "subject": func.lower(Interaction.subject),
+    "kind": _kind_sort_position(),
+    "contact": _contact_sort_name(),
+    "owner": func.coalesce(
+        user_sort_name(Interaction.owner_user_id), func.lower(Interaction.owner_name)
+    ),
+}
+
 
 class InteractionService:
     def __init__(self, ctx: RequestContext) -> None:
@@ -91,6 +144,9 @@ class InteractionService:
         owner_user_id: uuid.UUID | None = None,
         include: str | None = None,
         q: str | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        sort: str | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
         include_set = {part.strip() for part in (include or "").split(",") if part.strip()}
         conditions = []
@@ -145,14 +201,29 @@ class InteractionService:
                     Interaction.body_text.ilike(like),
                 )
             )
+        if date_from is not None or date_to is not None:
+            # The bounds are local calendar days (#238): "March" means March on the tenant's
+            # clock — the same zone the day-group headers use — never a UTC `.date()`, which
+            # would drag the previous evening's rows into the window half the year (docs/UX.md).
+            tz = await org_zoneinfo(self.ctx.session, self._org_id)
+            if date_from is not None:
+                conditions.append(
+                    Interaction.occurred_at >= datetime.combine(date_from, time.min, tzinfo=tz)
+                )
+            if date_to is not None:
+                upper = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=tz)
+                conditions.append(Interaction.occurred_at < upper)
         stmt = (
             select(Interaction, User.full_name, User.email)
             .outerjoin(User, User.id == Interaction.owner_user_id)
             .where(Interaction.org_id == self._org_id, *conditions)
-            .order_by(Interaction.occurred_at.desc())
-            .limit(limit)
-            .offset(offset)
         )
+        # Newest-first stays the default (#238); an explicit sort tiebreaks on the timeline so
+        # pagination is deterministic when the sorted values repeat.
+        stmt = apply_sort(stmt, sort, SORTABLE, default=Interaction.occurred_at.desc())
+        if sort:
+            stmt = stmt.order_by(Interaction.occurred_at.desc())
+        stmt = stmt.limit(limit).offset(offset)
         rows = (await self.ctx.session.execute(stmt)).all()
         total = int(
             await self.ctx.session.scalar(

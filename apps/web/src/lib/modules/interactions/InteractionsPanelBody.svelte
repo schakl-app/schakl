@@ -269,12 +269,14 @@
         </div>
 
         {#if chips.length > 0}
-          <!-- Where else this row lives (#147) — links, outside the expand button. -->
+          <!-- Where else this row lives (#147) — links, outside the expand button. Full text
+               colour at `text-xs`: who it was with never reads quieter than the muted
+               timestamp above it (#238). -->
           <div class="mt-1 flex flex-wrap gap-1 pl-7">
             {#each chips as chip (chip.href)}
               <a
                 href={chip.href}
-                class="rounded-full bg-surface px-2 py-0.5 text-[11px] text-text-muted ring-1 ring-inset ring-border hover:text-brand"
+                class="rounded-full bg-surface px-2 py-0.5 text-xs text-text ring-1 ring-inset ring-border hover:text-brand"
               >
                 {chip.label}
               </a>
