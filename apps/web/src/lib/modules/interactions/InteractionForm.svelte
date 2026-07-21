@@ -550,11 +550,17 @@
 
   <div class="text-sm">
     <span class="mb-1 block font-medium text-text">{t("interactions.field.notes")}</span>
+    <!-- #task references (#237) resolve against the moment's own links: the picked (or
+         stored) project, else the client — same deeper-link-wins rule as the task picker. -->
     <RichTextEditor
       name="body_text"
       value={interaction?.body_text ?? ""}
       rows={4}
       mentions={editorMentions}
+      scope={{
+        companyId: (interaction?.company_id ?? effCompany) || null,
+        projectId: (interaction?.project_id ?? effProject) || null,
+      }}
     />
   </div>
 

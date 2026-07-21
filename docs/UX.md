@@ -296,6 +296,15 @@
   structure to gain from it, not for every string. Headings render `###` and deeper only —
   `h1`/`h2` stay stripped everywhere (`core/markdown.ts`): notes and descriptions are supporting
   text, and a uniform rule beats a per-field exception.
+  **`@` and `#` work in every editor, not just where a page wired them** (#237). `@` mentions a
+  colleague or contact, `#` references a task as a deep link — and both belong to the editor, not
+  to the surface it happens to sit on. A `RichTextEditor` given no explicit candidate lists
+  fetches the defaults itself on first focus (`core/richtext/candidates.ts`: org members, plus
+  the host company's contacts and the host project/company's recent tasks via the `scope` prop —
+  a page pays nothing for an editor nobody touches). The `#` dropdown names each task's status,
+  assignee and due date — two "Bellen met klant" rows are indistinguishable by title alone — and
+  an overdue date reads red like everywhere else. Only the task page passes its own lists (its
+  scoped, status-named candidates); a new surface should pass `scope` and nothing more.
   **Rendering is the security boundary.** `{@html}` lives only in `Markdown.svelte`, and everything
   it prints has been through DOMPurify in `core/markdown.ts`; the API also strips raw HTML on write
   (`core/richtext.py`) so a stored value is inert even for a consumer that renders it another way.

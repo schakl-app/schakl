@@ -677,6 +677,7 @@
           name="notes"
           rows={2}
           value={editing?.notes ?? prefill?.notes ?? ""}
+          scope={{ companyId: (createdCompanyId || editing?.company_id) ?? null }}
         />
       </div>
       {#if data.definitions.length > 0}
@@ -684,6 +685,7 @@
           definitions={data.definitions}
           values={editing?.custom ?? {}}
           locale={data.locale}
+          scope={{ companyId: (createdCompanyId || editing?.company_id) ?? null }}
         />
       {:else}
         <input type="hidden" name="custom" value={JSON.stringify(editing?.custom ?? {})} />

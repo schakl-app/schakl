@@ -387,6 +387,7 @@
             name="description"
             rows={3}
             value={project.description ?? ""}
+            scope={{ projectId: project.id, companyId: project.company_id ?? null }}
           />
         </div>
         {#if data.definitions.length > 0}
@@ -394,6 +395,7 @@
             definitions={data.definitions}
             values={project.custom ?? {}}
             locale={data.locale}
+            scope={{ projectId: project.id, companyId: project.company_id ?? null }}
           />
         {:else}
           <input type="hidden" name="custom" value={JSON.stringify(project.custom ?? {})} />

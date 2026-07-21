@@ -51,6 +51,11 @@
     companyLinks.map((c) => ({ id: c.company_id, label: c.name, is_primary: c.is_primary })),
   );
   const linkedIds = $derived(new Set(companyLinks.map((c) => c.company_id)));
+  // The primary client scopes the notes editor's @/# candidates (#237): that company's
+  // contacts and tasks, the same host-link rule the task page applies.
+  const primaryCompanyId = $derived(
+    (companyLinks.find((c) => c.is_primary) ?? companyLinks[0])?.company_id ?? null,
+  );
   const candidateCompanies = $derived(
     data.companies.filter((c) => !linkedIds.has(c.id)).map((c) => ({ value: c.id, label: c.name })),
   );
@@ -184,13 +189,24 @@
         <label for="contact-notes" class="mb-1 block text-sm font-medium text-text"
           >{t("contacts.notes")}</label
         >
-        <RichTextEditor id="contact-notes" name="notes" rows={3} value={contact.notes ?? ""} />
+        <RichTextEditor
+          id="contact-notes"
+          name="notes"
+          rows={3}
+          value={contact.notes ?? ""}
+          scope={{ companyId: primaryCompanyId }}
+        />
       </div>
     </div>
 
     {#if data.definitions.length > 0}
       <div class="mt-4 border-t border-border pt-4">
-        <CustomFieldsForm definitions={data.definitions} values={custom} locale={data.locale} />
+        <CustomFieldsForm
+          definitions={data.definitions}
+          values={custom}
+          locale={data.locale}
+          scope={{ companyId: primaryCompanyId }}
+        />
       </div>
     {/if}
 

@@ -126,7 +126,9 @@
   // #task reference candidates (#197): host-scoped like the contact list — the task's project,
   // else its company, else the org's recent tasks — fetched lazily in the browser so the SSR
   // load pays nothing (docs/PERFORMANCE.md: meta=false&count=false skips discarded aggregates).
-  let taskCandidates = $state<{ id: string; name: string; subtitle?: string }[]>([]);
+  let taskCandidates = $state<
+    { id: string; name: string; subtitle?: string; assignee?: string; due?: string; overdue?: boolean }[]
+  >([]);
   $effect(() => {
     const scope = task.project_id
       ? `&project_id=${task.project_id}`
@@ -142,11 +144,26 @@
         id: string;
         title: string;
         status: string;
+        assignee_user_id?: string | null;
+        due_date?: string | null;
       }
       const items: TaskRow[] = (await response.json()).items ?? [];
+      // Assignee and due date ride along (#237) so the dropdown says which task you mean —
+      // two "Bellen met klant" rows are indistinguishable by title alone.
+      const today = new Date().toISOString().slice(0, 10);
       taskCandidates = items
         .filter((row) => row.id !== task.id)
-        .map((row) => ({ id: row.id, name: row.title, subtitle: statusName(row.status) }));
+        .map((row) => ({
+          id: row.id,
+          name: row.title,
+          subtitle: statusName(row.status),
+          assignee: memberName(row.assignee_user_id) ?? undefined,
+          due: row.due_date ?? undefined,
+          overdue:
+            !!row.due_date &&
+            row.due_date < today &&
+            !(statuses.find((s) => s.key === row.status)?.is_terminal ?? false),
+        }));
     })();
   });
   const mentionCandidates = $derived([
@@ -488,6 +505,8 @@
             form="task-edit"
             rows={4}
             value={task.description ?? ""}
+            mentions={mentionCandidates}
+            tasks={taskCandidates}
           />
         {:else if task.description}
           <Markdown value={task.description} />
@@ -604,6 +623,8 @@
                   rows={2}
                   value={checklist.description ?? ""}
                   placeholder={t("tasks.checklist.description_placeholder")}
+                  mentions={mentionCandidates}
+                  tasks={taskCandidates}
                 />
                 <div class="flex gap-2">
                   <button class="rounded-lg bg-brand px-2 py-1 text-xs font-medium text-white"
@@ -710,6 +731,8 @@
                         rows={2}
                         value={item.description ?? ""}
                         placeholder={t("tasks.checklist.description_placeholder")}
+                        mentions={mentionCandidates}
+                        tasks={taskCandidates}
                       />
                       <div class="flex gap-2">
                         <button class="rounded-lg bg-brand px-2 py-1 text-xs font-medium text-white"

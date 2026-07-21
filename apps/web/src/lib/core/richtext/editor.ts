@@ -29,6 +29,10 @@ export interface Candidate {
   name: string;
   kind?: "user" | "contact" | "task";
   subtitle?: string;
+  /** Task extras (#237), shown in the dropdown: who holds it and when it's due. */
+  assignee?: string;
+  due?: string;
+  overdue?: boolean;
 }
 
 /** What the Svelte component receives to drive its own dropdown — the plugin never renders. */

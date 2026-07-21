@@ -411,7 +411,13 @@
     <label for="doc-notes" class="mb-1 block text-sm font-medium text-text"
       >{t("invoicing.field.notes")}</label
     >
-    <RichTextEditor id="doc-notes" name="notes" rows={2} value={doc?.notes ?? ""} />
+    <RichTextEditor
+      id="doc-notes"
+      name="notes"
+      rows={2}
+      value={doc?.notes ?? ""}
+      scope={{ companyId: (createdCompanyId || companyId || doc?.company_id) ?? null }}
+    />
   </div>
 
   {#if form?.error}

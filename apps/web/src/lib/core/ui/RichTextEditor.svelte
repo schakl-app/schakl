@@ -29,9 +29,15 @@
   import { browser } from "$app/environment";
   import { AI_CONTEXT_KEY, type AIContext } from "$lib/core/ai";
   import { streamAI } from "$lib/core/ai/stream";
+  import { fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { renderMarkdown } from "$lib/core/markdown";
   import Markdown from "$lib/core/ui/Markdown.svelte";
+  import {
+    loadMentionCandidates,
+    loadTaskCandidates,
+    type CandidateScope,
+  } from "$lib/core/richtext/candidates";
   import type { Candidate, Editor, SuggestState } from "$lib/core/richtext/editor";
 
   let {
@@ -45,6 +51,7 @@
     class: klass = "",
     mentions = [],
     tasks = [],
+    scope,
     onchange,
   }: {
     value?: string;
@@ -59,9 +66,37 @@
     /** @mention candidates (issue #63): org members (default) and contacts (#165). */
     mentions?: { id: string; name: string; kind?: "user" | "contact"; subtitle?: string }[];
     /** #task reference candidates (#197), stored as `#[Title](mention:task:<uuid>)`. */
-    tasks?: { id: string; name: string; subtitle?: string }[];
+    tasks?: {
+      id: string;
+      name: string;
+      subtitle?: string;
+      assignee?: string;
+      due?: string;
+      overdue?: boolean;
+    }[];
+    /** Host context for the default candidate fetch (#237): tasks of this project/company,
+     *  contacts of this company. Only read where no explicit list is passed. */
+    scope?: CandidateScope;
     onchange?: (value: string) => void;
   } = $props();
+
+  // Default candidates (issue #237): a surface that passes no lists still gets @ and # — org
+  // members, host-scoped contacts and recent tasks, fetched on first focus so a page never
+  // pays for an editor nobody touches (docs/PERFORMANCE.md). An explicit prop always wins
+  // (the task page passes its own scoped, status-named lists).
+  let armed = $state(false);
+  let autoMentions = $state<Candidate[]>([]);
+  let autoTasks = $state<Candidate[]>([]);
+  $effect(() => {
+    if (!armed) return;
+    const wanted = { companyId: scope?.companyId ?? null, projectId: scope?.projectId ?? null };
+    if (mentions.length === 0) {
+      void loadMentionCandidates(wanted).then((found) => (autoMentions = found));
+    }
+    if (tasks.length === 0) {
+      void loadTaskCandidates(wanted).then((found) => (autoTasks = found));
+    }
+  });
 
   // The markdown source of record: seeds the hidden input, then tracks every editor update.
   let serialized = $state(value);
@@ -130,8 +165,12 @@
         element: host,
         content: source,
         placeholder,
-        people: () => mentions as Candidate[],
-        tasks: () => tasks.map((task) => ({ ...task, kind: "task" as const })),
+        people: () => (mentions.length > 0 ? (mentions as Candidate[]) : autoMentions),
+        tasks: () =>
+          (tasks.length > 0 ? tasks : autoTasks).map((task) => ({
+            ...task,
+            kind: "task" as const,
+          })),
         bridge,
         onUpdate: (markdown) => {
           serialized = markdown;
@@ -346,7 +385,10 @@
   }
 </script>
 
-<div class="relative rounded-lg border border-border focus-within:border-brand {klass}">
+<div
+  class="relative rounded-lg border border-border focus-within:border-brand {klass}"
+  onfocusin={() => (armed = true)}
+>
   <div class="flex items-center gap-1 border-b border-border px-1.5 py-1">
     <button
       type="button"
@@ -610,10 +652,25 @@
           >
             <span class="min-w-0 flex-1">
               <span class="block truncate">{suggest.trigger}{member.name}</span>
-              {#if member.subtitle}
-                <!-- A contact's company (#165) / a task's context (#197): the list itself says
-                     which kind you're picking. -->
-                <span class="block truncate text-xs text-text-muted">{member.subtitle}</span>
+              {#if member.subtitle || member.assignee || member.due}
+                <!-- A contact's company (#165) / a task's status, assignee and due date (#197,
+                     #237): the list itself says which record you're about to pick. -->
+                <span class="flex items-baseline gap-1 text-xs text-text-muted">
+                  {#if member.subtitle}<span class="truncate">{member.subtitle}</span>{/if}
+                  {#if member.assignee}
+                    {#if member.subtitle}<span aria-hidden="true">·</span>{/if}
+                    <span class="truncate">{member.assignee}</span>
+                  {/if}
+                  {#if member.due}
+                    {#if member.subtitle || member.assignee}<span aria-hidden="true">·</span>{/if}
+                    <!-- Overdue reads red here like everywhere else (docs/UX.md, Principle 4). -->
+                    <span
+                      class="shrink-0 tabular-nums {member.overdue
+                        ? 'text-red-600 dark:text-red-400'
+                        : ''}">{fmtDayMonth(member.due)}</span
+                    >
+                  {/if}
+                </span>
               {/if}
             </span>
             {#if member.kind === "contact"}
