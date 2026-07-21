@@ -4,7 +4,6 @@
   import { pageTitle } from "$lib/core/title";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
-  import PasswordInput from "$lib/core/ui/PasswordInput.svelte";
 
   let { data, form } = $props();
 
@@ -101,12 +100,14 @@
       </div>
       <div>
         <label for="ai-key" class="mb-1 block text-sm text-text">{t("settings.ai.api_key")}</label>
-        <PasswordInput
+        <input
           id="ai-key"
           name="api_key"
+          type="password"
           autocomplete="new-password"
           bind:value={apiKey}
           placeholder={ai?.has_key ? t("settings.ai.key_stored") : ""}
+          class={inputClass}
         />
       </div>
       <div>
