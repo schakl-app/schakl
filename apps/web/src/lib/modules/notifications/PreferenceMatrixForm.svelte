@@ -57,9 +57,7 @@
   let edits = $state<Record<string, Partial<Row>>>({});
   let generalEdit = $state<Partial<General>>({});
 
-  const rows = $derived(
-    matrix.events.map((row) => ({ ...row, ...(edits[row.event_type] ?? {}) })),
-  );
+  const rows = $derived(matrix.events.map((row) => ({ ...row, ...(edits[row.event_type] ?? {}) })));
 
   // #146: one flat table reads as a wall. Group rows under module headers derived from the
   // event key's prefix — the API's EVENT_TYPES order already clusters by module, so this is
@@ -151,7 +149,11 @@
   class="space-y-6"
   use:enhance={() =>
     async ({ update }) => {
-      await update();
+      // reset: false is load-bearing: the default form reset snaps every checkbox and select
+      // back to its server-rendered mark (their DOM default), while the state that drives them
+      // already holds the saved value — so Svelte sees nothing to rewrite and the matrix
+      // visibly reverts on save, even though the save succeeded.
+      await update({ reset: false });
       edits = {}; // the reloaded matrix is now the truth; stale edits must not re-apply
       generalEdit = {};
     }}
@@ -232,55 +234,57 @@
               </th>
             </tr>
             {#each group.rows as row (row.event_type)}
-            <tr>
-              <td class="px-4 py-2 text-text">
-                {t(`notifications.event_label.${row.event_type}`)}
-              </td>
-              <td class="px-2 py-2">
-                <input
-                  type="checkbox"
-                  checked={row.enabled}
-                  aria-label={t("notifications.settings.enabled")}
-                  onchange={(e) => edit(row.event_type, { enabled: e.currentTarget.checked })}
-                />
-              </td>
-              <td class="px-2 py-2">
-                <select
-                  value={row.digest}
-                  class={controlClass}
-                  disabled={!row.enabled}
-                  aria-label={t("notifications.settings.delivery")}
-                  onchange={(e) => edit(row.event_type, { digest: e.currentTarget.value })}
-                >
-                  {#each CADENCES as cadence (cadence)}
-                    <option value={cadence}>{t(`notifications.digest.${cadence}`)}</option>
-                  {/each}
-                </select>
-              </td>
-              <td class="px-2 py-2">
-                <input
-                  type="number"
-                  min="0"
-                  max="1440"
-                  value={row.delay_minutes}
-                  class={numberClass}
-                  disabled={!row.enabled || row.digest !== "immediate"}
-                  aria-label={t("notifications.settings.delay")}
-                  oninput={(e) => edit(row.event_type, { delay_minutes: +e.currentTarget.value })}
-                />
-              </td>
-              <td class="whitespace-nowrap px-4 py-2">
-                {#if isOverride(row)}
-                  <span class="rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand">
-                    {t("notifications.settings.overridden")}
-                  </span>
-                {:else}
-                  <span class="text-xs text-text-muted">
-                    {t(`notifications.settings.inherited_${row.source}`)}
-                  </span>
-                {/if}
-              </td>
-            </tr>
+              <tr>
+                <td class="px-4 py-2 text-text">
+                  {t(`notifications.event_label.${row.event_type}`)}
+                </td>
+                <td class="px-2 py-2">
+                  <input
+                    type="checkbox"
+                    checked={row.enabled}
+                    aria-label={t("notifications.settings.enabled")}
+                    onchange={(e) => edit(row.event_type, { enabled: e.currentTarget.checked })}
+                  />
+                </td>
+                <td class="px-2 py-2">
+                  <select
+                    value={row.digest}
+                    class={controlClass}
+                    disabled={!row.enabled}
+                    aria-label={t("notifications.settings.delivery")}
+                    onchange={(e) => edit(row.event_type, { digest: e.currentTarget.value })}
+                  >
+                    {#each CADENCES as cadence (cadence)}
+                      <option value={cadence}>{t(`notifications.digest.${cadence}`)}</option>
+                    {/each}
+                  </select>
+                </td>
+                <td class="px-2 py-2">
+                  <input
+                    type="number"
+                    min="0"
+                    max="1440"
+                    value={row.delay_minutes}
+                    class={numberClass}
+                    disabled={!row.enabled || row.digest !== "immediate"}
+                    aria-label={t("notifications.settings.delay")}
+                    oninput={(e) => edit(row.event_type, { delay_minutes: +e.currentTarget.value })}
+                  />
+                </td>
+                <td class="whitespace-nowrap px-4 py-2">
+                  {#if isOverride(row)}
+                    <span
+                      class="rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand"
+                    >
+                      {t("notifications.settings.overridden")}
+                    </span>
+                  {:else}
+                    <span class="text-xs text-text-muted">
+                      {t(`notifications.settings.inherited_${row.source}`)}
+                    </span>
+                  {/if}
+                </td>
+              </tr>
             {/each}
           {/each}
         </tbody>
