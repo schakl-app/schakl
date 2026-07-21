@@ -43,6 +43,11 @@
   let confirmDelete = $state(false);
   let showImport = $state(false);
 
+  // Row actions render only for holders of the matching permission (#253) — the API refuses
+  // them anyway; this stops a client-role login seeing buttons that only 403.
+  const canWrite = $derived(can(page.data.user, "companies.company.write"));
+  const canDelete = $derived(can(page.data.user, "companies.company.delete"));
+
   // The Export link carries the page's current filters, so the file holds exactly the
   // filtered list on screen — the whole set, not just the loaded page (issue #77).
   const exportHref = $derived.by(() => {
@@ -143,13 +148,19 @@
 {#snippet rowActions(company: Company)}
   <ActionsMenu
     items={[
-      { label: t("common.edit"), icon: Pencil, href: editHref(`/companies/${company.id}`) },
-      {
-        label: t("common.delete"),
-        icon: Trash2,
-        danger: true,
-        onclick: () => confirmDeleteOf(company),
-      },
+      ...(canWrite
+        ? [{ label: t("common.edit"), icon: Pencil, href: editHref(`/companies/${company.id}`) }]
+        : []),
+      ...(canDelete
+        ? [
+            {
+              label: t("common.delete"),
+              icon: Trash2,
+              danger: true,
+              onclick: () => confirmDeleteOf(company),
+            },
+          ]
+        : []),
     ]}
   />
 {/snippet}
@@ -172,7 +183,9 @@
     >
       {t(`companies.status.${company.status}`)}
     </span>
-    {@render rowActions(company)}
+    {#if canWrite || canDelete}
+      {@render rowActions(company)}
+    {/if}
   </div>
 {/snippet}
 
@@ -192,12 +205,14 @@
     <h1 class="text-xl font-semibold text-text">{navLabel("companies", t("companies.title"))}</h1>
     <p class="mt-1 text-sm text-text-muted">{t("companies.count", { count: data.total })}</p>
   </div>
-  <button
-    class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-    onclick={() => (showCreate = !showCreate)}
-  >
-    {t("companies.new")}
-  </button>
+  {#if canWrite}
+    <button
+      class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+      onclick={() => (showCreate = !showCreate)}
+    >
+      {t("companies.new")}
+    </button>
+  {/if}
 </div>
 
 <!-- Search + status filter pills + the personal column picker -->
@@ -328,7 +343,7 @@
   definitions={data.definitions}
   locale={data.locale}
   rowHref={(company) => `/companies/${company.id}`}
-  actions={rowActions}
+  actions={canWrite || canDelete ? rowActions : undefined}
   {mobileRow}
   empty={emptyState}
   onsort={table.onSort}

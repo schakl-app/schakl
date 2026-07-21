@@ -4,6 +4,7 @@
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import { can } from "$lib/core/permissions";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
@@ -20,6 +21,10 @@
   const initialCompanyId = page.url.searchParams.get("company") ?? "";
   let deleteId = $state("");
   let confirmDelete = $state(false);
+
+  // Actions render only for holders of the matching permission (#253).
+  const canWrite = $derived(can(page.data.user, "domains.domain.write"));
+  const canDelete = $derived(can(page.data.user, "domains.domain.delete"));
 
   // Inline-create from the form's pickers (#115): "＋ … toevoegen" opens these over the modal.
   // The slot names the picker that asked, so its `inlineCreated` auto-selects only there.
@@ -64,10 +69,12 @@
     <h1 class="text-xl font-semibold text-text">{navLabel("domains", t("domains.title"))}</h1>
     <p class="mt-1 text-sm text-text-muted">{t("domains.count", { count: data.total })}</p>
   </div>
-  <button
-    class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-    onclick={() => (showCreate = true)}>{t("domains.new")}</button
-  >
+  {#if canWrite}
+    <button
+      class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
+      onclick={() => (showCreate = true)}>{t("domains.new")}</button
+    >
+  {/if}
 </div>
 
 <section class="rounded-xl border border-border bg-surface-raised">
@@ -101,17 +108,19 @@
               </td>
               <td class="px-4 py-2 text-text-muted">{domain.registrar_provider_name ?? "—"}</td>
               <td class="px-4 py-2 text-right">
-                <ActionsMenu
-                  compact
-                  items={[
-                    {
-                      label: t("common.delete"),
-                      icon: Trash2,
-                      danger: true,
-                      onclick: () => requestDelete(domain.id),
-                    },
-                  ]}
-                />
+                {#if canDelete}
+                  <ActionsMenu
+                    compact
+                    items={[
+                      {
+                        label: t("common.delete"),
+                        icon: Trash2,
+                        danger: true,
+                        onclick: () => requestDelete(domain.id),
+                      },
+                    ]}
+                  />
+                {/if}
               </td>
             </tr>
           {/each}
@@ -121,44 +130,48 @@
   {/if}
 </section>
 
-<Modal bind:open={showCreate} title={t("domains.new")}>
-  <form
-    method="POST"
-    action="?/create"
-    use:enhance={() =>
-      ({ result, update }) => {
-        if (result.type === "success") showCreate = false;
-        void update({ reset: false });
-      }}
-  >
-    <DomainForm
-      companies={data.companies}
-      providers={data.providers}
-      employees={data.employees}
-      contacts={data.contacts}
-      agencyLabel={data.agencyLabel}
-      definitions={data.definitions}
-      locale={data.locale}
-      idPrefix="new-domain"
-      {initialCompanyId}
-      oncreatecompany={quickCreateCompany}
-      oncreatecontact={quickCreateContact}
-      oncreateprovider={quickCreateProvider}
-      created={form?.inlineCreated ?? null}
-    />
-    {#if form?.error}<p class="mt-3 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
-    <div class="mt-4 flex justify-end gap-2">
-      <button
-        type="button"
-        class="rounded-lg border border-border px-4 py-2 text-sm text-text"
-        onclick={() => (showCreate = false)}>{t("common.cancel")}</button
-      >
-      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-        >{t("common.save")}</button
-      >
-    </div>
-  </form>
-</Modal>
+{#if canWrite}
+  <Modal bind:open={showCreate} title={t("domains.new")}>
+    <form
+      method="POST"
+      action="?/create"
+      use:enhance={() =>
+        ({ result, update }) => {
+          if (result.type === "success") showCreate = false;
+          void update({ reset: false });
+        }}
+    >
+      <DomainForm
+        companies={data.companies}
+        providers={data.providers}
+        employees={data.employees}
+        contacts={data.contacts}
+        agencyLabel={data.agencyLabel}
+        definitions={data.definitions}
+        locale={data.locale}
+        idPrefix="new-domain"
+        {initialCompanyId}
+        oncreatecompany={quickCreateCompany}
+        oncreatecontact={quickCreateContact}
+        oncreateprovider={quickCreateProvider}
+        created={form?.inlineCreated ?? null}
+      />
+      {#if form?.error}<p class="mt-3 text-sm text-red-600 dark:text-red-400">
+          {t(form.error)}
+        </p>{/if}
+      <div class="mt-4 flex justify-end gap-2">
+        <button
+          type="button"
+          class="rounded-lg border border-border px-4 py-2 text-sm text-text"
+          onclick={() => (showCreate = false)}>{t("common.cancel")}</button
+        >
+        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
+          >{t("common.save")}</button
+        >
+      </div>
+    </form>
+  </Modal>
+{/if}
 
 <CompanyQuickCreate
   bind:open={qcCompanyOpen}

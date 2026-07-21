@@ -36,6 +36,10 @@
   let deleteId = $state("");
   let confirmDelete = $state(false);
 
+  // Row actions render only for holders of the matching permission (#253).
+  const canWrite = $derived(can(page.data.user, "websites.website.write"));
+  const canDelete = $derived(can(page.data.user, "websites.website.delete"));
+
   // Inline-create over the modal (#115): full dialogs, prefilled with what was typed.
   let qcHostingOpen = $state(false);
   let qcHostingName = $state("");
@@ -172,144 +176,154 @@
               {t("websites.uptime_short")}
             </span>
           {/if}
-          <ActionsMenu
-            items={[
-              { label: t("common.edit"), icon: Pencil, onclick: () => openEdit(site) },
-              {
-                label: t("common.delete"),
-                icon: Trash2,
-                danger: true,
-                onclick: () => requestDelete(site.id),
-              },
-            ]}
-          />
+          {#if canWrite || canDelete}
+            <ActionsMenu
+              items={[
+                ...(canWrite
+                  ? [{ label: t("common.edit"), icon: Pencil, onclick: () => openEdit(site) }]
+                  : []),
+                ...(canDelete
+                  ? [
+                      {
+                        label: t("common.delete"),
+                        icon: Trash2,
+                        danger: true,
+                        onclick: () => requestDelete(site.id),
+                      },
+                    ]
+                  : []),
+              ]}
+            />
+          {/if}
         </li>
       {/each}
     </ul>
   {/if}
 </section>
 
-<Modal bind:open={showModal} title={editing ? t("websites.edit") : t("websites.new")}>
-  {#key editing?.id ?? "new"}
-    <form
-      method="POST"
-      action="?/save"
-      use:enhance={() =>
-        ({ result, update }) => {
-          if (result.type === "success") showModal = false;
-          void update({ reset: false });
-        }}
-    >
-      {#if editing}<input type="hidden" name="website_id" value={editing.id} />{/if}
-      <div class="space-y-4">
-        {#if editing}
-          <p class="text-sm text-text">
-            <span class="text-text-muted">{t("websites.field.domain")}:</span>
-            {editing.domain_name}
-          </p>
-        {:else}
+{#if canWrite}
+  <Modal bind:open={showModal} title={editing ? t("websites.edit") : t("websites.new")}>
+    {#key editing?.id ?? "new"}
+      <form
+        method="POST"
+        action="?/save"
+        use:enhance={() =>
+          ({ result, update }) => {
+            if (result.type === "success") showModal = false;
+            void update({ reset: false });
+          }}
+      >
+        {#if editing}<input type="hidden" name="website_id" value={editing.id} />{/if}
+        <div class="space-y-4">
+          {#if editing}
+            <p class="text-sm text-text">
+              <span class="text-text-muted">{t("websites.field.domain")}:</span>
+              {editing.domain_name}
+            </p>
+          {:else}
+            <div>
+              <label for="website-domain" class="mb-1 block text-sm text-text"
+                >{t("websites.field.domain")}</label
+              >
+              <Combobox
+                items={domainItems}
+                name="domain_id"
+                bind:value={selectedDomainId}
+                id="website-domain"
+                placeholder={t("websites.field.domain")}
+                oncreate={(name) => {
+                  qcDomainName = name;
+                  qcDomainOpen = true;
+                }}
+              />
+              <p class="mt-1 text-xs text-text-muted">{t("websites.domain_hint")}</p>
+            </div>
+          {/if}
           <div>
-            <label for="website-domain" class="mb-1 block text-sm text-text"
-              >{t("websites.field.domain")}</label
+            <span class="mb-1 block text-sm text-text">{t("websites.host")}</span>
+            <div class="flex gap-3">
+              <label class="flex items-center gap-1.5 text-sm text-text">
+                <input type="radio" name="root" value="root" bind:group={hostChoice} /> @ (root)
+              </label>
+              <label class="flex items-center gap-1.5 text-sm text-text">
+                <input type="radio" name="root" value="www" bind:group={hostChoice} />
+                www
+              </label>
+            </div>
+          </div>
+          <div>
+            <span class="mb-1 block text-sm text-text">{t("websites.technical_owner")}</span>
+            <PartyPicker
+              name="technical_owner"
+              value={editing?.technical_owner ?? { type: "agency", id: null }}
+              agencyLabel={data.agencyLabel}
+              companies={data.companies}
+              employees={data.employees}
+              contacts={data.contacts}
+              types={["agency", "company"]}
+              typeLabels={{
+                agency: data.agencyLabel,
+                company: ownerCompanyName || undefined,
+              }}
+              companyPickable={false}
+              id="website-owner"
+              oncreatecompany={quickCreateCompany}
+              oncreatecontact={quickCreateContact}
+              created={form?.inlineCreated ?? null}
+            />
+          </div>
+          <div>
+            <label for="website-hosting" class="mb-1 block text-sm text-text"
+              >{t("websites.hosting")}</label
             >
             <Combobox
-              items={domainItems}
-              name="domain_id"
-              bind:value={selectedDomainId}
-              id="website-domain"
-              placeholder={t("websites.field.domain")}
+              items={hostingItems}
+              name="hosting_id"
+              value={hostingCreated || (editing?.hosting_id ?? "")}
+              id="website-hosting"
+              placeholder={t("common.none")}
               oncreate={(name) => {
-                qcDomainName = name;
-                qcDomainOpen = true;
+                qcHostingName = name;
+                qcHostingOpen = true;
               }}
             />
-            <p class="mt-1 text-xs text-text-muted">{t("websites.domain_hint")}</p>
           </div>
-        {/if}
-        <div>
-          <span class="mb-1 block text-sm text-text">{t("websites.host")}</span>
-          <div class="flex gap-3">
-            <label class="flex items-center gap-1.5 text-sm text-text">
-              <input type="radio" name="root" value="root" bind:group={hostChoice} /> @ (root)
-            </label>
-            <label class="flex items-center gap-1.5 text-sm text-text">
-              <input type="radio" name="root" value="www" bind:group={hostChoice} />
-              www
-            </label>
-          </div>
+          <label class="flex items-center gap-2 text-sm text-text">
+            <input
+              type="checkbox"
+              name="uptime_enabled"
+              value="on"
+              checked={editing?.uptime_enabled ?? false}
+            />
+            {t("websites.uptime")}
+          </label>
+          {#if data.definitions.length > 0}
+            <CustomFieldsForm
+              definitions={data.definitions}
+              values={editing?.custom ?? {}}
+              locale={data.locale}
+            />
+          {:else}
+            <input type="hidden" name="custom" value={JSON.stringify(editing?.custom ?? {})} />
+          {/if}
         </div>
-        <div>
-          <span class="mb-1 block text-sm text-text">{t("websites.technical_owner")}</span>
-          <PartyPicker
-            name="technical_owner"
-            value={editing?.technical_owner ?? { type: "agency", id: null }}
-            agencyLabel={data.agencyLabel}
-            companies={data.companies}
-            employees={data.employees}
-            contacts={data.contacts}
-            types={["agency", "company"]}
-            typeLabels={{
-              agency: data.agencyLabel,
-              company: ownerCompanyName || undefined,
-            }}
-            companyPickable={false}
-            id="website-owner"
-            oncreatecompany={quickCreateCompany}
-            oncreatecontact={quickCreateContact}
-            created={form?.inlineCreated ?? null}
-          />
-        </div>
-        <div>
-          <label for="website-hosting" class="mb-1 block text-sm text-text"
-            >{t("websites.hosting")}</label
+        {#if form?.error}<p class="mt-3 text-sm text-red-600 dark:text-red-400">
+            {t(form.error)}
+          </p>{/if}
+        <div class="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            class="rounded-lg border border-border px-4 py-2 text-sm text-text"
+            onclick={() => (showModal = false)}>{t("common.cancel")}</button
           >
-          <Combobox
-            items={hostingItems}
-            name="hosting_id"
-            value={hostingCreated || (editing?.hosting_id ?? "")}
-            id="website-hosting"
-            placeholder={t("common.none")}
-            oncreate={(name) => {
-              qcHostingName = name;
-              qcHostingOpen = true;
-            }}
-          />
+          <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
+            >{editing ? t("common.save") : t("websites.add")}</button
+          >
         </div>
-        <label class="flex items-center gap-2 text-sm text-text">
-          <input
-            type="checkbox"
-            name="uptime_enabled"
-            value="on"
-            checked={editing?.uptime_enabled ?? false}
-          />
-          {t("websites.uptime")}
-        </label>
-        {#if data.definitions.length > 0}
-          <CustomFieldsForm
-            definitions={data.definitions}
-            values={editing?.custom ?? {}}
-            locale={data.locale}
-          />
-        {:else}
-          <input type="hidden" name="custom" value={JSON.stringify(editing?.custom ?? {})} />
-        {/if}
-      </div>
-      {#if form?.error}<p class="mt-3 text-sm text-red-600 dark:text-red-400">
-          {t(form.error)}
-        </p>{/if}
-      <div class="mt-4 flex justify-end gap-2">
-        <button
-          type="button"
-          class="rounded-lg border border-border px-4 py-2 text-sm text-text"
-          onclick={() => (showModal = false)}>{t("common.cancel")}</button
-        >
-        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-          >{editing ? t("common.save") : t("websites.add")}</button
-        >
-      </div>
-    </form>
-  {/key}
-</Modal>
+      </form>
+    {/key}
+  </Modal>
+{/if}
 
 <HostingQuickCreate
   bind:open={qcHostingOpen}

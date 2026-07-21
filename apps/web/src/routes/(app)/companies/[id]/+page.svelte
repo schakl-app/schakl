@@ -40,6 +40,10 @@
   let showEdit = $state(editIntent());
   let confirmDelete = $state(false);
 
+  // Header actions render only for holders of the matching permission (#253).
+  const canWrite = $derived(can(page.data.user, "companies.company.write"));
+  const canDelete = $derived(can(page.data.user, "companies.company.delete"));
+
   // Log a contactmoment from the header — quick-add where the user is (docs/UX.md), with the
   // client pinned. The panel's own ＋ stays; this is the reachable top-of-page entry.
   let showLogInteraction = $state(false);
@@ -124,20 +128,28 @@
       {#if hasReporting}
         <CompanyAIActions companyId={company.id} companyName={company.name} />
       {/if}
-      <ActionsMenu
-        items={[
-          { label: t("common.edit"), icon: Pencil, onclick: () => (showEdit = true) },
-          {
-            label: t("common.delete"),
-            icon: Trash2,
-            danger: true,
-            onclick: () => (confirmDelete = true),
-          },
-        ]}
-      />
+      {#if canWrite || canDelete}
+        <ActionsMenu
+          items={[
+            ...(canWrite
+              ? [{ label: t("common.edit"), icon: Pencil, onclick: () => (showEdit = true) }]
+              : []),
+            ...(canDelete
+              ? [
+                  {
+                    label: t("common.delete"),
+                    icon: Trash2,
+                    danger: true,
+                    onclick: () => (confirmDelete = true),
+                  },
+                ]
+              : []),
+          ]}
+        />
+      {/if}
     </div>
   </div>
-  {#if data.templates.length > 0}
+  {#if data.templates.length > 0 && can(page.data.user, "tasks.template.apply")}
     <form method="POST" action="?/applyTemplate" use:enhance class="mt-3 flex items-center gap-2">
       <select
         name="template_id"

@@ -7,6 +7,7 @@
   import { page } from "$app/state";
   import { fmtDayMonth, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { can } from "$lib/core/permissions";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
@@ -33,6 +34,10 @@
 
   let deleteId = $state("");
   let confirmDelete = $state(false);
+
+  // Actions render only for holders of the matching permission (#253).
+  const canCreate = $derived(can(page.data.user, "tasks.task.create"));
+  const canDelete = $derived(can(page.data.user, "tasks.task.delete"));
 
   const dueOptions = ["overdue", "today", "week"] as const;
 
@@ -131,11 +136,13 @@
   </div>
   <!-- Create-then-edit (#230): the server creates a minimal task and redirects to its detail
        page in edit mode — creating and editing share one surface (docs/UX.md Principle 3). -->
-  <form method="POST" action="?/create" use:enhance>
-    <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
-      {t("tasks.new")}
-    </button>
-  </form>
+  {#if canCreate}
+    <form method="POST" action="?/create" use:enhance>
+      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+        {t("tasks.new")}
+      </button>
+    </form>
+  {/if}
 </div>
 
 {#if form?.error}
@@ -365,7 +372,9 @@
     <div class="min-w-0 flex-1">
       <TaskRow {task} members={data.members} statuses={data.statuses} {today} />
     </div>
-    {@render rowActions(task)}
+    {#if canDelete}
+      {@render rowActions(task)}
+    {/if}
   </div>
 {/snippet}
 
@@ -396,7 +405,7 @@
   {groups}
   groupBy={(task) => task.status}
   collapsed={table.collapsed}
-  actions={rowActions}
+  actions={canDelete ? rowActions : undefined}
   {mobileRow}
   {empty}
   oncollapse={table.onCollapse}

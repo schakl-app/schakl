@@ -2,8 +2,10 @@
   import { RefreshCw, Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
+  import { page } from "$app/state";
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { can } from "$lib/core/permissions";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
@@ -61,6 +63,13 @@
   const website = $derived(data.website);
   const hostingItems = $derived(data.hosting.map((h) => ({ value: h.id, label: h.name })));
 
+  // Actions render only for holders of the matching permission (#253). The DNS refresh posts
+  // a write on the API, so it follows domains.domain.write.
+  const canWrite = $derived(can(page.data.user, "domains.domain.write"));
+  const canDelete = $derived(can(page.data.user, "domains.domain.delete"));
+  const canWriteWebsite = $derived(can(page.data.user, "websites.website.write"));
+  const canDeleteWebsite = $derived(can(page.data.user, "websites.website.delete"));
+
   // Through the shared formatter (#125): tenant timezone + the personal clock/date prefs,
   // instead of the browser-locale toLocaleString dump this replaced.
   function checkedAt(iso: string | null | undefined): string {
@@ -75,20 +84,30 @@
 <div class="mb-6">
   <div class="mt-2 flex items-center justify-between">
     <h1 class="text-xl font-semibold text-text">{domain.name}</h1>
-    <ActionsMenu
-      items={[
-        {
-          label: editing ? t("common.cancel") : t("common.edit"),
-          onclick: () => (editing = !editing),
-        },
-        {
-          label: t("common.delete"),
-          icon: Trash2,
-          danger: true,
-          onclick: () => (confirmDelete = true),
-        },
-      ]}
-    />
+    {#if canWrite || canDelete}
+      <ActionsMenu
+        items={[
+          ...(canWrite
+            ? [
+                {
+                  label: editing ? t("common.cancel") : t("common.edit"),
+                  onclick: () => (editing = !editing),
+                },
+              ]
+            : []),
+          ...(canDelete
+            ? [
+                {
+                  label: t("common.delete"),
+                  icon: Trash2,
+                  danger: true,
+                  onclick: () => (confirmDelete = true),
+                },
+              ]
+            : []),
+        ]}
+      />
+    {/if}
   </div>
 </div>
 
@@ -192,13 +211,15 @@
   <section class="rounded-xl border border-border bg-surface-raised p-5">
     <div class="mb-4 flex items-center justify-between">
       <h2 class="text-sm font-semibold text-text">{t("domains.dns.title")}</h2>
-      <form method="POST" action="?/refresh" use:enhance>
-        <button
-          class="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-text hover:border-brand"
-        >
-          <RefreshCw size={14} />{t("domains.dns.refresh")}
-        </button>
-      </form>
+      {#if canWrite}
+        <form method="POST" action="?/refresh" use:enhance>
+          <button
+            class="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-text hover:border-brand"
+          >
+            <RefreshCw size={14} />{t("domains.dns.refresh")}
+          </button>
+        </form>
+      {/if}
     </div>
     <dl class="space-y-2 text-sm">
       <div>
@@ -245,25 +266,33 @@
 <section id="website" class="mt-4 rounded-xl border border-border bg-surface-raised p-5">
   <div class="mb-4 flex items-center justify-between">
     <h2 class="text-sm font-semibold text-text">{t("websites.title")}</h2>
-    {#if website && !editingWebsite}
+    {#if website && !editingWebsite && (canWriteWebsite || canDeleteWebsite)}
       <ActionsMenu
         items={[
-          {
-            label: t("common.edit"),
-            onclick: () => {
-              websiteHost = website?.root ? "root" : "www";
-              editingWebsite = true;
-            },
-          },
-          {
-            label: t("common.delete"),
-            icon: Trash2,
-            danger: true,
-            onclick: () =>
-              (
-                document.getElementById("delete-website-form") as HTMLFormElement | null
-              )?.requestSubmit(),
-          },
+          ...(canWriteWebsite
+            ? [
+                {
+                  label: t("common.edit"),
+                  onclick: () => {
+                    websiteHost = website?.root ? "root" : "www";
+                    editingWebsite = true;
+                  },
+                },
+              ]
+            : []),
+          ...(canDeleteWebsite
+            ? [
+                {
+                  label: t("common.delete"),
+                  icon: Trash2,
+                  danger: true,
+                  onclick: () =>
+                    (
+                      document.getElementById("delete-website-form") as HTMLFormElement | null
+                    )?.requestSubmit(),
+                },
+              ]
+            : []),
         ]}
       />
     {/if}
@@ -297,7 +326,7 @@
     >
       <input type="hidden" name="website_id" value={website.id} />
     </form>
-  {:else if editingWebsite || !website}
+  {:else if canWriteWebsite && (editingWebsite || !website)}
     <form
       method="POST"
       action="?/saveWebsite"
@@ -387,6 +416,9 @@
         >
       </div>
     </form>
+  {:else}
+    <!-- No website and no permission to connect one: an honest empty value, not a form. -->
+    <p class="text-sm text-text-muted">—</p>
   {/if}
 </section>
 

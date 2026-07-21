@@ -7,6 +7,7 @@
   import { editHref } from "$lib/core/edit-intent";
   import { fmtNumber, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { can } from "$lib/core/permissions";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { customFieldColumns } from "$lib/core/table/columns";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
@@ -32,6 +33,10 @@
   let deleteId = $state("");
   let deleteName = $state("");
   let confirmDelete = $state(false);
+
+  // Row actions render only for holders of the matching permission (#253).
+  const canWrite = $derived(can(page.data.user, "projects.project.write"));
+  const canDelete = $derived(can(page.data.user, "projects.project.delete"));
 
   // #81: which client is picked on the create form, so the assignee field can show the
   // verantwoordelijke it will inherit instead of an empty placeholder.
@@ -150,13 +155,19 @@
 {#snippet rowActions(project: Project)}
   <ActionsMenu
     items={[
-      { label: t("common.edit"), icon: Pencil, href: editHref(`/projects/${project.id}`) },
-      {
-        label: t("common.delete"),
-        icon: Trash2,
-        danger: true,
-        onclick: () => confirmDeleteOf(project),
-      },
+      ...(canWrite
+        ? [{ label: t("common.edit"), icon: Pencil, href: editHref(`/projects/${project.id}`) }]
+        : []),
+      ...(canDelete
+        ? [
+            {
+              label: t("common.delete"),
+              icon: Trash2,
+              danger: true,
+              onclick: () => confirmDeleteOf(project),
+            },
+          ]
+        : []),
     ]}
   />
 {/snippet}
@@ -178,7 +189,9 @@
     >
       {t(`projects.status.${project.status}`)}
     </span>
-    {@render rowActions(project)}
+    {#if canWrite || canDelete}
+      {@render rowActions(project)}
+    {/if}
   </div>
 {/snippet}
 
@@ -198,12 +211,14 @@
     <h1 class="text-xl font-semibold text-text">{navLabel("projects", t("projects.title"))}</h1>
     <p class="mt-1 text-sm text-text-muted">{t("projects.count", { count: data.total })}</p>
   </div>
-  <button
-    class="shrink-0 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-    onclick={() => (showCreate = !showCreate)}
-  >
-    {t("projects.new")}
-  </button>
+  {#if canWrite}
+    <button
+      class="shrink-0 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+      onclick={() => (showCreate = !showCreate)}
+    >
+      {t("projects.new")}
+    </button>
+  {/if}
 </div>
 
 <!-- Filter + search + the personal column picker, on their own wrapping row (issue #36): title,
@@ -238,7 +253,7 @@
   />
 </div>
 
-{#if showCreate}
+{#if showCreate && canWrite}
   <form
     method="POST"
     action="?/create"
@@ -380,7 +395,7 @@
   definitions={data.definitions}
   locale={data.locale}
   rowHref={(project) => `/projects/${project.id}`}
-  actions={rowActions}
+  actions={canWrite || canDelete ? rowActions : undefined}
   {mobileRow}
   empty={emptyState}
   onsort={table.onSort}
