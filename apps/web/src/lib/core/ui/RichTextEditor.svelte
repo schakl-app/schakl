@@ -177,10 +177,19 @@
           onchange?.(markdown);
         },
         onTransaction: () => {
-          tick += 1;
-          // An existing-link popover follows the caret: leave the link, and it goes. Insert-mode
-          // popovers stay — the caret is on plain text there by definition.
-          if (linkOpen && linkExisting && !editor?.isActive("link")) linkOpen = false;
+          // Deferred one microtask (#257): unmounting a still-focused editor (a save's
+          // re-render) removes its DOM *before* this component's teardown runs, the browser
+          // fires blur during the removal, and Tiptap dispatches the focus plugin's
+          // transaction from that blur — synchronously inside Svelte's template flush, where
+          // a $state write is state_unsafe_mutation. A microtask later the flush is over,
+          // and after teardown `editor` is null, so a destroyed editor never writes.
+          queueMicrotask(() => {
+            if (!editor) return;
+            tick += 1;
+            // An existing-link popover follows the caret: leave the link, and it goes.
+            // Insert-mode popovers stay — the caret is on plain text there by definition.
+            if (linkOpen && linkExisting && !editor.isActive("link")) linkOpen = false;
+          });
         },
         // Clicking a blue label is how a hidden URL is reached: open the popover prefilled.
         // No focus steal — the caret stays where the user clicked.
