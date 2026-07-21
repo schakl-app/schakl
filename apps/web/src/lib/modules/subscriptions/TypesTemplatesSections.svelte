@@ -1,6 +1,7 @@
 <script lang="ts">
   /**
-   * The subscription catalog: the tenant's types and templates, as two managed sections
+   * The subscription catalog: the tenant's standard subscriptions (the
+   * `subscription_templates` presets, renamed in the UI only, #229) and types, as two tabs
    * (issue #142). Extracted from Instellingen → Abonnementen so the subscriptions page can
    * carry the same beheer without a trip through the menu; both hosts post to the shared
    * `manageActions` (manage.server.ts), so the action names below exist on either route.
@@ -107,108 +108,128 @@
 
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm text-text outline-none focus:border-brand";
+
+  // Two tabs, same pill styling as the /overview sub-route tabs (#229) — local state, not
+  // routes: the catalog is embedded in two hosts and neither owns a sub-path for it.
+  let tab = $state<"templates" | "types">("templates");
+  const tabClass = (active: boolean) =>
+    `rounded-lg px-3 py-1.5 text-sm font-medium ${
+      active ? "bg-brand text-white" : "text-text-muted hover:bg-surface"
+    }`;
 </script>
 
-<!-- Types: the tenant's own categories (hosting, onderhoud, …) -->
-<div class="mb-3 flex items-center justify-between">
-  <h2 class="text-sm font-medium text-text">{t("settings.subscriptions.types_heading")}</h2>
-  {#if canManageTypes}
+<!-- One row: the two catalog tabs left, the active tab's create action right (#229). -->
+<div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+  <div class="flex flex-wrap items-center gap-1">
+    <button
+      class={tabClass(tab === "templates")}
+      aria-pressed={tab === "templates"}
+      onclick={() => (tab = "templates")}
+      >{t("settings.subscriptions.templates_heading")}</button
+    >
+    <button
+      class={tabClass(tab === "types")}
+      aria-pressed={tab === "types"}
+      onclick={() => (tab = "types")}>{t("settings.subscriptions.types_heading")}</button
+    >
+  </div>
+  {#if tab === "templates" && canManageTemplates}
+    <button
+      class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
+      onclick={openTemplateCreate}>{t("settings.subscriptions.new_template")}</button
+    >
+  {:else if tab === "types" && canManageTypes}
     <button
       class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
       onclick={openTypeCreate}>{t("settings.subscriptions.new_type")}</button
     >
   {/if}
 </div>
-<section class="mb-8 rounded-xl border border-border bg-surface-raised">
-  {#if types.length === 0}
-    <p class="p-6 text-sm text-text-muted">{t("settings.subscriptions.types_empty")}</p>
-  {:else}
-    <ul class="divide-y divide-border">
-      {#each types as st (st.id)}
-        <li class="flex items-center gap-3 px-4 py-3 {st.active ? '' : 'opacity-50'}">
-          <span class="flex-1 text-sm text-text">{subscriptionTypeLabel(st, locale)}</span>
-          {#if (st.task_template_ids ?? []).length > 0}
-            <span class="rounded-md bg-surface px-2 py-0.5 text-xs text-text-muted"
-              >{t("settings.subscriptions.spawn_count", {
-                count: (st.task_template_ids ?? []).length,
-              })}</span
-            >
-          {/if}
-          <span class="text-xs text-text-muted">{st.key}</span>
-          {#if canManageTypes}
-            <ActionsMenu
-              items={[
-                { label: t("common.edit"), icon: Pencil, onclick: () => openTypeEdit(st) },
-                {
-                  label: st.active ? t("common.deactivate") : t("common.activate"),
-                  icon: Power,
-                  onclick: () => requestToggle(st),
-                },
-                {
-                  label: t("common.delete"),
-                  icon: Trash2,
-                  danger: true,
-                  onclick: () => {
-                    deleteTypeId = st.id;
-                    confirmDeleteType = true;
-                  },
-                },
-              ]}
-            />
-          {/if}
-        </li>
-      {/each}
-    </ul>
-  {/if}
-</section>
 
-<!-- Templates: named presets that prefill the create form -->
-<div class="mb-3 flex items-center justify-between">
-  <h2 class="text-sm font-medium text-text">{t("settings.subscriptions.templates_heading")}</h2>
-  {#if canManageTemplates}
-    <button
-      class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-      onclick={openTemplateCreate}>{t("settings.subscriptions.new_template")}</button
-    >
-  {/if}
-</div>
-<section class="rounded-xl border border-border bg-surface-raised">
-  {#if templates.length === 0}
-    <p class="p-6 text-sm text-text-muted">{t("settings.subscriptions.templates_empty")}</p>
-  {:else}
-    <ul class="divide-y divide-border">
-      {#each templates as tpl (tpl.id)}
-        <li class="flex items-center gap-3 px-4 py-3">
-          <span class="flex-1 text-sm text-text">{tpl.name}</span>
-          {#if tpl.subscription_type_id}
-            <span class="rounded-md bg-surface px-2 py-0.5 text-xs text-text-muted"
-              >{typeLabel(tpl.subscription_type_id)}</span
-            >
-          {/if}
-          <span class="text-xs tabular-nums text-text-muted">
-            {money(tpl.amount)} · {t(`subscriptions.interval.${tpl.interval}`)}
-          </span>
-          {#if canManageTemplates}
-            <ActionsMenu
-              items={[
-                { label: t("common.edit"), icon: Pencil, onclick: () => openTemplateEdit(tpl) },
-                {
-                  label: t("common.delete"),
-                  icon: Trash2,
-                  danger: true,
-                  onclick: () => {
-                    deleteTemplateId = tpl.id;
-                    confirmDeleteTemplate = true;
+{#if tab === "types"}
+  <!-- Types: the tenant's own categories (hosting, onderhoud, …) -->
+  <section class="rounded-xl border border-border bg-surface-raised">
+    {#if types.length === 0}
+      <p class="p-6 text-sm text-text-muted">{t("settings.subscriptions.types_empty")}</p>
+    {:else}
+      <ul class="divide-y divide-border">
+        {#each types as st (st.id)}
+          <li class="flex items-center gap-3 px-4 py-3 {st.active ? '' : 'opacity-50'}">
+            <span class="flex-1 text-sm text-text">{subscriptionTypeLabel(st, locale)}</span>
+            {#if (st.task_template_ids ?? []).length > 0}
+              <span class="rounded-md bg-surface px-2 py-0.5 text-xs text-text-muted"
+                >{t("settings.subscriptions.spawn_count", {
+                  count: (st.task_template_ids ?? []).length,
+                })}</span
+              >
+            {/if}
+            <span class="text-xs text-text-muted">{st.key}</span>
+            {#if canManageTypes}
+              <ActionsMenu
+                items={[
+                  { label: t("common.edit"), icon: Pencil, onclick: () => openTypeEdit(st) },
+                  {
+                    label: st.active ? t("common.deactivate") : t("common.activate"),
+                    icon: Power,
+                    onclick: () => requestToggle(st),
                   },
-                },
-              ]}
-            />
-          {/if}
-        </li>
-      {/each}
-    </ul>
-  {/if}
-</section>
+                  {
+                    label: t("common.delete"),
+                    icon: Trash2,
+                    danger: true,
+                    onclick: () => {
+                      deleteTypeId = st.id;
+                      confirmDeleteType = true;
+                    },
+                  },
+                ]}
+              />
+            {/if}
+          </li>
+        {/each}
+      </ul>
+    {/if}
+  </section>
+{:else}
+  <!-- Standard subscriptions: named presets that prefill the create form -->
+  <section class="rounded-xl border border-border bg-surface-raised">
+    {#if templates.length === 0}
+      <p class="p-6 text-sm text-text-muted">{t("settings.subscriptions.templates_empty")}</p>
+    {:else}
+      <ul class="divide-y divide-border">
+        {#each templates as tpl (tpl.id)}
+          <li class="flex items-center gap-3 px-4 py-3">
+            <span class="flex-1 text-sm text-text">{tpl.name}</span>
+            {#if tpl.subscription_type_id}
+              <span class="rounded-md bg-surface px-2 py-0.5 text-xs text-text-muted"
+                >{typeLabel(tpl.subscription_type_id)}</span
+              >
+            {/if}
+            <span class="text-xs tabular-nums text-text-muted">
+              {money(tpl.amount)} · {t(`subscriptions.interval.${tpl.interval}`)}
+            </span>
+            {#if canManageTemplates}
+              <ActionsMenu
+                items={[
+                  { label: t("common.edit"), icon: Pencil, onclick: () => openTemplateEdit(tpl) },
+                  {
+                    label: t("common.delete"),
+                    icon: Trash2,
+                    danger: true,
+                    onclick: () => {
+                      deleteTemplateId = tpl.id;
+                      confirmDeleteTemplate = true;
+                    },
+                  },
+                ]}
+              />
+            {/if}
+          </li>
+        {/each}
+      </ul>
+    {/if}
+  </section>
+{/if}
 
 <!-- Type create/edit -->
 <Modal

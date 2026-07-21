@@ -110,7 +110,8 @@
   let priceMode = $state<"percent" | "amount" | "set">("percent");
   const PRICE_MODES = ["percent", "amount", "set"] as const;
 
-  // "Opslaan als sjabloon" (UX rule 5): the row posts its own values through a hidden form.
+  // "Opslaan als standaardabonnement" (UX rule 5): the row posts its own values through a
+  // hidden form.
   let tplForm: HTMLFormElement | undefined = $state();
   let tplDraft = $state<Subscription | null>(null);
   function saveAsTemplate(sub: Subscription) {
@@ -776,7 +777,7 @@
   {/key}
 </Modal>
 
-<!-- "Opslaan als sjabloon" — the row's values, posted through a hidden single-purpose form. -->
+<!-- "Opslaan als standaardabonnement": the row's values, posted through a hidden single-purpose form. -->
 <form bind:this={tplForm} method="POST" action="?/saveTemplate" use:enhance class="hidden">
   <input type="hidden" name="name" value={tplDraft?.name ?? ""} />
   <input type="hidden" name="subscription_type_id" value={tplDraft?.subscription_type_id ?? ""} />
@@ -796,8 +797,8 @@
   fields={{ id: deleteId }}
 />
 
-<!-- The catalog behind the list (owner request): types and templates managed right here,
-     without the trip through Instellingen. Same shared sections as the settings page. -->
+<!-- The catalog behind the list (owner request): standard subscriptions and types managed
+     right here, without the trip through Instellingen. Same shared tabs as the settings page. -->
 {#if data.canManageTypes || data.canManageTemplates}
   <div class="mt-10">
     <TypesTemplatesSections
