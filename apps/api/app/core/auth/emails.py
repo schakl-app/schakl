@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth.models import User
-from app.core.auth.sso import org_base_url
+from app.core.email.branding import brand_from
 from app.core.email.senders import OutgoingEmail
 from app.core.email.service import send_org_email
 from app.core.email.templates import build_email_content, resolve_template
@@ -62,14 +62,15 @@ async def send_password_email(
     org_settings = await session.scalar(
         select(OrgSettings).where(OrgSettings.org_id == org.id)
     )
-    brand = (org_settings.brand_name if org_settings else "") or org.name
+    brand = brand_from(org, org_settings)
     locale = resolve_locale(
         user.locale, org_settings.default_locale if org_settings else None
     )
-    link = f"{org_base_url(org)}/reset-password?token={token}"
-    values = {"name": user.full_name or user.email, "brand": brand, "link": link}
-    # A tenant override for (kind, locale) wins (#161 tier 2); a missing one falls back to the
-    # catalog default. The plaintext part always carries the link, HTML rides only when set.
+    link = f"{brand.base_url}/reset-password?token={token}"
+    values = {"name": user.full_name or user.email, "brand": brand.brand_name, "link": link}
+    # A tenant override for (kind, locale) wins (#161 tier 2); a missing one falls back to
+    # the built-in default, which now renders as branded HTML with a CTA button (#236). The
+    # plaintext part always carries the link either way.
     template = await resolve_template(session, org.id, kind, locale)
     subject, text, html = build_email_content(
         kind,
@@ -77,9 +78,10 @@ async def send_password_email(
         template.subject if template else None,
         template.body_html if template else None,
         values,
+        primary_color=brand.primary_color,
     )
     message = OutgoingEmail(to=user.email, subject=subject, text=text, html=html)
-    sent, error = await send_org_email(session, org.id, message)
+    sent, error = await send_org_email(session, org.id, message, brand=brand)
     if not sent:
         logger.warning(
             "Password %s email to %s not sent (%s); token=%s", kind, user.email, error, token

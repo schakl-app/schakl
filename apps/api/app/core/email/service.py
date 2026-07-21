@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.crypto import decrypt, encrypt
+from app.core.email.branding import EmailBrand, apply_branding, load_brand, load_brand_by_id
 from app.core.email.models import EMAIL_TEMPLATE_KINDS, EmailSettings, OrgEmailTemplate
 from app.core.email.schemas import (
     EmailSettingsRead,
@@ -32,7 +33,7 @@ from app.core.email.templates import (
 from app.core.models import OrgSettings
 from app.core.tenancy import RequestContext
 from app.errors import AppError
-from app.i18n import available_locales, resolve_locale
+from app.i18n import available_locales, resolve_locale, translate
 
 #: Which config keys each provider stores, and which of them is the secret.
 _PROVIDER_FIELDS: dict[str, tuple[tuple[str, ...], str]] = {
@@ -116,6 +117,8 @@ async def send_org_email(
     session: AsyncSession,
     org_id,
     message: OutgoingEmail,  # noqa: ANN001
+    *,
+    brand: EmailBrand | None = None,
 ) -> tuple[bool, str | None]:
     """Send through the org's configured transport; ``(False, key)`` when none is configured.
 
@@ -126,14 +129,20 @@ async def send_org_email(
     provider's own text.
     """
     row = await get_row(session, org_id)
+    if row is None and not settings.instance_email_available:
+        return False, "errors.email_not_configured"
     # The org-wide signature rides the one send seam (owner request): every outgoing mail —
     # auth, notification, invoice — carries it automatically, with no per-caller code.
     if row is not None:
         message = apply_signature(message, row.signature_html)
+    # So does the tenant's branded chrome (#236): whatever HTML (or promoted text) the mail
+    # carries leaves wrapped in the org's logo/colors. Pass ``brand`` to skip the re-read
+    # when the caller already resolved it; a failed resolve sends the mail unwrapped.
+    if brand is None:
+        brand = await load_brand_by_id(session, org_id)
+    message = apply_branding(brand, message)
     if row is None:
-        if settings.instance_email_available:
-            return await _send_instance_email(session, org_id, message)
-        return False, "errors.email_not_configured"
+        return await _send_instance_email(session, org_id, message)
     if row.provider == "instance":
         if not settings.instance_email_available:
             return False, "errors.email_not_configured"
@@ -271,14 +280,17 @@ class EmailSettingsService:
         """Send a test mail to the acting admin via the *stored* settings — an explicit admin
         action, the one place this surface does synchronous network I/O."""
         self.ctx.require("settings.email.manage")
-        brand = getattr(self.ctx.org, "name", None) or "schakl"
+        brand = await load_brand(self.ctx.session, self.ctx.org)
+        locale = resolve_locale(getattr(self.ctx.user, "locale", None))
         message = OutgoingEmail(
             to=self.ctx.user.email,
-            subject=f"{brand}: test",
-            text="This is a test email from schakl.",
+            subject=translate("settings.email.test_subject", locale, brand=brand.brand_name),
+            text=translate("settings.email.test_body", locale, brand=brand.brand_name),
         )
         try:
-            ok, error = await send_org_email(self.ctx.session, self.ctx.org.id, message)
+            ok, error = await send_org_email(
+                self.ctx.session, self.ctx.org.id, message, brand=brand
+            )
         except Exception as exc:  # noqa: BLE001 - surface the provider failure, don't 500
             return EmailTestResult(ok=False, error=str(exc))
         return EmailTestResult(ok=ok, error=error)
@@ -294,9 +306,6 @@ class OrgEmailTemplateService:
 
     def __init__(self, ctx: RequestContext) -> None:
         self.ctx = ctx
-
-    def _org_brand(self) -> str:
-        return getattr(self.ctx.org, "name", None) or "schakl"
 
     async def _stored(self) -> dict[tuple[str, str], OrgEmailTemplate]:
         rows = (
@@ -390,19 +399,25 @@ class OrgEmailTemplateService:
         self.ctx.require("settings.email.manage")
         self._validate(data.kind, data.locale)
         # A realistic-looking preview link on the org's own address; the token is a placeholder.
-        from app.core.auth.sso import org_base_url
-
+        brand = await load_brand(self.ctx.session, self.ctx.org)
         values = {
-            "brand": self._org_brand(),
+            "brand": brand.brand_name,
             "name": self.ctx.user.full_name or self.ctx.user.email,
-            "link": f"{org_base_url(self.ctx.org)}/reset-password?token=preview",
+            "link": f"{brand.base_url}/reset-password?token=preview",
         }
         subject, text, html = build_email_content(
-            data.kind, resolve_locale(data.locale), data.subject, data.body_html, values
+            data.kind,
+            resolve_locale(data.locale),
+            data.subject,
+            data.body_html,
+            values,
+            primary_color=brand.primary_color,
         )
         message = OutgoingEmail(to=self.ctx.user.email, subject=subject, text=text, html=html)
         try:
-            ok, error = await send_org_email(self.ctx.session, self.ctx.org.id, message)
+            ok, error = await send_org_email(
+                self.ctx.session, self.ctx.org.id, message, brand=brand
+            )
         except Exception as exc:  # noqa: BLE001 - surface the provider failure, don't 500
             return EmailTestResult(ok=False, error=str(exc))
         return EmailTestResult(ok=ok, error=error)

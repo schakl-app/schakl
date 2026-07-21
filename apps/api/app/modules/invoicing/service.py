@@ -990,11 +990,13 @@ class InvoiceService(_DocumentService):
                 raise AppError(
                     "validation", "errors.invoicing.no_recipient", status_code=400
                 )
+            from app.core.email.branding import load_brand
             from app.core.email.senders import EmailAttachment
             from app.modules.invoicing import emails
 
+            brand = await load_brand(self.ctx.session, self.ctx.org)
             message = emails.compose_invoice_email(
-                invoice, self.ctx.org.name, data.message
+                invoice, brand.brand_name, data.message
             )
             message.to = to
             # The mail carries the document (owner feedback): a text summary is not an
@@ -1004,7 +1006,7 @@ class InvoiceService(_DocumentService):
             message.attachments.append(
                 EmailAttachment(filename=filename, content=content, mimetype="application/pdf")
             )
-            await emails.deliver(self.ctx, message)
+            await emails.deliver(self.ctx, message, brand=brand)
         invoice = await self.repo.update(invoice, sent_at=datetime.now(UTC))
         await ActivityService(self.ctx).record(
             self.entity_type, invoice.id, "sent",
@@ -1024,11 +1026,13 @@ class InvoiceService(_DocumentService):
             raise AppError("validation", "errors.invoicing.no_recipient", status_code=400)
         today = await org_today(self.ctx)
         days = (today - invoice.due_date).days if invoice.due_date else 0
+        from app.core.email.branding import load_brand
         from app.modules.invoicing import emails
 
-        message = emails.compose_reminder_email(invoice, self.ctx.org.name, max(days, 0))
+        brand = await load_brand(self.ctx.session, self.ctx.org)
+        message = emails.compose_reminder_email(invoice, brand.brand_name, max(days, 0))
         message.to = to
-        await emails.deliver(self.ctx, message)
+        await emails.deliver(self.ctx, message, brand=brand)
         invoice = await self.repo.update(
             invoice,
             reminder_count=invoice.reminder_count + 1,
@@ -1674,17 +1678,19 @@ class QuoteService(_DocumentService):
                 raise AppError(
                     "validation", "errors.invoicing.no_recipient", status_code=400
                 )
+            from app.core.email.branding import load_brand
             from app.core.email.senders import EmailAttachment
             from app.modules.invoicing import emails
 
-            message = emails.compose_quote_email(quote, self.ctx.org.name, data.message)
+            brand = await load_brand(self.ctx.session, self.ctx.org)
+            message = emails.compose_quote_email(quote, brand.brand_name, data.message)
             message.to = to
             await self._attach([quote])
             content, filename = await self.document_pdf(quote, "quote")
             message.attachments.append(
                 EmailAttachment(filename=filename, content=content, mimetype="application/pdf")
             )
-            await emails.deliver(self.ctx, message)
+            await emails.deliver(self.ctx, message, brand=brand)
         quote = await self.repo.update(quote, sent_at=datetime.now(UTC))
         await ActivityService(self.ctx).record(
             self.entity_type, quote.id, "sent",

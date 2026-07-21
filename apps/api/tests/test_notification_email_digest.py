@@ -169,10 +169,10 @@ async def test_digest_sweep_groups_one_mail_per_recipient(client_for, monkeypatc
             )
             assert res.status_code == 201, res.text
 
-    sent: list[tuple[str, str, str]] = []
+    sent: list[tuple[str, str, str, str | None]] = []
 
-    async def fake_send(session, org_id, message):  # noqa: ANN001
-        sent.append((message.to, message.subject, message.text))
+    async def fake_send(session, org_id, message, **kwargs):  # noqa: ANN001
+        sent.append((message.to, message.subject, message.text, message.html))
         return True, None
 
     import app.core.email.service as email_service
@@ -187,10 +187,14 @@ async def test_digest_sweep_groups_one_mail_per_recipient(client_for, monkeypatc
 
     # Two notifications, one recipient → exactly one mail, both items in the body.
     assert len(sent) == 1
-    to, subject, text = sent[0]
+    to, subject, text, html = sent[0]
     assert to == t.user.email
     assert "2" in subject
     assert text.count("http") == 2
+    # The mail reads as sentences (#236), never as raw event types or i18n keys.
+    assert "leave.requested" not in text and "notifications.event" not in text
+    assert html is not None and html.count("<a href=") == 2
+    assert text.startswith("M ")  # the actor (the member's display name) opens the sentence
 
     async with async_session_maker() as session:
         await set_current_org(session, t.org.id)

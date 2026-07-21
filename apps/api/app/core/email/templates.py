@@ -104,6 +104,41 @@ def default_body_html(kind: str, locale: str) -> str:
     return html.replace("{link}", '<a href="{link}">{link}</a>')
 
 
+def branded_default_html(kind: str, locale: str, values: dict[str, str], primary_color: str) -> str:
+    """The built-in (tier 1) body as a real HTML fragment (#236): the catalog paragraphs with
+    the bare ``{link}`` line rendered as a CTA button in the org's primary color.
+
+    Values are escaped before substitution and the whole fragment passes
+    :func:`sanitize_email_html` afterwards, so a value smuggling markup (a display name) is
+    caught exactly like in the tier-2 path. The chrome (logo, card, footer) is not built
+    here — it rides the send seam (:mod:`app.core.email.branding`).
+    """
+    from app.core.email.branding import button_html
+
+    body = translate(f"auth.email.{kind}_body", locale)
+    label = translate(f"auth.email.{kind}_button", locale)
+    link = values.get("link", "")
+    escaped = {key: html_lib.escape(str(value)) for key, value in values.items()}
+    blocks: list[str] = []
+    for block in body.split("\n\n"):
+        block = block.strip("\n")
+        if not block:
+            continue
+        lines: list[str] = []
+        button = False
+        for line in block.split("\n"):
+            if line.strip() == "{link}":
+                # The URL-on-its-own-line becomes the button, not a wall of href text.
+                button = True
+                continue
+            lines.append(render_variables(html_lib.escape(line), escaped))
+        if lines:
+            blocks.append('<p style="margin:0 0 16px 0;">' + "<br>\n".join(lines) + "</p>")
+        if button:
+            blocks.append(button_html(label, link, primary_color))
+    return sanitize_email_html("\n".join(blocks))
+
+
 async def resolve_template(
     session: AsyncSession, org_id, kind: str, locale: str  # noqa: ANN001
 ) -> OrgEmailTemplate | None:
@@ -123,12 +158,16 @@ def build_email_content(
     subject_override: str | None,
     body_html_override: str | None,
     values: dict[str, str],
+    *,
+    primary_color: str | None = None,
 ) -> tuple[str, str, str | None]:
     """Return ``(subject, text, html)`` for an auth mail.
 
     ``text`` is always the catalog-rendered plaintext body (so a working link survives even a
     linkless custom HTML). ``subject`` / ``html`` use the tenant override when it is non-blank,
-    substituting variables and sanitising the HTML afterwards.
+    substituting variables and sanitising the HTML afterwards. Without an override, ``html``
+    is the branded built-in default (#236) when a ``primary_color`` is given — never ``None``
+    on the normal send path, so the mail leaves as styled multipart out of the box.
     """
     subject = translate(f"auth.email.{kind}_subject", locale, **values)
     text = translate(f"auth.email.{kind}_body", locale, **values)
@@ -137,6 +176,8 @@ def build_email_content(
         subject = _strip_tags(render_variables(subject_override, values))
     if body_html_override and body_html_override.strip():
         html = sanitize_email_html(render_variables(body_html_override, values))
+    elif primary_color is not None:
+        html = branded_default_html(kind, locale, values, primary_color)
     return subject, text, html
 
 

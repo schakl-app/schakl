@@ -29,6 +29,7 @@ from app.config import settings
 from app.core.crypto import decrypt
 from app.core.events import EmitContext
 from app.core.net_guard import is_public_address
+from app.i18n import translate
 from app.modules.notifications.events import CHANNEL_EMAIL
 from app.modules.notifications.models import (
     Notification,
@@ -77,16 +78,6 @@ _ALLOWED_SCHEMES = frozenset(
     }
 )
 
-# entity_type → deep-link path (the tenant's own host is prepended). Kept tiny and explicit.
-_ENTITY_PATH = {
-    "task": "/tasks/{id}",
-    "project": "/projects/{id}",
-    "company": "/companies/{id}",
-    "leave_request": "/leave",
-    "timesheet": "/time",
-}
-
-
 class SsrfError(ValueError):
     """A channel URL points at a blocked (private/link-local/loopback) address."""
 
@@ -124,13 +115,21 @@ def check_url_safe(url: str, *, any_scheme: bool = False) -> None:
 class RenderedMessage:
     title: str
     body: str
+    #: The e-mail content fragment; chat transports use ``body``, the send seam wraps this
+    #: in the org's branded chrome (#236).
+    html: str | None = None
 
 
-async def _org_host(session, org) -> str:  # noqa: ANN001
-    """The tenant's own base URL for deep links — its verified custom domain, else its slug host."""
-    if getattr(org, "custom_domain", None) and getattr(org, "custom_domain_verified_at", None):
-        return f"https://{org.custom_domain}"
-    return f"https://{org.slug}.{settings.base_domain}"
+async def _actor_name(session, actor_user_id) -> str | None:  # noqa: ANN001
+    """How the mail names the acting person; ``None`` means the system acted."""
+    if actor_user_id is None:
+        return None
+    from app.core.auth.models import User
+
+    user = await session.get(User, actor_user_id)
+    if user is None:
+        return None
+    return user.full_name or user.email
 
 
 async def render_message(
@@ -139,22 +138,25 @@ async def render_message(
     event: NotificationEvent,
     locale: str,  # noqa: ANN001
 ) -> RenderedMessage:
-    """A deep-linked, locale-aware line for the transport.
+    """A deep-linked, locale-aware message for one event (#236).
 
-    Deliberately terse (a chat line, not a branded email): the event type names what happened and
-    a link goes straight back into the CRM. Branded HTML/MJML email is a follow-up (#17 lists it
-    separately); this keeps chat + webhook channels working end-to-end now.
+    The body is the same sentence the in-app feed shows (``render.event_sentence`` — the
+    server twin of the web's ``format.ts``), prefixed with the actor, plus a deep link back
+    into the CRM. Chat transports send it as-is; e-mail also carries an HTML fragment that
+    the send seam wraps in the org's branding.
     """
-    brand = getattr(org, "name", None) or "schakl"
-    path = _ENTITY_PATH.get(event.entity_type, "/")
-    link = (await _org_host(session, org)) + path.format(id=event.entity_id)
-    if locale.startswith("nl"):
-        title = f"{brand}: nieuwe melding"
-        body = f"Activiteit: {event.event_type}\n{link}"
-    else:
-        title = f"{brand}: new notification"
-        body = f"Activity: {event.event_type}\n{link}"
-    return RenderedMessage(title=title, body=body)
+    from app.core.email.branding import load_brand
+    from app.modules.notifications.render import email_fragment, event_path, event_sentence
+
+    brand = await load_brand(session, org)
+    actor = await _actor_name(session, event.actor_user_id)
+    sentence = event_sentence(event, actor, locale)
+    path = event_path(event)
+    link = brand.base_url + path if path else None
+    title = f"{brand.brand_name}: " + translate("notifications.email.title", locale)
+    body = f"{sentence}\n{link}" if link else sentence
+    html = email_fragment([(sentence, link)], brand.primary_color, locale)
+    return RenderedMessage(title=title, body=body, html=html)
 
 
 class ExternalChannel:
@@ -335,7 +337,12 @@ async def dispatch_delivery(session, delivery: NotificationDelivery) -> None:  #
             ok, error = await send_org_email(
                 session,
                 delivery.org_id,
-                OutgoingEmail(to=decrypt(config.url_enc), subject=message.title, text=message.body),
+                OutgoingEmail(
+                    to=decrypt(config.url_enc),
+                    subject=message.title,
+                    text=message.body,
+                    html=message.html,
+                ),
             )
         else:
             ok, error = await send_via_apprise(decrypt(config.url_enc), message)
@@ -383,9 +390,12 @@ async def dispatch_email_deliveries(session, org) -> None:  # noqa: ANN001
         return
 
     from app.core.auth.models import User
+    from app.core.email.branding import load_brand
     from app.core.email.senders import OutgoingEmail
     from app.core.email.service import send_org_email
+    from app.modules.notifications.render import email_fragment, event_path, event_sentence
 
+    brand = await load_brand(session, org)
     groups: dict[uuid.UUID, list[tuple[NotificationDelivery, Notification]]] = {}
     for delivery, notification in rows:
         groups.setdefault(notification.user_id, []).append((delivery, notification))
@@ -402,27 +412,37 @@ async def dispatch_email_deliveries(session, org) -> None:  # noqa: ANN001
             continue
         locale = user.locale if getattr(user, "locale", None) else settings.default_locale
 
-        messages: list[RenderedMessage] = []
+        rendered: list[tuple[str, str | None]] = []
         for _, notification in ready:
             event = await session.get(NotificationEvent, notification.event_id)
-            if event is not None:
-                messages.append(await render_message(session, org, event, locale))
-        if len(messages) == 1:
-            subject = messages[0].title
-        elif locale.startswith("nl"):
-            subject = f"{len(messages)} nieuwe meldingen"
+            if event is None:
+                continue
+            actor = await _actor_name(session, event.actor_user_id)
+            sentence = event_sentence(event, actor, locale)
+            path = event_path(event)
+            rendered.append((sentence, brand.base_url + path if path else None))
+        if len(rendered) == 1:
+            # The sentence itself is the best subject a single notification can have.
+            subject = rendered[0][0]
         else:
-            subject = f"{len(messages)} new notifications"
-        brand = getattr(org, "name", None) or "schakl"
-        subject = f"{brand}: {subject}" if not subject.startswith(brand) else subject
-        text = "\n\n".join(m.body for m in messages)
-        html = "".join(f"<p>{m.body.replace(chr(10), '<br>')}</p>" for m in messages)
+            subject = translate(
+                "notifications.email.digest_subject", locale, count=len(rendered)
+            )
+        if not subject.startswith(brand.brand_name):
+            subject = f"{brand.brand_name}: {subject}"
+        text = "\n\n".join(
+            f"{sentence}\n{link}" if link else sentence for sentence, link in rendered
+        )
+        html = email_fragment(rendered, brand.primary_color, locale)
 
         for delivery, _ in ready:
             delivery.attempts += 1
         try:
             ok, error = await send_org_email(
-                session, org.id, OutgoingEmail(to=user.email, subject=subject, text=text, html=html)
+                session,
+                org.id,
+                OutgoingEmail(to=user.email, subject=subject, text=text, html=html),
+                brand=brand,
             )
         except Exception as exc:  # noqa: BLE001 - one recipient must not kill the sweep
             ok, error = False, str(exc)
