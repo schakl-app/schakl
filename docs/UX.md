@@ -224,6 +224,12 @@
   reassuring zero.
 - **Forms are SSR form actions** with `use:enhance`. Mind the default reset: forms whose
   inputs must keep their values after save use `update({ reset: false })`.
+- **A password reveal (eye) toggle sits on user-password fields only** (#235, owner call): login,
+  setup, reset-password and the account page's password fields use the shared
+  `core/ui/PasswordInput` — the places where a mistyped password locks someone out. Write-only
+  admin secrets (SMTP password/API key, Google & SSO client secret, AI key, Ads developer token)
+  stay plain `type="password"` inputs: they are pasted rather than typed, the stored value is
+  never displayed anyway, and the toggle just adds chrome to Instellingen.
 - **An edit surface shows every field the view shows.** If a record's page displays it, its edit
   modal edits it — a field the view has and the editor hides sends the user hunting for a second
   surface. The client's edit modal therefore carries its contact persons alongside name, status and
