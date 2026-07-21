@@ -1,7 +1,8 @@
 ---
-// A "live demo" call-to-action linking to the full CRM demo instance. The URL and label come
-// from the CMS settings singleton (settings.demo); if no URL is set, nothing renders — so an
-// editor turns every demo button on or off from one place.
+// A "live demo" call-to-action. While the demo instance is not ready yet, the button opens a
+// small dialog saying so instead of linking out. The label comes from the CMS settings
+// singleton (settings.demo); if no URL is set, nothing renders — so an editor turns every
+// demo button on or off from one place.
 import Icon from './showcase/Icon.astro';
 import settings from '../data/settings/site.json';
 
@@ -15,28 +16,63 @@ const { locale, variant = 'button', class: cls = '' } = Astro.props;
 const demo = (settings as any).demo;
 const url: string = (demo?.url ?? '').trim();
 const label: string = demo?.label?.[locale] ?? (locale === 'nl' ? 'Live demo' : 'Live demo');
+const copy =
+  locale === 'nl'
+    ? {
+        title: 'De demo komt eraan',
+        body: 'De live demo is nog niet klaar. We werken er hard aan en kijken ernaar uit om hem hier te delen zodra hij af is.',
+        close: 'Sluiten',
+      }
+    : {
+        title: 'The demo is on its way',
+        body: "The live demo isn't ready yet. We're working hard on it and are excited to share it here as soon as it's done.",
+        close: 'Close',
+      };
 ---
 
 {
   url && (
-    <a
-      class={`demo-cta demo-cta--${variant} ${cls}`}
-      href={url}
-      target="_blank"
-      rel="noopener"
-    >
-      <Icon name="play" size={variant === 'header' ? 0.8 : 0.9} class="demo-cta__play" />
-      {label}
-    </a>
+    <>
+      <button type="button" class={`demo-cta demo-cta--${variant} ${cls}`}>
+        <Icon name="play" size={variant === 'header' ? 0.8 : 0.9} class="demo-cta__play" />
+        {label}
+      </button>
+      <dialog class="demo-modal" aria-label={copy.title}>
+        <h2>{copy.title}</h2>
+        <p>{copy.body}</p>
+        <button type="button" class="demo-modal__close">
+          {copy.close}
+        </button>
+      </dialog>
+    </>
   )
 }
+
+<script>
+  for (const btn of document.querySelectorAll<HTMLButtonElement>('button.demo-cta')) {
+    const dialog = btn.nextElementSibling;
+    if (!(dialog instanceof HTMLDialogElement)) continue;
+    btn.addEventListener('click', () => dialog.showModal());
+    // A click on the backdrop lands on the <dialog> itself, never on its children.
+    dialog.addEventListener('click', (e) => {
+      if (e.target === dialog) dialog.close();
+    });
+    dialog.querySelector('.demo-modal__close')?.addEventListener('click', () => dialog.close());
+  }
+</script>
 
 <style>
   .demo-cta {
     display: inline-flex;
     align-items: center;
     gap: 0.5em;
+    font: inherit;
     font-weight: 550;
+    color: inherit;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
   }
   .demo-cta__play {
     fill: currentColor;
@@ -76,6 +112,47 @@ const label: string = demo?.label?.[locale] ?? (locale === 'nl' ? 'Live demo' : 
     font-size: 0.9rem;
   }
   .demo-cta--header:hover {
+    filter: brightness(1.08);
+  }
+
+  /* "not ready yet" dialog — native <dialog>, centered in the top layer by the UA.
+     text-align is set explicitly: the top layer still inherits from the DOM parent,
+     which is centered in the hero but left-aligned in the header nav. */
+  .demo-modal {
+    max-width: 26rem;
+    width: calc(100vw - 2.5rem);
+    padding: 1.75rem;
+    text-align: center;
+    border: 1px solid var(--border);
+    border-radius: 0.85rem;
+    background: var(--bg);
+    color: var(--text);
+    box-shadow: 0 24px 64px rgb(0 0 0 / 0.28);
+  }
+  .demo-modal::backdrop {
+    background: rgb(0 0 0 / 0.45);
+  }
+  .demo-modal h2 {
+    margin: 0 0 0.5rem;
+    font-size: 1.15rem;
+  }
+  .demo-modal p {
+    margin: 0 0 1.4rem;
+    color: var(--muted);
+    line-height: 1.55;
+  }
+  .demo-modal__close {
+    display: inline-flex;
+    font: inherit;
+    font-weight: 550;
+    padding: 0.55rem 1.15rem;
+    border: 1px solid var(--accent);
+    border-radius: 0.55rem;
+    background: var(--accent);
+    color: #fff;
+    cursor: pointer;
+  }
+  .demo-modal__close:hover {
     filter: brightness(1.08);
   }
 </style>
