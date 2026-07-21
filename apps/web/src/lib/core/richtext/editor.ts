@@ -14,6 +14,7 @@
  * what cannot be rendered must not be authorable.
  */
 import { Editor, Extension, Node } from "@tiptap/core";
+import Link from "@tiptap/extension-link";
 import { PluginKey } from "@tiptap/pm/state";
 import { Placeholder } from "@tiptap/extensions";
 import StarterKit from "@tiptap/starter-kit";
@@ -347,11 +348,17 @@ export function createRichTextEditor(options: CreateOptions): Editor {
         heading: { levels: [3, 4, 5, 6] },
         // Markdown has no underline; keep the schema serializable.
         underline: false,
-        link: {
-          openOnClick: false,
-          autolink: true,
-          defaultProtocol: "https",
-        },
+        // Registered separately below: the stock extension couples `inclusive` to `autolink`.
+        link: false,
+      }),
+      // `autolink` makes the stock link mark *inclusive* — typing at the end of a link keeps
+      // extending it, and there is no way out but the toolbar. Non-inclusive is the behaviour
+      // people know from Notion/Slack: type after a link and you are writing plain text again.
+      // Autolinking full URLs as they are typed still works — that plugin marks ranges itself.
+      Link.extend({ inclusive: false }).configure({
+        openOnClick: false,
+        autolink: true,
+        defaultProtocol: "https",
       }),
       Placeholder.configure({ placeholder: options.placeholder ?? "" }),
       MentionNode,

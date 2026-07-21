@@ -213,7 +213,8 @@
     linkOpen = false;
     const { empty } = editor.state.selection;
     if (empty && !linkExisting) {
-      // No selection to wrap: insert a labelled link and leave the caret after it.
+      // No selection to wrap: insert a labelled link and leave the caret after it — with the
+      // stored mark cleared, so the very next keystroke is plain text, not more link.
       editor
         .chain()
         .focus()
@@ -222,6 +223,7 @@
           text: t("richtext.link_text"),
           marks: [{ type: "link", attrs: { href: url } }],
         })
+        .unsetMark("link")
         .run();
     } else {
       editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
