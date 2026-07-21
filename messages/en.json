@@ -1929,6 +1929,7 @@
   "websites.host": "Host",
   "websites.technical_owner": "Technical owner",
   "websites.hosting": "Hosting",
+  "websites.company": "Client",
   "websites.uptime": "Uptime monitoring",
   "websites.add": "Add website",
   "nav.websites": "Websites",

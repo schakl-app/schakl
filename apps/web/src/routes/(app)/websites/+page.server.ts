@@ -9,6 +9,9 @@ import {
   createProviderAction,
 } from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
+import { readTablePref, resolveColumns } from "$lib/core/table/columns";
+import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
+import { WEBSITE_COLUMNS, WEBSITES_TABLE_ID } from "$lib/modules/websites/columns";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -25,6 +28,14 @@ export const load: PageServerLoad = async (event) => {
   // already hidden for them).
   if (!can(event.locals.user, "websites.website.read")) throw redirect(303, "/");
   const api = apiFor(event);
+
+  // The saved column layout comes from the layout load (docs/PERFORMANCE.md). The URL wins
+  // over the saved sort so a sorted list stays shareable and the back button works.
+  const { prefs } = await event.parent();
+  const pref = readTablePref(prefs, WEBSITES_TABLE_ID);
+  const resolved = resolveColumns(WEBSITE_COLUMNS, pref);
+  const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
+
   const [
     websites,
     domains,
@@ -39,7 +50,7 @@ export const load: PageServerLoad = async (event) => {
     companyDefinitions,
     contactDefinitions,
   ] = await Promise.all([
-    api.GET("/api/v1/websites", { params: { query: { limit: 200, offset: 0 } } }),
+    api.GET("/api/v1/websites", { params: { query: { limit: 200, offset: 0, sort } } }),
     // The create picker: a website is a 0/1 child of a domain, so the options are the
     // tenant's domains — ones that already carry a website are filtered out client-side.
     api.GET("/api/v1/domains", { params: { query: { limit: 200, offset: 0 } } }),
@@ -88,11 +99,19 @@ export const load: PageServerLoad = async (event) => {
     companyDefinitions: companyDefinitions.data ?? [],
     contactDefinitions: contactDefinitions.data ?? [],
     agencyLabel: event.locals.theme?.brandName ?? "",
+    table: { pref, sort: sort ?? null, widths: resolved.widths },
     locale: event.locals.locale,
   };
 };
 
 export const actions: Actions = {
+  /** Persist this user's column layout. Personal, in-view — never org settings (docs/UX.md §6). */
+  saveTable: async (event) => {
+    const form = await event.request.formData();
+    await saveTablePref(event, WEBSITES_TABLE_ID, parseTablePref(form));
+    return { tableSaved: true };
+  },
+
   save: async (event) => {
     const form = await event.request.formData();
     const website_id = String(form.get("website_id") ?? "");

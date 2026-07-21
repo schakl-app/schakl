@@ -28,7 +28,13 @@ async def list_domains(
     offset: int = Query(0, ge=0),
     company_id: uuid.UUID | None = Query(None),
     q: str | None = Query(None, max_length=200),
-    sort: str | None = Query(None, description="name | status | created_at | updated_at, '-' desc"),
+    sort: str | None = Query(
+        None,
+        description=(
+            "name | company | status | registrar | dns | dnssec | email_enabled"
+            " | created_at | updated_at, '-' desc"
+        ),
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> Page[DomainRead]:
     items, total = await DomainService(ctx).list(

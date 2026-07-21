@@ -14,15 +14,70 @@ from collections.abc import Sequence
 from typing import Any
 
 from sqlalchemy import bindparam, func, select, text
+from sqlalchemy.sql.expression import column as sa_column
+from sqlalchemy.sql.expression import table as sa_table
 
 from app.core.customfields import CustomFieldsService
 from app.core.party import PartyService
+from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
 from app.errors import AppError
 from app.modules.websites.models import Website
 from app.modules.websites.schemas import WebsiteCreate, WebsiteUpdate
 
 ENTITY_TYPE = "website"
+
+# The parent domain, its company and the hosting account, as bare tables (§6): sorting by
+# them must not import another module's internals.
+_domains = sa_table(
+    "domains", sa_column("id"), sa_column("org_id"), sa_column("name"), sa_column("company_id")
+)
+_companies = sa_table("companies", sa_column("id"), sa_column("org_id"), sa_column("name"))
+_hosting = sa_table("hosting", sa_column("id"), sa_column("org_id"), sa_column("name"))
+
+
+def _domain_sort_name() -> Any:
+    """Order by the parent domain's name — the label the row prints (docs/UX.md), never the FK.
+    Correlated, so a row is never multiplied."""
+    return (
+        select(func.lower(_domains.c.name))
+        .where(_domains.c.org_id == Website.org_id, _domains.c.id == Website.domain_id)
+        .scalar_subquery()
+    )
+
+
+def _company_sort_name() -> Any:
+    """A website's client is its parent domain's company, so the sort walks the same bridge."""
+    return (
+        select(func.lower(_companies.c.name))
+        .where(
+            _domains.c.org_id == Website.org_id,
+            _domains.c.id == Website.domain_id,
+            _companies.c.org_id == Website.org_id,
+            _companies.c.id == _domains.c.company_id,
+        )
+        .scalar_subquery()
+    )
+
+
+def _hosting_sort_name() -> Any:
+    """Order by the hosting account's name; a site with none sorts last (``NULLS LAST``)."""
+    return (
+        select(func.lower(_hosting.c.name))
+        .where(_hosting.c.org_id == Website.org_id, _hosting.c.id == Website.hosting_id)
+        .scalar_subquery()
+    )
+
+
+# Sort keys a client may pass; anything else is rejected (app/core/sorting.py).
+SORTABLE = {
+    "name": _domain_sort_name(),
+    "company": _company_sort_name(),
+    "hosting": _hosting_sort_name(),
+    "uptime": Website.uptime_enabled,
+    "created_at": Website.created_at,
+    "updated_at": Website.updated_at,
+}
 
 
 class WebsiteService:
@@ -44,6 +99,7 @@ class WebsiteService:
         offset: int,
         domain_id: uuid.UUID | None = None,
         company_id: uuid.UUID | None = None,
+        sort: str | None = None,
     ) -> tuple[Sequence[Website], int]:
         conditions = []
         if domain_id is not None:
@@ -59,13 +115,9 @@ class WebsiteService:
             if not company_domains:
                 return [], 0
             conditions.append(Website.domain_id.in_(company_domains))
-        stmt = (
-            self.repo.scoped_select()
-            .where(*conditions)
-            .order_by(Website.created_at.desc())
-            .limit(limit)
-            .offset(offset)
-        )
+        stmt = self.repo.scoped_select().where(*conditions)
+        stmt = apply_sort(stmt, sort, SORTABLE, default=Website.created_at.desc())
+        stmt = stmt.limit(limit).offset(offset)
         items = list((await self.ctx.session.execute(stmt)).scalars().all())
         total = int(
             await self.ctx.session.scalar(

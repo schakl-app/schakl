@@ -16,6 +16,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import bindparam, func, select, text
+from sqlalchemy.sql.expression import column as sa_column
+from sqlalchemy.sql.expression import table as sa_table
 
 from app.core.customfields import CustomFieldsService
 from app.core.jobs import enqueue
@@ -35,10 +37,41 @@ logger = logging.getLogger("schakl.domains")
 
 ENTITY_TYPE = "domain"
 
+# The client company, as a bare table (§6): sorting by it must not import the companies module.
+_companies = sa_table("companies", sa_column("id"), sa_column("org_id"), sa_column("name"))
+
+
+def _company_sort_name() -> Any:
+    """Order by the client's name — the label the cell prints, never the FK (docs/UX.md).
+    Correlated, so a row is never multiplied."""
+    return (
+        select(func.lower(_companies.c.name))
+        .where(
+            _companies.c.org_id == Domain.org_id,
+            _companies.c.id == Domain.company_id,
+        )
+        .scalar_subquery()
+    )
+
+
+def _provider_sort_name(provider_id: Any) -> Any:
+    """Order by the provider's name; a domain with none sorts last (``NULLS LAST``)."""
+    return (
+        select(func.lower(Provider.name))
+        .where(Provider.org_id == Domain.org_id, Provider.id == provider_id)
+        .scalar_subquery()
+    )
+
+
 # Sort keys a client may pass; anything else is rejected (app/core/sorting.py).
 SORTABLE = {
     "name": func.lower(Domain.name),
+    "company": _company_sort_name(),
     "status": Domain.status,
+    "registrar": _provider_sort_name(Domain.registrar_provider_id),
+    "dns": _provider_sort_name(Domain.dns_provider_id),
+    "dnssec": Domain.dnssec,
+    "email_enabled": Domain.email_enabled,
     "created_at": Domain.created_at,
     "updated_at": Domain.updated_at,
 }

@@ -17566,7 +17566,7 @@ export interface operations {
                 offset?: number;
                 company_id?: string | null;
                 q?: string | null;
-                /** @description name | status | created_at | updated_at, '-' desc */
+                /** @description name | company | status | registrar | dns | dnssec | email_enabled | created_at | updated_at, '-' desc */
                 sort?: string | null;
             };
             header?: never;
@@ -28560,6 +28560,8 @@ export interface operations {
                 offset?: number;
                 domain_id?: string | null;
                 company_id?: string | null;
+                /** @description name | company | hosting | uptime | created_at | updated_at, '-' desc */
+                sort?: string | null;
             };
             header?: never;
             path?: never;

@@ -10,11 +10,16 @@
   import { page } from "$app/state";
   import type { components } from "$lib/core/api/schema";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
+  import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
+  import { customFieldColumns } from "$lib/core/table/columns";
+  import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import DataTable from "$lib/core/ui/DataTable.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import PartyPicker from "$lib/core/ui/PartyPicker.svelte";
   import ProviderQuickCreate from "$lib/core/ui/ProviderQuickCreate.svelte";
@@ -23,6 +28,7 @@
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
   import DomainQuickCreate from "$lib/modules/domains/DomainQuickCreate.svelte";
   import HostingQuickCreate from "$lib/modules/hosting/HostingQuickCreate.svelte";
+  import { WEBSITE_COLUMNS } from "$lib/modules/websites/columns";
 
   type Website = components["schemas"]["WebsiteRead"];
 
@@ -131,7 +137,111 @@
     deleteId = id;
     confirmDelete = true;
   }
+
+  // The tenant's custom fields join the built-ins as selectable columns with no code here (#24).
+  // Layout resolution and persistence are the shared table layout's job.
+  const allColumns = $derived([
+    ...WEBSITE_COLUMNS,
+    ...customFieldColumns(data.definitions, data.locale),
+  ]);
+
+  const table = createTableLayout<Website>({
+    all: () => allColumns,
+    pref: () => data.table.pref,
+    sort: () => data.table.sort,
+    cells: () => ({
+      name: nameCell,
+      company: companyCell,
+      hosting: hostingCell,
+      technical_owner: ownerCell,
+      uptime: uptimeCell,
+      created_at: createdCell,
+    }),
+  });
 </script>
+
+{#snippet nameCell(site: Website)}
+  <!-- The detail surface stays the domain page (#94); the row links through to it. -->
+  <a href={`/domains/${site.domain_id}#website`} class="font-medium text-text hover:text-brand">
+    {site.root ? site.domain_name : `www.${site.domain_name}`}
+  </a>
+{/snippet}
+
+{#snippet companyCell(site: Website)}
+  <span class="text-text-muted">{site.company_name ?? "—"}</span>
+{/snippet}
+
+{#snippet hostingCell(site: Website)}
+  <span class="text-text-muted">{site.hosting_name ?? "—"}</span>
+{/snippet}
+
+{#snippet ownerCell(site: Website)}
+  <span class="text-text-muted">{site.technical_owner?.label || "—"}</span>
+{/snippet}
+
+{#snippet uptimeCell(site: Website)}
+  {#if site.uptime_enabled}
+    <span
+      class="rounded-full bg-green-500/10 px-2 py-0.5 text-[11px] text-green-700 dark:text-green-400"
+    >
+      {t("websites.uptime_short")}
+    </span>
+  {:else}<span class="text-text-muted">—</span>{/if}
+{/snippet}
+
+{#snippet createdCell(site: Website)}
+  <span class="text-text-muted">{fmtNumericDate(site.created_at.slice(0, 10))}</span>
+{/snippet}
+
+{#snippet rowActions(site: Website)}
+  <ActionsMenu
+    items={[
+      ...(canWrite
+        ? [{ label: t("common.edit"), icon: Pencil, onclick: () => openEdit(site) }]
+        : []),
+      ...(canDelete
+        ? [
+            {
+              label: t("common.delete"),
+              icon: Trash2,
+              danger: true,
+              onclick: () => requestDelete(site.id),
+            },
+          ]
+        : []),
+    ]}
+  />
+{/snippet}
+
+{#snippet mobileRow(site: Website)}
+  <!-- A phone gets the concept's row, not a sideways-scrolling grid (docs/UX.md). -->
+  <div class="flex items-center gap-3">
+    <a href={`/domains/${site.domain_id}#website`} class="min-w-0 flex-1">
+      <span class="block truncate font-medium text-text">
+        {site.root ? site.domain_name : `www.${site.domain_name}`}
+      </span>
+      {#if site.company_name}
+        <span class="mt-0.5 block truncate text-sm text-text-muted">{site.company_name}</span>
+      {/if}
+    </a>
+    {#if site.uptime_enabled}
+      <span
+        class="shrink-0 rounded-full bg-green-500/10 px-2 py-0.5 text-[11px] text-green-700 dark:text-green-400"
+      >
+        {t("websites.uptime_short")}
+      </span>
+    {/if}
+    {#if canWrite || canDelete}
+      {@render rowActions(site)}
+    {/if}
+  </div>
+{/snippet}
+
+{#snippet emptyState()}
+  <div class="rounded-xl border border-dashed border-border bg-surface-raised p-10 text-center">
+    <p class="font-medium text-text">{t("websites.empty")}</p>
+  </div>
+{/snippet}
 
 <svelte:head>
   <title>{pageTitle(navLabel("websites", t("nav.websites")))}</title>
@@ -150,56 +260,31 @@
   {/if}
 </div>
 
-<section class="rounded-xl border border-border bg-surface-raised">
-  {#if data.websites.length === 0}
-    <p class="p-6 text-sm text-text-muted">{t("websites.empty")}</p>
-  {:else}
-    <ul class="divide-y divide-border">
-      {#each data.websites as site (site.id)}
-        <li class="flex items-center gap-3 px-4 py-3">
-          <a
-            href={`/domains/${site.domain_id}#website`}
-            class="min-w-0 flex-1 truncate text-sm font-medium text-text hover:text-brand"
-          >
-            {site.root ? site.domain_name : `www.${site.domain_name}`}
-          </a>
-          {#if site.company_name}
-            <span class="hidden text-xs text-text-muted sm:inline">{site.company_name}</span>
-          {/if}
-          {#if site.hosting_name}
-            <span class="hidden text-xs text-text-muted sm:inline">{site.hosting_name}</span>
-          {/if}
-          {#if site.uptime_enabled}
-            <span
-              class="rounded-full bg-green-500/10 px-2 py-0.5 text-[11px] text-green-700 dark:text-green-400"
-            >
-              {t("websites.uptime_short")}
-            </span>
-          {/if}
-          {#if canWrite || canDelete}
-            <ActionsMenu
-              items={[
-                ...(canWrite
-                  ? [{ label: t("common.edit"), icon: Pencil, onclick: () => openEdit(site) }]
-                  : []),
-                ...(canDelete
-                  ? [
-                      {
-                        label: t("common.delete"),
-                        icon: Trash2,
-                        danger: true,
-                        onclick: () => requestDelete(site.id),
-                      },
-                    ]
-                  : []),
-              ]}
-            />
-          {/if}
-        </li>
-      {/each}
-    </ul>
-  {/if}
-</section>
+<!-- The personal column picker: every sort is reachable from here too (docs/UX.md). -->
+<div class="mb-4 flex items-center justify-end">
+  <ColumnPicker
+    all={table.pickerColumns}
+    visible={table.visibleKeys}
+    sort={table.sort}
+    onchange={table.onColumnsChange}
+    onsort={table.onSort}
+  />
+</div>
+
+<DataTable
+  rows={data.websites}
+  columns={table.columns}
+  sort={table.sort}
+  widths={table.widths}
+  definitions={data.definitions}
+  locale={data.locale}
+  rowHref={(site) => `/domains/${site.domain_id}#website`}
+  actions={canWrite || canDelete ? rowActions : undefined}
+  {mobileRow}
+  empty={emptyState}
+  onsort={table.onSort}
+  onresize={table.onResize}
+/>
 
 {#if canWrite}
   <Modal bind:open={showModal} title={editing ? t("websites.edit") : t("websites.new")}>

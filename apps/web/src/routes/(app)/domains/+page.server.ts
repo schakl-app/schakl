@@ -8,6 +8,9 @@ import {
   createProviderAction,
 } from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
+import { readTablePref, resolveColumns } from "$lib/core/table/columns";
+import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
+import { DOMAIN_COLUMNS, DOMAINS_TABLE_ID } from "$lib/modules/domains/columns";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -22,7 +25,13 @@ function parseCustom(raw: FormDataEntryValue | null): Record<string, unknown> {
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const q = event.url.searchParams.get("q") || undefined;
-  const sort = event.url.searchParams.get("sort") ?? undefined;
+
+  // The saved column layout comes from the layout load (docs/PERFORMANCE.md). The URL wins
+  // over the saved sort so a sorted list stays shareable and the back button works.
+  const { prefs } = await event.parent();
+  const pref = readTablePref(prefs, DOMAINS_TABLE_ID);
+  const resolved = resolveColumns(DOMAIN_COLUMNS, pref);
+  const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
 
   const [
     domains,
@@ -66,11 +75,19 @@ export const load: PageServerLoad = async (event) => {
     contactDefinitions: contactDefinitions.data ?? [],
     agencyLabel: event.locals.theme?.brandName ?? "",
     q: q ?? "",
+    table: { pref, sort: sort ?? null, widths: resolved.widths },
     locale: event.locals.locale,
   };
 };
 
 export const actions: Actions = {
+  /** Persist this user's column layout. Personal, in-view — never org settings (docs/UX.md §6). */
+  saveTable: async (event) => {
+    const form = await event.request.formData();
+    await saveTablePref(event, DOMAINS_TABLE_ID, parseTablePref(form));
+    return { tableSaved: true };
+  },
+
   create: async (event) => {
     const form = await event.request.formData();
     const name = String(form.get("name") ?? "").trim();
