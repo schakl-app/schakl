@@ -397,6 +397,8 @@
   "dashboard.widget_desc.subscriptions.mrr": "Monthly recurring revenue, active agreements and the next invoice date.",
   "dashboard.widget.marketing.summary": "Marketing",
   "dashboard.widget_desc.marketing.summary": "Top clients by sessions or clicks, each opening that client's marketing page.",
+  "dashboard.widget.marketing.portal": "Marketing",
+  "dashboard.widget_desc.marketing.portal": "The marketing overview your agency curated for you.",
   "dashboard.category.marketing": "Marketing",
   "dashboard.widget.invoicing.outstanding": "Outstanding invoices",
   "dashboard.widget_desc.invoicing.outstanding": "Open invoice total, with overdue flagged loudly.",

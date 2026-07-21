@@ -397,6 +397,8 @@
   "dashboard.widget_desc.subscriptions.mrr": "Maandelijks terugkerende omzet, actieve abonnementen en de eerstvolgende factuurdatum.",
   "dashboard.widget.marketing.summary": "Marketing",
   "dashboard.widget_desc.marketing.summary": "Topklanten op sessies of kliks; elke regel opent de marketingpagina van die klant.",
+  "dashboard.widget.marketing.portal": "Marketing",
+  "dashboard.widget_desc.marketing.portal": "Het marketingoverzicht dat je bureau voor je heeft samengesteld.",
   "dashboard.category.marketing": "Marketing",
   "dashboard.widget.invoicing.outstanding": "Openstaande facturen",
   "dashboard.widget_desc.invoicing.outstanding": "Totaal aan open facturen, met vervallen facturen duidelijk gemarkeerd.",

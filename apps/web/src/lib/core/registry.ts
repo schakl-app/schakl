@@ -154,6 +154,13 @@ export interface DashboardWidgetSpec {
   position?: number;
   /** Only offered to holders of this permission — its loader calls an endpoint gated on it. */
   requiresPermission?: string;
+  /**
+   * Which dashboard offers this widget (#254). The staff My Day and the portal homepage are
+   * both per-viewing-user widget boards, but their galleries differ: a staff widget may link
+   * into routes a portal login cannot open, and the portal's curated-marketing widget is
+   * noise on a staff board that already has `/marketing`. Default `"staff"`.
+   */
+  audience?: "staff" | "portal";
   // --- gallery metadata (issue #15) -------------------------------------------------------- #
   /** i18n key for the gallery card title. Falls back to `dashboard.widget.<key>`. */
   titleKey?: string;
@@ -371,8 +378,10 @@ export function dashboardWidgetsFor(
   enabled: string[],
   user?: SessionUser | null,
 ): DashboardWidgetSpec[] {
+  const audience = user?.isPortal ? "portal" : "staff";
   return enabledWebModules(enabled)
     .flatMap((m) => m.dashboardWidgets ?? [])
+    .filter((w) => (w.audience ?? "staff") === audience)
     .filter((w) => !w.requiresPermission || can(user, w.requiresPermission))
     .sort((a, b) => (a.position ?? 100) - (b.position ?? 100));
 }
