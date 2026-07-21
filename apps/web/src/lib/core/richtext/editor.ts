@@ -333,6 +333,9 @@ export interface CreateOptions {
   onUpdate: (markdown: string) => void;
   /** Fired on every transaction — the component bumps a counter for toolbar active states. */
   onTransaction: () => void;
+  /** A plain click landed on a link: the component opens its popover prefilled with the href.
+   *  Clicking a blue label is the only discoverable way to reach a URL the text hides. */
+  onLinkClick: (href: string) => void;
 }
 
 export function createRichTextEditor(options: CreateOptions): Editor {
@@ -365,6 +368,17 @@ export function createRichTextEditor(options: CreateOptions): Editor {
         class: "rt-prose",
         role: "textbox",
         "aria-multiline": "true",
+      },
+      // A plain left-click on a link opens the edit popover (prefilled) — the caret alone is
+      // invisible feedback, and the toolbar button is not discoverable enough on its own.
+      // Returning false keeps ProseMirror's own click handling (caret placement) intact.
+      handleClick: (view, pos, event) => {
+        if (event.button !== 0 || event.ctrlKey || event.metaKey) return false;
+        const $pos = view.state.doc.resolve(pos);
+        const node = $pos.nodeAfter ?? $pos.nodeBefore;
+        const mark = node?.marks.find((m) => m.type === view.state.schema.marks.link);
+        if (mark) options.onLinkClick(String(mark.attrs.href ?? ""));
+        return false;
       },
     },
     onUpdate: ({ editor }) => options.onUpdate(serializeDoc(editor)),

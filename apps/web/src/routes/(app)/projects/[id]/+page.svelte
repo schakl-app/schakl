@@ -20,7 +20,9 @@
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import FileAttachments from "$lib/core/ui/FileAttachments.svelte";
+  import Markdown from "$lib/core/ui/Markdown.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
+  import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import InteractionForm from "$lib/modules/interactions/InteractionForm.svelte";
   import { terminalKeys } from "$lib/modules/tasks/statuses";
   import TaskRow from "$lib/modules/tasks/TaskRow.svelte";
@@ -380,9 +382,12 @@
           <label for="edit-description" class="mb-1 block text-sm font-medium text-text"
             >{t("projects.field.description")}</label
           >
-          <textarea id="edit-description" name="description" rows="3" class={inputClass}
-            >{project.description ?? ""}</textarea
-          >
+          <RichTextEditor
+            id="edit-description"
+            name="description"
+            rows={3}
+            value={project.description ?? ""}
+          />
         </div>
         {#if data.definitions.length > 0}
           <CustomFieldsForm
@@ -440,7 +445,9 @@
         {#if project.description}
           <div class="col-span-2">
             <dt class="text-text-muted">{t("projects.field.description")}</dt>
-            <dd class="mt-0.5 whitespace-pre-line text-text">{project.description}</dd>
+            <dd class="mt-0.5">
+              <Markdown value={project.description} />
+            </dd>
           </div>
         {/if}
       </dl>

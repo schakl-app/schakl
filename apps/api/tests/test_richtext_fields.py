@@ -166,3 +166,19 @@ async def test_notes_fields_stripped_of_html(client_for) -> None:
         ).json()
         assert "<script>" not in invoice["notes"]
         assert "**keep**" in invoice["notes"]
+
+        project = (
+            await c.post(
+                "/api/v1/projects",
+                json={"name": "Site", "company_id": company["id"], "description": _XSS},
+                headers=headers,
+            )
+        ).json()
+        assert "<script>" not in project["description"]
+        assert "**keep**" in project["description"]
+        edited_project = (
+            await c.patch(
+                f"/api/v1/projects/{project['id']}", json={"description": _XSS}, headers=headers
+            )
+        ).json()
+        assert "<script>" not in edited_project["description"]

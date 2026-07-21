@@ -16,6 +16,7 @@
   import {
     Bold,
     CircleStop,
+    ExternalLink,
     Heading as HeadingIcon,
     Italic,
     Link as LinkIcon,
@@ -138,6 +139,16 @@
         },
         onTransaction: () => {
           tick += 1;
+          // An existing-link popover follows the caret: leave the link, and it goes. Insert-mode
+          // popovers stay — the caret is on plain text there by definition.
+          if (linkOpen && linkExisting && !editor?.isActive("link")) linkOpen = false;
+        },
+        // Clicking a blue label is how a hidden URL is reached: open the popover prefilled.
+        // No focus steal — the caret stays where the user clicked.
+        onLinkClick: (href) => {
+          linkExisting = true;
+          linkUrl = href;
+          linkOpen = true;
         },
       });
       serialized = source;
@@ -402,6 +413,16 @@
             {t("common.add")}
           </button>
           {#if linkExisting}
+            <a
+              href={linkUrl}
+              target="_blank"
+              rel="noopener noreferrer nofollow"
+              class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-text-muted hover:text-brand"
+              aria-label={t("richtext.link_open")}
+              title={t("richtext.link_open")}
+            >
+              <ExternalLink size={14} />
+            </a>
             <button
               type="button"
               class="rounded px-2 py-1 text-xs text-text-muted hover:text-red-600 dark:hover:text-red-400"
