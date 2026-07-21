@@ -53,7 +53,14 @@
 {/if}
 
 <section class="max-w-2xl rounded-xl border border-border bg-surface-raised p-5">
-  <form method="POST" action="?/save" use:enhance class="space-y-4">
+  <form
+    method="POST"
+    action="?/save"
+    use:enhance={() =>
+      ({ update }) =>
+        update({ reset: false })}
+    class="space-y-4"
+  >
     <input type="hidden" name="provider" value={provider} />
 
     <div>

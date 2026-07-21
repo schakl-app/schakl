@@ -86,7 +86,14 @@
     {t("settings.ai.privacy_note")}
   </p>
 
-  <form method="POST" action="?/save" use:enhance class="space-y-4">
+  <form
+    method="POST"
+    action="?/save"
+    use:enhance={() =>
+      ({ update }) =>
+        update({ reset: false })}
+    class="space-y-4"
+  >
     <div class="grid gap-4 sm:grid-cols-2">
       <div>
         <label for="ai-provider" class="mb-1 block text-sm text-text"

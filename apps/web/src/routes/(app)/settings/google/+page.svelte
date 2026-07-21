@@ -66,7 +66,14 @@
     <p class="mt-1 text-xs text-text-muted">{t("settings.google.callback_url_hint")}</p>
   </div>
 
-  <form method="POST" action="?/save" use:enhance class="space-y-5">
+  <form
+    method="POST"
+    action="?/save"
+    use:enhance={() =>
+      ({ update }) =>
+        update({ reset: false })}
+    class="space-y-5"
+  >
     <!-- OAuth client (docs/GOOGLE.md §2: each install registers its own "Internal" client). -->
     <div class="grid gap-4 sm:grid-cols-2">
       <div class="sm:col-span-2">

@@ -10,7 +10,6 @@
   const role = $derived(data.role);
   const isOwner = $derived(role.key === "owner");
   const catalog = $derived(data.permissionCatalog);
-
 </script>
 
 <svelte:head>
@@ -30,8 +29,17 @@
 </div>
 
 <!-- One form, one save button for the whole surface (docs/UX.md). The matrix's controls live
-     inside it, so nothing is saved per field. -->
-<form method="POST" action="?/save" use:enhance id="role-form">
+     inside it, so nothing is saved per field. `reset: false` is load-bearing: the matrix's
+     marks are component state, and the default form reset reverts the DOM behind that
+     state's back — the save then *looks* undone and the next save posts the old marks. -->
+<form
+  method="POST"
+  action="?/save"
+  id="role-form"
+  use:enhance={() =>
+    ({ update }) =>
+      update({ reset: false })}
+>
   <input type="hidden" name="is_owner" value={isOwner} />
 
   <div class="mb-5 rounded-xl border border-border bg-surface-raised p-5">

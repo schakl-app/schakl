@@ -68,7 +68,14 @@
     <p class="mt-1 text-xs text-text-muted">{t("settings.sso.callback_url_hint")}</p>
   </div>
 
-  <form method="POST" action="?/save" use:enhance class="space-y-4">
+  <form
+    method="POST"
+    action="?/save"
+    use:enhance={() =>
+      ({ update }) =>
+        update({ reset: false })}
+    class="space-y-4"
+  >
     <label class="flex items-start gap-2 text-sm text-text">
       <FormCheckbox name="enabled" checked={sso?.enabled ?? false} class="mt-0.5" />
       <span>

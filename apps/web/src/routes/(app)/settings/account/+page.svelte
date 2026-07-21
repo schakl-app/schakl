@@ -203,7 +203,14 @@
       <p class="mt-1 text-sm text-red-600 dark:text-red-400">{t(form.avatarError)}</p>
     {/if}
 
-    <form method="POST" action="?/updateProfile" use:enhance class="mt-4 space-y-4">
+    <form
+      method="POST"
+      action="?/updateProfile"
+      use:enhance={() =>
+        ({ update }) =>
+          update({ reset: false })}
+      class="mt-4 space-y-4"
+    >
       <div>
         <label for="full_name" class="mb-1 block text-sm font-medium text-text">
           {t("settings.account.full_name")}

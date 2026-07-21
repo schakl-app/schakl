@@ -362,8 +362,16 @@
       {#if expanded === member.membership_id}
         <li class="bg-surface px-4 py-4">
           <!-- The whole role set, one save (docs/UX.md). A user may hold several roles; their
-               permissions are the union. -->
-          <form method="POST" action="?/saveRoles" use:enhance class="space-y-3">
+               permissions are the union. `reset: false`: the ticks are component state and a
+               form reset would revert the DOM behind that state's back (docs/UX.md). -->
+          <form
+            method="POST"
+            action="?/saveRoles"
+            class="space-y-3"
+            use:enhance={() =>
+              ({ update }) =>
+                update({ reset: false })}
+          >
             <input type="hidden" name="membership_id" value={member.membership_id} />
             <p class="text-xs font-semibold uppercase tracking-wide text-text-muted">
               {t("settings.users.roles")}
