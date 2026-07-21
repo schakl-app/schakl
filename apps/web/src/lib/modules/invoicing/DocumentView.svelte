@@ -6,6 +6,7 @@
    * render in the **document's** locale, not the viewer's.
    */
   import { t } from "$lib/core/i18n";
+  import { formatPhone } from "$lib/core/phone";
   import Markdown from "$lib/core/ui/Markdown.svelte";
   import { docMoney, templateText } from "./types";
   import type { DocTemplate, Invoice, Quote, SellerDetails } from "./types";
@@ -112,7 +113,7 @@
       {#if seller.coc_number}<p>{t("invoicing.doc.coc_number")} {seller.coc_number}</p>{/if}
       {#if seller.iban}<p>{t("invoicing.doc.iban")} {seller.iban}</p>{/if}
       {#if seller.email}<p>{seller.email}</p>{/if}
-      {#if seller.phone}<p>{seller.phone}</p>{/if}
+      {#if seller.phone}<p>{formatPhone(seller.phone)}</p>{/if}
     </div>
   </header>
 

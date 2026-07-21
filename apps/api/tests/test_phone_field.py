@@ -140,6 +140,51 @@ async def test_contact_legacy_freeform_phone_roundtrips(client_for) -> None:
         assert upgraded.json()["phone"] == "+31612345678"
 
 
+async def test_invoicing_seller_phone_same_gate(client_for) -> None:
+    """The agency's own phone (Instellingen → Facturatie, printed on invoices) rides the
+    same implementation: E.164 on write, 422 on junk, legacy freeform grandfathered."""
+    t = await make_tenant("phone-seller")
+    headers = await auth_cookie(t.user)
+    seller = {"name": "Agency BV"}
+    async with client_for(t.host) as c:
+        saved = await c.put(
+            "/api/v1/invoicing/settings",
+            json={"company_details": {**seller, "phone": "+31 20 624 1111"}},
+            headers=headers,
+        )
+        assert saved.status_code == 200
+        assert saved.json()["company_details"]["phone"] == "+31206241111"
+
+        bad = await c.put(
+            "/api/v1/invoicing/settings",
+            json={"company_details": {**seller, "phone": "geen nummer"}},
+            headers=headers,
+        )
+        assert bad.status_code == 422
+        assert bad.json()["error"]["fields"]["phone"] == "errors.invalid_phone"
+
+    # A pre-#256 freeform value posted back unchanged must not block an unrelated save.
+    legacy = "020 - 624 11 11"
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        await session.execute(
+            text(
+                "UPDATE invoicing_settings SET company_details ="
+                " jsonb_set(company_details, '{phone}', to_jsonb(CAST(:phone AS text)))"
+            ),
+            {"phone": legacy},
+        )
+        await session.commit()
+    async with client_for(t.host) as c:
+        edited = await c.put(
+            "/api/v1/invoicing/settings",
+            json={"company_details": {"name": "Renamed BV", "phone": legacy}},
+            headers=headers,
+        )
+        assert edited.status_code == 200
+        assert edited.json()["company_details"]["phone"] == legacy
+
+
 async def test_company_phone_tenant_isolation(client_for) -> None:
     """The new column changes nothing about Golden Rule 1: another org's company — phone
     included — is unreadable and unwritable."""

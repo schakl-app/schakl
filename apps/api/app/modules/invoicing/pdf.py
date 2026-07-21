@@ -20,6 +20,7 @@ from typing import Any
 
 from fpdf import FPDF
 
+from app.core.phone import format_phone_international
 from app.core.richtext import markdown_to_plaintext
 from app.i18n import translate
 
@@ -151,9 +152,11 @@ def render_document_pdf(
         seller_lines.append((f"{t('invoicing.doc.coc_number')} {seller['coc_number']}", False))
     if seller.get("iban"):
         seller_lines.append((f"{t('invoicing.doc.iban')} {seller['iban']}", False))
-    for key in ("email", "phone"):
-        if seller.get(key):
-            seller_lines.append((str(seller[key]), False))
+    if seller.get("email"):
+        seller_lines.append((str(seller["email"]), False))
+    if seller.get("phone"):
+        # E.164 prints international; a legacy freeform value prints as stored (#256).
+        seller_lines.append((str(format_phone_international(str(seller["phone"]))), False))
 
     y = top
     for text_value, bold in seller_lines:

@@ -52,12 +52,19 @@
   const selectedLabel = $derived(items.find((i) => i.value === value)?.label ?? "");
   // The hint is searchable too: a person is found by their email, a country ("NL +31")
   // by its full name in the hint. Create-detection stays label-only below.
+  // Prefix matches outrank substring hits — typing "nederland" must offer Nederland before
+  // Caribisch Nederland, or Enter picks the wrong one. Stable within each tier.
   const filtered = $derived.by(() => {
     const q = query.trim().toLowerCase();
     if (!q) return items;
-    return items.filter(
+    const starts = (s?: string) => s?.toLowerCase().startsWith(q) ?? false;
+    const matches = items.filter(
       (i) => i.label.toLowerCase().includes(q) || (i.hint?.toLowerCase().includes(q) ?? false),
     );
+    return [
+      ...matches.filter((i) => starts(i.label) || starts(i.hint)),
+      ...matches.filter((i) => !starts(i.label) && !starts(i.hint)),
+    ];
   });
   const canCreate = $derived(
     Boolean(oncreate) &&

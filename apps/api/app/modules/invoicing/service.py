@@ -31,6 +31,7 @@ from app.core.activity.service import snapshot
 from app.core.customfields import CustomFieldsService
 from app.core.events import emit
 from app.core.models import OrgSettings
+from app.core.phone import normalize_phone
 from app.core.richtext import sanitize_markdown
 from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
@@ -163,7 +164,12 @@ class InvoicingSettingsService:
         row = await self.row()
         values = data.model_dump(exclude_unset=True)
         if "company_details" in values and data.company_details is not None:
-            values["company_details"] = data.company_details.model_dump(mode="json")
+            details = data.company_details.model_dump(mode="json")
+            # Same gate as companies/contacts (#256): only a *changed* phone is validated,
+            # so a pre-existing freeform seller phone never blocks an unrelated save.
+            if details.get("phone") != (row.company_details or {}).get("phone"):
+                details["phone"] = normalize_phone(details.get("phone"))
+            values["company_details"] = details
         if values.get("tax_country"):
             values["tax_country"] = values["tax_country"].upper()
         if "default_tax_rate_id" in values and data.default_tax_rate_id is not None:

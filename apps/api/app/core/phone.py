@@ -40,6 +40,20 @@ def normalize_phone(value: str | None, *, field: str = "phone") -> str | None:
     return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
 
 
+def format_phone_international(value: str | None) -> str | None:
+    """How a stored phone reads on a document (PDF seller block): E.164 renders international
+    ("+31 20 624 1111"); a legacy freeform value prints exactly as stored — reformatting it
+    would guess its country, which the retrofit promised not to do. The web's
+    ``core/phone.ts::formatPhone`` is this function's mirror."""
+    if not value or not value.startswith("+"):
+        return value
+    try:
+        parsed = phonenumbers.parse(value, None)
+    except phonenumbers.NumberParseException:
+        return value
+    return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.INTERNATIONAL)
+
+
 def _reject(field: str) -> NoReturn:
     raise AppError(
         "validation",

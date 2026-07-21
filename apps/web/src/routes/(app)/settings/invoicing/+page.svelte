@@ -9,6 +9,7 @@
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
+  import PhoneInput from "$lib/core/ui/PhoneInput.svelte";
   import { getCurrency } from "$lib/core/currency";
   import DocumentView from "$lib/modules/invoicing/DocumentView.svelte";
   import { docMoney, taxRateLabel } from "$lib/modules/invoicing/types";
@@ -291,7 +292,7 @@
         <label for="seller-phone" class="mb-1 block text-sm font-medium text-text"
           >{t("settings.invoicing.phone")}</label
         >
-        <input id="seller-phone" name="phone" value={seller.phone ?? ""} class={inputClass} />
+        <PhoneInput id="seller-phone" name="phone" value={seller.phone ?? ""} />
       </div>
       <div class="sm:col-span-2 flex justify-end">
         <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
