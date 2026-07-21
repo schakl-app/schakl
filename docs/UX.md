@@ -277,11 +277,17 @@
   and rendered through the shared `Markdown` component — never a bare `<textarea>`, and never
   `{@html}` outside that one component. Store the markdown *source* in the existing `Text` column;
   never store pre-rendered HTML, or a later sanitizer fix cannot protect the rows already written.
-  The editor is markdown-with-preview, not WYSIWYG — a small bold/italic/link/heading/list
-  toolbar so nobody types syntax (the link button opens an inline URL popover, never
-  `window.prompt`, #228), and a Write ↔ Preview toggle — because a heavy editor bundle fights
-  *"snappy over clever"* on an SSR/PWA shell. This is the design-language rule; it is not a task
-  feature.
+  The editor is **WYSIWYG over markdown source** (#255, reversing the earlier
+  markdown-with-preview decision once the owner had used it): a Tiptap view, lazy-loaded after
+  hydration so ProseMirror never weighs on first paint — SSR/no-JS still render a plain textarea
+  with the raw source, and the *stored value never stops being markdown*
+  (`lib/core/richtext/editor.ts` parses through `renderMarkdown` and serializes back the house
+  conventions, mention markers included). Headings, lists, links and mention chips render styled
+  while typing; `### `, `- `, `1. `, `**bold**` convert as you type; Enter continues a list and
+  exits on an empty item; links show as blue label text with the URL behind the toolbar's inline
+  popover (never `window.prompt`, #228 — with the caret on a link it edits/removes it). There is
+  no Write ↔ Preview toggle anymore: the editor is the preview. This is the design-language rule;
+  it is not a task feature.
   **Which fields get it, and which stay plain:** the *long-form* ones — a task/checklist/checklist-
   item description, a comment, project/company/contact notes, invoice/quote/subscription notes,
   a custom-field `LONG_TEXT` — get the editor, **including the same field inside a template**

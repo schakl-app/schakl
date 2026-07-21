@@ -91,6 +91,13 @@
     font-weight: 600;
     margin-top: 0.5rem;
   }
+  /* Same sizes as the editor's rt-prose styles — writing and reading must look identical. */
+  .markdown-body :global(h3) {
+    font-size: 1.15em;
+  }
+  .markdown-body :global(h4) {
+    font-size: 1.05em;
+  }
   .markdown-body :global(code) {
     border-radius: 0.25rem;
     background: var(--color-surface);
