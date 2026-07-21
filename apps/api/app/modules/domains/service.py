@@ -110,11 +110,7 @@ class DomainService:
         stmt = stmt.limit(limit).offset(offset)
         items = list((await self.ctx.session.execute(stmt)).scalars().all())
 
-        count_stmt = (
-            select(func.count())
-            .select_from(Domain)
-            .where(Domain.org_id == self._org_id, *conditions)
-        )
+        count_stmt = self.repo.scoped_count_select().where(*conditions)
         total = int(await self.ctx.session.scalar(count_stmt) or 0)
         await self._attach(items)
         return items, total

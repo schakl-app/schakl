@@ -68,9 +68,7 @@ class HostingService:
 
         total = int(
             await self.ctx.session.scalar(
-                select(func.count())
-                .select_from(Hosting)
-                .where(Hosting.org_id == self._org_id, *conditions)
+                self.repo.scoped_count_select().where(*conditions)
             )
             or 0
         )

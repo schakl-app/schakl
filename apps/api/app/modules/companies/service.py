@@ -197,9 +197,7 @@ class CompanyService:
         total = (
             int(
                 await self.ctx.session.scalar(
-                    select(func.count())
-                    .select_from(Company)
-                    .where(Company.org_id == self.ctx.org.id, *conditions)
+                    self.repo.scoped_count_select().where(*conditions)
                 )
                 or 0
             )

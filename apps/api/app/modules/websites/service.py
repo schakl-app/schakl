@@ -121,9 +121,7 @@ class WebsiteService:
         items = list((await self.ctx.session.execute(stmt)).scalars().all())
         total = int(
             await self.ctx.session.scalar(
-                select(func.count())
-                .select_from(Website)
-                .where(Website.org_id == self._org_id, *conditions)
+                self.repo.scoped_count_select().where(*conditions)
             )
             or 0
         )

@@ -333,6 +333,20 @@ class TenantScopedRepository(Generic[ModelT]):
         """
         return self._scoped()
 
+    def scoped_count_select(self):
+        """A ``select(func.count())`` over this model, tenant- **and horizon**-filtered.
+
+        A list's ``total`` must count exactly the rows its query could return. Every service
+        that hand-built ``select(func.count()).where(org_id == …)`` skipped the company
+        horizon, so a scoped login read the org-wide count above its own filtered rows
+        (#252) — build totals from this instead.
+        """
+        return self._horizon(
+            select(func.count())
+            .select_from(self.model)
+            .where(self.model.org_id == self.org_id)
+        )
+
     def _apply_filters(self, stmt, filters: dict[str, Any]):
         for key, value in filters.items():
             stmt = stmt.where(getattr(self.model, key) == value)
