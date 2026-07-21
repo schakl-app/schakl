@@ -9,6 +9,7 @@ import {
   SUBSCRIPTION_TEMPLATES_TABLE_ID,
 } from "$lib/modules/subscriptions/columns";
 import { manageActions } from "$lib/modules/subscriptions/manage.server";
+import { priceIncreaseActions } from "$lib/modules/subscriptions/priceincrease.server";
 import {
   subscriptionTypeLabel,
   type SubscriptionTemplate,
@@ -103,4 +104,7 @@ export const actions: Actions = {
 
   // The shared catalog actions (manage.server.ts); this page uses saveTemplate/deleteTemplate.
   ...manageActions,
+
+  // The row's "Prijs verhogen" shortcut (#231) posts to the shared price-increase actions.
+  ...priceIncreaseActions,
 };

@@ -9,6 +9,7 @@ import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { SUBSCRIPTION_COLUMNS, SUBSCRIPTIONS_TABLE_ID } from "$lib/modules/subscriptions/columns";
 import { manageActions, parseLabelI18n } from "$lib/modules/subscriptions/manage.server";
+import { priceIncreaseActions } from "$lib/modules/subscriptions/priceincrease.server";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -35,24 +36,6 @@ function parseLinks(
   } catch {
     return [];
   }
-}
-
-const PRICE_MODES = ["percent", "amount", "set"] as const;
-
-/** The bulk price-increase fields, shared by preview and apply. `null` = invalid. */
-function priceIncreaseBody(form: FormData) {
-  const mode = String(form.get("mode") ?? "");
-  const value = String(form.get("value") ?? "").trim();
-  const valid_from = String(form.get("valid_from") ?? "").trim();
-  if (!PRICE_MODES.includes(mode as (typeof PRICE_MODES)[number])) return null;
-  if (!value || Number.isNaN(Number(value)) || !valid_from) return null;
-  return {
-    mode: mode as (typeof PRICE_MODES)[number],
-    value,
-    valid_from,
-    subscription_type_id: String(form.get("subscription_type_id") ?? "").trim() || null,
-    include_templates: form.get("include_templates") !== null,
-  };
 }
 
 /** The recurring-agreement fields both actions share (#30). */
@@ -284,30 +267,9 @@ export const actions: Actions = {
     return { inlineCreated: { slot: "subscription_type", id: data.id, name } };
   },
 
-  /** Bulk price increase: preview shows every in-scope agreement with its would-be amount;
-   *  apply appends the dated price rows (and optionally bumps template defaults). */
-  previewPriceIncrease: async (event) => {
-    const form = await event.request.formData();
-    const body = priceIncreaseBody(form);
-    if (!body) return fail(400, { priceError: "errors.required" });
-    const { data, error } = await apiFor(event).POST(
-      "/api/v1/subscriptions/price-increase/preview",
-      { body: body as never },
-    );
-    if (error || !data) return fail(400, { priceError: apiErrorKey(error).key });
-    return { pricePreview: data };
-  },
-
-  applyPriceIncrease: async (event) => {
-    const form = await event.request.formData();
-    const body = priceIncreaseBody(form);
-    if (!body) return fail(400, { priceError: "errors.required" });
-    const { data, error } = await apiFor(event).POST("/api/v1/subscriptions/price-increase", {
-      body: body as never,
-    });
-    if (error || !data) return fail(400, { priceError: apiErrorKey(error).key });
-    return { priceApplied: data.items.length };
-  },
+  // Price increase (#231): preview + apply over an all / type / subscription / template
+  // scope, shared with the standard-subscriptions tab (priceincrease.server.ts).
+  ...priceIncreaseActions,
 
   createCompany: createCompanyAction,
 

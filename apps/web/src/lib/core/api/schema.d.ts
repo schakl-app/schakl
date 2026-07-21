@@ -10879,13 +10879,19 @@ export interface components {
         };
         /**
          * PriceIncreaseRequest
-         * @description A bulk price change over the running subscriptions (and optionally the templates).
+         * @description A price change over the running subscriptions (and optionally the templates).
          *
          *     ``mode``: ``percent`` multiplies, ``amount`` adds a fixed sum, ``set`` overwrites. The
          *     base is the price in effect on ``valid_from`` — so a change effective 1 January builds on
          *     what the customer pays *then*, not on today's row. Preview and apply share this shape;
          *     apply appends one history row per subscription (same-day rows are corrected in place,
          *     like a manual edit).
+         *
+         *     Scope is exactly one of: everything (the default), one type, one subscription, or one
+         *     template (#231). The single-row scopes are the row shortcut's contract and stay strictly
+         *     separate — combining them with each other, with the type filter, or with
+         *     ``include_templates`` is a validation error, so a targeted bump can never silently drag
+         *     a template default (or the whole book) along.
          */
         PriceIncreaseRequest: {
             /**
@@ -10898,6 +10904,10 @@ export interface components {
              * @enum {string}
              */
             mode: "percent" | "amount" | "set";
+            /** Subscription Id */
+            subscription_id?: string | null;
+            /** Subscription Template Id */
+            subscription_template_id?: string | null;
             /** Subscription Type Id */
             subscription_type_id?: string | null;
             /**

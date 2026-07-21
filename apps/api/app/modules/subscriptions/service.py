@@ -392,19 +392,39 @@ class SubscriptionService:
     async def price_increase(
         self, data: PriceIncreaseRequest, *, apply: bool
     ) -> PriceIncreaseResult:
-        """Compute (and with ``apply`` write) a bulk price change (#30's history model).
+        """Compute (and with ``apply`` write) a price change (#30's history model).
 
-        Cancelled agreements are left alone; a subscription that has no price yet on
-        ``valid_from`` (it starts later) is skipped rather than given a base of nothing.
-        Writes are the manual edit's semantics per row: a row already on ``valid_from`` is
-        corrected in place, otherwise the history gains a row — and each written change lands
-        on the subscription's activity trail.
+        Cancelled agreements are left alone — also when targeted directly (#231): a targeted
+        bump of a dead agreement would write history nothing reads. A subscription that has
+        no price yet on ``valid_from`` (it starts later) is skipped rather than given a base
+        of nothing. Writes are the manual edit's semantics per row: a row already on
+        ``valid_from`` is corrected in place, otherwise the history gains a row — and each
+        written change lands on the subscription's activity trail.
         """
         self.ctx.require("subscriptions.subscription.write")
+        scopes = [
+            data.subscription_type_id, data.subscription_id, data.subscription_template_id,
+        ]
+        if sum(s is not None for s in scopes) > 1 or (
+            data.include_templates
+            and (data.subscription_id or data.subscription_template_id) is not None
+        ):
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=400,
+                fields={"scope": "errors.validation"},
+            )
+        if data.subscription_template_id is not None:
+            return await self._template_price_increase(data, apply=apply)
         conditions = [Subscription.status != SubscriptionStatus.CANCELLED.value]
         if data.subscription_type_id is not None:
             await self._ensure_type(data.subscription_type_id)
             conditions.append(Subscription.subscription_type_id == data.subscription_type_id)
+        if data.subscription_id is not None:
+            # Tenant-scoped existence check: a foreign id is a 404, never an empty preview.
+            await self.repo.get_or_404(data.subscription_id)
+            conditions.append(Subscription.id == data.subscription_id)
         subs = list(
             (
                 await self.ctx.session.execute(
@@ -526,6 +546,31 @@ class SubscriptionService:
                     await template_repo.update(template, amount=new)
 
         return PriceIncreaseResult(items=items, templates=templates)
+
+    async def _template_price_increase(
+        self, data: PriceIncreaseRequest, *, apply: bool
+    ) -> PriceIncreaseResult:
+        """The single-template scope (#231): a template edit in disguise, so it demands the
+        catalog grant on top of the route's — a subscription-writer must not reach template
+        defaults through this side door. A template without an ``amount`` has no base to bump
+        and previews empty, like a subscription that starts after the effective date."""
+        self.ctx.require("subscriptions.template.manage")
+        template_repo = self.ctx.repo(SubscriptionTemplate)
+        template = await template_repo.get_or_404(data.subscription_template_id)
+        templates: list[PriceIncreaseTemplateItem] = []
+        if template.amount is not None:
+            new = self._bumped(template.amount, data)
+            templates.append(
+                PriceIncreaseTemplateItem(
+                    template_id=template.id,
+                    name=template.name,
+                    current_amount=template.amount,
+                    new_amount=new,
+                )
+            )
+            if apply and new != template.amount:
+                await template_repo.update(template, amount=new)
+        return PriceIncreaseResult(items=[], templates=templates)
 
     # --- Omzet summary --------------------------------------------------------- #
     async def summary(self) -> dict[str, Any]:

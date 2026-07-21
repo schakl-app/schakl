@@ -4,13 +4,14 @@
    * #229): a full DataTable with filters and a personal column layout, one tab of the
    * subscriptions section. The create/edit dialog moved here from the old stacked catalog.
    */
-  import { Pencil, Trash2 } from "@lucide/svelte";
+  import { Pencil, Trash2, TrendingUp } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { fmtMoney } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { can } from "$lib/core/permissions";
   import { pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
@@ -20,6 +21,7 @@
   import Modal from "$lib/core/ui/Modal.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import { SUBSCRIPTION_TEMPLATE_COLUMNS } from "$lib/modules/subscriptions/columns";
+  import PriceIncreaseModal from "$lib/modules/subscriptions/PriceIncreaseModal.svelte";
   import { subscriptionTypeLabel } from "$lib/modules/subscriptions/types";
 
   let { data, form } = $props();
@@ -32,6 +34,19 @@
   let editing = $state<Template | null>(null);
   let deleteId = $state("");
   let confirmDelete = $state(false);
+
+  // The row's price-increase shortcut (#231): the shared modal, locked to that template.
+  // The route permission on the endpoint is subscription.write, so require it here too.
+  let priceOpen = $state(false);
+  let priceScope = $state("");
+  const canBumpPrice = $derived(can(page.data.user, "subscriptions.subscription.write"));
+  const priceScopeItems = $derived(
+    data.templates.map((tpl) => ({ value: `template:${tpl.id}`, label: tpl.name })),
+  );
+  function openPriceModal(tpl: Template) {
+    priceScope = `template:${tpl.id}`;
+    priceOpen = true;
+  }
 
   const activeTypes = $derived(data.types.filter((st) => st.active));
   const typeLabel = (id: string | null | undefined) =>
@@ -129,6 +144,14 @@
   />
 </div>
 
+<PriceIncreaseModal
+  bind:open={priceOpen}
+  bind:scope={priceScope}
+  scopeItems={priceScopeItems}
+  locked
+  {form}
+/>
+
 {#snippet nameCell(tpl: Template)}
   <button
     type="button"
@@ -168,6 +191,15 @@
     compact
     items={[
       { label: t("common.edit"), icon: Pencil, onclick: () => openEdit(tpl) },
+      ...(canBumpPrice
+        ? [
+            {
+              label: t("subscriptions.price_increase.row_action"),
+              icon: TrendingUp,
+              onclick: () => openPriceModal(tpl),
+            },
+          ]
+        : []),
       {
         label: t("common.delete"),
         icon: Trash2,

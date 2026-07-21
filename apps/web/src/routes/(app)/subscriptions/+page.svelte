@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { BookmarkPlus, Pencil, Trash2 } from "@lucide/svelte";
+  import { BookmarkPlus, Pencil, Trash2, TrendingUp } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
@@ -20,6 +20,7 @@
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import { SUBSCRIPTION_COLUMNS } from "$lib/modules/subscriptions/columns";
+  import PriceIncreaseModal from "$lib/modules/subscriptions/PriceIncreaseModal.svelte";
   import { subscriptionTypeLabel } from "$lib/modules/subscriptions/types";
 
   let { data, form } = $props();
@@ -105,10 +106,37 @@
   // the single validation path. Rekeys the form so the defaults re-read.
   let prefill = $state<Template | null>(null);
 
-  // Bulk price increase: preview first, then apply — both against the API's computation.
+  // Price increase (#231): scope is everything, one type, one subscription or one template.
+  // A row's ⋮ shortcut opens the same modal locked to that row.
   let priceOpen = $state(false);
-  let priceMode = $state<"percent" | "amount" | "set">("percent");
-  const PRICE_MODES = ["percent", "amount", "set"] as const;
+  let priceScope = $state("all");
+  let priceLocked = $state(false);
+  function openPriceModal(scope = "all", locked = false) {
+    priceScope = scope;
+    priceLocked = locked;
+    priceOpen = true;
+  }
+  const priceScopeItems = $derived([
+    { value: "all", label: t("subscriptions.price_increase.scope_all") },
+    ...activeTypes.map((st) => ({
+      value: `type:${st.id}`,
+      label: subscriptionTypeLabel(st, data.locale),
+      hint: t("subscriptions.field.type"),
+    })),
+    ...data.subscriptions.map((sub) => ({
+      value: `subscription:${sub.id}`,
+      label: sub.name,
+      hint: sub.company_name || undefined,
+    })),
+    // A template-scoped change needs the catalog grant too (the API enforces it).
+    ...(data.canManageTemplates
+      ? data.templates.map((tpl) => ({
+          value: `template:${tpl.id}`,
+          label: tpl.name,
+          hint: t("subscriptions.price_increase.scope_template"),
+        }))
+      : []),
+  ]);
 
   // "Opslaan als standaardabonnement" (UX rule 5): the row posts its own values through a
   // hidden form.
@@ -180,7 +208,7 @@
     {#if data.canWrite}
       <button
         class="rounded-lg border border-border px-4 py-2 text-sm font-medium text-text hover:border-brand hover:text-brand"
-        onclick={() => (priceOpen = true)}>{t("subscriptions.price_increase.title")}</button
+        onclick={() => openPriceModal()}>{t("subscriptions.price_increase.title")}</button
       >
     {/if}
     <button
@@ -277,11 +305,13 @@
   </p>
 {/if}
 
-{#if form?.priceApplied != null}
-  <p class="mb-4 rounded-lg border border-border bg-surface-raised px-4 py-2 text-sm text-text">
-    {t("subscriptions.price_increase.applied", { count: form.priceApplied })}
-  </p>
-{/if}
+<PriceIncreaseModal
+  bind:open={priceOpen}
+  bind:scope={priceScope}
+  scopeItems={priceScopeItems}
+  locked={priceLocked}
+  {form}
+/>
 
 {#snippet nameCell(sub: Subscription)}
   <button
@@ -337,6 +367,15 @@
     compact
     items={[
       { label: t("common.edit"), icon: Pencil, onclick: () => openEdit(sub) },
+      ...(data.canWrite
+        ? [
+            {
+              label: t("subscriptions.price_increase.row_action"),
+              icon: TrendingUp,
+              onclick: () => openPriceModal(`subscription:${sub.id}`, true),
+            },
+          ]
+        : []),
       ...(data.canManageTemplates
         ? [
             {
@@ -785,141 +824,3 @@
   action="?/delete"
   fields={{ id: deleteId }}
 />
-
-<!-- Bulk price increase: the preview is the API's own computation, so the numbers shown
-     are exactly the history rows an apply writes. -->
-<Modal bind:open={priceOpen} title={t("subscriptions.price_increase.title")}>
-  <!-- Enter previews (the safe default); only the explicit Doorvoeren button applies. -->
-  <form
-    method="POST"
-    action="?/previewPriceIncrease"
-    use:enhance={() =>
-      ({ result, update }) => {
-        if (result.type === "success" && result.data && "priceApplied" in result.data) {
-          priceOpen = false;
-        }
-        void update({ reset: false });
-      }}
-    class="space-y-4"
-  >
-    <p class="text-sm text-text-muted">{t("subscriptions.price_increase.help")}</p>
-    <div class="grid gap-3 sm:grid-cols-2">
-      <div>
-        <label for="pi-mode" class="mb-1 block text-sm font-medium text-text"
-          >{t("subscriptions.price_increase.mode")}</label
-        >
-        <select id="pi-mode" name="mode" bind:value={priceMode} class={inputClass}>
-          {#each PRICE_MODES as mode (mode)}
-            <option value={mode}>{t(`subscriptions.price_increase.mode_${mode}`)}</option>
-          {/each}
-        </select>
-      </div>
-      <div>
-        <label for="pi-value" class="mb-1 block text-sm font-medium text-text"
-          >{priceMode === "percent"
-            ? t("subscriptions.price_increase.value_percent")
-            : t("subscriptions.price_increase.value_amount")}</label
-        >
-        <input id="pi-value" name="value" type="number" step="0.01" required class={inputClass} />
-      </div>
-      <div>
-        <label for="pi-from" class="mb-1 block text-sm font-medium text-text"
-          >{t("subscriptions.price_increase.valid_from")}</label
-        >
-        <DateInput name="valid_from" id="pi-from" required value="" />
-      </div>
-      <div>
-        <label for="pi-type" class="mb-1 block text-sm font-medium text-text"
-          >{t("subscriptions.field.type")}</label
-        >
-        <select id="pi-type" name="subscription_type_id" class={inputClass}>
-          <option value="">{t("subscriptions.price_increase.all_types")}</option>
-          {#each activeTypes as st (st.id)}
-            <option value={st.id}>{subscriptionTypeLabel(st, data.locale)}</option>
-          {/each}
-        </select>
-      </div>
-    </div>
-    <label class="flex items-center gap-2 text-sm text-text">
-      <input type="checkbox" name="include_templates" />
-      {t("subscriptions.price_increase.include_templates")}
-    </label>
-
-    {#if form?.pricePreview}
-      <div class="max-h-64 overflow-y-auto rounded-lg border border-border">
-        {#if form.pricePreview.items.length === 0}
-          <p class="p-4 text-sm text-text-muted">{t("subscriptions.price_increase.empty")}</p>
-        {:else}
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="border-b border-border text-left text-xs text-text-muted">
-                <th class="px-3 py-2 font-medium">{t("subscriptions.field.name")}</th>
-                <th class="px-3 py-2 text-right font-medium"
-                  >{t("subscriptions.price_increase.current")}</th
-                >
-                <th class="px-3 py-2 text-right font-medium"
-                  >{t("subscriptions.price_increase.new")}</th
-                >
-              </tr>
-            </thead>
-            <tbody>
-              {#each form.pricePreview.items as item (item.subscription_id)}
-                <tr class="border-b border-border last:border-b-0">
-                  <td class="px-3 py-1.5 text-text">
-                    {item.name}
-                    {#if item.company_name}<span class="text-xs text-text-muted">
-                        · {item.company_name}</span
-                      >{/if}
-                  </td>
-                  <td class="px-3 py-1.5 text-right tabular-nums text-text-muted"
-                    >{money(item.current_amount)}</td
-                  >
-                  <td class="px-3 py-1.5 text-right font-medium tabular-nums text-text"
-                    >{money(item.new_amount)}</td
-                  >
-                </tr>
-              {/each}
-              {#each form.pricePreview.templates as tpl (tpl.template_id)}
-                <tr class="border-b border-border last:border-b-0">
-                  <td class="px-3 py-1.5 text-text">
-                    {tpl.name}
-                    <span class="text-xs text-text-muted">
-                      · {t("settings.subscriptions.templates_heading")}</span
-                    >
-                  </td>
-                  <td class="px-3 py-1.5 text-right tabular-nums text-text-muted"
-                    >{money(tpl.current_amount)}</td
-                  >
-                  <td class="px-3 py-1.5 text-right font-medium tabular-nums text-text"
-                    >{money(tpl.new_amount)}</td
-                  >
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        {/if}
-      </div>
-    {/if}
-
-    {#if form?.priceError}
-      <p class="text-sm text-red-600 dark:text-red-400">{t(form.priceError)}</p>
-    {/if}
-    <div class="flex justify-end gap-2">
-      <button
-        type="button"
-        class="rounded-lg border border-border px-4 py-2 text-sm text-text"
-        onclick={() => (priceOpen = false)}>{t("common.cancel")}</button
-      >
-      <button
-        formaction="?/previewPriceIncrease"
-        class="rounded-lg border border-border px-4 py-2 text-sm font-medium text-text hover:border-brand hover:text-brand"
-        >{t("subscriptions.price_increase.preview")}</button
-      >
-      <button
-        formaction="?/applyPriceIncrease"
-        class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-        >{t("subscriptions.price_increase.apply")}</button
-      >
-    </div>
-  </form>
-</Modal>
