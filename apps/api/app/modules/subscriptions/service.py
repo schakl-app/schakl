@@ -33,6 +33,7 @@ from app.core.activity import ActivityService
 from app.core.activity.service import snapshot
 from app.core.customfields import CustomFieldsService
 from app.core.events import emit
+from app.core.richtext import sanitize_markdown
 from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_zoneinfo
@@ -280,7 +281,8 @@ class SubscriptionService:
             included_hours=data.included_hours,
             rollover=data.rollover.model_dump(),
             notice_period_days=data.notice_period_days,
-            notes=data.notes,
+            # Markdown source (issue #66/#228): raw HTML is stripped on write.
+            notes=sanitize_markdown(data.notes),
             custom=custom,
         )
         # The opening price: history starts at the subscription's own start.
@@ -310,6 +312,8 @@ class SubscriptionService:
                 values[field] = value.value if hasattr(value, "value") else value
         if "name" in values:
             values["name"] = values["name"].strip()
+        if "notes" in values:
+            values["notes"] = sanitize_markdown(values["notes"])
         if "company_id" in sent and data.company_id is not None:
             await self._ensure_company(data.company_id)
             values["company_id"] = data.company_id
@@ -934,6 +938,9 @@ class SubscriptionTemplateService:
         a json-mode dump — ``json.dumps`` cannot serialize a raw Decimal line amount."""
         if values.get("name"):
             values["name"] = values["name"].strip()
+        if values.get("notes"):
+            # Markdown source (issue #66/#228): raw HTML is stripped on write.
+            values["notes"] = sanitize_markdown(values["notes"])
         if values.get("currency"):
             values["currency"] = values["currency"].upper()
         if values.get("interval") is not None:

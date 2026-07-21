@@ -19,6 +19,7 @@ import xml.etree.ElementTree as ET
 from decimal import Decimal
 from typing import Any
 
+from app.core.richtext import markdown_to_plaintext
 from app.modules.invoicing.calc import CENTS, TaxGroup, Totals, round_cents
 from app.modules.invoicing.models import InvoiceKind, TaxCategory
 
@@ -128,7 +129,8 @@ def invoice_ubl(
     type_code = "381" if invoice.kind == InvoiceKind.CREDIT_NOTE.value else "380"
     _el(root, _CBC, "InvoiceTypeCode", type_code)
     if invoice.notes:
-        _el(root, _CBC, "Note", invoice.notes)
+        # Notes are markdown source (#228); a UBL Note is plain text for accounting software.
+        _el(root, _CBC, "Note", markdown_to_plaintext(invoice.notes))
     _el(root, _CBC, "DocumentCurrencyCode", invoice.currency)
     _el(root, _CBC, "BuyerReference", invoice.reference or invoice.number or "")
 

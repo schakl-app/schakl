@@ -21,6 +21,7 @@ from app.core.assignees import AssigneeService
 from app.core.auth.models import User
 from app.core.customfields import CustomFieldsService
 from app.core.events import emit
+from app.core.richtext import sanitize_markdown
 from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
 from app.core.urls import reject_dangerous_url
@@ -222,6 +223,9 @@ class CompanyService:
         self.ctx.require("companies.company.write")
         values = data.model_dump()
         reject_dangerous_url(values.get("website"), field="website")
+        # Notes are markdown source (issue #66/#228): strip raw HTML on write, like every
+        # markdown-authored field.
+        values["notes"] = sanitize_markdown(values.get("notes"))
         values.pop("assignees", None)
         links = self.assignees.normalize(
             data.assignees, fallback_primary=data.responsible_user_id
@@ -258,6 +262,8 @@ class CompanyService:
         values = data.model_dump(exclude_unset=True)
         if "website" in values:
             reject_dangerous_url(values.get("website"), field="website")
+        if "notes" in values:
+            values["notes"] = sanitize_markdown(values.get("notes"))
         # ``replace`` is delete-then-insert, so who is *new* has to be read before the write.
         roster_touched = "assignees" in values or "responsible_user_id" in values
         before: set[uuid.UUID] = (

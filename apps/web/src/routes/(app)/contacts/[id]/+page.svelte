@@ -13,7 +13,9 @@
   import CustomFieldsView from "$lib/core/customfields/CustomFieldsView.svelte";
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
   import LinkField from "$lib/core/ui/LinkField.svelte";
+  import Markdown from "$lib/core/ui/Markdown.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
+  import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import CompanyForm from "$lib/modules/companies/CompanyForm.svelte";
 
   let { data, form } = $props();
@@ -178,6 +180,12 @@
           class="w-full rounded-lg border border-border px-3 py-2 text-sm"
         />
       </div>
+      <div class="sm:col-span-2">
+        <label for="contact-notes" class="mb-1 block text-sm font-medium text-text"
+          >{t("contacts.notes")}</label
+        >
+        <RichTextEditor id="contact-notes" name="notes" rows={3} value={contact.notes ?? ""} />
+      </div>
     </div>
 
     {#if data.definitions.length > 0}
@@ -220,6 +228,16 @@
           </dt>
           <dd class="mt-1 text-sm text-text">{contact.job_title ?? "—"}</dd>
         </div>
+        {#if contact.notes}
+          <div class="sm:col-span-2">
+            <dt class="text-xs font-medium uppercase tracking-wide text-text-muted">
+              {t("contacts.notes")}
+            </dt>
+            <dd class="mt-1">
+              <Markdown value={contact.notes} />
+            </dd>
+          </div>
+        {/if}
       </dl>
     </section>
 

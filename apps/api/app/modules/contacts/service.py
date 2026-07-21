@@ -20,6 +20,7 @@ from sqlalchemy import bindparam, column, func, or_, select, table, text, update
 from app.core.activity import ActivityService
 from app.core.activity.service import snapshot
 from app.core.customfields import CustomFieldsService
+from app.core.richtext import sanitize_markdown
 from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext, TenantScopedRepository
 from app.errors import AppError
@@ -254,6 +255,8 @@ class ContactService:
         self.ctx.require("contacts.contact.write")
         values = data.model_dump()
         company_ids = values.pop("company_ids", None) or []
+        # Notes are markdown source (issue #66/#228): strip raw HTML on write.
+        values["notes"] = sanitize_markdown(values.get("notes"))
         values["email"] = (values.get("email") or "").strip() or None
         await self._ensure_email_unique(values["email"])
         values["custom"] = await self.custom_fields.validate(
@@ -271,6 +274,8 @@ class ContactService:
         contact = await self.repo.get_or_404(contact_id)
         before = snapshot(contact, _AUDITED_FIELDS)
         values = data.model_dump(exclude_unset=True)
+        if "notes" in values:
+            values["notes"] = sanitize_markdown(values.get("notes"))
         if "email" in values:
             values["email"] = (values.get("email") or "").strip() or None
             await self._ensure_email_unique(values["email"], exclude_id=contact.id)

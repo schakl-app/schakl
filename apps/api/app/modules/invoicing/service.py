@@ -31,6 +31,7 @@ from app.core.activity.service import snapshot
 from app.core.customfields import CustomFieldsService
 from app.core.events import emit
 from app.core.models import OrgSettings
+from app.core.richtext import sanitize_markdown
 from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_zoneinfo
@@ -784,7 +785,8 @@ class InvoiceService(_DocumentService):
             locale=doc_locale,
             reference=data.reference,
             intro=data.intro,
-            notes=data.notes,
+            # Markdown source (issue #66/#228): raw HTML is stripped on write.
+            notes=sanitize_markdown(data.notes),
             template_id=data.template_id or settings_row.default_template_id,
             issue_date=data.issue_date,
             due_date=data.due_date,
@@ -820,6 +822,8 @@ class InvoiceService(_DocumentService):
         ):
             if field in sent:
                 values[field] = sent[field]
+        if "notes" in values:
+            values["notes"] = sanitize_markdown(values["notes"])
         if "locale" in sent and data.locale is not None:
             values["locale"] = data.locale
         if "currency" in sent and data.currency is not None:
@@ -1529,7 +1533,8 @@ class QuoteService(_DocumentService):
             locale=doc_locale,
             reference=data.reference,
             intro=data.intro,
-            notes=data.notes,
+            # Markdown source (issue #66/#228): raw HTML is stripped on write.
+            notes=sanitize_markdown(data.notes),
             template_id=data.template_id or settings_row.default_template_id,
             issue_date=data.issue_date,
             valid_until=data.valid_until,
@@ -1558,6 +1563,8 @@ class QuoteService(_DocumentService):
                       "exchange_rate"):
             if field in sent:
                 values[field] = sent[field]
+        if "notes" in values:
+            values["notes"] = sanitize_markdown(values["notes"])
         if "locale" in sent and data.locale is not None:
             values["locale"] = data.locale
         if "currency" in sent and data.currency is not None:

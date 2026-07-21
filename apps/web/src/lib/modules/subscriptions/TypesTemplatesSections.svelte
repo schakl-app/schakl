@@ -16,6 +16,7 @@
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
+  import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import {
     subscriptionTypeLabel,
     type SubscriptionTemplate,
@@ -429,9 +430,12 @@
         <label for="tpl-notes" class="mb-1 block text-sm text-text"
           >{t("subscriptions.field.notes")}</label
         >
-        <textarea id="tpl-notes" name="notes" rows="2" class={inputClass}
-          >{editingTemplate?.notes ?? ""}</textarea
-        >
+        <RichTextEditor
+          id="tpl-notes"
+          name="notes"
+          rows={2}
+          value={editingTemplate?.notes ?? ""}
+        />
       </div>
       <input
         type="hidden"

@@ -16,6 +16,7 @@
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
+  import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import { SUBSCRIPTION_COLUMNS } from "$lib/modules/subscriptions/columns";
@@ -633,9 +634,12 @@
         <label for="sub-notes" class="mb-1 block text-sm font-medium text-text"
           >{t("subscriptions.field.notes")}</label
         >
-        <textarea id="sub-notes" name="notes" rows="2" class={inputClass}
-          >{editing?.notes ?? prefill?.notes ?? ""}</textarea
-        >
+        <RichTextEditor
+          id="sub-notes"
+          name="notes"
+          rows={2}
+          value={editing?.notes ?? prefill?.notes ?? ""}
+        />
       </div>
       {#if data.definitions.length > 0}
         <CustomFieldsForm

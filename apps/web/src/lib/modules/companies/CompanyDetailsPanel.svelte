@@ -1,5 +1,6 @@
 <script lang="ts">
   import { t } from "$lib/core/i18n";
+  import Markdown from "$lib/core/ui/Markdown.svelte";
 
   let { data }: { companyId: string; data: Record<string, unknown> } = $props();
 
@@ -74,8 +75,12 @@
     <dt class="text-xs font-medium uppercase tracking-wide text-neutral-500">
       {t("companies.notes")}
     </dt>
-    <dd class="mt-1 whitespace-pre-wrap text-sm text-neutral-900">
-      {notes ?? "—"}
+    <dd class="mt-1 text-sm text-neutral-900">
+      {#if notes}
+        <Markdown value={notes} />
+      {:else}
+        —
+      {/if}
     </dd>
   </div>
 

@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * Shared markdown editor (issue #66, docs/UX.md). A plain `<textarea>` with a small toolbar
-   * (bold / italic / link) and a Write ↔ Preview toggle, so the value stored is markdown *source*
+   * (bold / italic / link / heading / lists) and a Write ↔ Preview toggle, so the value stored is markdown *source*
    * and the user never has to type the syntax by hand. WYSIWYG was deliberately not chosen — a
    * heavy editor bundle fights the "snappy over clever" rule (docs/PERFORMANCE.md).
    *
@@ -17,8 +17,11 @@
     Bold,
     CircleStop,
     Eye,
+    Heading as HeadingIcon,
     Italic,
     Link as LinkIcon,
+    List,
+    ListOrdered,
     Pencil,
     Sparkles,
   } from "@lucide/svelte";
@@ -265,13 +268,86 @@
     });
   }
 
-  function insertLink() {
+  // Any block prefix a line may already carry — stripped before a new one goes on, so the
+  // heading/bullet/numbered buttons switch a line rather than stack `- ### 1.` onto it.
+  const LINE_PREFIX_RE = /^(#{1,6}|[-*+]|\d+\.)\s+/;
+
+  /** Toggle a block prefix (heading / list marker) on every line the selection touches. */
+  function prefixLines(kind: "heading" | "bullet" | "numbered") {
     const el = textarea;
     if (!el) return;
-    const url = window.prompt(t("richtext.link_prompt"));
-    if (!url) return;
     const start = el.selectionStart;
     const end = el.selectionEnd;
+    const blockStart = content.lastIndexOf("\n", start - 1) + 1;
+    const newlineAfter = content.indexOf("\n", end);
+    const blockEnd = newlineAfter === -1 ? content.length : newlineAfter;
+    const lines = content.slice(blockStart, blockEnd).split("\n");
+    const marked = (line: string) =>
+      kind === "heading"
+        ? /^###\s/.test(line)
+        : kind === "bullet"
+          ? /^[-*+]\s/.test(line)
+          : /^\d+\.\s/.test(line);
+    const textLines = lines.filter((line) => line.trim() !== "");
+    // An empty block: seed the marker at the caret so typing continues into the list/heading.
+    if (textLines.length === 0) {
+      const prefix = kind === "heading" ? "### " : kind === "bullet" ? "- " : "1. ";
+      change(content.slice(0, start) + prefix + content.slice(end));
+      queueMicrotask(() => {
+        el.focus();
+        el.selectionStart = el.selectionEnd = start + prefix.length;
+      });
+      return;
+    }
+    // Second press is a toggle: every marked line goes back to bare text.
+    const active = textLines.every(marked);
+    let n = 0;
+    const next = lines
+      .map((line) => {
+        if (line.trim() === "") return line;
+        const bare = line.replace(LINE_PREFIX_RE, "");
+        if (active) return bare;
+        n += 1;
+        return kind === "heading" ? `### ${bare}` : kind === "bullet" ? `- ${bare}` : `${n}. ${bare}`;
+      })
+      .join("\n");
+    change(content.slice(0, blockStart) + next + content.slice(blockEnd));
+    queueMicrotask(() => {
+      el.focus();
+      el.selectionStart = blockStart;
+      el.selectionEnd = blockStart + next.length;
+    });
+  }
+
+  // --- link insertion ----------------------------------------------------------
+  // An inline popover under the toolbar button (issue #228) — never `window.prompt`, which can't
+  // be styled, translated consistently, or used from the PWA shell without jarring chrome.
+  // The selection is captured when the popover opens: focus moves to the URL input, which would
+  // otherwise collapse it.
+  let linkOpen = $state(false);
+  let linkUrl = $state("");
+  let linkRange = { start: 0, end: 0 };
+  let linkInput: HTMLInputElement | undefined = $state();
+
+  function toggleLink() {
+    if (linkOpen) {
+      linkOpen = false;
+      return;
+    }
+    const el = textarea;
+    if (!el) return;
+    linkRange = { start: el.selectionStart, end: el.selectionEnd };
+    linkUrl = "";
+    linkOpen = true;
+    queueMicrotask(() => linkInput?.focus());
+  }
+
+  function insertLink() {
+    const url = linkUrl.trim();
+    const el = textarea;
+    if (!url || !el) return;
+    linkOpen = false;
+    const { start, end } = linkRange;
     const label = content.slice(start, end) || t("richtext.link_text");
     const snippet = `[${label}](${url})`;
     change(content.slice(0, start) + snippet + content.slice(end));
@@ -414,15 +490,82 @@
     >
       <Italic size={15} />
     </button>
+    <div class="relative">
+      <button
+        type="button"
+        class={toolbarButton}
+        disabled={preview}
+        aria-label={t("richtext.link")}
+        title={t("richtext.link")}
+        aria-haspopup="dialog"
+        aria-expanded={linkOpen}
+        onclick={toggleLink}
+      >
+        <LinkIcon size={15} />
+      </button>
+      {#if linkOpen}
+        <div
+          class="absolute left-0 top-full z-30 mt-1 flex w-64 items-center gap-1.5 rounded-lg border border-border bg-surface-raised p-1.5 shadow-lg"
+          role="dialog"
+          aria-label={t("richtext.link_prompt")}
+        >
+          <input
+            bind:this={linkInput}
+            bind:value={linkUrl}
+            type="url"
+            placeholder={t("richtext.link_prompt")}
+            aria-label={t("richtext.link_prompt")}
+            class="min-w-0 flex-1 rounded border border-border bg-transparent px-2 py-1 text-sm outline-none focus:border-brand"
+            onkeydown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                insertLink();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                linkOpen = false;
+                textarea?.focus();
+              }
+            }}
+          />
+          <button
+            type="button"
+            class="rounded bg-brand px-2 py-1 text-xs font-medium text-white hover:opacity-90"
+            onclick={insertLink}
+          >
+            {t("common.add")}
+          </button>
+        </div>
+      {/if}
+    </div>
     <button
       type="button"
       class={toolbarButton}
       disabled={preview}
-      aria-label={t("richtext.link")}
-      title={t("richtext.link")}
-      onclick={insertLink}
+      aria-label={t("richtext.heading")}
+      title={t("richtext.heading")}
+      onclick={() => prefixLines("heading")}
     >
-      <LinkIcon size={15} />
+      <HeadingIcon size={15} />
+    </button>
+    <button
+      type="button"
+      class={toolbarButton}
+      disabled={preview}
+      aria-label={t("richtext.bullet_list")}
+      title={t("richtext.bullet_list")}
+      onclick={() => prefixLines("bullet")}
+    >
+      <List size={15} />
+    </button>
+    <button
+      type="button"
+      class={toolbarButton}
+      disabled={preview}
+      aria-label={t("richtext.numbered_list")}
+      title={t("richtext.numbered_list")}
+      onclick={() => prefixLines("numbered")}
+    >
+      <ListOrdered size={15} />
     </button>
     {#if assistAvailable}
       <div class="relative" data-assist-menu>

@@ -14,6 +14,7 @@
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
   import { t } from "$lib/core/i18n";
   import AssigneePicker from "$lib/core/ui/AssigneePicker.svelte";
+  import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import { COMPANY_STATUSES } from "$lib/modules/companies/status";
 
   interface Member {
@@ -209,9 +210,7 @@
       <label for="{idPrefix}-notes" class="mb-1 block text-sm font-medium text-neutral-700">
         {t("companies.notes")}
       </label>
-      <textarea id="{idPrefix}-notes" name="notes" rows="3" class={inputClass}
-        >{company.notes ?? ""}</textarea
-      >
+      <RichTextEditor id="{idPrefix}-notes" name="notes" rows={3} value={company.notes ?? ""} />
     </div>
   </div>
 

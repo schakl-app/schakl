@@ -277,13 +277,19 @@
   and rendered through the shared `Markdown` component — never a bare `<textarea>`, and never
   `{@html}` outside that one component. Store the markdown *source* in the existing `Text` column;
   never store pre-rendered HTML, or a later sanitizer fix cannot protect the rows already written.
-  The editor is markdown-with-preview, not WYSIWYG — a small bold/italic/link toolbar so nobody
-  types syntax, and a Write ↔ Preview toggle — because a heavy editor bundle fights *"snappy over
-  clever"* on an SSR/PWA shell. This is the design-language rule; it is not a task feature.
+  The editor is markdown-with-preview, not WYSIWYG — a small bold/italic/link/heading/list
+  toolbar so nobody types syntax (the link button opens an inline URL popover, never
+  `window.prompt`, #228), and a Write ↔ Preview toggle — because a heavy editor bundle fights
+  *"snappy over clever"* on an SSR/PWA shell. This is the design-language rule; it is not a task
+  feature.
   **Which fields get it, and which stay plain:** the *long-form* ones — a task/checklist/checklist-
-  item description, a comment, project/company/contact notes, a custom-field `LONG_TEXT` — get the
-  editor. One-liners do **not**: a title, a `TimeEntry` description, a leave note. Rich text is for
-  text that has structure to gain from it, not for every string.
+  item description, a comment, project/company/contact notes, invoice/quote/subscription notes,
+  a custom-field `LONG_TEXT` — get the editor, **including the same field inside a template**
+  (a subscription template's notes, a task template item's description, #228). One-liners do
+  **not**: a title, a `TimeEntry` description, a leave note. Rich text is for text that has
+  structure to gain from it, not for every string. Headings render `###` and deeper only —
+  `h1`/`h2` stay stripped everywhere (`core/markdown.ts`): notes and descriptions are supporting
+  text, and a uniform rule beats a per-field exception.
   **Rendering is the security boundary.** `{@html}` lives only in `Markdown.svelte`, and everything
   it prints has been through DOMPurify in `core/markdown.ts`; the API also strips raw HTML on write
   (`core/richtext.py`) so a stored value is inert even for a consumer that renders it another way.

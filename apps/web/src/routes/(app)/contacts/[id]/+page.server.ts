@@ -81,6 +81,7 @@ export const actions: Actions = {
         email: String(form.get("email") ?? "").trim() || null,
         phone: String(form.get("phone") ?? "").trim() || null,
         job_title: String(form.get("job_title") ?? "").trim() || null,
+        notes: String(form.get("notes") ?? "").trim() || null,
         custom: parseCustom(form.get("custom")),
       },
     });

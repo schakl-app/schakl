@@ -6,6 +6,7 @@
    * render in the **document's** locale, not the viewer's.
    */
   import { t } from "$lib/core/i18n";
+  import Markdown from "$lib/core/ui/Markdown.svelte";
   import { docMoney, templateText } from "./types";
   import type { DocTemplate, Invoice, Quote, SellerDetails } from "./types";
 
@@ -243,7 +244,14 @@
     <p class="mt-4 text-xs text-gray-600">{t("settings.invoicing.category.reverse_charge")}</p>
   {/if}
   {#if doc.notes}
-    <p class="mt-6 whitespace-pre-line text-sm text-gray-700">{doc.notes}</p>
+    <!-- Notes are markdown (#228). The document is paper — white with fixed ink whatever the
+         app theme — so pin the variables Markdown's styles read to the document palette. -->
+    <div
+      class="mt-6 text-sm"
+      style="--color-text: #374151; --color-brand: {accent}; --color-border: #e5e7eb; --color-surface: #f9fafb"
+    >
+      <Markdown value={doc.notes} />
+    </div>
   {/if}
   {#if paymentText}
     <p class="mt-6 whitespace-pre-line text-sm text-gray-700">{paymentText}</p>
