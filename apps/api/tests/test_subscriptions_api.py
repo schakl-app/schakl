@@ -365,3 +365,69 @@ async def test_list_filters_by_linked_entity_with_usage(client_for) -> None:
             )
         ).json()
         assert miss["items"] == []
+
+
+async def test_list_sorts_on_every_column(client_for) -> None:
+    """Parity with the standards/types tables (#229): the overview sorts server-side on every
+    column it prints — company by the name in the cell, type by the tenant's declared
+    position, amount by the *current* price — and the allow-list rejects anything else."""
+    t = await make_tenant("subs-sort")
+    headers = await auth_cookie(t.user)
+    today = datetime.now(UTC).date()
+    async with client_for(t.host) as c:
+        # The starter vocabulary, lazily seeded: hosting sits at position 10, support at 40.
+        types = (await c.get("/api/v1/subscriptions/types", headers=headers)).json()
+        by_key = {row["key"]: row["id"] for row in types}
+
+        async def create(
+            name: str, company_name: str, type_key: str | None, amount: str, hours: str | None
+        ) -> dict:
+            company = (
+                await c.post("/api/v1/companies", json={"name": company_name}, headers=headers)
+            ).json()
+            created = await c.post(
+                "/api/v1/subscriptions",
+                json={
+                    "company_id": company["id"],
+                    "name": name,
+                    "status": "active",
+                    "interval": "monthly",
+                    "start_date": _iso(today - timedelta(days=40)),
+                    "amount": amount,
+                    "subscription_type_id": by_key.get(type_key),
+                    "included_hours": hours,
+                },
+                headers=headers,
+            )
+            assert created.status_code == 201, created.text
+            return created.json()
+
+        # Names, companies, types and amounts each order the three rows differently.
+        middel = await create("Middel", "alfa BV", "support", "100.00", "10")
+        await create("Groot", "Beta BV", "hosting", "300.00", None)
+        await create("Klein", "Chroom BV", None, "50.00", "5")
+        # A raise: the amount column must sort by the *current* price, not the opening one.
+        assert (
+            await c.patch(
+                f"/api/v1/subscriptions/{middel['id']}", json={"amount": "999.00"}, headers=headers
+            )
+        ).status_code == 200
+
+        async def names(**params) -> list[str]:
+            page = (await c.get("/api/v1/subscriptions", params=params, headers=headers)).json()
+            return [row["name"] for row in page["items"]]
+
+        assert await names() == ["Groot", "Klein", "Middel"]  # the default: name
+        assert await names(sort="company") == ["Middel", "Groot", "Klein"]
+        assert await names(sort="-company") == ["Klein", "Groot", "Middel"]
+        # Type sorts by tenant position (hosting 10 < support 40); the typeless row files
+        # last in both directions (NULLS LAST).
+        assert await names(sort="type") == ["Groot", "Middel", "Klein"]
+        assert await names(sort="-type") == ["Middel", "Groot", "Klein"]
+        assert await names(sort="amount") == ["Klein", "Groot", "Middel"]
+        assert await names(sort="-amount") == ["Middel", "Groot", "Klein"]
+        assert await names(sort="included_hours") == ["Klein", "Middel", "Groot"]
+        # The allow-list is the boundary: an unknown key is rejected, not interpolated.
+        assert (
+            await c.get("/api/v1/subscriptions", params={"sort": "evil"}, headers=headers)
+        ).status_code == 400

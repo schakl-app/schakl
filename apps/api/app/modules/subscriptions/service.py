@@ -28,6 +28,8 @@ from typing import Any
 
 from pydantic import BaseModel
 from sqlalchemy import bindparam, func, select, text
+from sqlalchemy.sql.expression import column as sa_column
+from sqlalchemy.sql.expression import table as sa_table
 
 from app.core.activity import ActivityService
 from app.core.activity.service import snapshot
@@ -82,11 +84,64 @@ DEFAULT_SUBSCRIPTION_TYPES: list[dict] = [
     {"key": "support", "label_i18n": {"nl": "Support", "en": "Support"}, "position": 40},
 ]
 
+# A lightweight table ref, like the interactions module's ``_contacts`` — never the companies
+# module's internals (CLAUDE.md §6). Only what the sort expression touches.
+_companies = sa_table("companies", sa_column("id"), sa_column("org_id"), sa_column("name"))
+
+
+def _company_sort_name() -> Any:
+    """Order by the company's name — the label the cell prints (docs/UX.md: a column sorts by
+    what it prints, never by the FK). Correlated, so a row is never multiplied."""
+    return (
+        select(func.lower(_companies.c.name))
+        .where(
+            _companies.c.org_id == Subscription.org_id,
+            _companies.c.id == Subscription.company_id,
+        )
+        .scalar_subquery()
+    )
+
+
+def _type_sort_position() -> Any:
+    """Types are a tenant-defined vocabulary (#142), so they sort by *meaning*: the tenant's
+    declared ``position`` — the order the type pickers show — not alphabetically, which the
+    per-locale JSONB labels could not express server-side anyway (docs/UX.md)."""
+    return (
+        select(SubscriptionType.position)
+        .where(
+            SubscriptionType.org_id == Subscription.org_id,
+            SubscriptionType.id == Subscription.subscription_type_id,
+        )
+        .scalar_subquery()
+    )
+
+
+def _amount_sort(today: date) -> Any:
+    """Order by the *current* price — the newest ``valid_from <= today``, the same rule
+    ``_attach`` prints — so the column sorts by the number it shows, not the opening price."""
+    return (
+        select(SubscriptionPrice.amount)
+        .where(
+            SubscriptionPrice.org_id == Subscription.org_id,
+            SubscriptionPrice.subscription_id == Subscription.id,
+            SubscriptionPrice.valid_from <= today,
+        )
+        .order_by(SubscriptionPrice.valid_from.desc())
+        .limit(1)
+        .scalar_subquery()
+    )
+
+
+# ``amount`` is also sortable, but its expression needs the org-local "today" — ``list``
+# adds it per request rather than pinning a process-start date here.
 SORTABLE = {
     "name": func.lower(Subscription.name),
     "status": Subscription.status,
     "next_invoice_date": Subscription.next_invoice_date,
     "start_date": Subscription.start_date,
+    "company": _company_sort_name(),
+    "type": _type_sort_position(),
+    "included_hours": Subscription.included_hours,
 }
 
 #: Months per interval — the one place the calendar arithmetic lives.
@@ -179,7 +234,10 @@ class SubscriptionService:
                 )
             )
         stmt = self.repo.scoped_select().where(*conditions)
-        stmt = apply_sort(stmt, sort, SORTABLE, default=func.lower(Subscription.name))
+        sortable: dict[str, Any] = dict(SORTABLE)
+        if sort and sort.removeprefix("-") == "amount":
+            sortable["amount"] = _amount_sort(await self._org_today())
+        stmt = apply_sort(stmt, sort, sortable, default=func.lower(Subscription.name))
         items = list(
             (await self.ctx.session.execute(stmt.limit(limit).offset(offset))).scalars().all()
         )

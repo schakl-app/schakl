@@ -25531,7 +25531,7 @@ export interface operations {
                 company_id?: string | null;
                 status?: string | null;
                 subscription_type_id?: string | null;
-                /** @description name | status | next_invoice_date | start_date */
+                /** @description name | status | next_invoice_date | start_date | company | type | amount | included_hours */
                 sort?: string | null;
                 /** @description with entity_id: linked-entity filter */
                 entity_type?: string | null;
