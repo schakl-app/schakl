@@ -12,6 +12,7 @@
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
   import { t } from "$lib/core/i18n";
   import Modal from "$lib/core/ui/Modal.svelte";
+  import PhoneInput from "$lib/core/ui/PhoneInput.svelte";
 
   let {
     open = $bindable(false),
@@ -92,7 +93,7 @@
           <label for="qc-contact-phone" class="mb-1 block text-sm font-medium text-text"
             >{t("contacts.phone")}</label
           >
-          <input id="qc-contact-phone" name="phone" class={inputClass} />
+          <PhoneInput id="qc-contact-phone" name="phone" />
         </div>
         <div class="sm:col-span-2">
           <label for="qc-contact-job" class="mb-1 block text-sm font-medium text-text"

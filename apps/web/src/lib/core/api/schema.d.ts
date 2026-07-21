@@ -6699,6 +6699,8 @@ export interface components {
             name: string;
             /** Notes */
             notes?: string | null;
+            /** Phone */
+            phone?: string | null;
             /** Postal Code */
             postal_code?: string | null;
             /** Responsible User Id */
@@ -6788,6 +6790,8 @@ export interface components {
              * Format: uuid
              */
             org_id: string;
+            /** Phone */
+            phone?: string | null;
             /** Postal Code */
             postal_code?: string | null;
             /** Responsible User Id */
@@ -6866,6 +6870,8 @@ export interface components {
             name?: string | null;
             /** Notes */
             notes?: string | null;
+            /** Phone */
+            phone?: string | null;
             /** Postal Code */
             postal_code?: string | null;
             /** Responsible User Id */

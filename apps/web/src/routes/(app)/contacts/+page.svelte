@@ -8,6 +8,7 @@
   import { t } from "$lib/core/i18n";
   import ImportCsvModal from "$lib/core/impex/ImportCsvModal.svelte";
   import { can } from "$lib/core/permissions";
+  import { formatPhone } from "$lib/core/phone";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { customFieldColumns } from "$lib/core/table/columns";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
@@ -16,6 +17,7 @@
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
+  import PhoneInput from "$lib/core/ui/PhoneInput.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import { page } from "$app/state";
@@ -161,7 +163,9 @@
 
 {#snippet phoneCell(contact: Contact)}
   {#if contact.phone}
-    <a href="tel:{contact.phone}" class="text-text-muted hover:text-brand">{contact.phone}</a>
+    <a href="tel:{contact.phone}" class="text-text-muted hover:text-brand"
+      >{formatPhone(contact.phone)}</a
+    >
   {:else}<span class="text-text-muted">—</span>{/if}
 {/snippet}
 
@@ -351,11 +355,7 @@
         <label for="phone" class="mb-1 block text-sm font-medium text-text">
           {t("contacts.phone")}
         </label>
-        <input
-          id="phone"
-          name="phone"
-          class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-        />
+        <PhoneInput id="phone" name="phone" />
       </div>
       <div class="sm:col-span-2">
         <label for="job_title" class="mb-1 block text-sm font-medium text-text">

@@ -5,6 +5,7 @@
   import { page } from "$app/state";
   import { editIntent } from "$lib/core/edit-intent";
   import { t } from "$lib/core/i18n";
+  import { formatPhone } from "$lib/core/phone";
   import { entityPanelsFor } from "$lib/core/registry";
   import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
@@ -15,6 +16,7 @@
   import LinkField from "$lib/core/ui/LinkField.svelte";
   import Markdown from "$lib/core/ui/Markdown.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
+  import PhoneInput from "$lib/core/ui/PhoneInput.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import CompanyForm from "$lib/modules/companies/CompanyForm.svelte";
 
@@ -167,12 +169,7 @@
         <label for="phone" class="mb-1 block text-sm font-medium text-text"
           >{t("contacts.phone")}</label
         >
-        <input
-          id="phone"
-          name="phone"
-          value={contact.phone ?? ""}
-          class="w-full rounded-lg border border-border px-3 py-2 text-sm"
-        />
+        <PhoneInput id="phone" name="phone" value={contact.phone ?? ""} />
       </div>
       <div class="sm:col-span-2">
         <label for="job_title" class="mb-1 block text-sm font-medium text-text"
@@ -236,7 +233,12 @@
           <dt class="text-xs font-medium uppercase tracking-wide text-text-muted">
             {t("contacts.phone")}
           </dt>
-          <dd class="mt-1 text-sm text-text">{contact.phone ?? "—"}</dd>
+          <dd class="mt-1 text-sm text-text">
+            {#if contact.phone}
+              <a href="tel:{contact.phone}" class="hover:text-brand">{formatPhone(contact.phone)}</a
+              >
+            {:else}—{/if}
+          </dd>
         </div>
         <div>
           <dt class="text-xs font-medium uppercase tracking-wide text-text-muted">

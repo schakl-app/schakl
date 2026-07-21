@@ -20,6 +20,7 @@ from sqlalchemy import bindparam, column, func, or_, select, table, text, update
 from app.core.activity import ActivityService
 from app.core.activity.service import snapshot
 from app.core.customfields import CustomFieldsService
+from app.core.phone import normalize_phone
 from app.core.richtext import sanitize_markdown
 from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext, TenantScopedRepository
@@ -259,6 +260,8 @@ class ContactService:
         values["notes"] = sanitize_markdown(values.get("notes"))
         values["email"] = (values.get("email") or "").strip() or None
         await self._ensure_email_unique(values["email"])
+        # New writes store E.164 (issue #256); only pre-existing freeform rows are grandfathered.
+        values["phone"] = normalize_phone(values.get("phone"))
         values["custom"] = await self.custom_fields.validate(
             ENTITY_TYPE, values.get("custom") or {}
         )
@@ -279,6 +282,10 @@ class ContactService:
         if "email" in values:
             values["email"] = (values.get("email") or "").strip() or None
             await self._ensure_email_unique(values["email"], exclude_id=contact.id)
+        # Only a *changed* phone is validated (issue #256): rows predating validation hold
+        # freeform strings, and an unrelated edit must not force them through the new gate.
+        if "phone" in values and values["phone"] != contact.phone:
+            values["phone"] = normalize_phone(values["phone"])
         if "custom" in values:
             values["custom"] = await self.custom_fields.validate(
                 ENTITY_TYPE, values.get("custom") or {}

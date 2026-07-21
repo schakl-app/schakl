@@ -1,10 +1,12 @@
 <script lang="ts">
   import { t } from "$lib/core/i18n";
+  import { formatPhone } from "$lib/core/phone";
   import Markdown from "$lib/core/ui/Markdown.svelte";
 
   let { data }: { companyId: string; data: Record<string, unknown> } = $props();
 
   const website = $derived(data.website as string | null);
+  const phone = $derived(data.phone as string | null);
   const invoiceEmail = $derived(data.invoice_email as string | null);
   const notes = $derived(data.notes as string | null);
   const custom = $derived((data.custom ?? {}) as Record<string, unknown>);
@@ -27,6 +29,19 @@
         <a class="text-brand underline" href={website} target="_blank" rel="noreferrer">
           {website}
         </a>
+      {:else}
+        <span class="text-neutral-400">—</span>
+      {/if}
+    </dd>
+  </div>
+
+  <div>
+    <dt class="text-xs font-medium uppercase tracking-wide text-neutral-500">
+      {t("companies.phone")}
+    </dt>
+    <dd class="mt-1 text-sm">
+      {#if phone}
+        <a class="text-brand underline" href="tel:{phone}">{formatPhone(phone)}</a>
       {:else}
         <span class="text-neutral-400">—</span>
       {/if}

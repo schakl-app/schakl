@@ -20,6 +20,7 @@
   import { t } from "$lib/core/i18n";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
+  import PhoneInput from "$lib/core/ui/PhoneInput.svelte";
 
   interface Contact {
     id: string;
@@ -247,7 +248,9 @@
         <label for="qcd-phone" class="mb-1 block text-sm font-medium text-text"
           >{t("contacts.phone")}</label
         >
-        <input id="qcd-phone" bind:value={draft.phone} class={inputClass} />
+        <!-- name=null: this dialog sits inside the client <form>; a named hidden input would
+             post a stray `phone` onto the company. The draft binds instead. -->
+        <PhoneInput id="qcd-phone" name={null} bind:value={draft.phone} />
       </div>
       <div class="sm:col-span-2">
         <label for="qcd-job" class="mb-1 block text-sm font-medium text-text"

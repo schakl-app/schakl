@@ -35,6 +35,8 @@ export const COMPANY_COLUMNS: ColumnMeta[] = [
     defaultVisible: true,
     width: 200,
   },
+  // Opt-in like invoice_email: a hidden column costs nothing, and most lists lead with name.
+  { key: "phone", labelKey: "companies.phone" },
   { key: "invoice_email", labelKey: "companies.invoice_email" },
   { key: "created_at", labelKey: "table.column.created_at", sortKey: "created_at", align: "right" },
 ];

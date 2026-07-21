@@ -9,6 +9,7 @@
   import { t } from "$lib/core/i18n";
   import ImportCsvModal from "$lib/core/impex/ImportCsvModal.svelte";
   import { can } from "$lib/core/permissions";
+  import { formatPhone } from "$lib/core/phone";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { customFieldColumns } from "$lib/core/table/columns";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
@@ -78,6 +79,7 @@
     cells: () => ({
       name: nameCell,
       website: websiteCell,
+      phone: phoneCell,
       status: statusCell,
       assignees: assigneesCell,
       hours: hoursCell,
@@ -124,6 +126,14 @@
 {#snippet websiteCell(company: Company)}
   {#if company.website}
     <span class="truncate text-text-muted">{company.website}</span>
+  {:else}<span class="text-text-muted">—</span>{/if}
+{/snippet}
+
+{#snippet phoneCell(company: Company)}
+  {#if company.phone}
+    <a href="tel:{company.phone}" class="text-text-muted hover:text-brand"
+      >{formatPhone(company.phone)}</a
+    >
   {:else}<span class="text-text-muted">—</span>{/if}
 {/snippet}
 

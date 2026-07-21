@@ -34,6 +34,7 @@ dependencies = [
     "pyotp>=2.9",
     "segno>=1.6",
     "fpdf2>=2.8.7",
+    "phonenumbers>=8.13",
 ]
 
 [dependency-groups]

@@ -21,6 +21,7 @@ from app.core.assignees import AssigneeService
 from app.core.auth.models import User
 from app.core.customfields import CustomFieldsService
 from app.core.events import emit
+from app.core.phone import normalize_phone
 from app.core.richtext import sanitize_markdown
 from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
@@ -34,7 +35,7 @@ ENTITY_TYPE = "company"
 # The definition fields whose before/after values the activity trail records (issue #67). Notes
 # (freeform) and custom (its own concern) are deliberately left out of the trail's diff.
 _AUDITED_FIELDS = (
-    "name", "website", "invoice_email", "status", "responsible_user_id",
+    "name", "website", "phone", "invoice_email", "status", "responsible_user_id",
     # Billing identity (issue #11): what an issued invoice snapshots (#207), so a change
     # here is exactly the kind of definition edit the trail exists to answer for.
     "vat_number", "coc_number", "address_line1", "address_line2",
@@ -223,6 +224,7 @@ class CompanyService:
         self.ctx.require("companies.company.write")
         values = data.model_dump()
         reject_dangerous_url(values.get("website"), field="website")
+        values["phone"] = normalize_phone(values.get("phone"))
         # Notes are markdown source (issue #66/#228): strip raw HTML on write, like every
         # markdown-authored field.
         values["notes"] = sanitize_markdown(values.get("notes"))
@@ -262,6 +264,10 @@ class CompanyService:
         values = data.model_dump(exclude_unset=True)
         if "website" in values:
             reject_dangerous_url(values.get("website"), field="website")
+        # Validated only when the value changes (issue #256): posting a number back unedited
+        # must never fail an unrelated edit.
+        if "phone" in values and values["phone"] != company.phone:
+            values["phone"] = normalize_phone(values["phone"])
         if "notes" in values:
             values["notes"] = sanitize_markdown(values.get("notes"))
         # ``replace`` is delete-then-insert, so who is *new* has to be read before the write.

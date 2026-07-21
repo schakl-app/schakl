@@ -22,6 +22,8 @@ def _blank_to_none(value: Any) -> Any:
 class CompanyBase(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     website: str | None = Field(default=None, max_length=512)
+    # E.164 (issue #256); the service validates via ``app.core.phone`` on write.
+    phone: str | None = Field(default=None, max_length=32)
     notes: str | None = None
     status: CompanyStatus = CompanyStatus.ACTIVE
     # The primary assignee, mirrored from ``assignees``. Read it; on write prefer ``assignees``
@@ -43,7 +45,7 @@ class CompanyBase(BaseModel):
     _normalize_invoice_email = field_validator("invoice_email", mode="before")(_blank_to_none)
     _normalize_billing = field_validator(
         "vat_number", "coc_number", "address_line1", "address_line2",
-        "postal_code", "city", "country",
+        "postal_code", "city", "country", "phone",
         mode="before",
     )(_blank_to_none)
 
@@ -57,6 +59,7 @@ class CompanyCreate(CompanyBase):
 class CompanyUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     website: str | None = Field(default=None, max_length=512)
+    phone: str | None = Field(default=None, max_length=32)
     notes: str | None = None
     status: CompanyStatus | None = None
     responsible_user_id: uuid.UUID | None = None
@@ -74,7 +77,7 @@ class CompanyUpdate(BaseModel):
     _normalize_invoice_email = field_validator("invoice_email", mode="before")(_blank_to_none)
     _normalize_billing = field_validator(
         "vat_number", "coc_number", "address_line1", "address_line2",
-        "postal_code", "city", "country",
+        "postal_code", "city", "country", "phone",
         mode="before",
     )(_blank_to_none)
 

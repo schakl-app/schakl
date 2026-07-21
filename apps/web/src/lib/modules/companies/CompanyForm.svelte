@@ -14,6 +14,7 @@
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
   import { t } from "$lib/core/i18n";
   import AssigneePicker from "$lib/core/ui/AssigneePicker.svelte";
+  import PhoneInput from "$lib/core/ui/PhoneInput.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import { COMPANY_STATUSES } from "$lib/modules/companies/status";
 
@@ -27,6 +28,7 @@
     id?: string;
     name?: string;
     website?: string | null;
+    phone?: string | null;
     invoice_email?: string | null;
     vat_number?: string | null;
     coc_number?: string | null;
@@ -90,6 +92,12 @@
         placeholder="https://…"
         class={inputClass}
       />
+    </div>
+    <div>
+      <label for="{idPrefix}-phone" class="mb-1 block text-sm font-medium text-neutral-700">
+        {t("companies.phone")}
+      </label>
+      <PhoneInput id="{idPrefix}-phone" name="phone" value={company.phone ?? ""} />
     </div>
     <div>
       <label for="{idPrefix}-invoice-email" class="mb-1 block text-sm font-medium text-neutral-700">

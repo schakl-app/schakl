@@ -101,6 +101,7 @@ export const actions: Actions = {
       body: {
         name,
         website: String(form.get("website") ?? "").trim() || null,
+        phone: String(form.get("phone") ?? "").trim() || null,
         invoice_email: String(form.get("invoice_email") ?? "").trim() || null,
         vat_number: String(form.get("vat_number") ?? "").trim() || null,
         coc_number: String(form.get("coc_number") ?? "").trim() || null,
