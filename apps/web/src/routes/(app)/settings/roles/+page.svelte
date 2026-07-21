@@ -20,9 +20,6 @@
   const roles = $derived(data.roles);
   const locale = $derived(data.locale ?? "nl");
 
-  const inputClass =
-    "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
-
   function openDuplicate(id: string) {
     duplicateFrom = id;
     showCreate = true;
@@ -135,14 +132,10 @@
     data-testid="role-create-form"
   >
     <input type="hidden" name="from" value={duplicateFrom} />
-    <div>
-      <label for="key" class="mb-1 block text-sm font-medium text-text"
-        >{t("settings.roles.key")}</label
-      >
-      <input id="key" name="key" required pattern="[a-z0-9][a-z0-9_-]*" class={inputClass} />
-      <p class="mt-1 text-xs text-text-muted">{t("settings.roles.key_hint")}</p>
-    </div>
     <I18nTextField label={t("common.name_field")} basename="name" idPrefix="name" />
+    {#if form?.createError}
+      <p class="text-sm text-red-600 dark:text-red-400">{t(form.createError)}</p>
+    {/if}
     <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
       {t("settings.roles.create")}
     </button>

@@ -582,20 +582,6 @@
     >
       {#if editType}
         <input type="hidden" name="id" value={editType.id} />
-      {:else}
-        <div>
-          <label class="mb-1 block text-xs font-medium text-text-muted" for="type-key">
-            {t("settings.leave.type_key")}
-          </label>
-          <input
-            id="type-key"
-            name="key"
-            required
-            pattern="[a-z0-9_]+"
-            placeholder="study_leave"
-            class={inputClass}
-          />
-        </div>
       {/if}
       {#key editType?.id ?? "new"}
         <I18nTextField

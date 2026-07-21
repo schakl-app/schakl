@@ -4,6 +4,7 @@ import { apiErrorKey, lookupItems } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
+import { createErrorKey, slugify } from "$lib/core/slug";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { SUBSCRIPTION_COLUMNS, SUBSCRIPTIONS_TABLE_ID } from "$lib/modules/subscriptions/columns";
@@ -268,15 +269,17 @@ export const actions: Actions = {
    *  a missing locale falls back at render time. */
   createType: async (event) => {
     const form = await event.request.formData();
-    const key = String(form.get("key") ?? "").trim();
     const label_i18n = parseLabelI18n(form);
-    if (!key || Object.keys(label_i18n).length === 0) {
+    if (Object.keys(label_i18n).length === 0) {
       return fail(400, { qcError: "errors.required" });
     }
-    const { data, error } = await apiFor(event).POST("/api/v1/subscriptions/types", {
+    // The tenant only types the label; the immutable key is derived from it (#234).
+    const key = slugify(label_i18n.nl || label_i18n.en || "");
+    if (!key) return fail(400, { qcError: "errors.label_no_key" });
+    const { data, error, response } = await apiFor(event).POST("/api/v1/subscriptions/types", {
       body: { key, label_i18n, position: 0, active: true, task_template_ids: [] },
     });
-    if (error || !data) return fail(400, { qcError: apiErrorKey(error).key });
+    if (error || !data) return fail(400, { qcError: createErrorKey(error, response) });
     const name = label_i18n.nl || label_i18n.en || key;
     return { inlineCreated: { slot: "subscription_type", id: data.id, name } };
   },

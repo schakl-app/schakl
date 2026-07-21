@@ -100,21 +100,6 @@
         }}
     >
       {#if editing}<input type="hidden" name="id" value={editing.id} />{/if}
-      {#if !editing}
-        <div>
-          <label for="ct-key" class="mb-1 block text-sm text-text"
-            >{t("settings.contact_types.key")}</label
-          >
-          <input
-            id="ct-key"
-            name="key"
-            required
-            pattern="[a-z0-9_]+"
-            class="w-full rounded-lg border border-border px-3 py-2 text-sm text-text outline-none focus:border-brand"
-          />
-          <p class="mt-1 text-xs text-text-muted">{t("settings.contact_types.key_hint")}</p>
-        </div>
-      {/if}
       {#key editing?.id ?? "new"}
         <I18nTextField
           label={t("common.label_field")}

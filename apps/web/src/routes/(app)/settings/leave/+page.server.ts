@@ -3,6 +3,7 @@ import { fail, redirect } from "@sveltejs/kit";
 import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
+import { createErrorKey, slugify } from "$lib/core/slug";
 import { defaultSchedule, type WorkSchedule } from "$lib/modules/leave/schedule";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -81,7 +82,7 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const id = String(form.get("id") ?? "");
     const body = typeBody(form);
-    if (!body.label_i18n.nl || !body.label_i18n.en) return fail(400, { error: "errors.required" });
+    if (!body.label_i18n.nl && !body.label_i18n.en) return fail(400, { error: "errors.required" });
 
     const api = apiFor(event);
     if (id) {
@@ -92,14 +93,13 @@ export const actions: Actions = {
       if (error) return fail(400, { error: apiErrorKey(error).key });
       return { typeSaved: true };
     }
-    const key = String(form.get("key") ?? "")
-      .trim()
-      .toLowerCase();
-    if (!key) return fail(400, { error: "errors.required" });
-    const { error } = await api.POST("/api/v1/leave/types", {
+    // The tenant only types the label; the immutable key is derived from it (#234).
+    const key = slugify(body.label_i18n.nl || body.label_i18n.en);
+    if (!key) return fail(400, { error: "errors.label_no_key" });
+    const { error, response } = await api.POST("/api/v1/leave/types", {
       body: { ...body, key, active: true },
     });
-    if (error) return fail(400, { error: apiErrorKey(error).key });
+    if (error) return fail(400, { error: createErrorKey(error, response) });
     return { typeSaved: true };
   },
 

@@ -3,6 +3,7 @@ import { fail, redirect } from "@sveltejs/kit";
 import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
+import { createErrorKey, slugify } from "$lib/core/slug";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -13,24 +14,15 @@ export const load: PageServerLoad = async (event) => {
   return { statuses: data ?? [] };
 };
 
-// A tenant types a name; the key is an immutable slug derived from it (or given explicitly).
-function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .slice(0, 50);
-}
-
 export const actions: Actions = {
   create: async (event) => {
     const form = await event.request.formData();
     const name = String(form.get("name") ?? "").trim();
     if (!name) return fail(400, { error: "errors.required" });
-    const key = slugify(String(form.get("key") ?? "").trim() || name);
-    if (!key) return fail(400, { error: "errors.required" });
-    const { error } = await apiFor(event).POST("/api/v1/tasks/statuses", {
+    // A tenant types a name; the key is an immutable slug derived from it.
+    const key = slugify(name);
+    if (!key) return fail(400, { error: "errors.label_no_key" });
+    const { error, response } = await apiFor(event).POST("/api/v1/tasks/statuses", {
       body: {
         key,
         name,
@@ -41,7 +33,7 @@ export const actions: Actions = {
         requires_interaction: form.get("requires_interaction") === "true",
       },
     });
-    if (error) return fail(400, { error: apiErrorKey(error).key });
+    if (error) return fail(400, { error: createErrorKey(error, response) });
     return { created: true };
   },
 

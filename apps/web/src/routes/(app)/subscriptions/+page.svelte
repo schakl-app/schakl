@@ -741,20 +741,6 @@
         }}
       class="space-y-3"
     >
-      <div>
-        <label for="qc-type-key" class="mb-1 block text-sm font-medium text-text"
-          >{t("settings.subscriptions.key")}</label
-        >
-        <input
-          id="qc-type-key"
-          name="key"
-          required
-          pattern="[a-z0-9_]+"
-          value={qcTypeName.toLowerCase().replace(/[^a-z0-9]+/g, "_")}
-          class={inputClass}
-        />
-        <p class="mt-1 text-xs text-text-muted">{t("settings.subscriptions.key_hint")}</p>
-      </div>
       {#key qcTypeName}
         <I18nTextField
           label={t("common.label_field")}
