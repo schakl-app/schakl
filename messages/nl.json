@@ -70,6 +70,7 @@
   "common.no_results": "Geen resultaten",
   "common.show_all": "Alle {count} tonen",
   "common.show_less": "Minder tonen",
+  "common.show_password": "Wachtwoord tonen",
   "common.page_title": "{brand} · {segment}",
   "common.apply": "Toepassen",
   "common.create_named": "“{name}” toevoegen",

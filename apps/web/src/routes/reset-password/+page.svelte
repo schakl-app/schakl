@@ -3,6 +3,7 @@
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
+  import PasswordInput from "$lib/core/ui/PasswordInput.svelte";
 
   let { data, form } = $props();
 
@@ -43,14 +44,12 @@
           <label for="password" class="mb-1 block text-sm font-medium text-text">
             {t("auth.new_password")}
           </label>
-          <input
+          <PasswordInput
             id="password"
             name="password"
-            type="password"
             required
-            minlength="8"
+            minlength={8}
             autocomplete="new-password"
-            class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
           />
           <p class="mt-1 text-xs text-text-muted">{t("auth.password_rules")}</p>
         </div>
@@ -58,14 +57,12 @@
           <label for="confirm" class="mb-1 block text-sm font-medium text-text">
             {t("auth.confirm_password")}
           </label>
-          <input
+          <PasswordInput
             id="confirm"
             name="confirm"
-            type="password"
             required
-            minlength="8"
+            minlength={8}
             autocomplete="new-password"
-            class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
           />
         </div>
         {#if form?.error}

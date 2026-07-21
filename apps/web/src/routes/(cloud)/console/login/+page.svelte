@@ -1,6 +1,7 @@
 <script lang="ts">
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
+  import PasswordInput from "$lib/core/ui/PasswordInput.svelte";
 
   let { form } = $props();
 
@@ -34,14 +35,7 @@
       <label for="password" class="mb-1 block text-sm font-medium text-text">
         {t("auth.password")}
       </label>
-      <input
-        id="password"
-        name="password"
-        type="password"
-        required
-        autocomplete="current-password"
-        class={inputClass}
-      />
+      <PasswordInput id="password" name="password" required />
     </div>
     {#if form?.error}
       <p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>

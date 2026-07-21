@@ -1,6 +1,7 @@
 <script lang="ts">
   import { enhance } from "$app/forms";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
+  import PasswordInput from "$lib/core/ui/PasswordInput.svelte";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
 
@@ -125,13 +126,11 @@
         <label for="sso-client-secret" class="mb-1 block text-sm text-text"
           >{t("settings.sso.client_secret")}</label
         >
-        <input
+        <PasswordInput
           id="sso-client-secret"
           name="client_secret"
-          type="password"
           autocomplete="new-password"
           placeholder={sso?.secret_configured ? t("settings.sso.secret_stored") : ""}
-          class={inputClass}
         />
       </div>
     </div>

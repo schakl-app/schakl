@@ -3,6 +3,7 @@
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import PasswordInput from "$lib/core/ui/PasswordInput.svelte";
 
   let { data, form } = $props();
 
@@ -197,13 +198,11 @@
           <label for="email-password" class="mb-1 block text-sm text-text"
             >{t("settings.email.password")}</label
           >
-          <input
+          <PasswordInput
             id="email-password"
             name="password"
-            type="password"
             autocomplete="new-password"
             placeholder={secretStored ? t("settings.email.secret_stored") : ""}
-            class={inputClass}
           />
         </div>
       </div>
@@ -212,14 +211,12 @@
         <label for="email-api-key" class="mb-1 block text-sm text-text"
           >{t("settings.email.api_key")}</label
         >
-        <input
+        <PasswordInput
           id="email-api-key"
           name="api_key"
-          type="password"
           autocomplete="off"
           required={!secretStored}
           placeholder={secretStored ? t("settings.email.secret_stored") : ""}
-          class={inputClass}
         />
       </div>
     {/if}

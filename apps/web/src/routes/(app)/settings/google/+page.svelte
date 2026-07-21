@@ -1,6 +1,7 @@
 <script lang="ts">
   import { enhance } from "$app/forms";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
+  import PasswordInput from "$lib/core/ui/PasswordInput.svelte";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
 
@@ -88,15 +89,13 @@
         <label for="google-client-secret" class="mb-1 block text-sm text-text"
           >{t("settings.google.client_secret")}</label
         >
-        <input
+        <PasswordInput
           id="google-client-secret"
           name="client_secret"
-          type="password"
           autocomplete="new-password"
           placeholder={settings?.client_secret_configured
             ? t("settings.google.secret_configured")
             : ""}
-          class={inputClass}
         />
         <p class="mt-1 text-xs text-text-muted">{t("settings.google.client_secret_hint")}</p>
       </div>
