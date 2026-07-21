@@ -10,9 +10,26 @@ import { t } from "$lib/core/i18n";
 import { registerWebModule } from "$lib/core/registry";
 
 import MarketingCompanyPanel from "./MarketingCompanyPanel.svelte";
+import MarketingSummaryWidget from "./MarketingSummaryWidget.svelte";
 
 registerWebModule({
   name: "marketing",
+  dashboardWidgets: [
+    {
+      // #254, decision (2): a *staff* gallery widget teasing the existing marketing pages.
+      // The portal homepage stays the agency-curated view (#192/#193) — clients get no
+      // self-service dashboard editing from this.
+      key: "marketing.summary",
+      module: "marketing",
+      position: 45,
+      requiresPermission: "marketing.metrics.read",
+      descriptionKey: "dashboard.widget_desc.marketing.summary",
+      category: "dashboard.category.marketing",
+      size: "sm",
+      load: (api) => api.GET("/api/v1/marketing/summary").then((r) => r.data ?? null),
+      component: MarketingSummaryWidget,
+    },
+  ],
   nav: [
     {
       key: "marketing",

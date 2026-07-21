@@ -224,3 +224,21 @@ class OverviewResponse(BaseModel):
     range_days: int
     rows: list[OverviewRow] = Field(default_factory=list)
     total: int = 0
+
+
+# --- My Day widget digest (#254) ------------------------------------------------------------- #
+class MarketingSummaryRow(BaseModel):
+    company_id: uuid.UUID
+    company_name: str
+    #: The headline KPI this row carries: ``sessions`` (GA4) where linked and visible, else
+    #: ``clicks`` (GSC). One number per client — the widget is a teaser, not a grid.
+    metric: str
+    kpi: KpiValue
+
+
+class MarketingSummary(BaseModel):
+    range_days: int
+    #: Linked clients in the caller's view. ``rows`` is capped, so the widget says
+    #: "top n of this" instead of implying the cap is everything (docs/UX.md, no silent caps).
+    linked_total: int = 0
+    rows: list[MarketingSummaryRow] = Field(default_factory=list)

@@ -64,6 +64,8 @@ from app.modules.marketing.schemas import (
     LinkRead,
     MarketingSettingsRead,
     MarketingSettingsWrite,
+    MarketingSummary,
+    MarketingSummaryRow,
     OverviewResponse,
     OverviewRow,
     SeriesData,
@@ -974,6 +976,91 @@ class MarketingService:
         absent = [r for r in rows if key not in r.metrics]
         present.sort(key=lambda r: r.metrics[key].current, reverse=descending)
         return present + sorted(absent, key=lambda r: r.company_name.lower())
+
+    async def summary(self, range_days: int, limit: int) -> MarketingSummary:
+        """The My Day widget's digest (#254): top linked clients by one headline KPI each
+        (GA4 sessions where linked and visible, else GSC clicks), from stored data only.
+
+        Rides ``marketing.metrics.read`` like the per-company read it teases, so — unlike
+        ``overview``, whose grid is ``marketing.report.read`` — it must honour the company
+        horizon (#191): the portal ``client`` role holds the same read, and this may never
+        return a row its caller could not fetch client-by-client. Per-client curation (#192)
+        applies exactly like the panel/tab: a hidden tile feeds no number here either.
+        """
+        self.ctx.require("marketing.metrics.read")
+        range_days = max(1, min(range_days, 400))
+        today = await self._today()
+        cur_end = today - timedelta(days=1)
+        cur_start = cur_end - timedelta(days=range_days - 1)
+        prev_end = cur_start - timedelta(days=1)
+        prev_start = prev_end - timedelta(days=range_days - 1)
+
+        stmt = (
+            select(MarketingLink, Company.name)
+            .join(Company, Company.id == MarketingLink.company_id)
+            .where(MarketingLink.org_id == self.ctx.org.id, MarketingLink.active.is_(True))
+        )
+        if self.ctx.company_scope is not None:
+            stmt = stmt.where(MarketingLink.company_id.in_(self.ctx.company_scope))
+        pairs = (await self.ctx.session.execute(stmt)).all()
+        if not pairs:
+            return MarketingSummary(range_days=range_days, linked_total=0, rows=[])
+
+        names = {pair[0].company_id: pair[1] for pair in pairs}
+        headline_links = [
+            pair[0]
+            for pair in pairs
+            if pair[0].source in (MarketingSource.GA4.value, MarketingSource.GSC.value)
+        ]
+        metrics_by_link = await self._metrics_for_links(
+            [link.id for link in headline_links], prev_start, cur_end
+        )
+
+        # company -> source -> (current rows, previous rows), the overview's bucketing.
+        by_company: dict[uuid.UUID, dict[str, tuple[list, list]]] = defaultdict(
+            lambda: defaultdict(lambda: ([], []))
+        )
+        for link in headline_links:
+            daily = metrics_by_link.get(link.id, {})
+            cur, prev = by_company[link.company_id][link.source]
+            for day, m in daily.items():
+                (cur if cur_start <= day <= cur_end else prev).append(m)
+
+        settings_map = await self._settings_map(list(by_company.keys()))
+        rows: list[MarketingSummaryRow] = []
+        for company_id, per_source in by_company.items():
+            show_key_events, layout = settings_map.get(company_id, (True, None))
+            for source, metric in (
+                (MarketingSource.GA4.value, "sessions"),
+                (MarketingSource.GSC.value, "clicks"),
+            ):
+                if source not in per_source:
+                    continue
+                visible = resolved_tiles(source, source_layout(layout, source), show_key_events)
+                if metric not in visible:
+                    continue
+                cur_v = aggregate(source, per_source[source][0]).get(metric, 0.0)
+                prev_v = aggregate(source, per_source[source][1]).get(metric, 0.0)
+                rows.append(
+                    MarketingSummaryRow(
+                        company_id=company_id,
+                        company_name=names.get(company_id, ""),
+                        metric=metric,
+                        kpi=KpiValue(
+                            current=cur_v,
+                            previous=prev_v,
+                            delta_pct=_delta_pct(cur_v, prev_v),
+                            lower_is_better=metric in LOWER_IS_BETTER,
+                        ),
+                    )
+                )
+                break
+        rows.sort(key=lambda r: (-r.kpi.current, r.company_name.lower()))
+        # A client whose links feed neither headline (Ads-only, or both tiles curated away)
+        # still counts: the "top n of this" note must name what the list leaves out.
+        return MarketingSummary(
+            range_days=range_days, linked_total=len(names), rows=rows[:limit]
+        )
 
 
 class MarketingSettingsService:

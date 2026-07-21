@@ -3690,6 +3690,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/marketing/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Summary
+         * @description The dashboard widget's compact digest: top linked clients by their headline KPI, from
+         *     stored data. Horizon-scoped like the per-company metrics read it summarizes — never wider
+         *     than what the caller could fetch client-by-client.
+         */
+        get: operations["summary_api_v1_marketing_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/members": {
         parameters: {
             query?: never;
@@ -9988,6 +10010,31 @@ export interface components {
          * @enum {string}
          */
         MarketingSource: "ga4" | "gsc" | "gads";
+        /** MarketingSummary */
+        MarketingSummary: {
+            /**
+             * Linked Total
+             * @default 0
+             */
+            linked_total: number;
+            /** Range Days */
+            range_days: number;
+            /** Rows */
+            rows?: components["schemas"]["MarketingSummaryRow"][];
+        };
+        /** MarketingSummaryRow */
+        MarketingSummaryRow: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Company Name */
+            company_name: string;
+            kpi: components["schemas"]["KpiValue"];
+            /** Metric */
+            metric: string;
+        };
         /**
          * MeInfo
          * @description The current user *within the resolved tenant* — including what they may do.
@@ -23364,6 +23411,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MarketingSettingsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    summary_api_v1_marketing_summary_get: {
+        parameters: {
+            query?: {
+                range_days?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketingSummary"];
                 };
             };
             /** @description Validation Error */
