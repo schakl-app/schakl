@@ -222,8 +222,20 @@
   red; only the drawn bar's width clamps, because a bar cannot be 130 % long. A record with no
   budget shows an em-dash and still reports what it spent — never a fabricated total, and never a
   reassuring zero.
-- **Forms are SSR form actions** with `use:enhance`. Mind the default reset: forms whose
-  inputs must keep their values after save use `update({ reset: false })`.
+- **Forms are SSR form actions** with `use:enhance` — and **a form that stays mounted after a
+  successful save always passes `update({ reset: false })`.** The default success path calls
+  `form.reset()`, which rewinds every control to its server-rendered default *without firing any
+  event Svelte can see*. On a persistent edit surface (a settings `?/save`, an inline editor, the
+  roles matrix, the notification matrix) that is not cosmetic: state-backed controls
+  (`FormCheckbox`, `bind:group` radios, state-driven selects) keep the new value in state while
+  the DOM shows the old mark — the save *looks* undone, and the **next** submit posts the rewound
+  DOM marks, silently stripping what the user saved a minute ago. This shipped as a live bug on
+  Rollen, Gebruikers → rollen, and the notification matrix at once (#253). So: bare `use:enhance`
+  is for one-shot forms only — a delete/toggle/test button, or a create form that unmounts or
+  re-keys itself on success. Everything else says `reset: false`. `FormCheckbox` additionally
+  re-asserts its own state after any form reset, so a forgotten callback can no longer strip
+  checkbox marks — but radios and selects have no component guard; the form-level rule is the
+  convention.
 - **A password reveal (eye) toggle sits on user-password fields only** (#235, owner call): login,
   setup, reset-password and the account page's password fields use the shared
   `core/ui/PasswordInput` — the places where a mistyped password locks someone out. Write-only
@@ -388,6 +400,18 @@
   one that had just landed on it. Clamp the bar, never the number.
 - A hardcoded `<ul>` per list. Six of them and no user could hide a column; the seventh is what
   `DataTable` exists to prevent.
+- **A bare `use:enhance` on a form that survives its own save.** The default reset rewound the
+  roles matrix and the users-page role ticks to their server-rendered marks on every save — the
+  UI read as "it didn't save", and the next save posted the rewound marks. The rule lives under
+  Interaction patterns: persistent surfaces pass `update({ reset: false })`, one-shot buttons
+  and self-unmounting create forms may stay bare.
+- **A control that renders without checking `can()`.** Row ⋯ Edit/Delete, New-buttons, and
+  quick-action links shipped ungated on half the lists (#253): every role saw them and the API
+  403'd on submit. A control that posts a permission-gated action renders inside
+  `{#if can(page.data.user, "<module>.<resource>.<action>")}` — matching the API route's
+  declared permission, base key only (a scoped `:own` holder must still see their button). The
+  ⋯ menu hides entirely when no item survives; `DataTable` gets `actions={... ? rowActions :
+  undefined}` so the empty column disappears too.
 - Taking `.date()` of a UTC instant to name a local day. Amsterdam's midnight is 22:00 UTC the day
   *before* in summer, so a monthly budget reported its period as starting 30 June. Half the year the
   bug is invisible, which is why it is pinned on a fixed date rather than on `today`.
