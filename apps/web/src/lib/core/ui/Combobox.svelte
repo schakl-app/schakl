@@ -20,6 +20,8 @@
     allowEmpty = true,
     id = name,
     formId,
+    ariaLabel,
+    listClass = "w-full",
     onselect,
     oncreate,
   }: {
@@ -31,6 +33,10 @@
     id?: string;
     /** Associate the posted value with an external <form id=…> (single-save layouts). */
     formId?: string;
+    /** Accessible name for pickers that have no visible <label> of their own (PhoneInput). */
+    ariaLabel?: string;
+    /** Dropdown width; a narrow trigger (the phone country picker) passes a wider one. */
+    listClass?: string;
     onselect?: (value: string) => void;
     /** When provided, typing an unknown name offers a "add …" option in the dropdown. */
     oncreate?: (query: string) => void;
@@ -38,15 +44,21 @@
 
   let query = $state("");
   let open = $state(false);
-  let highlighted = $state(0);
+  // -1 = nothing highlighted. Starting at 0 made Tab/Enter on a merely-focused picker
+  // commit its first option — tabbing through a form must never change a selection.
+  let highlighted = $state(-1);
   let inputEl: HTMLInputElement | undefined = $state();
 
   const selectedLabel = $derived(items.find((i) => i.value === value)?.label ?? "");
-  const filtered = $derived(
-    query.trim()
-      ? items.filter((i) => i.label.toLowerCase().includes(query.trim().toLowerCase()))
-      : items,
-  );
+  // The hint is searchable too: a person is found by their email, a country ("NL +31")
+  // by its full name in the hint. Create-detection stays label-only below.
+  const filtered = $derived.by(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter(
+      (i) => i.label.toLowerCase().includes(q) || (i.hint?.toLowerCase().includes(q) ?? false),
+    );
+  });
   const canCreate = $derived(
     Boolean(oncreate) &&
       query.trim().length > 0 &&
@@ -138,6 +150,7 @@
       role="combobox"
       aria-expanded={open}
       aria-controls="{id}-listbox"
+      aria-label={ariaLabel}
       {placeholder}
       class="w-full rounded-lg border border-border px-3 py-2 {oncreate
         ? 'pr-14'
@@ -145,6 +158,7 @@
       onfocus={() => {
         open = true;
         query = "";
+        highlighted = -1;
       }}
       {oninput}
       {onkeydown}
@@ -192,7 +206,7 @@
     <ul
       id="{id}-listbox"
       role="listbox"
-      class="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-border bg-surface-raised py-1 shadow-lg"
+      class="absolute z-20 mt-1 max-h-56 {listClass} overflow-auto rounded-lg border border-border bg-surface-raised py-1 shadow-lg"
     >
       {#if allowEmpty}
         <li>
