@@ -2138,6 +2138,7 @@
   "interactions.close_task_no_terminal": "Er is geen afgeronde status ingesteld; voeg er een toe via Instellingen.",
   "interactions.approve_close_task": "Rond de taak af met dit contactmoment",
   "interactions.close_after_approve_failed": "De e-mail is goedgekeurd, maar het afronden van de taak is mislukt:",
+  "interactions.close_after_create_failed": "Het contactmoment is opgeslagen, maar het afronden van de taak is mislukt:",
   "interactions.quoted_show": "Toon eerdere berichten",
   "interactions.quoted_hide": "Verberg eerdere berichten",
   "interactions.widget.empty": "Geen e-mails die op je beoordeling wachten.",
