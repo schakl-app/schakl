@@ -31,8 +31,18 @@ export const load: PageServerLoad = async (event) => {
   const q = params.get("q")?.trim() || undefined;
   const kind = params.get("kind") || undefined;
   const pending = params.get("status") === "pending";
-  const mine = params.get("mine") === "1";
-  const owner = canReadAll ? params.get("owner") || undefined : undefined;
+  // You land on **your own** moments (#263). The timeline stays team-visible — this is the
+  // initial filter, not a permission change — so "iedereen" is one click away for everyone,
+  // while naming a *colleague* is still the `read_all` grant (#168) and still enforced by the
+  // API. `owner=all` is what says "everyone" out loud; no owner param at all means me, so the
+  // older `?mine=1` links (the pending notification's, the widget's) land where they always did.
+  const ownerParam = params.get("owner");
+  const everyone = ownerParam === "all";
+  const owner =
+    canReadAll && ownerParam && ownerParam !== "all" && ownerParam !== "me"
+      ? ownerParam
+      : undefined;
+  const mine = !everyone && !owner;
   const offset = Math.max(0, Number(params.get("offset") ?? 0) || 0);
   // Date navigation (#238): `from`/`to` are org-local calendar days; the week switcher and
   // month filter are just fast ways of writing this one range into the URL.
@@ -83,7 +93,10 @@ export const load: PageServerLoad = async (event) => {
       kind: kind ?? null,
       pending,
       mine,
+      everyone,
       owner: owner ?? null,
+      /** What the owner `<select>` shows: "me" (the default), "all", or a colleague's id. */
+      ownerValue: everyone ? "all" : (owner ?? "me"),
       from: from ?? null,
       to: to ?? null,
     },

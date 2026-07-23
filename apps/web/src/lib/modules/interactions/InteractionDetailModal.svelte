@@ -28,6 +28,7 @@
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
 
   import type { InteractionItem } from "./format";
+  import { cleanSnippet } from "./snippet";
   import InteractionMoveDialog from "./InteractionMoveDialog.svelte";
   import { splitQuotedTrail } from "./quoted";
 
@@ -244,7 +245,11 @@
             <Markdown value={di.body_text} />
           {/if}
         {:else if di.snippet}
-          <p class="whitespace-pre-wrap break-words text-sm text-text-muted">{di.snippet}</p>
+          <!-- The whole snippet here — this is the detail — but decoded: it arrives from Gmail
+               HTML-escaped, and `&#39;` in the middle of a sentence is not a sentence (#263). -->
+          <p class="whitespace-pre-wrap break-words text-sm text-text-muted">
+            {cleanSnippet(di.snippet)}
+          </p>
           {#if di.source === "gmail" && di.status === "logged"}
             <p class="text-xs text-text-muted">{t("interactions.body_loading")}</p>
           {/if}

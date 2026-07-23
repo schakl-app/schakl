@@ -39,6 +39,7 @@
 
   import CloseTaskDialog from "./CloseTaskDialog.svelte";
   import { type InteractionItem, kindIcon } from "./format";
+  import { snippetPreview } from "./snippet";
   import InteractionDetailModal from "./InteractionDetailModal.svelte";
   import InteractionForm from "./InteractionForm.svelte";
   import InteractionMoveDialog from "./InteractionMoveDialog.svelte";
@@ -248,9 +249,10 @@
               {fmtDateTime(item.occurred_at)}{#if item.owner_name}&nbsp;· {item.owner_name}{/if}
             </span>
             {#if item.snippet}
-              <!-- First couple of lines only, wrapped — never a sideways scroll (#184). -->
+              <!-- A teaser, wrapped — never a sideways scroll (#184), and decoded before it is
+                   shown: Gmail's snippet arrives HTML-escaped and preheader-padded (#263). -->
               <span class="mt-0.5 line-clamp-2 break-words text-xs text-text-muted"
-                >{item.snippet}</span
+                >{snippetPreview(item.snippet, 140)}</span
               >
             {/if}
           </button>

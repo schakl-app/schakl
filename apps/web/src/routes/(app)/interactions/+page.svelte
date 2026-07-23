@@ -38,6 +38,7 @@
     kindLabel,
     localDay,
   } from "$lib/modules/interactions/format";
+  import { snippetPreview } from "$lib/modules/interactions/snippet";
   import InteractionDetailModal from "$lib/modules/interactions/InteractionDetailModal.svelte";
   import InteractionForm from "$lib/modules/interactions/InteractionForm.svelte";
   import InteractionMoveDialog from "$lib/modules/interactions/InteractionMoveDialog.svelte";
@@ -240,17 +241,29 @@
     return entries;
   }
 
-  function linkChips(item: InteractionItem): { href: string; label: string }[] {
-    const chips: { href: string; label: string }[] = [];
-    if (item.company_id && item.company_name)
-      chips.push({ href: `/companies/${item.company_id}`, label: item.company_name });
-    if (item.project_id && item.project_name)
-      chips.push({ href: `/projects/${item.project_id}`, label: item.project_name });
+  /**
+   * What a row hangs on, capped (#263). Four unbounded chips wrapped to two or three lines and
+   * broke the day-grouped timeline's single-line rhythm, so a row shows only the **most
+   * specific** organisational link — a task or a project already implies its client — plus the
+   * person, and counts the rest into a "+N" the detail modal opens in full.
+   */
+  interface LinkChip {
+    href: string;
+    label: string;
+  }
+  function linkChips(item: InteractionItem): { visible: LinkChip[]; hidden: LinkChip[] } {
+    const org: LinkChip[] = [];
     if (item.task_id && item.task_title)
-      chips.push({ href: `/tasks/${item.task_id}`, label: item.task_title });
-    if (item.contact_id && item.contact_name)
-      chips.push({ href: `/contacts/${item.contact_id}`, label: item.contact_name });
-    return chips;
+      org.push({ href: `/tasks/${item.task_id}`, label: item.task_title });
+    if (item.project_id && item.project_name)
+      org.push({ href: `/projects/${item.project_id}`, label: item.project_name });
+    if (item.company_id && item.company_name)
+      org.push({ href: `/companies/${item.company_id}`, label: item.company_name });
+    const contact: LinkChip[] =
+      item.contact_id && item.contact_name
+        ? [{ href: `/contacts/${item.contact_id}`, label: item.contact_name }]
+        : [];
+    return { visible: [...org.slice(0, 1), ...contact], hidden: org.slice(1) };
   }
 
   function kindText(key: string): string {
@@ -303,20 +316,29 @@
       <option value={kind.key}>{kindLabel(kind, data.locale)}</option>
     {/each}
   </select>
-  {#if data.canReadAll}
-    <!-- Widening past yourself is the read_all grant (#168); the API enforces it harder. -->
-    <select
-      value={data.filters.owner ?? ""}
-      onchange={(e) => applyFilter({ owner: e.currentTarget.value || null, mine: null })}
-      class="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm text-text"
-      aria-label={t("interactions.filter.owner")}
-    >
-      <option value="">{t("interactions.filter.everyone")}</option>
+  <!-- You land on your own moments (#263) and widen from there. Narrowing to yourself is
+       nobody's grant; naming a *colleague* is the read_all one (#168), so only that option
+       list is gated — the API enforces it harder either way. -->
+  <select
+    value={data.filters.ownerValue}
+    onchange={(e) =>
+      applyFilter({
+        owner: e.currentTarget.value === "me" ? null : e.currentTarget.value,
+        mine: null,
+      })}
+    class="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm text-text"
+    aria-label={t("interactions.filter.owner")}
+  >
+    <option value="me">{t("interactions.filter.mine")}</option>
+    <option value="all">{t("interactions.filter.everyone")}</option>
+    {#if data.canReadAll}
       {#each data.members as member (member.user_id)}
-        <option value={member.user_id}>{member.full_name || member.email}</option>
+        {#if member.user_id !== me}
+          <option value={member.user_id}>{member.full_name || member.email}</option>
+        {/if}
       {/each}
-    </select>
-  {/if}
+    {/if}
+  </select>
   <div class="ml-auto flex items-center gap-2">
     <SearchInput placeholder={t("interactions.search")} />
     <ColumnPicker
@@ -410,7 +432,12 @@
       {/if}
     </span>
     {#if item.snippet}
-      <span class="mt-0.5 block truncate text-xs text-text-muted">{item.snippet}</span>
+      <!-- A teaser, not the mail (#263): Gmail's snippet arrives HTML-escaped and two hundred
+           characters long, so it is decoded and cut at a word boundary before `truncate` ever
+           gets to fit it to the column. -->
+      <span class="mt-0.5 block truncate text-xs text-text-muted">
+        {snippetPreview(item.snippet)}
+      </span>
     {/if}
   </span>
 {/snippet}
@@ -424,18 +451,29 @@
 {/snippet}
 
 {#snippet linkedCell(item: InteractionItem)}
-  <span class="flex flex-wrap gap-1">
-    {#each linkChips(item) as chip (chip.href)}
+  {@const chips = linkChips(item)}
+  <span class="flex min-w-0 flex-nowrap items-center gap-1">
+    {#each chips.visible as chip (chip.href)}
       <!-- `relative z-10` keeps the chip clickable above the row's stretched link (#59).
            Who the moment was with must not read quieter than its timestamp (#238): the chip
            carries full text colour at `text-xs`, above the muted date beside it. -->
       <a
         href={chip.href}
-        class="relative z-10 rounded-full bg-surface px-2 py-0.5 text-xs text-text ring-1 ring-inset ring-border hover:text-brand"
+        title={chip.label}
+        class="relative z-10 max-w-full truncate rounded-full bg-surface px-2 py-0.5 text-xs text-text ring-1 ring-inset ring-border hover:text-brand"
       >
         {chip.label}
       </a>
     {/each}
+    {#if chips.hidden.length > 0}
+      <!-- Not a link: the row click opens the detail modal, which lists every link in full. -->
+      <span
+        title={chips.hidden.map((chip) => chip.label).join(", ")}
+        class="shrink-0 rounded-full bg-surface px-2 py-0.5 text-xs text-text-muted ring-1 ring-inset ring-border"
+      >
+        {t("interactions.linked_more", { count: chips.hidden.length })}
+      </span>
+    {/if}
   </span>
 {/snippet}
 

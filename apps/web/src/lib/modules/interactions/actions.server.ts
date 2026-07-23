@@ -92,8 +92,14 @@ export const interactionActions = {
         subject: String(form.get("subject") ?? "").trim(),
         body_text: String(form.get("body_text") ?? "").trim() || null,
         direction: String(form.get("direction") ?? "none") as "none",
-        // The form carries a contact picker now (#173): an edit may set or clear the link.
-        contact_id: String(form.get("contact_id") ?? "").trim() || null,
+        // The edit form carries all four link pickers now (#263, was contact-only since #173):
+        // an edit may set, repoint or clear any of them, the same explicit-null contract the
+        // move dialog's PATCH uses. The client rides along as the value the form derived from
+        // the project/task — `_resolve_links(partial=True)` does not derive over an explicit
+        // key, so posting a bare null here would drop the client the picker just showed.
+        ...Object.fromEntries(
+          LINK_FIELDS.map((field) => [field, String(form.get(field) ?? "").trim() || null]),
+        ),
       },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
