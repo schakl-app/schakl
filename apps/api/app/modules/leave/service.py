@@ -659,8 +659,10 @@ class LeaveService:
         values["schedule"] = sched.dump(data.schedule) if data.schedule else None
         contract = await self.contracts.create(**values)
         # #105: the contract and the entitlements it earns commit atomically — no separate,
-        # easily-forgotten "Genereer" step before the new hire has a balance.
-        await self._seed_after_contract_change(contract.user_id)
+        # easily-forgotten "Genereer" step before the new hire has a balance. A new contract
+        # always changes coverage (a raise's second period folds into the year), so always
+        # recompute (#264).
+        await self._recompute_generated_entitlements(contract.user_id)
         return contract
 
     async def update_contract(
@@ -678,14 +680,26 @@ class LeaveService:
             contract.user_id, start, end, exclude_id=contract.id
         )
         updated = await self.contracts.update(contract, **values)
-        # A corrected period can pull a year into scope that had nothing for this user yet.
-        # Missing rows only — never a recalculation of what was already granted (§14).
-        await self._seed_after_contract_change(updated.user_id)
+        # A corrected/terminated period re-derives the generated pots for the current + future
+        # years it touches (#264): a shorter span prorates down, a raise folds in. Only when a
+        # field that actually feeds the entitlement moved — a note-only edit changes no balance,
+        # so it shouldn't churn the rows.
+        if data.model_fields_set & {
+            "start_date",
+            "end_date",
+            "contract_hours_per_week",
+            "schedule",
+        }:
+            await self._recompute_generated_entitlements(updated.user_id)
         return updated
 
     async def delete_contract(self, contract_id: uuid.UUID) -> None:
         self.ctx.require("leave.profile.manage")
-        await self.contracts.delete(await self.contracts.get_or_404(contract_id))
+        contract = await self.contracts.get_or_404(contract_id)
+        user_id = contract.user_id
+        await self.contracts.delete(contract)
+        # A removed contract's auto pots are now derived from a period that no longer exists (#264).
+        await self._recompute_generated_entitlements(user_id)
 
     def _validate_contract_dates(self, start: date, end: date | None) -> None:
         if end is not None and end < start:
@@ -981,18 +995,34 @@ class LeaveService:
         return created
 
     # --- entitlements ------------------------------------------------------------ #
-    async def _seed_after_contract_change(self, user_id: uuid.UUID) -> None:
-        """Fill this user's missing entitlements after a contract create/correct (#105).
+    async def _recompute_generated_entitlements(self, user_id: uuid.UUID) -> None:
+        """Re-derive this user's **generated** entitlements after a contract create/correct/
+        terminate (#105, #264).
 
-        Which years: the current org-local year, plus any **future** year the org has already
-        generated for other staff — a hire in December also gets next year when next year
-        already exists for everyone else. Past years are never backfilled, and nothing existing
-        is touched. Runs in the contract write's own transaction and is deliberately not gated
-        on ``leave.entitlement.write``: a profile-manager adding a contract was already allowed
-        to make this write, and the entitlements are its consequence.
+        The pre-#264 version only *filled missing* years, so a year already seeded from an
+        earlier contract stayed frozen: terminating an open-ended contract mid-year left the
+        full-year pot in place, and a raise via "terminate old + add new" was ignored for the
+        rest of the year. This wipes the auto rows for every affected year and recomputes them
+        from the current contracts — so a shorter period prorates down, and a period that no
+        longer covers a year loses its pot entirely.
+
+        Which years: the current org-local year, any **future** year the org has already
+        generated for other staff (the #105 December-hire policy), **and** every current/future
+        year this user already holds a generated row for — that last set is what lets a
+        termination *remove* the future-year pot the ended contract used to justify. Past years
+        are frozen (§14): a closed year is never re-priced by a later correction.
+
+        ``manual`` rows (``upsert_entitlement``) are never deleted or recreated — they survive
+        both the wipe and ``seed_entitlements``'s own "skip what already exists" guard. A year the
+        contracts no longer cover is wiped but **not** reseeded: ``seed_entitlements`` would
+        otherwise hand a departed employee who still holds ``time.entry.write`` a full
+        contract-less-fallback pot. Runs in the contract write's own transaction and, like the
+        old seeder, is deliberately not gated on ``leave.entitlement.write`` — the entitlements
+        are the consequence of a write the caller was already allowed to make.
         """
         current = (await self._org_today()).year
-        future_years = (
+        contracts = await self._user_contracts(user_id)
+        org_future_years = set(
             (
                 await self.ctx.session.execute(
                     select(LeaveEntitlement.year)
@@ -1006,11 +1036,40 @@ class LeaveService:
             .scalars()
             .all()
         )
-        # Only years this user's contracts actually cover: without the overlap filter, a hire
-        # whose contract starts next January would fall into the contract-less fallback for the
-        # *current* year and be granted a full pot for a year they don't work.
-        contracts = await self._user_contracts(user_id)
-        for year in sorted({current, *future_years}):
+        user_generated_years = set(
+            (
+                await self.ctx.session.execute(
+                    select(LeaveEntitlement.year)
+                    .where(
+                        LeaveEntitlement.org_id == self.ctx.org.id,
+                        LeaveEntitlement.user_id == user_id,
+                        LeaveEntitlement.year >= current,
+                        LeaveEntitlement.source == "generated",
+                    )
+                    .distinct()
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for year in sorted({current} | org_future_years | user_generated_years):
+            if year < current:
+                continue
+            stale = (
+                (
+                    await self.ctx.session.execute(
+                        self.entitlements.scoped_select().where(
+                            LeaveEntitlement.user_id == user_id,
+                            LeaveEntitlement.year == year,
+                            LeaveEntitlement.source == "generated",
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            for row in stale:
+                await self.entitlements.delete(row)
             if self._contracts_in_year(contracts, year):
                 await self.seed_entitlements(year, only_users={user_id})
 
@@ -1062,9 +1121,14 @@ class LeaveService:
                 LeaveEntitlement.year == data.year,
             )
         )
+        # Either branch claims the row as a deliberate override (#264): a contract-change
+        # recompute recreates only ``generated`` rows, so an admin's grant survives it. The update
+        # branch matters most — a correction is usually a PUT over an already-generated row.
         if existing is None:
-            return await self.entitlements.create(**data.model_dump())
-        return await self.entitlements.update(existing, hours=data.hours, note=data.note)
+            return await self.entitlements.create(**data.model_dump(), source="manual")
+        return await self.entitlements.update(
+            existing, hours=data.hours, note=data.note, source="manual"
+        )
 
     async def generate_entitlements(self, year: int) -> int:
         """Create missing entitlements for a year (#65) — the guarded bulk endpoint."""
@@ -1084,11 +1148,14 @@ class LeaveService:
 
         Contract hours are the legal number, not the scheduled week: a 38-hour contract worked as
         40 scheduled hours gets ``4 × 38`` statutory hours and ``2 × weeks`` of ADV. An employee
-        with **no** contract falls back to the pre-#65 behaviour — a full year on their *scheduled*
-        hours — so upgrading moves nobody's balance and needs no contract backfill.
+        who has **never** had a contract falls back to the pre-#65 behaviour — a full year on their
+        *scheduled* hours — so upgrading moves nobody's balance and needs no contract backfill.
 
         "Who is staff for year N" is anyone with a contract overlapping the year, unioned with the
-        legacy ``time.entry.write`` holders so a contract-less org still generates.
+        legacy ``time.entry.write`` holders so a contract-less org still generates. But the union
+        only makes someone *eligible*: an employee who **has** contracts, none of which cover year
+        N (they left before it, or start after), earns nothing for N — only a genuinely
+        contract-less employee takes the scheduled-hours fallback (#264).
 
         **Deliberately not permission-checked** (#105): besides the guarded bulk endpoint it runs
         as a *side effect of writes the caller was already allowed to make* — adding a contract
@@ -1146,6 +1213,7 @@ class LeaveService:
 
         created = 0
         for user_id in staff:
+            has_any_contract = bool(contracts_by_user.get(user_id))
             contracts_year = self._contracts_in_year(contracts_by_user.get(user_id, []), year)
             schedule, scheduled_week, _ = self._effective(by_user.get(user_id), default)
             avg_day = sched.average_day_hours(schedule)
@@ -1165,10 +1233,22 @@ class LeaveService:
                         ),
                         Decimal(0),
                     ).quantize(Decimal("0.01"))
+                elif has_any_contract:
+                    # Staff by the legacy union, but this employee's own contracts don't cover the
+                    # year (they left before it, or start later): they are not staff *for this
+                    # year*, so no pot. Without this, a terminated employee who still holds
+                    # ``time.entry.write`` would be handed a full contract-less pot on the next
+                    # balance read — undoing a termination's re-prorate (#264). The fallback below
+                    # is only for a user who has never had a contract at all.
+                    continue
                 else:
                     hours = (weeks * scheduled_week).quantize(Decimal("0.01"))
                 await self.entitlements.create(
-                    user_id=user_id, leave_type_id=leave_type.id, year=year, hours=hours
+                    user_id=user_id,
+                    leave_type_id=leave_type.id,
+                    year=year,
+                    hours=hours,
+                    source="generated",
                 )
                 created += 1
 
@@ -1186,7 +1266,11 @@ class LeaveService:
                     # No scheduling gap → no ADV. Don't clutter the balance with a zero row.
                     continue
                 await self.entitlements.create(
-                    user_id=user_id, leave_type_id=leave_type.id, year=year, hours=hours
+                    user_id=user_id,
+                    leave_type_id=leave_type.id,
+                    year=year,
+                    hours=hours,
+                    source="generated",
                 )
                 created += 1
         return created

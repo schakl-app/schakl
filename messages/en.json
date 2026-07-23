@@ -1184,6 +1184,8 @@
   "settings.leave.generate_hint": "Creates missing entitlements from each type's default weeks × contract hours",
   "settings.leave.generated": "{count} entitlements added.",
   "settings.leave.entitlements_for": "Entitlements {year} (hours)",
+  "settings.leave.entitlement_manual": "Manual",
+  "settings.leave.entitlement_manual_hint": "Set by hand — a contract change won't recalculate this. Clear it to let it be derived again.",
   "settings.section_system": "System",
   "settings.system.title": "System information",
   "settings.system.subtitle": "Version, updates and the health of this installation.",

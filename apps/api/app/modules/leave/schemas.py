@@ -347,6 +347,9 @@ class LeaveEntitlementRead(BaseModel):
     year: int
     hours: Decimal
     note: str | None
+    #: ``generated`` (re-derived on a contract change) or ``manual`` (an admin override the
+    #: recompute leaves alone, #264). Lets the admin UI flag which rows are hand-set.
+    source: str
 
 
 class EntitlementGenerate(BaseModel):

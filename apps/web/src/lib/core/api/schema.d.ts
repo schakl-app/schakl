@@ -9355,6 +9355,8 @@ export interface components {
             leave_type_id: string;
             /** Note */
             note: string | null;
+            /** Source */
+            source: string;
             /**
              * User Id
              * Format: uuid

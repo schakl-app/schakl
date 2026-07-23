@@ -1184,6 +1184,8 @@
   "settings.leave.generate_hint": "Maakt ontbrekende saldi aan op basis van standaardweken × contracturen per type",
   "settings.leave.generated": "{count} saldi toegevoegd.",
   "settings.leave.entitlements_for": "Saldi {year} (uren)",
+  "settings.leave.entitlement_manual": "Handmatig",
+  "settings.leave.entitlement_manual_hint": "Met de hand ingesteld; een contractwijziging herberekent dit niet. Maak het leeg om het weer te laten afleiden.",
   "settings.section_system": "Systeem",
   "settings.system.title": "Systeeminformatie",
   "settings.system.subtitle": "Versie, updates en de status van deze installatie.",

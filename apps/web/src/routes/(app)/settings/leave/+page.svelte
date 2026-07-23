@@ -49,6 +49,15 @@
     }
     return byKey;
   });
+  // Which (user, type) pots are hand-set (#264): a manual override is left alone when a contract
+  // change re-derives the generated pots, so flag it so the admin knows why it won't move.
+  const manualByUserType = $derived.by(() => {
+    const byKey: Record<string, boolean> = {};
+    for (const ent of data.entitlements) {
+      if (ent.source === "manual") byKey[`${ent.user_id}|${ent.leave_type_id}`] = true;
+    }
+    return byKey;
+  });
 
   // --- leave type editing ------------------------------------------------------
   let typeOpen = $state(false);
@@ -755,6 +764,14 @@
                 <span class="flex flex-1 items-center gap-2 text-sm text-text">
                   <span class="h-2 w-2 rounded-full {labelDotClass(lt.color)}"></span>
                   {typeLabel(lt, data.locale)}
+                  {#if manualByUserType[`${editMember.user_id}|${lt.id}`]}
+                    <span
+                      class="rounded-full bg-surface px-2 py-0.5 text-xs text-text-muted"
+                      title={t("settings.leave.entitlement_manual_hint")}
+                    >
+                      {t("settings.leave.entitlement_manual")}
+                    </span>
+                  {/if}
                 </span>
                 <input
                   name="ent_{lt.id}"

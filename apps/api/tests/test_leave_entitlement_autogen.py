@@ -45,6 +45,18 @@ async def _entitlements(client, headers, user_id, year=_YEAR) -> dict[str, float
     return {e["leave_type_id"]: float(e["hours"]) for e in rows}
 
 
+async def _ent_rows(client, headers, user_id, year=_YEAR) -> dict[str, dict]:
+    """Entitlement rows keyed by type, carrying both ``hours`` and ``source`` (#264)."""
+    rows = (
+        await client.get(
+            "/api/v1/leave/entitlements",
+            params={"year": year, "user_id": str(user_id)},
+            headers=headers,
+        )
+    ).json()
+    return {e["leave_type_id"]: {"hours": float(e["hours"]), "source": e["source"]} for e in rows}
+
+
 async def _add_contract(client, headers, user_id, **overrides) -> dict:
     body = {
         "user_id": str(user_id),
@@ -77,7 +89,10 @@ async def test_contract_add_seeds_that_users_entitlements(client_for) -> None:
         assert await _entitlements(c, headers, bystander.id) == {}
 
 
-async def test_contract_seeding_is_idempotent_and_non_destructive(client_for) -> None:
+async def test_manual_override_survives_but_generated_rows_re_derive(client_for) -> None:
+    """A hand-set entitlement is the admin's and a later contract change never overwrites it
+    (#105) — but the *generated* rows around it now **do** re-derive when the contract they were
+    prorated from changes (#264, superseding the pre-#264 "terminate recalculates nothing")."""
     t = await make_tenant("autogen-idempotent")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
@@ -85,7 +100,7 @@ async def test_contract_seeding_is_idempotent_and_non_destructive(client_for) ->
         types = await _types(c, headers)
 
         first = await _add_contract(c, headers, member.id, end_date=f"{_YEAR}-05-31")
-        # The admin corrects the statutory grant by hand.
+        # The admin corrects the statutory grant by hand → the pot becomes ``manual``.
         res = await c.put(
             "/api/v1/leave/entitlements",
             json={
@@ -98,25 +113,28 @@ async def test_contract_seeding_is_idempotent_and_non_destructive(client_for) ->
         )
         assert res.status_code == 200
 
-        # A follow-up contract (new period, more hours) creates nothing new for existing rows
-        # and never overwrites the manual adjustment.
+        # A follow-up period leaves the manual statutory alone, but re-derives the generated ADV.
         await _add_contract(
             c, headers, member.id, start_date=f"{_YEAR}-06-01", end_date=None,
             contract_hours_per_week="40",
         )
-        ent = await _entitlements(c, headers, member.id)
-        assert ent[types["vacation_statutory"]] == 99.0
+        rows = await _ent_rows(c, headers, member.id)
+        assert rows[types["vacation_statutory"]] == {"hours": 99.0, "source": "manual"}
+        assert rows[types["roostervrij"]]["source"] == "generated"
+        adv_before = rows[types["roostervrij"]]["hours"]
+        assert adv_before > 0
 
-        # Correcting a contract (terminate) doesn't recalculate anything either.
+        # Terminating the first contract earlier shrinks its schedule gap: the generated ADV drops,
+        # the manual statutory holds. (Pre-#264 this asserted "terminate changes nothing".)
         res = await c.patch(
             f"/api/v1/leave/contracts/{first['id']}",
             json={"end_date": f"{_YEAR}-04-30"},
             headers=headers,
         )
         assert res.status_code == 200, res.text
-        assert (await _entitlements(c, headers, member.id))[
-            types["vacation_statutory"]
-        ] == 99.0
+        rows = await _ent_rows(c, headers, member.id)
+        assert rows[types["vacation_statutory"]]["hours"] == 99.0
+        assert rows[types["roostervrij"]]["hours"] < adv_before
 
 
 async def test_next_year_only_contract_does_not_seed_the_current_year(client_for) -> None:

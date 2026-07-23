@@ -385,10 +385,16 @@ apply as everywhere.
   leave is the manager's call, so the form warns, the request goes through, the balance reads
   negative, and the approver sees the shortfall again on the pending list. Overlapping requests
   and zero-hour spans stay hard errors. Entitlement pots are **seeded automatically** (#105,
-  #108): a contract create/correct fills that user's missing entitlements for the years the
-  contract covers (same transaction, missing rows only), the first balance read of an
-  ungenerated current/next-year pot seeds it, and a December cron rolls next year forward for
-  the whole staff — the bulk "Genereer" stays for backfills.
+  #108) and **re-derived on any contract change** (#264): a contract create/correct/terminate
+  recomputes that user's `generated` pots for the current and every future year it touches, in the
+  same transaction — so terminating an open-ended contract mid-year (an employee who leaves early)
+  reprorates the balance down, a raise via terminate-old + add-new folds both periods in, and a
+  year the contract no longer covers loses its pot. A `manual` pot (`upsert_entitlement` — a
+  carry-over correction, an override a schedule can't express) is never touched by the recompute,
+  and the past is frozen: a closed year is never re-priced by a later correction (an approved
+  request is likewise never retroactively recalculated). The first balance read of an ungenerated
+  current/next-year pot still seeds it, and a December cron rolls next year forward for the whole
+  staff — the bulk "Genereer" stays for backfills.
 - **One balance from several pots** (#265). `leave_types.balance_group` lets types present as a
   single **employee-facing** balance while staying separate rows: the Dutch `vacation_statutory`
   + `vacation_extra` pots keep their own `default_weeks` and differing `carry_over_months` (so the

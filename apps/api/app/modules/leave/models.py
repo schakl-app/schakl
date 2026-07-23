@@ -198,7 +198,16 @@ class LeaveProfile(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
 
 
 class LeaveEntitlement(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
-    """Granted hours per user / leave type / year (incl. manual carry-over grants)."""
+    """Granted hours per user / leave type / year (incl. manual carry-over grants).
+
+    ``source`` is what lets a contract change **re-derive** a pot without trampling a deliberate
+    admin grant (#264). ``generated`` rows are the output of ``seed_entitlements`` — safe to delete
+    and recompute when the contract they were prorated from changes. ``manual`` rows come through
+    ``upsert_entitlement`` (a carry-over correction, an override the schedule can't express): the
+    admin owns them, so recompute never touches them. A manual edit of a generated row *claims* it
+    as ``manual`` — the same "an admin deliberately overrode this" distinction the model's own
+    prior "never touched" guard couldn't express.
+    """
 
     __tablename__ = "leave_entitlements"
     __table_args__ = (UniqueConstraint("org_id", "user_id", "leave_type_id", "year"),)
@@ -218,6 +227,11 @@ class LeaveEntitlement(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base
     year: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     hours: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False, default=Decimal("0"))
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: ``generated`` (re-derivable by ``seed_entitlements``) or ``manual`` (an admin override
+    #: recompute must never overwrite). See the class docstring (#264).
+    source: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="generated", server_default="generated"
+    )
 
 
 class LeaveRequest(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
