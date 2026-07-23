@@ -17,6 +17,7 @@
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import { TASK_COLUMNS } from "$lib/modules/tasks/columns";
+  import { ALL_ASSIGNEES } from "$lib/modules/tasks/filters";
   import { labelChipClass } from "$lib/modules/tasks/labels";
   import {
     defaultStatusKey,
@@ -108,6 +109,19 @@
     else url.searchParams.delete(key);
     void goto(url, { keepFocus: true, noScroll: true });
   }
+
+  // The person switcher defaults to yourself (an absent `assignee_user_id` resolves to
+  // `event.locals.user.id` server-side); reflect that resolved value here too, so the picker
+  // shows you pre-selected rather than empty. Explicitly clearing it writes `ALL_ASSIGNEES`
+  // instead of deleting the param — deleting it would just resolve back to yourself.
+  const assigneeFilterValue = $derived(
+    data.filters.assignee_user_id === ALL_ASSIGNEES
+      ? ""
+      : (data.filters.assignee_user_id ?? page.data.user?.id ?? ""),
+  );
+  function setAssigneeFilter(value: string) {
+    setFilter("assignee_user_id", value || ALL_ASSIGNEES);
+  }
   const hasFilters = $derived(Object.values(data.filters).some(Boolean));
   const activeFilterCount = $derived(Object.values(data.filters).filter(Boolean).length);
   // On a phone the filter bar collapses behind one toggle: five stacked controls otherwise push
@@ -192,9 +206,9 @@
     <Combobox
       items={memberItems}
       name="_filter_assignee"
-      value={data.filters.assignee_user_id ?? ""}
+      value={assigneeFilterValue}
       placeholder={t("tasks.field.assignee")}
-      onselect={(v) => setFilter("assignee_user_id", v)}
+      onselect={setAssigneeFilter}
       id="filter-assignee"
     />
   </div>

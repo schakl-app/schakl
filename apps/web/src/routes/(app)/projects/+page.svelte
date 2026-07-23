@@ -12,24 +12,19 @@
   import { customFieldColumns } from "$lib/core/table/columns";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
-  import AssigneePicker from "$lib/core/ui/AssigneePicker.svelte";
   import AvatarStack from "$lib/core/ui/AvatarStack.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
-  import DateInput from "$lib/core/ui/DateInput.svelte";
   import HoursCell from "$lib/core/ui/HoursCell.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
-  import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import { HOURS_COLUMN, PROJECT_COLUMNS } from "$lib/modules/projects/columns";
 
   let { data, form } = $props();
 
   type Project = (typeof data.projects)[number];
 
-  // Quick-create from a client page (?new=1&company=): the form opens with the client set.
-  let showCreate = $state(page.url.searchParams.has("new"));
   let deleteId = $state("");
   let deleteName = $state("");
   let confirmDelete = $state(false);
@@ -38,24 +33,9 @@
   const canWrite = $derived(can(page.data.user, "projects.project.write"));
   const canDelete = $derived(can(page.data.user, "projects.project.delete"));
 
-  // #81: which client is picked on the create form, so the assignee field can show the
-  // verantwoordelijke it will inherit instead of an empty placeholder.
-  let newProjectCompanyId = $state(page.url.searchParams.get("company") ?? "");
-
-  const STATUSES = ["active", "on_hold", "completed", "archived"] as const;
-
   const companyName = $derived((id: string | null | undefined) =>
     id ? (data.companies.find((c) => c.id === id)?.name ?? "") : "",
   );
-
-  // Pre-fill the new-project assignee picker with the selected client's primary employee. This is
-  // web-only and matches the API exactly: it already falls back to the company's verantwoordelijke
-  // when no roster is posted, so this just makes the inherited person visible (docs/UX.md).
-  const inheritedAssignees = $derived.by(() => {
-    const company = data.companies.find((c) => c.id === newProjectCompanyId);
-    const primary = company?.assignees?.find((a) => a.is_primary) ?? company?.assignees?.[0];
-    return primary ? [{ user_id: primary.user_id, is_primary: true }] : [];
-  });
 
   // --- columns ---------------------------------------------------------------
   const allColumns = $derived([
@@ -86,9 +66,6 @@
     deleteName = project.name;
     confirmDelete = true;
   }
-
-  const inputClass =
-    "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 
   // Filtered by the API — matching any assignee, not just the primary.
   function toggleMine() {
@@ -211,15 +188,21 @@
     <h1 class="text-xl font-semibold text-text">{navLabel("projects", t("projects.title"))}</h1>
     <p class="mt-1 text-sm text-text-muted">{t("projects.count", { count: data.total })}</p>
   </div>
+  <!-- Create-then-edit (docs/UX.md Principle 3, same as tasks #230): the server creates a
+       minimal project and redirects to its detail page in edit mode — creating and editing
+       share one surface instead of a duplicate inline form. -->
   {#if canWrite}
-    <button
-      class="shrink-0 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-      onclick={() => (showCreate = !showCreate)}
-    >
-      {t("projects.new")}
-    </button>
+    <form method="POST" action="?/create" use:enhance>
+      <button class="shrink-0 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+        {t("projects.new")}
+      </button>
+    </form>
   {/if}
 </div>
+
+{#if form?.error}
+  <p class="mb-4 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
+{/if}
 
 <!-- Filter + search + the personal column picker, on their own wrapping row (issue #36): title,
      a fixed 224px search box, the picker and the primary action on one unwrappable line have a
@@ -252,140 +235,6 @@
     onsort={table.onSort}
   />
 </div>
-
-{#if showCreate && canWrite}
-  <form
-    method="POST"
-    action="?/create"
-    use:enhance={() =>
-      ({ update }) => {
-        void update().then(() => (showCreate = false));
-      }}
-    class="mb-6 rounded-xl border border-border bg-surface-raised p-4"
-  >
-    <div class="grid gap-3 sm:grid-cols-2">
-      <div class="sm:col-span-2">
-        <label for="name" class="mb-1 block text-sm font-medium text-text">
-          {t("projects.field.name")}
-        </label>
-        <input id="name" name="name" required class={inputClass} />
-      </div>
-      <div>
-        <label for="company_id" class="mb-1 block text-sm font-medium text-text">
-          {t("projects.field.company")}
-        </label>
-        <select
-          id="company_id"
-          name="company_id"
-          bind:value={newProjectCompanyId}
-          class={inputClass}
-        >
-          <option value="">{t("common.none")}</option>
-          {#each data.companies as company (company.id)}
-            <option value={company.id}>{company.name}</option>
-          {/each}
-        </select>
-      </div>
-      <div>
-        <label for="status" class="mb-1 block text-sm font-medium text-text">
-          {t("projects.field.status")}
-        </label>
-        <select id="status" name="status" class={inputClass}>
-          {#each STATUSES as s (s)}
-            <option value={s}>{t(`projects.status.${s}`)}</option>
-          {/each}
-        </select>
-      </div>
-      <div>
-        <span class="mb-1 block text-sm font-medium text-text">
-          {t("projects.field.assignees")}
-        </span>
-        <!-- Remount on a client change so the picker re-seeds from `value` (it reads `value`
-             once at mount, #81). The placeholder still shows when no client is picked. -->
-        {#key newProjectCompanyId}
-          <AssigneePicker
-            members={data.members}
-            value={inheritedAssignees}
-            id="new-project-assignees"
-            placeholder={t("projects.responsible_inherits")}
-          />
-        {/key}
-      </div>
-      <div>
-        <label for="budget_hours" class="mb-1 block text-sm font-medium text-text">
-          {t("projects.field.budget_hours")}
-        </label>
-        <input
-          id="budget_hours"
-          name="budget_hours"
-          type="number"
-          min="0"
-          step="0.5"
-          class={inputClass}
-        />
-      </div>
-      <div>
-        <label for="budget_amount" class="mb-1 block text-sm font-medium text-text">
-          {t("projects.field.budget_amount")}
-        </label>
-        <input
-          id="budget_amount"
-          name="budget_amount"
-          type="number"
-          min="0"
-          step="0.01"
-          class={inputClass}
-        />
-      </div>
-      <div>
-        <label for="start_date" class="mb-1 block text-sm font-medium text-text">
-          {t("projects.field.start_date")}
-        </label>
-        <DateInput id="start_date" name="start_date" />
-      </div>
-      <div>
-        <label for="end_date" class="mb-1 block text-sm font-medium text-text">
-          {t("projects.field.end_date")}
-        </label>
-        <DateInput id="end_date" name="end_date" />
-      </div>
-      <div class="flex items-center gap-2 pt-6">
-        <input
-          id="billable_default"
-          name="billable_default"
-          type="checkbox"
-          checked
-          class="h-4 w-4 rounded border-border text-brand focus:ring-brand"
-        />
-        <label for="billable_default" class="text-sm font-medium text-text">
-          {t("projects.field.billable_default")}
-        </label>
-      </div>
-    </div>
-
-    {#if data.definitions.length > 0}
-      <div class="mt-4 border-t border-border pt-4">
-        <CustomFieldsForm definitions={data.definitions} locale={data.locale} />
-      </div>
-    {/if}
-
-    {#if form?.error}
-      <p class="mt-2 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
-    {/if}
-    <div class="mt-4 flex gap-2">
-      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
-        {t("common.save")}
-      </button>
-      <button
-        type="button"
-        class="rounded-lg border border-border px-4 py-2 text-sm"
-        onclick={() => (showCreate = false)}
-      >
-        {t("common.cancel")}
-      </button>
-    </div>
-  </form>
-{/if}
 
 <DataTable
   rows={data.projects}

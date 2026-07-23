@@ -6,7 +6,11 @@ import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { LEAVE_TEAM_COLUMNS, LEAVE_TEAM_TABLE_ID } from "$lib/modules/leave/columns";
+// The employment editors (work schedule, contracts, recurring free days) are the same shared
+// surface as Instellingen → Gebruikers, so the roster ⋯ menu reuses its actions verbatim.
+import { employmentActions } from "$lib/modules/leave/employment.server";
 import { requestBody } from "$lib/modules/leave/request";
+import { defaultSchedule } from "$lib/modules/leave/schedule";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -41,17 +45,29 @@ export const load: PageServerLoad = async (event) => {
   const resolved = resolveColumns(LEAVE_TEAM_COLUMNS, pref);
   const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
 
-  const [pending, yearRequests, members, entitlements, profiles] = await Promise.all([
-    api.GET("/api/v1/leave/requests", {
-      params: { query: { all_users: true, status: "pending", limit: 100, offset: 0 } },
-    }),
-    api.GET("/api/v1/leave/requests", {
-      params: { query: { all_users: true, year, limit: 200, offset: 0, sort } },
-    }),
-    api.GET("/api/v1/members/lookup"),
-    api.GET("/api/v1/leave/entitlements", { params: { query: { year } } }),
-    api.GET("/api/v1/leave/profiles"),
-  ]);
+  // Editing a member's employment data (schedule/contracts/recurring) from the roster ⋯ menu is
+  // gated on `leave.profile.manage`, distinct from the `leave.request.approve` that opens this
+  // page — an approver who can't manage schedules gets no menu and none of these three calls.
+  const manage = can(event.locals.user, "leave.profile.manage");
+
+  const [pending, yearRequests, members, entitlements, profiles, contracts, recurring, settings] =
+    await Promise.all([
+      api.GET("/api/v1/leave/requests", {
+        params: { query: { all_users: true, status: "pending", limit: 100, offset: 0 } },
+      }),
+      api.GET("/api/v1/leave/requests", {
+        params: { query: { all_users: true, year, limit: 200, offset: 0, sort } },
+      }),
+      api.GET("/api/v1/members/lookup"),
+      api.GET("/api/v1/leave/entitlements", { params: { query: { year } } }),
+      api.GET("/api/v1/leave/profiles"),
+      // Employment editors — the whole roster in one call each, like Instellingen → Gebruikers.
+      manage
+        ? api.GET("/api/v1/leave/contracts", { params: { query: { all_users: true } } })
+        : Promise.resolve({ data: null }),
+      manage ? api.GET("/api/v1/leave/recurring") : Promise.resolve({ data: null }),
+      manage ? api.GET("/api/v1/leave/settings") : Promise.resolve({ data: null }),
+    ]);
 
   return {
     year,
@@ -61,11 +77,20 @@ export const load: PageServerLoad = async (event) => {
     members: members.data ?? [],
     entitlements: entitlements.data ?? [],
     profiles: profiles.data ?? [],
+    // Employment editors, only when the caller may manage them.
+    manageEmployment: manage,
+    contracts: contracts.data ?? [],
+    recurring: recurring.data ?? [],
+    defaultSchedule: settings.data?.default_schedule ?? defaultSchedule(),
     table: { pref, sort: sort ?? null, widths: resolved.widths },
   };
 };
 
 export const actions: Actions = {
+  // Work schedule, contracts and recurring free days — the same handlers Instellingen →
+  // Gebruikers uses, so the roster ⋯ menu behaves identically (employment.server.ts).
+  ...employmentActions,
+
   /** Persist this manager's column layout for the team table. Personal, in-view (docs/UX.md §6). */
   saveTable: async (event) => {
     const form = await event.request.formData();

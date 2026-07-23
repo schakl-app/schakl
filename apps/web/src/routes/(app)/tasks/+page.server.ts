@@ -7,6 +7,7 @@ import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { TASK_COLUMNS, TASKS_TABLE_ID } from "$lib/modules/tasks/columns";
+import { ALL_ASSIGNEES } from "$lib/modules/tasks/filters";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -22,6 +23,17 @@ export const load: PageServerLoad = async (event) => {
     q: q.get("q") || undefined,
   };
 
+  // Opening /tasks with no assignee filter shows *your* tasks first, not the whole org's — the
+  // person switcher defaults to yourself. `filters.assignee_user_id` stays the raw URL value (so
+  // "active filters" counting/the clear-filters link only react to a filter the user actually
+  // set); this resolved value is what's sent to the API. Explicitly picking "Geen" writes the
+  // `ALL_ASSIGNEES` sentinel rather than deleting the param, which is what lets the user actually
+  // reach an unfiltered, every-assignee view instead of snapping back to themselves.
+  const assigneeQuery =
+    filters.assignee_user_id === ALL_ASSIGNEES
+      ? undefined
+      : (filters.assignee_user_id ?? event.locals.user?.id);
+
   // The saved layout rides in on the layout load, which does not rerun on filter or sort
   // navigation (docs/PERFORMANCE.md). The *server* applies the sort: this page holds 200 of a
   // possibly longer list, and sorting the slice you happen to have sorts the wrong set. The URL
@@ -33,7 +45,9 @@ export const load: PageServerLoad = async (event) => {
 
   // Lookups (companies/projects/labels/members) come from the /tasks layout load.
   const { data: tasks } = await api.GET("/api/v1/tasks", {
-    params: { query: { limit: 200, offset: 0, sort, ...filters } },
+    params: {
+      query: { limit: 200, offset: 0, sort, ...filters, assignee_user_id: assigneeQuery },
+    },
   });
 
   return {

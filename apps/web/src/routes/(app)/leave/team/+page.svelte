@@ -17,9 +17,16 @@
   import Modal from "$lib/core/ui/Modal.svelte";
   import { labelDotClass } from "$lib/core/ui/colors";
   import { LEAVE_TEAM_COLUMNS } from "$lib/modules/leave/columns";
+  // Employment editors (schedule, contracts, recurring), shared with Instellingen → Gebruikers so
+  // a manager can fix a member's rooster or contract without leaving the leave overview.
+  import EmploymentModals, {
+    employmentMenuItems,
+    type OpenEmployment,
+  } from "$lib/modules/leave/EmploymentModals.svelte";
   import LeaveRequestForm from "$lib/modules/leave/LeaveRequestForm.svelte";
   import LeaveStatusPill from "$lib/modules/leave/LeaveStatusPill.svelte";
   import { fmtHours, typeLabel, type LeaveTypeInfo } from "$lib/modules/leave/format";
+  import type { WorkSchedule } from "$lib/modules/leave/schedule";
 
   let { data, form } = $props();
 
@@ -109,6 +116,8 @@
 
   const busy = new InFlight();
   let registerOpen = $state(false);
+  // The opener the shared employment modals hand back; a roster ⋯ item calls it for a member.
+  let openEmployment = $state<OpenEmployment>();
   let rejectId = $state("");
   let rejectOpen = $state(false);
   let cancelId = $state("");
@@ -205,6 +214,20 @@
   <p class="mb-4 text-sm text-green-600">
     {t("leave.bulk.result", { count: form.bulkDone ?? 0, skipped: form.bulkSkipped ?? 0 })}
   </p>
+{/if}
+
+<!-- Employment editors for the roster ⋯ menu (schedule, contracts, recurring). One instance;
+     each row opens it through `openEmployment`. No rate here — that stays a Gebruikers-only act. -->
+{#if data.manageEmployment}
+  <EmploymentModals
+    register={(open) => (openEmployment = open)}
+    profiles={data.profiles}
+    contracts={data.contracts}
+    recurring={data.recurring}
+    leaveTypes={types}
+    orgDefaultSchedule={data.defaultSchedule as WorkSchedule}
+    {form}
+  />
 {/if}
 
 <!-- Pending approvals -->
@@ -306,6 +329,9 @@
           {#each trackedTypes as lt (lt.id)}
             <th class="px-2 py-2 text-right font-medium">{typeLabel(lt, data.locale)}</th>
           {/each}
+          {#if data.manageEmployment}
+            <th class="w-10 px-2 py-2"><span class="sr-only">{t("common.actions")}</span></th>
+          {/if}
         </tr>
       </thead>
       <tbody class="divide-y divide-border">
@@ -330,6 +356,18 @@
                 <span class="text-xs text-text-muted">/ {fmtHours(cell?.entitled ?? 0)}</span>
               </td>
             {/each}
+            {#if data.manageEmployment}
+              <!-- Fix this member's rooster/contract/ADV without leaving the leave overview. -->
+              <td class="px-2 py-2 text-right">
+                <ActionsMenu
+                  compact
+                  items={employmentMenuItems(row.member, openEmployment, {
+                    schedules: true,
+                    rates: false,
+                  })}
+                />
+              </td>
+            {/if}
           </tr>
         {/each}
       </tbody>

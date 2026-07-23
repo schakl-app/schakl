@@ -1,6 +1,7 @@
 <script lang="ts">
   /** Dashboard widget: open tasks grouped per project (fallback: per client). */
   import { t } from "$lib/core/i18n";
+  import { ALL_ASSIGNEES } from "$lib/modules/tasks/filters";
 
   let { data }: { data: unknown } = $props();
 
@@ -45,17 +46,19 @@
         key = `p:${task.project_id}`;
         label = payload.projects.find((p) => p.id === task.project_id)?.name ?? "?";
         entityHref = `/projects/${task.project_id}`;
-        listHref = `/tasks?project_id=${task.project_id}`;
+        // This widget's own count is org-wide (no assignee filter) — the tasks list defaults
+        // its person switcher to "yourself", so override it to keep the count and the list in sync.
+        listHref = `/tasks?project_id=${task.project_id}&assignee_user_id=${ALL_ASSIGNEES}`;
       } else if (task.company_id) {
         key = `c:${task.company_id}`;
         label = payload.companies.find((c) => c.id === task.company_id)?.name ?? "?";
         entityHref = `/companies/${task.company_id}`;
-        listHref = `/tasks?company_id=${task.company_id}`;
+        listHref = `/tasks?company_id=${task.company_id}&assignee_user_id=${ALL_ASSIGNEES}`;
       } else {
         key = "none";
         label = t("time.general");
         entityHref = "/tasks";
-        listHref = "/tasks";
+        listHref = `/tasks?assignee_user_id=${ALL_ASSIGNEES}`;
       }
       const group = byKey.get(key) ?? { key, label, entityHref, listHref, count: 0, overdue: 0 };
       group.count += 1;

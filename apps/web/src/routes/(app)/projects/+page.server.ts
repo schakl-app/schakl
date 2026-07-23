@@ -1,20 +1,14 @@
-import { fail } from "@sveltejs/kit";
+import { fail, redirect } from "@sveltejs/kit";
 
-import { parseAssignees } from "$lib/core/assignees";
+import { editHref } from "$lib/core/edit-intent";
 import { apiErrorKey } from "$lib/core/errors";
+import { t } from "$lib/core/i18n";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { HOURS_COLUMN, PROJECT_COLUMNS, PROJECTS_TABLE_ID } from "$lib/modules/projects/columns";
 
 import type { Actions, PageServerLoad } from "./$types";
-
-function numberOrNull(raw: FormDataEntryValue | null): number | null {
-  const s = String(raw ?? "").trim();
-  if (!s) return null;
-  const n = Number(s);
-  return Number.isFinite(n) ? n : null;
-}
 
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
@@ -58,14 +52,6 @@ export const load: PageServerLoad = async (event) => {
   };
 };
 
-function parseCustom(raw: FormDataEntryValue | null): Record<string, unknown> {
-  try {
-    return JSON.parse(String(raw ?? "{}"));
-  } catch {
-    return {};
-  }
-}
-
 export const actions: Actions = {
   /** Persist this user's column layout. Personal, in-view — never org settings (docs/UX.md §6). */
   saveTable: async (event) => {
@@ -74,38 +60,29 @@ export const actions: Actions = {
     return { tableSaved: true };
   },
 
+  /**
+   * Create-then-edit (docs/UX.md Principle 3, same as tasks #230): a new project is created
+   * minimal — placeholder name, optionally pre-linked to the client the entry point knew — and
+   * the user lands on the detail page in edit mode (#78's `?edit=1` marker). No inline creation
+   * form duplicates those fields anymore.
+   */
   create: async (event) => {
     const form = await event.request.formData();
-    const name = String(form.get("name") ?? "").trim();
-    if (!name) return fail(400, { error: "errors.required" });
-
-    const company_id = String(form.get("company_id") ?? "").trim();
-    // An empty picker means "didn't say", not "nobody": send no roster at all so the API can
-    // inherit the client's verantwoordelijke, which is what the field's placeholder promises.
-    const assignees = parseAssignees(form.get("assignees"));
-    const { error } = await apiFor(event).POST("/api/v1/projects", {
+    const { data, error } = await apiFor(event).POST("/api/v1/projects", {
       body: {
-        name,
-        description: String(form.get("description") ?? "").trim() || null,
-        company_id: company_id || null,
-        assignees: assignees?.length ? assignees : undefined,
-        status: String(form.get("status") ?? "active") as "active",
+        // The API requires a non-empty name; the placeholder is replaced the moment the user
+        // types a real one on the detail page.
+        name: t("projects.untitled"),
+        company_id: String(form.get("company_id") ?? "").trim() || null,
+        status: "active",
         budget_period: "total",
         currency: event.locals.theme.currency,
-        billable_default: form.get("billable_default") !== null,
-        budget_hours: numberOrNull(form.get("budget_hours")),
-        budget_amount: numberOrNull(form.get("budget_amount")),
-        start_date: String(form.get("start_date") ?? "").trim() || null,
-        end_date: String(form.get("end_date") ?? "").trim() || null,
-        color: String(form.get("color") ?? "").trim() || null,
-        custom: parseCustom(form.get("custom")),
+        billable_default: true,
+        custom: {},
       },
     });
-    if (error) {
-      const e = apiErrorKey(error);
-      return fail(400, { error: e.key, fields: e.fields });
-    }
-    return { created: true };
+    if (error || !data) return fail(400, { error: apiErrorKey(error).key });
+    throw redirect(303, editHref(`/projects/${data.id}`));
   },
 
   delete: async (event) => {

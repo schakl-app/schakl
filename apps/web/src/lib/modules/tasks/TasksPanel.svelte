@@ -5,6 +5,7 @@
   import { fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
+  import { ALL_ASSIGNEES } from "$lib/modules/tasks/filters";
   import { labelChipClass } from "$lib/modules/tasks/labels";
 
   let { companyId, data }: { companyId: string; data: Record<string, unknown> } = $props();
@@ -72,7 +73,12 @@
   </ul>
 {/if}
 <div class="mt-3 flex items-center gap-4">
-  <a href={`/tasks?company_id=${companyId}`} class="text-xs text-brand hover:underline">
+  <!-- The tasks list defaults its person switcher to "yourself" — override it here so "view all"
+       still means every assignee on this company, matching this panel's own unfiltered list. -->
+  <a
+    href={`/tasks?company_id=${companyId}&assignee_user_id=${ALL_ASSIGNEES}`}
+    class="text-xs text-brand hover:underline"
+  >
     {t("tasks.panel.view_all")}
   </a>
   {#if can(page.data.user, "tasks.task.create")}
