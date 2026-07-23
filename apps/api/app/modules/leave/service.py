@@ -1578,7 +1578,33 @@ class LeaveService:
                 for row in breakdown
                 if row.hours
             ]
+            # A "timed" type is drawn as an hour block on every calendar (#270), so the Google
+            # mirror must push a timed event — not an all-day banner — even for a whole-day
+            # request that carries no times of its own (roostervrije tijd / ADV). Resolve its
+            # scheduled window here, where the schedule lives, so the mirror never reads leave
+            # internals (§6) and draws the same shape the in-app agenda does. Single-day only;
+            # a multi-day span stays all-day everywhere. An `all_day` type is left untouched.
+            if payload["start_time"] is None or payload["end_time"] is None:
+                if (
+                    request.start_date == request.end_date
+                    and await self._type_calendar_display(request.leave_type_id)
+                    == LeaveCalendarDisplay.TIMED.value
+                ):
+                    schedule = await self.effective_schedule(request.user_id)
+                    start, end = self._single_day_window(
+                        request, schedule, (payload["start_time"], payload["end_time"])
+                    )
+                    payload["start_time"] = start
+                    payload["end_time"] = end
         await emit(event, self.ctx, payload)
+
+    async def _type_calendar_display(self, type_id: uuid.UUID) -> str:
+        """This type's agenda-rendering choice (#270), read for the leave→Google mirror without
+        loading the whole row. Tenant-scoped by the session's RLS GUC like every other read."""
+        display = await self.ctx.session.scalar(
+            select(LeaveType.calendar_display).where(LeaveType.id == type_id)
+        )
+        return display or LeaveCalendarDisplay.ALL_DAY.value
 
     async def update(self, request_id: uuid.UUID, data: LeaveRequestUpdate) -> LeaveRequest:
         """Edit a request, re-triggering approval when the rule says so (#72).
@@ -1953,31 +1979,28 @@ class LeaveService:
         return items
 
     @staticmethod
-    def _occupied_instants(
+    def _single_day_window(
         request: LeaveRequest,
         schedule: sched.WorkSchedule,
         resolved: tuple[time | None, time | None],
-        zone: ZoneInfo,
-    ) -> tuple[datetime | None, datetime | None]:
-        """The instant pair a **single-day** absence occupies, for an hour-positioned agenda
-        block (#270). ``(None, None)`` whenever one honestly cannot be drawn.
+    ) -> tuple[time | None, time | None]:
+        """The clock window a **single-day** absence covers, for a calendar that draws it by the
+        hour (#270). ``(None, None)`` whenever one honestly cannot be drawn.
 
         Three refusals, each deliberate:
 
-        * **Multi-day spans.** A single pair from Monday morning to Friday evening also claims
+        * **Multi-day spans.** A single window from Monday morning to Friday evening also claims
           Monday night and Wednesday 03:00. ``days`` already breaks those down per day.
         * **A day nobody works.** No scheduled window means no hours to draw. (A whole-day
           request on such a day prices at zero and is refused at write time; a manager's
           ``hours_override`` can still produce one, and it stays a full-day chip.)
         * **An empty window.** Defensive: a start at or after the end would render as a
-          zero-height block, which is worse than the all-day row it fell back from.
+          zero-height block, which is worse than the all-day form it fell back from.
 
         The window is the request's own resolved one where it has times, and otherwise the
         scheduled day itself — "whole scheduled day" is exactly what an ADV free day is, and
-        the only window it could ever be drawn at (#107).
-
-        ``.replace(tzinfo=...)`` on a ``ZoneInfo`` — never a fixed offset — is what makes an
-        08:30 block still start at 08:30 on the two days a year the clocks move.
+        the only window it could ever be drawn at (#107). Shared by the in-app agenda
+        (``_occupied_instants``) and the Google mirror (``_emit_leave``), so both agree.
         """
         if request.start_date != request.end_date:
             return None, None
@@ -1992,6 +2015,24 @@ class LeaveService:
             if end is None:
                 end = work_day.end
         if sched.to_minutes(start) >= sched.to_minutes(end):
+            return None, None
+        return start, end
+
+    @staticmethod
+    def _occupied_instants(
+        request: LeaveRequest,
+        schedule: sched.WorkSchedule,
+        resolved: tuple[time | None, time | None],
+        zone: ZoneInfo,
+    ) -> tuple[datetime | None, datetime | None]:
+        """``_single_day_window`` as a UTC instant pair, the field the time grid positions a
+        block by (#270).
+
+        ``.replace(tzinfo=...)`` on a ``ZoneInfo`` — never a fixed offset — is what makes an
+        08:30 block still start at 08:30 on the two days a year the clocks move.
+        """
+        start, end = LeaveService._single_day_window(request, schedule, resolved)
+        if start is None or end is None:
             return None, None
         return (
             datetime.combine(request.start_date, start).replace(tzinfo=zone),

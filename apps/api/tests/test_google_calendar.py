@@ -496,6 +496,79 @@ async def _noop_offer(org_id, link_id) -> None:  # noqa: ANN001 - test double
     return None
 
 
+async def test_calendar_display_governs_the_google_mirror(client_for, monkeypatch) -> None:
+    """#270: a leave type set to "per uur" mirrors to Google as a *timed* event — even a
+    whole-day request that carries no times of its own (roostervrije tijd / ADV), whose
+    scheduled window the server resolves (08:30–17:00 on the default schedule). An "hele dag"
+    type stays an all-day banner. Same governance as the in-app agenda, so the two never
+    disagree about one absence.
+    """
+    t = await make_tenant("gcal-leave-display")
+    await _seed(t)
+    headers = await auth_cookie(t.user)
+    monkeypatch.setattr(push_mod, "_enqueue_push", _noop_offer)
+
+    async def _approve_wholeday(display: str, day: str, key: str) -> uuid.UUID:
+        async with client_for(t.host) as c:
+            leave_type = (
+                await c.post(
+                    "/api/v1/leave/types",
+                    json={
+                        "key": key,
+                        "label_i18n": {"nl": "Bijzonder", "en": "Special"},
+                        "requires_approval": True,  # so it reaches decide() → leave.approved
+                        "tracks_balance": False,
+                        "calendar_display": display,
+                    },
+                    headers=headers,
+                )
+            ).json()
+            request = (
+                await c.post(
+                    "/api/v1/leave/requests",
+                    json={"leave_type_id": leave_type["id"], "start_date": day, "end_date": day},
+                    headers=headers,
+                )
+            ).json()
+            decided = await c.post(
+                f"/api/v1/leave/requests/{request['id']}/decide",
+                json={"approved": True},  # the org's sole approver may self-approve (#110)
+                headers=headers,
+            )
+            assert decided.status_code == 200, decided.text
+            return uuid.UUID(request["id"])
+
+    # Two different Thursdays on the default 08:30–17:00 week, so the two whole-day requests
+    # never overlap (which would be a hard error).
+    timed_id = await _approve_wholeday("timed", "2026-06-11", "adv_like")
+    allday_id = await _approve_wholeday("all_day", "2026-06-18", "vacation_like")
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        from sqlalchemy import select
+
+        links = {
+            link.local_id: link
+            for link in (await session.execute(select(CalendarEventLink))).scalars()
+        }
+
+        # timed: a whole-day request gains the scheduled window and pushes a dateTime event.
+        timed = links[timed_id]
+        assert timed.payload["start_time"] == "08:30:00"
+        assert timed.payload["end_time"] == "17:00:00"
+        timed_body = push_mod._event_body(timed.payload)
+        assert timed_body["start"]["dateTime"] == "2026-06-11T08:30:00"
+        assert timed_body["end"]["dateTime"] == "2026-06-11T17:00:00"
+        assert "date" not in timed_body["start"]
+
+        # all_day: no window invented, an all-day span with Google's exclusive end.
+        allday = links[allday_id]
+        assert allday.payload["start_time"] is None and allday.payload["end_time"] is None
+        allday_body = push_mod._event_body(allday.payload)
+        assert allday_body["start"] == {"date": "2026-06-18"}
+        assert allday_body["end"] == {"date": "2026-06-19"}
+
+
 async def test_leave_push_carries_type_breakdown_and_identity(monkeypatch) -> None:
     """#148: the pushed event reads "Verlof: <type>" in the requester's locale, describes
     the span per working day, and carries its schakl identity in extendedProperties."""

@@ -337,7 +337,11 @@ apply as everywhere.
   a calendar block is an instant, and that conversion stays server-side so a block still starts at
   08:30 on the two days a year the clocks move. **Single-day absences only** — one instant pair
   from Monday morning to Friday evening would also claim every night in between, so a multi-day
-  span keeps its full-day chip and `days` stays the honest per-day answer.
+  span keeps its full-day chip and `days` stays the honest per-day answer. The **Google Calendar
+  mirror** (`google/calendar/push.py`) follows the same flag: a `timed` type pushes a timed event
+  (its scheduled window resolved for a whole-day request, in `_emit_leave` where the schedule
+  lives — the mirror never reads leave internals), an `all_day` type an all-day event, so one
+  absence never reads as an hour block in-app and an all-day banner in Google.
 - **Work schedules, not a weekly total** (#46). `leave_profiles.schedule` is a JSONB week: per
   weekday a working block and **any number of break windows** inside it. Breaks are *windows*,
   not durations — you cannot subtract "30 minutes" from `15:00–17:00`, there is no break in it.
