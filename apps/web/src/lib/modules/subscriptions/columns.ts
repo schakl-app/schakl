@@ -3,8 +3,8 @@
  *
  * Plain metadata, no Svelte. `sortKey` mirrors the API's allow-list
  * (`apps/api/app/modules/subscriptions/service.py::SORTABLE`), which covers every column:
- * company sorts by the name the cell prints, type by the tenant's declared position, amount
- * by the current price — all server-side, because the list is paginated.
+ * company sorts by the name the cell prints, type by the tenant's declared position, interval by
+ * period length, amount by the current price — all server-side, because the list is paginated.
  */
 import type { ColumnMeta } from "$lib/core/table/columns";
 
@@ -25,6 +25,12 @@ export const SUBSCRIPTION_COLUMNS: ColumnMeta[] = [
     defaultVisible: true,
   },
   { key: "type", labelKey: "subscriptions.field.type", sortKey: "type", defaultVisible: true },
+  {
+    key: "interval",
+    labelKey: "subscriptions.field.interval",
+    sortKey: "interval",
+    defaultVisible: true,
+  },
   {
     key: "amount",
     labelKey: "subscriptions.field.amount",

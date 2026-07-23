@@ -27,7 +27,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from pydantic import BaseModel
-from sqlalchemy import bindparam, func, select, text
+from sqlalchemy import bindparam, case, func, select, text
 from sqlalchemy.sql.expression import column as sa_column
 from sqlalchemy.sql.expression import table as sa_table
 
@@ -132,6 +132,24 @@ def _amount_sort(today: date) -> Any:
     )
 
 
+#: Months per interval — the one place the calendar arithmetic lives.
+_INTERVAL_MONTHS = {
+    SubscriptionInterval.MONTHLY.value: 1,
+    SubscriptionInterval.QUARTERLY.value: 3,
+    SubscriptionInterval.YEARLY.value: 12,
+}
+
+
+def _interval_sort() -> Any:
+    """A small closed vocabulary sorts by *meaning* (docs/UX.md): monthly → quarterly → yearly,
+    the order the labels mean, which alphabetically they do not read in every locale. The same
+    ranking the templates table sorts by. ``interval_count`` stays out of it — the cell prints the
+    interval alone, so a monthly×3 row must not file itself among the quarterlies."""
+    return case(
+        *((Subscription.interval == key, months) for key, months in _INTERVAL_MONTHS.items())
+    )
+
+
 # ``amount`` is also sortable, but its expression needs the org-local "today" — ``list``
 # adds it per request rather than pinning a process-start date here.
 SORTABLE = {
@@ -141,14 +159,8 @@ SORTABLE = {
     "start_date": Subscription.start_date,
     "company": _company_sort_name(),
     "type": _type_sort_position(),
+    "interval": _interval_sort(),
     "included_hours": Subscription.included_hours,
-}
-
-#: Months per interval — the one place the calendar arithmetic lives.
-_INTERVAL_MONTHS = {
-    SubscriptionInterval.MONTHLY.value: 1,
-    SubscriptionInterval.QUARTERLY.value: 3,
-    SubscriptionInterval.YEARLY.value: 12,
 }
 
 

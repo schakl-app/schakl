@@ -92,6 +92,7 @@
       name: nameCell,
       company: companyCell,
       type: typeCell,
+      interval: intervalCell,
       amount: amountCell,
       next_invoice: nextInvoiceCell,
       status: statusCell,
@@ -338,9 +339,14 @@
   >
 {/snippet}
 
+{#snippet intervalCell(sub: Subscription)}
+  <span class="text-text-muted">{t(`subscriptions.interval.${sub.interval}`)}</span>
+{/snippet}
+
+<!-- Numbers only (#261): the interval used to ride along inline, and because its label is a
+     different length per row it pushed every amount to its own horizontal position. -->
 {#snippet amountCell(sub: Subscription)}
   <span class="tabular-nums text-text">{money(sub.amount)}</span>
-  <span class="text-xs text-text-muted">· {t(`subscriptions.interval.${sub.interval}`)}</span>
 {/snippet}
 
 {#snippet nextInvoiceCell(sub: Subscription)}
