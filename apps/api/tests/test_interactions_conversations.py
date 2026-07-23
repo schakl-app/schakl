@@ -386,3 +386,47 @@ async def test_uploaded_reply_folds_onto_gmail_original(client_for) -> None:
 
         page = (await c.get("/api/v1/interactions", headers=headers)).json()
         assert page["total"] == 1 and page["items"][0]["conversation_count"] == 2
+
+
+async def test_entity_filtered_list_reports_full_conversation_count(client_for) -> None:
+    """#272 regression: on a company/project/task panel (a filtered list), a folded row shows
+    the WHOLE conversation's message count — not just the rows linked to that entity — so the
+    badge appears and the detail modal opens the full thread even when only the representative
+    is linked here."""
+    t = await make_tenant("conv-panel-count")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Klant BV"}, headers=headers)
+        ).json()
+    # A two-message gmail thread; only the newer message is linked to the company.
+    await _seed(t, t.user.id, thread_id="thr-panel", message_id="pa1", occurred_at=_at(0))
+    await _seed(
+        t,
+        t.user.id,
+        thread_id="thr-panel",
+        message_id="pa2",
+        occurred_at=_at(1),
+    )
+    # Link just the newest to the company (as assigning one email of a thread would).
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        await session.execute(
+            text(
+                "UPDATE interactions SET company_id = :cid "
+                "WHERE org_id = :oid AND gmail_message_id = 'pa2'"
+            ),
+            {"cid": uuid.UUID(company["id"]), "oid": t.org.id},
+        )
+        await session.commit()
+
+    async with client_for(t.host) as c:
+        page = (
+            await c.get(
+                "/api/v1/interactions", params={"company_id": company["id"]}, headers=headers
+            )
+        ).json()
+        # One folded row for the company, but its badge counts the whole thread (2), so the
+        # panel shows the number and the modal fetches all messages.
+        assert page["total"] == 1
+        assert page["items"][0]["conversation_count"] == 2

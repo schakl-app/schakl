@@ -239,13 +239,12 @@ class InteractionService:
                     order_by=(Interaction.occurred_at.desc(), Interaction.id.desc()),
                 )
                 .label("rn"),
-                func.count().over(partition_by=group_key).label("conv_count"),
             )
             .where(Interaction.org_id == self._org_id, *conditions)
             .subquery()
         )
         stmt = (
-            select(Interaction, User.full_name, User.email, folded.c.conv_count)
+            select(Interaction, User.full_name, User.email)
             .join(folded, folded.c.iid == Interaction.id)
             .outerjoin(User, User.id == Interaction.owner_user_id)
             .where(folded.c.rn == 1)
@@ -268,11 +267,17 @@ class InteractionService:
             )
             or 0
         )
-        plain_rows = [row for row, _, _, _ in rows]
+        plain_rows = [row for row, _, _ in rows]
         names = await self._link_names(plain_rows)
         contacts_by_email = await self._participant_contacts(plain_rows)
         members_by_email = await self._participant_members(plain_rows)
         closing_ids = await self._closing_task_ids(plain_rows)
+        # The badge counts the **whole** conversation, not just the rows matching this filter
+        # (#272): an entity panel filtered to one company/project/task still shows the true
+        # message count and opens the full thread, even when only the representative is linked
+        # here. Batched over the page's conversation ids — never per row (docs/PERFORMANCE.md) —
+        # and consistent with what _present_one/thread() already report for a single row.
+        conv_counts = await self._conversation_counts(plain_rows)
         return [
             self._present(
                 row,
@@ -282,10 +287,30 @@ class InteractionService:
                 contacts_by_email,
                 members_by_email,
                 closing_ids,
-                conversation_count=int(conv_count or 1),
+                conversation_count=conv_counts.get(row.conversation_id, 1),
             )
-            for row, full_name, email, conv_count in rows
+            for row, full_name, email in rows
         ], total
+
+    async def _conversation_counts(
+        self, rows: list[Interaction]
+    ) -> dict[uuid.UUID, int]:
+        """How many logged messages each conversation on this page holds (#272) — one batched,
+        org-scoped count over the page's distinct conversation ids, so the fold badge reflects
+        the whole thread rather than only the rows that matched the current filter."""
+        conv_ids = {row.conversation_id for row in rows if row.conversation_id is not None}
+        if not conv_ids:
+            return {}
+        stmt = (
+            select(Interaction.conversation_id, func.count())
+            .where(
+                Interaction.org_id == self._org_id,
+                Interaction.conversation_id.in_(conv_ids),
+                Interaction.status == InteractionStatus.LOGGED.value,
+            )
+            .group_by(Interaction.conversation_id)
+        )
+        return {cid: int(n) for cid, n in (await self.ctx.session.execute(stmt)).all()}
 
     async def get(self, interaction_id: uuid.UUID) -> dict[str, Any]:
         row = await self.repo.get_or_404(interaction_id)
