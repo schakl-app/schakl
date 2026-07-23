@@ -2396,6 +2396,28 @@ export interface paths {
         patch: operations["update_interaction_api_v1_interactions__interaction_id__patch"];
         trace?: never;
     };
+    "/api/v1/interactions/{interaction_id}/add-to-conversation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Interaction To Conversation
+         * @description Manually glue this gmail email onto another's conversation (#272). Gated on ``.review``
+         *     like every gmail-row mutation — the service enforces strict mailbox ownership on both the
+         *     row and the target.
+         */
+        post: operations["add_interaction_to_conversation_api_v1_interactions__interaction_id__add_to_conversation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/interactions/{interaction_id}/approve": {
         parameters: {
             query?: never;
@@ -2441,6 +2463,27 @@ export interface paths {
         put?: never;
         /** Remap Interaction */
         post: operations["remap_interaction_api_v1_interactions__interaction_id__remap_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/interactions/{interaction_id}/thread": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Interaction Thread
+         * @description The full conversation this interaction belongs to (#272), newest first — what the detail
+         *     modal expands into. A row not in a conversation is its own one-message thread.
+         */
+        get: operations["get_interaction_thread_api_v1_interactions__interaction_id__thread_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -8550,6 +8593,18 @@ export interface components {
             needs_setup: boolean;
         };
         /**
+         * InteractionAddToConversation
+         * @description Glue a gmail email onto another's conversation by hand (#272) — for a reply Gmail didn't
+         *     thread automatically. The target must be one of the caller's own logged gmail rows.
+         */
+        InteractionAddToConversation: {
+            /**
+             * Target Interaction Id
+             * Format: uuid
+             */
+            target_interaction_id: string;
+        };
+        /**
          * InteractionApprove
          * @description Approve a gmail row, optionally assigning it in the same step (#183) — the same link
          *     fields as a remap; an absent field leaves the row's current link untouched, ``null``
@@ -8723,6 +8778,13 @@ export interface components {
             contact_id?: string | null;
             /** Contact Name */
             contact_name?: string | null;
+            /**
+             * Conversation Count
+             * @default 1
+             */
+            conversation_count: number;
+            /** Conversation Id */
+            conversation_id?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -20493,6 +20555,41 @@ export interface operations {
             };
         };
     };
+    add_interaction_to_conversation_api_v1_interactions__interaction_id__add_to_conversation_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                interaction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InteractionAddToConversation"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InteractionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     approve_interaction_api_v1_interactions__interaction_id__approve_post: {
         parameters: {
             query?: never;
@@ -20583,6 +20680,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InteractionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_interaction_thread_api_v1_interactions__interaction_id__thread_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                interaction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InteractionRead"][];
                 };
             };
             /** @description Validation Error */

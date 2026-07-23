@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
 from app.modules.interactions.schemas import (
+    InteractionAddToConversation,
     InteractionApprove,
     InteractionCreate,
     InteractionEmlUploadRead,
@@ -279,3 +280,38 @@ async def remap_interaction(
     return InteractionRead.model_validate(
         await InteractionService(ctx).remap(interaction_id, payload)
     )
+
+
+@router.post(
+    "/{interaction_id}/add-to-conversation",
+    response_model=InteractionRead,
+    dependencies=[require_permission("interactions.interaction.review")],
+)
+async def add_interaction_to_conversation(
+    interaction_id: uuid.UUID,
+    payload: InteractionAddToConversation,
+    ctx: RequestContext = Depends(require_context),
+) -> InteractionRead:
+    """Manually glue this gmail email onto another's conversation (#272). Gated on ``.review``
+    like every gmail-row mutation — the service enforces strict mailbox ownership on both the
+    row and the target."""
+    return InteractionRead.model_validate(
+        await InteractionService(ctx).add_to_conversation(
+            interaction_id, payload.target_interaction_id
+        )
+    )
+
+
+@router.get(
+    "/{interaction_id}/thread",
+    response_model=list[InteractionRead],
+    dependencies=[require_permission("interactions.interaction.read")],
+)
+async def get_interaction_thread(
+    interaction_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> list[InteractionRead]:
+    """The full conversation this interaction belongs to (#272), newest first — what the detail
+    modal expands into. A row not in a conversation is its own one-message thread."""
+    items = await InteractionService(ctx).thread(interaction_id)
+    return [InteractionRead.model_validate(i) for i in items]

@@ -171,6 +171,7 @@ class Interaction(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Auditable
         ),
         Index("ix_interactions_org_rfc822", "org_id", "rfc822_message_id"),
         Index("ix_interactions_org_thread", "org_id", "gmail_thread_id"),
+        Index("ix_interactions_org_conversation", "org_id", "conversation_id"),
     )
 
     #: A key into the org's ``interaction_kinds`` (#174) — validated by the service on manual
@@ -246,6 +247,13 @@ class Interaction(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Auditable
     )
     gmail_message_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     gmail_thread_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: Gmail-style conversation grouping (#272): a plain (no-FK) id shared by every logged email
+    #: row of one thread, so the list folds a conversation to a single row. Only ever set on
+    #: **logged, email** rows — a ``NULL`` row is trivially its own singleton group, so nothing
+    #: changes for manual/pending rows. Assigned by ``system.resolve_conversation_id``.
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), nullable=True
+    )
     #: The global RFC 5322 ``Message-ID`` header — dedup key across connected mailboxes.
     rfc822_message_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
     deep_link: Mapped[str | None] = mapped_column(String(500), nullable=True)

@@ -7,7 +7,7 @@
    * other list (#238); the day sections only render while the order is the timeline, so
    * sections and sort can never disagree.
    */
-  import { ArrowRightLeft, Mail, Pencil, Plus, Trash2, X } from "@lucide/svelte";
+  import { ArrowRightLeft, Link2, Mail, Pencil, Plus, Trash2, X } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
@@ -41,6 +41,7 @@
     localDay,
   } from "$lib/modules/interactions/format";
   import { snippetPreview } from "$lib/modules/interactions/snippet";
+  import InteractionConversationDialog from "$lib/modules/interactions/InteractionConversationDialog.svelte";
   import InteractionDetailModal from "$lib/modules/interactions/InteractionDetailModal.svelte";
   import InteractionForm from "$lib/modules/interactions/InteractionForm.svelte";
   import InteractionMoveDialog from "$lib/modules/interactions/InteractionMoveDialog.svelte";
@@ -182,6 +183,8 @@
   }
   let showMove = $state(false);
   let moving = $state<InteractionItem | null>(null);
+  let showConversation = $state(false);
+  let linkingConv = $state<InteractionItem | null>(null);
   let deleteId = $state("");
   let confirmDelete = $state(false);
   let showReject = $state(false);
@@ -228,6 +231,23 @@
         onclick: () => {
           deleteId = item.id;
           confirmDelete = true;
+        },
+      });
+    }
+    // Glue an email Gmail didn't thread automatically onto another conversation (#272) —
+    // owner-only, logged gmail rows only, mirroring the API's own gate.
+    if (
+      item.kind === "email" &&
+      item.source === "gmail" &&
+      item.status === "logged" &&
+      isOwner(item)
+    ) {
+      entries.push({
+        label: t("interactions.add_to_conversation"),
+        icon: Link2,
+        onclick: () => {
+          linkingConv = item;
+          showConversation = true;
         },
       });
     }
@@ -438,6 +458,19 @@
       <span class="truncate font-medium text-text">
         {item.subject || kindText(item.kind)}
       </span>
+      {#if (item.conversation_count ?? 1) > 1}
+        <!-- The email folds a conversation (#272): a small message-count badge. -->
+        <span
+          title={t("interactions.conversation_count", { count: item.conversation_count })}
+          class="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-surface px-2 py-0.5 text-[11px] font-medium text-text-muted ring-1 ring-inset ring-border"
+        >
+          <Mail size={10} aria-hidden="true" />
+          {item.conversation_count}
+          <span class="sr-only"
+            >{t("interactions.conversation_count", { count: item.conversation_count })}</span
+          >
+        </span>
+      {/if}
       {#if item.status === "pending"}
         <span
           class="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-400"
@@ -527,6 +560,18 @@
         <span class="truncate text-sm font-medium text-text">
           {item.subject || kindText(item.kind)}
         </span>
+        {#if (item.conversation_count ?? 1) > 1}
+          <span
+            title={t("interactions.conversation_count", { count: item.conversation_count })}
+            class="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-surface px-2 py-0.5 text-[11px] font-medium text-text-muted ring-1 ring-inset ring-border"
+          >
+            <Mail size={10} aria-hidden="true" />
+            {item.conversation_count}
+            <span class="sr-only"
+              >{t("interactions.conversation_count", { count: item.conversation_count })}</span
+            >
+          </span>
+        {/if}
         {#if item.status === "pending"}
           <span
             class="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-400"
@@ -645,6 +690,18 @@
         interaction={moving}
         approveAction="?/approveInteraction"
         onsaved={() => (showMove = false)}
+      />
+    {/key}
+  {/if}
+</Modal>
+
+<!-- Glue an unthreaded email onto another conversation by hand (#272). -->
+<Modal bind:open={showConversation} title={t("interactions.add_to_conversation_title")}>
+  {#if linkingConv}
+    {#key linkingConv.id}
+      <InteractionConversationDialog
+        interaction={linkingConv}
+        onsaved={() => (showConversation = false)}
       />
     {/key}
   {/if}

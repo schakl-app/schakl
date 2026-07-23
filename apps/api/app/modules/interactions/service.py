@@ -51,6 +51,7 @@ from app.modules.interactions.schemas import (
     InteractionRemap,
     InteractionUpdate,
 )
+from app.modules.interactions.system import resolve_conversation_id
 
 logger = logging.getLogger("schakl.interactions")
 
@@ -221,36 +222,66 @@ class InteractionService:
             if date_to is not None:
                 upper = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=tz)
                 conditions.append(Interaction.occurred_at < upper)
-        stmt = (
-            select(Interaction, User.full_name, User.email)
-            .outerjoin(User, User.id == Interaction.owner_user_id)
+        # Gmail-style folding (#272): a conversation collapses to one representative row — the
+        # newest message — before pagination and the total, so paging/totals describe what's
+        # shown, not raw rows. The group key is COALESCE(conversation_id, id): a NULL row (every
+        # manual/pending row, by construction) is its own singleton, so this is a no-op for them.
+        group_key = func.coalesce(Interaction.conversation_id, Interaction.id)
+        folded = (
+            select(
+                Interaction.id.label("iid"),
+                func.row_number()
+                .over(
+                    partition_by=group_key,
+                    order_by=(Interaction.occurred_at.desc(), Interaction.id.desc()),
+                )
+                .label("rn"),
+                func.count().over(partition_by=group_key).label("conv_count"),
+            )
             .where(Interaction.org_id == self._org_id, *conditions)
+            .subquery()
+        )
+        stmt = (
+            select(Interaction, User.full_name, User.email, folded.c.conv_count)
+            .join(folded, folded.c.iid == Interaction.id)
+            .outerjoin(User, User.id == Interaction.owner_user_id)
+            .where(folded.c.rn == 1)
         )
         # Newest-first stays the default (#238); an explicit sort tiebreaks on the timeline so
-        # pagination is deterministic when the sorted values repeat.
+        # pagination is deterministic when the sorted values repeat. Sorting acts on the
+        # representative rows (the fold already picked the newest per conversation).
         stmt = apply_sort(stmt, sort, SORTABLE, default=Interaction.occurred_at.desc())
         if sort:
             stmt = stmt.order_by(Interaction.occurred_at.desc())
         stmt = stmt.limit(limit).offset(offset)
         rows = (await self.ctx.session.execute(stmt)).all()
+        # The total is the number of distinct conversations matching the filter, not raw rows,
+        # so pagination lines up with the folded list.
         total = int(
             await self.ctx.session.scalar(
-                select(func.count())
+                select(func.count(func.distinct(group_key)))
                 .select_from(Interaction)
                 .where(Interaction.org_id == self._org_id, *conditions)
             )
             or 0
         )
-        plain_rows = [row for row, _, _ in rows]
+        plain_rows = [row for row, _, _, _ in rows]
         names = await self._link_names(plain_rows)
         contacts_by_email = await self._participant_contacts(plain_rows)
         members_by_email = await self._participant_members(plain_rows)
         closing_ids = await self._closing_task_ids(plain_rows)
         return [
             self._present(
-                row, full_name, email, names, contacts_by_email, members_by_email, closing_ids
+                row,
+                full_name,
+                email,
+                names,
+                contacts_by_email,
+                members_by_email,
+                closing_ids,
+                conversation_count=int(conv_count or 1),
             )
-            for row, full_name, email in rows
+            for row, full_name, email, conv_count in rows
         ], total
 
     async def get(self, interaction_id: uuid.UUID) -> dict[str, Any]:
@@ -263,6 +294,48 @@ class InteractionService:
         ):
             raise AppError("not_found", "errors.not_found", status_code=404)
         return await self._present_one(row)
+
+    async def thread(self, interaction_id: uuid.UUID) -> list[dict[str, Any]]:
+        """The full conversation an interaction belongs to (#272), newest first — what the
+        detail modal expands into. A row not in a conversation is its own one-message thread.
+
+        No owner filter: a logged row is team-visible regardless of who owns it, exactly like
+        the plain list. The anchor still runs the pending-privacy check via ``get()``.
+        """
+        anchor = await self.get(interaction_id)
+        conversation_id = anchor["conversation_id"]
+        if conversation_id is None:
+            return [anchor]
+        stmt = (
+            select(Interaction, User.full_name, User.email)
+            .outerjoin(User, User.id == Interaction.owner_user_id)
+            .where(
+                Interaction.org_id == self._org_id,
+                Interaction.conversation_id == conversation_id,
+                Interaction.status == InteractionStatus.LOGGED.value,
+            )
+            .order_by(Interaction.occurred_at.desc(), Interaction.id.desc())
+        )
+        rows = (await self.ctx.session.execute(stmt)).all()
+        plain_rows = [row for row, _, _ in rows]
+        names = await self._link_names(plain_rows)
+        contacts_by_email = await self._participant_contacts(plain_rows)
+        members_by_email = await self._participant_members(plain_rows)
+        closing_ids = await self._closing_task_ids(plain_rows)
+        count = len(plain_rows)
+        return [
+            self._present(
+                row,
+                full_name,
+                email,
+                names,
+                contacts_by_email,
+                members_by_email,
+                closing_ids,
+                conversation_count=count,
+            )
+            for row, full_name, email in rows
+        ]
 
     # --- manual writes ---------------------------------------------------------- #
     async def create(self, data: InteractionCreate) -> dict[str, Any]:
@@ -552,7 +625,18 @@ class InteractionService:
             sent = data.model_dump(exclude_unset=True)
             if sent:
                 link_values = await self._resolve_links(sent, partial=True)
-        row = await self.repo.update(row, status=InteractionStatus.LOGGED.value, **link_values)
+        # A pending row becoming logged is the other moment it can join a conversation (#272):
+        # inherit the newest logged sibling's id in this gmail thread, minting one if that
+        # sibling has none yet, so the two fold together the instant this one lands.
+        conversation_id = await resolve_conversation_id(
+            self.ctx, row.gmail_thread_id, exclude_id=row.id
+        )
+        row = await self.repo.update(
+            row,
+            status=InteractionStatus.LOGGED.value,
+            conversation_id=conversation_id,
+            **link_values,
+        )
         await ActivityService(self.ctx).record(ENTITY_TYPE, row.id, "approved")
         if link_values:
             await ActivityService(self.ctx).record_update(
@@ -608,6 +692,48 @@ class InteractionService:
             "interaction.remapped",
             self.ctx,
             {"interaction_id": row.id, "owner_user_id": row.owner_user_id},
+        )
+        return await self._present_one(row)
+
+    async def add_to_conversation(
+        self, interaction_id: uuid.UUID, target_interaction_id: uuid.UUID
+    ) -> dict[str, Any]:
+        """Manually glue this gmail email onto another's conversation (#272) — for a reply Gmail
+        didn't thread automatically (a different-address sender, a forwarded copy).
+
+        Gated like every other gmail-row mutation here (module docstring): only the mailbox owner
+        decides about their own gmail-sourced rows, no ``:any`` escape. The target is scoped to
+        the owner's own logged gmail rows too, which sidesteps mutating a colleague's row.
+        """
+        row = await self._owned_gmail_or_404(interaction_id)
+        if row.status != InteractionStatus.LOGGED.value:
+            raise AppError("invalid_state", "errors.interactions_not_logged", status_code=409)
+        target = await self.repo.get_or_404(target_interaction_id)  # tenant-scoped
+        if (
+            target.id == row.id
+            or target.source != InteractionSource.GMAIL.value
+            or target.status != InteractionStatus.LOGGED.value
+            or target.owner_user_id != self.ctx.user.id
+        ):
+            # 422 for an ineligible *body-supplied* reference (like ``_ensure_exists``); the URL
+            # path id still 404s via ``_owned_gmail_or_404``.
+            raise AppError(
+                "validation",
+                "errors.interactions_conversation_invalid_target",
+                status_code=422,
+                fields={"target_interaction_id": "errors.interactions_conversation_invalid_target"},
+            )
+        if target.conversation_id is None:
+            target.conversation_id = uuid.uuid4()
+        row.conversation_id = target.conversation_id
+        await self.ctx.session.flush()
+        # No bus emit — nothing reacts to this today. It is the owner engaging with the row, so
+        # it lands on the interaction's own trail like a remap.
+        await ActivityService(self.ctx).record(
+            ENTITY_TYPE,
+            row.id,
+            "interaction.conversation_linked",
+            {"target_interaction_id": str(target.id)},
         )
         return await self._present_one(row)
 
@@ -848,6 +974,23 @@ class InteractionService:
         contacts_by_email = await self._participant_contacts([row])
         members_by_email = await self._participant_members([row])
         closing_ids = await self._closing_task_ids([row])
+        # A single-row endpoint, not list-scale: one extra indexed count is fine here, only when
+        # the row is actually in a conversation (docs/PERFORMANCE.md — the concern is per-row
+        # lookups over a *page*, not one lookup for one record).
+        conversation_count = 1
+        if row.conversation_id is not None:
+            conversation_count = int(
+                await self.ctx.session.scalar(
+                    select(func.count())
+                    .select_from(Interaction)
+                    .where(
+                        Interaction.org_id == self._org_id,
+                        Interaction.conversation_id == row.conversation_id,
+                        Interaction.status == InteractionStatus.LOGGED.value,
+                    )
+                )
+                or 1
+            )
         return self._present(
             row,
             owner[0] if owner else None,
@@ -856,6 +999,7 @@ class InteractionService:
             contacts_by_email,
             members_by_email,
             closing_ids,
+            conversation_count=conversation_count,
         )
 
     async def _participant_contacts(self, rows: list[Interaction]) -> dict[str, uuid.UUID]:
@@ -905,6 +1049,7 @@ class InteractionService:
         contacts_by_email: dict[str, uuid.UUID] | None = None,
         members_by_email: dict[str, uuid.UUID] | None = None,
         closing_ids: set[uuid.UUID] | None = None,
+        conversation_count: int = 1,
     ) -> dict[str, Any]:
         """Owner resolved like the activity trail (issue #64): live account wins, snapshot after."""
         if live_email is not None:
@@ -948,6 +1093,8 @@ class InteractionService:
             ],
             "source": row.source,
             "gmail_thread_id": row.gmail_thread_id,
+            "conversation_id": row.conversation_id,
+            "conversation_count": conversation_count,
             "deep_link": row.deep_link,
             "created_at": row.created_at,
         }

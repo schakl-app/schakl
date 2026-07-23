@@ -91,6 +91,12 @@ class InteractionRead(BaseModel):
     participants: list[ParticipantRead] = Field(default_factory=list)
     source: InteractionSource
     gmail_thread_id: str | None = None
+    #: Gmail-style conversation grouping (#272): the id every logged email row of one thread
+    #: shares. ``None`` on manual/pending rows — each is its own singleton.
+    conversation_id: uuid.UUID | None = None
+    #: How many messages this conversation folds — ``1`` for a row not in one. Drives the list
+    #: message-count badge and whether the detail modal fetches the full thread.
+    conversation_count: int = 1
     deep_link: str | None = None
     created_at: datetime
 
@@ -158,6 +164,13 @@ class InteractionApprove(BaseModel):
 class InteractionReject(BaseModel):
     #: Also suppress the whole Gmail thread, so follow-ups never get logged either.
     suppress_thread: bool = False
+
+
+class InteractionAddToConversation(BaseModel):
+    """Glue a gmail email onto another's conversation by hand (#272) — for a reply Gmail didn't
+    thread automatically. The target must be one of the caller's own logged gmail rows."""
+
+    target_interaction_id: uuid.UUID
 
 
 class InteractionEmlUploadRead(BaseModel):

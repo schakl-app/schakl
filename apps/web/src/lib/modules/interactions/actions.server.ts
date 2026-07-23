@@ -355,4 +355,25 @@ export const interactionActions = {
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { ok: true };
   },
+
+  /**
+   * Manually glue this email onto another's conversation (#272): a reply Gmail didn't thread
+   * automatically is folded onto the target the user picked. Owner-only, gmail-only — the API
+   * enforces both on the row and the target.
+   */
+  addInteractionToConversation: async (event: RequestEvent) => {
+    const form = await event.request.formData();
+    const id = String(form.get("id") ?? "");
+    const target_interaction_id = String(form.get("target_interaction_id") ?? "");
+    if (!id || !target_interaction_id) return fail(400, { error: "errors.required" });
+    const { error } = await apiFor(event).POST(
+      "/api/v1/interactions/{interaction_id}/add-to-conversation",
+      {
+        params: { path: { interaction_id: id } },
+        body: { target_interaction_id },
+      },
+    );
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { ok: true };
+  },
 };

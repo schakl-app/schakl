@@ -20,6 +20,7 @@
     ArrowRightLeft,
     ArrowUpRight,
     CheckCircle2,
+    Link2,
     Mail,
     Pencil,
     Plus,
@@ -42,6 +43,7 @@
   import EmlUploadForm from "./EmlUploadForm.svelte";
   import { type InteractionItem, isGmailRow, kindIcon } from "./format";
   import { snippetPreview } from "./snippet";
+  import InteractionConversationDialog from "./InteractionConversationDialog.svelte";
   import InteractionDetailModal from "./InteractionDetailModal.svelte";
   import InteractionForm from "./InteractionForm.svelte";
   import InteractionMoveDialog from "./InteractionMoveDialog.svelte";
@@ -75,6 +77,8 @@
   let moving = $state<InteractionItem | null>(null);
   let showCloseTask = $state(false);
   let closingWith = $state<InteractionItem | null>(null);
+  let showConversation = $state(false);
+  let linkingConv = $state<InteractionItem | null>(null);
 
   let deleteId = $state("");
   let confirmDelete = $state(false);
@@ -174,6 +178,23 @@
         },
       });
     }
+    // Glue an email Gmail didn't thread automatically onto another conversation (#272) —
+    // owner-only, logged gmail rows only, mirroring the API's own gate.
+    if (
+      item.kind === "email" &&
+      item.source === "gmail" &&
+      item.status === "logged" &&
+      isOwner(item)
+    ) {
+      entries.push({
+        label: t("interactions.add_to_conversation"),
+        icon: Link2,
+        onclick: () => {
+          linkingConv = item;
+          showConversation = true;
+        },
+      });
+    }
     if (item.source === "gmail" && isOwner(item)) {
       entries.push({
         label: t("interactions.reject"),
@@ -244,6 +265,21 @@
                   <ArrowUpRight size={13} class="text-text-muted" aria-hidden="true" />
                   <span class="sr-only">{t("interactions.direction.outbound")}</span>
                 {/if}
+              {/if}
+              {#if (item.conversation_count ?? 1) > 1}
+                <!-- The email folds a conversation (#272): show how many messages it holds. -->
+                <span
+                  title={t("interactions.conversation_count", { count: item.conversation_count })}
+                  class="inline-flex items-center gap-0.5 rounded-full bg-surface px-2 py-0.5 text-[11px] font-medium text-text-muted ring-1 ring-inset ring-border"
+                >
+                  <Mail size={10} aria-hidden="true" />
+                  {item.conversation_count}
+                  <span class="sr-only"
+                    >{t("interactions.conversation_count", {
+                      count: item.conversation_count,
+                    })}</span
+                  >
+                </span>
               {/if}
               {#if item.status === "pending"}
                 <span
@@ -355,6 +391,18 @@
   {#if closingWith}
     {#key closingWith.id}
       <CloseTaskDialog interaction={closingWith} onsaved={() => (showCloseTask = false)} />
+    {/key}
+  {/if}
+</Modal>
+
+<!-- Glue an unthreaded email onto another conversation by hand (#272). -->
+<Modal bind:open={showConversation} title={t("interactions.add_to_conversation_title")}>
+  {#if linkingConv}
+    {#key linkingConv.id}
+      <InteractionConversationDialog
+        interaction={linkingConv}
+        onsaved={() => (showConversation = false)}
+      />
     {/key}
   {/if}
 </Modal>

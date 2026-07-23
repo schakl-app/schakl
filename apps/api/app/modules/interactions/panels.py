@@ -46,6 +46,10 @@ async def _interactions_provider(ctx: RequestContext, company_id: uuid.UUID) -> 
                 "owner_name": i["owner_name"],
                 "participants": i["participants"],
                 "source": i["source"],
+                # Gmail-style conversation grouping (#272): the folded row's message count drives
+                # the badge and whether the detail modal fetches the whole thread.
+                "conversation_id": str(i["conversation_id"]) if i["conversation_id"] else None,
+                "conversation_count": i["conversation_count"],
                 "deep_link": i["deep_link"],
             }
             for i in items

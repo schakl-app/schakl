@@ -47,6 +47,12 @@ async def record_email(
     mappings: dict[str, uuid.UUID | None],
 ) -> Interaction:
     """Insert one matched email. The caller decided status, dedup and mappings already."""
+    # A row auto-approved at birth joins its thread's conversation now (#272); a pending row
+    # gets its id later, when its owner approves it (the service does that). Grouping is only
+    # ever set on logged rows, so a pending row keeps ``NULL`` and folds to itself.
+    conversation_id = (
+        await resolve_conversation_id(ctx, gmail_thread_id) if not pending else None
+    )
     row = Interaction(
         org_id=ctx.org.id,
         kind=InteractionKind.EMAIL.value,
@@ -63,6 +69,7 @@ async def record_email(
         gmail_thread_id=gmail_thread_id,
         rfc822_message_id=rfc822_message_id,
         deep_link=deep_link,
+        conversation_id=conversation_id,
         **{field: mappings.get(field) for field in MAPPING_FIELDS},
     )
     ctx.session.add(row)
@@ -126,6 +133,43 @@ async def thread_mappings(
         return None
     mappings = {field: getattr(row, field) for field in MAPPING_FIELDS}
     return mappings if any(mappings.values()) else None
+
+
+async def resolve_conversation_id(
+    ctx: EmitContext, gmail_thread_id: str | None, *, exclude_id: uuid.UUID | None = None
+) -> uuid.UUID | None:
+    """The ``conversation_id`` a newly-logged email in this gmail thread should carry (#272):
+    reuse the newest existing logged sibling's, or mint one and backfill that sibling so the
+    pair becomes a group the moment a second message joins it.
+
+    Returns ``None`` when there is no other logged message in the thread yet — the caller then
+    stores ``NULL`` (a singleton that folds to itself). Same "newest logged row in this thread"
+    query as :func:`thread_mappings`, plus ``id != exclude_id`` so an approving row never
+    matches itself.
+    """
+    if not gmail_thread_id:
+        return None
+    conditions = [
+        Interaction.org_id == ctx.org.id,
+        Interaction.gmail_thread_id == gmail_thread_id,
+        Interaction.status == InteractionStatus.LOGGED.value,
+    ]
+    if exclude_id is not None:
+        conditions.append(Interaction.id != exclude_id)
+    sibling = (
+        await ctx.session.execute(
+            select(Interaction)
+            .where(*conditions)
+            .order_by(Interaction.occurred_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if sibling is None:
+        return None
+    if sibling.conversation_id is None:
+        sibling.conversation_id = uuid.uuid4()
+        await ctx.session.flush()
+    return sibling.conversation_id
 
 
 async def email_ref(
