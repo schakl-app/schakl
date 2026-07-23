@@ -13,7 +13,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from app.core.activity import ActivityService
 from app.core.events import EmitContext
@@ -154,6 +154,64 @@ async def resolve_conversation_id(
         Interaction.gmail_thread_id == gmail_thread_id,
         Interaction.status == InteractionStatus.LOGGED.value,
     ]
+    if exclude_id is not None:
+        conditions.append(Interaction.id != exclude_id)
+    sibling = (
+        await ctx.session.execute(
+            select(Interaction)
+            .where(*conditions)
+            .order_by(Interaction.occurred_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if sibling is None:
+        return None
+    if sibling.conversation_id is None:
+        sibling.conversation_id = uuid.uuid4()
+        await ctx.session.flush()
+    return sibling.conversation_id
+
+
+async def resolve_upload_conversation_id(
+    ctx: EmitContext,
+    *,
+    rfc822_message_id: str | None,
+    reference_ids: list[str],
+    thread_root_id: str | None,
+    exclude_id: uuid.UUID | None = None,
+) -> uuid.UUID | None:
+    """The conversation_id a newly-uploaded ``.eml`` should carry (#272): the newest existing
+    logged email it threads with by RFC 5322 headers — one it *references* (that message's
+    ``rfc822_message_id`` is in our chain, whatever its source, so an upload folds onto a
+    gmail-synced original) or one sharing our ``thread_root_id`` (another upload of the same
+    thread, either order). Reuses that sibling's conversation, minting one if it has none yet;
+    returns ``None`` when nothing threads with it (a singleton). Both matches are scalar
+    equality over indexed columns — no JSONB — so this stays cheap.
+
+    A row carrying our *own* ``rfc822_message_id`` is a deliberate duplicate of this very message
+    (the ``allow_duplicate`` re-log), not a thread member — it is excluded, so two copies of one
+    email stay two rows rather than folding into a bogus "conversation of 2".
+    """
+    disjuncts = []
+    if reference_ids:
+        disjuncts.append(Interaction.rfc822_message_id.in_(reference_ids))
+    if thread_root_id:
+        disjuncts.append(Interaction.thread_root_id == thread_root_id)
+    if not disjuncts:
+        return None
+    conditions = [
+        Interaction.org_id == ctx.org.id,
+        Interaction.status == InteractionStatus.LOGGED.value,
+        Interaction.kind == InteractionKind.EMAIL.value,
+        or_(*disjuncts),
+    ]
+    if rfc822_message_id:
+        conditions.append(
+            or_(
+                Interaction.rfc822_message_id != rfc822_message_id,
+                Interaction.rfc822_message_id.is_(None),
+            )
+        )
     if exclude_id is not None:
         conditions.append(Interaction.id != exclude_id)
     sibling = (

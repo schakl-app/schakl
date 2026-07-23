@@ -15,6 +15,7 @@ from app.db import async_session_maker, set_current_org
 from app.modules.interactions import system as interactions_system
 from app.modules.interactions.models import Interaction
 from tests.conftest import auth_cookie, make_tenant
+from tests.test_interactions_eml import _upload
 
 _T0 = datetime(2026, 7, 10, 9, 0, tzinfo=UTC)
 
@@ -315,3 +316,73 @@ async def test_migration_backfill_folds_existing_threads() -> None:
         await session.execute(backfill, {"org_id": t.org.id})
         await session.commit()
     assert await convs() == first
+
+
+async def _upload_eml(client, headers, **eml_kwargs) -> dict:
+    res = await client.post(
+        "/api/v1/interactions/upload-eml", files=_upload(**eml_kwargs), headers=headers
+    )
+    assert res.status_code == 201, res.text
+    return res.json()["interaction"]
+
+
+async def test_uploaded_emails_fold_by_threading_headers(client_for) -> None:
+    """#272 (option B): two uploaded .eml files of one thread fold into one conversation by
+    their References/In-Reply-To headers — whichever order they are uploaded (the reply stores
+    its thread root, so a later original still folds onto it)."""
+    t = await make_tenant("conv-eml-fold")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        # Reply uploaded first: its root isn't present yet, so it lands a singleton...
+        reply = await _upload_eml(
+            c,
+            headers,
+            subject="Re: Offerte",
+            message_id="<reply@mail>",
+            references="<orig@mail>",
+            in_reply_to="<orig@mail>",
+        )
+        assert reply["conversation_id"] is None
+        # ...then the original folds onto it by shared thread root.
+        original = await _upload_eml(
+            c, headers, subject="Offerte", message_id="<orig@mail>"
+        )
+        assert original["conversation_id"] is not None
+        assert original["conversation_count"] == 2
+
+        conv_reply = await _conversation_id(t.org.id, reply["id"])
+        conv_orig = await _conversation_id(t.org.id, original["id"])
+        assert conv_reply is not None and conv_reply == conv_orig
+
+        # The list folds the pair to a single row; an unrelated upload stays its own.
+        page = (await c.get("/api/v1/interactions", headers=headers)).json()
+        assert page["total"] == 1 and page["items"][0]["conversation_count"] == 2
+        await _upload_eml(c, headers, subject="Iets anders", message_id="<other@mail>")
+        page = (await c.get("/api/v1/interactions", headers=headers)).json()
+        assert page["total"] == 2
+
+
+async def test_uploaded_reply_folds_onto_gmail_original(client_for) -> None:
+    """#272: an uploaded .eml replying to a gmail-synced email (its Message-ID is in the
+    upload's References) folds onto that Gmail conversation — cross-source grouping."""
+    t = await make_tenant("conv-eml-gmail")
+    headers = await auth_cookie(t.user)
+    # A gmail-synced original; _seed stores rfc822_message_id as <g-orig@mail.example>.
+    gmail_id = await _seed(
+        t, t.user.id, thread_id="thr-g", message_id="g-orig", occurred_at=_at(0)
+    )
+    async with client_for(t.host) as c:
+        reply = await _upload_eml(
+            c,
+            headers,
+            subject="Re: van gmail",
+            message_id="<u-reply@mail>",
+            references="<g-orig@mail.example>",
+        )
+        assert reply["conversation_count"] == 2
+        conv_upload = await _conversation_id(t.org.id, reply["id"])
+        conv_gmail = await _conversation_id(t.org.id, gmail_id)
+        assert conv_upload is not None and conv_upload == conv_gmail
+
+        page = (await c.get("/api/v1/interactions", headers=headers)).json()
+        assert page["total"] == 1 and page["items"][0]["conversation_count"] == 2

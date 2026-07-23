@@ -51,7 +51,10 @@ from app.modules.interactions.schemas import (
     InteractionRemap,
     InteractionUpdate,
 )
-from app.modules.interactions.system import resolve_conversation_id
+from app.modules.interactions.system import (
+    resolve_conversation_id,
+    resolve_upload_conversation_id,
+)
 
 logger = logging.getLogger("schakl.interactions")
 
@@ -472,6 +475,19 @@ class InteractionService:
                 )
         resolved = await self._resolve_links(links)
         user = self.ctx.user
+        # Conversation grouping by RFC 5322 headers (#272): the thread root is the oldest id in
+        # the References/In-Reply-To chain, or the message's own id when it starts a thread. The
+        # upload folds onto any logged email it threads with (a gmail-synced original it replies
+        # to, or another upload of the same thread) — see resolve_upload_conversation_id.
+        thread_root_id = (
+            parsed.reference_ids[0] if parsed.reference_ids else parsed.rfc822_message_id
+        ) or None
+        conversation_id = await resolve_upload_conversation_id(
+            self.ctx,
+            rfc822_message_id=parsed.rfc822_message_id,
+            reference_ids=parsed.reference_ids,
+            thread_root_id=thread_root_id,
+        )
         row = await self.repo.create(
             kind=PROTECTED_KIND,
             status=InteractionStatus.LOGGED.value,
@@ -488,6 +504,8 @@ class InteractionService:
             participants=parsed.participants,
             source=InteractionSource.UPLOAD.value,
             rfc822_message_id=(parsed.rfc822_message_id or None),
+            conversation_id=conversation_id,
+            thread_root_id=thread_root_id,
             **resolved,
         )
         await ActivityService(self.ctx).record_created(ENTITY_TYPE, row.id, {"source": "eml"})

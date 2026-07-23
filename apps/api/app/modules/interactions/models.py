@@ -172,6 +172,7 @@ class Interaction(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Auditable
         Index("ix_interactions_org_rfc822", "org_id", "rfc822_message_id"),
         Index("ix_interactions_org_thread", "org_id", "gmail_thread_id"),
         Index("ix_interactions_org_conversation", "org_id", "conversation_id"),
+        Index("ix_interactions_org_thread_root", "org_id", "thread_root_id"),
     )
 
     #: A key into the org's ``interaction_kinds`` (#174) — validated by the service on manual
@@ -254,6 +255,11 @@ class Interaction(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Auditable
     conversation_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True), nullable=True
     )
+    #: The RFC 5322 thread root of an uploaded ``.eml`` (#272): the oldest Message-ID in its
+    #: ``References``/``In-Reply-To`` chain, or its own ``rfc822_message_id`` when it starts a
+    #: thread. Only set on **upload** rows — gmail rows fold by ``gmail_thread_id`` instead. Two
+    #: uploads share a conversation when they share a root (or one references the other's id).
+    thread_root_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
     #: The global RFC 5322 ``Message-ID`` header — dedup key across connected mailboxes.
     rfc822_message_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
     deep_link: Mapped[str | None] = mapped_column(String(500), nullable=True)

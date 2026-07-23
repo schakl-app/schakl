@@ -34,6 +34,8 @@ _EVIDENCE_HEADERS = ("From", "To", "Cc", "Subject", "Date", "Message-ID")
 _TAG_RE = re.compile(r"<[^>]+>")
 _BLANK_RE = re.compile(r"\n{3,}")
 _WS_RE = re.compile(r"\s+")
+#: A bare RFC 5322 ``msg-id`` (``<local@domain>``) — no brackets or whitespace inside.
+_MSGID_RE = re.compile(r"<[^<>\s]+>")
 
 #: How much of the body the timeline preview shows, matching a gmail snippet's order of size.
 SNIPPET_CHARS = 200
@@ -83,6 +85,9 @@ class ParsedEml:
     body_text: str | None = None
     snippet: str | None = None
     rfc822_message_id: str | None = None
+    #: The RFC 5322 threading chain (#272): every Message-ID this email ``References`` or is
+    #: ``In-Reply-To``, oldest first — so ``[0]`` is the thread root. Drives upload folding.
+    reference_ids: list[str] = field(default_factory=list)
     #: The sender's address, lowercased — what decides inbound vs outbound.
     from_email: str | None = None
     attachments: list[EmlAttachment] = field(default_factory=list)
@@ -106,9 +111,26 @@ def parse_eml(data: bytes) -> ParsedEml:
         body_text=body_text,
         snippet=_snippet(body_text),
         rfc822_message_id=(_header(message, "Message-ID") or None),
+        reference_ids=_reference_ids(message),
         from_email=_first_address(message, "From"),
         attachments=_attachments(message),
     )
+
+
+def _reference_ids(message: EmailMessage) -> list[str]:
+    """The thread's Message-IDs from ``References`` then ``In-Reply-To`` (#272), oldest first
+    and de-duplicated, so ``[0]`` is the thread root. ``References`` is authoritative for the
+    chain; ``In-Reply-To`` (the immediate parent) backs it up when a client omits ``References``.
+    """
+    ids: list[str] = []
+    for header_name in ("References", "In-Reply-To"):
+        raw = _header(message, header_name)
+        if not raw:
+            continue
+        for token in _MSGID_RE.findall(raw):
+            if token not in ids:
+                ids.append(token)
+    return ids
 
 
 def _header(message: EmailMessage, name: str) -> str | None:

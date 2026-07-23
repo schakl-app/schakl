@@ -34,6 +34,8 @@ def build_eml(
     cc: str | None = "boss@client.nl",
     date: str | None = "Fri, 10 Jul 2026 14:30:00 +0200",
     message_id: str | None = "<abc123@mail.client.nl>",
+    in_reply_to: str | None = None,
+    references: str | None = None,
     body: str = "Bij deze akkoord op de offerte.\n\nGroet,\nKlant",
     attachments: tuple[tuple[str, str, str, bytes], ...] = (),
     html: bool = False,
@@ -50,6 +52,10 @@ def build_eml(
         message["Date"] = date
     if message_id:
         message["Message-ID"] = message_id
+    if in_reply_to:
+        message["In-Reply-To"] = in_reply_to
+    if references:
+        message["References"] = references
     message.set_content(body, subtype="html" if html else "plain")
     for filename, maintype, subtype, data in attachments:
         message.add_attachment(data, maintype=maintype, subtype=subtype, filename=filename)
@@ -98,6 +104,20 @@ def test_parser_falls_back_to_html_and_tolerates_a_missing_date() -> None:
     # No usable Date header: the parser says so rather than inventing an instant.
     assert parsed.occurred_at is None
     assert parsed.rfc822_message_id is None
+
+
+def test_parser_extracts_threading_headers() -> None:
+    """#272: References (oldest→newest) then In-Reply-To become reference_ids, deduped, so [0]
+    is the thread root that folds an uploaded reply onto its conversation."""
+    parsed = parse_eml(
+        build_eml(
+            message_id="<c3@mail>", references="<a1@mail> <b2@mail>", in_reply_to="<b2@mail>"
+        )
+    )
+    # In-Reply-To duplicates the newest References entry — dropped; order preserved, root first.
+    assert parsed.reference_ids == ["<a1@mail>", "<b2@mail>"]
+    # A standalone email carries no chain.
+    assert parse_eml(build_eml(message_id="<solo@mail>")).reference_ids == []
 
 
 def test_parser_refuses_bytes_that_are_not_a_message() -> None:
