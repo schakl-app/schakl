@@ -20,6 +20,7 @@
     ArrowRightLeft,
     ArrowUpRight,
     CheckCircle2,
+    Mail,
     Pencil,
     Plus,
     Trash2,
@@ -38,7 +39,8 @@
   import Modal from "$lib/core/ui/Modal.svelte";
 
   import CloseTaskDialog from "./CloseTaskDialog.svelte";
-  import { type InteractionItem, kindIcon } from "./format";
+  import EmlUploadForm from "./EmlUploadForm.svelte";
+  import { type InteractionItem, isGmailRow, kindIcon } from "./format";
   import { snippetPreview } from "./snippet";
   import InteractionDetailModal from "./InteractionDetailModal.svelte";
   import InteractionForm from "./InteractionForm.svelte";
@@ -66,6 +68,7 @@
   const canWrite = $derived(can(page.data.user, "interactions.interaction.write"));
 
   let showCreate = $state(false);
+  let showUpload = $state(false);
   let showEdit = $state(false);
   let editing = $state<InteractionItem | null>(null);
   let showMove = $state(false);
@@ -99,16 +102,17 @@
 
   const isOwner = (item: InteractionItem) =>
     item.owner_user_id !== null && item.owner_user_id === me;
+  // An uploaded .eml (#262) edits like a hand-logged row: there is no mailbox behind it, so
+  // no review flow owns it. Only gmail rows are off-limits here.
   const mayEdit = (item: InteractionItem) =>
-    item.source === "manual" &&
+    !isGmailRow(item) &&
     (isOwner(item)
       ? can(page.data.user, "interactions.interaction.write", "own")
       : can(page.data.user, "interactions.interaction.write", "any"));
 
   // Moving a manual row rides the ordinary write scope; a gmail row stays the mailbox
   // owner's call (the review rule) — the API enforces both, harder (#147).
-  const mayMove = (item: InteractionItem) =>
-    item.source === "gmail" ? isOwner(item) : mayEdit(item);
+  const mayMove = (item: InteractionItem) => (isGmailRow(item) ? isOwner(item) : mayEdit(item));
 
   /** Where this row also belongs (#147): clickable chips for links beyond the current host. */
   function linkChips(item: InteractionItem): { href: string; label: string }[] {
@@ -188,14 +192,26 @@
 <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
   <p class="text-sm text-text-muted">{t("interactions.panel.count", { count: total })}</p>
   {#if canWrite}
-    <button
-      type="button"
-      class="inline-flex items-center gap-1 text-sm font-medium text-brand hover:underline"
-      onclick={() => (showCreate = true)}
-    >
-      <Plus size={16} aria-hidden="true" />
-      {t("interactions.add")}
-    </button>
+    <div class="flex flex-wrap items-center gap-3">
+      <!-- An email nobody's connected mailbox saw is logged from its export (#262) — the same
+           affordance the Interacties page carries, so it exists on every record too. -->
+      <button
+        type="button"
+        class="inline-flex items-center gap-1 text-sm font-medium text-text-muted hover:text-brand"
+        onclick={() => (showUpload = true)}
+      >
+        <Mail size={16} aria-hidden="true" />
+        {t("interactions.eml.add")}
+      </button>
+      <button
+        type="button"
+        class="inline-flex items-center gap-1 text-sm font-medium text-brand hover:underline"
+        onclick={() => (showCreate = true)}
+      >
+        <Plus size={16} aria-hidden="true" />
+        {t("interactions.add")}
+      </button>
+    </div>
   {/if}
 </div>
 
@@ -314,6 +330,13 @@
 
 <Modal bind:open={showCreate} title={t("interactions.add")}>
   <InteractionForm {prefill} mentions={mentionCandidates} onsaved={() => (showCreate = false)} />
+</Modal>
+
+<!-- Upload an exported email (#262): the same host actions, one more of them. -->
+<Modal bind:open={showUpload} title={t("interactions.eml.title")}>
+  {#if showUpload}
+    <EmlUploadForm {prefill} onsaved={() => (showUpload = false)} />
+  {/if}
 </Modal>
 
 <Modal bind:open={showEdit} title={t("interactions.edit")}>

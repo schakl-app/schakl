@@ -9,14 +9,17 @@ capability tier. Manual rows follow the ordinary own/any write/delete scopes.
 
 from __future__ import annotations
 
+import io
+import logging
 import uuid
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 from sqlalchemy import bindparam, func, or_, select, text
 from sqlalchemy.sql.expression import column as sa_column
 from sqlalchemy.sql.expression import table as sa_table
 
+from app.config import settings
 from app.core.activity import ActivityService
 from app.core.activity.service import snapshot
 from app.core.auth.models import User
@@ -24,15 +27,18 @@ from app.core.events import emit
 from app.core.models import Membership
 from app.core.richtext import extract_contact_mention_ids, extract_mention_ids, sanitize_markdown
 from app.core.sorting import apply_sort, user_sort_name
+from app.core.storage.service import FileService
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_zoneinfo
 from app.errors import AppError
+from app.modules.interactions.eml import EmlAttachment, EmlParseError, looks_like_eml, parse_eml
 from app.modules.interactions.models import (
     DEFAULT_KINDS,
     ENTITY_TYPE,
     HOST_ENTITY,
     PROTECTED_KIND,
     Interaction,
+    InteractionDirection,
     InteractionKindDef,
     InteractionSource,
     InteractionStatus,
@@ -45,6 +51,8 @@ from app.modules.interactions.schemas import (
     InteractionRemap,
     InteractionUpdate,
 )
+
+logger = logging.getLogger("schakl.interactions")
 
 #: Fields whose edits land in the activity trail (§16) — the record's own definition, not body.
 _AUDITED_FIELDS = (
@@ -324,14 +332,167 @@ class InteractionService:
             interaction_id=row.id,
         )
 
+    # --- uploaded email (#262) --------------------------------------------------- #
+    async def create_from_eml(
+        self,
+        *,
+        data: bytes,
+        filename: str,
+        content_type: str | None,
+        links: dict[str, uuid.UUID | None],
+        allow_duplicate: bool = False,
+    ) -> tuple[dict[str, Any], int, int]:
+        """Log an uploaded ``.eml`` as a ``kind="email"`` interaction (#262).
+
+        Deliberately **not** a loosening of ``create()``: ``email`` stays the one kind a person
+        may never type into the ordinary form (#174), because a hand-written "email" is a note
+        pretending to be a message. This path may write one because it isn't hand-written — the
+        fields come out of a real RFC 5322 message, in the same shape the gmail feed produces.
+
+        It lands ``logged``, not ``pending``: the review step exists to catch mail the poller
+        ingested *for* you, which cannot apply to a file someone deliberately picked.
+        """
+        self.ctx.require("interactions.interaction.write")
+        if not looks_like_eml(filename, content_type):
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"file": "errors.interactions_eml_type"},
+            )
+        if not data:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"file": "errors.required"},
+            )
+        if len(data) > settings.upload_max_bytes:
+            raise AppError(
+                "validation",
+                "errors.upload_too_large",
+                status_code=413,
+                fields={"file": "errors.upload_too_large"},
+            )
+        try:
+            parsed = parse_eml(data)
+        except EmlParseError:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"file": "errors.interactions_eml_invalid"},
+            ) from None
+        # Cross-source dedup on the global Message-ID, the same key the gmail feed dedups on.
+        # A warning, not a wall (#262): the same message may legitimately need logging from a
+        # mailbox nobody connected — so the caller confirms and re-sends with allow_duplicate.
+        if parsed.rfc822_message_id and not allow_duplicate:
+            duplicate = await self.ctx.session.scalar(
+                select(Interaction.id).where(
+                    Interaction.org_id == self._org_id,
+                    Interaction.rfc822_message_id == parsed.rfc822_message_id,
+                )
+            )
+            if duplicate is not None:
+                raise AppError(
+                    "conflict", "errors.interactions_eml_duplicate", status_code=409
+                )
+        resolved = await self._resolve_links(links)
+        user = self.ctx.user
+        row = await self.repo.create(
+            kind=PROTECTED_KIND,
+            status=InteractionStatus.LOGGED.value,
+            # No usable Date header: the upload itself is the only honest timestamp, and the
+            # uploader can correct it — inventing one from the filename would be worse.
+            occurred_at=parsed.occurred_at or datetime.now(UTC),
+            subject=(parsed.subject or "")[:500] or None,
+            snippet=parsed.snippet,
+            # Stored raw, like a gmail body: it is a received message, never markdown of ours.
+            body_text=parsed.body_text,
+            direction=await self._upload_direction(parsed.from_email),
+            owner_user_id=user.id,
+            owner_name=user.full_name or user.email,
+            participants=parsed.participants,
+            source=InteractionSource.UPLOAD.value,
+            rfc822_message_id=(parsed.rfc822_message_id or None),
+            **resolved,
+        )
+        await ActivityService(self.ctx).record_created(ENTITY_TYPE, row.id, {"source": "eml"})
+        await self._record_on_hosts(row, "interaction.logged")
+        stored, skipped = await self._store_eml_attachments(row.id, parsed.attachments)
+        return await self._present_one(row), stored, skipped
+
+    async def _upload_direction(self, from_email: str | None) -> str:
+        """Inbound unless the sender is one of us — the closest an uploaded file can get to the
+        ``SENT`` label the gmail feed reads, using the same membership match the participant
+        chips already do (#167)."""
+        if not from_email:
+            return InteractionDirection.NONE.value
+        mine = await self.ctx.session.scalar(
+            select(User.id)
+            .join(Membership, Membership.user_id == User.id)
+            .where(Membership.org_id == self._org_id, func.lower(User.email) == from_email)
+        )
+        return (
+            InteractionDirection.OUTBOUND if mine is not None else InteractionDirection.INBOUND
+        ).value
+
+    async def _store_eml_attachments(
+        self, interaction_id: uuid.UUID, attachments: list[EmlAttachment]
+    ) -> tuple[int, int]:
+        """Store the message's attachments through the ordinary, permission-checked file
+        service (#123) — this is a person's own upload, not the gmail worker's system write.
+
+        One rejected attachment must never lose the message (the gmail path's rule, #180), so
+        anything the storage guardrails would refuse is skipped and **counted**: the response
+        says how many, rather than quietly dropping a client's PDF.
+        """
+        if not attachments:
+            return 0, 0
+        if not self.ctx.can("files.file.write"):
+            return 0, len(attachments)
+        files = FileService(self.ctx)
+        stored = skipped = 0
+        for attachment in attachments:
+            if (
+                attachment.content_type not in settings.upload_allowed_types
+                or len(attachment.data) > settings.upload_max_bytes
+            ):
+                logger.info(
+                    "eml attachment skipped (type/size) for %s: %s",
+                    interaction_id,
+                    attachment.filename,
+                )
+                skipped += 1
+                continue
+            await files.create(
+                filename=attachment.filename,
+                content_type=attachment.content_type,
+                stream=io.BytesIO(attachment.data),
+                size_bytes=len(attachment.data),
+                entity_type=ENTITY_TYPE,
+                entity_id=interaction_id,
+            )
+            stored += 1
+        return stored, skipped
+
     async def update(self, interaction_id: uuid.UUID, data: InteractionUpdate) -> dict[str, Any]:
         row = await self._writable_or_404(interaction_id, "interactions.interaction.write")
-        self._manual_only(row)
+        self._reviewless_only(row)
         before = snapshot(row, _AUDITED_FIELDS)
         sent = data.model_dump(exclude_unset=True)
         # Keeping the row's own kind is always allowed — a deactivated kind must not brick
         # editing the rows that already carry it (#174).
         if sent.get("kind") is not None and sent["kind"] != row.kind:
+            # An email is an email: the protected kind is no more re-typeable *away* than it is
+            # settable by hand (#262), or an uploaded message would launder itself into a note.
+            if row.kind == PROTECTED_KIND:
+                raise AppError(
+                    "validation",
+                    "errors.validation",
+                    status_code=422,
+                    fields={"kind": "errors.interactions_kind_not_manual"},
+                )
             await self._require_manual_kind(sent["kind"])
         link_updates = {k: sent[k] for k in _LINK_TABLES if k in sent}
         values: dict[str, Any] = {
@@ -371,7 +532,7 @@ class InteractionService:
 
     async def delete(self, interaction_id: uuid.UUID) -> None:
         row = await self._writable_or_404(interaction_id, "interactions.interaction.delete")
-        self._manual_only(row)
+        self._reviewless_only(row)
         await self.repo.delete(row)
 
     # --- gmail review flow (owner-only, no :any escape) ------------------------- #
@@ -554,9 +715,13 @@ class InteractionService:
             fields={"kind": "errors.interactions_kind_not_manual"},
         )
 
-    def _manual_only(self, row: Interaction) -> None:
-        """Gmail rows change through the review flow, never through plain edit/delete."""
-        if row.source != InteractionSource.MANUAL.value:
+    def _reviewless_only(self, row: Interaction) -> None:
+        """Gmail rows change through the review flow, never through plain edit/delete.
+
+        An uploaded ``.eml`` (#262) has no review flow — nobody's mailbox is behind it — so it
+        edits and deletes like any row its owner logged by hand.
+        """
+        if row.source == InteractionSource.GMAIL.value:
             raise AppError("invalid_state", "errors.interactions_gmail_readonly", status_code=409)
 
     async def _writable_or_404(self, interaction_id: uuid.UUID, permission: str) -> Interaction:

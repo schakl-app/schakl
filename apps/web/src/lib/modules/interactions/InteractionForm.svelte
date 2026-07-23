@@ -29,8 +29,10 @@
     type InteractionItem,
     type InteractionKindDef,
     instantToLocal,
+    interactionKinds,
     kindLabel,
     manualKinds,
+    PROTECTED_KIND,
   } from "./format";
   import { loadLinkLookups, type LinkOption, type ProjectOption, type TaskOption } from "./lookups";
 
@@ -74,14 +76,18 @@
   // list shows the active ones, plus the row's own kind when editing — a deactivated kind
   // must stay pickable on the rows that already carry it.
   const locale = $derived((page.data.locale as string | undefined) ?? "nl");
+  // Editing an uploaded email (#262): `email` is not a kind anyone may pick, so it is shown
+  // rather than offered — a select without it would silently re-type the message on save.
+  const emailRow = $derived(interaction?.kind === PROTECTED_KIND);
   let allKinds = $state<InteractionKindDef[]>([]);
   $effect(() => {
-    void manualKinds().then((fetched) => {
+    void (emailRow ? interactionKinds() : manualKinds()).then((fetched) => {
       allKinds = fetched;
       if (!kind) kind = fetched.find((k) => k.active)?.key ?? "";
     });
   });
   const kinds = $derived(allKinds.filter((k) => k.active || k.key === kind));
+  const kindDef = $derived(allKinds.find((k) => k.key === kind));
 
   const DIRECTIONS = ["none", "inbound", "outbound"] as const;
 
@@ -452,18 +458,29 @@
   {/each}
 
   <div class="grid gap-4 sm:grid-cols-2">
-    <label class="block text-sm">
-      <span class="mb-1 block font-medium text-text">{t("interactions.field.kind")}</span>
-      <select
-        name="kind"
-        bind:value={kind}
-        class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
-      >
-        {#each kinds as option (option.key)}
-          <option value={option.key}>{kindLabel(option, locale)}</option>
-        {/each}
-      </select>
-    </label>
+    {#if emailRow}
+      <!-- An email stays an email (#262): shown, not offered, and posted unchanged. -->
+      <div class="block text-sm">
+        <span class="mb-1 block font-medium text-text">{t("interactions.field.kind")}</span>
+        <input type="hidden" name="kind" value={kind} />
+        <p class="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-muted">
+          {kindDef ? kindLabel(kindDef, locale) : t("interactions.kind.email")}
+        </p>
+      </div>
+    {:else}
+      <label class="block text-sm">
+        <span class="mb-1 block font-medium text-text">{t("interactions.field.kind")}</span>
+        <select
+          name="kind"
+          bind:value={kind}
+          class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+        >
+          {#each kinds as option (option.key)}
+            <option value={option.key}>{kindLabel(option, locale)}</option>
+          {/each}
+        </select>
+      </label>
+    {/if}
     <label class="block text-sm">
       <span class="mb-1 block font-medium text-text">{t("interactions.field.date")}</span>
       <DateInput name="occurred_date" bind:value={date} required />
@@ -652,21 +669,36 @@
     </label>
   {/if}
 
-  <div class="text-sm">
-    <span class="mb-1 block font-medium text-text">{t("interactions.field.notes")}</span>
-    <!-- #task references (#237) resolve against the moment's own links: the picked (or
-         stored) project, else the client — same deeper-link-wins rule as the task picker. -->
-    <RichTextEditor
-      name="body_text"
-      value={interaction?.body_text ?? ""}
-      rows={4}
-      mentions={editorMentions}
-      scope={{
-        companyId: (interaction?.company_id ?? effCompany) || null,
-        projectId: (interaction?.project_id ?? effProject) || null,
-      }}
-    />
-  </div>
+  {#if emailRow}
+    <!-- A received message is not ours to re-type (#262): shown for context while the links
+         are corrected, and deliberately not posted — the API leaves an unsent field alone. -->
+    {#if interaction?.body_text}
+      <div class="text-sm">
+        <span class="mb-1 block font-medium text-text">{t("interactions.eml.message")}</span>
+        <p
+          class="max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-muted"
+        >
+          {interaction.body_text}
+        </p>
+      </div>
+    {/if}
+  {:else}
+    <div class="text-sm">
+      <span class="mb-1 block font-medium text-text">{t("interactions.field.notes")}</span>
+      <!-- #task references (#237) resolve against the moment's own links: the picked (or
+           stored) project, else the client — same deeper-link-wins rule as the task picker. -->
+      <RichTextEditor
+        name="body_text"
+        value={interaction?.body_text ?? ""}
+        rows={4}
+        mentions={editorMentions}
+        scope={{
+          companyId: (interaction?.company_id ?? effCompany) || null,
+          projectId: (interaction?.project_id ?? effProject) || null,
+        }}
+      />
+    </div>
+  {/if}
 
   {#if closeFailedAfterCreate}
     <p class="text-sm text-red-600">{t("interactions.close_after_create_failed")}</p>

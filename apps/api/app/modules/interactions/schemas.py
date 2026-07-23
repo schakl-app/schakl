@@ -158,3 +158,13 @@ class InteractionApprove(BaseModel):
 class InteractionReject(BaseModel):
     #: Also suppress the whole Gmail thread, so follow-ups never get logged either.
     suppress_thread: bool = False
+
+
+class InteractionEmlUploadRead(BaseModel):
+    """The result of uploading a ``.eml`` (#262): the logged interaction, plus what happened
+    to its attachments. A skipped attachment (disallowed type, over the size ceiling, or no
+    ``files.file.write``) must never fail the upload — but it must never be silent either."""
+
+    interaction: InteractionRead
+    attachments_stored: int = 0
+    attachments_skipped: int = 0

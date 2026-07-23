@@ -27,7 +27,7 @@
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
 
-  import type { InteractionItem } from "./format";
+  import { type InteractionItem, isMailRow } from "./format";
   import { cleanSnippet } from "./snippet";
   import InteractionMoveDialog from "./InteractionMoveDialog.svelte";
   import { splitQuotedTrail } from "./quoted";
@@ -89,9 +89,10 @@
     trail = response.ok ? await response.json() : [];
   }
 
-  // Loading the extras is a side effect of opening on a gmail row (#180/#152).
+  // Loading the extras is a side effect of opening an email row (#180/#152) — synced from
+  // Gmail or uploaded as a `.eml` (#262); both carry the message's own attachments.
   $effect(() => {
-    if (open && item && item.source === "gmail" && item.status === "logged") {
+    if (open && item && isMailRow(item) && item.status === "logged") {
       void loadAttachments(item.id);
     }
     if (open) {
@@ -104,7 +105,7 @@
   // behind the ⋯ toggle, Gmail's own trimmed-content gesture. Collapsed again per open.
   let quotedExpanded = $state(false);
   const bodyParts = $derived(
-    item && item.source === "gmail" && item.body_text ? splitQuotedTrail(item.body_text) : null,
+    item && isMailRow(item) && item.body_text ? splitQuotedTrail(item.body_text) : null,
   );
 
   // --- unknown participant → contact quick-create (#160) ------------------------------------ //
@@ -213,7 +214,7 @@
         {/if}
 
         {#if di.body_text}
-          {#if di.source === "gmail"}
+          {#if isMailRow(di)}
             <!-- break-words so a lone long URL can't scroll the modal sideways (#184). -->
             <p class="whitespace-pre-wrap break-words text-sm text-text">
               {bodyParts?.head ?? di.body_text}

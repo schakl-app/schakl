@@ -140,6 +140,17 @@ class InteractionDirection(StrEnum):
 class InteractionSource(StrEnum):
     MANUAL = "manual"
     GMAIL = "gmail"
+    #: A ``.eml`` a person uploaded by hand (#262) — an email row like a gmail one, but the
+    #: bytes came from a file, not from a connected mailbox. Distinct from ``MANUAL`` because
+    #: the content is a real message (rendered as such, attachments and all) rather than
+    #: someone's typed note, and distinct from ``GMAIL`` because there is no mailbox behind
+    #: it: no review flow, no thread, no deep link.
+    UPLOAD = "upload"
+
+
+#: The sources whose body *is* an email message: rendered as received (never as markdown),
+#: with their attachments. ``MANUAL`` rows carry a person's own note instead.
+EMAIL_SOURCES = frozenset({InteractionSource.GMAIL.value, InteractionSource.UPLOAD.value})
 
 
 class Interaction(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, AuditableMixin, Base):

@@ -5,13 +5,14 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
 from app.modules.interactions.schemas import (
     InteractionApprove,
     InteractionCreate,
+    InteractionEmlUploadRead,
     InteractionKindDefCreate,
     InteractionKindDefRead,
     InteractionKindDefUpdate,
@@ -145,6 +146,54 @@ async def create_interaction(
     ctx: RequestContext = Depends(require_context),
 ) -> InteractionRead:
     return InteractionRead.model_validate(await InteractionService(ctx).create(payload))
+
+
+@router.post(
+    "/upload-eml",
+    response_model=InteractionEmlUploadRead,
+    status_code=201,
+    dependencies=[require_permission("interactions.interaction.write")],
+)
+async def upload_interaction_eml(
+    file: UploadFile = File(..., description="An exported .eml message"),
+    company_id: uuid.UUID | None = Form(None),
+    project_id: uuid.UUID | None = Form(None),
+    task_id: uuid.UUID | None = Form(None),
+    contact_id: uuid.UUID | None = Form(None),
+    allow_duplicate: bool = Form(
+        False, description="Log it even though this Message-ID is already on the timeline"
+    ),
+    ctx: RequestContext = Depends(require_context),
+) -> InteractionEmlUploadRead:
+    """Log an exported email as a contactmoment (#262).
+
+    The narrow, audited path that may write the protected ``email`` kind: the ordinary
+    ``POST /interactions`` still refuses it, because only a real message — parsed, not typed —
+    may claim to be one. Links may be assigned in the same step, exactly like approving a
+    gmail row (#183). Declared before ``/{interaction_id}`` so the literal path always wins.
+    """
+    # UploadFile spools to disk past a small threshold; size it without trusting the client.
+    file.file.seek(0, 2)
+    size = file.file.tell()
+    file.file.seek(0)
+    data = await file.read() if size else b""
+    interaction, stored, skipped = await InteractionService(ctx).create_from_eml(
+        data=data,
+        filename=file.filename or "",
+        content_type=file.content_type,
+        links={
+            "company_id": company_id,
+            "project_id": project_id,
+            "task_id": task_id,
+            "contact_id": contact_id,
+        },
+        allow_duplicate=allow_duplicate,
+    )
+    return InteractionEmlUploadRead(
+        interaction=InteractionRead.model_validate(interaction),
+        attachments_stored=stored,
+        attachments_skipped=skipped,
+    )
 
 
 @router.get(

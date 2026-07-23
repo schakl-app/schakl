@@ -2352,6 +2352,31 @@ export interface paths {
         patch: operations["update_interaction_kind_api_v1_interactions_kinds__kind_id__patch"];
         trace?: never;
     };
+    "/api/v1/interactions/upload-eml": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Interaction Eml
+         * @description Log an exported email as a contactmoment (#262).
+         *
+         *     The narrow, audited path that may write the protected ``email`` kind: the ordinary
+         *     ``POST /interactions`` still refuses it, because only a real message — parsed, not typed —
+         *     may claim to be one. Links may be assigned in the same step, exactly like approving a
+         *     gmail row (#183). Declared before ``/{interaction_id}`` so the literal path always wins.
+         */
+        post: operations["upload_interaction_eml_api_v1_interactions_upload_eml_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/interactions/{interaction_id}": {
         parameters: {
             query?: never;
@@ -6272,6 +6297,28 @@ export interface components {
             /** File */
             file: string;
         };
+        /** Body_upload_interaction_eml_api_v1_interactions_upload_eml_post */
+        Body_upload_interaction_eml_api_v1_interactions_upload_eml_post: {
+            /**
+             * Allow Duplicate
+             * @description Log it even though this Message-ID is already on the timeline
+             * @default false
+             */
+            allow_duplicate: boolean;
+            /** Company Id */
+            company_id?: string | null;
+            /** Contact Id */
+            contact_id?: string | null;
+            /**
+             * File
+             * @description An exported .eml message
+             */
+            file: string;
+            /** Project Id */
+            project_id?: string | null;
+            /** Task Id */
+            task_id?: string | null;
+        };
         /** Body_verify_request_token_api_v1_auth_request_verify_token_post */
         Body_verify_request_token_api_v1_auth_request_verify_token_post: {
             /**
@@ -8553,6 +8600,25 @@ export interface components {
          * @enum {string}
          */
         InteractionDirection: "inbound" | "outbound" | "none";
+        /**
+         * InteractionEmlUploadRead
+         * @description The result of uploading a ``.eml`` (#262): the logged interaction, plus what happened
+         *     to its attachments. A skipped attachment (disallowed type, over the size ceiling, or no
+         *     ``files.file.write``) must never fail the upload — but it must never be silent either.
+         */
+        InteractionEmlUploadRead: {
+            /**
+             * Attachments Skipped
+             * @default 0
+             */
+            attachments_skipped: number;
+            /**
+             * Attachments Stored
+             * @default 0
+             */
+            attachments_stored: number;
+            interaction: components["schemas"]["InteractionRead"];
+        };
         /** InteractionKindDefCreate */
         InteractionKindDefCreate: {
             /**
@@ -8731,7 +8797,7 @@ export interface components {
          * InteractionSource
          * @enum {string}
          */
-        InteractionSource: "manual" | "gmail";
+        InteractionSource: "manual" | "gmail" | "upload";
         /**
          * InteractionStatus
          * @enum {string}
@@ -20261,6 +20327,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InteractionKindDefRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_interaction_eml_api_v1_interactions_upload_eml_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_interaction_eml_api_v1_interactions_upload_eml_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InteractionEmlUploadRead"];
                 };
             };
             /** @description Validation Error */

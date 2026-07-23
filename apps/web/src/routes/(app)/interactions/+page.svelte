@@ -7,7 +7,7 @@
    * other list (#238); the day sections only render while the order is the timeline, so
    * sections and sort can never disagree.
    */
-  import { ArrowRightLeft, Pencil, Plus, Trash2, X } from "@lucide/svelte";
+  import { ArrowRightLeft, Mail, Pencil, Plus, Trash2, X } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
@@ -30,10 +30,12 @@
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import { INTERACTION_COLUMNS } from "$lib/modules/interactions/columns";
+  import EmlUploadForm from "$lib/modules/interactions/EmlUploadForm.svelte";
   import {
     dayLabel,
     type InteractionItem,
     type InteractionKindDef,
+    isGmailRow,
     kindIcon,
     kindLabel,
     localDay,
@@ -138,15 +140,17 @@
   // --- row actions: the panel body's rules, on table rows ----------------------- //
   const isOwner = (item: InteractionItem) =>
     item.owner_user_id !== null && item.owner_user_id === me;
+  // An uploaded .eml (#262) has no mailbox behind it, so it edits like a hand-logged row;
+  // only gmail rows belong to the review flow.
   const mayEdit = (item: InteractionItem) =>
-    item.source === "manual" &&
+    !isGmailRow(item) &&
     (isOwner(item)
       ? can(page.data.user, "interactions.interaction.write", "own")
       : can(page.data.user, "interactions.interaction.write", "any"));
-  const mayMove = (item: InteractionItem) =>
-    item.source === "gmail" ? isOwner(item) : mayEdit(item);
+  const mayMove = (item: InteractionItem) => (isGmailRow(item) ? isOwner(item) : mayEdit(item));
 
   let showCreate = $state(false);
+  let showUpload = $state(false);
   let showEdit = $state(false);
   let editing = $state<InteractionItem | null>(null);
   const busy = new InFlight();
@@ -281,14 +285,25 @@
     {navLabel("interactions", t("interactions.title"))}
   </h1>
   {#if canWrite}
-    <button
-      type="button"
-      class="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-      onclick={() => (showCreate = true)}
-    >
-      <Plus size={15} aria-hidden="true" />
-      {t("interactions.add")}
-    </button>
+    <div class="flex flex-wrap items-center gap-2">
+      <!-- An email from outside a connected mailbox is logged from its .eml export (#262). -->
+      <button
+        type="button"
+        class="inline-flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-text hover:border-brand hover:text-brand"
+        onclick={() => (showUpload = true)}
+      >
+        <Mail size={15} aria-hidden="true" />
+        {t("interactions.eml.add")}
+      </button>
+      <button
+        type="button"
+        class="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        onclick={() => (showCreate = true)}
+      >
+        <Plus size={15} aria-hidden="true" />
+        {t("interactions.add")}
+      </button>
+    </div>
   {/if}
 </div>
 
@@ -590,6 +605,20 @@
     }}
     oncreateproject={(name) => void openProjectQuickCreate(name)}
   />
+</Modal>
+
+<!-- Upload an exported email (#262): the same inline-create dialogs the manual form uses. -->
+<Modal bind:open={showUpload} title={t("interactions.eml.title")}>
+  {#if showUpload}
+    <EmlUploadForm
+      onsaved={() => (showUpload = false)}
+      oncreatecompany={(name) => {
+        qcCompanyName = name;
+        qcCompanyOpen = true;
+      }}
+      oncreateproject={(name) => void openProjectQuickCreate(name)}
+    />
+  {/if}
 </Modal>
 
 <Modal bind:open={showEdit} title={t("interactions.edit")}>

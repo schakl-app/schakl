@@ -36,20 +36,28 @@ export function kindLabel(def: InteractionKindDef, locale: string): string {
   return def.label_i18n?.[locale] || def.label_i18n?.nl || def.label_i18n?.en || def.key;
 }
 
+/** The one kind a person may never type by hand (#174) — only the gmail feed and the `.eml`
+ *  upload path (#262) write it, and both parse a real message rather than accepting one. */
+export const PROTECTED_KIND = "email";
+
 let kindsCache: InteractionKindDef[] | null = null;
 
-/** The org's manual kinds (email excluded; inactive included so an edited row can keep its
- *  deactivated kind), fetched once per session and shared by every form instance — the
- *  create modal must not cost every host page an SSR call. */
-export async function manualKinds(): Promise<InteractionKindDef[]> {
+/** Every kind the org has (inactive included so an edited row can keep its deactivated kind),
+ *  fetched once per session and shared by every form instance — the create modal must not cost
+ *  every host page an SSR call. */
+export async function interactionKinds(): Promise<InteractionKindDef[]> {
   if (kindsCache === null) {
     const response = await fetch("/api/v1/interactions/kinds?include_inactive=true", {
       headers: { accept: "application/json" },
     });
-    const all: InteractionKindDef[] = response.ok ? await response.json() : [];
-    kindsCache = all.filter((k) => k.key !== "email");
+    kindsCache = response.ok ? await response.json() : [];
   }
-  return kindsCache;
+  return kindsCache ?? [];
+}
+
+/** The kinds the manual form may offer — everything except the protected `email`. */
+export async function manualKinds(): Promise<InteractionKindDef[]> {
+  return (await interactionKinds()).filter((k) => k.key !== PROTECTED_KIND);
 }
 
 export interface InteractionItem {
@@ -85,6 +93,23 @@ export interface InteractionItem {
   }[];
   source: string;
   deep_link: string | null;
+}
+
+/**
+ * Is this row a real email message — synced from Gmail or uploaded as a `.eml` (#262)?
+ *
+ * Such a body is *received text*, so it renders as it arrived (line breaks kept, never parsed
+ * as our markdown) and carries the attachments the message came with. A `manual` row's body is
+ * the author's own note.
+ */
+export function isMailRow(item: Pick<InteractionItem, "source">): boolean {
+  return item.source === "gmail" || item.source === "upload";
+}
+
+/** Only a Gmail-sourced row belongs to the mailbox owner's review flow (approve / reject /
+ *  remap, and no ordinary edit). An uploaded email is an ordinary row of its owner's. */
+export function isGmailRow(item: Pick<InteractionItem, "source">): boolean {
+  return item.source === "gmail";
 }
 
 const _dayFmt = new Map<string, Intl.DateTimeFormat>();
