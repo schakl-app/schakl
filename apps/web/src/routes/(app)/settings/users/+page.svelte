@@ -119,6 +119,20 @@
     contractsOpen = true;
   }
 
+  // Terminating a contract asks *per which date* rather than assuming today: an open-ended
+  // ("doorlopend") contract can be agreed to end on a specific future or past date. The row
+  // survives as history — only its end date is set (see the model docstring).
+  type Contract = (typeof data.contracts)[number];
+  let terminateOpen = $state(false);
+  let terminateFor = $state<Contract | null>(null);
+  let terminateDate = $state(todayIso);
+
+  function openTerminate(contract: Contract) {
+    terminateFor = contract;
+    terminateDate = todayIso;
+    terminateOpen = true;
+  }
+
   // --- recurring rostered free days / ADV (#107) ----------------------------------
   const activeLeaveTypes = $derived(
     ((data.leaveTypes ?? []) as LeaveTypeInfo[]).filter((lt) => lt.active),
@@ -535,22 +549,15 @@
                   </span>
                 </div>
                 {#if !contract.end_date}
-                  <form
-                    method="POST"
-                    action="?/terminateContract"
-                    use:enhance={busy.wrap(`terminate:${contract.id}`)}
+                  <Button
+                    variant="secondary"
+                    size="xs"
+                    type="button"
+                    onclick={() => openTerminate(contract)}
+                    title={t("settings.users.contract_terminate")}
                   >
-                    <input type="hidden" name="contract_id" value={contract.id} />
-                    <input type="hidden" name="end_date" value={todayIso} />
-                    <Button
-                      variant="secondary"
-                      size="xs"
-                      loading={busy.is(`terminate:${contract.id}`)}
-                      title={t("settings.users.contract_terminate")}
-                    >
-                      {t("settings.users.contract_terminate")}
-                    </Button>
-                  </form>
+                    {t("settings.users.contract_terminate")}
+                  </Button>
                 {/if}
                 <form method="POST" action="?/deleteContract" use:enhance>
                   <input type="hidden" name="contract_id" value={contract.id} />
@@ -628,6 +635,50 @@
           </form>
         {/key}
       </div>
+    {/key}
+  {/if}
+</Modal>
+
+<!-- Terminating an open-ended contract asks for the effective end date (per which date) rather
+     than assuming today; the contract stays on file as history, only its end date is recorded.
+     The API is the authority: it rejects an end before the start (errors.leave_end_before_start). -->
+<Modal bind:open={terminateOpen} title={t("settings.users.contract_terminate")}>
+  {#if terminateFor}
+    {#key terminateFor.id}
+      <form
+        method="POST"
+        action="?/terminateContract"
+        class="space-y-4"
+        use:enhance={busy.wrap("terminateContract", () => ({ result, update }) => {
+          if (result.type === "success") terminateOpen = false;
+          void update({ reset: false });
+        })}
+      >
+        <input type="hidden" name="contract_id" value={terminateFor.id} />
+        <p class="text-sm text-text-muted">{t("settings.users.contract_terminate_prompt")}</p>
+        <div>
+          <label for="terminate-date" class="mb-1 block text-sm font-medium text-text">
+            {t("settings.users.contract_terminate_date")}
+          </label>
+          <DateInput id="terminate-date" name="end_date" bind:value={terminateDate} required />
+          <p class="mt-1 text-xs text-text-muted">
+            {t("settings.users.contract_terminate_hint", {
+              start: fmtNumericDate(terminateFor.start_date),
+            })}
+          </p>
+        </div>
+        {#if form?.error}<p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
+        <div class="flex justify-end gap-2">
+          <button
+            type="button"
+            class="rounded-lg border border-border px-4 py-2 text-sm text-text"
+            onclick={() => (terminateOpen = false)}>{t("common.cancel")}</button
+          >
+          <Button variant="danger" loading={busy.is("terminateContract")} disabled={!terminateDate}>
+            {t("settings.users.contract_terminate")}
+          </Button>
+        </div>
+      </form>
     {/key}
   {/if}
 </Modal>
