@@ -55,7 +55,7 @@ registerWebModule({
       module: "google",
       labelKey: "google.calendar.source_label",
       color: "blue",
-      load: async (api, { from, to }) => {
+      load: async (api, { from, to, color }) => {
         const { data } = await api.GET("/api/v1/google/calendar/events", {
           params: { query: { date_from: from, date_to: to } },
         });
@@ -64,7 +64,7 @@ registerWebModule({
           start: event.start,
           end: event.end,
           title: event.title || t("google.calendar.untitled"),
-          color: "blue",
+          color: color ?? "blue",
           href: event.html_link ?? undefined,
           tentative: event.tentative,
           sourceKey: "google.calendar",

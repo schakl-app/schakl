@@ -52,3 +52,35 @@ export function labelChipClass(color: string): string {
 export function labelDotClass(color: string): string {
   return DOT[color] ?? "bg-text-muted";
 }
+
+/**
+ * A raw `#rgb` / `#rrggbb` colour, as the personal calendar override layer stores alongside the
+ * named tokens (the shared calendar lets a viewer recolour a feed to any hue, #281). Org data —
+ * leave types, task labels — stays token-only, so only the calendar render path ever meets a hex.
+ */
+export function isHexColor(color: string | null | undefined): color is string {
+  return typeof color === "string" && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(color);
+}
+
+/**
+ * A colour resolved for rendering: a Tailwind `class` for the known tokens (JIT needs the literal
+ * names), or an inline `style` feeding a raw hex into the `--evc` custom property that the global
+ * `.cal-chip-custom` / `.cal-dot-custom` rules mix against the theme surface (app.css). Exactly one
+ * of the two ever carries the colour; the other is empty, so a caller can always spread both.
+ */
+export interface ColorParts {
+  class: string;
+  style: string;
+}
+
+export function labelChipParts(color: string): ColorParts {
+  return isHexColor(color)
+    ? { class: "cal-chip-custom", style: `--evc:${color}` }
+    : { class: labelChipClass(color), style: "" };
+}
+
+export function labelDotParts(color: string): ColorParts {
+  return isHexColor(color)
+    ? { class: "cal-dot-custom", style: `--evc:${color}` }
+    : { class: labelDotClass(color), style: "" };
+}

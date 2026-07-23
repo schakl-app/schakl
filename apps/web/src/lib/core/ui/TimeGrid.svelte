@@ -13,7 +13,7 @@
    * on the month grid; timed blocks are not draggable (in v1 only Google events carry times,
    * and we never write to Google).
    */
-  import { eventChipClass, eventLinkAttrs, eventsByDayMap, isoDiffDays } from "$lib/core/calendar";
+  import { eventChipParts, eventLinkAttrs, eventsByDayMap, isoDiffDays } from "$lib/core/calendar";
   import { fmtWeekdayShort } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { getTimeZone } from "$lib/core/timezone";
@@ -142,10 +142,22 @@
     dragging = null;
   }
 
-  const chipClass = (e: CalendarEvent) =>
-    `block truncate rounded px-1.5 py-0.5 text-xs ${eventChipClass(e)}`;
-  const blockClass = (e: CalendarEvent) =>
-    `absolute overflow-hidden rounded border border-surface px-1.5 py-0.5 text-xs ${eventChipClass(e)}`;
+  // Class + inline style so a personal custom hue rides `--evc` (#281); the positioned block
+  // appends `parts.style` onto its own top/height/left/width style below.
+  const chipParts = (e: CalendarEvent) => {
+    const parts = eventChipParts(e);
+    return {
+      class: `block truncate rounded px-1.5 py-0.5 text-xs ${parts.class}`,
+      style: parts.style,
+    };
+  };
+  const blockParts = (e: CalendarEvent) => {
+    const parts = eventChipParts(e);
+    return {
+      class: `absolute overflow-hidden rounded border border-surface px-1.5 py-0.5 text-xs ${parts.class}`,
+      style: parts.style,
+    };
+  };
 
   const hours = Array.from({ length: 24 }, (_, hour) => hour);
 </script>
@@ -193,11 +205,13 @@
         }}
       >
         {#each allDayByDay[day] ?? [] as event (event.id + day)}
+          {@const parts = chipParts(event)}
           {#if event.href}
             <a
               href={event.href}
               {...eventLinkAttrs(event.href)}
-              class="{chipClass(event)} {event.draggable && onmove ? 'cursor-grab' : ''}"
+              class="{parts.class} {event.draggable && onmove ? 'cursor-grab' : ''}"
+              style={parts.style}
               title={event.title}
               draggable={Boolean(event.draggable && onmove)}
               ondragstart={(e) => dragStart(e, event, day)}
@@ -207,7 +221,7 @@
               {event.title}
             </a>
           {:else}
-            <span class={chipClass(event)} title={event.title}>
+            <span class={parts.class} style={parts.style} title={event.title}>
               {#if event.tentative}?{/if}
               {event.title}
             </span>
@@ -256,13 +270,14 @@
             {@const top = (block.startMin / 60) * HOUR_PX}
             {@const height = ((block.endMin - block.startMin) / 60) * HOUR_PX}
             {@const width = 100 / block.lanes}
+            {@const parts = blockParts(block.event)}
             {#if block.event.href}
               <a
                 href={block.event.href}
                 {...eventLinkAttrs(block.event.href)}
-                class={blockClass(block.event)}
+                class={parts.class}
                 style="top: {top}px; height: {height}px; left: {block.lane *
-                  width}%; width: {width}%"
+                  width}%; width: {width}%; {parts.style}"
                 title={block.event.title}
               >
                 {#if block.event.tentative}?{/if}
@@ -270,9 +285,9 @@
               </a>
             {:else}
               <span
-                class={blockClass(block.event)}
+                class={parts.class}
                 style="top: {top}px; height: {height}px; left: {block.lane *
-                  width}%; width: {width}%"
+                  width}%; width: {width}%; {parts.style}"
                 title={block.event.title}
               >
                 {#if block.event.tentative}?{/if}

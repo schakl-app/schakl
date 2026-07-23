@@ -6,7 +6,7 @@
   import { eventLinkAttrs } from "$lib/core/calendar";
   import { fmtLongDay } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
-  import { labelDotClass } from "$lib/core/ui/colors";
+  import { labelDotParts } from "$lib/core/ui/colors";
   import type { CalendarEvent } from "$lib/core/registry";
 
   let {
@@ -50,6 +50,7 @@
                   <span class="truncate">{event.title}</span>
                 </span>
               {:else}
+                {@const dot = labelDotParts(event.color)}
                 <a
                   href={event.href ?? "#"}
                   {...eventLinkAttrs(event.href)}
@@ -57,7 +58,7 @@
                     ? 'opacity-60'
                     : ''}"
                 >
-                  <span class="h-2 w-2 shrink-0 rounded-full {labelDotClass(event.color)}"></span>
+                  <span class="h-2 w-2 shrink-0 rounded-full {dot.class}" style={dot.style}></span>
                   <span class="truncate">{event.title}</span>
                   {#if event.tentative}
                     <span class="text-xs text-text-muted">{t("calendar.tentative")}</span>

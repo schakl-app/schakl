@@ -235,6 +235,22 @@ export interface CalendarRange {
    * own; a source without one ignores this.
    */
   people?: string[];
+  /**
+   * The viewer's personal colour override for *this* source (#281) — a label token or a raw hex
+   * (`labelChipParts` renders either). When set, the source colours its events with it instead of
+   * its own default; a source without an override ignores this.
+   */
+  color?: string;
+  /**
+   * Per-colleague colour overrides for a `splitPeople` source (#281), keyed by user id. A leave
+   * chip prefers its person's override, then the whole-feed `color`, then the leave-type colour.
+   */
+  personColors?: Record<string, string>;
+  /**
+   * The colleagues the viewer hid from a `splitPeople` source (#281), by user id. The source drops
+   * their items; unlike `people` (an additive overlay), everyone shows until explicitly hidden.
+   */
+  hiddenPeople?: string[];
 }
 
 export interface CalendarSourceSpec {
@@ -245,6 +261,12 @@ export interface CalendarSourceSpec {
   labelKey: string;
   /** Legend swatch — a label colour token (core/ui/colors), matching the feed's chips. */
   color: string;
+  /**
+   * Whether a viewer may recolour this feed (#281). Default `true`; set `false` for a feed whose
+   * chips ignore colour (holidays render as a quiet dashed band, #47), so the menu shows a static
+   * swatch there instead of a pointless picker.
+   */
+  colorable?: boolean;
   /** Server-side loader (runs in the calendar's +page.server.ts, API-only). */
   load: (api: ApiClient, range: CalendarRange) => Promise<CalendarEvent[]>;
   /**
@@ -261,6 +283,14 @@ export interface CalendarSourceSpec {
    * permission to see anyone else (a member sees only their own feed).
    */
   people?: (api: ApiClient, range: CalendarRange) => Promise<CalendarPerson[]>;
+  /**
+   * The colleagues this feed can be *split* into (#281): the feeds menu renders each as its own
+   * legend row with an individual colour swatch and a show/hide checkbox, so a viewer can tell
+   * three people's leave apart at a glance. Distinct from `people` (an additive overlay picker):
+   * a split source already shows everyone, and the split only recolours / hides per person.
+   * Returns `[]` when the viewer may not distinguish colleagues (then the feed stays one colour).
+   */
+  splitPeople?: (api: ApiClient, range: CalendarRange) => Promise<CalendarPerson[]>;
 }
 
 export interface WebModule {
