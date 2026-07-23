@@ -93,6 +93,9 @@ export const actions: Actions = {
       "company_id",
       "project_id",
       "assignee_user_id",
+      // The assignee picker (#273) always posts both fields (one empty), so switching between an
+      // employee and a client contact actively clears the other — the API rejects both at once.
+      "assignee_contact_id",
       "due_date",
       "due_change_reason",
     ]) {
@@ -135,7 +138,11 @@ export const actions: Actions = {
       // generic "some fields are invalid" — the message is what tells the user what to do.
       const e = apiErrorKey(apiError);
       return fail(400, {
-        error: e.fields?.status ?? e.fields?.closing_interaction_id ?? e.key,
+        error:
+          e.fields?.status ??
+          e.fields?.closing_interaction_id ??
+          e.fields?.assignee_contact_id ??
+          e.key,
       });
     }
     return { updated: true };

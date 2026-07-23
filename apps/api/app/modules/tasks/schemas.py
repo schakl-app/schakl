@@ -26,6 +26,10 @@ class TaskBase(BaseModel):
     company_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None
     assignee_user_id: uuid.UUID | None = None
+    # A task's client contact as assignee (#273) — mutually exclusive with ``assignee_user_id``
+    # and scoped to ``company_id`` server-side. Set exactly one; a contact never coexists with an
+    # employee assignee.
+    assignee_contact_id: uuid.UUID | None = None
     title: str = Field(min_length=1, max_length=512)
     description: str | None = None
     # A tenant-configured status key (issue #62); ``None`` on create means the org's default
@@ -49,6 +53,10 @@ class TaskUpdate(BaseModel):
     company_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None
     assignee_user_id: uuid.UUID | None = None
+    # See ``TaskBase``: exclusive with ``assignee_user_id``, scoped to the task's company. The web
+    # picker always posts both keys (one null) so switching kinds clears the other; a raw client
+    # that sets this while leaving a live ``assignee_user_id`` gets the 422 exclusivity error.
+    assignee_contact_id: uuid.UUID | None = None
     title: str | None = Field(default=None, min_length=1, max_length=512)
     description: str | None = None
     status: str | None = Field(default=None, max_length=50)

@@ -106,6 +106,17 @@ class Task(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
         nullable=True,
         index=True,
     )
+    # A task may instead be assigned to a **contact of its own client company** (#273) — "waiting
+    # on the client to send the materials". Mutually exclusive with ``assignee_user_id`` and
+    # scoped to ``company_id`` in the service (a check constraint can't express the company link).
+    # SET NULL like the employee assignee: deleting the contact unassigns, never deletes the task.
+    # Cross-module FK by table name only — no import of the contacts module.
+    assignee_contact_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("contacts.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     title: Mapped[str] = mapped_column(String(512), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     # A tenant-configured status key (issue #62), not a closed enum. Wide enough for a custom

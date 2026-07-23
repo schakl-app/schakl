@@ -2227,6 +2227,8 @@
   "interactions.eml.attachments_skipped": "The email was logged, but {count} attachment(s) could not be stored: the file type is not allowed or the file is too large.",
   "errors.tasks_closing_interaction_required": "This status requires a closing contact moment. Log one and close the task with it.",
   "errors.tasks_closing_interaction_not_linked": "The chosen contact moment is not linked to this task (or is still pending review).",
+  "errors.tasks_assignee_conflict": "A task is assigned to an employee or a client contact, not both.",
+  "errors.tasks_assignee_contact_company": "That contact does not belong to this task's client. Pick a contact of the client company.",
   "permissions.interactions.interaction.read": "View interactions",
   "permissions.interactions.interaction.write": "Log and edit interactions",
   "permissions.interactions.interaction.delete": "Delete interactions",

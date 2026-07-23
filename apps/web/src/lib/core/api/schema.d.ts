@@ -13260,6 +13260,8 @@ export interface components {
         TaskCreate: {
             /** Allocated Minutes */
             allocated_minutes?: number | null;
+            /** Assignee Contact Id */
+            assignee_contact_id?: string | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
             /** Company Id */
@@ -13297,6 +13299,8 @@ export interface components {
             activities?: components["schemas"]["ActivityRead"][];
             /** Allocated Minutes */
             allocated_minutes?: number | null;
+            /** Assignee Contact Id */
+            assignee_contact_id?: string | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
             /** Checklists */
@@ -13379,6 +13383,8 @@ export interface components {
         TaskListItem: {
             /** Allocated Minutes */
             allocated_minutes?: number | null;
+            /** Assignee Contact Id */
+            assignee_contact_id?: string | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
             /**
@@ -13459,6 +13465,8 @@ export interface components {
         TaskRead: {
             /** Allocated Minutes */
             allocated_minutes?: number | null;
+            /** Assignee Contact Id */
+            assignee_contact_id?: string | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
             /** Closing Interaction Id */
@@ -13517,6 +13525,8 @@ export interface components {
         TaskUpdate: {
             /** Allocated Minutes */
             allocated_minutes?: number | null;
+            /** Assignee Contact Id */
+            assignee_contact_id?: string | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
             /** Closing Interaction Id */
@@ -26551,6 +26561,7 @@ export interface operations {
                 company_id?: string | null;
                 project_id?: string | null;
                 assignee_user_id?: string | null;
+                assignee_contact_id?: string | null;
                 /** @description A configured status key */
                 status?: string | null;
                 label_id?: string | null;

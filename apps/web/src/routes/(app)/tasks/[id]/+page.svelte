@@ -21,6 +21,7 @@
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import { LABEL_COLORS, labelChipClass, labelDotClass } from "$lib/modules/tasks/labels";
+  import TaskAssigneePicker from "$lib/modules/tasks/TaskAssigneePicker.svelte";
   import TaskSchedulePanel from "$lib/modules/tasks/TaskSchedulePanel.svelte";
   import { formatMinutes } from "$lib/modules/time/format";
 
@@ -187,9 +188,6 @@
   const freqs = ["daily", "weekly", "monthly", "quarterly", "yearly"] as const;
 
   const companyItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
-  const memberItems = $derived(
-    data.members.map((m) => ({ value: m.user_id, label: m.full_name || m.email })),
-  );
 
   // Live company/project picks for the edit form (#227): the client narrows the project list
   // and a picked project backfills its client, like every create-side pairing of these two
@@ -227,6 +225,46 @@
     const project = data.projects.find((p) => p.id === id);
     if (project?.company_id) fCompany = project.company_id;
   }
+  // The task's own client contacts (#273): the options for a contact assignee, and the source
+  // for naming a contact assignee in the read view. Follows the *live* company pick (fCompany) so
+  // re-homing the task in edit mode narrows the options; reuses the mention fetch when the company
+  // is unchanged (the common case), only issuing a fresh request when the client differs.
+  let editContacts = $state<{ id: string; name: string }[]>([]);
+  let editContactsFor = $state<string>("");
+  $effect(() => {
+    const companyId = fCompany;
+    if (!companyId || companyId === (task.company_id ?? "")) return;
+    if (companyId === editContactsFor) return;
+    void (async () => {
+      const response = await fetch(`/api/v1/contacts?limit=200&company_id=${companyId}`, {
+        headers: { accept: "application/json" },
+      });
+      if (!response.ok) return;
+      interface ContactRow {
+        id: string;
+        first_name: string;
+        last_name?: string | null;
+      }
+      const rows: ContactRow[] = (await response.json()).items ?? [];
+      editContacts = rows.map((c) => ({
+        id: c.id,
+        name: `${c.first_name} ${c.last_name ?? ""}`.trim(),
+      }));
+      editContactsFor = companyId;
+    })();
+  });
+  const assigneeContacts = $derived(
+    !fCompany
+      ? []
+      : fCompany === (task.company_id ?? "")
+        ? contactCandidates.map((c) => ({ id: c.id, name: c.name }))
+        : editContactsFor === fCompany
+          ? editContacts
+          : [],
+  );
+  const contactName = (id?: string | null) =>
+    id ? (assigneeContacts.find((c) => c.id === id)?.name ?? null) : null;
+
   const memberName = (id?: string | null) => {
     const m = data.members.find((mm) => mm.user_id === id);
     return m ? m.full_name || m.email : null;
@@ -1176,15 +1214,18 @@
             </select>
           </div>
           <div>
-            <label for="assignee" class="mb-1 block text-xs font-medium text-text-muted"
+            <label for="assignee-entity" class="mb-1 block text-xs font-medium text-text-muted"
               >{t("tasks.field.assignee")}</label
             >
-            <Combobox
-              items={memberItems}
-              name="assignee_user_id"
-              value={task.assignee_user_id ?? ""}
-              id="assignee"
+            <!-- Employee, or — when the task has a client (#273) — one of that client's contacts.
+                 The contact list follows the live company pick above (fCompany). -->
+            <TaskAssigneePicker
               formId="task-edit"
+              employees={data.members}
+              contacts={assigneeContacts}
+              contactsEnabled={!!fCompany}
+              userValue={task.assignee_user_id ?? ""}
+              contactValue={task.assignee_contact_id ?? ""}
             />
           </div>
           <div>
@@ -1278,7 +1319,16 @@
           <dl class="space-y-2 text-sm">
             <div class="flex items-center justify-between gap-2">
               <dt class="text-xs font-medium text-text-muted">{t("tasks.field.assignee")}</dt>
-              <dd class="text-text">{memberName(task.assignee_user_id) ?? "—"}</dd>
+              <dd class="text-text">
+                <!-- A contact assignee (#273) reads with its kind, so it isn't mistaken for an
+                     employee; its name resolves from the client's contacts, loaded client-side. -->
+                {#if task.assignee_contact_id}
+                  {contactName(task.assignee_contact_id) ?? t("party.contact")}
+                  <span class="text-xs text-text-muted">({t("party.contact")})</span>
+                {:else}
+                  {memberName(task.assignee_user_id) ?? "—"}
+                {/if}
+              </dd>
             </div>
             <div class="flex items-center justify-between gap-2">
               <dt class="text-xs font-medium text-text-muted">{t("tasks.field.project")}</dt>
