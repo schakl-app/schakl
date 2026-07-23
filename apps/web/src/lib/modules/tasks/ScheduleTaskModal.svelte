@@ -16,6 +16,7 @@
   import { enhance } from "$app/forms";
   import { fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
@@ -391,13 +392,9 @@
           class="rounded-lg border border-border px-3 py-2 text-sm text-text hover:bg-surface"
           onclick={() => (open = false)}>{t("common.cancel")}</button
         >
-        <button
-          type="submit"
-          disabled={submitting}
-          class="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
-        >
+        <Button type="submit" loading={submitting}>
           {t("tasks.schedule.submit")}
-        </button>
+        </Button>
       </div>
     </form>
   {/if}

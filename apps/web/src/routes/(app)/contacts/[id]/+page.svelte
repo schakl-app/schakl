@@ -10,6 +10,7 @@
   import { entityPanelsFor } from "$lib/core/registry";
   import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import CustomFieldsView from "$lib/core/customfields/CustomFieldsView.svelte";
@@ -73,6 +74,17 @@
     draftCompanyName = query.trim();
     showCreateCompany = true;
   }
+
+  // Portal actions in flight (#242): the submitting button spins, its siblings disable —
+  // enable/resend/disable all mutate the same portal, so only one may run at a time.
+  let portalBusy = $state<"enable" | "resend" | "disable" | null>(null);
+  const portalEnhance = (key: "enable" | "resend" | "disable") => () => {
+    portalBusy = key;
+    return async ({ update }: { update: () => Promise<void> }) => {
+      portalBusy = null;
+      await update();
+    };
+  };
 </script>
 
 <svelte:head>
@@ -311,31 +323,35 @@
         {/if}
         <div class="flex flex-wrap gap-2">
           {#if data.portal.status === "none" || data.portal.status === "disabled"}
-            <form method="POST" action="?/portalEnable" use:enhance>
-              <button
-                class="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
-              >
+            <form method="POST" action="?/portalEnable" use:enhance={portalEnhance("enable")}>
+              <Button size="sm" loading={portalBusy === "enable"} disabled={portalBusy !== null}>
                 {data.portal.status === "disabled"
                   ? t("contacts.portal.reenable")
                   : t("contacts.portal.enable")}
-              </button>
+              </Button>
             </form>
           {:else}
             {#if data.portal.status === "invited"}
-              <form method="POST" action="?/portalResend" use:enhance>
-                <button
-                  class="rounded-lg border border-border px-3 py-1.5 text-sm text-text hover:border-brand"
+              <form method="POST" action="?/portalResend" use:enhance={portalEnhance("resend")}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  loading={portalBusy === "resend"}
+                  disabled={portalBusy !== null}
                 >
                   {t("contacts.portal.resend")}
-                </button>
+                </Button>
               </form>
             {/if}
-            <form method="POST" action="?/portalDisable" use:enhance>
-              <button
-                class="rounded-lg border border-border px-3 py-1.5 text-sm text-text hover:border-red-400 hover:text-red-500"
+            <form method="POST" action="?/portalDisable" use:enhance={portalEnhance("disable")}>
+              <Button
+                variant="danger-outline"
+                size="sm"
+                loading={portalBusy === "disable"}
+                disabled={portalBusy !== null}
               >
                 {t("contacts.portal.disable")}
-              </button>
+              </Button>
             </form>
           {/if}
         </div>

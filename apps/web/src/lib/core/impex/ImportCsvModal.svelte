@@ -7,6 +7,7 @@
    */
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
+  import Button from "$lib/core/ui/Button.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
 
   import type { components } from "$lib/core/api/schema";
@@ -29,7 +30,8 @@
 
   const SHOWN_ERRORS = 10;
 
-  let submitting = $state(false);
+  // Which of the two submits is in flight (#242) — the clicked one spins, both disable.
+  let submitting = $state<"preview" | "commit" | null>(null);
   // Results belong to this modal session and to the picked file: reopening the modal or
   // picking another file voids what an earlier run reported.
   let submitted = $state(false);
@@ -53,10 +55,10 @@
     method="POST"
     {action}
     enctype="multipart/form-data"
-    use:enhance={() => {
-      submitting = true;
+    use:enhance={({ submitter }) => {
+      submitting = submitter?.getAttribute("value") === "commit" ? "commit" : "preview";
       return async ({ update }) => {
-        submitting = false;
+        submitting = null;
         submitted = true;
         stale = false;
         // Keep the picked file standing: the commit posts the same input again.
@@ -119,22 +121,18 @@
 
     <div class="mt-4 flex flex-wrap gap-2">
       {#if !current?.applied}
-        <button
+        <Button
+          variant="secondary"
           name="mode"
           value="preview"
-          class="rounded-lg border border-border px-4 py-2 text-sm disabled:opacity-50"
-          disabled={submitting}
+          loading={submitting === "preview"}
+          disabled={submitting !== null}
         >
           {t("impex.preview")}
-        </button>
-        <button
-          name="mode"
-          value="commit"
-          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
-          disabled={!canCommit}
-        >
+        </Button>
+        <Button name="mode" value="commit" loading={submitting === "commit"} disabled={!canCommit}>
           {t("impex.commit")}
-        </button>
+        </Button>
       {/if}
       <button
         type="button"

@@ -236,6 +236,21 @@
   re-asserts its own state after any form reset, so a forgotten callback can no longer strip
   checkbox marks — but radios and selects have no component guard; the form-level rule is the
   convention.
+- **Loading / in-flight state: a button whose request is under way says so** (#242). A
+  `use:enhance` submit with no feedback reads as broken on a slow connection and takes a
+  double-click as a double-submit. The convention: a local `submitting = $state(false)` flipped
+  on in the `use:enhance` submit function and off in its returned callback, driving the shared
+  `core/ui/Button` — `loading={submitting}` disables the button and shows the shared
+  `core/ui/Spinner` beside the label (the label itself stays; no "…" rewording, so no extra i18n
+  keys). `Button` is also where the house button styles live (`variant`:
+  primary/secondary/danger/danger-outline, `size`: md/sm) instead of being re-typed per call
+  site — a new button starts from it, and hand-styled siblings are converted opportunistically
+  when a screen is touched. Wrinkles the flagship fixes cover: two submit buttons in one form
+  (CSV import's preview/commit) key `submitting` off `submitter` so the clicked one spins while
+  both disable; sibling one-shot forms that mutate the same record (the contact portal's
+  enable/resend/disable) share one busy key so the in-flight action spins and the others
+  disable. `Spinner` (a lucide loader on Tailwind's `animate-spin`) is `aria-hidden` — it always
+  accompanies visible text, never replaces it.
 - **A password reveal (eye) toggle sits on user-password fields only** (#235, owner call): login,
   setup, reset-password and the account page's password fields use the shared
   `core/ui/PasswordInput` — the places where a mistyped password locks someone out. Write-only
@@ -405,6 +420,10 @@
   UI read as "it didn't save", and the next save posted the rewound marks. The rule lives under
   Interaction patterns: persistent surfaces pass `update({ reset: false })`, one-shot buttons
   and self-unmounting create forms may stay bare.
+- **A submit button with no in-flight state.** The contact-portal "Enable" gave zero feedback
+  while its request ran (#242): on a slow connection it read as broken, and every extra click
+  was another submit. The convention lives under Interaction patterns (Loading / in-flight
+  state): `submitting` state + `core/ui/Button` with `loading`.
 - **A control that renders without checking `can()`.** Row ⋯ Edit/Delete, New-buttons, and
   quick-action links shipped ungated on half the lists (#253): every role saw them and the API
   403'd on submit. A control that posts a permission-gated action renders inside

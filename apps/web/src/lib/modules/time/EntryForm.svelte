@@ -10,6 +10,7 @@
   import { burnBarClass, burnBarWidth, burnPct } from "$lib/core/burn";
   import { fmtDateTime, fmtNumber } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
@@ -353,13 +354,18 @@
 
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
+
+  // Save in flight (#242): spinner on the button, no double submit.
+  let submitting = $state(false);
 </script>
 
 <form
   method="POST"
   {action}
-  use:enhance={() =>
-    ({ result, update }) => {
+  use:enhance={() => {
+    submitting = true;
+    return async ({ result, update }) => {
+      submitting = false;
       if (result.type === "success" && draftEnabled) {
         // The entry landed and the API cleared the draft with it (#44).
         clearTimeout(draftTimer);
@@ -369,8 +375,9 @@
         sawFirstRun = false;
       }
       ondone?.();
-      void update({ reset: !entry });
-    }}
+      await update({ reset: !entry });
+    };
+  }}
   class="space-y-3"
 >
   {#if entry}<input type="hidden" name="id" value={entry.id} />{/if}
@@ -590,11 +597,9 @@
 
   {#if error}<p class="text-sm text-red-600">{t(error)}</p>{/if}
   <div class="flex gap-2">
-    <button
-      class="flex-1 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-    >
+    <Button type="submit" loading={submitting} class="flex-1">
       {t("common.save")}
-    </button>
+    </Button>
     {#if oncancel}
       <button
         type="button"
