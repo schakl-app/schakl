@@ -150,6 +150,15 @@
   </div>
 </div>
 
+<!-- The ADV modal closes on a successful add (#271), so its "N days placed" line lands here,
+     where it outlives the surface that produced it — and sits right above the balances the
+     new days just moved. -->
+{#if form?.recurringAdded}
+  <p class="mb-4 text-sm text-green-600 dark:text-green-400">
+    {t("leave.recurring.generated", { count: form.recurringGenerated ?? 0 })}
+  </p>
+{/if}
+
 <!-- Balances per balance-tracked type -->
 <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
   {#each data.balances as balance (balance.leave_type_id)}
@@ -361,7 +370,8 @@
     types={selfServiceTypes}
     userId={page.data.user?.id ?? ""}
     error={form?.error ?? null}
-    generated={form?.recurringSaved ? (form.recurringGenerated ?? 0) : null}
+    generated={form?.recurringSaved && !form.recurringAdded ? (form.recurringGenerated ?? 0) : null}
+    ondone={() => (recurringOpen = false)}
   />
 </Modal>
 

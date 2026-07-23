@@ -129,7 +129,9 @@ export const actions: Actions = {
       },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
-    return { recurringSaved: true, recurringGenerated: data?.generated ?? 0 };
+    // `recurringAdded` separates the add from the toggle/delete: the add closes the modal
+    // (#271), so its confirmation is the page's to render, not the modal's.
+    return { recurringSaved: true, recurringAdded: true, recurringGenerated: data?.generated ?? 0 };
   },
 
   toggleRecurring: async (event) => {
@@ -141,7 +143,11 @@ export const actions: Actions = {
       body: { active: form.get("active") === "true" },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
-    return { recurringSaved: true, recurringGenerated: data?.generated ?? 0 };
+    return {
+      recurringSaved: true,
+      recurringAdded: false,
+      recurringGenerated: data?.generated ?? 0,
+    };
   },
 
   deleteRecurring: async (event) => {
@@ -153,6 +159,6 @@ export const actions: Actions = {
       });
       if (error) return fail(400, { error: apiErrorKey(error).key });
     }
-    return { recurringSaved: true, recurringGenerated: 0 };
+    return { recurringSaved: true, recurringAdded: false, recurringGenerated: 0 };
   },
 };

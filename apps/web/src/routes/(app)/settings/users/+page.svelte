@@ -210,6 +210,18 @@
   </button>
 </div>
 
+<!-- The ADV modal closes on a successful add (#271), so its "N days placed" line lands here,
+     where it outlives the surface that produced it. Named: this page lists everyone, and a
+     bare count would not say whose calendar just filled up. -->
+{#if form?.recurringAdded && recurringFor}
+  <p class="mb-4 text-sm text-green-600 dark:text-green-400">
+    {t("settings.users.recurring_generated", {
+      count: form.recurringGenerated ?? 0,
+      name: recurringFor.full_name || recurringFor.email,
+    })}
+  </p>
+{/if}
+
 {#if showInvite}
   <form
     method="POST"
@@ -633,7 +645,10 @@
           types={activeLeaveTypes}
           userId={recurringFor.user_id}
           error={form?.error ?? null}
-          generated={form?.recurringSaved ? (form.recurringGenerated ?? 0) : null}
+          generated={form?.recurringSaved && !form.recurringAdded
+            ? (form.recurringGenerated ?? 0)
+            : null}
+          ondone={() => (recurringOpen = false)}
         />
       </div>
     {/key}

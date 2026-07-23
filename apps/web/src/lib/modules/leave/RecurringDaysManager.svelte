@@ -9,6 +9,11 @@
    *
    * Posts to `?/saveRecurring`, `?/toggleRecurring` and `?/deleteRecurring` — both host pages
    * declare all three.
+   *
+   * Adding a pattern is a completed act, not a form you sit in: it fires `ondone` so the host
+   * closes the modal (#271). The "N days placed" confirmation then belongs to the host page —
+   * a modal that closes takes its own success line with it. Toggling and deleting keep the
+   * modal open, so those keep reporting through `generated` right here.
    */
   import { Clock, Trash2 } from "@lucide/svelte";
 
@@ -42,6 +47,7 @@
     userId,
     error = null,
     generated = null,
+    ondone,
   }: {
     /** This user's patterns. */
     patterns: RecurringPattern[];
@@ -50,8 +56,10 @@
     /** Whose pattern a save creates (hidden field; the API re-checks ownership). */
     userId: string;
     error?: string | null;
-    /** How many days the last save placed — shown as the success line. */
+    /** How many days a toggle/delete placed — the success line for the paths that stay open. */
     generated?: number | null;
+    /** A pattern was added: the host closes its modal and owns the confirmation. */
+    ondone?: () => void;
   } = $props();
 
   const locale = getLocale();
@@ -158,9 +166,9 @@
       method="POST"
       action="?/saveRecurring"
       class="space-y-3 border-t border-border pt-4"
-      use:enhance={busy.wrap("save", () => ({ result, update }) => {
-        if (result.type === "success") void update({ reset: true });
-        else void update({ reset: false });
+      use:enhance={busy.wrap("save", () => async ({ result, update }) => {
+        if (result.type === "success") ondone?.();
+        await update({ reset: result.type === "success" });
       })}
     >
       <input type="hidden" name="user_id" value={userId} />

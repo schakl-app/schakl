@@ -1655,6 +1655,7 @@
   "settings.users.contract_hours": "Contract hours/week",
   "settings.users.contract_hint": "Contract hours are the legal number (e.g. 38), distinct from the scheduled week. The gap accrues as rostered days off (ADV). A changed contract is a new row, not an edit.",
   "settings.users.recurring": "Rostered free days (ADV)",
+  "settings.users.recurring_generated": "Saved — {count} free days placed on {name}'s calendar.",
   "settings.users.two_factor_on": "2FA on",
   "settings.users.reset_two_factor": "Reset two-factor authentication",
   "settings.users.reset_two_factor_confirm": "Reset two-factor authentication for this member? Their account returns to password-only sign-in until they set it up again. Do this only for someone who lost access to their codes.",
