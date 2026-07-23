@@ -20,6 +20,7 @@
   import { fmtPeriod } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { getLocale } from "$lib/paraglide/runtime";
+  import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
@@ -203,21 +204,17 @@
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 
   // Save in flight (#242): spinner on the button, no double submit.
-  let submitting = $state(false);
+  const busy = new InFlight();
 </script>
 
 <form
   method="POST"
   {action}
   class="space-y-4"
-  use:enhance={() => {
-    submitting = true;
-    return async ({ result, update }) => {
-      submitting = false;
-      if (result.type === "success") ondone?.();
-      await update({ reset: false });
-    };
-  }}
+  use:enhance={busy.wrap("", () => async ({ result, update }) => {
+    if (result.type === "success") ondone?.();
+    await update({ reset: false });
+  })}
 >
   {#if request}
     <input type="hidden" name="id" value={request.id} />
@@ -449,7 +446,7 @@
   <div class="flex justify-end">
     <Button
       type="submit"
-      loading={submitting}
+      loading={busy.active}
       disabled={effectiveHours <= 0 || pastBlocked}
       class="disabled:cursor-not-allowed"
     >

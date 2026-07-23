@@ -10,8 +10,10 @@
 
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
 
@@ -23,6 +25,7 @@
   let editingId = $state<string | null>(null);
   let confirmDelete = $state(false);
   let deleteId = $state("");
+  const busy = new InFlight();
 
   const inputClass =
     "w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text outline-none focus:border-brand";
@@ -45,7 +48,7 @@
 <form
   method="POST"
   action="?/create"
-  use:enhance
+  use:enhance={busy.wrap("create")}
   class="mb-6 flex max-w-md flex-wrap items-end gap-2"
 >
   <div class="min-w-0 flex-1">
@@ -60,9 +63,9 @@
       class={inputClass}
     />
   </div>
-  <button class="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white hover:opacity-90">
+  <Button loading={busy.is("create")} disabled={busy.active}>
     {t("common.add")}
-  </button>
+  </Button>
 </form>
 
 {#if data.groups.length === 0}
@@ -75,7 +78,7 @@
   {#each data.groups as group (group.id)}
     <section class="rounded-xl border border-border bg-surface-raised p-5">
       {#if editingId === group.id}
-        <form method="POST" action="?/save" use:enhance class="space-y-4">
+        <form method="POST" action="?/save" use:enhance={busy.wrap(group.id)} class="space-y-4">
           <input type="hidden" name="id" value={group.id} />
           <div class="max-w-md">
             <label for="name-{group.id}" class="mb-1 block text-sm font-medium text-text"
@@ -131,12 +134,13 @@
             </fieldset>
           </div>
           <div class="flex gap-2">
-            <button
-              class="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white hover:opacity-90"
+            <Button
+              loading={busy.is(group.id)}
+              disabled={busy.active}
               onclick={() => setTimeout(() => (editingId = null), 0)}
             >
               {t("common.save")}
-            </button>
+            </Button>
             <button
               type="button"
               class="rounded-lg border border-border px-3 py-2 text-sm text-text"

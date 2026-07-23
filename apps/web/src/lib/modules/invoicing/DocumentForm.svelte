@@ -8,6 +8,8 @@
   import { COMMON_CURRENCIES, otherCurrencies } from "$lib/core/currencies";
   import { getCurrency } from "$lib/core/currency";
   import { LOCALES, t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
@@ -68,6 +70,7 @@
   const isNew = $derived(doc === null);
   const locked = $derived(doc !== null && doc.status !== "draft");
   const orgCurrency = getCurrency();
+  const busy = new InFlight();
 
   // Deliberate initial capture: the preset only seeds a fresh form.
   // svelte-ignore state_referenced_locally
@@ -210,10 +213,9 @@
   id={FORM_ID}
   method="POST"
   {action}
-  use:enhance={() =>
-    ({ update }) => {
-      void update({ reset: false });
-    }}
+  use:enhance={busy.wrap("", () => ({ update }) => {
+    void update({ reset: false });
+  })}
   class="space-y-4"
 >
   {#if isNew}
@@ -431,9 +433,7 @@
         onclick={oncancel}>{t("common.cancel")}</button
       >
     {/if}
-    <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-      >{t("common.save")}</button
-    >
+    <Button loading={busy.active}>{t("common.save")}</Button>
   </div>
 </form>
 

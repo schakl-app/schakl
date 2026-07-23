@@ -2,10 +2,14 @@
   import { enhance } from "$app/forms";
   import { dateLocale } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
+  import Button from "$lib/core/ui/Button.svelte";
   import PreferenceMatrixForm from "$lib/modules/notifications/PreferenceMatrixForm.svelte";
 
   let { data, form } = $props();
+
+  const busy = new InFlight();
 
   // --- personal e-mail delivery (#17): off / immediate / daily / weekly ------------------ #
   const EMAIL_MODES = ["off", "immediate", "daily", "weekly"] as const;
@@ -65,7 +69,12 @@
   <h2 class="mb-1 text-sm font-semibold text-text">{t("settings.notifications.email.title")}</h2>
   <p class="mb-4 text-sm text-text-muted">{t("settings.notifications.email.subtitle")}</p>
 
-  <form method="POST" action="?/saveEmailPref" use:enhance class="space-y-4">
+  <form
+    method="POST"
+    action="?/saveEmailPref"
+    use:enhance={busy.wrap("emailPref")}
+    class="space-y-4"
+  >
     <input type="hidden" name="mode" value={emailMode} />
     <div class="grid gap-2 sm:grid-cols-4">
       {#each EMAIL_MODES as mode (mode)}
@@ -118,9 +127,7 @@
     {/if}
 
     <div class="flex items-center gap-3">
-      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >{t("common.save")}</button
-      >
+      <Button loading={busy.is("emailPref")} disabled={busy.active}>{t("common.save")}</Button>
       {#if form?.emailPrefSaved}
         <span class="text-sm text-green-700 dark:text-green-400"
           >{t("settings.notifications.email.saved")}</span
@@ -156,18 +163,30 @@
                 >{channel.redacted}</span
               >
             </div>
-            <form method="POST" action="?/testChannel" use:enhance>
+            <form
+              method="POST"
+              action="?/testChannel"
+              use:enhance={busy.wrap(`test-${channel.id}`)}
+            >
               <input type="hidden" name="channel_id" value={channel.id} />
-              <button
-                class="rounded-lg border border-border px-2.5 py-1.5 text-xs text-text-muted hover:text-text"
-                >{t("settings.notifications.channel_test")}</button
+              <Button
+                variant="secondary"
+                size="xs"
+                loading={busy.is(`test-${channel.id}`)}
+                disabled={busy.active}>{t("settings.notifications.channel_test")}</Button
               >
             </form>
-            <form method="POST" action="?/deleteChannel" use:enhance>
+            <form
+              method="POST"
+              action="?/deleteChannel"
+              use:enhance={busy.wrap(`delete-${channel.id}`)}
+            >
               <input type="hidden" name="channel_id" value={channel.id} />
-              <button
-                class="rounded-lg px-2 py-1.5 text-xs text-text-muted hover:text-red-600 dark:hover:text-red-400"
-                >{t("common.delete")}</button
+              <Button
+                variant="danger-outline"
+                size="xs"
+                loading={busy.is(`delete-${channel.id}`)}
+                disabled={busy.active}>{t("common.delete")}</Button
               >
             </form>
           </li>
@@ -211,10 +230,9 @@
       method="POST"
       action="?/createChannel"
       class="space-y-3"
-      use:enhance={() =>
-        ({ result, update }) => {
-          void update({ reset: result.type === "success" });
-        }}
+      use:enhance={busy.wrap("createChannel", () => ({ result, update }) => {
+        void update({ reset: result.type === "success" });
+      })}
     >
       <input type="hidden" name="kind" value={kind} />
       <div class="grid gap-3 sm:grid-cols-2">
@@ -300,8 +318,8 @@
       {#if form?.channelError}
         <p class="text-sm text-red-600 dark:text-red-400">{t(form.channelError)}</p>
       {/if}
-      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >{t("settings.notifications.channel_add")}</button
+      <Button loading={busy.is("createChannel")} disabled={busy.active}
+        >{t("settings.notifications.channel_add")}</Button
       >
     </form>
   </section>

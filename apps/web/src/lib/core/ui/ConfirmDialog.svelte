@@ -2,6 +2,8 @@
   /** Destructive-action confirmation: posts the given form action with hidden fields. */
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
 
   let {
@@ -20,6 +22,8 @@
     /** Text on the destructive confirm button; defaults to the shared "Delete" string. */
     confirmLabel?: string;
   } = $props();
+
+  const busy = new InFlight();
 </script>
 
 <Modal bind:open {title}>
@@ -33,20 +37,17 @@
     <form
       method="POST"
       {action}
-      use:enhance={() =>
-        ({ update }) => {
-          open = false;
-          void update();
-        }}
+      use:enhance={busy.wrap("", () => ({ update }) => {
+        open = false;
+        void update();
+      })}
     >
       {#each Object.entries(fields) as [name, value] (name)}
         <input type="hidden" {name} {value} />
       {/each}
-      <button
-        class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-      >
+      <Button variant="danger" loading={busy.active}>
         {confirmLabel ?? t("common.delete")}
-      </button>
+      </Button>
     </form>
   </div>
 </Modal>

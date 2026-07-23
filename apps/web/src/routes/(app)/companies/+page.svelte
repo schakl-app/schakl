@@ -10,11 +10,13 @@
   import ImportCsvModal from "$lib/core/impex/ImportCsvModal.svelte";
   import { can } from "$lib/core/permissions";
   import { formatPhone } from "$lib/core/phone";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { customFieldColumns } from "$lib/core/table/columns";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import AvatarStack from "$lib/core/ui/AvatarStack.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
@@ -43,6 +45,7 @@
   let deleteName = $state("");
   let confirmDelete = $state(false);
   let showImport = $state(false);
+  const busy = new InFlight();
 
   // Row actions render only for holders of the matching permission (#253) — the API refuses
   // them anyway; this stops a client-role login seeing buttons that only 403.
@@ -297,17 +300,16 @@
     <form
       method="POST"
       action="?/create"
-      use:enhance={() =>
-        async ({ result, update }) => {
-          if (result.type === "success") {
-            await update();
-            showCreate = false;
-            return;
-          }
-          // Leave the form standing on a rejected save: closing it would take the error message
-          // down with it, along with everything typed and every contact picked.
-          await applyAction(result);
-        }}
+      use:enhance={busy.wrap("", () => async ({ result, update }) => {
+        if (result.type === "success") {
+          await update();
+          showCreate = false;
+          return;
+        }
+        // Leave the form standing on a rejected save: closing it would take the error message
+        // down with it, along with everything typed and every contact picked.
+        await applyAction(result);
+      })}
       class="mb-6 rounded-xl border border-border bg-surface-raised p-4"
     >
       <CompanyForm
@@ -326,11 +328,9 @@
         <p class="mt-2 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
       {/if}
       <div class="mt-4 flex gap-2">
-        <button
-          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
+        <Button loading={busy.active}>
           {t("common.save")}
-        </button>
+        </Button>
         <button
           type="button"
           class="rounded-lg border border-border px-4 py-2 text-sm"

@@ -2,9 +2,13 @@
   import { enhance } from "$app/forms";
   import { fmtDateTime, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
 
   let { data, form } = $props();
+
+  const busy = new InFlight();
 
   let showCreate = $state(false);
   let createPlan = $state("trial");
@@ -55,7 +59,9 @@
           <td class="px-4 py-3 font-medium text-text">{org.name}</td>
           <td class="px-4 py-3 font-mono text-text-muted">{org.slug}</td>
           <td class="px-4 py-3">
-            <span class="rounded-full px-2 py-0.5 text-xs font-medium {statusClass[org.status] ?? ''}">
+            <span
+              class="rounded-full px-2 py-0.5 text-xs font-medium {statusClass[org.status] ?? ''}"
+            >
               {t(`instance.status_${org.status}`)}
             </span>
           </td>
@@ -71,10 +77,7 @@
           </td>
           <td class="px-4 py-3 text-text-muted">{org.custom_domain ?? "—"}</td>
           <td class="px-4 py-3 text-right">
-            <a
-              href="/console/orgs/{org.id}"
-              class="text-sm font-medium text-brand hover:underline"
-            >
+            <a href="/console/orgs/{org.id}" class="text-sm font-medium text-brand hover:underline">
               {t("common.edit")}
             </a>
           </td>
@@ -112,12 +115,11 @@
   <form
     method="POST"
     action="?/create"
-    use:enhance={() =>
-      ({ update, result }) => {
-        void update().then(() => {
-          if (result.type === "success") showCreate = false;
-        });
-      }}
+    use:enhance={busy.wrap("", () => ({ update, result }) => {
+      void update().then(() => {
+        if (result.type === "success") showCreate = false;
+      });
+    })}
     class="space-y-4"
   >
     <div>
@@ -176,10 +178,8 @@
     {#if form?.error}
       <p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
     {/if}
-    <button
-      class="w-full rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-    >
+    <Button class="w-full" loading={busy.active}>
       {t("common.save")}
-    </button>
+    </Button>
   </form>
 </Modal>

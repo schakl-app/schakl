@@ -1,11 +1,15 @@
 <script lang="ts">
   import { enhance } from "$app/forms";
   import { localeLabel, t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import { moduleLabel } from "$lib/core/registry";
+  import Button from "$lib/core/ui/Button.svelte";
   import PasswordInput from "$lib/core/ui/PasswordInput.svelte";
 
   let { data, form } = $props();
+
+  const busy = new InFlight();
 
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
@@ -42,7 +46,7 @@
       {data.cloud ? t("setup.cloud_subtitle") : t("setup.subtitle")}
     </p>
 
-    <form method="POST" use:enhance class="mt-6 space-y-8">
+    <form method="POST" use:enhance={busy.wrap()} class="mt-6 space-y-8">
       <input type="hidden" name="cloud" value={data.cloud ? "true" : "false"} />
       {#if !data.cloud}
         <section class="space-y-4">
@@ -196,12 +200,9 @@
         <p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
       {/if}
 
-      <button
-        type="submit"
-        class="w-full rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
-      >
+      <Button type="submit" class="w-full" loading={busy.active}>
         {t("setup.submit")}
-      </button>
+      </Button>
     </form>
   </div>
 </div>

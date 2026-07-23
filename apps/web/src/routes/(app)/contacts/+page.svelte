@@ -9,10 +9,12 @@
   import ImportCsvModal from "$lib/core/impex/ImportCsvModal.svelte";
   import { can } from "$lib/core/permissions";
   import { formatPhone } from "$lib/core/phone";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { customFieldColumns } from "$lib/core/table/columns";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
@@ -42,6 +44,7 @@
   let deleteName = $state("");
   let confirmDelete = $state(false);
   let showImport = $state(false);
+  const busy = new InFlight();
 
   // Row actions render only for holders of the matching permission (#253).
   const canWrite = $derived(can(page.data.user, "contacts.contact.write"));
@@ -319,15 +322,14 @@
   <form
     method="POST"
     action="?/create"
-    use:enhance={() =>
-      ({ result, update }) => {
-        // Close only on success: a 409 (duplicate email) must stay visible in the form.
-        if (result.type === "success") {
-          showCreate = false;
-          linkedCompanyIds = [];
-        }
-        void update({ reset: false });
-      }}
+    use:enhance={busy.wrap("", () => ({ result, update }) => {
+      // Close only on success: a 409 (duplicate email) must stay visible in the form.
+      if (result.type === "success") {
+        showCreate = false;
+        linkedCompanyIds = [];
+      }
+      void update({ reset: false });
+    })}
     class="mb-6 rounded-xl border border-border bg-surface-raised p-4"
   >
     <div class="grid gap-3 sm:grid-cols-2">
@@ -431,9 +433,9 @@
       <p class="mt-2 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
     {/if}
     <div class="mt-4 flex gap-2">
-      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+      <Button loading={busy.active}>
         {t("common.save")}
-      </button>
+      </Button>
       <button
         type="button"
         class="rounded-lg border border-border px-4 py-2 text-sm"

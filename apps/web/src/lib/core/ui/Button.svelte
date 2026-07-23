@@ -21,8 +21,8 @@
     children,
     ...rest
   }: {
-    variant?: "primary" | "secondary" | "danger" | "danger-outline";
-    size?: "md" | "sm";
+    variant?: "primary" | "secondary" | "success" | "danger" | "danger-outline";
+    size?: "md" | "sm" | "xs";
     /** True while the request is in flight: disables the button and shows the spinner. */
     loading?: boolean;
     class?: string;
@@ -32,12 +32,14 @@
   const variants = {
     primary: "bg-brand font-medium text-white hover:opacity-90",
     secondary: "border border-border text-text hover:border-brand",
+    success: "bg-green-600 font-medium text-white hover:opacity-90",
     danger: "bg-red-600 font-medium text-white hover:opacity-90",
     "danger-outline": "border border-border text-text hover:border-red-400 hover:text-red-500",
   };
   const sizes = {
     md: "px-4 py-2 text-sm",
     sm: "px-3 py-1.5 text-sm",
+    xs: "px-2 py-1 text-xs",
   };
 </script>
 

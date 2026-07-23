@@ -15,7 +15,9 @@
   import { enhance } from "$app/forms";
   import { fmtClockTime, fmtNumericDate, fmtWeekdayShort } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { getLocale } from "$lib/paraglide/runtime";
+  import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import TimeInput from "$lib/core/ui/TimeInput.svelte";
@@ -66,6 +68,8 @@
   let deleteId = $state("");
   let deleteOpen = $state(false);
 
+  const busy = new InFlight();
+
   function intervalText(weeks: number): string {
     return weeks === 1
       ? t("leave.recurring.every_week")
@@ -110,14 +114,17 @@
               {/if}
             </span>
           </div>
-          <form method="POST" action="?/toggleRecurring" use:enhance>
+          <form method="POST" action="?/toggleRecurring" use:enhance={busy.wrap(pattern.id)}>
             <input type="hidden" name="id" value={pattern.id} />
             <input type="hidden" name="active" value={String(!pattern.active)} />
-            <button
-              class="rounded-lg border border-border px-2 py-1 text-xs text-text-muted hover:text-text"
+            <Button
+              variant="secondary"
+              size="xs"
+              loading={busy.is(pattern.id)}
+              disabled={busy.active}
             >
               {pattern.active ? t("settings.leave.deactivate") : t("settings.leave.activate")}
-            </button>
+            </Button>
           </form>
           <button
             type="button"
@@ -151,11 +158,10 @@
       method="POST"
       action="?/saveRecurring"
       class="space-y-3 border-t border-border pt-4"
-      use:enhance={() =>
-        ({ result, update }) => {
-          if (result.type === "success") void update({ reset: true });
-          else void update({ reset: false });
-        }}
+      use:enhance={busy.wrap("save", () => ({ result, update }) => {
+        if (result.type === "success") void update({ reset: true });
+        else void update({ reset: false });
+      })}
     >
       <input type="hidden" name="user_id" value={userId} />
       <p class="text-xs font-semibold uppercase tracking-wide text-text-muted">
@@ -228,11 +234,9 @@
         <p class="text-sm text-red-600 dark:text-red-400">{t(error)}</p>
       {/if}
       <div class="flex justify-end">
-        <button
-          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
+        <Button loading={busy.is("save")} disabled={busy.active}>
           {t("leave.recurring.add")}
-        </button>
+        </Button>
       </div>
     </form>
   {/key}

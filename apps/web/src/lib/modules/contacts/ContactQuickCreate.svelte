@@ -11,6 +11,8 @@
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import PhoneInput from "$lib/core/ui/PhoneInput.svelte";
 
@@ -42,6 +44,8 @@
     pickerSlot?: string;
   } = $props();
 
+  const busy = new InFlight();
+
   // "ada lovelace" → first name "ada", last name "lovelace" (same split as ContactDraftField).
   const parts = $derived(name.trim().split(/\s+/).filter(Boolean));
   const firstName = $derived(parts[0] ?? "");
@@ -56,11 +60,10 @@
     <form
       method="POST"
       {action}
-      use:enhance={() =>
-        ({ result, update }) => {
-          if (result.type === "success") open = false;
-          void update({ reset: false });
-        }}
+      use:enhance={busy.wrap("", () => ({ result, update }) => {
+        if (result.type === "success") open = false;
+        void update({ reset: false });
+      })}
       class="space-y-3"
     >
       <input type="hidden" name="slot" value={pickerSlot} />
@@ -120,10 +123,7 @@
           class="rounded-lg border border-border px-4 py-2 text-sm"
           onclick={() => (open = false)}>{t("common.cancel")}</button
         >
-        <button
-          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-          >{t("common.create")}</button
-        >
+        <Button loading={busy.active}>{t("common.create")}</Button>
       </div>
     </form>
   {/key}

@@ -8,6 +8,7 @@
   import { formatPhone } from "$lib/core/phone";
   import { can } from "$lib/core/permissions";
   import { entityPanelsFor } from "$lib/core/registry";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
@@ -75,16 +76,9 @@
     showCreateCompany = true;
   }
 
-  // Portal actions in flight (#242): the submitting button spins, its siblings disable —
+  // Submits in flight (#242): the firing button spins, its siblings freeze — the portal's
   // enable/resend/disable all mutate the same portal, so only one may run at a time.
-  let portalBusy = $state<"enable" | "resend" | "disable" | null>(null);
-  const portalEnhance = (key: "enable" | "resend" | "disable") => () => {
-    portalBusy = key;
-    return async ({ update }: { update: () => Promise<void> }) => {
-      portalBusy = null;
-      await update();
-    };
-  };
+  const busy = new InFlight();
 </script>
 
 <svelte:head>
@@ -150,10 +144,9 @@
   <form
     method="POST"
     action="?/update"
-    use:enhance={() =>
-      ({ update }) => {
-        void update().then(() => (editing = false));
-      }}
+    use:enhance={busy.wrap("save", () => ({ update }) => {
+      void update().then(() => (editing = false));
+    })}
     class="rounded-xl border border-border bg-surface-raised p-5"
   >
     <div class="grid gap-3 sm:grid-cols-2">
@@ -236,9 +229,7 @@
 
     {#if form?.error}<p class="mt-2 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
     <div class="mt-4 flex gap-2">
-      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >{t("common.save")}</button
-      >
+      <Button loading={busy.is("save")}>{t("common.save")}</Button>
       <button
         type="button"
         class="rounded-lg border border-border px-4 py-2 text-sm"
@@ -323,8 +314,8 @@
         {/if}
         <div class="flex flex-wrap gap-2">
           {#if data.portal.status === "none" || data.portal.status === "disabled"}
-            <form method="POST" action="?/portalEnable" use:enhance={portalEnhance("enable")}>
-              <Button size="sm" loading={portalBusy === "enable"} disabled={portalBusy !== null}>
+            <form method="POST" action="?/portalEnable" use:enhance={busy.wrap("enable")}>
+              <Button size="sm" loading={busy.is("enable")} disabled={busy.active}>
                 {data.portal.status === "disabled"
                   ? t("contacts.portal.reenable")
                   : t("contacts.portal.enable")}
@@ -332,23 +323,23 @@
             </form>
           {:else}
             {#if data.portal.status === "invited"}
-              <form method="POST" action="?/portalResend" use:enhance={portalEnhance("resend")}>
+              <form method="POST" action="?/portalResend" use:enhance={busy.wrap("resend")}>
                 <Button
                   variant="secondary"
                   size="sm"
-                  loading={portalBusy === "resend"}
-                  disabled={portalBusy !== null}
+                  loading={busy.is("resend")}
+                  disabled={busy.active}
                 >
                   {t("contacts.portal.resend")}
                 </Button>
               </form>
             {/if}
-            <form method="POST" action="?/portalDisable" use:enhance={portalEnhance("disable")}>
+            <form method="POST" action="?/portalDisable" use:enhance={busy.wrap("disable")}>
               <Button
                 variant="danger-outline"
                 size="sm"
-                loading={portalBusy === "disable"}
-                disabled={portalBusy !== null}
+                loading={busy.is("disable")}
+                disabled={busy.active}
               >
                 {t("contacts.portal.disable")}
               </Button>
@@ -385,11 +376,10 @@
     <form
       method="POST"
       action="?/createCompany"
-      use:enhance={() =>
-        ({ update }) => {
-          showCreateCompany = false;
-          void update();
-        }}
+      use:enhance={busy.wrap("createCompany", () => ({ update }) => {
+        showCreateCompany = false;
+        void update();
+      })}
       class="space-y-3"
     >
       <!-- The full client form, prefilled with what was typed — never a name-only stub. -->
@@ -407,10 +397,7 @@
           class="rounded-lg border border-border px-4 py-2 text-sm"
           onclick={() => (showCreateCompany = false)}>{t("common.cancel")}</button
         >
-        <button
-          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-          >{t("common.create")}</button
-        >
+        <Button loading={busy.is("createCompany")}>{t("common.create")}</Button>
       </div>
     </form>
   {/key}

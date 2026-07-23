@@ -1,10 +1,14 @@
 <script lang="ts">
   import { enhance } from "$app/forms";
+  import Button from "$lib/core/ui/Button.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
 
   let { data, form } = $props();
+
+  const busy = new InFlight();
 
   const sso = $derived(data.sso);
   // The enforce toggle is locked until the *current* connection passed a test (the API refuses
@@ -71,9 +75,12 @@
   <form
     method="POST"
     action="?/save"
-    use:enhance={() =>
-      ({ update }) =>
-        update({ reset: false })}
+    use:enhance={busy.wrap(
+      "save",
+      () =>
+        ({ update }) =>
+          update({ reset: false }),
+    )}
     class="space-y-4"
   >
     <label class="flex items-start gap-2 text-sm text-text">
@@ -174,15 +181,18 @@
         {t("settings.sso.saved")}
       </p>{/if}
 
-    <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-      >{t("common.save")}</button
-    >
+    <Button loading={busy.is("save")} disabled={busy.active}>{t("common.save")}</Button>
   </form>
 
   {#if sso?.discovery_url}
-    <form method="POST" action="?/test" use:enhance class="mt-4 border-t border-border pt-4">
-      <button class="rounded-lg border border-border px-4 py-2 text-sm text-text hover:border-brand"
-        >{t("settings.sso.test")}</button
+    <form
+      method="POST"
+      action="?/test"
+      use:enhance={busy.wrap("test")}
+      class="mt-4 border-t border-border pt-4"
+    >
+      <Button variant="secondary" loading={busy.is("test")} disabled={busy.active}
+        >{t("settings.sso.test")}</Button
       >
       {#if form?.test}
         {#if form.test.ok}

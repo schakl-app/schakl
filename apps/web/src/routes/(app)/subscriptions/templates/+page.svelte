@@ -12,9 +12,11 @@
   import { fmtMoney } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
@@ -30,6 +32,7 @@
 
   const INTERVALS = ["monthly", "quarterly", "yearly"] as const;
 
+  const busy = new InFlight();
   let showModal = $state(false);
   let editing = $state<Template | null>(null);
   let deleteId = $state("");
@@ -251,11 +254,10 @@
       method="POST"
       action="?/saveTemplate"
       class="space-y-4"
-      use:enhance={() =>
-        ({ result, update }) => {
-          if (result.type === "success") showModal = false;
-          void update({ reset: false });
-        }}
+      use:enhance={busy.wrap("", () => ({ result, update }) => {
+        if (result.type === "success") showModal = false;
+        void update({ reset: false });
+      })}
     >
       {#if editing}<input type="hidden" name="id" value={editing.id} />{/if}
       <div>
@@ -353,9 +355,7 @@
           class="rounded-lg border border-border px-4 py-2 text-sm text-text"
           onclick={() => (showModal = false)}>{t("common.cancel")}</button
         >
-        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-          >{t("common.save")}</button
-        >
+        <Button loading={busy.active}>{t("common.save")}</Button>
       </div>
     </form>
   {/key}

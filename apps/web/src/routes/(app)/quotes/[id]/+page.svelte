@@ -7,8 +7,10 @@
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { entityPanelsFor } from "$lib/core/registry";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
@@ -24,6 +26,7 @@
     if (form?.saved || form?.issued) editing = false;
   });
 
+  const busy = new InFlight();
   let confirmIssue = $state(false);
   let confirmDelete = $state(false);
   let confirmConvert = $state(false);
@@ -243,11 +246,10 @@
   <form
     method="POST"
     action={decisionAction === "accept" ? "?/accept" : "?/reject"}
-    use:enhance={() =>
-      ({ result, update }) => {
-        if (result.type === "success") decisionOpen = false;
-        void update({ reset: false });
-      }}
+    use:enhance={busy.wrap("decision", () => ({ result, update }) => {
+      if (result.type === "success") decisionOpen = false;
+      void update({ reset: false });
+    })}
     class="space-y-3"
   >
     <div>
@@ -262,9 +264,9 @@
         class="rounded-lg border border-border px-4 py-2 text-sm text-text"
         onclick={() => (decisionOpen = false)}>{t("common.cancel")}</button
       >
-      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white">
+      <Button loading={busy.is("decision")} disabled={busy.active}>
         {decisionAction === "accept" ? t("invoicing.action.accept") : t("invoicing.action.reject")}
-      </button>
+      </Button>
     </div>
   </form>
 </Modal>
@@ -273,11 +275,10 @@
   <form
     method="POST"
     action="?/send"
-    use:enhance={() =>
-      ({ result, update }) => {
-        if (result.type === "success") sendOpen = false;
-        void update({ reset: false });
-      }}
+    use:enhance={busy.wrap("send", () => ({ result, update }) => {
+      if (result.type === "success") sendOpen = false;
+      void update({ reset: false });
+    })}
     class="space-y-3"
   >
     <div>
@@ -312,9 +313,7 @@
         class="rounded-lg border border-border px-4 py-2 text-sm text-text"
         onclick={() => (sendOpen = false)}>{t("common.cancel")}</button
       >
-      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-        >{t("invoicing.action.send")}</button
-      >
+      <Button loading={busy.is("send")} disabled={busy.active}>{t("invoicing.action.send")}</Button>
     </div>
   </form>
 </Modal>

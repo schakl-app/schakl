@@ -10,8 +10,10 @@
   import { pageTitle } from "$lib/core/title";
   import { can } from "$lib/core/permissions";
   import { companyPanelComponent } from "$lib/core/registry";
+  import { InFlight } from "$lib/core/submit.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import AvatarStack from "$lib/core/ui/AvatarStack.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import CompanyForm from "$lib/modules/companies/CompanyForm.svelte";
@@ -39,6 +41,7 @@
   // Opened straight into edit when reached from the overview's ⋯ → Bewerken (#78).
   let showEdit = $state(editIntent());
   let confirmDelete = $state(false);
+  const busy = new InFlight();
 
   // Header actions render only for holders of the matching permission (#253).
   const canWrite = $derived(can(page.data.user, "companies.company.write"));
@@ -110,13 +113,16 @@
         <!-- Create-then-edit (#230): a POST that makes a minimal task pre-linked to this client
              and lands on its detail page in edit mode — never a link, which would create on
              hover-preload. -->
-        <form method="POST" action="/tasks?/create" use:enhance>
+        <form method="POST" action="/tasks?/create" use:enhance={busy.wrap("new-task")}>
           <input type="hidden" name="company_id" value={company.id} />
-          <button
-            class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={busy.is("new-task")}
+            disabled={busy.active}
           >
             {t("companies.actions.new_task")}
-          </button>
+          </Button>
         </form>
       {/if}
       {#if can(page.data.user, "time.entry.write")}
@@ -152,7 +158,12 @@
     </div>
   </div>
   {#if data.templates.length > 0 && can(page.data.user, "tasks.template.apply")}
-    <form method="POST" action="?/applyTemplate" use:enhance class="mt-3 flex items-center gap-2">
+    <form
+      method="POST"
+      action="?/applyTemplate"
+      use:enhance={busy.wrap("apply-template")}
+      class="mt-3 flex items-center gap-2"
+    >
       <select
         name="template_id"
         class="rounded-lg border border-border px-2 py-1.5 text-sm"
@@ -162,11 +173,14 @@
           <option value={template.id}>{template.name}</option>
         {/each}
       </select>
-      <button
-        class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"
+      <Button
+        variant="secondary"
+        size="sm"
+        loading={busy.is("apply-template")}
+        disabled={busy.active}
       >
         {t("companies.actions.apply_template")}
-      </button>
+      </Button>
       {#if form?.templateApplied}
         <span class="text-xs text-green-600 dark:text-green-400"
           >{t("companies.template_applied")}</span
@@ -209,11 +223,10 @@
       method="POST"
       action="?/update"
       enctype="multipart/form-data"
-      use:enhance={() =>
-        ({ update }) => {
-          showEdit = false;
-          void update();
-        }}
+      use:enhance={busy.wrap("update", () => ({ update }) => {
+        showEdit = false;
+        void update();
+      })}
       class="space-y-3"
     >
       <!-- Same component the create form uses: one definition of a client's fields. Every editable
@@ -264,11 +277,9 @@
         >
           {t("common.cancel")}
         </button>
-        <button
-          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
+        <Button loading={busy.is("update")} disabled={busy.active}>
           {t("common.save")}
-        </button>
+        </Button>
       </div>
     </form>
   </Modal>

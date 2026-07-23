@@ -18,7 +18,9 @@
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
+  import { InFlight } from "$lib/core/submit.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import LinkField from "$lib/core/ui/LinkField.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import PhoneInput from "$lib/core/ui/PhoneInput.svelte";
@@ -61,6 +63,8 @@
   let showCreate = $state(false);
   let draftFirst = $state("");
   let draftLast = $state("");
+
+  const busy = new InFlight();
 
   function openCreate(query: string) {
     const parts = query.trim().split(/\s+/);
@@ -127,11 +131,10 @@
     <form
       method="POST"
       action="?/createContact"
-      use:enhance={() =>
-        ({ update }) => {
-          showCreate = false;
-          void update();
-        }}
+      use:enhance={busy.wrap("", () => ({ update }) => {
+        showCreate = false;
+        void update();
+      })}
       class="space-y-3"
     >
       <div class="grid gap-3 sm:grid-cols-2">
@@ -185,11 +188,9 @@
         >
           {t("common.cancel")}
         </button>
-        <button
-          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
+        <Button loading={busy.active}>
           {t("common.create")}
-        </button>
+        </Button>
       </div>
     </form>
   {/key}

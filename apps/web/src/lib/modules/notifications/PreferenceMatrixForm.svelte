@@ -18,8 +18,11 @@
    * API honours them; left unset they fall back to 08:00 Europe/Amsterdam, on Monday.
    */
   import { enhance } from "$app/forms";
+  import type { SubmitFunction } from "@sveltejs/kit";
 
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import TimeInput from "$lib/core/ui/TimeInput.svelte";
 
   // Mirrors the generated client, whose optional fields carry the API's own defaults.
@@ -56,6 +59,23 @@
 
   let edits = $state<Record<string, Partial<Row>>>({});
   let generalEdit = $state<Partial<General>>({});
+
+  const busy = new InFlight();
+  // Save and reset share the form (#279): key off the clicked button's formaction.
+  const submit: SubmitFunction = (input) =>
+    busy.wrap(
+      input.submitter?.getAttribute("formaction") === "?/reset" ? "reset" : "save",
+      () =>
+        async ({ update }) => {
+          // reset: false is load-bearing: the default form reset snaps every checkbox and select
+          // back to its server-rendered mark (their DOM default), while the state that drives them
+          // already holds the saved value — so Svelte sees nothing to rewrite and the matrix
+          // visibly reverts on save, even though the save succeeded.
+          await update({ reset: false });
+          edits = {}; // the reloaded matrix is now the truth; stale edits must not re-apply
+          generalEdit = {};
+        },
+    )(input);
 
   const rows = $derived(matrix.events.map((row) => ({ ...row, ...(edits[row.event_type] ?? {}) })));
 
@@ -143,21 +163,7 @@
   <p class="mb-4 text-sm text-green-600 dark:text-green-400">{t("notifications.settings.saved")}</p>
 {/if}
 
-<form
-  method="POST"
-  action="?/save"
-  class="space-y-6"
-  use:enhance={() =>
-    async ({ update }) => {
-      // reset: false is load-bearing: the default form reset snaps every checkbox and select
-      // back to its server-rendered mark (their DOM default), while the state that drives them
-      // already holds the saved value — so Svelte sees nothing to rewrite and the matrix
-      // visibly reverts on save, even though the save succeeded.
-      await update({ reset: false });
-      edits = {}; // the reloaded matrix is now the truth; stale edits must not re-apply
-      generalEdit = {};
-    }}
->
+<form method="POST" action="?/save" class="space-y-6" use:enhance={submit}>
   <input type="hidden" name="payload" value={payload} />
 
   <!-- General: the values that are not per-event. -->
@@ -297,16 +303,18 @@
       {t("notifications.settings.override_count", { count: overrideCount })}
     </p>
     <div class="flex gap-2">
-      <button
+      <Button
         type="submit"
+        variant="secondary"
         formaction="?/reset"
-        class="rounded-lg border border-border px-4 py-2 text-sm text-text hover:border-brand hover:text-brand"
+        loading={busy.is("reset")}
+        disabled={busy.active}
       >
         {t("notifications.settings.reset")}
-      </button>
-      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+      </Button>
+      <Button loading={busy.is("save")} disabled={busy.active}>
         {t("common.save")}
-      </button>
+      </Button>
     </div>
   </div>
 </form>

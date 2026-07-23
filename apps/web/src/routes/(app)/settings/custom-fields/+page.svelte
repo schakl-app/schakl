@@ -3,9 +3,11 @@
 
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import { fieldLabel } from "$lib/core/customfields/types";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
@@ -15,6 +17,7 @@
 
   let deleteId = $state("");
   let confirmDelete = $state(false);
+  const busy = new InFlight();
 
   // Deactivate/activate is a non-destructive toggle; submitted from the ⋯ menu via one shared
   // hidden form (the kebab item can't post a form itself).
@@ -149,7 +152,7 @@
 <form
   method="POST"
   action="?/create"
-  use:enhance
+  use:enhance={busy.wrap("create")}
   class="rounded-xl border border-border bg-surface-raised p-5"
 >
   <h2 class="mb-4 text-sm font-semibold text-text">{t("settings.custom_fields.new")}</h2>
@@ -208,9 +211,7 @@
   </div>
   {#if form?.error}<p class="mt-2 text-sm text-red-600">{t(form.error)}</p>{/if}
   <div class="mt-4">
-    <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-      >{t("common.create")}</button
-    >
+    <Button loading={busy.is("create")} disabled={busy.active}>{t("common.create")}</Button>
   </div>
 </form>
 
@@ -227,11 +228,10 @@
       <form
         method="POST"
         action="?/update"
-        use:enhance={() =>
-          ({ update }) => {
-            showEdit = false;
-            void update();
-          }}
+        use:enhance={busy.wrap("update", () => ({ update }) => {
+          showEdit = false;
+          void update();
+        })}
         class="space-y-3"
       >
         <input type="hidden" name="id" value={editDef.id} />
@@ -314,10 +314,7 @@
           >
             {t("common.cancel")}
           </button>
-          <button
-            class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-            >{t("common.save")}</button
-          >
+          <Button loading={busy.is("update")} disabled={busy.active}>{t("common.save")}</Button>
         </div>
       </form>
     {/key}

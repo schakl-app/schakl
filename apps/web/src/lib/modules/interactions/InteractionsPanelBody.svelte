@@ -31,7 +31,9 @@
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
+  import { InFlight } from "$lib/core/submit.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
 
@@ -74,6 +76,8 @@
   let confirmDelete = $state(false);
   let showReject = $state(false);
   let rejecting = $state<InteractionItem | null>(null);
+
+  const busy = new InFlight();
 
   // Clicking a row opens the shared detail modal (#184) rather than expanding inline — a long
   // email no longer stretches the panel or scrolls it sideways, and its line breaks survive.
@@ -253,14 +257,17 @@
 
           {#if item.status === "pending" && isOwner(item)}
             <!-- The owner's call, made where the email shows up. Non-destructive → inline. -->
-            <form method="POST" action="?/approveInteraction" use:enhance>
+            <form method="POST" action="?/approveInteraction" use:enhance={busy.wrap(item.id)}>
               <input type="hidden" name="id" value={item.id} />
-              <button
+              <Button
                 type="submit"
-                class="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-text hover:bg-surface"
+                variant="secondary"
+                size="xs"
+                loading={busy.is(item.id)}
+                disabled={busy.active}
               >
                 {t("interactions.approve")}
-              </button>
+              </Button>
             </form>
           {/if}
           {#if menuItems(item).length > 0}
@@ -365,11 +372,10 @@
       method="POST"
       action="?/rejectInteraction"
       class="space-y-4"
-      use:enhance={() =>
-        async ({ update }) => {
-          showReject = false;
-          await update();
-        }}
+      use:enhance={busy.wrap("reject", () => async ({ update }) => {
+        showReject = false;
+        await update();
+      })}
     >
       <input type="hidden" name="id" value={rejecting.id} />
       <p class="text-sm text-text-muted">{t("interactions.reject_message")}</p>
@@ -385,12 +391,9 @@
         >
           {t("common.cancel")}
         </button>
-        <button
-          type="submit"
-          class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
+        <Button type="submit" variant="danger" loading={busy.is("reject")} disabled={busy.active}>
           {t("interactions.reject")}
-        </button>
+        </Button>
       </div>
     </form>
   {/if}

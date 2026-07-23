@@ -9,7 +9,9 @@
   import { enhance } from "$app/forms";
   import { fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import { formatMinutes } from "$lib/modules/time/format";
@@ -67,9 +69,10 @@
   let logMinutes = $state(0);
   let logDescription = $state("");
   let logBillable = $state(true);
-  let logSubmitting = $state(false);
   let deleteOpen = $state(false);
   let deleteId = $state("");
+
+  const busy = new InFlight();
 
   function timeRange(block: Block): string {
     return `${localDayTime(block.starts_at).time}–${localDayTime(block.ends_at).time}`;
@@ -193,10 +196,8 @@
     <form
       method="POST"
       action="?/logScheduleTime"
-      use:enhance={() => {
-        logSubmitting = true;
+      use:enhance={busy.wrap("", () => {
         return async ({ result, update }) => {
-          logSubmitting = false;
           if (result.type === "success") {
             logOpen = false;
             await update();
@@ -204,7 +205,7 @@
             await update({ reset: false });
           }
         };
-      }}
+      })}
       class="space-y-4"
     >
       <input type="hidden" name="schedule_id" value={logBlock?.id ?? ""} />
@@ -247,13 +248,9 @@
           class="rounded-lg border border-border px-3 py-2 text-sm text-text hover:bg-surface"
           onclick={() => (logOpen = false)}>{t("common.cancel")}</button
         >
-        <button
-          type="submit"
-          disabled={logSubmitting}
-          class="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
-        >
+        <Button type="submit" loading={busy.active}>
           {t("tasks.schedule.log_submit")}
-        </button>
+        </Button>
       </div>
     </form>
   </Modal>

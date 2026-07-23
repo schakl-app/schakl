@@ -16,6 +16,7 @@
   import { enhance } from "$app/forms";
   import { fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
@@ -103,7 +104,7 @@
   let startTime = $state("09:00");
   let durationMinutes = $state(60);
   let note = $state("");
-  let submitting = $state(false);
+  const busy = new InFlight();
   let errorKey = $state<string | null>(null);
 
   const allMembers = $derived(pickerMembers.length ? pickerMembers : members);
@@ -113,28 +114,22 @@
   const projectName = $derived(
     new Map((pickerProjects.length ? pickerProjects : projects).map((p) => [p.id, p.name])),
   );
-  const memberName = $derived(
-    new Map(allMembers.map((m) => [m.user_id, m.full_name || m.email])),
-  );
+  const memberName = $derived(new Map(allMembers.map((m) => [m.user_id, m.full_name || m.email])));
   const personOptions = $derived(
     allMembers.map((m) => ({ value: m.user_id, label: m.full_name || m.email })),
   );
 
   const filteredTasks = $derived(
     search.trim()
-      ? pickerTasks.filter((task) =>
-          task.title.toLowerCase().includes(search.trim().toLowerCase()),
-        )
+      ? pickerTasks.filter((task) => task.title.toLowerCase().includes(search.trim().toLowerCase()))
       : pickerTasks,
   );
 
   function prefill(picked: SchedTask) {
     selectedTask = picked;
-    personId =
-      canScheduleAny && picked.assignee_user_id ? picked.assignee_user_id : currentUserId;
-    durationMinutes = picked.allocated_minutes && picked.allocated_minutes > 0
-      ? picked.allocated_minutes
-      : 60;
+    personId = canScheduleAny && picked.assignee_user_id ? picked.assignee_user_id : currentUserId;
+    durationMinutes =
+      picked.allocated_minutes && picked.allocated_minutes > 0 ? picked.allocated_minutes : 60;
     day = defaultDate ?? todayIso();
     startTime = "09:00";
     note = "";
@@ -200,7 +195,7 @@
   const overBudget = $derived(
     Boolean(
       selectedTask?.allocated_minutes &&
-        durationMinutes > (selectedTask.allocated_minutes as number),
+      durationMinutes > (selectedTask.allocated_minutes as number),
     ),
   );
 
@@ -234,7 +229,8 @@
               <th class="px-3 py-2 font-medium">{t("tasks.field.title")}</th>
               <th class="hidden px-3 py-2 font-medium sm:table-cell">{t("tasks.field.project")}</th>
               <th class="hidden px-3 py-2 font-medium sm:table-cell">{t("tasks.field.company")}</th>
-              <th class="hidden px-3 py-2 font-medium md:table-cell">{t("tasks.field.assignee")}</th>
+              <th class="hidden px-3 py-2 font-medium md:table-cell">{t("tasks.field.assignee")}</th
+              >
               <th class="px-3 py-2 text-right font-medium">{t("tasks.field.allocated")}</th>
             </tr>
           </thead>
@@ -278,23 +274,18 @@
     <form
       method="POST"
       {action}
-      use:enhance={() => {
-        submitting = true;
-        return async ({ result, update }) => {
-          submitting = false;
-          if (result.type === "success") {
-            open = false;
-            ondone?.();
-            await update();
-          } else if (result.type === "failure") {
-            errorKey =
-              (result.data as { error?: string } | undefined)?.error ?? "errors.validation";
-            await update({ reset: false });
-          } else {
-            await update();
-          }
-        };
-      }}
+      use:enhance={busy.wrap("", () => async ({ result, update }) => {
+        if (result.type === "success") {
+          open = false;
+          ondone?.();
+          await update();
+        } else if (result.type === "failure") {
+          errorKey = (result.data as { error?: string } | undefined)?.error ?? "errors.validation";
+          await update({ reset: false });
+        } else {
+          await update();
+        }
+      })}
       class="space-y-4"
     >
       <input type="hidden" name="task_id" value={selectedTask.id} />
@@ -306,10 +297,16 @@
         <p class="text-sm font-medium text-text">{selectedTask.title}</p>
         <p class="mt-0.5 flex flex-wrap gap-x-3 text-xs text-text-muted">
           {#if selectedTask.allocated_minutes}
-            <span>{t("tasks.schedule.budget", { time: formatMinutes(selectedTask.allocated_minutes) })}</span>
+            <span
+              >{t("tasks.schedule.budget", {
+                time: formatMinutes(selectedTask.allocated_minutes),
+              })}</span
+            >
           {/if}
           {#if selectedTask.due_date}
-            <span>{t("tasks.schedule.deadline_at", { date: fmtDayMonth(selectedTask.due_date) })}</span>
+            <span
+              >{t("tasks.schedule.deadline_at", { date: fmtDayMonth(selectedTask.due_date) })}</span
+            >
           {/if}
         </p>
         {#if !task}
@@ -392,7 +389,7 @@
           class="rounded-lg border border-border px-3 py-2 text-sm text-text hover:bg-surface"
           onclick={() => (open = false)}>{t("common.cancel")}</button
         >
-        <Button type="submit" loading={submitting}>
+        <Button type="submit" loading={busy.active}>
           {t("tasks.schedule.submit")}
         </Button>
       </div>

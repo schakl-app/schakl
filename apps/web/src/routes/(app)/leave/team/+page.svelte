@@ -6,9 +6,11 @@
   import { fmtPeriod } from "$lib/core/format";
   import { can } from "$lib/core/permissions";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
@@ -105,6 +107,7 @@
     return cell && cell.remaining < 0 ? -cell.remaining : 0;
   }
 
+  const busy = new InFlight();
   let registerOpen = $state(false);
   let rejectId = $state("");
   let rejectOpen = $state(false);
@@ -261,15 +264,13 @@
             {/if}
           </div>
           <div class="flex items-center gap-2">
-            <form method="POST" action="?/decide" use:enhance>
+            <form method="POST" action="?/decide" use:enhance={busy.wrap(`approve:${request.id}`)}>
               <input type="hidden" name="id" value={request.id} />
               <input type="hidden" name="approved" value="true" />
-              <button
-                class="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
-              >
+              <Button variant="success" size="sm" loading={busy.is(`approve:${request.id}`)}>
                 <Check size={14} />
                 {t("leave.team.approve")}
-              </button>
+              </Button>
             </form>
             <button
               type="button"
@@ -417,18 +418,20 @@
 
 {#snippet bulkBar(ids: string[])}
   <span class="text-xs font-medium text-text">{t("table.selected", { count: ids.length })}</span>
-  <form method="POST" action="?/bulkDecide" use:enhance>
+  <form method="POST" action="?/bulkDecide" use:enhance={busy.wrap("bulkApprove")}>
     {#each bulkPendingIds as id (id)}
       <input type="hidden" name="ids" value={id} />
     {/each}
     <input type="hidden" name="approved" value="true" />
-    <button
-      disabled={bulkPendingIds.length === 0}
-      class="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+    <Button
+      variant="success"
+      size="sm"
+      loading={busy.is("bulkApprove")}
+      disabled={bulkPendingIds.length === 0 || busy.active}
     >
       <Check size={13} />
       {t("leave.team.approve")}
-    </button>
+    </Button>
   </form>
   <button
     type="button"
@@ -560,20 +563,17 @@
         <form
           method="POST"
           action="?/decide"
-          use:enhance={() =>
-            ({ result, update }) => {
-              if (result.type === "success") reviewOpen = false;
-              void update();
-            }}
+          use:enhance={busy.wrap("review", () => ({ result, update }) => {
+            if (result.type === "success") reviewOpen = false;
+            void update();
+          })}
         >
           <input type="hidden" name="id" value={reviewRequest.id} />
           <input type="hidden" name="approved" value="true" />
-          <button
-            class="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
-          >
+          <Button variant="success" size="sm" loading={busy.is("review")} disabled={busy.active}>
             <Check size={14} />
             {t("leave.team.approve")}
-          </button>
+          </Button>
         </form>
       </div>
     </div>
@@ -603,11 +603,10 @@
     method="POST"
     action="?/decide"
     class="space-y-4"
-    use:enhance={() =>
-      ({ update }) => {
-        rejectOpen = false;
-        void update();
-      }}
+    use:enhance={busy.wrap("reject", () => ({ update }) => {
+      rejectOpen = false;
+      void update();
+    })}
   >
     <input type="hidden" name="id" value={rejectId} />
     <input type="hidden" name="approved" value="false" />
@@ -628,11 +627,9 @@
         class="rounded-lg border border-border px-4 py-2 text-sm"
         onclick={() => (rejectOpen = false)}>{t("common.cancel")}</button
       >
-      <button
-        class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-      >
+      <Button variant="danger" loading={busy.is("reject")} disabled={busy.active}>
         {t("leave.team.reject")}
-      </button>
+      </Button>
     </div>
   </form>
 </Modal>

@@ -13,9 +13,11 @@
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { customFieldColumns } from "$lib/core/table/columns";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
@@ -41,6 +43,7 @@
   let editing = $state<Website | null>(null);
   let deleteId = $state("");
   let confirmDelete = $state(false);
+  const busy = new InFlight();
 
   // Row actions render only for holders of the matching permission (#253).
   const canWrite = $derived(can(page.data.user, "websites.website.write"));
@@ -292,11 +295,10 @@
       <form
         method="POST"
         action="?/save"
-        use:enhance={() =>
-          ({ result, update }) => {
-            if (result.type === "success") showModal = false;
-            void update({ reset: false });
-          }}
+        use:enhance={busy.wrap("", () => ({ result, update }) => {
+          if (result.type === "success") showModal = false;
+          void update({ reset: false });
+        })}
       >
         {#if editing}<input type="hidden" name="website_id" value={editing.id} />{/if}
         <div class="space-y-4">
@@ -401,9 +403,9 @@
             class="rounded-lg border border-border px-4 py-2 text-sm text-text"
             onclick={() => (showModal = false)}>{t("common.cancel")}</button
           >
-          <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-            >{editing ? t("common.save") : t("websites.add")}</button
-          >
+          <Button loading={busy.active}>
+            {editing ? t("common.save") : t("websites.add")}
+          </Button>
         </div>
       </form>
     {/key}

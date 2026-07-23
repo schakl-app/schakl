@@ -7,8 +7,10 @@
   import { fmtDateTime, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { entityPanelsFor } from "$lib/core/registry";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
@@ -28,6 +30,7 @@
     if (form?.saved || form?.issued) editing = false;
   });
 
+  const busy = new InFlight();
   let confirmIssue = $state(false);
   let confirmCancel = $state(false);
   let confirmDelete = $state(false);
@@ -383,11 +386,10 @@
   <form
     method="POST"
     action="?/send"
-    use:enhance={() =>
-      ({ result, update }) => {
-        if (result.type === "success") sendOpen = false;
-        void update({ reset: false });
-      }}
+    use:enhance={busy.wrap("send", () => ({ result, update }) => {
+      if (result.type === "success") sendOpen = false;
+      void update({ reset: false });
+    })}
     class="space-y-3"
   >
     <div>
@@ -422,9 +424,9 @@
         class="rounded-lg border border-border px-4 py-2 text-sm text-text"
         onclick={() => (sendOpen = false)}>{t("common.cancel")}</button
       >
-      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white">
+      <Button loading={busy.is("send")} disabled={busy.active}>
         <Send size={14} class="mr-1 inline" />{t("invoicing.action.send")}
-      </button>
+      </Button>
     </div>
   </form>
 </Modal>
@@ -433,11 +435,10 @@
   <form
     method="POST"
     action="?/payment"
-    use:enhance={() =>
-      ({ result, update }) => {
-        if (result.type === "success") payOpen = false;
-        void update({ reset: false });
-      }}
+    use:enhance={busy.wrap("payment", () => ({ result, update }) => {
+      if (result.type === "success") payOpen = false;
+      void update({ reset: false });
+    })}
     class="space-y-3"
   >
     <div class="grid gap-3 sm:grid-cols-2">
@@ -487,9 +488,7 @@
         class="rounded-lg border border-border px-4 py-2 text-sm text-text"
         onclick={() => (payOpen = false)}>{t("common.cancel")}</button
       >
-      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-        >{t("common.save")}</button
-      >
+      <Button loading={busy.is("payment")} disabled={busy.active}>{t("common.save")}</Button>
     </div>
   </form>
 </Modal>

@@ -8,7 +8,9 @@
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
   import { can } from "$lib/core/permissions";
+  import { InFlight } from "$lib/core/submit.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
@@ -127,7 +129,14 @@
   // else its company, else the org's recent tasks — fetched lazily in the browser so the SSR
   // load pays nothing (docs/PERFORMANCE.md: meta=false&count=false skips discarded aggregates).
   let taskCandidates = $state<
-    { id: string; name: string; subtitle?: string; assignee?: string; due?: string; overdue?: boolean }[]
+    {
+      id: string;
+      name: string;
+      subtitle?: string;
+      assignee?: string;
+      due?: string;
+      overdue?: boolean;
+    }[]
   >([]);
   $effect(() => {
     const scope = task.project_id
@@ -233,6 +242,7 @@
   // Arriving with the `?edit=1` marker (#78; a fresh create lands here with it, #230) opens
   // edit mode once — never for a portal login, whose surface is use-only.
   let editMode = $state(editIntent() && !(page.data.user?.isPortal ?? false));
+  const busy = new InFlight();
   let confirmDelete = $state(false);
   // Inline create from the relation pickers (#115, docs/UX.md — per-picker definition of
   // done): the dialog posts to ?/createCompany / ?/createProject and the new record
@@ -609,11 +619,10 @@
               <form
                 method="POST"
                 action="?/editChecklist"
-                use:enhance={() =>
-                  ({ update }) => {
-                    editingChecklistId = null;
-                    void update();
-                  }}
+                use:enhance={busy.wrap("editChecklist", () => ({ update }) => {
+                  editingChecklistId = null;
+                  void update();
+                })}
                 class="mb-2 space-y-2"
               >
                 <input type="hidden" name="checklist_id" value={checklist.id} />
@@ -627,9 +636,7 @@
                   tasks={taskCandidates}
                 />
                 <div class="flex gap-2">
-                  <button class="rounded-lg bg-brand px-2 py-1 text-xs font-medium text-white"
-                    >{t("common.save")}</button
-                  >
+                  <Button size="xs" loading={busy.is("editChecklist")}>{t("common.save")}</Button>
                   <button
                     type="button"
                     class="rounded-lg border border-border px-2 py-1 text-xs"
@@ -716,11 +723,10 @@
                     <form
                       method="POST"
                       action="?/editItem"
-                      use:enhance={() =>
-                        ({ update }) => {
-                          editingItemId = null;
-                          void update();
-                        }}
+                      use:enhance={busy.wrap("editItem", () => ({ update }) => {
+                        editingItemId = null;
+                        void update();
+                      })}
                       class="mt-1 space-y-2 pl-6"
                     >
                       <input type="hidden" name="checklist_id" value={checklist.id} />
@@ -735,9 +741,7 @@
                         tasks={taskCandidates}
                       />
                       <div class="flex gap-2">
-                        <button class="rounded-lg bg-brand px-2 py-1 text-xs font-medium text-white"
-                          >{t("common.save")}</button
-                        >
+                        <Button size="xs" loading={busy.is("editItem")}>{t("common.save")}</Button>
                         <button
                           type="button"
                           class="rounded-lg border border-border px-2 py-1 text-xs"
@@ -751,7 +755,12 @@
                 </li>
               {/each}
             </ul>
-            <form method="POST" action="?/addItem" use:enhance class="mt-2 flex gap-2">
+            <form
+              method="POST"
+              action="?/addItem"
+              use:enhance={busy.wrap(`addItem:${checklist.id}`)}
+              class="mt-2 flex gap-2"
+            >
               <input type="hidden" name="checklist_id" value={checklist.id} />
               <input
                 name="title"
@@ -759,16 +768,20 @@
                 required
                 class="min-w-0 flex-1 rounded-lg border border-border px-2 py-1 text-sm outline-none focus:border-brand"
               />
-              <button
-                class="rounded-lg border border-border px-2 py-1 text-xs text-text-muted hover:border-brand hover:text-brand"
-                >＋</button
+              <Button variant="secondary" size="xs" loading={busy.is(`addItem:${checklist.id}`)}
+                >＋</Button
               >
             </form>
           </div>
         {/each}
 
         {#if editMode}
-          <form method="POST" action="?/addChecklist" use:enhance class="flex gap-2">
+          <form
+            method="POST"
+            action="?/addChecklist"
+            use:enhance={busy.wrap("addChecklist")}
+            class="flex gap-2"
+          >
             <!-- `min-w-0`: a flex `<input>` keeps its browser-default width (~228px here) as its
                min-content floor, so `flex-1` alone cannot shrink it and the row pushed the whole
                card past a phone's width (issue #36). -->
@@ -778,14 +791,17 @@
               required
               class="min-w-0 flex-1 rounded-lg border border-dashed border-border px-3 py-1.5 text-sm outline-none focus:border-brand"
             />
-            <button
-              class="rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:border-brand hover:text-brand"
-            >
+            <Button variant="secondary" size="sm" loading={busy.is("addChecklist")}>
               {t("common.create")}
-            </button>
+            </Button>
           </form>
           {#if data.checklistTemplates.length > 0}
-            <form method="POST" action="?/addChecklist" use:enhance class="mt-2 flex gap-2">
+            <form
+              method="POST"
+              action="?/addChecklist"
+              use:enhance={busy.wrap("addChecklistTpl")}
+              class="mt-2 flex gap-2"
+            >
               <select
                 name="template_id"
                 required
@@ -797,11 +813,9 @@
                   </option>
                 {/each}
               </select>
-              <button
-                class="rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:border-brand hover:text-brand"
-              >
+              <Button variant="secondary" size="sm" loading={busy.is("addChecklistTpl")}>
                 {t("tasks.checklist.from_template")}
-              </button>
+              </Button>
             </form>
           {/if}
         {/if}
@@ -857,9 +871,12 @@
           <form
             method="POST"
             action="?/addLink"
-            use:enhance={() =>
-              ({ update }) =>
-                void update({ reset: true })}
+            use:enhance={busy.wrap(
+              "addLink",
+              () =>
+                ({ update }) =>
+                  void update({ reset: true }),
+            )}
             class="flex flex-wrap gap-2"
           >
             <input
@@ -873,11 +890,9 @@
               placeholder={t("tasks.links.title_placeholder")}
               class="w-40 rounded-lg border border-border px-3 py-1.5 text-sm outline-none focus:border-brand"
             />
-            <button
-              class="rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:border-brand hover:text-brand"
-            >
+            <Button variant="secondary" size="sm" loading={busy.is("addLink")}>
               {t("common.create")}
-            </button>
+            </Button>
           </form>
         {/if}
 
@@ -908,12 +923,11 @@
       <form
         method="POST"
         action="?/addComment"
-        use:enhance={() =>
-          ({ update, result }) => {
-            // Reset the editor by remounting it; its internal state survives a plain form reset.
-            if (result.type === "success") newCommentKey += 1;
-            void update({ reset: true });
-          }}
+        use:enhance={busy.wrap("addComment", () => ({ update, result }) => {
+          // Reset the editor by remounting it; its internal state survives a plain form reset.
+          if (result.type === "success") newCommentKey += 1;
+          void update({ reset: true });
+        })}
         class="mb-4"
       >
         {#key newCommentKey}
@@ -927,10 +941,7 @@
           />
         {/key}
         <div class="mt-2 flex justify-end">
-          <button
-            class="rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
-            >{t("tasks.comments.send")}</button
-          >
+          <Button size="sm" loading={busy.is("addComment")}>{t("tasks.comments.send")}</Button>
         </div>
       </form>
 
@@ -982,11 +993,10 @@
                 <form
                   method="POST"
                   action="?/editComment"
-                  use:enhance={() =>
-                    ({ update }) => {
-                      editingCommentId = null;
-                      void update();
-                    }}
+                  use:enhance={busy.wrap("editComment", () => ({ update }) => {
+                    editingCommentId = null;
+                    void update();
+                  })}
                 >
                   <input type="hidden" name="comment_id" value={comment.id} />
                   <RichTextEditor
@@ -998,9 +1008,7 @@
                     tasks={taskCandidates}
                   />
                   <div class="mt-1 flex gap-2">
-                    <button class="rounded-lg bg-brand px-2 py-1 text-xs font-medium text-white"
-                      >{t("common.save")}</button
-                    >
+                    <Button size="xs" loading={busy.is("editComment")}>{t("common.save")}</Button>
                     <button
                       type="button"
                       class="rounded-lg border border-border px-2 py-1 text-xs"
@@ -1344,11 +1352,10 @@
           <form
             method="POST"
             action="?/setLabels"
-            use:enhance={() =>
-              ({ update }) => {
-                showLabelPicker = false;
-                void update();
-              }}
+            use:enhance={busy.wrap("setLabels", () => ({ update }) => {
+              showLabelPicker = false;
+              void update();
+            })}
             class="space-y-1"
           >
             {#each data.labels as label (label.id)}
@@ -1363,20 +1370,18 @@
                 <span class="text-text">{label.name}</span>
               </label>
             {/each}
-            <button
-              class="mt-2 w-full rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
-              >{t("common.apply")}</button
+            <Button size="sm" loading={busy.is("setLabels")} class="mt-2 w-full"
+              >{t("common.apply")}</Button
             >
           </form>
 
           <form
             method="POST"
             action="?/createLabel"
-            use:enhance={() =>
-              ({ update }) => {
-                showLabelPicker = false;
-                void update();
-              }}
+            use:enhance={busy.wrap("createLabel", () => ({ update }) => {
+              showLabelPicker = false;
+              void update();
+            })}
             class="mt-3 border-t border-border pt-3"
           >
             {#each currentLabelIds as id (id)}
@@ -1401,11 +1406,14 @@
                 ></button>
               {/each}
             </div>
-            <button
-              class="mt-2 w-full rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:border-brand hover:text-brand"
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={busy.is("createLabel")}
+              class="mt-2 w-full"
             >
               {t("tasks.labels.create")}
-            </button>
+            </Button>
           </form>
         {:else if (task.labels ?? []).length === 0}
           <p class="text-sm text-text-muted">{t("tasks.labels.empty")}</p>
@@ -1472,19 +1480,16 @@
         id="task-edit"
         method="POST"
         action="?/update"
-        use:enhance={() =>
-          ({ update }) => {
-            editMode = false;
-            dueReason = "";
-            void update();
-          }}
+        use:enhance={busy.wrap("update", () => ({ update }) => {
+          editMode = false;
+          dueReason = "";
+          void update();
+        })}
       >
         <input type="hidden" name="due_change_reason" value={dueReason} />
-        <button
-          class="w-full rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
+        <Button loading={busy.is("update")} class="w-full">
           {t("common.save")}
-        </button>
+        </Button>
       </form>
     {/if}
   </aside>
@@ -1573,18 +1578,15 @@
       <form
         method="POST"
         action="?/update"
-        use:enhance={() =>
-          ({ update }) => {
-            showFinishPrompt = false;
-            return update();
-          }}
+        use:enhance={busy.wrap("finish", () => ({ update }) => {
+          showFinishPrompt = false;
+          return update();
+        })}
       >
         <input type="hidden" name="status" value={finishStatus?.key ?? ""} />
-        <button
-          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
+        <Button loading={busy.is("finish")}>
           {t("tasks.finish_prompt.confirm")}
-        </button>
+        </Button>
       </form>
     </div>
   {/if}
@@ -1604,11 +1606,10 @@
     <form
       method="POST"
       action="?/createProject"
-      use:enhance={() =>
-        ({ result, update }) => {
-          if (result.type === "success") qcProjectOpen = false;
-          void update({ reset: false });
-        }}
+      use:enhance={busy.wrap("createProject", () => ({ result, update }) => {
+        if (result.type === "success") qcProjectOpen = false;
+        void update({ reset: false });
+      })}
       class="space-y-3"
     >
       <div>
@@ -1644,9 +1645,7 @@
           class="rounded-lg border border-border px-4 py-2 text-sm text-text"
           onclick={() => (qcProjectOpen = false)}>{t("common.cancel")}</button
         >
-        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-          >{t("common.create")}</button
-        >
+        <Button loading={busy.is("createProject")}>{t("common.create")}</Button>
       </div>
     </form>
   {/key}

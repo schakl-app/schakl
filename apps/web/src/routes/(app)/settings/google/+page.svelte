@@ -2,7 +2,9 @@
   import { enhance } from "$app/forms";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
+  import Button from "$lib/core/ui/Button.svelte";
 
   let { data, form } = $props();
 
@@ -20,6 +22,8 @@
     copied = true;
     setTimeout(() => (copied = false), 2000);
   }
+
+  const busy = new InFlight();
 
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand";
@@ -69,9 +73,12 @@
   <form
     method="POST"
     action="?/save"
-    use:enhance={() =>
-      ({ update }) =>
-        update({ reset: false })}
+    use:enhance={busy.wrap(
+      "save",
+      () =>
+        ({ update }) =>
+          update({ reset: false }),
+    )}
     class="space-y-5"
   >
     <!-- OAuth client (docs/GOOGLE.md §2: each install registers its own "Internal" client). -->
@@ -291,17 +298,19 @@
     {/if}
 
     <div class="flex justify-end border-t border-border pt-4">
-      <button
-        type="submit"
-        class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-      >
+      <Button type="submit" loading={busy.is("save")} disabled={busy.active}>
         {t("common.save")}
-      </button>
+      </Button>
     </div>
   </form>
 
   <!-- Backfill: existing clients get their folder queued (new ones ride company.created). -->
-  <form method="POST" action="?/provisionAll" use:enhance class="mt-5 border-t border-border pt-4">
+  <form
+    method="POST"
+    action="?/provisionAll"
+    use:enhance={busy.wrap("provisionAll")}
+    class="mt-5 border-t border-border pt-4"
+  >
     <div class="flex flex-wrap items-center justify-between gap-2">
       <div>
         <p class="text-sm font-medium text-text">{t("settings.google.provision_all")}</p>
@@ -312,12 +321,14 @@
           </p>
         {/if}
       </div>
-      <button
+      <Button
         type="submit"
-        class="rounded-lg border border-border px-4 py-2 text-sm font-medium text-text hover:border-brand"
+        variant="secondary"
+        loading={busy.is("provisionAll")}
+        disabled={busy.active}
       >
         {t("settings.google.provision_all_run")}
-      </button>
+      </Button>
     </div>
   </form>
 </section>

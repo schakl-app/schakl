@@ -9,6 +9,8 @@
   import { t } from "$lib/core/i18n";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { can } from "$lib/core/permissions";
+  import { InFlight } from "$lib/core/submit.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
@@ -19,6 +21,8 @@
   import { page } from "$app/state";
 
   let { data, form } = $props();
+
+  const busy = new InFlight();
 
   // Approved hours are signed off; only whoever may approve them may still change them.
   const canApprove = $derived(can(page.data.user, "time.entry.approve"));
@@ -397,18 +401,16 @@
           {data.running.description || entryLabel(data.running)}
         </span>
       </div>
-      <form method="POST" action="?/stopTimer" use:enhance>
-        <button
-          class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
-        >
+      <form method="POST" action="?/stopTimer" use:enhance={busy.wrap("stopTimer")}>
+        <Button variant="danger" size="sm" loading={busy.is("stopTimer")} disabled={busy.active}>
           {t("time.timer.stop")}
-        </button>
+        </Button>
       </form>
     {:else}
       <form
         method="POST"
         action="?/startTimer"
-        use:enhance
+        use:enhance={busy.wrap("startTimer")}
         class="flex flex-wrap items-center gap-2"
       >
         <input
@@ -436,11 +438,9 @@
             oncreate={(name) => quickCreateProject(name, "timer_project")}
           />
         </div>
-        <button
-          class="flex items-center gap-1 rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
-        >
+        <Button size="sm" loading={busy.is("startTimer")} disabled={busy.active}>
           ▶ {t("time.timer.start")}
-        </button>
+        </Button>
       </form>
     {/if}
   </div>
@@ -760,11 +760,10 @@
     <form
       method="POST"
       action="?/createProject"
-      use:enhance={() =>
-        ({ result, update }) => {
-          if (result.type === "success") showNewProject = false;
-          void update({ reset: false });
-        }}
+      use:enhance={busy.wrap("qcProject", () => ({ result, update }) => {
+        if (result.type === "success") showNewProject = false;
+        void update({ reset: false });
+      })}
       class="space-y-3"
     >
       <input type="hidden" name="slot" value={projectSlot} />
@@ -821,10 +820,7 @@
           class="rounded-lg border border-border px-4 py-2 text-sm"
           onclick={() => (showNewProject = false)}>{t("common.cancel")}</button
         >
-        <button
-          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-          >{t("common.create")}</button
-        >
+        <Button loading={busy.is("qcProject")} disabled={busy.active}>{t("common.create")}</Button>
       </div>
     </form>
   {/key}
@@ -835,11 +831,10 @@
     <form
       method="POST"
       action="?/createCompany"
-      use:enhance={() =>
-        ({ result, update }) => {
-          if (result.type === "success") showNewCompany = false;
-          void update({ reset: false });
-        }}
+      use:enhance={busy.wrap("qcCompany", () => ({ result, update }) => {
+        if (result.type === "success") showNewCompany = false;
+        void update({ reset: false });
+      })}
       class="space-y-3"
     >
       <input type="hidden" name="slot" value={companySlot} />
@@ -898,10 +893,7 @@
           class="rounded-lg border border-border px-4 py-2 text-sm"
           onclick={() => (showNewCompany = false)}>{t("common.cancel")}</button
         >
-        <button
-          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-          >{t("common.create")}</button
-        >
+        <Button loading={busy.is("qcCompany")} disabled={busy.active}>{t("common.create")}</Button>
       </div>
     </form>
   {/key}

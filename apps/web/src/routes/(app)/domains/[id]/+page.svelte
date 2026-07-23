@@ -6,7 +6,9 @@
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
+  import { InFlight } from "$lib/core/submit.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import PartyPicker from "$lib/core/ui/PartyPicker.svelte";
@@ -25,6 +27,7 @@
   // Radio selection is component state, never a one-way checked (docs/UX.md).
   let websiteHost = $state<"root" | "www">("root");
   let confirmDelete = $state(false);
+  const busy = new InFlight();
 
   // Inline-create from the pickers (#115): "＋ … toevoegen" opens these dialogs.
   // The slot names the picker that asked, so its `inlineCreated` auto-selects only there.
@@ -119,11 +122,10 @@
       <form
         method="POST"
         action="?/update"
-        use:enhance={() =>
-          ({ result, update }) => {
-            if (result.type === "success") editing = false;
-            void update({ reset: false });
-          }}
+        use:enhance={busy.wrap("update", () => ({ result, update }) => {
+          if (result.type === "success") editing = false;
+          void update({ reset: false });
+        })}
       >
         <DomainForm
           {domain}
@@ -153,9 +155,7 @@
             class="rounded-lg border border-border px-4 py-2 text-sm text-text"
             onclick={() => (editing = false)}>{t("common.cancel")}</button
           >
-          <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-            >{t("common.save")}</button
-          >
+          <Button loading={busy.is("update")} disabled={busy.active}>{t("common.save")}</Button>
         </div>
       </form>
     {:else}
@@ -212,12 +212,10 @@
     <div class="mb-4 flex items-center justify-between">
       <h2 class="text-sm font-semibold text-text">{t("domains.dns.title")}</h2>
       {#if canWrite}
-        <form method="POST" action="?/refresh" use:enhance>
-          <button
-            class="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-text hover:border-brand"
-          >
+        <form method="POST" action="?/refresh" use:enhance={busy.wrap("refresh")}>
+          <Button variant="secondary" size="sm" loading={busy.is("refresh")} disabled={busy.active}>
             <RefreshCw size={14} />{t("domains.dns.refresh")}
-          </button>
+          </Button>
         </form>
       {/if}
     </div>
@@ -330,11 +328,10 @@
     <form
       method="POST"
       action="?/saveWebsite"
-      use:enhance={() =>
-        ({ result, update }) => {
-          if (result.type === "success") editingWebsite = false;
-          void update({ reset: false });
-        }}
+      use:enhance={busy.wrap("save-website", () => ({ result, update }) => {
+        if (result.type === "success") editingWebsite = false;
+        void update({ reset: false });
+      })}
     >
       {#if website}<input type="hidden" name="website_id" value={website.id} />{/if}
       <div class="space-y-4">
@@ -411,9 +408,9 @@
             onclick={() => (editingWebsite = false)}>{t("common.cancel")}</button
           >
         {/if}
-        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-          >{website ? t("common.save") : t("websites.add")}</button
-        >
+        <Button loading={busy.is("save-website")} disabled={busy.active}>
+          {website ? t("common.save") : t("websites.add")}
+        </Button>
       </div>
     </form>
   {:else}

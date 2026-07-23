@@ -5,7 +5,9 @@
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
   import { dashboardWidgetsFor, widgetTitleKey } from "$lib/core/registry";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
+  import Button from "$lib/core/ui/Button.svelte";
   import WidgetGallery from "$lib/core/ui/WidgetGallery.svelte";
 
   let { data, form } = $props();
@@ -20,6 +22,7 @@
   // The org default template. A settings screen is already an editing surface (UX §6), so there is
   // no use/edit toggle — the same gallery, plus reorder/remove, then Save.
   let draft = $state<string[]>(data.defaultWidgets ?? [...data.availableWidgetKeys]);
+  const busy = new InFlight();
   function addWidget(key: string) {
     if (!draft.includes(key)) draft = [...draft, key];
   }
@@ -48,7 +51,7 @@
 <form
   method="POST"
   action="?/saveDefault"
-  use:enhance
+  use:enhance={busy.wrap()}
   class="max-w-lg rounded-xl border border-border bg-surface-raised p-5"
 >
   <input type="hidden" name="widgets" value={draft.join(",")} />
@@ -86,11 +89,9 @@
   <p class="mt-3 text-xs text-text-muted">{t("settings.dashboard.hint")}</p>
   {#if form?.error}<p class="mt-2 text-sm text-red-600">{t(form.error)}</p>{/if}
   {#if form?.saved}<p class="mt-2 text-sm text-green-600">{t("settings.account.saved")}</p>{/if}
-  <button
-    class="mt-4 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-  >
+  <Button class="mt-4" loading={busy.active}>
     {t("common.save")}
-  </button>
+  </Button>
 </form>
 
 <section class="mt-6 max-w-lg rounded-xl border border-border bg-surface-raised p-5">

@@ -4,15 +4,19 @@
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import { can } from "$lib/core/permissions";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import TasksNav from "$lib/modules/tasks/TasksNav.svelte";
 
   let { data, form } = $props();
+
+  const busy = new InFlight();
 
   const canManageTemplates = $derived(can(page.data.user, "tasks.template.write"));
 
@@ -166,11 +170,10 @@
   <form
     method="POST"
     action={editing.id ? "?/update" : "?/create"}
-    use:enhance={() =>
-      ({ update }) => {
-        editing = null;
-        void update();
-      }}
+    use:enhance={busy.wrap("template", () => ({ update }) => {
+      editing = null;
+      void update();
+    })}
     class="mb-6 rounded-xl border border-border bg-surface-raised p-5"
   >
     {#if editing.id}<input type="hidden" name="id" value={editing.id} />{/if}
@@ -346,9 +349,7 @@
 
     {#if form?.error}<p class="mt-2 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
     <div class="mt-4 flex gap-2">
-      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >{t("common.save")}</button
-      >
+      <Button loading={busy.is("template")} disabled={busy.active}>{t("common.save")}</Button>
       <button
         type="button"
         class="rounded-lg border border-border px-4 py-2 text-sm"
@@ -441,11 +442,10 @@
               <form
                 method="POST"
                 action="?/updateChecklist"
-                use:enhance={() =>
-                  ({ update }) => {
-                    editingChecklistId = null;
-                    void update();
-                  }}
+                use:enhance={busy.wrap(`checklist:${checklistTemplate.id}`, () => ({ update }) => {
+                  editingChecklistId = null;
+                  void update();
+                })}
                 class="space-y-2"
               >
                 <input type="hidden" name="id" value={checklistTemplate.id} />
@@ -458,9 +458,13 @@
                   >{(checklistTemplate.items ?? []).join("\n")}</textarea
                 >
                 <div class="flex gap-2">
-                  <button class="rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white"
-                    >{t("common.save")}</button
+                  <Button
+                    size="sm"
+                    loading={busy.is(`checklist:${checklistTemplate.id}`)}
+                    disabled={busy.active}
                   >
+                    {t("common.save")}
+                  </Button>
                   <button
                     type="button"
                     class="rounded-lg border border-border px-3 py-1.5 text-xs"
@@ -510,9 +514,12 @@
       <form
         method="POST"
         action="?/createChecklist"
-        use:enhance={() =>
-          ({ update }) =>
-            void update({ reset: true })}
+        use:enhance={busy.wrap(
+          "createChecklist",
+          () =>
+            ({ update }) =>
+              void update({ reset: true }),
+        )}
         class="space-y-3"
       >
         <input
@@ -527,11 +534,9 @@
           required
           class={inputClass}
           placeholder={t("tasks.templates.checklist_items_hint")}></textarea>
-        <button
-          class="w-full rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
+        <Button class="w-full" loading={busy.is("createChecklist")} disabled={busy.active}>
           {t("common.create")}
-        </button>
+        </Button>
       </form>
     </aside>
   </div>

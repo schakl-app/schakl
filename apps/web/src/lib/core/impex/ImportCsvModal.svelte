@@ -7,6 +7,7 @@
    */
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
 
@@ -31,7 +32,7 @@
   const SHOWN_ERRORS = 10;
 
   // Which of the two submits is in flight (#242) — the clicked one spins, both disable.
-  let submitting = $state<"preview" | "commit" | null>(null);
+  const busy = new InFlight();
   // Results belong to this modal session and to the picked file: reopening the modal or
   // picking another file voids what an earlier run reported.
   let submitted = $state(false);
@@ -46,7 +47,7 @@
 
   const current = $derived(submitted && !stale ? report : null);
   const canCommit = $derived(
-    current != null && !current.applied && current.error_count === 0 && !submitting,
+    current != null && !current.applied && current.error_count === 0 && !busy.active,
   );
 </script>
 
@@ -55,16 +56,16 @@
     method="POST"
     {action}
     enctype="multipart/form-data"
-    use:enhance={({ submitter }) => {
-      submitting = submitter?.getAttribute("value") === "commit" ? "commit" : "preview";
-      return async ({ update }) => {
-        submitting = null;
-        submitted = true;
-        stale = false;
-        // Keep the picked file standing: the commit posts the same input again.
-        await update({ reset: false });
-      };
-    }}
+    use:enhance={busy.wrap(
+      ({ submitter }) => (submitter?.getAttribute("value") === "commit" ? "commit" : "preview"),
+      () =>
+        async ({ update }) => {
+          submitted = true;
+          stale = false;
+          // Keep the picked file standing: the commit posts the same input again.
+          await update({ reset: false });
+        },
+    )}
   >
     <label for="impex-file" class="mb-1 block text-sm font-medium text-text">
       {t("impex.file")}
@@ -103,7 +104,9 @@
           <ul class="mt-2 space-y-1">
             {#each current.errors.slice(0, SHOWN_ERRORS) as rowError, index (index)}
               <li class="text-red-600 dark:text-red-400">
-                {rowError.row === 0 ? t("impex.header_row") : t("impex.row", { row: rowError.row })}{#if rowError.field}&nbsp;·
+                {rowError.row === 0
+                  ? t("impex.header_row")
+                  : t("impex.row", { row: rowError.row })}{#if rowError.field}&nbsp;·
                   <span class="font-mono text-xs">{rowError.field}</span>{/if}: {t(
                   rowError.message_key,
                 )}
@@ -125,12 +128,12 @@
           variant="secondary"
           name="mode"
           value="preview"
-          loading={submitting === "preview"}
-          disabled={submitting !== null}
+          loading={busy.is("preview")}
+          disabled={busy.active}
         >
           {t("impex.preview")}
         </Button>
-        <Button name="mode" value="commit" loading={submitting === "commit"} disabled={!canCommit}>
+        <Button name="mode" value="commit" loading={busy.is("commit")} disabled={!canCommit}>
           {t("impex.commit")}
         </Button>
       {/if}

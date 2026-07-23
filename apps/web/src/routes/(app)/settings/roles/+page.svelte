@@ -3,14 +3,18 @@
 
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import { localeName } from "$lib/core/roles/name";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
 
   let { data, form } = $props();
+
+  const busy = new InFlight();
 
   let showCreate = $state(false);
   let duplicateFrom = $state("");
@@ -127,7 +131,7 @@
   <form
     method="POST"
     action="?/create"
-    use:enhance
+    use:enhance={busy.wrap()}
     class="space-y-4"
     data-testid="role-create-form"
   >
@@ -136,9 +140,9 @@
     {#if form?.createError}
       <p class="text-sm text-red-600 dark:text-red-400">{t(form.createError)}</p>
     {/if}
-    <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+    <Button loading={busy.active}>
       {t("settings.roles.create")}
-    </button>
+    </Button>
   </form>
 </Modal>
 

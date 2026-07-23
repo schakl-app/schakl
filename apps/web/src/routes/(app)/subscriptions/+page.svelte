@@ -6,9 +6,11 @@
   import { page } from "$app/state";
   import { fmtMoney, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
@@ -28,6 +30,7 @@
   type Subscription = (typeof data.subscriptions)[number];
   type Template = (typeof data.templates)[number];
 
+  const busy = new InFlight();
   let showForm = $state(false);
   let editing = $state<Subscription | null>(null);
   let deleteId = $state("");
@@ -414,7 +417,12 @@
 
 {#snippet bulkBar(ids: string[])}
   <span class="text-xs font-medium text-text">{t("table.selected", { count: ids.length })}</span>
-  <form method="POST" action="?/bulkStatus" use:enhance class="flex items-center gap-1.5">
+  <form
+    method="POST"
+    action="?/bulkStatus"
+    use:enhance={busy.wrap("bulkStatus")}
+    class="flex items-center gap-1.5"
+  >
     {#each ids as id (id)}
       <input type="hidden" name="ids" value={id} />
     {/each}
@@ -428,9 +436,9 @@
         <option value={status}>{t(`subscriptions.status.${status}`)}</option>
       {/each}
     </select>
-    <button class="rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white hover:opacity-90">
+    <Button size="sm" loading={busy.is("bulkStatus")} disabled={busy.active}>
       {t("subscriptions.bulk.set_status")}
-    </button>
+    </Button>
   </form>
   <button
     type="button"
@@ -492,11 +500,10 @@
     <form
       method="POST"
       action={editing ? "?/update" : "?/create"}
-      use:enhance={() =>
-        ({ result, update }) => {
-          if (result.type === "success") showForm = false;
-          void update({ reset: false });
-        }}
+      use:enhance={busy.wrap("save", () => ({ result, update }) => {
+        if (result.type === "success") showForm = false;
+        void update({ reset: false });
+      })}
       class="space-y-4"
     >
       {#if editing}<input type="hidden" name="id" value={editing.id} />{/if}
@@ -699,9 +706,7 @@
           class="rounded-lg border border-border px-4 py-2 text-sm text-text"
           onclick={() => (showForm = false)}>{t("common.cancel")}</button
         >
-        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-          >{t("common.save")}</button
-        >
+        <Button loading={busy.is("save")} disabled={busy.active}>{t("common.save")}</Button>
       </div>
     </form>
   {/key}
@@ -721,11 +726,10 @@
     <form
       method="POST"
       action="?/createProject"
-      use:enhance={() =>
-        ({ result, update }) => {
-          if (result.type === "success") qcProjectOpen = false;
-          void update({ reset: false });
-        }}
+      use:enhance={busy.wrap("qcProject", () => ({ result, update }) => {
+        if (result.type === "success") qcProjectOpen = false;
+        void update({ reset: false });
+      })}
       class="space-y-3"
     >
       <div>
@@ -760,9 +764,7 @@
           class="rounded-lg border border-border px-4 py-2 text-sm text-text"
           onclick={() => (qcProjectOpen = false)}>{t("common.cancel")}</button
         >
-        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-          >{t("common.create")}</button
-        >
+        <Button loading={busy.is("qcProject")} disabled={busy.active}>{t("common.create")}</Button>
       </div>
     </form>
   {/key}
@@ -775,11 +777,10 @@
     <form
       method="POST"
       action="?/createType"
-      use:enhance={() =>
-        ({ result, update }) => {
-          if (result.type === "success") qcTypeOpen = false;
-          void update({ reset: false });
-        }}
+      use:enhance={busy.wrap("qcType", () => ({ result, update }) => {
+        if (result.type === "success") qcTypeOpen = false;
+        void update({ reset: false });
+      })}
       class="space-y-3"
     >
       {#key qcTypeName}
@@ -799,9 +800,7 @@
           class="rounded-lg border border-border px-4 py-2 text-sm text-text"
           onclick={() => (qcTypeOpen = false)}>{t("common.cancel")}</button
         >
-        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-          >{t("common.create")}</button
-        >
+        <Button loading={busy.is("qcType")} disabled={busy.active}>{t("common.create")}</Button>
       </div>
     </form>
   {/key}

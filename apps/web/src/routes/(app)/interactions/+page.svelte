@@ -16,9 +16,11 @@
   import { fmtDateTime, fmtMonthYear, fmtPeriod } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
@@ -146,6 +148,7 @@
   let showCreate = $state(false);
   let showEdit = $state(false);
   let editing = $state<InteractionItem | null>(null);
+  const busy = new InFlight();
 
   // Inline company / project create from the form's pickers (#115, docs/UX.md — per-picker
   // definition of done). The form passes what was typed out; the dialogs live here and answer
@@ -594,11 +597,10 @@
       method="POST"
       action="?/rejectInteraction"
       class="space-y-4"
-      use:enhance={() =>
-        async ({ update }) => {
-          showReject = false;
-          await update();
-        }}
+      use:enhance={busy.wrap("reject", () => async ({ update }) => {
+        showReject = false;
+        await update();
+      })}
     >
       <input type="hidden" name="id" value={rejecting.id} />
       <p class="text-sm text-text-muted">{t("interactions.reject_message")}</p>
@@ -614,12 +616,9 @@
         >
           {t("common.cancel")}
         </button>
-        <button
-          type="submit"
-          class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
+        <Button type="submit" variant="danger" loading={busy.is("reject")} disabled={busy.active}>
           {t("interactions.reject")}
-        </button>
+        </Button>
       </div>
     </form>
   {/if}
@@ -645,11 +644,10 @@
     <form
       method="POST"
       action="?/createProject"
-      use:enhance={() =>
-        ({ result, update }) => {
-          if (result.type === "success") qcProjectOpen = false;
-          void update({ reset: false });
-        }}
+      use:enhance={busy.wrap("create-project", () => ({ result, update }) => {
+        if (result.type === "success") qcProjectOpen = false;
+        void update({ reset: false });
+      })}
       class="space-y-3"
     >
       <div>
@@ -684,9 +682,9 @@
           class="rounded-lg border border-border px-4 py-2 text-sm text-text"
           onclick={() => (qcProjectOpen = false)}>{t("common.cancel")}</button
         >
-        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-          >{t("common.create")}</button
-        >
+        <Button loading={busy.is("create-project")} disabled={busy.active}>
+          {t("common.create")}
+        </Button>
       </div>
     </form>
   {/key}

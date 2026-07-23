@@ -1,11 +1,15 @@
 <script lang="ts">
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
+  import Button from "$lib/core/ui/Button.svelte";
   import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
   import PermissionMatrix from "$lib/core/roles/PermissionMatrix.svelte";
 
   let { data, form } = $props();
+
+  const busy = new InFlight();
 
   const role = $derived(data.role);
   const isOwner = $derived(role.key === "owner");
@@ -36,9 +40,12 @@
   method="POST"
   action="?/save"
   id="role-form"
-  use:enhance={() =>
-    ({ update }) =>
-      update({ reset: false })}
+  use:enhance={busy.wrap(
+    "",
+    () =>
+      ({ update }) =>
+        update({ reset: false }),
+  )}
 >
   <input type="hidden" name="is_owner" value={isOwner} />
 
@@ -89,11 +96,8 @@
   {/if}
 
   <div class="sticky bottom-0 mt-5 -mx-1 bg-surface/80 px-1 py-3 backdrop-blur">
-    <button
-      class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-      data-testid="save-role"
-    >
+    <Button data-testid="save-role" loading={busy.active}>
       {t("common.save")}
-    </button>
+    </Button>
   </div>
 </form>

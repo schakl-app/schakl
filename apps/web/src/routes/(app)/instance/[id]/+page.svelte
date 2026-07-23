@@ -2,12 +2,16 @@
   import { enhance } from "$app/forms";
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import { moduleLabel } from "$lib/core/registry";
+  import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
 
   let { data, form } = $props();
+
+  const busy = new InFlight();
 
   const org = $derived(data.org);
   const host = $derived(org.custom_domain ?? `${org.slug}.${data.baseDomain}`);
@@ -54,10 +58,9 @@
     <form
       method="POST"
       action="?/update"
-      use:enhance={() =>
-        async ({ update }) => {
-          await update({ reset: false });
-        }}
+      use:enhance={busy.wrap("update", () => async ({ update }) => {
+        await update({ reset: false });
+      })}
       class="mt-4 grid gap-4 sm:grid-cols-2"
     >
       <div>
@@ -81,11 +84,9 @@
         />
       </div>
       <div class="sm:col-span-2">
-        <button
-          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
+        <Button loading={busy.is("update")} disabled={busy.active}>
           {t("common.save")}
-        </button>
+        </Button>
         {#if form?.updated}<span class="ml-3 text-sm text-text-muted"
             >{t("settings.account.saved")}</span
           >{/if}
@@ -96,7 +97,12 @@
   <!-- Modules -->
   <section class={sectionClass}>
     <h2 class={sectionTitle}>{t("settings.modules.title")}</h2>
-    <form method="POST" action="?/modules" use:enhance class="mt-4 space-y-3">
+    <form
+      method="POST"
+      action="?/modules"
+      use:enhance={busy.wrap("modules")}
+      class="mt-4 space-y-3"
+    >
       <div class="grid grid-cols-2 gap-2">
         {#each data.availableModules as moduleName (moduleName)}
           {@const isHub = moduleName === "companies"}
@@ -113,9 +119,9 @@
           </label>
         {/each}
       </div>
-      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+      <Button loading={busy.is("modules")} disabled={busy.active}>
         {t("common.save")}
-      </button>
+      </Button>
     </form>
   </section>
 
@@ -169,8 +175,10 @@
           {t("instance.suspend")}
         </button>
       {:else}
-        <form method="POST" action="?/activate" use:enhance>
-          <button class={buttonSecondary}>{t("instance.activate")}</button>
+        <form method="POST" action="?/activate" use:enhance={busy.wrap("activate")}>
+          <Button variant="secondary" loading={busy.is("activate")} disabled={busy.active}>
+            {t("instance.activate")}
+          </Button>
         </form>
       {/if}
       {#if org.status !== "deleted"}
@@ -192,18 +200,21 @@
         {t("instance.purge")}
       </h2>
       <p class="mt-1 text-xs text-text-muted">{t("instance.purge_hint")}</p>
-      <form method="POST" action="?/purge" use:enhance class="mt-4 flex flex-wrap items-end gap-3">
+      <form
+        method="POST"
+        action="?/purge"
+        use:enhance={busy.wrap("purge")}
+        class="mt-4 flex flex-wrap items-end gap-3"
+      >
         <div class="grow">
           <label for="confirm" class="mb-1 block text-sm font-medium text-text">
             {t("instance.purge_confirm", { slug: org.slug })}
           </label>
           <input id="confirm" name="confirm" required class="{inputClass} font-mono" />
         </div>
-        <button
-          class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
-        >
+        <Button variant="danger" loading={busy.is("purge")} disabled={busy.active}>
           {t("instance.purge_action")}
-        </button>
+        </Button>
       </form>
       {#if form?.error && form?.purgeError}
         <p class="mt-2 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>

@@ -10,6 +10,7 @@
   import { burnBarClass, burnBarWidth, burnPct } from "$lib/core/burn";
   import { fmtDateTime, fmtNumber } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
@@ -356,28 +357,24 @@
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 
   // Save in flight (#242): spinner on the button, no double submit.
-  let submitting = $state(false);
+  const busy = new InFlight();
 </script>
 
 <form
   method="POST"
   {action}
-  use:enhance={() => {
-    submitting = true;
-    return async ({ result, update }) => {
-      submitting = false;
-      if (result.type === "success" && draftEnabled) {
-        // The entry landed and the API cleared the draft with it (#44).
-        clearTimeout(draftTimer);
-        draftTimer = undefined;
-        hasConcept = false;
-        conceptSavedAt = null;
-        sawFirstRun = false;
-      }
-      ondone?.();
-      await update({ reset: !entry });
-    };
-  }}
+  use:enhance={busy.wrap("", () => async ({ result, update }) => {
+    if (result.type === "success" && draftEnabled) {
+      // The entry landed and the API cleared the draft with it (#44).
+      clearTimeout(draftTimer);
+      draftTimer = undefined;
+      hasConcept = false;
+      conceptSavedAt = null;
+      sawFirstRun = false;
+    }
+    ondone?.();
+    await update({ reset: !entry });
+  })}
   class="space-y-3"
 >
   {#if entry}<input type="hidden" name="id" value={entry.id} />{/if}
@@ -597,7 +594,7 @@
 
   {#if error}<p class="text-sm text-red-600">{t(error)}</p>{/if}
   <div class="flex gap-2">
-    <Button type="submit" loading={submitting} class="flex-1">
+    <Button type="submit" loading={busy.active} class="flex-1">
       {t("common.save")}
     </Button>
     {#if oncancel}

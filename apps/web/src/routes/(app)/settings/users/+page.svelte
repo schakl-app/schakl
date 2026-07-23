@@ -18,7 +18,9 @@
   import { pageTitle } from "$lib/core/title";
   import { localeName } from "$lib/core/roles/name";
   import { effectivePermissions, WILDCARD } from "$lib/core/roles/permissions";
+  import { InFlight } from "$lib/core/submit.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
@@ -35,6 +37,7 @@
   let { data, form } = $props();
 
   let showInvite = $state(false);
+  const busy = new InFlight();
   let revokeId = $state("");
   let confirmRevoke = $state(false);
   let resetTwoFactorId = $state("");
@@ -211,10 +214,9 @@
   <form
     method="POST"
     action="?/invite"
-    use:enhance={() =>
-      ({ update }) => {
-        void update().then(() => (showInvite = false));
-      }}
+    use:enhance={busy.wrap("invite", () => ({ update }) => {
+      void update().then(() => (showInvite = false));
+    })}
     class="mb-6 rounded-xl border border-border bg-surface-raised p-4"
   >
     <div class="grid gap-3 sm:grid-cols-3">
@@ -248,9 +250,9 @@
       {t("settings.users.send_invite_email")}
     </label>
     <div class="mt-4 flex items-center gap-3">
-      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+      <Button loading={busy.is("invite")}>
         {t("settings.users.send_invite")}
-      </button>
+      </Button>
       <span class="text-xs text-text-muted">{t("settings.users.invited_hint")}</span>
     </div>
   </form>
@@ -368,9 +370,12 @@
             method="POST"
             action="?/saveRoles"
             class="space-y-3"
-            use:enhance={() =>
-              ({ update }) =>
-                update({ reset: false })}
+            use:enhance={busy.wrap(
+              `roles:${member.membership_id}`,
+              () =>
+                ({ update }) =>
+                  update({ reset: false }),
+            )}
           >
             <input type="hidden" name="membership_id" value={member.membership_id} />
             <p class="text-xs font-semibold uppercase tracking-wide text-text-muted">
@@ -422,11 +427,9 @@
               </details>
             {/if}
 
-            <button
-              class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-            >
+            <Button loading={busy.is(`roles:${member.membership_id}`)}>
               {t("settings.users.save_roles")}
-            </button>
+            </Button>
           </form>
         </li>
       {/if}
@@ -473,19 +476,16 @@
           method="POST"
           action="?/saveSchedule"
           class="flex justify-end"
-          use:enhance={() =>
-            ({ result, update }) => {
-              if (result.type === "success") scheduleOpen = false;
-              void update({ reset: false });
-            }}
+          use:enhance={busy.wrap("schedule", () => ({ result, update }) => {
+            if (result.type === "success") scheduleOpen = false;
+            void update({ reset: false });
+          })}
         >
           <input type="hidden" name="user_id" value={scheduleFor.user_id} />
           <input type="hidden" name="inherit" value={String(inherit)} />
-          <button
-            class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-          >
+          <Button loading={busy.is("schedule")}>
             {t("common.save")}
-          </button>
+          </Button>
         </form>
       </div>
     {/key}
@@ -523,15 +523,21 @@
                   </span>
                 </div>
                 {#if !contract.end_date}
-                  <form method="POST" action="?/terminateContract" use:enhance>
+                  <form
+                    method="POST"
+                    action="?/terminateContract"
+                    use:enhance={busy.wrap(`terminate:${contract.id}`)}
+                  >
                     <input type="hidden" name="contract_id" value={contract.id} />
                     <input type="hidden" name="end_date" value={todayIso} />
-                    <button
-                      class="rounded-lg border border-border px-2 py-1 text-xs text-text-muted hover:text-text"
+                    <Button
+                      variant="secondary"
+                      size="xs"
+                      loading={busy.is(`terminate:${contract.id}`)}
                       title={t("settings.users.contract_terminate")}
                     >
                       {t("settings.users.contract_terminate")}
-                    </button>
+                    </Button>
                   </form>
                 {/if}
                 <form method="POST" action="?/deleteContract" use:enhance>
@@ -560,11 +566,10 @@
             method="POST"
             action="?/saveContract"
             class="space-y-3 border-t border-border pt-4"
-            use:enhance={() =>
-              ({ result, update }) => {
-                if (result.type === "success") void update({ reset: true });
-                else void update({ reset: false });
-              }}
+            use:enhance={busy.wrap("saveContract", () => ({ result, update }) => {
+              if (result.type === "success") void update({ reset: true });
+              else void update({ reset: false });
+            })}
           >
             <input type="hidden" name="user_id" value={contractsFor.user_id} />
             <p class="text-xs font-semibold uppercase tracking-wide text-text-muted">
@@ -604,11 +609,9 @@
                 {t(form.error)}
               </p>{/if}
             <div class="flex justify-end">
-              <button
-                class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-              >
+              <Button loading={busy.is("saveContract")}>
                 {t("settings.users.contract_add")}
-              </button>
+              </Button>
             </div>
           </form>
         {/key}
@@ -645,11 +648,10 @@
         method="POST"
         action="?/saveRate"
         class="space-y-4"
-        use:enhance={() =>
-          ({ result, update }) => {
-            if (result.type === "success") rateOpen = false;
-            void update({ reset: false });
-          }}
+        use:enhance={busy.wrap("rate", () => ({ result, update }) => {
+          if (result.type === "success") rateOpen = false;
+          void update({ reset: false });
+        })}
       >
         <input type="hidden" name="user_id" value={rateFor.user_id} />
         <p class="text-sm text-text-muted">{rateFor.full_name || rateFor.email}</p>
@@ -671,11 +673,9 @@
         {#if form?.error}<p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
         {#if data.canEditRates}
           <div class="flex justify-end">
-            <button
-              class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-            >
+            <Button loading={busy.is("rate")}>
               {t("common.save")}
-            </button>
+            </Button>
           </div>
         {/if}
       </form>

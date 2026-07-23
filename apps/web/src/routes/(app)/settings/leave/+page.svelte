@@ -7,7 +7,9 @@
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
+  import { InFlight } from "$lib/core/submit.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
@@ -24,6 +26,8 @@
   import { cloneSchedule, type WorkSchedule } from "$lib/modules/leave/schedule";
 
   let { data, form } = $props();
+
+  const busy = new InFlight();
 
   const types = $derived(data.types as LeaveTypeInfo[]);
   const trackedTypes = $derived(types.filter((lt) => lt.tracks_balance && lt.active));
@@ -235,13 +239,16 @@
       method="POST"
       action="?/saveSchedule"
       class="mt-3 flex justify-end"
-      use:enhance={() =>
-        ({ update }) =>
-          update({ reset: false })}
+      use:enhance={busy.wrap(
+        "schedule",
+        () =>
+          ({ update }) =>
+            update({ reset: false }),
+      )}
     >
-      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+      <Button loading={busy.is("schedule")}>
         {t("common.save")}
-      </button>
+      </Button>
     </form>
   </div>
 </section>
@@ -257,9 +264,12 @@
     <form
       method="POST"
       action="?/savePolicy"
-      use:enhance={() =>
-        ({ update }) =>
-          update({ reset: false })}
+      use:enhance={busy.wrap(
+        "policy",
+        () =>
+          ({ update }) =>
+            update({ reset: false }),
+      )}
     >
       <label class="flex items-start gap-3 text-sm text-text">
         <FormCheckbox
@@ -278,11 +288,9 @@
         <p class="mt-3 text-sm text-green-600">{t("settings.leave.policy_saved")}</p>
       {/if}
       <div class="mt-3 flex justify-end">
-        <button
-          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
+        <Button loading={busy.is("policy")}>
           {t("common.save")}
-        </button>
+        </Button>
       </div>
     </form>
   </div>
@@ -299,9 +307,12 @@
     <form
       method="POST"
       action="?/saveHorizon"
-      use:enhance={() =>
-        ({ update }) =>
-          update({ reset: false })}
+      use:enhance={busy.wrap(
+        "horizon",
+        () =>
+          ({ update }) =>
+            update({ reset: false }),
+      )}
     >
       <label for="recurring-horizon" class="mb-1 block text-sm font-medium text-text">
         {t("settings.leave.recurring_horizon")}
@@ -320,11 +331,9 @@
         <p class="mt-3 text-sm text-green-600">{t("settings.leave.recurring_horizon_saved")}</p>
       {/if}
       <div class="mt-3 flex justify-end">
-        <button
-          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
+        <Button loading={busy.is("horizon")}>
           {t("common.save")}
-        </button>
+        </Button>
       </div>
     </form>
   </div>
@@ -341,9 +350,12 @@
     <form
       method="POST"
       action="?/saveDefaultRate"
-      use:enhance={() =>
-        ({ update }) =>
-          update({ reset: false })}
+      use:enhance={busy.wrap(
+        "rate",
+        () =>
+          ({ update }) =>
+            update({ reset: false }),
+      )}
     >
       <label for="default-hourly-rate" class="mb-1 block text-sm font-medium text-text">
         {t("settings.leave.default_rate")}
@@ -362,11 +374,9 @@
         <p class="mt-3 text-sm text-green-600">{t("settings.leave.default_rate_saved")}</p>
       {/if}
       <div class="mt-3 flex justify-end">
-        <button
-          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
+        <Button loading={busy.is("rate")}>
           {t("common.save")}
-        </button>
+        </Button>
       </div>
     </form>
   </div>
@@ -395,14 +405,12 @@
       <p class="mt-1 text-sm text-text-muted">{t("settings.leave.holidays_hint")}</p>
     </div>
     <div class="flex items-center gap-2">
-      <form method="POST" action="?/importHolidays" use:enhance>
+      <form method="POST" action="?/importHolidays" use:enhance={busy.wrap("importHolidays")}>
         <input type="hidden" name="year" value={data.year} />
-        <button
-          class="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm text-text hover:border-brand hover:text-brand"
-        >
+        <Button variant="secondary" size="sm" loading={busy.is("importHolidays")}>
           <CalendarPlus size={14} />
           {t("settings.leave.import_holidays", { year: data.year })}
-        </button>
+        </Button>
       </form>
       <button
         type="button"
@@ -496,15 +504,17 @@
         >
       </div>
     </div>
-    <form method="POST" action="?/generate" use:enhance>
+    <form method="POST" action="?/generate" use:enhance={busy.wrap("generate")}>
       <input type="hidden" name="year" value={data.year} />
-      <button
-        class="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm text-text hover:border-brand hover:text-brand"
+      <Button
+        variant="secondary"
+        size="sm"
+        loading={busy.is("generate")}
         title={t("settings.leave.generate_hint")}
       >
         <Sparkles size={14} />
         {t("settings.leave.generate")}
-      </button>
+      </Button>
     </form>
   </div>
   {#if form?.generated !== undefined}
@@ -574,11 +584,10 @@
       method="POST"
       action="?/saveType"
       class="space-y-4"
-      use:enhance={() =>
-        ({ result, update }) => {
-          if (result.type === "success") typeOpen = false;
-          void update({ reset: false });
-        }}
+      use:enhance={busy.wrap("saveType", () => ({ result, update }) => {
+        if (result.type === "success") typeOpen = false;
+        void update({ reset: false });
+      })}
     >
       {#if editType}
         <input type="hidden" name="id" value={editType.id} />
@@ -657,11 +666,9 @@
       <input type="hidden" name="position" value={editType?.position ?? types.length * 10 + 10} />
       {#if form?.error}<p class="text-sm text-red-600">{t(form.error)}</p>{/if}
       <div class="flex justify-end">
-        <button
-          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
+        <Button loading={busy.is("saveType")}>
           {t("common.save")}
-        </button>
+        </Button>
       </div>
     </form>
   {/key}
@@ -675,11 +682,10 @@
         method="POST"
         action="?/saveMember"
         class="space-y-4"
-        use:enhance={() =>
-          ({ result, update }) => {
-            if (result.type === "success") memberOpen = false;
-            void update({ reset: false });
-          }}
+        use:enhance={busy.wrap("saveMember", () => ({ result, update }) => {
+          if (result.type === "success") memberOpen = false;
+          void update({ reset: false });
+        })}
       >
         <input type="hidden" name="user_id" value={editMember.user_id} />
         <input type="hidden" name="year" value={data.year} />
@@ -714,11 +720,9 @@
         </fieldset>
         {#if form?.error}<p class="text-sm text-red-600">{t(form.error)}</p>{/if}
         <div class="flex justify-end">
-          <button
-            class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-          >
+          <Button loading={busy.is("saveMember")}>
             {t("common.save")}
-          </button>
+          </Button>
         </div>
       </form>
     {/key}
@@ -735,11 +739,10 @@
       method="POST"
       action="?/saveHoliday"
       class="space-y-4"
-      use:enhance={() =>
-        ({ result, update }) => {
-          if (result.type === "success") holidayOpen = false;
-          void update({ reset: false });
-        }}
+      use:enhance={busy.wrap("saveHoliday", () => ({ result, update }) => {
+        if (result.type === "success") holidayOpen = false;
+        void update({ reset: false });
+      })}
     >
       {#if editHoliday}
         <input type="hidden" name="id" value={editHoliday.id} />
@@ -760,11 +763,9 @@
       {/key}
       {#if form?.error}<p class="text-sm text-red-600">{t(form.error)}</p>{/if}
       <div class="flex justify-end">
-        <button
-          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
+        <Button loading={busy.is("saveHoliday")}>
           {t("common.save")}
-        </button>
+        </Button>
       </div>
     </form>
   {/key}

@@ -2,8 +2,12 @@
   import { enhance } from "$app/forms";
   import { fmtDateTime, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
 
   let { data, form } = $props();
+
+  const busy = new InFlight();
 
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
@@ -40,7 +44,7 @@
     {#if data.access?.pin_pending}
       <p class="mt-2 text-sm text-amber-700 dark:text-amber-400">{t("cloud.pin.pending")}</p>
     {/if}
-    <form method="POST" action="?/unlock" use:enhance class="mt-4 space-y-3">
+    <form method="POST" action="?/unlock" use:enhance={busy.wrap("unlock")} class="mt-4 space-y-3">
       <div>
         <label for="pin" class="mb-1 block text-sm font-medium text-text">
           {t("cloud.pin.label")}
@@ -58,11 +62,9 @@
       {#if form?.error && form?.unlockError}
         <p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
       {/if}
-      <button
-        class="w-full rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-      >
+      <Button class="w-full" loading={busy.is("unlock")} disabled={busy.active}>
         {t("cloud.pin.unlock")}
-      </button>
+      </Button>
     </form>
   </div>
 {:else if data.org}
@@ -76,7 +78,9 @@
   <section class="mt-6 overflow-x-auto rounded-xl border border-border bg-surface-raised">
     <table class="w-full text-sm">
       <thead>
-        <tr class="border-b border-border text-left text-xs uppercase tracking-wide text-text-muted">
+        <tr
+          class="border-b border-border text-left text-xs uppercase tracking-wide text-text-muted"
+        >
           <th class="px-4 py-3">{t("instance.members")}</th>
           <th class="px-4 py-3"></th>
           <th class="px-4 py-3"></th>
@@ -89,11 +93,21 @@
             <td class="px-4 py-3 text-text-muted">{member.role}</td>
             <td class="px-4 py-3 text-right">
               {#if member.is_active && data.org.status === "active"}
-                <form method="POST" action="?/impersonate" use:enhance class="inline">
+                <form
+                  method="POST"
+                  action="?/impersonate"
+                  use:enhance={busy.wrap(`impersonate:${member.user_id}`)}
+                  class="inline"
+                >
                   <input type="hidden" name="user_id" value={member.user_id} />
-                  <button class="text-sm font-medium text-brand hover:underline">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    loading={busy.is(`impersonate:${member.user_id}`)}
+                    disabled={busy.active}
+                  >
                     {t("instance.impersonate")}
-                  </button>
+                  </Button>
                 </form>
               {/if}
             </td>
@@ -113,7 +127,7 @@
       {t("cloud.plan.trial_ends", { date: fmtNumericDate(summary.trial_ends_at) })}
     </p>
   {/if}
-  <form method="POST" action="?/plan" use:enhance class="mt-4 space-y-3">
+  <form method="POST" action="?/plan" use:enhance={busy.wrap("plan")} class="mt-4 space-y-3">
     <select name="plan" bind:value={planChoice} class={inputClass}>
       <option value="trial">{t("cloud.plan.trial")}</option>
       <option value="standard">{t("cloud.plan.standard")}</option>
@@ -132,34 +146,46 @@
     {#if form?.planSaved}
       <p class="text-sm text-emerald-700 dark:text-emerald-400">{t("cloud.plan.saved")}</p>
     {/if}
-    <button class={buttonClass}>{t("common.save")}</button>
+    <Button variant="secondary" loading={busy.is("plan")} disabled={busy.active}>
+      {t("common.save")}
+    </Button>
   </form>
 </section>
 
 <!-- Lifecycle (PIN-free: billing enforcement cannot depend on tenant consent) -->
 <section class="mt-6 flex max-w-md flex-wrap gap-2">
   {#if summary?.status === "active"}
-    <form method="POST" action="?/suspend" use:enhance>
-      <button class={buttonClass}>{t("instance.suspend")}</button>
+    <form method="POST" action="?/suspend" use:enhance={busy.wrap("suspend")}>
+      <Button variant="secondary" loading={busy.is("suspend")} disabled={busy.active}>
+        {t("instance.suspend")}
+      </Button>
     </form>
   {:else if summary?.status === "suspended"}
-    <form method="POST" action="?/activate" use:enhance>
-      <button class={buttonClass}>{t("instance.activate")}</button>
+    <form method="POST" action="?/activate" use:enhance={busy.wrap("activate")}>
+      <Button variant="secondary" loading={busy.is("activate")} disabled={busy.active}>
+        {t("instance.activate")}
+      </Button>
     </form>
   {/if}
   {#if summary?.status !== "deleted"}
-    <form method="POST" action="?/softDelete" use:enhance>
-      <button class="{buttonClass} text-red-600 dark:text-red-400">
+    <form method="POST" action="?/softDelete" use:enhance={busy.wrap("softDelete")}>
+      <Button variant="danger-outline" loading={busy.is("softDelete")} disabled={busy.active}>
         {t("instance.soft_delete")}
-      </button>
+      </Button>
     </form>
   {:else}
-    <form method="POST" action="?/activate" use:enhance>
-      <button class={buttonClass}>{t("instance.activate")}</button>
+    <form method="POST" action="?/activate" use:enhance={busy.wrap("activate")}>
+      <Button variant="secondary" loading={busy.is("activate")} disabled={busy.active}>
+        {t("instance.activate")}
+      </Button>
     </form>
   {/if}
   {#if !data.locked}
-    <a href="/console/orgs/{summary?.id}/export" class={buttonClass} data-sveltekit-preload-data="off">
+    <a
+      href="/console/orgs/{summary?.id}/export"
+      class={buttonClass}
+      data-sveltekit-preload-data="off"
+    >
       {t("instance.export")}
     </a>
   {/if}
@@ -171,24 +197,21 @@
 
 {#if summary?.status === "deleted"}
   <!-- Purge: soft-deleted + slug confirm + post-delete export, enforced API-side. -->
-  <section class="mt-6 max-w-md rounded-xl border border-red-300 bg-surface-raised p-6 dark:border-red-900">
+  <section
+    class="mt-6 max-w-md rounded-xl border border-red-300 bg-surface-raised p-6 dark:border-red-900"
+  >
     <h2 class="text-base font-semibold text-red-700 dark:text-red-400">
       {t("instance.purge")}
     </h2>
     <p class="mt-1 text-sm text-text-muted">{t("instance.purge_hint")}</p>
-    <form method="POST" action="?/purge" use:enhance class="mt-4 space-y-3">
-      <input
-        name="confirm"
-        required
-        placeholder={summary?.slug}
-        class="{inputClass} font-mono"
-      />
+    <form method="POST" action="?/purge" use:enhance={busy.wrap("purge")} class="mt-4 space-y-3">
+      <input name="confirm" required placeholder={summary?.slug} class="{inputClass} font-mono" />
       {#if form?.error && form?.purgeError}
         <p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
       {/if}
-      <button class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+      <Button variant="danger" loading={busy.is("purge")} disabled={busy.active}>
         {t("instance.purge")}
-      </button>
+      </Button>
     </form>
   </section>
 {/if}

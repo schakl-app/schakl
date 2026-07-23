@@ -236,20 +236,28 @@
   re-asserts its own state after any form reset, so a forgotten callback can no longer strip
   checkbox marks — but radios and selects have no component guard; the form-level rule is the
   convention.
-- **Loading / in-flight state: a button whose request is under way says so** (#242). A
+- **Loading / in-flight state: a button whose request is under way says so** (#242, #279). A
   `use:enhance` submit with no feedback reads as broken on a slow connection and takes a
-  double-click as a double-submit. The convention: a local `submitting = $state(false)` flipped
-  on in the `use:enhance` submit function and off in its returned callback, driving the shared
-  `core/ui/Button` — `loading={submitting}` disables the button and shows the shared
-  `core/ui/Spinner` beside the label (the label itself stays; no "…" rewording, so no extra i18n
-  keys). `Button` is also where the house button styles live (`variant`:
-  primary/secondary/danger/danger-outline, `size`: md/sm) instead of being re-typed per call
-  site — a new button starts from it, and hand-styled siblings are converted opportunistically
-  when a screen is touched. Wrinkles the flagship fixes cover: two submit buttons in one form
-  (CSV import's preview/commit) key `submitting` off `submitter` so the clicked one spins while
-  both disable; sibling one-shot forms that mutate the same record (the contact portal's
-  enable/resend/disable) share one busy key so the in-flight action spins and the others
-  disable. `Spinner` (a lucide loader on Tailwind's `animate-spin`) is `aria-hidden` — it always
+  double-click as a double-submit. The wiring is `core/submit.svelte.ts` (`InFlight`): one
+  `const busy = new InFlight()` per component, `use:enhance={busy.wrap(key, existingFn?)}`
+  around the form — it preserves the form's own callback exactly (`reset: false` included; no
+  callback means plain `update()`, like bare `use:enhance`) — and the shared `core/ui/Button`
+  with `loading={busy.is(key)}`, which disables the button and shows the shared
+  `core/ui/Spinner` beside the label (the label itself stays; no "…" rewording, so no extra
+  i18n keys). A surface with one form drops the key (`busy.wrap()` + `loading={busy.active}`);
+  sibling forms that mutate the same record (the contact portal's enable/resend/disable) and
+  per-row action buttons key by action or row id, so the in-flight one spins while
+  `disabled={busy.active}` holds the others; two submit buttons in one form (CSV import's
+  preview/commit) key off `submitter` instead. Every delete already has it: `ConfirmDialog`
+  owns the posting form and spins its confirm button itself. `Button` is also where the house
+  button styles live (`variant`: primary/secondary/success/danger/danger-outline — success is
+  the green approve; `size`: md/sm/xs) instead of being re-typed per call site — a new button
+  starts from it. Auto-submitting
+  controls with no labeled button (checkbox toggles, chip ✕, hidden `requestSubmit()` forms)
+  stay as they are, and so do deliberately *quiet* text-link submits (save-as-template on a
+  checklist, the dashboard's reset-layout): promoting those to a bordered `Button` would
+  un-quiet a surface on purpose kept calm, and quiet is a design decision, not a gap.
+  `Spinner` (a lucide loader on Tailwind's `animate-spin`) is `aria-hidden` — it always
   accompanies visible text, never replaces it.
 - **A password reveal (eye) toggle sits on user-password fields only** (#235, owner call): login,
   setup, reset-password and the account page's password fields use the shared

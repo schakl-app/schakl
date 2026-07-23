@@ -17,8 +17,10 @@
 
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import { ENTITY_TYPES, NOTIFICATION_COLUMNS } from "$lib/modules/notifications/columns";
@@ -31,6 +33,8 @@
   } from "$lib/modules/notifications/format";
 
   let { data, form } = $props();
+
+  const busy = new InFlight();
 
   type Item = (typeof data.items)[number];
 
@@ -91,13 +95,11 @@
 <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
   <h1 class="text-xl font-semibold text-text">{t("notifications.title")}</h1>
   {#if hasUnread}
-    <form method="POST" action="?/markAllRead" use:enhance>
-      <button
-        class="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm text-text hover:border-brand hover:text-brand"
-      >
+    <form method="POST" action="?/markAllRead" use:enhance={busy.wrap()}>
+      <Button variant="secondary" size="sm" loading={busy.active}>
         <Check size={15} />
         {t("notifications.mark_all_read")}
-      </button>
+      </Button>
     </form>
   {/if}
 </div>
@@ -119,10 +121,7 @@
       {t("notifications.filter.everything")}
     </a>
     {#each ENTITY_TYPES as entity (entity)}
-      <a
-        href={filterHref({ entity_type: entity })}
-        class={tabClass(data.entityType === entity)}
-      >
+      <a href={filterHref({ entity_type: entity })} class={tabClass(data.entityType === entity)}>
         {t(`notifications.entity.${entity}`)}
       </a>
     {/each}
@@ -197,9 +196,7 @@
   <div class="flex items-start gap-3">
     <span class="min-w-0 flex-1">
       <span
-        class="block text-sm {item.read_at === null
-          ? 'font-medium text-text'
-          : 'text-text-muted'}"
+        class="block text-sm {item.read_at === null ? 'font-medium text-text' : 'text-text-muted'}"
       >
         {#if item.actor_name}{item.actor_name}{/if}
         {notificationText(item)}

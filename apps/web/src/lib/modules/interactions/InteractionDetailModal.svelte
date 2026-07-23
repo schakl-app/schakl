@@ -19,6 +19,8 @@
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
+  import { InFlight } from "$lib/core/submit.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import Markdown from "$lib/core/ui/Markdown.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
 
@@ -132,6 +134,7 @@
 
   // --- reject (#22), self-contained so both hosts get it without wiring their own ----------- //
   let showReject = $state(false);
+  const busy = new InFlight();
 </script>
 
 <Modal bind:open title={item?.subject || t("interactions.detail_title")}>
@@ -338,12 +341,11 @@
       method="POST"
       action={rejectAction}
       class="space-y-4"
-      use:enhance={() =>
-        async ({ update }) => {
-          showReject = false;
-          open = false;
-          await update();
-        }}
+      use:enhance={busy.wrap("", () => async ({ update }) => {
+        showReject = false;
+        open = false;
+        await update();
+      })}
     >
       <input type="hidden" name="id" value={item.id} />
       <p class="text-sm text-text-muted">{t("interactions.reject_message")}</p>
@@ -359,12 +361,9 @@
         >
           {t("common.cancel")}
         </button>
-        <button
-          type="submit"
-          class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
+        <Button type="submit" variant="danger" loading={busy.active}>
           {t("interactions.reject")}
-        </button>
+        </Button>
       </div>
     </form>
   {/if}

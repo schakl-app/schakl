@@ -3,8 +3,10 @@
   import { enhance } from "$app/forms";
   import { localeLabel, t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { THEME_MODES, themeModeLabel } from "$lib/core/theme-mode";
   import Avatar from "$lib/core/ui/Avatar.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import GoogleAccountCard from "$lib/modules/google/GoogleAccountCard.svelte";
   import NavPrefEditor from "$lib/core/ui/NavPrefEditor.svelte";
@@ -15,6 +17,7 @@
 
   // "Copied" feedback for the one-time backup-codes reveal (the house clipboard pattern).
   let backupCopied = $state(false);
+  const busy = new InFlight();
 
   const account = $derived(data.account);
   const path = $derived(page.url.pathname);
@@ -187,13 +190,11 @@
           </label>
         </form>
         {#if account?.customAvatarUrl}
-          <form method="POST" action="?/saveAvatar" use:enhance>
+          <form method="POST" action="?/saveAvatar" use:enhance={busy.wrap("avatarClear")}>
             <input type="hidden" name="clear" value="1" />
-            <button
-              class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:text-red-600 dark:hover:text-red-400"
-            >
+            <Button variant="danger-outline" size="sm" loading={busy.is("avatarClear")}>
               {t("settings.account.avatar_remove")}
-            </button>
+            </Button>
           </form>
         {/if}
       </div>
@@ -206,9 +207,12 @@
     <form
       method="POST"
       action="?/updateProfile"
-      use:enhance={() =>
-        ({ update }) =>
-          update({ reset: false })}
+      use:enhance={busy.wrap(
+        "profile",
+        () =>
+          ({ update }) =>
+            update({ reset: false }),
+      )}
       class="mt-4 space-y-4"
     >
       <div>
@@ -244,9 +248,9 @@
       {#if form?.error}
         <p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
       {/if}
-      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+      <Button loading={busy.is("profile")}>
         {t("common.save")}
-      </button>
+      </Button>
     </form>
   </section>
 
@@ -259,9 +263,12 @@
       <form
         method="POST"
         action="?/changeEmail"
-        use:enhance={() =>
-          ({ update }) =>
-            update({ reset: true })}
+        use:enhance={busy.wrap(
+          "changeEmail",
+          () =>
+            ({ update }) =>
+              update({ reset: true }),
+        )}
         class="mt-4 space-y-4"
       >
         <div>
@@ -291,11 +298,9 @@
         {#if form?.emailError}
           <p class="text-sm text-red-600 dark:text-red-400">{t(form.emailError)}</p>
         {/if}
-        <button
-          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
+        <Button loading={busy.is("changeEmail")}>
           {t("settings.account.change_email")}
-        </button>
+        </Button>
       </form>
     </section>
   {/if}
@@ -308,9 +313,12 @@
       <form
         method="POST"
         action="?/changePassword"
-        use:enhance={() =>
-          ({ update }) =>
-            update({ reset: true })}
+        use:enhance={busy.wrap(
+          "changePassword",
+          () =>
+            ({ update }) =>
+              update({ reset: true }),
+        )}
         class="mt-4 space-y-4"
       >
         <div>
@@ -345,11 +353,9 @@
         {#if form?.passwordError}
           <p class="text-sm text-red-600 dark:text-red-400">{t(form.passwordError)}</p>
         {/if}
-        <button
-          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
+        <Button loading={busy.is("changePassword")}>
           {t("settings.account.change_password")}
-        </button>
+        </Button>
       </form>
     </section>
   {/if}
@@ -410,7 +416,14 @@
             </div>
           </div>
         {/if}
-        <form method="POST" action="?/confirmTwoFactor" use:enhance class="mt-4 space-y-3">
+        <form
+          method="POST"
+          action="?/confirmTwoFactor"
+          use:enhance={busy.wrap((input) =>
+            input.submitter?.getAttribute("formaction") ? "cancel2fa" : "confirm2fa",
+          )}
+          class="mt-4 space-y-3"
+        >
           <div>
             <label for="twofactor-code" class="mb-1 block text-sm font-medium text-text">
               {t("settings.account.two_factor_code")}
@@ -429,32 +442,35 @@
             <p class="text-sm text-red-600 dark:text-red-400">{t(form.twoFactorError)}</p>
           {/if}
           <div class="flex gap-2">
-            <button
-              class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-            >
+            <Button loading={busy.is("confirm2fa")} disabled={busy.active}>
               {t("settings.account.two_factor_confirm")}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="secondary"
               type="submit"
               formaction="?/cancelTwoFactorSetup"
               formnovalidate
-              class="rounded-lg border border-border px-4 py-2 text-sm text-text hover:bg-surface"
+              loading={busy.is("cancel2fa")}
+              disabled={busy.active}
             >
               {t("settings.account.two_factor_cancel_setup")}
-            </button>
+            </Button>
           </div>
         </form>
       {:else if !data.twoFactor.enabled}
         {#if form?.twoFactorError}
           <p class="mt-3 text-sm text-red-600 dark:text-red-400">{t(form.twoFactorError)}</p>
         {/if}
-        <form method="POST" action="?/setupTwoFactor" use:enhance class="mt-4">
+        <form
+          method="POST"
+          action="?/setupTwoFactor"
+          use:enhance={busy.wrap("setup2fa")}
+          class="mt-4"
+        >
           <p class="mb-3 text-sm text-text-muted">{t("settings.account.two_factor_off")}</p>
-          <button
-            class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-          >
+          <Button loading={busy.is("setup2fa")}>
             {t("settings.account.two_factor_enable")}
-          </button>
+          </Button>
         </form>
       {:else}
         <p class="mt-3 text-sm text-green-600 dark:text-green-400">
@@ -474,9 +490,12 @@
         <form
           method="POST"
           action="?/regenerateBackupCodes"
-          use:enhance={() =>
-            ({ update }) =>
-              update({ reset: true })}
+          use:enhance={busy.wrap(
+            "regenCodes",
+            () =>
+              ({ update }) =>
+                update({ reset: true }),
+          )}
           class="mt-4 flex flex-wrap items-end gap-2"
         >
           <div>
@@ -493,19 +512,20 @@
               class="w-40 rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand"
             />
           </div>
-          <button
-            class="rounded-lg border border-border px-4 py-2 text-sm text-text hover:bg-surface"
-          >
+          <Button variant="secondary" loading={busy.is("regenCodes")}>
             {t("settings.account.two_factor_backup_regenerate")}
-          </button>
+          </Button>
         </form>
 
         <form
           method="POST"
           action="?/disableTwoFactor"
-          use:enhance={() =>
-            ({ update }) =>
-              update({ reset: true })}
+          use:enhance={busy.wrap(
+            "disable2fa",
+            () =>
+              ({ update }) =>
+                update({ reset: true }),
+          )}
           class="mt-4 flex flex-wrap items-end gap-2 border-t border-border pt-4"
         >
           <div>
@@ -514,11 +534,9 @@
             </label>
             <PasswordInput id="disable-password" name="password" required class="w-56" />
           </div>
-          <button
-            class="rounded-lg border border-red-300 px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950"
-          >
+          <Button variant="danger-outline" loading={busy.is("disable2fa")}>
             {t("settings.account.two_factor_disable")}
-          </button>
+          </Button>
         </form>
 
         {#if data.twoFactor.sms_available}
@@ -537,18 +555,21 @@
                   phone: data.twoFactor.sms.phone_masked,
                 })}
               </p>
-              <form method="POST" action="?/disableTwoFactorSms" use:enhance class="mt-2">
-                <button
-                  class="rounded-lg border border-border px-3 py-1.5 text-sm text-text hover:bg-surface"
-                >
+              <form
+                method="POST"
+                action="?/disableTwoFactorSms"
+                use:enhance={busy.wrap("smsDisable")}
+                class="mt-2"
+              >
+                <Button variant="secondary" size="sm" loading={busy.is("smsDisable")}>
                   {t("settings.account.two_factor_sms_disable")}
-                </button>
+                </Button>
               </form>
             {:else if form?.twoFactorSmsPending}
               <form
                 method="POST"
                 action="?/confirmTwoFactorSms"
-                use:enhance
+                use:enhance={busy.wrap("smsConfirm")}
                 class="mt-2 flex flex-wrap items-end gap-2"
               >
                 <div>
@@ -567,11 +588,9 @@
                     class="w-40 rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand"
                   />
                 </div>
-                <button
-                  class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-                >
+                <Button loading={busy.is("smsConfirm")}>
                   {t("settings.account.two_factor_sms_confirm")}
-                </button>
+                </Button>
               </form>
             {:else}
               <p class="mt-1 text-sm text-text-muted">
@@ -580,7 +599,7 @@
               <form
                 method="POST"
                 action="?/setupTwoFactorSms"
-                use:enhance
+                use:enhance={busy.wrap("smsSetup")}
                 class="mt-2 flex flex-wrap items-end gap-2"
               >
                 <div>
@@ -597,11 +616,9 @@
                     class="w-56 rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand"
                   />
                 </div>
-                <button
-                  class="rounded-lg border border-border px-4 py-2 text-sm text-text hover:bg-surface"
-                >
+                <Button variant="secondary" loading={busy.is("smsSetup")}>
                   {t("settings.account.two_factor_sms_send")}
-                </button>
+                </Button>
               </form>
             {/if}
           </div>
@@ -659,13 +676,15 @@
                 </span>
               </div>
               {#if !key.revoked_at}
-                <form method="POST" action="?/revokeKey" use:enhance>
+                <form
+                  method="POST"
+                  action="?/revokeKey"
+                  use:enhance={busy.wrap(`revoke:${key.id}`)}
+                >
                   <input type="hidden" name="key_id" value={key.id} />
-                  <button
-                    class="rounded-lg border border-border px-2.5 py-1.5 text-xs text-text-muted hover:text-red-600 dark:hover:text-red-400"
-                  >
+                  <Button variant="danger-outline" size="xs" loading={busy.is(`revoke:${key.id}`)}>
                     {t("settings.account.api_key_revoke")}
-                  </button>
+                  </Button>
                 </form>
               {/if}
             </li>
@@ -677,10 +696,9 @@
         method="POST"
         action="?/createKey"
         class="space-y-3"
-        use:enhance={() =>
-          ({ result, update }) => {
-            void update({ reset: result.type === "success" });
-          }}
+        use:enhance={busy.wrap("createKey", () => ({ result, update }) => {
+          void update({ reset: result.type === "success" });
+        })}
       >
         <div>
           <label for="key-name" class="mb-1 block text-sm font-medium text-text"
@@ -725,11 +743,9 @@
           </div>
         </div>
         {#if form?.error}<p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
-        <button
-          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
+        <Button loading={busy.is("createKey")}>
           {t("settings.account.api_key_create")}
-        </button>
+        </Button>
       </form>
     </section>
   {/if}

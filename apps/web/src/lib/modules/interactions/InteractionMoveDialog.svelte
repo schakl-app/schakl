@@ -10,8 +10,11 @@
    */
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
+  import type { SubmitFunction } from "@sveltejs/kit";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
+  import { InFlight } from "$lib/core/submit.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import TaskQuickCreate from "$lib/modules/tasks/TaskQuickCreate.svelte";
 
@@ -147,6 +150,25 @@
   // a plain error here would read as "the approve failed", which it did not.
   let closeFailedAfterApprove = $state(false);
 
+  const busy = new InFlight();
+  // Save and approve share the form (#279): key off the clicked button.
+  const submit: SubmitFunction = (input) =>
+    busy.wrap(
+      input.submitter?.getAttribute("name") === "assign" ? "approve" : "save",
+      () =>
+        async ({ result, update }) => {
+          if (result.type === "failure") {
+            closeFailedAfterApprove = Boolean(result.data?.approvedButCloseFailed);
+            error = String(result.data?.error ?? "errors.validation");
+            return;
+          }
+          error = "";
+          closeFailedAfterApprove = false;
+          await update({ reset: false });
+          onsaved?.();
+        },
+    )(input);
+
   $effect(() => {
     void loadCandidates();
   });
@@ -205,23 +227,7 @@
   }
 </script>
 
-<form
-  method="POST"
-  action="?/moveInteraction"
-  class="space-y-4"
-  use:enhance={() =>
-    async ({ result, update }) => {
-      if (result.type === "failure") {
-        closeFailedAfterApprove = Boolean(result.data?.approvedButCloseFailed);
-        error = String(result.data?.error ?? "errors.validation");
-        return;
-      }
-      error = "";
-      closeFailedAfterApprove = false;
-      await update({ reset: false });
-      onsaved?.();
-    }}
->
+<form method="POST" action="?/moveInteraction" class="space-y-4" use:enhance={submit}>
   <input type="hidden" name="id" value={interaction.id} />
   <input type="hidden" name="source" value={interaction.source} />
 
@@ -323,27 +329,26 @@
   {/if}
 
   <div class="flex justify-end gap-2">
-    <button
+    <Button
       type="submit"
-      disabled={loading}
-      class="rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 {canApprove
-        ? 'border border-border text-text hover:bg-surface'
-        : 'bg-brand text-white hover:opacity-90'}"
+      variant={canApprove ? "secondary" : "primary"}
+      loading={busy.is("save")}
+      disabled={loading || busy.active}
     >
       {canApprove ? t("interactions.save_pending") : t("common.save")}
-    </button>
+    </Button>
     {#if canApprove}
       <!-- Link + approve in one step (#183); `assign=1` tells the action to carry the links. -->
-      <button
+      <Button
         type="submit"
         name="assign"
         value="1"
         formaction={approveAction}
-        disabled={loading}
-        class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+        loading={busy.is("approve")}
+        disabled={loading || busy.active}
       >
         {t("interactions.approve")}
-      </button>
+      </Button>
     {/if}
   </div>
 </form>

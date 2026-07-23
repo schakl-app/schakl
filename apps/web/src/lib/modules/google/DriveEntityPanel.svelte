@@ -19,6 +19,8 @@
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
   import type { EntityPanelContext, EntityPanelLookups } from "$lib/core/registry";
+  import { InFlight } from "$lib/core/submit.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
 
   import DriveBrowser from "./DriveBrowser.svelte";
   import DriveLinkList, { type DriveLinkItem } from "./DriveLinkList.svelte";
@@ -28,6 +30,8 @@
     context,
     lookups,
   }: { data: unknown; context: EntityPanelContext; lookups: EntityPanelLookups } = $props();
+
+  const busy = new InFlight();
 
   const panel = $derived(
     (data ?? { links: [], entityType: "project" }) as {
@@ -122,24 +126,25 @@
         <span class="text-text-muted">
           {t("google.drive.in_client_folder", { name: parentFolder.name })}
         </span>
-        <form method="POST" action="?/provisionDriveFolder" use:enhance>
+        <form method="POST" action="?/provisionDriveFolder" use:enhance={busy.wrap("provision")}>
           <input type="hidden" name="entity_type" value="project" />
           <input type="hidden" name="entity_id" value={context.entityId} />
-          <button
-            class="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-text hover:border-brand"
+          <Button
+            variant="secondary"
+            size="xs"
+            loading={busy.is("provision")}
+            disabled={busy.active}
           >
             {t("google.drive.create_project_folder")}
-          </button>
+          </Button>
         </form>
-        <form method="POST" action="?/linkDriveFile" use:enhance>
+        <form method="POST" action="?/linkDriveFile" use:enhance={busy.wrap("link")}>
           <input type="hidden" name="entity_type" value="project" />
           <input type="hidden" name="entity_id" value={context.entityId} />
           <input type="hidden" name="drive_file_id" value={parentFolder.drive_file_id} />
-          <button
-            class="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-text hover:border-brand"
-          >
+          <Button variant="secondary" size="xs" loading={busy.is("link")} disabled={busy.active}>
             {t("google.drive.work_in_client_folder")}
-          </button>
+          </Button>
         </form>
       </div>
     {:else if !ownFolder && parentFolder && panel.entityType === "task"}

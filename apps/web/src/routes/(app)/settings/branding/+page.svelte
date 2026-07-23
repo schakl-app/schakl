@@ -3,7 +3,9 @@
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import { currencyLabel } from "$lib/core/currencies";
   import { localeLabel, t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle, renderTabTitle } from "$lib/core/title";
+  import Button from "$lib/core/ui/Button.svelte";
   import { getLocale } from "$lib/paraglide/runtime";
 
   let { data, form } = $props();
@@ -27,6 +29,8 @@
     return !tokens.includes("page") || tokens.some((tok) => tok !== "page" && tok !== "brand");
   });
 
+  const busy = new InFlight();
+
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
@@ -48,10 +52,9 @@
       method="POST"
       action="?/update"
       enctype="multipart/form-data"
-      use:enhance={() =>
-        async ({ update }) => {
-          await update({ reset: false });
-        }}
+      use:enhance={busy.wrap("save", () => async ({ update }) => {
+        await update({ reset: false });
+      })}
       class="rounded-xl border border-border bg-surface-raised p-5"
     >
       <div class="grid gap-3 sm:grid-cols-2">
@@ -262,11 +265,9 @@
       {#if form?.updated}<p class="mt-2 text-sm text-green-600 dark:text-green-400">
           {t("settings.account.saved")}
         </p>{/if}
-      <button
-        class="mt-4 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-      >
+      <Button class="mt-4" loading={busy.is("save")} disabled={busy.active}>
         {t("common.save")}
-      </button>
+      </Button>
     </form>
 
     <!-- Live preview -->
@@ -307,12 +308,15 @@
             {t("settings.branding.domain.verified")}
           </p>
         </div>
-        <form method="POST" action="?/clearDomain" use:enhance>
-          <button
-            class="rounded-lg border border-border px-3 py-1.5 text-sm text-text hover:bg-surface"
+        <form method="POST" action="?/clearDomain" use:enhance={busy.wrap("removeDomain")}>
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={busy.is("removeDomain")}
+            disabled={busy.active}
           >
             {t("settings.branding.domain.remove")}
-          </button>
+          </Button>
         </form>
       </div>
     {/if}
@@ -354,19 +358,20 @@
           </dl>
         {/if}
         <div class="mt-3 flex gap-2">
-          <form method="POST" action="?/verifyDomain" use:enhance>
-            <button
-              class="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
-            >
+          <form method="POST" action="?/verifyDomain" use:enhance={busy.wrap("verifyDomain")}>
+            <Button size="sm" loading={busy.is("verifyDomain")} disabled={busy.active}>
               {t("settings.branding.domain.verify")}
-            </button>
+            </Button>
           </form>
-          <form method="POST" action="?/clearDomain" use:enhance>
-            <button
-              class="rounded-lg border border-border px-3 py-1.5 text-sm text-text hover:bg-surface"
+          <form method="POST" action="?/clearDomain" use:enhance={busy.wrap("cancelDomain")}>
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={busy.is("cancelDomain")}
+              disabled={busy.active}
             >
               {t("common.cancel")}
-            </button>
+            </Button>
           </form>
         </div>
       </div>
@@ -374,7 +379,7 @@
       <form
         method="POST"
         action="?/claimDomain"
-        use:enhance
+        use:enhance={busy.wrap("claimDomain")}
         class="mt-4 flex flex-wrap items-end gap-3"
       >
         <div class="grow">
@@ -388,11 +393,9 @@
             class="{inputClass} font-mono"
           />
         </div>
-        <button
-          class="rounded-lg border border-border px-4 py-2 text-sm font-medium text-text hover:bg-surface"
-        >
+        <Button variant="secondary" loading={busy.is("claimDomain")} disabled={busy.active}>
           {t("settings.branding.domain.claim")}
-        </button>
+        </Button>
       </form>
     {/if}
 

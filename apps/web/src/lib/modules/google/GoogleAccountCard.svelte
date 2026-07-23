@@ -12,6 +12,8 @@
   import { enhance } from "$app/forms";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
 
   interface Connection {
@@ -36,6 +38,8 @@
 
   let includeGmail = $state(false);
   let confirmDisconnect = $state(false);
+
+  const busy = new InFlight();
 
   const connection = $derived(data.connection);
   const surfaces = $derived(
@@ -132,7 +136,7 @@
       {/if}
 
       {#if data.gmail_enabled}
-        <form method="POST" action="?/googleGmailPrefs" use:enhance class="space-y-3">
+        <form method="POST" action="?/googleGmailPrefs" use:enhance={busy.wrap()} class="space-y-3">
           <label class="flex items-start gap-2 text-sm text-text">
             <FormCheckbox
               name="gmail_sync_enabled"
@@ -161,12 +165,9 @@
               {t("google.account.gmail_excluded_label_hint")}
             </p>
           </div>
-          <button
-            type="submit"
-            class="rounded-lg border border-border px-4 py-2 text-sm font-medium text-text hover:border-brand"
-          >
+          <Button type="submit" variant="secondary" loading={busy.active}>
             {t("common.save")}
-          </button>
+          </Button>
         </form>
       {/if}
 

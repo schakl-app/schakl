@@ -4,13 +4,17 @@
   import { enhance } from "$app/forms";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
 
   let { data, form } = $props();
+
+  const busy = new InFlight();
 
   let createOpen = $state(false);
   let keyAccountId = $state("");
@@ -20,9 +24,7 @@
   let revokeKeyId = $state("");
   let revokeOpen = $state(false);
 
-  const keyAccountName = $derived(
-    data.accounts.find((a) => a.id === keyAccountId)?.name ?? "",
-  );
+  const keyAccountName = $derived(data.accounts.find((a) => a.id === keyAccountId)?.name ?? "");
 
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
@@ -170,11 +172,10 @@
     method="POST"
     action="?/createAccount"
     class="space-y-4"
-    use:enhance={() =>
-      ({ result, update }) => {
-        if (result.type === "success") createOpen = false;
-        void update();
-      }}
+    use:enhance={busy.wrap("createAccount", () => ({ result, update }) => {
+      if (result.type === "success") createOpen = false;
+      void update();
+    })}
   >
     <div>
       <label for="sa-name" class="mb-1 block text-sm font-medium text-text"
@@ -197,27 +198,21 @@
         class="rounded-lg border border-border px-4 py-2 text-sm text-text"
         onclick={() => (createOpen = false)}>{t("common.cancel")}</button
       >
-      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-        >{t("common.save")}</button
-      >
+      <Button loading={busy.is("createAccount")} disabled={busy.active}>{t("common.save")}</Button>
     </div>
   </form>
 </Modal>
 
 <!-- Mint a key for one account: scope + expiry, like the personal-key flow (#20). -->
-<Modal
-  bind:open={keyOpen}
-  title={`${t("settings.service_accounts.new_key")} · ${keyAccountName}`}
->
+<Modal bind:open={keyOpen} title={`${t("settings.service_accounts.new_key")} · ${keyAccountName}`}>
   <form
     method="POST"
     action="?/createKey"
     class="space-y-4"
-    use:enhance={() =>
-      ({ result, update }) => {
-        if (result.type === "success") keyOpen = false;
-        void update();
-      }}
+    use:enhance={busy.wrap("createKey", () => ({ result, update }) => {
+      if (result.type === "success") keyOpen = false;
+      void update();
+    })}
   >
     <input type="hidden" name="account_id" value={keyAccountId} />
     <div>
@@ -269,8 +264,8 @@
         class="rounded-lg border border-border px-4 py-2 text-sm text-text"
         onclick={() => (keyOpen = false)}>{t("common.cancel")}</button
       >
-      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-        >{t("settings.account.api_key_create")}</button
+      <Button loading={busy.is("createKey")} disabled={busy.active}
+        >{t("settings.account.api_key_create")}</Button
       >
     </div>
   </form>

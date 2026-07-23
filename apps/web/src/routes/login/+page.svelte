@@ -2,10 +2,14 @@
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
+  import Button from "$lib/core/ui/Button.svelte";
   import PasswordInput from "$lib/core/ui/PasswordInput.svelte";
 
   let { data, form } = $props();
+
+  const busy = new InFlight();
 
   const brand = $derived(page.data.theme?.brandName || "");
 
@@ -43,7 +47,7 @@
       <p class="text-center text-sm text-text-muted">{t("auth.org_suspended")}</p>
     {:else if challenge}
       <!-- Second step: the password checked out, a code from an enrolled factor finishes it. -->
-      <form method="POST" action="?/verify" use:enhance class="space-y-4">
+      <form method="POST" action="?/verify" use:enhance={busy.wrap("verify")} class="space-y-4">
         <input type="hidden" name="challenge_token" value={challenge.challengeToken} />
         <input type="hidden" name="methods" value={challenge.methods.join(",")} />
         <input type="hidden" name="method" value={challenge.smsSentTo ? "sms" : method} />
@@ -79,12 +83,9 @@
           <p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
         {/if}
 
-        <button
-          type="submit"
-          class="w-full rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
-        >
+        <Button type="submit" class="w-full" loading={busy.is("verify")}>
           {t("auth.two_factor_verify")}
-        </button>
+        </Button>
 
         <p class="space-y-1 text-center text-sm">
           <button
@@ -107,7 +108,7 @@
         </form>
       {/if}
     {:else if data.localLoginEnabled}
-      <form method="POST" action="?/login" use:enhance class="space-y-4">
+      <form method="POST" action="?/login" use:enhance={busy.wrap("login")} class="space-y-4">
         <div>
           <label for="email" class="mb-1 block text-sm font-medium text-text">
             {t("auth.email")}
@@ -133,12 +134,9 @@
           <p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
         {/if}
 
-        <button
-          type="submit"
-          class="w-full rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
-        >
+        <Button type="submit" class="w-full" loading={busy.is("login")}>
           {t("auth.sign_in_action")}
-        </button>
+        </Button>
 
         <p class="text-center">
           <a href="/forgot-password" class="text-sm text-text-muted hover:text-brand">

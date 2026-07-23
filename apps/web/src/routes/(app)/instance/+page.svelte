@@ -2,10 +2,14 @@
   import { enhance } from "$app/forms";
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
+  import Button from "$lib/core/ui/Button.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
 
   let { data, form } = $props();
+
+  const busy = new InFlight();
 
   let showCreate = $state(false);
   let showImport = $state(false);
@@ -113,12 +117,11 @@
   <form
     method="POST"
     action="?/create"
-    use:enhance={() =>
-      ({ update, result }) => {
-        void update().then(() => {
-          if (result.type === "success") showCreate = false;
-        });
-      }}
+    use:enhance={busy.wrap("create", () => ({ update, result }) => {
+      void update().then(() => {
+        if (result.type === "success") showCreate = false;
+      });
+    })}
     class="space-y-4"
   >
     <div>
@@ -150,11 +153,9 @@
     {#if form?.error && !form?.importError}
       <p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
     {/if}
-    <button
-      class="w-full rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-    >
+    <Button class="w-full" loading={busy.is("create")} disabled={busy.active}>
       {t("common.save")}
-    </button>
+    </Button>
   </form>
 </Modal>
 
@@ -162,12 +163,11 @@
   <form
     method="POST"
     action="?/import"
-    use:enhance={() =>
-      ({ update, result }) => {
-        void update().then(() => {
-          if (result.type === "success") showImport = false;
-        });
-      }}
+    use:enhance={busy.wrap("import", () => ({ update, result }) => {
+      void update().then(() => {
+        if (result.type === "success") showImport = false;
+      });
+    })}
     class="space-y-4"
   >
     <p class="text-sm text-text-muted">{t("instance.import_hint")}</p>
@@ -198,10 +198,8 @@
     {#if form?.error && form?.importError}
       <p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
     {/if}
-    <button
-      class="w-full rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-    >
+    <Button class="w-full" loading={busy.is("import")} disabled={busy.active}>
       {t("instance.import_action")}
-    </button>
+    </Button>
   </form>
 </Modal>

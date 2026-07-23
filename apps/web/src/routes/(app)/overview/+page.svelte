@@ -6,9 +6,11 @@
   import { page } from "$app/state";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
@@ -22,6 +24,8 @@
   import { entryTypeLabel, entryStatus, formatMinutes, formatTime } from "$lib/modules/time/format";
 
   let { data, form } = $props();
+
+  const busy = new InFlight();
 
   const report = $derived(data.report);
   const entries = $derived(report?.items ?? []);
@@ -101,9 +105,6 @@
     else url.searchParams.delete(key);
     void goto(url, { keepFocus: true, noScroll: true });
   }
-
-  const bulkClass =
-    "rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-text-muted hover:border-brand hover:text-brand";
 
   // Only offer bulk actions that can actually change a row in the current selection (#45). The row
   // lifecycle is one of open/approved/to_invoice/invoiced (`entryStatus`), and the API enforces
@@ -374,9 +375,20 @@
     <span class="text-xs font-medium text-text">{t("table.selected", { count: ids.length })}</span>
     <span class="text-xs text-text-muted">{t("table.selection_page_only")}</span>
     {#each bulkActions as bulkAction (bulkAction.action)}
-      <form method="POST" action={`?/${bulkAction.action}`} use:enhance>
+      <form
+        method="POST"
+        action={`?/${bulkAction.action}`}
+        use:enhance={busy.wrap(bulkAction.action)}
+      >
         <input type="hidden" name="entry_ids" value={ids.join(",")} />
-        <button class={bulkClass}>{bulkAction.label}</button>
+        <Button
+          variant="secondary"
+          size="sm"
+          loading={busy.is(bulkAction.action)}
+          disabled={busy.active}
+        >
+          {bulkAction.label}
+        </Button>
       </form>
     {/each}
   </div>

@@ -6,9 +6,11 @@
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { customFieldColumns } from "$lib/core/table/columns";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
@@ -29,6 +31,7 @@
   const initialCompanyId = page.url.searchParams.get("company") ?? "";
   let deleteId = $state("");
   let confirmDelete = $state(false);
+  const busy = new InFlight();
 
   // Actions render only for holders of the matching permission (#253).
   const canWrite = $derived(can(page.data.user, "domains.domain.write"));
@@ -215,11 +218,10 @@
     <form
       method="POST"
       action="?/create"
-      use:enhance={() =>
-        ({ result, update }) => {
-          if (result.type === "success") showCreate = false;
-          void update({ reset: false });
-        }}
+      use:enhance={busy.wrap("", () => ({ result, update }) => {
+        if (result.type === "success") showCreate = false;
+        void update({ reset: false });
+      })}
     >
       <DomainForm
         companies={data.companies}
@@ -245,9 +247,7 @@
           class="rounded-lg border border-border px-4 py-2 text-sm text-text"
           onclick={() => (showCreate = false)}>{t("common.cancel")}</button
         >
-        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-          >{t("common.save")}</button
-        >
+        <Button loading={busy.active}>{t("common.save")}</Button>
       </div>
     </form>
   </Modal>

@@ -10,6 +10,8 @@
    */
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
 
   import type { InteractionItem } from "./format";
 
@@ -32,6 +34,8 @@
   let picked = $state("");
   let loading = $state(true);
   let error = $state("");
+
+  const busy = new InFlight();
 
   $effect(() => {
     void loadStatuses();
@@ -58,16 +62,15 @@
   method="POST"
   action="?/closeTaskWithInteraction"
   class="space-y-4"
-  use:enhance={() =>
-    async ({ result, update }) => {
-      if (result.type === "failure") {
-        error = String(result.data?.error ?? "errors.validation");
-        return;
-      }
-      error = "";
-      await update({ reset: false });
-      onsaved?.();
-    }}
+  use:enhance={busy.wrap("", () => async ({ result, update }) => {
+    if (result.type === "failure") {
+      error = String(result.data?.error ?? "errors.validation");
+      return;
+    }
+    error = "";
+    await update({ reset: false });
+    onsaved?.();
+  })}
 >
   <input type="hidden" name="task_id" value={interaction.task_id} />
   <input type="hidden" name="interaction_id" value={interaction.id} />
@@ -103,12 +106,8 @@
   {/if}
 
   <div class="flex justify-end">
-    <button
-      type="submit"
-      disabled={loading || terminal.length === 0}
-      class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
-    >
+    <Button type="submit" loading={busy.active} disabled={loading || terminal.length === 0}>
       {t("interactions.close_task")}
-    </button>
+    </Button>
   </div>
 </form>

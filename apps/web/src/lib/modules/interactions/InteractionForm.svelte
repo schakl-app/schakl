@@ -12,6 +12,8 @@
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
+  import { InFlight } from "$lib/core/submit.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
@@ -59,6 +61,8 @@
   let date = $state(local?.date ?? new Date().toISOString().slice(0, 10));
   let time = $state(local?.time ?? "");
   let error = $state("");
+
+  const busy = new InFlight();
 
   // Kinds are tenant-defined (#174), fetched once per session (module-level cache). The
   // list shows the active ones, plus the row's own kind when editing — a deactivated kind
@@ -360,18 +364,17 @@
   method="POST"
   action={interaction ? "?/updateInteraction" : "?/createInteraction"}
   class="space-y-4"
-  use:enhance={() =>
-    async ({ result, update }) => {
-      if (result.type === "failure") {
-        closeFailedAfterCreate = Boolean(result.data?.createdButCloseFailed);
-        error = String(result.data?.error ?? "errors.validation");
-        return;
-      }
-      error = "";
-      closeFailedAfterCreate = false;
-      await update({ reset: false });
-      onsaved?.();
-    }}
+  use:enhance={busy.wrap("", () => async ({ result, update }) => {
+    if (result.type === "failure") {
+      closeFailedAfterCreate = Boolean(result.data?.createdButCloseFailed);
+      error = String(result.data?.error ?? "errors.validation");
+      return;
+    }
+    error = "";
+    closeFailedAfterCreate = false;
+    await update({ reset: false });
+    onsaved?.();
+  })}
 >
   {#if interaction}
     <input type="hidden" name="id" value={interaction.id} />
@@ -572,12 +575,9 @@
   {/if}
 
   <div class="flex justify-end">
-    <button
-      type="submit"
-      class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-    >
+    <Button type="submit" loading={busy.active}>
       {t("common.save")}
-    </button>
+    </Button>
   </div>
 </form>
 

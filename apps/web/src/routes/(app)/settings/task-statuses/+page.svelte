@@ -3,13 +3,17 @@
 
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import { LABEL_COLORS, labelChipClass, labelDotClass } from "$lib/modules/tasks/labels";
 
   let { data, form } = $props();
+
+  const busy = new InFlight();
 
   let newColor = $state("blue");
   let editingId = $state<string | null>(null);
@@ -38,11 +42,10 @@
               <form
                 method="POST"
                 action="?/update"
-                use:enhance={() =>
-                  ({ update }) => {
-                    editingId = null;
-                    void update();
-                  }}
+                use:enhance={busy.wrap(status.id, () => ({ update }) => {
+                  editingId = null;
+                  void update();
+                })}
                 class="flex flex-1 flex-wrap items-center gap-2"
               >
                 <input type="hidden" name="id" value={status.id} />
@@ -73,8 +76,8 @@
                   />
                   {t("tasks.statuses.requires_interaction")}
                 </label>
-                <button class="rounded-lg bg-brand px-3 py-1 text-xs font-medium text-white"
-                  >{t("common.save")}</button
+                <Button size="xs" loading={busy.is(status.id)} disabled={busy.active}
+                  >{t("common.save")}</Button
                 >
                 <button
                   type="button"
@@ -138,9 +141,12 @@
     <form
       method="POST"
       action="?/create"
-      use:enhance={() =>
-        ({ update }) =>
-          void update({ reset: true })}
+      use:enhance={busy.wrap(
+        "create",
+        () =>
+          ({ update }) =>
+            void update({ reset: true }),
+      )}
       class="space-y-3"
     >
       <input
@@ -174,11 +180,9 @@
         <input type="checkbox" name="requires_interaction" value="true" />
         {t("tasks.statuses.requires_interaction_help")}
       </label>
-      <button
-        class="w-full rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-      >
+      <Button class="w-full" loading={busy.is("create")} disabled={busy.active}>
         {t("common.create")}
-      </button>
+      </Button>
     </form>
   </aside>
 </div>

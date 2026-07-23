@@ -8,6 +8,8 @@
    */
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
 
   let {
@@ -25,6 +27,8 @@
     /** The page's `form?.qcError`. */
     error?: string | null;
   } = $props();
+
+  const busy = new InFlight();
 </script>
 
 <Modal bind:open title={t("common.quick_create.provider", { kind: t(`providers.kind.${kind}`) })}>
@@ -32,11 +36,10 @@
     <form
       method="POST"
       {action}
-      use:enhance={() =>
-        ({ result, update }) => {
-          if (result.type === "success") open = false;
-          void update({ reset: false });
-        }}
+      use:enhance={busy.wrap("", () => ({ result, update }) => {
+        if (result.type === "success") open = false;
+        void update({ reset: false });
+      })}
       class="space-y-3"
     >
       <input type="hidden" name="kind" value={kind} />
@@ -59,10 +62,7 @@
           class="rounded-lg border border-border px-4 py-2 text-sm"
           onclick={() => (open = false)}>{t("common.cancel")}</button
         >
-        <button
-          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-          >{t("common.create")}</button
-        >
+        <Button loading={busy.active}>{t("common.create")}</Button>
       </div>
     </form>
   {/key}

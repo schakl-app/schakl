@@ -6,8 +6,10 @@
 
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
@@ -22,6 +24,7 @@
   let toggleForm: HTMLFormElement | undefined = $state();
   let toggleId = $state("");
   let toggleActive = $state("");
+  const busy = new InFlight();
 
   function openCreate() {
     editing = null;
@@ -106,11 +109,10 @@
       method="POST"
       action="?/save"
       class="space-y-4"
-      use:enhance={() =>
-        ({ result, update }) => {
-          if (result.type === "success") showModal = false;
-          void update({ reset: false });
-        }}
+      use:enhance={busy.wrap("", () => ({ result, update }) => {
+        if (result.type === "success") showModal = false;
+        void update({ reset: false });
+      })}
     >
       {#if editing}<input type="hidden" name="id" value={editing.id} />{/if}
       {#key editing?.id ?? "new"}
@@ -133,9 +135,7 @@
           class="rounded-lg border border-border px-4 py-2 text-sm text-text"
           onclick={() => (showModal = false)}>{t("common.cancel")}</button
         >
-        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-          >{t("common.save")}</button
-        >
+        <Button loading={busy.active}>{t("common.save")}</Button>
       </div>
     </form>
   {/key}

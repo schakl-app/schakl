@@ -3,9 +3,13 @@
   import { fmtDayMonthYear } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { moduleLabel } from "$lib/core/registry";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
+  import Button from "$lib/core/ui/Button.svelte";
 
   let { data, form } = $props();
+
+  const busy = new InFlight();
 
   const license = $derived(form?.license ?? data.license);
 
@@ -93,7 +97,7 @@
   <form
     method="POST"
     action="?/install"
-    use:enhance
+    use:enhance={busy.wrap()}
     class="rounded-xl border border-border bg-surface-raised p-5"
   >
     <label class="block text-sm font-medium text-text" for="license-key">
@@ -111,10 +115,8 @@
     {#if form?.installed}
       <p class="mt-2 text-sm text-green-600">{t("settings.license.installed")}</p>
     {/if}
-    <button
-      class="mt-3 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-    >
+    <Button class="mt-3" loading={busy.active}>
       {t("settings.license.install")}
-    </button>
+    </Button>
   </form>
 </div>

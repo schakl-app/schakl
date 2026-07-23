@@ -1,7 +1,9 @@
 <script lang="ts">
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
+  import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
 
   let { data, form } = $props();
@@ -23,6 +25,11 @@
   );
 
   let confirmDelete = $state(false);
+
+  const busy = new InFlight();
+  // A template form owns two submits (save + test): the wrap key names the form, this
+  // remembers which button fired so only that one spins.
+  let tplSubmit = $state("");
 
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand";
@@ -56,9 +63,12 @@
   <form
     method="POST"
     action="?/save"
-    use:enhance={() =>
-      ({ update }) =>
-        update({ reset: false })}
+    use:enhance={busy.wrap(
+      "save",
+      () =>
+        ({ update }) =>
+          update({ reset: false }),
+    )}
     class="space-y-4"
   >
     <input type="hidden" name="provider" value={provider} />
@@ -238,10 +248,7 @@
 
     <div class="flex items-center justify-between gap-2">
       <div class="flex gap-2">
-        <button
-          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-          >{t("common.save")}</button
-        >
+        <Button loading={busy.is("save")} disabled={busy.active}>{t("common.save")}</Button>
       </div>
       {#if data.settings}
         <button
@@ -254,9 +261,14 @@
   </form>
 
   {#if data.settings}
-    <form method="POST" action="?/test" use:enhance class="mt-4 border-t border-border pt-4">
-      <button class="rounded-lg border border-border px-4 py-2 text-sm text-text hover:border-brand"
-        >{t("settings.email.test")}</button
+    <form
+      method="POST"
+      action="?/test"
+      use:enhance={busy.wrap("test")}
+      class="mt-4 border-t border-border pt-4"
+    >
+      <Button variant="secondary" loading={busy.is("test")} disabled={busy.active}
+        >{t("settings.email.test")}</Button
       >
       {#if form?.test}
         {#if form.test.ok}
@@ -315,7 +327,9 @@
             <form
               method="POST"
               action="?/saveTemplate"
-              use:enhance
+              use:enhance={busy.wrap(`tpl-${tpl.kind}-${tpl.locale}`, ({ action }) => {
+                tplSubmit = action.search.includes("testTemplate") ? "test" : "save";
+              })}
               class="space-y-3 rounded-lg border border-border p-4 {tplLocale(kind) === tpl.locale
                 ? ''
                 : 'hidden'}"
@@ -396,15 +410,18 @@
               {/if}
 
               <div class="flex gap-2">
-                <button
-                  class="rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
-                  >{t("common.save")}</button
+                <Button
+                  size="sm"
+                  loading={busy.is(`tpl-${tpl.kind}-${tpl.locale}`) && tplSubmit === "save"}
+                  disabled={busy.active}>{t("common.save")}</Button
                 >
                 {#if data.settings}
-                  <button
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     formaction="?/testTemplate"
-                    class="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-text hover:border-brand"
-                    >{t("settings.email.templates.test")}</button
+                    loading={busy.is(`tpl-${tpl.kind}-${tpl.locale}`) && tplSubmit === "test"}
+                    disabled={busy.active}>{t("settings.email.templates.test")}</Button
                   >
                 {/if}
               </div>
