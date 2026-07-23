@@ -29,7 +29,7 @@ export const load: PageServerLoad = async (event) => {
       api.GET("/api/v1/custom-fields/definitions", {
         params: { query: { entity_type: "contact" } },
       }),
-      api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0 } } }),
+      api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, sort: "name" } } }),
       api.GET("/api/v1/custom-fields/definitions", {
         params: { query: { entity_type: "company" } },
       }),

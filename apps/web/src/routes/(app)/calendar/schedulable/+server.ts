@@ -16,10 +16,12 @@ export const GET: RequestHandler = async (event) => {
   const api = apiFor(event);
   const [tasks, members, companies, projects] = await Promise.all([
     api.GET("/api/v1/tasks", {
-      params: { query: { limit: 200, offset: 0, meta: false, count: false } },
+      params: { query: { limit: 200, offset: 0, meta: false, count: false, sort: "title" } },
     }),
     api.GET("/api/v1/members/lookup"),
-    api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
+    api.GET("/api/v1/companies", {
+      params: { query: { limit: 200, offset: 0, count: false, sort: "name" } },
+    }),
     api.GET("/api/v1/projects", { params: { query: { limit: 200, offset: 0, count: false } } }),
   ]);
   // Only open work is schedulable — you don't plan time for a finished task.

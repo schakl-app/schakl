@@ -321,7 +321,7 @@
     // Host company's roster first; an org without links there falls back to all contacts.
     const scope = hostCompanyId ? `&company_id=${hostCompanyId}` : "";
     void (async () => {
-      let response = await fetch(`/api/v1/contacts?limit=200${scope}`, {
+      let response = await fetch(`/api/v1/contacts?limit=200&sort=first_name${scope}`, {
         headers: { accept: "application/json" },
       });
       interface ContactRow {
@@ -333,7 +333,7 @@
       }
       let items: ContactRow[] = response.ok ? ((await response.json()).items ?? []) : [];
       if (items.length === 0 && scope) {
-        response = await fetch("/api/v1/contacts?limit=200", {
+        response = await fetch("/api/v1/contacts?limit=200&sort=first_name", {
           headers: { accept: "application/json" },
         });
         items = response.ok ? ((await response.json()).items ?? []) : [];

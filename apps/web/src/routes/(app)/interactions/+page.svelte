@@ -173,7 +173,7 @@
     qcProjectOpen = true;
     if (qcCompaniesLoaded) return;
     qcCompaniesLoaded = true;
-    const response = await fetch("/api/v1/companies?limit=200&count=false", {
+    const response = await fetch("/api/v1/companies?limit=200&count=false&sort=name", {
       headers: { accept: "application/json" },
     });
     const items: { id: string; name: string }[] = response.ok

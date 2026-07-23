@@ -184,10 +184,10 @@
       };
       // Lean lookups: no counts, no task aggregates (docs/PERFORMANCE.md).
       const [companiesPage, projectsPage, tasksPage, contactsPage] = await Promise.all([
-        get("/api/v1/companies?limit=200&count=false"),
+        get("/api/v1/companies?limit=200&count=false&sort=name"),
         get("/api/v1/projects?limit=200&count=false"),
-        get("/api/v1/tasks?limit=200&count=false&meta=false"),
-        get("/api/v1/contacts?limit=200"),
+        get("/api/v1/tasks?limit=200&count=false&meta=false&sort=title"),
+        get("/api/v1/contacts?limit=200&sort=first_name"),
       ]);
       companies = (companiesPage.items ?? []).map((c: { id: string; name: string }) => ({
         value: c.id,

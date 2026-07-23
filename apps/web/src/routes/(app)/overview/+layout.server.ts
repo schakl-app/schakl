@@ -23,9 +23,9 @@ export const load: LayoutServerLoad = async (event) => {
     (event.locals.theme?.enabledModules?.includes("subscriptions") ?? false) &&
     can(event.locals.user, "subscriptions.subscription.read");
   const [companies, projects, tasks, members, entryTypes, subscriptions] = await Promise.all([
-    api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0 } } }),
+    api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, sort: "name" } } }),
     api.GET("/api/v1/projects", { params: { query: { limit: 200, offset: 0 } } }),
-    api.GET("/api/v1/tasks", { params: { query: { limit: 200, offset: 0, meta: false } } }),
+    api.GET("/api/v1/tasks", { params: { query: { limit: 200, offset: 0, meta: false, sort: "title" } } }),
     api.GET("/api/v1/members/lookup"),
     // Entry-type labels for the report's type column/filter (#176) — inactive included so a
     // historical row still names its retired type.

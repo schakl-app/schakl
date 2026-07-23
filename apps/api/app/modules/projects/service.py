@@ -238,7 +238,7 @@ class ProjectService:
             self.repo.scoped_select().where(*conditions),
             sort,
             SORTABLE,
-            default=Project.name.asc(),
+            default=func.lower(Project.name).asc(),
         ).limit(limit).offset(offset)
         items = list((await self.ctx.session.execute(stmt)).scalars().all())
         # ``count=False`` skips the discarded COUNT(*) for name-only lookups.

@@ -258,7 +258,7 @@ async def lookup_members(
         select(User)
         .join(Membership, Membership.user_id == User.id)
         .where(Membership.org_id == ctx.org.id)
-        .order_by(User.full_name.asc().nulls_last(), User.email.asc())
+        .order_by(func.lower(User.full_name).asc().nulls_last(), func.lower(User.email).asc())
     )
     if not include_clients:
         stmt = stmt.where(

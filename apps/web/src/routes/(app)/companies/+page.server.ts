@@ -72,7 +72,7 @@ export const load: PageServerLoad = async (event) => {
 
   // The create form's remaining lookups still stream in behind the list.
   const createForm = Promise.all([
-    api.GET("/api/v1/contacts", { params: { query: { limit: 200, offset: 0 } } }),
+    api.GET("/api/v1/contacts", { params: { query: { limit: 200, offset: 0, sort: "first_name" } } }),
     api.GET("/api/v1/custom-fields/definitions", { params: { query: { entity_type: "contact" } } }),
   ])
     .then(([contacts, contactDefinitions]) => ({

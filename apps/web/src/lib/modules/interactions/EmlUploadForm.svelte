@@ -97,7 +97,7 @@
   $effect(() => {
     const scope = pinned("company_id") ? `&company_id=${prefill.company_id as string}` : "";
     void (async () => {
-      const response = await fetch(`/api/v1/contacts?limit=200${scope}`, {
+      const response = await fetch(`/api/v1/contacts?limit=200&sort=first_name${scope}`, {
         headers: { accept: "application/json" },
       });
       const items: { id: string; first_name: string; last_name?: string | null }[] = response.ok

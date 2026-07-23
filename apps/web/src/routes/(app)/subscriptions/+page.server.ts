@@ -100,7 +100,9 @@ export const load: PageServerLoad = async (event) => {
       params: { query: { include_inactive: canManageTypes || canManageTemplates } },
     }),
     api.GET("/api/v1/subscriptions/templates"),
-    api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
+    api.GET("/api/v1/companies", {
+      params: { query: { limit: 200, offset: 0, count: false, sort: "name" } },
+    }),
     api.GET("/api/v1/projects", { params: { query: { limit: 200, offset: 0, count: false } } }),
     api.GET("/api/v1/custom-fields/definitions", {
       params: { query: { entity_type: "subscription" } },

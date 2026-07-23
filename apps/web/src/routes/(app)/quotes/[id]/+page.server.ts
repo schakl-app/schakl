@@ -29,7 +29,7 @@ export const load: PageServerLoad = async (event) => {
     ...panelData
   ] = await Promise.all([
     api.GET("/api/v1/invoicing/quotes/{quote_id}", { params: { path: { quote_id } } }),
-    api.GET("/api/v1/contacts", { params: { query: { limit: 200, count: false } } }),
+    api.GET("/api/v1/contacts", { params: { query: { limit: 200, count: false, sort: "first_name" } } }),
     api.GET("/api/v1/invoicing/tax-rates"),
     api.GET("/api/v1/invoicing/products"),
     api.GET("/api/v1/invoicing/templates", { params: { query: { include_inactive: true } } }),

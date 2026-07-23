@@ -37,7 +37,9 @@ export const load: PageServerLoad = async (event) => {
     api.GET("/api/v1/projects", {
       params: { query: { limit: 200, offset: 0, q, mine, sort, hours, company_id } },
     }),
-    api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
+    api.GET("/api/v1/companies", {
+      params: { query: { limit: 200, offset: 0, count: false, sort: "name" } },
+    }),
     api.GET("/api/v1/custom-fields/definitions", {
       params: { query: { entity_type: "project" } },
     }),

@@ -37,7 +37,9 @@ export const load: PageServerLoad = async (event) => {
       params: { query: { entity_type: "company" } },
     }),
     // For the create form's "connected companies" picker (#80). Lean list — no counts.
-    api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
+    api.GET("/api/v1/companies", {
+      params: { query: { limit: 200, offset: 0, count: false, sort: "name" } },
+    }),
     api.GET("/api/v1/contacts/types"),
   ]);
   return {

@@ -22,7 +22,9 @@ export const load: LayoutServerLoad = async (event) => {
     : Promise.resolve({ data: null });
   const [companies, projects, tasks, members, companyDefs, projectDefs, prefs, subscriptions] =
     await Promise.all([
-      api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
+      api.GET("/api/v1/companies", {
+        params: { query: { limit: 200, offset: 0, count: false, sort: "name" } },
+      }),
       // `hours=true` (#112): the budget burn per project rides the lookup this layout already
       // makes — one grouped query server-side, zero extra API calls — so the entry form can
       // show hours-left for the project being logged against.
@@ -30,7 +32,7 @@ export const load: LayoutServerLoad = async (event) => {
         params: { query: { limit: 200, offset: 0, count: false, hours: true } },
       }),
       api.GET("/api/v1/tasks", {
-        params: { query: { limit: 200, offset: 0, meta: false, count: false } },
+        params: { query: { limit: 200, offset: 0, meta: false, count: false, sort: "title" } },
       }),
       api.GET("/api/v1/members/lookup"),
       // Custom-field definitions drive the quick-create dialogs (incl. required fields).

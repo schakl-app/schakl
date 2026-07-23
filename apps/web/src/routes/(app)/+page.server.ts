@@ -39,7 +39,7 @@ export const load: PageServerLoad = async (event) => {
   // marketing widget's *content* is not. The companies list is horizon-scoped by the API.
   if (event.locals.user?.isPortal) {
     const { data: companies } = await api.GET("/api/v1/companies", {
-      params: { query: { limit: 50, count: false } },
+      params: { query: { limit: 50, count: false, sort: "name" } },
     });
     const items = (companies?.items ?? []).map((c) => ({
       id: c.id,

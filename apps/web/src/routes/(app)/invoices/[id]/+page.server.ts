@@ -31,7 +31,7 @@ export const load: PageServerLoad = async (event) => {
     api.GET("/api/v1/invoicing/invoices/{invoice_id}", {
       params: { path: { invoice_id } },
     }),
-    api.GET("/api/v1/contacts", { params: { query: { limit: 200, count: false } } }),
+    api.GET("/api/v1/contacts", { params: { query: { limit: 200, count: false, sort: "first_name" } } }),
     api.GET("/api/v1/invoicing/tax-rates"),
     api.GET("/api/v1/invoicing/products"),
     api.GET("/api/v1/invoicing/templates", { params: { query: { include_inactive: true } } }),

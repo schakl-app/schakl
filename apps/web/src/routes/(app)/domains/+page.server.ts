@@ -44,10 +44,12 @@ export const load: PageServerLoad = async (event) => {
     contactDefinitions,
   ] = await Promise.all([
     api.GET("/api/v1/domains", { params: { query: { limit: 200, offset: 0, q, sort } } }),
-    api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
+    api.GET("/api/v1/companies", {
+      params: { query: { limit: 200, offset: 0, count: false, sort: "name" } },
+    }),
     api.GET("/api/v1/providers"),
     api.GET("/api/v1/members/lookup"),
-    api.GET("/api/v1/contacts", { params: { query: { limit: 200, offset: 0 } } }),
+    api.GET("/api/v1/contacts", { params: { query: { limit: 200, offset: 0, sort: "first_name" } } }),
     api.GET("/api/v1/custom-fields/definitions", {
       params: { query: { entity_type: "domain" } },
     }),
