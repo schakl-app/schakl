@@ -31,8 +31,10 @@ export const load: PageServerLoad = async (event) => {
   const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
 
   // Types + contract hours come from the /leave layout load; only the year data changes here.
-  const [balance, requests] = await Promise.all([
-    api.GET("/api/v1/leave/balance", { params: { query: { year } } }),
+  // #265: the combined per-group balances — statutory + extra-statutory vacation roll up into one
+  // "Vakantieverlof" figure, with each pot's expiry alongside.
+  const [groups, requests] = await Promise.all([
+    api.GET("/api/v1/leave/balance/groups", { params: { query: { year } } }),
     api.GET("/api/v1/leave/requests", {
       params: { query: { year, limit: 100, offset: 0, sort } },
     }),
@@ -40,7 +42,7 @@ export const load: PageServerLoad = async (event) => {
   return {
     year,
     currentYear: currentYear(),
-    balances: balance.data ?? [],
+    groups: groups.data ?? [],
     requests: requests.data?.items ?? [],
     table: { pref, sort: sort ?? null, widths: resolved.widths },
   };

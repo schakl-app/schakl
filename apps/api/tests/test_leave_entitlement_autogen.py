@@ -229,7 +229,17 @@ async def test_member_can_request_leave_for_next_year(client_for) -> None:
             await c.get("/api/v1/leave/balance", params={"year": _YEAR + 1}, headers=mh)
         ).json()
         statutory = next(b for b in balance if b["leave_type_id"] == types["vacation_statutory"])
-        assert float(statutory["entitled_hours"]) == 152.0
+        # ...seeded and non-zero. (The balance figure may exceed one year's grant: with #265's
+        # carry-over now live, this year's untaken statutory carries into next year on top of the
+        # fresh pot — so assert the *fresh grant* itself via the entitlement row it just seeded.)
+        assert float(statutory["entitled_hours"]) > 0
+        fresh = (
+            await c.get(
+                "/api/v1/leave/entitlements", params={"year": _YEAR + 1}, headers=mh
+            )
+        ).json()
+        seeded = next(e for e in fresh if e["leave_type_id"] == types["vacation_statutory"])
+        assert float(seeded["hours"]) == 152.0
 
         # ...and a next-year request goes through instead of dying on an empty pot.
         day = _next_year_workday().isoformat()

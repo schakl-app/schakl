@@ -3100,6 +3100,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/leave/balance/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Group Balances
+         * @description The employee-facing combined balances (#265): one figure per balance group (statutory +
+         *     extra-statutory vacation roll up into one "Vakantieverlof"), with the per-pot breakdown —
+         *     accrual year, remaining, expiry — alongside for anyone who needs to see where hours went.
+         */
+        get: operations["group_balances_api_v1_leave_balance_groups_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/leave/contracts": {
         parameters: {
             query?: never;
@@ -9260,11 +9282,18 @@ export interface components {
         };
         /**
          * LeaveBalance
-         * @description Balance per tracks_balance type: entitled + carried − approved − pending.
+         * @description Balance per tracks_balance type: entitled + carried − approved − pending − lapsed (#265).
+         *
+         *     ``remaining_hours`` is expiry-aware: it reflects the FIFO-by-expiry pot ledger, so it already
+         *     excludes carried hours that have lapsed and includes prior-year hours still in their window.
+         *     ``balance_group`` echoes the type's group so a client can roll grouped rows into one figure —
+         *     group remaining is exactly the sum of its types' ``remaining_hours`` by construction.
          */
         LeaveBalance: {
             /** Approved Hours */
             approved_hours: string;
+            /** Balance Group */
+            balance_group?: string | null;
             /** Entitled Hours */
             entitled_hours: string;
             /**
@@ -9353,6 +9382,40 @@ export interface components {
             /** Year */
             year: number;
         };
+        /**
+         * LeaveGroupBalance
+         * @description The employee-facing balance for a group of pots rolled into one figure (#265).
+         *
+         *     ``vacation_statutory`` + ``vacation_extra`` present as a single "Vakantieverlof" balance; a
+         *     standalone type (ADV, …) is its own singleton group. ``entitled/approved/pending/remaining``
+         *     are the combined numbers; ``pots`` carries the per-pot breakdown for anyone who needs it.
+         */
+        LeaveGroupBalance: {
+            /** Approved Hours */
+            approved_hours: string;
+            /** Entitled Hours */
+            entitled_hours: string;
+            /** Expiring Soon Hours */
+            expiring_soon_hours: string;
+            /** Group */
+            group: string | null;
+            /** Label I18N */
+            label_i18n: {
+                [key: string]: string;
+            };
+            /** Lapsed Hours */
+            lapsed_hours: string;
+            /** Leave Type Ids */
+            leave_type_ids: string[];
+            /** Pending Hours */
+            pending_hours: string;
+            /** Pots */
+            pots: components["schemas"]["LeavePotBreakdown"][];
+            /** Remaining Hours */
+            remaining_hours: string;
+            /** Year */
+            year: number;
+        };
         /** LeaveHolidayCreate */
         LeaveHolidayCreate: {
             /**
@@ -9403,6 +9466,33 @@ export interface components {
             name_i18n?: {
                 [key: string]: string;
             } | null;
+        };
+        /**
+         * LeavePotBreakdown
+         * @description One entitlement pot inside a group: which type/year it came from, and when it expires.
+         *
+         *     The per-pot detail behind a combined figure, so "why did my balance drop by X / what is
+         *     about to lapse" always has an answer even though the employee sees one number day to day.
+         */
+        LeavePotBreakdown: {
+            /** Accrual Year */
+            accrual_year: number;
+            /** Entitled Hours */
+            entitled_hours: string;
+            /**
+             * Expired
+             * @default false
+             */
+            expired: boolean;
+            /** Expires On */
+            expires_on?: string | null;
+            /**
+             * Leave Type Id
+             * Format: uuid
+             */
+            leave_type_id: string;
+            /** Remaining Hours */
+            remaining_hours: string;
         };
         /** LeavePreviewResult */
         LeavePreviewResult: {
@@ -9883,6 +9973,8 @@ export interface components {
              * @default true
              */
             active: boolean;
+            /** Balance Group */
+            balance_group?: string | null;
             /** @default all_day */
             calendar_display: components["schemas"]["LeaveCalendarDisplay"];
             /** Carry Over Months */
@@ -9933,6 +10025,8 @@ export interface components {
              * @default true
              */
             active: boolean;
+            /** Balance Group */
+            balance_group?: string | null;
             /** @default all_day */
             calendar_display: components["schemas"]["LeaveCalendarDisplay"];
             /** Carry Over Months */
@@ -9997,6 +10091,8 @@ export interface components {
             accrues_schedule_gap?: boolean | null;
             /** Active */
             active?: boolean | null;
+            /** Balance Group */
+            balance_group?: string | null;
             calendar_display?: components["schemas"]["LeaveCalendarDisplay"] | null;
             /** Carry Over Months */
             carry_over_months?: number | null;
@@ -22186,6 +22282,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LeaveBalance"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    group_balances_api_v1_leave_balance_groups_get: {
+        parameters: {
+            query: {
+                year: number;
+                user_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveGroupBalance"][];
                 };
             };
             /** @description Validation Error */

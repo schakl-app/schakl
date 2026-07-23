@@ -50,8 +50,10 @@ from app.modules.leave.schemas import (
     LeaveBalance,
     LeaveDayHours,
     LeaveEntitlementUpsert,
+    LeaveGroupBalance,
     LeaveHolidayCreate,
     LeaveHolidayUpdate,
+    LeavePotBreakdown,
     LeavePreviewResult,
     LeaveProfileUpdate,
     LeaveRecurringDayCreate,
@@ -79,6 +81,10 @@ DEFAULT_LEAVE_TYPES: list[dict] = [
         "requires_approval": True,
         "default_weeks": Decimal("4"),
         "carry_over_months": 6,
+        # Statutory + extra present as one "Vakantieverlof" balance (#265): the two pots keep
+        # their differing expiry (6 vs 60 months) so the legal split survives, but the employee
+        # sees one number and a request spends the soonest-to-expire pot (statutory) first.
+        "balance_group": "vacation",
         "position": 10,
     },
     {
@@ -90,6 +96,7 @@ DEFAULT_LEAVE_TYPES: list[dict] = [
         "requires_approval": True,
         "default_weeks": Decimal("1"),
         "carry_over_months": 60,
+        "balance_group": "vacation",
         "position": 20,
     },
     {
@@ -147,6 +154,19 @@ DEFAULT_LEAVE_TYPES: list[dict] = [
 ]
 
 _OCCUPYING = (LeaveRequestStatus.PENDING.value, LeaveRequestStatus.APPROVED.value)
+
+#: Combined labels for known balance groups (#265). Seed/label data like ``DEFAULT_LEAVE_TYPES``
+#: itself (which hardcodes "Wettelijke vakantie" etc.), keyed by group slug — so a tenant renaming
+#: the underlying types still reads one "Vakantieverlof" balance. The canonical UI copy is the web
+#: message key ``leave.balance.vacation_group``; this is the API-side mirror non-web clients read.
+#: An unknown tenant group falls back to its soonest-expiring type's own ``label_i18n``.
+_GROUP_LABELS: dict[str, dict[str, str]] = {
+    "vacation": {"nl": "Vakantieverlof", "en": "Vacation"},
+}
+
+#: A still-valid carried pot counts as "expiring soon" when it lapses within this many months of
+#: org-local today — the "use it before it's gone" nudge on the combined balance (#265).
+_EXPIRING_SOON_MONTHS = 6
 
 #: "Not looked up yet", distinct from "looked up, and there is no row".
 _UNSET = object()
@@ -1171,50 +1191,284 @@ class LeaveService:
                 created += 1
         return created
 
-    # --- balances ------------------------------------------------------------------ #
-    async def _request_hours_by_type(
-        self, user_id: uuid.UUID, year: int, status: str
-    ) -> dict[uuid.UUID, Decimal]:
-        stmt = (
-            select(LeaveRequest.leave_type_id, func.coalesce(func.sum(LeaveRequest.hours), 0))
-            .where(
-                LeaveRequest.org_id == self.ctx.org.id,
-                LeaveRequest.user_id == user_id,
-                LeaveRequest.status == status,
-                LeaveRequest.start_date >= date(year, 1, 1),
-                LeaveRequest.start_date < date(year + 1, 1, 1),
-            )
-            .group_by(LeaveRequest.leave_type_id)
-        )
-        return {row[0]: Decimal(row[1]) for row in (await self.ctx.session.execute(stmt)).all()}
+    # --- balances / the pot ledger (#265) --------------------------------------------- #
+    @staticmethod
+    def _pot_expiry(carry_over_months: int | None, accrual_year: int) -> date | None:
+        """When a pot accrued in ``accrual_year`` lapses (#265).
 
-    async def balances(self, *, year: int, user_id: uuid.UUID | None = None) -> list[LeaveBalance]:
-        uid = self._effective_user_id(user_id)
-        # First touch of an ungenerated current/next-year pot seeds it (#108), so "book next
-        # summer in December" finds a balance instead of a zero.
+        Hours are fully usable through the end of their accrual year, then carry into the next and
+        lapse ``carry_over_months`` after it begins: NL statutory (6) → 1 July of the next year,
+        extra-statutory (60) → 1 January five years on, ADV (0) → 1 January of the next year.
+        ``None`` — the column's "never" — means the pot never expires. Config, not law: the months
+        come from ``leave_types``, so another jurisdiction is a data change, not a code one (§14).
+        """
+        if carry_over_months is None:
+            return None
+        return LeaveService._add_months(date(accrual_year + 1, 1, 1), carry_over_months)
+
+    async def _entitlement_rows_upto(
+        self, user_id: uuid.UUID, upto_year: int
+    ) -> Sequence[LeaveEntitlement]:
+        """Every entitlement pot for this user up to and including ``upto_year`` (#265).
+
+        Carry-over means a year's balance depends on prior years' unused pots, so this spans years
+        rather than one. Org- and user-scoped; the caller is already access-checked (``balances``
+        gates on ``leave.request.read`` and resolves the effective user first).
+        """
+        stmt = self.entitlements.scoped_select().where(
+            LeaveEntitlement.user_id == user_id, LeaveEntitlement.year <= upto_year
+        )
+        return (await self.ctx.session.execute(stmt)).scalars().all()
+
+    async def _occupying_requests_upto(
+        self, user_id: uuid.UUID, upto_year: int
+    ) -> Sequence[LeaveRequest]:
+        """This user's occupying (pending/approved) requests that start in ``upto_year`` or before.
+
+        One query, grouped in Python (bounded to one person's leave), so consumption can be
+        allocated across pots by year without an aggregate-per-year round trip (PERFORMANCE.md).
+        """
+        stmt = self.requests.scoped_select().where(
+            LeaveRequest.user_id == user_id,
+            LeaveRequest.status.in_(_OCCUPYING),
+            LeaveRequest.start_date < date(upto_year + 1, 1, 1),
+        )
+        return (await self.ctx.session.execute(stmt)).scalars().all()
+
+    @staticmethod
+    def _allocate_pots(
+        pots: list[dict], consumption_by_year: dict[int, Decimal], display_year: int
+    ) -> Decimal:
+        """FIFO-by-expiry consumption across one group's pots (#265) — "favour the employee" made
+        concrete.
+
+        For each consumption year in ascending order, its hours are drawn from the pots still
+        valid that year (accrued by then, not yet expired at the year's start) **soonest-expiry-
+        first**, so short-lived statutory hours are spent before long-lived extra ones and nothing
+        lapses that could have been used. Mutates each pot's ``allocated`` and snapshots
+        ``allocated_before`` — allocation from years strictly before ``display_year``, i.e. the
+        carry-in state at the start of the shown year. Returns the ``display_year`` over-request
+        shortfall (consumption no pot could cover), which makes that year read negative (#109);
+        a shortfall in any other year stays in its own year and never dents a later fresh grant.
+        """
+        snapshotted = False
+        shortfall = Decimal(0)
+        for yc in sorted(consumption_by_year):
+            if yc >= display_year and not snapshotted:
+                for pot in pots:
+                    pot["allocated_before"] = pot["allocated"]
+                snapshotted = True
+            need = consumption_by_year[yc]
+            if need <= 0:
+                continue
+            year_start = date(yc, 1, 1)
+            candidates = [
+                pot
+                for pot in pots
+                if pot["accrual_year"] <= yc
+                and (pot["expiry"] is None or pot["expiry"] > year_start)
+            ]
+            candidates.sort(key=lambda pot: (pot["expiry"] or date.max, pot["accrual_year"]))
+            for pot in candidates:
+                available = pot["granted"] - pot["allocated"]
+                if available <= 0:
+                    continue
+                take = min(available, need)
+                pot["allocated"] += take
+                need -= take
+                if need <= 0:
+                    break
+            if need > 0 and yc == display_year:
+                shortfall += need
+        if not snapshotted:
+            for pot in pots:
+                pot["allocated_before"] = pot["allocated"]
+        return shortfall
+
+    async def _ledger(
+        self, *, year: int, uid: uuid.UUID
+    ) -> tuple[list[LeaveBalance], list[LeaveGroupBalance]]:
+        """The pot ledger (#265): carry-over + expiry over every tracked type, yielding both the
+        per-type balances (shape unchanged) and the combined per-group balances.
+
+        Grouping is by ``balance_group``; a type without one is its own singleton group, so ADV
+        gains real expiry too (carry 0 → unused hours lapse at year-end). A pot's leftover belongs
+        to exactly one type, so **group remaining is the sum of its types' remaining** — the two
+        views cannot disagree.
+        """
+        # First touch of an ungenerated current/next-year pot seeds it (#108); prior years are read
+        # for carry-over, never seeded (history is not backfilled, §14).
         await self._ensure_entitlements(uid, year)
-        types = [t for t in await self.list_types() if t.tracks_balance]
-        entitled: dict[uuid.UUID, Decimal] = {}
-        for ent in await self.list_entitlements(year=year, user_id=uid):
-            entitled[ent.leave_type_id] = entitled.get(ent.leave_type_id, Decimal(0)) + ent.hours
-        approved = await self._request_hours_by_type(uid, year, LeaveRequestStatus.APPROVED.value)
-        pending = await self._request_hours_by_type(uid, year, LeaveRequestStatus.PENDING.value)
-        result: list[LeaveBalance] = []
-        for t in types:
-            ent = entitled.get(t.id, Decimal(0))
-            appr = approved.get(t.id, Decimal(0))
-            pend = pending.get(t.id, Decimal(0))
-            result.append(
-                LeaveBalance(
+        tracked = [t for t in await self.list_types() if t.tracks_balance]
+        if not tracked:
+            return [], []
+        tracked_ids = {t.id for t in tracked}
+        carry_by_type = {t.id: t.carry_over_months for t in tracked}
+        today = await self._org_today()
+        year_start = date(year, 1, 1)
+        soon_cutoff = self._add_months(today, _EXPIRING_SOON_MONTHS)
+
+        pots_by_type: dict[uuid.UUID, list[dict]] = {tid: [] for tid in tracked_ids}
+        for ent in await self._entitlement_rows_upto(uid, year):
+            if ent.leave_type_id not in tracked_ids:
+                continue
+            pots_by_type[ent.leave_type_id].append(
+                {
+                    "type_id": ent.leave_type_id,
+                    "accrual_year": ent.year,
+                    "granted": Decimal(ent.hours),
+                    "expiry": self._pot_expiry(carry_by_type[ent.leave_type_id], ent.year),
+                    "allocated": Decimal(0),
+                    "allocated_before": Decimal(0),
+                }
+            )
+
+        # Occupying hours per (type, start-year, status): per-type approved/pending for the display
+        # year, and — summed over a group — that group's consumption per year for the FIFO pass.
+        occ: dict[tuple[uuid.UUID, int, str], Decimal] = {}
+        for req in await self._occupying_requests_upto(uid, year):
+            if req.leave_type_id not in tracked_ids:
+                continue
+            occ_key = (req.leave_type_id, req.start_date.year, req.status)
+            occ[occ_key] = occ.get(occ_key, Decimal(0)) + Decimal(req.hours)
+
+        groups: dict[str, list[LeaveType]] = {}
+        for t in tracked:
+            groups.setdefault(t.balance_group or f"\x00type:{t.id}", []).append(t)
+
+        per_type: dict[uuid.UUID, LeaveBalance] = {}
+        grouped: list[tuple[int, str, LeaveGroupBalance]] = []
+        for gtypes in groups.values():
+            group_value = gtypes[0].balance_group  # None for a synthetic singleton group
+            gtype_ids = [t.id for t in gtypes]
+            gtype_id_set = set(gtype_ids)
+            representative = min(
+                gtypes,
+                key=lambda t: (
+                    t.carry_over_months if t.carry_over_months is not None else 10**9,
+                    t.position,
+                    t.key,
+                ),
+            )
+            pots = [pot for tid in gtype_ids for pot in pots_by_type[tid]]
+
+            consumption_by_year: dict[int, Decimal] = {}
+            for (tid, yc, _status), hours in occ.items():
+                if tid in gtype_id_set:
+                    consumption_by_year[yc] = consumption_by_year.get(yc, Decimal(0)) + hours
+
+            shortfall = self._allocate_pots(pots, consumption_by_year, year)
+
+            entitled_by_type = {tid: Decimal(0) for tid in gtype_ids}
+            remaining_by_type = {tid: Decimal(0) for tid in gtype_ids}
+            group_lapsed = Decimal(0)
+            group_expiring = Decimal(0)
+            breakdown: list[LeavePotBreakdown] = []
+            for pot in sorted(
+                pots, key=lambda pot: (pot["expiry"] or date.max, pot["accrual_year"])
+            ):
+                granted = pot["granted"]
+                leftover = max(Decimal(0), granted - pot["allocated"])
+                expiry = pot["expiry"]
+                expired = expiry is not None and expiry <= today
+
+                if pot["accrual_year"] == year:
+                    entitled_contrib = granted
+                elif expiry is None or expiry > year_start:
+                    # A prior-year pot still alive at the start of the shown year: its carry-in is
+                    # whatever remained after earlier years drew on it.
+                    entitled_contrib = max(Decimal(0), granted - pot["allocated_before"])
+                else:
+                    entitled_contrib = Decimal(0)
+                entitled_by_type[pot["type_id"]] += entitled_contrib
+
+                remaining_contrib = Decimal(0) if expired else leftover
+                remaining_by_type[pot["type_id"]] += remaining_contrib
+
+                if expired and expiry is not None and expiry > year_start:
+                    group_lapsed += leftover
+                elif not expired and expiry is not None and expiry <= soon_cutoff:
+                    group_expiring += leftover
+
+                breakdown.append(
+                    LeavePotBreakdown(
+                        leave_type_id=pot["type_id"],
+                        accrual_year=pot["accrual_year"],
+                        entitled_hours=granted,
+                        remaining_hours=remaining_contrib,
+                        expires_on=expiry,
+                        expired=expired,
+                    )
+                )
+
+            # An over-request no pot could cover reads as negative remaining, carried on the group's
+            # representative (soonest-expiring) type so Σ per-type remaining == group remaining.
+            remaining_by_type[representative.id] -= shortfall
+
+            for t in gtypes:
+                per_type[t.id] = LeaveBalance(
                     leave_type_id=t.id,
                     year=year,
-                    entitled_hours=ent,
-                    approved_hours=appr,
-                    pending_hours=pend,
-                    remaining_hours=ent - appr - pend,
+                    entitled_hours=entitled_by_type[t.id],
+                    approved_hours=occ.get(
+                        (t.id, year, LeaveRequestStatus.APPROVED.value), Decimal(0)
+                    ),
+                    pending_hours=occ.get(
+                        (t.id, year, LeaveRequestStatus.PENDING.value), Decimal(0)
+                    ),
+                    remaining_hours=remaining_by_type[t.id],
+                    balance_group=t.balance_group,
+                )
+
+            label = _GROUP_LABELS.get(group_value) if group_value else None
+            if label is None:
+                label = dict(representative.label_i18n or {})
+            grouped.append(
+                (
+                    representative.position,
+                    representative.key,
+                    LeaveGroupBalance(
+                        group=group_value,
+                        leave_type_ids=gtype_ids,
+                        label_i18n=label,
+                        year=year,
+                        entitled_hours=sum(entitled_by_type.values(), Decimal(0)),
+                        approved_hours=sum(
+                            (per_type[t.id].approved_hours for t in gtypes), Decimal(0)
+                        ),
+                        pending_hours=sum(
+                            (per_type[t.id].pending_hours for t in gtypes), Decimal(0)
+                        ),
+                        remaining_hours=sum(remaining_by_type.values(), Decimal(0)),
+                        lapsed_hours=group_lapsed,
+                        expiring_soon_hours=group_expiring,
+                        pots=breakdown,
+                    ),
                 )
             )
-        return result
+
+        ordered_per_type = [per_type[t.id] for t in tracked]
+        grouped.sort(key=lambda item: (item[0], item[1]))
+        return ordered_per_type, [gb for _, _, gb in grouped]
+
+    async def balances(self, *, year: int, user_id: uuid.UUID | None = None) -> list[LeaveBalance]:
+        """Per-type balances (#265): entitled + carried − approved − pending, expiry-aware.
+
+        Shape unchanged so ``preview``, ``summary``, the recurring generator and existing clients
+        keep working; ``remaining_hours`` now reflects the FIFO-by-expiry pot ledger.
+        """
+        uid = self._effective_user_id(user_id)
+        per_type, _ = await self._ledger(year=year, uid=uid)
+        return per_type
+
+    async def group_balances(
+        self, *, year: int, user_id: uuid.UUID | None = None
+    ) -> list[LeaveGroupBalance]:
+        """The employee-facing combined balances (#265): one figure per group, per-pot breakdown
+        alongside. ``vacation_statutory`` + ``vacation_extra`` roll up into one "Vakantieverlof"."""
+        uid = self._effective_user_id(user_id)
+        _, grouped = await self._ledger(year=year, uid=uid)
+        return grouped
 
     # --- the hour calculation (#48) --------------------------------------------------- #
     def _breakdown(
@@ -1351,22 +1605,42 @@ class LeaveService:
                 # form's own balance props belong to the *viewer*, which on the manager's
                 # register-for-someone flow is the wrong employee (#109).
                 year = data.start_date.year
-                balances = {
-                    b.leave_type_id: b for b in await self.balances(year=year, user_id=uid)
-                }
-                balance = balances.get(leave_type.id)
-                remaining = balance.remaining_hours if balance else Decimal(0)
+                if leave_type.balance_group:
+                    # A grouped type spends one combined "Vakantieverlof" pool (#265) — the warning
+                    # is the group remaining, not the single stored type's.
+                    group = next(
+                        (
+                            g
+                            for g in await self.group_balances(year=year, user_id=uid)
+                            if leave_type.id in g.leave_type_ids
+                        ),
+                        None,
+                    )
+                    remaining = group.remaining_hours if group else Decimal(0)
+                else:
+                    balances = {
+                        b.leave_type_id: b for b in await self.balances(year=year, user_id=uid)
+                    }
+                    balance = balances.get(leave_type.id)
+                    remaining = balance.remaining_hours if balance else Decimal(0)
                 if data.request_id is not None:
-                    # Editing: the request's own current hours still occupy the balance, so
-                    # they are given back before the form compares against the new span.
+                    # Editing: the request's own current hours still occupy the balance, so they
+                    # are given back before the form compares against the new span — but only when
+                    # the edit stays in the same pool (same group, or the same standalone type), so
+                    # moving leave between pools never over-credits the target.
                     current = await self.requests.get_or_404(data.request_id)
                     if (
                         current.user_id == uid
-                        and current.leave_type_id == leave_type.id
                         and current.start_date.year == year
                         and current.status in _OCCUPYING
                     ):
-                        remaining += Decimal(current.hours)
+                        current_type = await self.types.get_or_404(current.leave_type_id)
+                        same_pool = current.leave_type_id == leave_type.id or (
+                            leave_type.balance_group is not None
+                            and current_type.balance_group == leave_type.balance_group
+                        )
+                        if same_pool:
+                            remaining += Decimal(current.hours)
         return LeavePreviewResult(
             hours=hours,
             days=days,

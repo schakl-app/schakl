@@ -17,6 +17,7 @@
   import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import { GROUP_LABEL_KEYS } from "$lib/modules/leave/format";
 
   let { data, form } = $props();
 
@@ -32,10 +33,13 @@
   const memberItems = $derived(
     data.members.map((m) => ({ value: m.user_id, label: m.full_name || m.email })),
   );
-  const typeLabel = (id: string) => {
-    const lt = data.leaveTypes.find((x) => x.id === id);
-    const labels = (lt?.label_i18n ?? {}) as Record<string, string>;
-    return labels[data.locale] || labels.nl || labels.en || "";
+  // The combined balance's label (#265): the message-catalog copy for a known group, else the
+  // API/representative label the server resolved for a tenant's own group.
+  const groupLabel = (group: { group: string | null; label_i18n: Record<string, string> }) => {
+    const key = group.group ? GROUP_LABEL_KEYS[group.group] : undefined;
+    if (key) return t(key);
+    const l = group.label_i18n;
+    return l[data.locale] || l.nl || l.en || Object.values(l)[0] || "";
   };
   // Newest contract first; the current one leads the section.
   const contract = $derived(
@@ -99,11 +103,9 @@
         <p class="text-sm text-text-muted">—</p>
       {:else}
         <ul class="space-y-2">
-          {#each data.balance as row (row.leave_type_id + String(row.year))}
+          {#each data.balance as row (row.leave_type_ids.join(",") + String(row.year))}
             <li class="flex items-baseline justify-between gap-2 text-sm">
-              <span class="min-w-0 truncate text-text"
-                >{typeLabel(row.leave_type_id)} {row.year}</span
-              >
+              <span class="min-w-0 truncate text-text">{groupLabel(row)} {row.year}</span>
               <span class="tabular-nums text-text">
                 {fmtNumber(Number(row.remaining_hours), 1)} u
                 <span class="text-text-muted">/ {fmtNumber(Number(row.entitled_hours), 1)} u</span>

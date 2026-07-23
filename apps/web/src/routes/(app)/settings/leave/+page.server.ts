@@ -61,6 +61,9 @@ export const load: PageServerLoad = async (event) => {
 function typeBody(form: FormData) {
   const weeks = String(form.get("default_weeks") ?? "").trim();
   const carry = String(form.get("carry_over_months") ?? "").trim();
+  // Types sharing a balance group present as one employee-facing balance (#265). Pre-filled in the
+  // dialog with the record's own value, so a save never silently ungroups a type; empty = standalone.
+  const group = String(form.get("balance_group") ?? "").trim();
   // How the agenda draws this type's absences (#270); unknown input falls back to the default
   // rather than being forwarded — the API validates it again either way.
   const calendarDisplay: LeaveCalendarDisplay =
@@ -82,6 +85,7 @@ function typeBody(form: FormData) {
     calendar_display: calendarDisplay,
     default_weeks: weeks ? Number(weeks) : null,
     carry_over_months: carry ? Number(carry) : null,
+    balance_group: group ? group.toLowerCase() : null,
     position: Number(form.get("position") ?? 0) || 0,
   };
 }

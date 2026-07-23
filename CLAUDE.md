@@ -389,6 +389,24 @@ apply as everywhere.
   contract covers (same transaction, missing rows only), the first balance read of an
   ungenerated current/next-year pot seeds it, and a December cron rolls next year forward for
   the whole staff — the bulk "Genereer" stays for backfills.
+- **One balance from several pots** (#265). `leave_types.balance_group` lets types present as a
+  single **employee-facing** balance while staying separate rows: the Dutch `vacation_statutory`
+  + `vacation_extra` pots keep their own `default_weeks` and differing `carry_over_months` (so the
+  wettelijk / bovenwettelijk split — and its expiry — survives) but roll up into one
+  "Vakantieverlof" figure on My Day, `/leave`, the request form and the dossier. A `NULL`
+  `balance_group` is standalone (its own singleton group). The combined figure is computed live in
+  a **FIFO-by-expiry pot ledger** (`LeaveService._ledger`) — no data migration, no per-request pot
+  column. `carry_over_months` is now **actually enforced**: a pot accrued in year Y lapses
+  `carry_over_months` after Y ends (statutory → 1 Jul of Y+1; extra → 1 Jan of Y+6; `NULL` =
+  never), so unused hours carry into the next year and then expire instead of silently resetting.
+  Consumption **favours the employee** — a request draws from the soonest-to-expire valid pot
+  first, so short-lived statutory is spent before long-lived extra and nothing lapses that could
+  have been used. `GET /leave/balance/groups` returns the combined figure per group + the per-pot
+  breakdown (accrual year, remaining, `expires_on`, `expired`); the per-type `GET /leave/balance`
+  stays (its `remaining` is now expiry-aware and sums to the group's by construction, so
+  `preview`, `summary` and the recurring generator keep working). ADV (standalone, carry 0) gains
+  the same expiry — unused rostered-free-day hours lapse at year-end. The combined display is only
+  safe *because* expiry is real: hiding the split without it would quietly drop the legal distinction.
 - **Unit:** track in **hours** (matches time tracking and part-time contracts); display as days
   using the employee's **average scheduled working day** — never `hours_per_week / 5`, which tells
   a three-day part-timer their working day is 4,8 hours long.

@@ -27,6 +27,8 @@ class LeaveTypeBase(BaseModel):
     default_weeks: Decimal | None = Field(default=None, ge=0, le=52)
     # Months into the next year before carried-over hours expire (NL: 6 / 60). None = never.
     carry_over_months: int | None = Field(default=None, ge=0, le=120)
+    # Types sharing this present as one employee-facing balance (#265). None = standalone.
+    balance_group: str | None = Field(default=None, max_length=50, pattern=r"^[a-z0-9_]+$")
     # Roostervrij/ADV (#65): entitlement is the scheduled−contract hours gap, not default_weeks.
     accrues_schedule_gap: bool = False
     # How the agenda draws this type's absences (#270): a full-day chip, or an hour block.
@@ -39,9 +41,9 @@ class LeaveTypeCreate(LeaveTypeBase):
     pass
 
 
-#: The two ``leave_types`` columns that are genuinely nullable, where an explicit ``null``
+#: The ``leave_types`` columns that are genuinely nullable, where an explicit ``null``
 #: *clears* the value and must keep working. Everything else on the table is ``NOT NULL``.
-_CLEARABLE_TYPE_FIELDS = frozenset({"default_weeks", "carry_over_months"})
+_CLEARABLE_TYPE_FIELDS = frozenset({"default_weeks", "carry_over_months", "balance_group"})
 
 
 class LeaveTypeUpdate(BaseModel):
@@ -52,6 +54,7 @@ class LeaveTypeUpdate(BaseModel):
     requires_approval: bool | None = None
     default_weeks: Decimal | None = Field(default=None, ge=0, le=52)
     carry_over_months: int | None = Field(default=None, ge=0, le=120)
+    balance_group: str | None = Field(default=None, max_length=50, pattern=r"^[a-z0-9_]+$")
     accrues_schedule_gap: bool | None = None
     calendar_display: LeaveCalendarDisplay | None = None
     position: int | None = None
@@ -475,7 +478,13 @@ class LeavePreviewResult(BaseModel):
 
 
 class LeaveBalance(BaseModel):
-    """Balance per tracks_balance type: entitled + carried − approved − pending."""
+    """Balance per tracks_balance type: entitled + carried − approved − pending − lapsed (#265).
+
+    ``remaining_hours`` is expiry-aware: it reflects the FIFO-by-expiry pot ledger, so it already
+    excludes carried hours that have lapsed and includes prior-year hours still in their window.
+    ``balance_group`` echoes the type's group so a client can roll grouped rows into one figure —
+    group remaining is exactly the sum of its types' ``remaining_hours`` by construction.
+    """
 
     leave_type_id: uuid.UUID
     year: int
@@ -483,12 +492,62 @@ class LeaveBalance(BaseModel):
     approved_hours: Decimal
     pending_hours: Decimal
     remaining_hours: Decimal
+    #: The type's balance group (#265), or ``None`` for a standalone type.
+    balance_group: str | None = None
 
 
 class UserLeaveBalances(BaseModel):
     user_id: uuid.UUID
     hours_per_week: Decimal
     balances: list[LeaveBalance]
+
+
+# --- combined (grouped) balances (#265) ---------------------------------------- #
+
+
+class LeavePotBreakdown(BaseModel):
+    """One entitlement pot inside a group: which type/year it came from, and when it expires.
+
+    The per-pot detail behind a combined figure, so "why did my balance drop by X / what is
+    about to lapse" always has an answer even though the employee sees one number day to day.
+    """
+
+    leave_type_id: uuid.UUID
+    accrual_year: int
+    entitled_hours: Decimal
+    #: What is left in this pot after FIFO-by-expiry consumption (0 once fully drawn or lapsed).
+    remaining_hours: Decimal
+    #: First day this pot is no longer valid (NL statutory → 1 Jul next year), or ``None`` = never.
+    expires_on: dt.date | None = None
+    #: True when ``expires_on`` has already passed (org-local today): these hours have lapsed.
+    expired: bool = False
+
+
+class LeaveGroupBalance(BaseModel):
+    """The employee-facing balance for a group of pots rolled into one figure (#265).
+
+    ``vacation_statutory`` + ``vacation_extra`` present as a single "Vakantieverlof" balance; a
+    standalone type (ADV, …) is its own singleton group. ``entitled/approved/pending/remaining``
+    are the combined numbers; ``pots`` carries the per-pot breakdown for anyone who needs it.
+    """
+
+    #: The ``balance_group`` slug, or ``None`` for a standalone (single-type) group.
+    group: str | None
+    #: The type ids that roll into this figure (one for a standalone group).
+    leave_type_ids: list[uuid.UUID]
+    #: Combined display label (group ``vacation`` → Vakantieverlof/Vacation; else the group's
+    #: soonest-expiring type's own label). Per-locale, like a type's ``label_i18n``.
+    label_i18n: dict[str, str]
+    year: int
+    entitled_hours: Decimal
+    approved_hours: Decimal
+    pending_hours: Decimal
+    remaining_hours: Decimal
+    #: Carried hours that lapsed unused (expired as of org-local today), summed over the group.
+    lapsed_hours: Decimal
+    #: Still-valid hours whose pot expires within the coming half year — the "use it soon" nudge.
+    expiring_soon_hours: Decimal
+    pots: list[LeavePotBreakdown]
 
 
 # --- team calendar feed ------------------------------------------------------------ #

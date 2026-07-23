@@ -84,6 +84,14 @@ class LeaveType(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     requires_approval: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     default_weeks: Mapped[Decimal | None] = mapped_column(Numeric(4, 2), nullable=True)
     carry_over_months: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: Types sharing a non-null ``balance_group`` present as **one** employee-facing balance
+    #: (#265): the Dutch ``vacation_statutory`` + ``vacation_extra`` pots keep their own
+    #: ``default_weeks`` and ``carry_over_months`` — that is what preserves the legal wettelijk /
+    #: bovenwettelijk split — but roll up into a single entitled/remaining figure wherever a
+    #: balance is shown to the employee. ``NULL`` = standalone (its own singleton group). A slug,
+    #: not law: a locale with no statutory/extra distinction seeds one type in the group with a
+    #: single figure, and a tenant may regroup via Instellingen → Verlof (§14, "config, not law").
+    balance_group: Mapped[str | None] = mapped_column(String(50), nullable=True)
     #: Roostervrije tijd / ADV (#65): this type's yearly entitlement is not ``default_weeks``
     #: but the *gap* between scheduled and contract hours — ``(scheduled − contract) × weeks``.
     #: A flag, not the type ``key``, so a tenant may rename or re-seed it without breaking the

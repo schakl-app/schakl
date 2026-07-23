@@ -698,6 +698,21 @@
           />
         </div>
       </div>
+      <div>
+        <label class="mb-1 block text-xs font-medium text-text-muted" for="type-balance-group">
+          {t("settings.leave.type_balance_group")}
+        </label>
+        <input
+          id="type-balance-group"
+          name="balance_group"
+          type="text"
+          maxlength="50"
+          pattern="[a-z0-9_]+"
+          value={editType?.balance_group ?? ""}
+          class={inputClass}
+        />
+        <p class="mt-1 text-xs text-text-muted">{t("settings.leave.type_balance_group_hint")}</p>
+      </div>
       <input type="hidden" name="position" value={editType?.position ?? types.length * 10 + 10} />
       {#if form?.error}<p class="text-sm text-red-600">{t(form.error)}</p>{/if}
       <div class="flex justify-end">

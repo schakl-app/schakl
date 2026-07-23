@@ -31,6 +31,8 @@
     dayReasonKey,
     fmtHours,
     typeLabel,
+    GROUP_LABEL_KEYS,
+    representativeType,
     type LeaveDayHours,
     type LeaveTypeInfo,
   } from "./format";
@@ -82,10 +84,39 @@
   } = $props();
 
   const locale = getLocale();
-  const typeItems = $derived(types.map((lt) => ({ value: lt.id, label: typeLabel(lt, locale) })));
+
+  // Collapse balance groups into one option each (#265): the employee picks "Vakantieverlof", not
+  // two separate pots. The option's value is the group's representative (soonest-to-expire) type —
+  // the API spends that pot first regardless — and the label is the combined one.
+  function groupMembers(group: string): LeaveTypeInfo[] {
+    return types.filter((lt) => lt.balance_group === group);
+  }
+  function optionValueFor(id: string): string {
+    const lt = types.find((x) => x.id === id);
+    if (lt?.balance_group) return representativeType(groupMembers(lt.balance_group))?.id ?? id;
+    return id;
+  }
+  const typeItems = $derived.by(() => {
+    const items: { value: string; label: string }[] = [];
+    const seen = new Set<string>();
+    for (const lt of types) {
+      if (lt.balance_group) {
+        if (seen.has(lt.balance_group)) continue;
+        seen.add(lt.balance_group);
+        const rep = representativeType(groupMembers(lt.balance_group)) ?? lt;
+        const key = GROUP_LABEL_KEYS[lt.balance_group];
+        items.push({ value: rep.id, label: key ? t(key) : typeLabel(rep, locale) });
+      } else {
+        items.push({ value: lt.id, label: typeLabel(lt, locale) });
+      }
+    }
+    return items;
+  });
 
   let userId = $state("");
-  let typeId = $state(request?.leave_type_id ?? types[0]?.id ?? "");
+  // The picked *option* — a group's representative type, or a standalone type. What actually
+  // posts is `submitTypeId` below, which keeps the original pot on a same-group edit.
+  let typeId = $state(optionValueFor(request?.leave_type_id ?? types[0]?.id ?? ""));
   let startDate = $state(request?.start_date ?? "");
   let endDate = $state(request?.end_date ?? "");
   let partDay = $state(Boolean(request?.start_time || request?.end_time));
@@ -96,6 +127,23 @@
 
   const selectedType = $derived(types.find((lt) => lt.id === typeId));
   const remaining = $derived(selectedType?.tracks_balance ? balances[selectedType.id] : undefined);
+
+  // What actually posts (#265): the picked option, except when an edit stays within the same
+  // group — there the original stored pot is preserved, so a note-only edit never silently
+  // repoints the type (which the API would read as an approval-relevant change, #72).
+  const submitTypeId = $derived.by(() => {
+    if (request) {
+      const original = types.find((x) => x.id === request.leave_type_id);
+      if (
+        original?.balance_group &&
+        selectedType?.balance_group &&
+        original.balance_group === selectedType.balance_group
+      ) {
+        return request.leave_type_id;
+      }
+    }
+    return typeId;
+  });
 
   // --- the preview -------------------------------------------------------------
   let hours = $state(request ? Number(request.hours) : 0);
@@ -156,7 +204,7 @@
           start_time: partDay ? startTime || null : null,
           end_date: endDate,
           end_time: partDay ? endTime || null : null,
-          leave_type_id: typeId || null,
+          leave_type_id: submitTypeId || null,
           request_id: request?.id ?? null,
         }),
       });
@@ -257,11 +305,14 @@
     <Combobox
       id="leave-type"
       items={typeItems}
-      name="leave_type_id"
+      name="leave_type_option"
       bind:value={typeId}
       allowEmpty={false}
       placeholder={t("leave.form.type")}
     />
+    <!-- What posts (#265): a same-group edit keeps its original pot; everything else posts the
+         picked option (a group's representative type, or a standalone type). -->
+    <input type="hidden" name="leave_type_id" value={submitTypeId} />
     {#if remaining !== undefined}
       <p
         class="mt-1 text-xs {remaining <= 0 ? 'text-red-600 dark:text-red-400' : 'text-text-muted'}"

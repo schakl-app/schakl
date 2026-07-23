@@ -17,11 +17,27 @@
   import LeaveRequestForm from "$lib/modules/leave/LeaveRequestForm.svelte";
   import LeaveStatusPill from "$lib/modules/leave/LeaveStatusPill.svelte";
   import RecurringDaysManager from "$lib/modules/leave/RecurringDaysManager.svelte";
-  import { fmtHours, hoursToDays, typeLabel, type LeaveTypeInfo } from "$lib/modules/leave/format";
+  import {
+    fmtHours,
+    hoursToDays,
+    typeLabel,
+    GROUP_LABEL_KEYS,
+    type LeaveTypeInfo,
+  } from "$lib/modules/leave/format";
 
   let { data, form } = $props();
 
   type Request = (typeof data.requests)[number];
+  type GroupBalance = (typeof data.groups)[number];
+
+  /** The combined balance's label: the message-catalog copy for a known group (#265), else the
+   *  API/representative label the server already resolved for a tenant's own group. */
+  function groupLabel(group: GroupBalance): string {
+    const key = group.group ? GROUP_LABEL_KEYS[group.group] : undefined;
+    if (key) return t(key);
+    const l = group.label_i18n as Record<string, string>;
+    return l[data.locale] ?? l.nl ?? l.en ?? Object.values(l)[0] ?? "";
+  }
 
   const table = createTableLayout<Request>({
     all: () => LEAVE_COLUMNS,
@@ -38,8 +54,14 @@
 
   const types = $derived(data.leaveTypes as LeaveTypeInfo[]);
   const typeById = $derived(Object.fromEntries(types.map((lt) => [lt.id, lt])));
+  // Remaining keyed by *every* type in a group → the group's combined remaining (#265), so the
+  // request form's balance hint reads the combined pool whichever underlying type it posts to.
   const remainingByType = $derived(
-    Object.fromEntries(data.balances.map((b) => [b.leave_type_id, Number(b.remaining_hours)])),
+    Object.fromEntries(
+      data.groups.flatMap((g) =>
+        g.leave_type_ids.map((id) => [id, Number(g.remaining_hours)] as const),
+      ),
+    ),
   );
 
   // `?new=1` opens the create modal on arrival — the deep link the calendar "+" points at
@@ -159,33 +181,42 @@
   </p>
 {/if}
 
-<!-- Balances per balance-tracked type -->
+<!-- One balance per group: statutory + extra-statutory vacation read as one "Vakantieverlof"
+     figure (#265); each pot's expiry is folded into the lapsed / expiring-soon hints. -->
 <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-  {#each data.balances as balance (balance.leave_type_id)}
-    {@const leaveType = typeById[balance.leave_type_id]}
+  {#each data.groups as group (group.leave_type_ids.join(","))}
+    {@const color = typeById[group.leave_type_ids[0]]?.color ?? ""}
     <div class="rounded-xl border border-border bg-surface-raised p-5">
       <div class="mb-2 flex items-center gap-2">
-        <span class="h-2.5 w-2.5 rounded-full {labelDotClass(leaveType?.color ?? '')}"></span>
-        <h2 class="text-sm font-semibold text-text">
-          {typeLabel(leaveType, data.locale)}
-        </h2>
+        <span class="h-2.5 w-2.5 rounded-full {labelDotClass(color)}"></span>
+        <h2 class="text-sm font-semibold text-text">{groupLabel(group)}</h2>
       </div>
       <p
-        class="text-2xl font-semibold {Number(balance.remaining_hours) < 0
+        class="text-2xl font-semibold {Number(group.remaining_hours) < 0
           ? 'text-red-600 dark:text-red-400'
           : 'text-text'}"
       >
-        {t("leave.balance.remaining", { hours: fmtHours(balance.remaining_hours) })}
+        {t("leave.balance.remaining", { hours: fmtHours(group.remaining_hours) })}
       </p>
       <p class="mt-1 text-sm text-text-muted">
         {t("leave.balance.days_equiv", {
-          days: fmtHours(hoursToDays(balance.remaining_hours, data.hoursPerDay)),
+          days: fmtHours(hoursToDays(group.remaining_hours, data.hoursPerDay)),
         })}
-        · {t("leave.balance.of_total", { hours: fmtHours(balance.entitled_hours) })}
+        · {t("leave.balance.of_total", { hours: fmtHours(group.entitled_hours) })}
       </p>
-      {#if Number(balance.pending_hours) > 0}
+      {#if Number(group.pending_hours) > 0}
         <p class="mt-1 text-xs text-amber-600 dark:text-amber-400">
-          {t("leave.balance.pending", { hours: fmtHours(balance.pending_hours) })}
+          {t("leave.balance.pending", { hours: fmtHours(group.pending_hours) })}
+        </p>
+      {/if}
+      {#if Number(group.expiring_soon_hours) > 0}
+        <p class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+          {t("leave.balance.expiring", { hours: fmtHours(group.expiring_soon_hours) })}
+        </p>
+      {/if}
+      {#if Number(group.lapsed_hours) > 0}
+        <p class="mt-1 text-xs text-text-muted">
+          {t("leave.balance.lapsed", { hours: fmtHours(group.lapsed_hours) })}
         </p>
       {/if}
     </div>

@@ -28,6 +28,7 @@ from app.modules.leave.schemas import (
     LeaveBalance,
     LeaveEntitlementRead,
     LeaveEntitlementUpsert,
+    LeaveGroupBalance,
     LeaveHolidayCreate,
     LeaveHolidayRead,
     LeaveHolidayUpdate,
@@ -548,6 +549,22 @@ async def balances(
     ctx: RequestContext = Depends(require_context),
 ) -> list[LeaveBalance]:
     return await LeaveService(ctx).balances(year=year, user_id=user_id)
+
+
+@router.get(
+    "/balance/groups",
+    response_model=list[LeaveGroupBalance],
+    dependencies=[require_permission("leave.request.read")],
+)
+async def group_balances(
+    year: int = Query(..., ge=2000, le=2100),
+    user_id: uuid.UUID | None = Query(None),
+    ctx: RequestContext = Depends(require_context),
+) -> list[LeaveGroupBalance]:
+    """The employee-facing combined balances (#265): one figure per balance group (statutory +
+    extra-statutory vacation roll up into one "Vakantieverlof"), with the per-pot breakdown —
+    accrual year, remaining, expiry — alongside for anyone who needs to see where hours went."""
+    return await LeaveService(ctx).group_balances(year=year, user_id=user_id)
 
 
 # --- dashboard widget --------------------------------------------------------------- #
