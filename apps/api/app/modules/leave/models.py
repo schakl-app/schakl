@@ -41,6 +41,24 @@ class LeaveRequestStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class LeaveCalendarDisplay(StrEnum):
+    """How this type's absences are drawn on the agenda (#270).
+
+    ``ALL_DAY`` is the historical behaviour and the default: a full-width chip, in the month
+    grid and in the pinned all-day row of the day/week time grid. ``TIMED`` places the absence
+    as a positioned hour block instead, at the window it actually covers.
+
+    A *type-level* choice, not a per-request one: whether an absence reads as "away today" or
+    as "away between 08:30 and 17:00" is a property of the kind of leave, not of the day. It is
+    also the only way roostervrije tijd / ADV can be drawn per hour at all — its generated days
+    carry no ``start_time``/``end_time`` (they are the whole scheduled day), so there is nothing
+    on the request itself to infer a window from.
+    """
+
+    ALL_DAY = "all_day"
+    TIMED = "timed"
+
+
 class LeaveType(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     """A tenant-configurable kind of leave (vacation, sick, unpaid, …).
 
@@ -73,6 +91,12 @@ class LeaveType(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     #: scheduled week; otherwise the gap is zero and nothing is granted. Dutch CAO artifact, so
     #: it ships switch-off-able (deactivate the type), never assumed.
     accrues_schedule_gap: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    #: How the agenda draws this type's absences (#270) — see :class:`LeaveCalendarDisplay`.
+    #: ``String``, not a PG enum, like every other small vocabulary here (``LeaveRequest.status``):
+    #: adding a value is then a code change, never a migration on somebody's live database.
+    calendar_display: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=LeaveCalendarDisplay.ALL_DAY.value
+    )
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 

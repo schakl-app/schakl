@@ -16,6 +16,7 @@ from collections.abc import Sequence
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 
@@ -31,6 +32,7 @@ from app.modules.leave import holidays
 from app.modules.leave import schedule as sched
 from app.modules.leave.models import (
     EmploymentContract,
+    LeaveCalendarDisplay,
     LeaveEntitlement,
     LeaveHoliday,
     LeaveProfile,
@@ -101,6 +103,10 @@ DEFAULT_LEAVE_TYPES: list[dict] = [
         "tracks_balance": True,
         "requires_approval": False,
         "accrues_schedule_gap": True,
+        # Drawn as an hour block, not a full-day bar (#270): a rostered free day is time off
+        # *within* the normal schedule, and reading it as a week-of-vacation-shaped bar is what
+        # this default corrects. Tenant-editable like every other property of a type.
+        "calendar_display": LeaveCalendarDisplay.TIMED.value,
         "default_weeks": None,
         "carry_over_months": 0,
         "position": 25,
@@ -1914,11 +1920,17 @@ class LeaveService:
         span_from = min(req.start_date for req, _ in rows)
         span_to = max(req.end_date for req, _ in rows)
         holidays_off = await self.active_holidays_between(span_from, span_to)
+        # One lookup for the whole feed, not one per row: the zone every wall clock below is
+        # anchored in (#270). Same shape as the three reads above (docs/PERFORMANCE.md).
+        zone = await org_zoneinfo(self.ctx.session, self.ctx.org.id)
 
         items: list[TeamLeaveItem] = []
         for req, user in rows:
             schedule = self._effective(by_user.get(req.user_id), default)[0]
             resolved_start, resolved_end = self._resolved_window(req, schedule)
+            starts_at, ends_at = self._occupied_instants(
+                req, schedule, (resolved_start, resolved_end), zone
+            )
             items.append(
                 TeamLeaveItem(
                     id=req.id,
@@ -1931,12 +1943,60 @@ class LeaveService:
                     end_time=req.end_time,
                     resolved_start_time=resolved_start,
                     resolved_end_time=resolved_end,
+                    starts_at=starts_at,
+                    ends_at=ends_at,
                     hours=req.hours,
                     status=LeaveRequestStatus(req.status),
                     days=self._shaped_days(req, schedule, holidays_off),
                 )
             )
         return items
+
+    @staticmethod
+    def _occupied_instants(
+        request: LeaveRequest,
+        schedule: sched.WorkSchedule,
+        resolved: tuple[time | None, time | None],
+        zone: ZoneInfo,
+    ) -> tuple[datetime | None, datetime | None]:
+        """The instant pair a **single-day** absence occupies, for an hour-positioned agenda
+        block (#270). ``(None, None)`` whenever one honestly cannot be drawn.
+
+        Three refusals, each deliberate:
+
+        * **Multi-day spans.** A single pair from Monday morning to Friday evening also claims
+          Monday night and Wednesday 03:00. ``days`` already breaks those down per day.
+        * **A day nobody works.** No scheduled window means no hours to draw. (A whole-day
+          request on such a day prices at zero and is refused at write time; a manager's
+          ``hours_override`` can still produce one, and it stays a full-day chip.)
+        * **An empty window.** Defensive: a start at or after the end would render as a
+          zero-height block, which is worse than the all-day row it fell back from.
+
+        The window is the request's own resolved one where it has times, and otherwise the
+        scheduled day itself — "whole scheduled day" is exactly what an ADV free day is, and
+        the only window it could ever be drawn at (#107).
+
+        ``.replace(tzinfo=...)`` on a ``ZoneInfo`` — never a fixed offset — is what makes an
+        08:30 block still start at 08:30 on the two days a year the clocks move.
+        """
+        if request.start_date != request.end_date:
+            return None, None
+        start, end = resolved
+        if start is None or end is None:
+            work_day = schedule.day(request.start_date.weekday())
+            if work_day is None:
+                return None, None
+            # `is None`, not `or`: midnight is a legitimate bound and only happens to be truthy.
+            if start is None:
+                start = work_day.start
+            if end is None:
+                end = work_day.end
+        if sched.to_minutes(start) >= sched.to_minutes(end):
+            return None, None
+        return (
+            datetime.combine(request.start_date, start).replace(tzinfo=zone),
+            datetime.combine(request.start_date, end).replace(tzinfo=zone),
+        )
 
     @staticmethod
     def _resolve_bounds(

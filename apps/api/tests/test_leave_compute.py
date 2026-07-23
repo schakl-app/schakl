@@ -494,6 +494,153 @@ async def test_team_breakdown_never_contradicts_the_stored_total(client_for) -> 
         assert [d["hours"] for d in item["days"][3:]] == ["0.00", "0.00"]
 
 
+# --- the agenda's instant pair (#270) ---------------------------------------------- #
+async def _team_item(client, headers, date_from: date, date_to: date) -> dict:
+    feed = await client.get(
+        f"/api/v1/leave/team?date_from={date_from}&date_to={date_to}", headers=headers
+    )
+    assert feed.status_code == 200, feed.text
+    return feed.json()[0]
+
+
+async def test_agenda_instants_resolve_a_whole_day_to_its_scheduled_window(client_for) -> None:
+    """The ADV case (#270): no times on the request, yet an hour block can still be drawn.
+
+    A rostered free day is "the whole scheduled day", stored as two NULLs — so the browser has
+    nothing to position a block by, and cannot invent one without knowing the schedule. The
+    server does know it, and hands over the instants the day actually occupies.
+    """
+    tenant = await make_tenant("leave-agenda-wholeday")
+    headers = await auth_cookie(tenant.user)
+    async with client_for(tenant.host) as client:
+        created = await client.post(
+            "/api/v1/leave/requests",
+            json={
+                "leave_type_id": await _type_id(client, headers),
+                "start_date": THU.isoformat(),
+                "end_date": THU.isoformat(),
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+
+        item = await _team_item(client, headers, THU, THU)
+        # The chip stays wordless about a window it was never given (#48)…
+        assert item["resolved_start_time"] is None and item["resolved_end_time"] is None
+        # …but the block knows exactly where it goes: the default 08:30–17:00 day,
+        # anchored in the tenant's own zone (June in Amsterdam = +02:00).
+        assert item["starts_at"] == "2026-06-11T08:30:00+02:00"
+        assert item["ends_at"] == "2026-06-11T17:00:00+02:00"
+
+
+async def test_agenda_instants_follow_the_requested_window(client_for) -> None:
+    """A part-day request draws at the window it was priced on, open bound resolved (#48)."""
+    tenant = await make_tenant("leave-agenda-partday")
+    headers = await auth_cookie(tenant.user)
+    async with client_for(tenant.host) as client:
+        created = await client.post(
+            "/api/v1/leave/requests",
+            json={
+                "leave_type_id": await _type_id(client, headers),
+                "start_date": THU.isoformat(),
+                "start_time": "15:00",
+                "end_date": THU.isoformat(),
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+
+        item = await _team_item(client, headers, THU, THU)
+        assert item["resolved_start_time"] == "15:00" and item["resolved_end_time"] == "17:00"
+        assert item["starts_at"] == "2026-06-11T15:00:00+02:00"
+        assert item["ends_at"] == "2026-06-11T17:00:00+02:00"
+        # Label and block agree, because both come from the one resolved window.
+        assert item["hours"] == "2.00"
+
+
+async def test_agenda_instants_are_absent_on_a_multi_day_span(client_for) -> None:
+    """One instant pair cannot describe Thursday afternoon *and* Friday morning (#270).
+
+    Drawn naively it would be a solid block through Thursday night. The feed declines, the
+    chip stays in the all-day row, and ``days`` remains the honest per-day answer.
+    """
+    tenant = await make_tenant("leave-agenda-multiday")
+    headers = await auth_cookie(tenant.user)
+    async with client_for(tenant.host) as client:
+        created = await client.post(
+            "/api/v1/leave/requests",
+            json={
+                "leave_type_id": await _type_id(client, headers),
+                "start_date": THU.isoformat(),
+                "start_time": "15:00",
+                "end_date": FRI.isoformat(),
+                "end_time": "14:00",
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+
+        item = await _team_item(client, headers, THU, FRI)
+        assert item["starts_at"] is None and item["ends_at"] is None
+        # The window text still shows, and so does the per-day shape — nothing regressed.
+        assert item["resolved_start_time"] == "15:00" and item["resolved_end_time"] == "14:00"
+        assert [d["hours"] for d in item["days"]] == ["2.00", "5.00"]
+
+
+async def test_agenda_instants_hold_the_wall_clock_across_dst(client_for) -> None:
+    """08:30 stays 08:30 on both sides of the clock change (§8) — which is exactly why this
+    conversion is the server's job and not the browser's."""
+    tenant = await make_tenant("leave-agenda-dst")
+    headers = await auth_cookie(tenant.user)
+    winter = date(2026, 1, 15)
+    summer = date(2026, 7, 16)
+    assert winter.weekday() == 3 and summer.weekday() == 3  # both Thursdays
+    async with client_for(tenant.host) as client:
+        type_id = await _type_id(client, headers)
+        for day in (winter, summer):
+            res = await client.post(
+                "/api/v1/leave/requests",
+                json={
+                    "leave_type_id": type_id,
+                    "start_date": day.isoformat(),
+                    "end_date": day.isoformat(),
+                },
+                headers=headers,
+            )
+            assert res.status_code == 201, res.text
+
+        cold = await _team_item(client, headers, winter, winter)
+        warm = await _team_item(client, headers, summer, summer)
+        assert cold["starts_at"] == "2026-01-15T08:30:00+01:00"
+        assert warm["starts_at"] == "2026-07-16T08:30:00+02:00"
+        # Same wall clock, different offset — a fixed offset would have moved one of them.
+        assert cold["starts_at"][11:16] == warm["starts_at"][11:16] == "08:30"
+
+
+async def test_agenda_instants_skip_a_day_nobody_works(client_for) -> None:
+    """No scheduled window, no block: an override-priced Saturday stays a full-day chip."""
+    tenant = await make_tenant("leave-agenda-unscheduled")
+    headers = await auth_cookie(tenant.user)
+    async with client_for(tenant.host) as client:
+        created = await client.post(
+            "/api/v1/leave/requests",
+            json={
+                "leave_type_id": await _type_id(client, headers),
+                "start_date": SAT.isoformat(),
+                "end_date": SAT.isoformat(),
+                # A Saturday prices at zero and is refused; a manager's override is what makes
+                # such a row exist at all (#48), and it still has no window to be drawn at.
+                "hours_override": "4",
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+
+        item = await _team_item(client, headers, SAT, SAT)
+        assert item["hours"] == "4.00"
+        assert item["starts_at"] is None and item["ends_at"] is None
+
+
 async def test_team_feed_costs_a_constant_number_of_queries(client_for, count_queries) -> None:
     """Shaping N requests must not cost N schedule reads (docs/PERFORMANCE.md).
 

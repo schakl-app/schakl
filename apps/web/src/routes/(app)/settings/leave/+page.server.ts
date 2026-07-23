@@ -4,6 +4,7 @@ import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 import { createErrorKey, slugify } from "$lib/core/slug";
+import type { LeaveCalendarDisplay } from "$lib/modules/leave/format";
 import { defaultSchedule, type WorkSchedule } from "$lib/modules/leave/schedule";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -60,6 +61,10 @@ export const load: PageServerLoad = async (event) => {
 function typeBody(form: FormData) {
   const weeks = String(form.get("default_weeks") ?? "").trim();
   const carry = String(form.get("carry_over_months") ?? "").trim();
+  // How the agenda draws this type's absences (#270); unknown input falls back to the default
+  // rather than being forwarded — the API validates it again either way.
+  const calendarDisplay: LeaveCalendarDisplay =
+    form.get("calendar_display") === "timed" ? "timed" : "all_day";
   return {
     label_i18n: {
       nl: String(form.get("label_nl") ?? "").trim(),
@@ -70,7 +75,11 @@ function typeBody(form: FormData) {
     tracks_balance: form.get("tracks_balance") !== null,
     requires_approval: form.get("requires_approval") !== null,
     // Roostervrij/ADV (#65): entitlement is the scheduled−contract gap, not default_weeks.
-    accrues_schedule_gap: form.get("accrues_schedule_gap") !== null,
+    // Posted as a hidden field carrying the record's own value, because the dialog offers no
+    // control for it: an absent checkbox reads here as "unticked", so a plain `!== null` turned
+    // every save of the ADV type into a silent switch-off of its entitlement computation.
+    accrues_schedule_gap: form.get("accrues_schedule_gap") === "true",
+    calendar_display: calendarDisplay,
     default_weeks: weeks ? Number(weeks) : null,
     carry_over_months: carry ? Number(carry) : null,
     position: Number(form.get("position") ?? 0) || 0,

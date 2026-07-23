@@ -45,6 +45,81 @@ async def test_default_types_seeded(client_for) -> None:
         assert by_key["vacation_statutory"]["carry_over_months"] == 6
         assert by_key["sick"]["requires_approval"] is False
         assert by_key["sick"]["tracks_balance"] is False
+        # Agenda rendering ships per type (#270): a rostered free day is time off *within* the
+        # normal schedule and draws as an hour block; everything else is a full-day absence.
+        assert by_key["roostervrij"]["calendar_display"] == "timed"
+        assert by_key["vacation_statutory"]["calendar_display"] == "all_day"
+        assert by_key["sick"]["calendar_display"] == "all_day"
+
+
+async def test_calendar_display_round_trips_and_defaults(client_for) -> None:
+    """A tenant owns how each type draws (#270); a type that says nothing is a full-day chip."""
+    t = await make_tenant("leave-display")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        # Read first: the Dutch defaults are seeded on the org's first `list_types`, and a
+        # create before that would leave the org with only the type made here.
+        listed = await c.get("/api/v1/leave/types", headers=headers)
+        seeded = {lt["key"]: lt for lt in listed.json()}
+        assert seeded["roostervrij"]["calendar_display"] == "timed"
+
+        # Created without the field → the default, not a null.
+        created = await c.post(
+            "/api/v1/leave/types",
+            json={"key": "study", "label_i18n": {"nl": "Studieverlof", "en": "Study leave"}},
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        assert created.json()["calendar_display"] == "all_day"
+
+        type_id = created.json()["id"]
+        patched = await c.patch(
+            f"/api/v1/leave/types/{type_id}",
+            json={"calendar_display": "timed"},
+            headers=headers,
+        )
+        assert patched.status_code == 200, patched.text
+        assert patched.json()["calendar_display"] == "timed"
+        # …and it survives the read the calendar actually makes.
+        reread = await c.get("/api/v1/leave/types", headers=headers)
+        by_key = {lt["key"]: lt for lt in reread.json()}
+        assert by_key["study"]["calendar_display"] == "timed"
+
+        # A tenant may take it back off the seeded ADV type — nothing here is law (§14).
+        adv = by_key["roostervrij"]
+        back = await c.patch(
+            f"/api/v1/leave/types/{adv['id']}",
+            json={"calendar_display": "all_day"},
+            headers=headers,
+        )
+        assert back.status_code == 200, back.text
+        assert back.json()["calendar_display"] == "all_day"
+
+        # Not a free-text column: an unknown value is refused, not stored.
+        bad = await c.patch(
+            f"/api/v1/leave/types/{type_id}",
+            json={"calendar_display": "per_hour"},
+            headers=headers,
+        )
+        assert bad.status_code == 422
+
+        # An explicit null is refused at the edge too, rather than reaching a NOT NULL
+        # column and surfacing as a 500 — omitting the field is how you leave it alone.
+        null = await c.patch(
+            f"/api/v1/leave/types/{type_id}",
+            json={"calendar_display": None},
+            headers=headers,
+        )
+        assert null.status_code == 422
+        # …and omitting it really does leave it alone.
+        untouched = await c.patch(
+            f"/api/v1/leave/types/{type_id}",
+            json={"color": "rose"},
+            headers=headers,
+        )
+        assert untouched.status_code == 200, untouched.text
+        assert untouched.json()["calendar_display"] == "timed"
+        assert untouched.json()["color"] == "rose"
 
 
 async def test_request_approval_flow_and_balance(client_for) -> None:
@@ -428,6 +503,14 @@ async def test_leave_tenant_isolation(client_for) -> None:
     async with client_for(a.host) as ca:
         types = (await ca.get("/api/v1/leave/types", headers=a_headers)).json()
         unpaid = next(lt for lt in types if lt["key"] == "unpaid")
+        # A's own agenda-rendering choice (#270), to be checked against B's copy below.
+        a_adv = next(lt for lt in types if lt["key"] == "roostervrij")
+        flipped = await ca.patch(
+            f"/api/v1/leave/types/{a_adv['id']}",
+            json={"calendar_display": "all_day"},
+            headers=a_headers,
+        )
+        assert flipped.status_code == 200, flipped.text
         start, end = _span(4)
         created = (
             await ca.post(
@@ -442,6 +525,20 @@ async def test_leave_tenant_isolation(client_for) -> None:
         ).json()
 
     async with client_for(b.host) as cb:
+        # A leave type is tenant config, and so is how it draws: A flipping its ADV type to
+        # all_day leaves B's seeded copy exactly as it shipped (#270, Golden Rule 1).
+        b_listed = await cb.get("/api/v1/leave/types", headers=b_headers)
+        b_types = {lt["key"]: lt for lt in b_listed.json()}
+        assert b_types["roostervrij"]["calendar_display"] == "timed"
+        assert b_types["roostervrij"]["id"] != a_adv["id"]
+        # …and B cannot reach across to change A's, by id or otherwise.
+        res = await cb.patch(
+            f"/api/v1/leave/types/{a_adv['id']}",
+            json={"calendar_display": "timed"},
+            headers=b_headers,
+        )
+        assert res.status_code == 404
+
         # B's session on B's host can never reach A's rows.
         res = await cb.get(f"/api/v1/leave/requests/{created['id']}", headers=b_headers)
         assert res.status_code == 404

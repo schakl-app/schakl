@@ -6,10 +6,11 @@ import datetime as dt
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.modules.leave.models import LeaveRequestStatus
+from app.modules.leave.models import LeaveCalendarDisplay, LeaveRequestStatus
 from app.modules.leave.schedule import Clock, WorkSchedule
 
 # --- leave types ------------------------------------------------------------- #
@@ -28,12 +29,19 @@ class LeaveTypeBase(BaseModel):
     carry_over_months: int | None = Field(default=None, ge=0, le=120)
     # Roostervrij/ADV (#65): entitlement is the scheduled−contract hours gap, not default_weeks.
     accrues_schedule_gap: bool = False
+    # How the agenda draws this type's absences (#270): a full-day chip, or an hour block.
+    calendar_display: LeaveCalendarDisplay = LeaveCalendarDisplay.ALL_DAY
     position: int = 0
     active: bool = True
 
 
 class LeaveTypeCreate(LeaveTypeBase):
     pass
+
+
+#: The two ``leave_types`` columns that are genuinely nullable, where an explicit ``null``
+#: *clears* the value and must keep working. Everything else on the table is ``NOT NULL``.
+_CLEARABLE_TYPE_FIELDS = frozenset({"default_weeks", "carry_over_months"})
 
 
 class LeaveTypeUpdate(BaseModel):
@@ -45,8 +53,31 @@ class LeaveTypeUpdate(BaseModel):
     default_weeks: Decimal | None = Field(default=None, ge=0, le=52)
     carry_over_months: int | None = Field(default=None, ge=0, le=120)
     accrues_schedule_gap: bool | None = None
+    calendar_display: LeaveCalendarDisplay | None = None
     position: int | None = None
     active: bool | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_explicit_nulls(cls, data: Any) -> Any:
+        """``None`` here means "not supplied", so an explicit ``null`` is a client error.
+
+        Every field above is ``| None`` because that is what makes it optional on the wire
+        (the generated client turns a defaulted, non-nullable property into a *required*
+        one). The cost is that a literal ``{"calendar_display": null}`` used to travel all
+        the way to a ``NOT NULL`` column and surface as a 500 — the shape ``exclude_unset``
+        already expresses by omission, so nothing is lost by refusing it at the edge and
+        answering 422 through the standard envelope instead.
+        """
+        if isinstance(data, dict):
+            offenders = [
+                key
+                for key, value in data.items()
+                if value is None and key in cls.model_fields and key not in _CLEARABLE_TYPE_FIELDS
+            ]
+            if offenders:
+                raise ValueError(f"errors.null_not_allowed: {', '.join(sorted(offenders))}")
+        return data
 
 
 class LeaveTypeRead(LeaveTypeBase):
@@ -479,6 +510,20 @@ class TeamLeaveItem(BaseModel):
     #: ``None`` for whole-day absences, and for a bound on an unscheduled day.
     resolved_start_time: Clock | None = None
     resolved_end_time: Clock | None = None
+    #: The same window as an **instant pair**, for a calendar that positions blocks by hour
+    #: (#270). A leave time is local wall clock (#48), an agenda block is an instant, and the
+    #: org timezone that bridges them lives on the server — so the server does the conversion
+    #: rather than every client re-deriving it and disagreeing about the last Sunday in October.
+    #:
+    #: Populated for **single-day** absences only, and for whole-day ones too (the scheduled
+    #: day's own hours — which is the only thing an ADV day could ever be drawn at). ``None``
+    #: on a multi-day span: one instant pair cannot describe Monday-to-Friday without also
+    #: claiming the nights in between, and ``days`` is the honest answer for those.
+    #:
+    #: Reported whatever the type's ``calendar_display`` says — this is a fact about when the
+    #: absence falls, and *whether* to draw it by the hour stays the client's read of the type.
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
     hours: Decimal
     status: LeaveRequestStatus
     #: Hours per day, from the schedule (#48). The timesheet renders these rather than spreading

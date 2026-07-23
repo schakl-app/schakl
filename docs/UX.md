@@ -305,6 +305,14 @@
   where they are listed, rather than being silently measured against the org default.
   Org config — verloftypen (wettelijk/bovenwettelijk carry-over rules live here, not in code), het
   standaardrooster, feestdagen, and yearly saldi — lives under Instellingen → Verlof.
+- **How a verloftype draws on the Agenda is a tenant setting, not a side effect** (#270). Each type
+  chooses *Hele dag* (a full-width chip, the default) or *Per uur* (a block on the hours it covers,
+  in the dag- and weekweergave). Roostervrije tijd (ADV) ships as *Per uur*: it is time off inside
+  the normal schedule, and drawing it as a full-day bar makes one free afternoon look like a week of
+  vakantie. A request spanning several days stays a full-day chip whatever the type says — a single
+  block across Monday to Friday would claim the nights too. The maandweergave never draws by hour,
+  so the setting is invisible there. Note that drag-to-reschedule lives on full-day chips, so a
+  *Per uur* type is dragged from the maandweergave (or edited in the aanvraag) rather than the week.
 - **A feestdag is nobody's working day, not somebody's absence.** So it never renders as one more
   coloured chip beside three people's vakantie: on the Agenda it is a quiet dashed marking that
   links nowhere and never counts toward a "busy day" heatmap; on the timesheet it marks the *day

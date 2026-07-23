@@ -16,6 +16,7 @@
   import Modal from "$lib/core/ui/Modal.svelte";
   import { LABEL_COLORS, labelDotClass } from "$lib/core/ui/colors";
   import {
+    CALENDAR_DISPLAYS,
     fmtHours,
     holidayName,
     typeLabel,
@@ -175,6 +176,12 @@
                   {#if lt.requires_approval}
                     <span class="rounded-full bg-surface px-2 py-0.5 text-xs text-text-muted">
                       {t("settings.leave.prop_approval")}
+                    </span>
+                  {/if}
+                  <!-- Only the departure from the default is worth a chip (#270). -->
+                  {#if lt.calendar_display === "timed"}
+                    <span class="rounded-full bg-surface px-2 py-0.5 text-xs text-text-muted">
+                      {t("settings.leave.calendar_display_timed")}
                     </span>
                   {/if}
                 </span>
@@ -632,6 +639,34 @@
           {t("settings.leave.prop_approval_long")}
         </label>
       </div>
+      <div>
+        <label class="mb-1 block text-xs font-medium text-text-muted" for="type-calendar-display">
+          {t("settings.leave.type_calendar_display")}
+        </label>
+        <select id="type-calendar-display" name="calendar_display" class={inputClass}>
+          {#each CALENDAR_DISPLAYS as display (display)}
+            <option
+              value={display}
+              selected={(editType?.calendar_display ?? "all_day") === display}
+            >
+              {t(`settings.leave.calendar_display_${display}`)}
+            </option>
+          {/each}
+        </select>
+        <p class="mt-1 text-xs text-text-muted">
+          {t("settings.leave.type_calendar_display_hint")}
+        </p>
+      </div>
+      <!--
+        The dialog offers no control for accrues_schedule_gap (#65), so it rides along as the
+        record's own value: without this the save would post "unticked" and switch ADV accrual
+        off on every edit.
+      -->
+      <input
+        type="hidden"
+        name="accrues_schedule_gap"
+        value={String(editType?.accrues_schedule_gap ?? false)}
+      />
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label class="mb-1 block text-xs font-medium text-text-muted" for="type-weeks">

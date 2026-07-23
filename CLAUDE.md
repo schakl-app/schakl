@@ -325,6 +325,19 @@ apply as everywhere.
   tenant can model, for example, Dutch statutory vs extra-statutory (*bovenwettelijk*) days
   and their differing carry-over/expiry. Sick leave is a separate type, not deducted from
   vacation balance.
+- **How a type draws on the agenda is the type's own property** (#270). `leave_types.calendar_display`
+  is `all_day` (a full-width chip, the default) or `timed` (a positioned hour block in the day/week
+  grid), editable in Instellingen → Verlof. It is a *type-level* choice, not a per-request one:
+  whether an absence reads as "away today" or "away between 08:30 and 17:00" is a property of the
+  kind of leave. It is also the only way roostervrije tijd / ADV can be drawn per hour at all —
+  its generated days carry no `start_time`/`end_time`, so nothing on the request implies a window
+  — which is why the seeded ADV type ships `timed`. The **API** turns the window into the instant
+  pair the grid positions by (`TeamLeaveItem.starts_at`/`ends_at`, resolved from the request's own
+  times or else the scheduled day, anchored in the org zone): a leave time is local wall clock and
+  a calendar block is an instant, and that conversion stays server-side so a block still starts at
+  08:30 on the two days a year the clocks move. **Single-day absences only** — one instant pair
+  from Monday morning to Friday evening would also claim every night in between, so a multi-day
+  span keeps its full-day chip and `days` stays the honest per-day answer.
 - **Work schedules, not a weekly total** (#46). `leave_profiles.schedule` is a JSONB week: per
   weekday a working block and **any number of break windows** inside it. Breaks are *windows*,
   not durations — you cannot subtract "30 minutes" from `15:00–17:00`, there is no break in it.

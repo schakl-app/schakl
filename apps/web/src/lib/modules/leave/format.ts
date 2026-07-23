@@ -20,9 +20,19 @@ export interface LeaveTypeInfo {
   requires_approval: boolean;
   default_weeks: string | null;
   carry_over_months: number | null;
+  /** Roostervrij/ADV (#65): entitlement is the scheduled−contract gap, not `default_weeks`. */
+  accrues_schedule_gap: boolean;
+  /** How the agenda draws this type's absences (#270): a full-day chip, or an hour block. */
+  calendar_display: LeaveCalendarDisplay;
   position: number;
   active: boolean;
 }
+
+/** Mirrors the API's `LeaveCalendarDisplay` (leave/models.py) — see `CALENDAR_DISPLAYS`. */
+export type LeaveCalendarDisplay = "all_day" | "timed";
+
+/** The choices Instellingen → Verlof offers, in the order it offers them. */
+export const CALENDAR_DISPLAYS: readonly LeaveCalendarDisplay[] = ["all_day", "timed"];
 
 export interface HolidayInfo {
   id: string;

@@ -9218,6 +9218,22 @@ export interface components {
             year: number;
         };
         /**
+         * LeaveCalendarDisplay
+         * @description How this type's absences are drawn on the agenda (#270).
+         *
+         *     ``ALL_DAY`` is the historical behaviour and the default: a full-width chip, in the month
+         *     grid and in the pinned all-day row of the day/week time grid. ``TIMED`` places the absence
+         *     as a positioned hour block instead, at the window it actually covers.
+         *
+         *     A *type-level* choice, not a per-request one: whether an absence reads as "away today" or
+         *     as "away between 08:30 and 17:00" is a property of the kind of leave, not of the day. It is
+         *     also the only way roostervrije tijd / ADV can be drawn per hour at all — its generated days
+         *     carry no ``start_time``/``end_time`` (they are the whole scheduled day), so there is nothing
+         *     on the request itself to infer a window from.
+         * @enum {string}
+         */
+        LeaveCalendarDisplay: "all_day" | "timed";
+        /**
          * LeaveDayHours
          * @description One day of a request. ``reason`` says *why* a day is worth nothing, so the UI can too.
          */
@@ -9805,6 +9821,8 @@ export interface components {
              * @default true
              */
             active: boolean;
+            /** @default all_day */
+            calendar_display: components["schemas"]["LeaveCalendarDisplay"];
             /** Carry Over Months */
             carry_over_months?: number | null;
             /**
@@ -9853,6 +9871,8 @@ export interface components {
              * @default true
              */
             active: boolean;
+            /** @default all_day */
+            calendar_display: components["schemas"]["LeaveCalendarDisplay"];
             /** Carry Over Months */
             carry_over_months?: number | null;
             /**
@@ -9915,6 +9935,7 @@ export interface components {
             accrues_schedule_gap?: boolean | null;
             /** Active */
             active?: boolean | null;
+            calendar_display?: components["schemas"]["LeaveCalendarDisplay"] | null;
             /** Carry Over Months */
             carry_over_months?: number | null;
             /** Color */
@@ -13505,6 +13526,8 @@ export interface components {
             end_date: string;
             /** End Time */
             end_time: string | null;
+            /** Ends At */
+            ends_at?: string | null;
             /** Hours */
             hours: string;
             /**
@@ -13528,6 +13551,8 @@ export interface components {
             start_date: string;
             /** Start Time */
             start_time: string | null;
+            /** Starts At */
+            starts_at?: string | null;
             status: components["schemas"]["LeaveRequestStatus"];
             /**
              * User Id

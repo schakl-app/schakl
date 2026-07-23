@@ -120,14 +120,32 @@ registerWebModule({
           // spans only: repeating "15:00 – 12:00" on every cell of a Thu-15:00 → Fri-12:00
           // chip would claim each *day* covers that window.
           const singleDay = item.start_date === item.end_date;
-          const timed = singleDay && Boolean(item.start_time || item.end_time);
-          const window = timed
+          const bounded = singleDay && Boolean(item.start_time || item.end_time);
+          const window = bounded
             ? item.resolved_start_time && item.resolved_end_time
               ? `${fmtClockTime(item.resolved_start_time)}–${fmtClockTime(item.resolved_end_time)} `
               : item.start_time
                 ? `${fmtClockTime(item.start_time)} – `
                 : `– ${fmtClockTime(item.end_time ?? "")} `
             : "";
+          // Draw this type by the hour rather than as a full-day bar (#270)? A tenant choice per
+          // leave type, and the only way roostervrije tijd / ADV can be drawn per hour at all:
+          // its generated days carry no times of their own, so there is nothing on the request
+          // to infer a window from — the API resolves the scheduled day and hands over the two
+          // instants (`starts_at`/`ends_at`), the one field `TimeGrid` positions a block by.
+          //
+          // Wall clock → instant is deliberately *not* done here: the org zone bridges them and
+          // that conversion is the API's job, so a block still starts at 08:30 on the two days a
+          // year the clocks move (`tasks/schedule.ts`, §8). A multi-day span gets no instants
+          // from the API and so stays an all-day chip — one block from Monday morning to Friday
+          // evening would also claim every night in between, which is the same reason the window
+          // text above is single-day only.
+          //
+          // One consequence, deliberate: `TimeGrid` offers drag-to-reschedule on all-day chips
+          // only, so a type drawn per hour is not draggable in the day/week views. The month
+          // grid ignores `startsAt` entirely and keeps its drag, as does the request form.
+          const asBlock =
+            leaveType?.calendar_display === "timed" && Boolean(item.starts_at && item.ends_at);
           return {
             id: item.id,
             start: item.start_date,
@@ -136,6 +154,8 @@ registerWebModule({
             color: leaveType?.color ?? "emerald",
             href: `${page}?year=${year}&request=${item.id}`,
             tentative: item.status === "pending",
+            startsAt: asBlock ? (item.starts_at ?? undefined) : undefined,
+            endsAt: asBlock ? (item.ends_at ?? undefined) : undefined,
             sourceKey: "leave.team",
             // Offer the drag only where an edit could succeed; the API stays the boundary
             // (hours recompute, re-approval per #72, the past lock, self-approval per #110).
