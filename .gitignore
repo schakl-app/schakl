@@ -30,6 +30,8 @@ test-results/
 playwright-report/
 blob-report/
 .playwright/
+# Playwright MCP writes per-run console logs + page snapshots here.
+.playwright-mcp/
 
 # --- Env / secrets ---
 .env
@@ -50,3 +52,11 @@ infra/data/
 # Cloudflare Tunnel credentials: `cloudflared tunnel create` writes <TUNNEL_ID>.json here.
 # It is a long-lived secret for the tunnel — never commit it.
 infra/cloudflared/*.json
+
+# --- Local dev artifacts (never committed) ---
+# Manual recovery stashes (patch/tarball backups of in-flight work).
+.recovery/
+# One-off screenshots dropped in the repo root while iterating.
+email-templates-editor.png
+# Vendored Sveltia CMS bundle for the site admin — a build/vendor artifact, not source.
+apps/site/public/admin/sveltia-cms.js
