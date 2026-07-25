@@ -92,7 +92,7 @@ async def test_vacation_types_share_a_balance_group(client_for) -> None:
         by_key = {r["key"]: r for r in rows}
         assert by_key["vacation_statutory"]["balance_group"] == "vacation"
         assert by_key["vacation_extra"]["balance_group"] == "vacation"
-        # Everything else is its own balance (ADV, sick, …): null = standalone.
+        # Everything else is its own balance (free time, sick, …): null = standalone.
         assert by_key["roostervrij"]["balance_group"] is None
         assert by_key["sick"]["balance_group"] is None
 
@@ -302,3 +302,77 @@ async def test_grouped_over_request_reads_negative(client_for) -> None:
 
         group = _vacation(await _groups(c, headers))
         assert float(group["remaining_hours"]) == -20.0
+
+
+# --- the roster read (#282) ----------------------------------------------------- #
+
+
+async def _add_year_contract(client, headers, user_id, hours: str) -> None:
+    res = await client.post(
+        "/api/v1/leave/contracts",
+        json={
+            "user_id": str(user_id),
+            "start_date": f"{_YEAR}-01-01",
+            "end_date": f"{_YEAR}-12-31",
+            "contract_hours_per_week": hours,
+        },
+        headers=headers,
+    )
+    assert res.status_code == 201, res.text
+
+
+async def test_all_users_groups_yield_one_set_per_member(client_for) -> None:
+    """``?all_users=true`` returns every member's groups in one call, each tagged with its
+    ``user_id`` (#282) — the manager team table's single balance source. The combined figure per
+    member equals what that member's own ``group_balances`` returns, so the roster and the
+    personal page can't disagree."""
+    t = await make_tenant("roster-groups")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        a = await _member(c, headers, "a@example.com")
+        b = await _member(c, headers, "b@example.com")
+        await _add_year_contract(c, headers, a.id, "40")  # 5 weeks × 40 = 200 vacation
+        await _add_year_contract(c, headers, b.id, "32")  # 5 × 32 = 160; plus free time
+
+        res = await c.get(
+            "/api/v1/leave/balance/groups",
+            params={"year": _YEAR, "all_users": "true"},
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+        rows = res.json()
+
+        # Every returned group carries the member it belongs to, and both members are present.
+        by_user: dict[str, list[dict]] = {}
+        for g in rows:
+            assert g["user_id"] is not None
+            by_user.setdefault(g["user_id"], []).append(g)
+        assert {str(a.id), str(b.id)} <= set(by_user)
+
+        # a (40 h, the norm) has no free-time pot; b (32 h) does.
+        a_vac = _vacation(by_user[str(a.id)])
+        assert float(a_vac["entitled_hours"]) == 200.0
+        assert float(_vacation(by_user[str(b.id)])["entitled_hours"]) == 160.0
+
+        # The roster figure matches the member's own single-user read exactly.
+        own = _vacation(await _groups(c, headers, user_id=a.id))
+        assert float(a_vac["remaining_hours"]) == float(own["remaining_hours"])
+
+
+async def test_all_users_groups_are_tenant_isolated(client_for) -> None:
+    """A manager's roster read never crosses tenants (Golden Rule 1)."""
+    a = await make_tenant("roster-iso-a")
+    b = await make_tenant("roster-iso-b")
+    ah = await auth_cookie(a.user)
+    bh = await auth_cookie(b.user)
+    async with client_for(a.host) as ca:
+        member = await _member(ca, ah, "shared@example.com")
+        await _add_year_contract(ca, ah, member.id, "32")
+    async with client_for(b.host) as cb:
+        res = await cb.get(
+            "/api/v1/leave/balance/groups",
+            params={"year": _YEAR, "all_users": "true"},
+            headers=bh,
+        )
+        assert res.status_code == 200, res.text
+        assert all(g["user_id"] != str(member.id) for g in res.json())

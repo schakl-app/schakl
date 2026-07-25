@@ -37,7 +37,7 @@ export const load: PageServerLoad = async (event) => {
       schedules
         ? api.GET("/api/v1/leave/contracts", { params: { query: { all_users: true } } })
         : Promise.resolve({ data: null }),
-      // Recurring rostered-free-day patterns (#107) — employment data, same home.
+      // Recurring free-day patterns (#107) — employment data, same home.
       schedules ? api.GET("/api/v1/leave/recurring") : Promise.resolve({ data: null }),
       schedules ? api.GET("/api/v1/leave/types") : Promise.resolve({ data: null }),
       // Company groups (#191): which memberships carry a visibility restriction, so the

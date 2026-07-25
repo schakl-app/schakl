@@ -289,6 +289,46 @@ async def test_balance_read_never_backfills_history(client_for) -> None:
             assert await _entitlements(c, headers, member.id, year=year) == {}
 
 
+async def test_free_time_is_the_full_time_norm_shortfall(client_for) -> None:
+    """Free time = ``(norm − contract) × weeks`` (#282), keyed off the org's 40 h norm — **not**
+    the employee's own scheduled week. A full-timer (contract = norm) accrues zero; a 32 h contract
+    a pot even on a matching 32 h *schedule*, where the old ``scheduled − contract`` basis gave 0.
+    """
+    from decimal import ROUND_HALF_UP, Decimal
+
+    t = await make_tenant("free-time-norm")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        full = await _member(c, headers, "full@example.com")
+        part = await _member(c, headers, "part@example.com")
+        types = await _types(c, headers)
+
+        # Full-timer: contract meets the 40 h org norm → no free time row at all.
+        await _add_contract(c, headers, full.id, contract_hours_per_week="40")
+        assert types["roostervrij"] not in await _entitlements(c, headers, full.id)
+
+        # Part-timer on a reduced 32 h *schedule* (Mon–Thu) AND a matching 32 h contract. The old
+        # scheduled−contract basis would net 0; the norm shortfall is 40 − 32 = 8 h/week.
+        workday = {"start": "08:30", "end": "17:00", "breaks": [{"start": "12:30", "end": "13:00"}]}
+        res = await c.put(
+            f"/api/v1/leave/profiles/{part.id}",
+            json={"schedule": {d: workday for d in ("mon", "tue", "wed", "thu")}},
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+        await _add_contract(c, headers, part.id, contract_hours_per_week="32")
+
+        # 8 h/week over the whole year, rounded to the nearest half of an 8 h day — the exact
+        # pipeline `_round_half_day` runs, recomputed here so a leap year stays green.
+        days = (date(_YEAR, 12, 31) - date(_YEAR, 1, 1)).days + 1
+        raw = Decimal(8) * Decimal(days) / Decimal(7)
+        steps = (raw / Decimal(4)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        expected = float(steps * Decimal(4))
+        part_ent = await _entitlements(c, headers, part.id)
+        assert part_ent[types["roostervrij"]] > 0  # the discriminator: old basis gave 0 here
+        assert part_ent[types["roostervrij"]] == expected
+
+
 async def test_contract_seeding_is_tenant_isolated(client_for) -> None:
     a = await make_tenant("autogen-org-a")
     b = await make_tenant("autogen-org-b")

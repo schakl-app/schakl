@@ -114,7 +114,7 @@ export const employmentActions = {
     return { contractSaved: true };
   },
 
-  /** A recurring rostered-free-day pattern (#107): saved, and its days placed right away. */
+  /** A recurring free-day pattern (#107): saved, and its days placed right away. */
   saveRecurring: async (event) => {
     const form = await event.request.formData();
     const userId = String(form.get("user_id") ?? "");

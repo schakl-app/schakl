@@ -50,7 +50,7 @@ export const load: PageServerLoad = async (event) => {
   // page — an approver who can't manage schedules gets no menu and none of these three calls.
   const manage = can(event.locals.user, "leave.profile.manage");
 
-  const [pending, yearRequests, members, entitlements, profiles, contracts, recurring, settings] =
+  const [pending, yearRequests, members, groups, profiles, contracts, recurring, settings] =
     await Promise.all([
       api.GET("/api/v1/leave/requests", {
         params: { query: { all_users: true, status: "pending", limit: 100, offset: 0 } },
@@ -59,7 +59,9 @@ export const load: PageServerLoad = async (event) => {
         params: { query: { all_users: true, year, limit: 200, offset: 0, sort } },
       }),
       api.GET("/api/v1/members/lookup"),
-      api.GET("/api/v1/leave/entitlements", { params: { query: { year } } }),
+      // The combined per-group balances for the whole roster (#282): the same expiry-aware figures
+      // the employee sees on /leave, so the team table and the personal page can never disagree.
+      api.GET("/api/v1/leave/balance/groups", { params: { query: { year, all_users: true } } }),
       api.GET("/api/v1/leave/profiles"),
       // Employment editors — the whole roster in one call each, like Instellingen → Gebruikers.
       manage
@@ -75,7 +77,7 @@ export const load: PageServerLoad = async (event) => {
     pending: pending.data?.items ?? [],
     yearRequests: yearRequests.data?.items ?? [],
     members: members.data ?? [],
-    entitlements: entitlements.data ?? [],
+    groups: groups.data ?? [],
     profiles: profiles.data ?? [],
     // Employment editors, only when the caller may manage them.
     manageEmployment: manage,

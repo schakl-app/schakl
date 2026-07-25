@@ -172,7 +172,7 @@
   </div>
 </div>
 
-<!-- The ADV modal closes on a successful add (#271), so its "N days placed" line lands here,
+<!-- The free-time modal closes on a successful add (#271), so its "N days placed" line lands here,
      where it outlives the surface that produced it — and sits right above the balances the
      new days just moved. -->
 {#if form?.recurringAdded}

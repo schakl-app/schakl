@@ -22,7 +22,8 @@ export interface LeaveTypeInfo {
   carry_over_months: number | null;
   /** Types sharing this present as one employee-facing balance (#265); null = standalone. */
   balance_group: string | null;
-  /** Roostervrij/ADV (#65): entitlement is the scheduled−contract gap, not `default_weeks`. */
+  /** Free time / vrije tijd (#65, renamed #282): entitlement is the full-time-norm shortfall
+   *  `(norm − contract)`, not `default_weeks`. The `roostervrij` key stays internal (#282). */
   accrues_schedule_gap: boolean;
   /** How the agenda draws this type's absences (#270): a full-day chip, or an hour block. */
   calendar_display: LeaveCalendarDisplay;

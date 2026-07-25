@@ -127,7 +127,7 @@
   </button>
 </div>
 
-<!-- Every employment editor for a member (schedule, contracts, recurring, rate) + the ADV
+<!-- Every employment editor for a member (schedule, contracts, recurring, rate) + the free-time
      "N days placed" line, shared with the team leave roster. One instance; each row's ⋯ menu
      opens it through `openEmployment`. -->
 {#if data.schedules || data.rates}

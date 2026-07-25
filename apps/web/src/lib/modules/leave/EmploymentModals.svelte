@@ -52,7 +52,7 @@
 <script lang="ts">
   /**
    * Every employment-data editor for one member — work schedule (#46), contracts (#65),
-   * recurring rostered-free days (#107) and hourly rate (#82) — as one shared surface. The
+   * recurring free days (#107) and hourly rate (#82) — as one shared surface. The
    * modals, their state and the "N days placed" line live here once; a host page mounts a single
    * instance, receives the `open(member, kind)` opener through `register`, and wires it onto each
    * row's ⋯ menu via {@link employmentMenuItems}. Both Instellingen → Gebruikers and the team
@@ -197,6 +197,17 @@
     terminateOpen = true;
   }
 
+  // --- free time preview on the contract-add form (#282) --------------------------
+  // The full-time norm is the org default week; a contract below it accrues the shortfall as free
+  // time. Surfaced live so a reduced contract never silently grows a free-time pot (the confusion
+  // #282 set out to end). Bound to the hours input; cleared when a successful add resets the form.
+  let contractHoursDraft = $state("");
+  const fullTimeNorm = $derived(weekHours(orgDefaultSchedule));
+  const contractFreeTime = $derived.by(() => {
+    const hours = Number(String(contractHoursDraft).replace(",", ".").trim());
+    return Number.isFinite(hours) && hours > 0 && hours < fullTimeNorm ? fullTimeNorm - hours : 0;
+  });
+
   const open: OpenEmployment = (target, kind) => {
     member = target;
     if (kind === "schedule") openSchedule(target);
@@ -212,7 +223,7 @@
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
 
-<!-- The ADV modal closes on a successful add (#271), so its "N days placed" line lands here,
+<!-- The free-time modal closes on a successful add (#271), so its "N days placed" line lands here,
      where it outlives the surface that produced it. Named: a bare count would not say whose
      calendar just filled up. -->
 {#if form?.recurringAdded && member}
@@ -279,8 +290,9 @@
   {/if}
 </Modal>
 
-<!-- Employment contracts (#65): contract hours, distinct from scheduled hours; ADV accrues on
-     the gap. A changed contract is a new row, so this is add + terminate, never edit-in-place. -->
+<!-- Employment contracts (#65): contract hours, the legal number. A contract below the full-time
+     norm accrues the shortfall as free time (#282), previewed live under the hours field. A
+     changed contract is a new row, so this is add + terminate, never edit-in-place. -->
 <Modal bind:open={contractsOpen} title={t("settings.users.contracts")}>
   {#if member}
     {#key member.user_id}
@@ -347,8 +359,10 @@
             action="?/saveContract"
             class="space-y-3 border-t border-border pt-4"
             use:enhance={busy.wrap("saveContract", () => ({ result, update }) => {
-              if (result.type === "success") void update({ reset: true });
-              else void update({ reset: false });
+              if (result.type === "success") {
+                contractHoursDraft = "";
+                void update({ reset: true });
+              } else void update({ reset: false });
             })}
           >
             <input type="hidden" name="user_id" value={member.user_id} />
@@ -380,8 +394,18 @@
                   inputmode="decimal"
                   required
                   placeholder="38"
+                  bind:value={contractHoursDraft}
                   class={inputClass}
                 />
+                <!-- No silent accrual (#282): a contract below the norm shows the free time it earns. -->
+                {#if contractFreeTime > 0}
+                  <p class="mt-1 text-xs text-brand">
+                    {t("settings.users.contract_free_time", {
+                      hours: fmtHours(contractFreeTime),
+                      norm: fmtHours(fullTimeNorm),
+                    })}
+                  </p>
+                {/if}
               </div>
             </div>
             <p class="text-xs text-text-muted">{t("settings.users.contract_hint")}</p>
@@ -444,7 +468,7 @@
   {/if}
 </Modal>
 
-<!-- Recurring rostered free days / ADV (#107): a schedule-derived pattern the generator lays
+<!-- Recurring free days / free time (#107): a schedule-derived pattern the generator lays
      onto the calendar as pre-approved, individually movable free days. Shared surface with
      the employee's own on /leave; here a manager may plan any active type. -->
 <Modal bind:open={recurringOpen} title={t("settings.users.recurring")}>

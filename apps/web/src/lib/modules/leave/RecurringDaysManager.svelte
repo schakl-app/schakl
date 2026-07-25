@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * One surface for recurring rostered free days (#107), shared by the manager's modal
+   * One surface for recurring free days (#107), shared by the manager's modal
    * (Instellingen → Gebruikers) and the employee's own on /leave — one form, one row shape,
    * so the two can't drift (docs/UX.md). The caller decides whose patterns and which types:
    * managers pass every active type, the self-service surface passes only auto-approve ones

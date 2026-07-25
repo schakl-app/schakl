@@ -118,7 +118,7 @@ registerWebModule({
             const page = own ? "/leave" : "/leave/team";
             const year = item.start_date.slice(0, 4);
             // Part-day leave wears its window, time-first like any calendar (#107): "15:00–17:00
-            // Stan · ADV" — otherwise someone off from 15:00 reads as away all day, and the
+            // Stan · Vrije tijd" — otherwise someone off from 15:00 reads as away all day, and
             // window is detail the chip (and its hover title) has nowhere else to show. An
             // omitted bound *means* the scheduled day's own start/end (#48), so the feed hands
             // the resolved window over ("until 14:00" reads 08:30–14:00) — the browser never
@@ -136,7 +136,7 @@ registerWebModule({
                   : `– ${fmtClockTime(item.end_time ?? "")} `
               : "";
             // Draw this type by the hour rather than as a full-day bar (#270)? A tenant choice per
-            // leave type, and the only way roostervrije tijd / ADV can be drawn per hour at all:
+            // leave type, and the only way free time / vrije tijd can be drawn per hour at all:
             // its generated days carry no times of their own, so there is nothing on the request
             // to infer a window from — the API resolves the scheduled day and hands over the two
             // instants (`starts_at`/`ends_at`), the one field `TimeGrid` positions a block by.

@@ -530,10 +530,16 @@ class LeaveGroupBalance(BaseModel):
     """The employee-facing balance for a group of pots rolled into one figure (#265).
 
     ``vacation_statutory`` + ``vacation_extra`` present as a single "Vakantieverlof" balance; a
-    standalone type (ADV, …) is its own singleton group. ``entitled/approved/pending/remaining``
-    are the combined numbers; ``pots`` carries the per-pot breakdown for anyone who needs it.
+    standalone type (free time, …) is its own singleton group. ``entitled/approved/pending/
+    remaining`` are the combined numbers; ``pots`` carries the per-pot breakdown for anyone who
+    needs it.
     """
 
+    #: Whose balance this is — the employee the figures belong to. It matters most on the
+    #: ``all_users`` roster read (#282), where one response carries every member's balance and the
+    #: manager's team table keys each figure to its member. ``None`` only for a non-user-scoped
+    #: caller (kept optional so older clients that never sent it still validate).
+    user_id: uuid.UUID | None = None
     #: The ``balance_group`` slug, or ``None`` for a standalone (single-type) group.
     group: str | None
     #: The type ids that roll into this figure (one for a standalone group).

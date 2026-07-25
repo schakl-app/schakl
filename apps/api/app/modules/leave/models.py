@@ -92,12 +92,14 @@ class LeaveType(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     #: not law: a locale with no statutory/extra distinction seeds one type in the group with a
     #: single figure, and a tenant may regroup via Instellingen → Verlof (§14, "config, not law").
     balance_group: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    #: Roostervrije tijd / ADV (#65): this type's yearly entitlement is not ``default_weeks``
-    #: but the *gap* between scheduled and contract hours — ``(scheduled − contract) × weeks``.
-    #: A flag, not the type ``key``, so a tenant may rename or re-seed it without breaking the
-    #: computation. Only meaningful when the employee has a contract whose hours are below their
-    #: scheduled week; otherwise the gap is zero and nothing is granted. Dutch CAO artifact, so
-    #: it ships switch-off-able (deactivate the type), never assumed.
+    #: Free time / vrije tijd (#65, renamed #282): this type's yearly entitlement is not
+    #: ``default_weeks`` but the **full-time-norm shortfall** — ``(norm − contract) × weeks``,
+    #: where ``norm`` is the org's default week. The column name is kept (internal identifier,
+    #: #282) even though the basis is no longer the *scheduled* gap: it is a flag, not the type
+    #: ``key``, so a tenant may rename or re-seed the type without breaking the computation. Only
+    #: meaningful when the employee has a contract whose hours are below the norm; otherwise the
+    #: shortfall is zero and nothing is granted. Dutch CAO artifact, so it ships switch-off-able
+    #: (deactivate the type), never assumed.
     accrues_schedule_gap: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     #: How the agenda draws this type's absences (#270) — see :class:`LeaveCalendarDisplay`.
     #: ``String``, not a PG enum, like every other small vocabulary here (``LeaveRequest.status``):

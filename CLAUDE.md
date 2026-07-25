@@ -329,9 +329,9 @@ apply as everywhere.
   is `all_day` (a full-width chip, the default) or `timed` (a positioned hour block in the day/week
   grid), editable in Instellingen → Verlof. It is a *type-level* choice, not a per-request one:
   whether an absence reads as "away today" or "away between 08:30 and 17:00" is a property of the
-  kind of leave. It is also the only way roostervrije tijd / ADV can be drawn per hour at all —
+  kind of leave. It is also the only way free time / vrije tijd can be drawn per hour at all —
   its generated days carry no `start_time`/`end_time`, so nothing on the request implies a window
-  — which is why the seeded ADV type ships `timed`. The **API** turns the window into the instant
+  — which is why the seeded free-time type ships `timed`. The **API** turns the window into the instant
   pair the grid positions by (`TeamLeaveItem.starts_at`/`ends_at`, resolved from the request's own
   times or else the scheduled day, anchored in the org zone): a leave time is local wall clock and
   a calendar block is an instant, and that conversion stays server-side so a block still starts at
@@ -351,6 +351,26 @@ apply as everywhere.
   entered — but it stays authoritative while a profile has no schedule, so a pre-#46 part-timer on
   32 h is not silently regranted the default's 40. A schedule is employment data: it lives on the
   person (Instellingen → Gebruikers), not buried in leave settings.
+- **Free time / vrije tijd is the full-time-norm shortfall** (#65, renamed from "ADV / roostervrije
+  tijd" in #282). A `leave_types` type flagged `accrues_schedule_gap` (seeded key `roostervrij`, and
+  the flag's column name, both **kept internal** to contain the rename) accrues, per contract period,
+  `(norm − contract_hours) × weeks`, where `norm = week_hours(default_schedule)` — the org's default
+  week, today 40 h, configurable. A full-timer (contract = norm) accrues **zero**; a reduced contract
+  a pot of free days, rounded to the nearest half day and placed on the calendar by the recurring
+  machinery (#107). This **replaced the old `scheduled − contract` basis**, which silently turned a
+  38-h-contract-on-a-40-h-schedule divergence into 2 h/week nobody asked for (surfaced verifying
+  #264). Only the *basis* changed: the recurring-free-day generator, the calendar feed, the Google
+  mirror, the FIFO/expiry ledger and the #264 recompute-on-contract-change all consume it unchanged.
+  **Two numbers stay** — `EmploymentContract.contract_hours_per_week` (the entered legal number,
+  drives vacation *and* free time) and `LeaveProfile.schedule` (drives per-day pricing + the
+  days-equivalent, unchanged) — because a spendable free-time *balance* needs a full nominal schedule
+  to place the free days against. **Modeling convention (surfaced, never silently assumed):** a
+  part-timer who wants a free-time balance keeps a **full nominal schedule** and a **reduced
+  contract** — their free days land on working days and draw the pot. The contract dialog
+  (Instellingen → Gebruikers, and the team roster's ⋯ menu) shows the resulting `norm − contract`
+  free time live, so a reduced contract never grows a pot in silence. Because the pot is purely
+  contract-vs-norm, reducing the *schedule* instead changes day-shape and pricing but not the pot;
+  a tenant that does not want the type at all deactivates it (never hardcoded CAO law, §14).
 - **A holiday costs no leave hours** (#47). `leave_holidays(org_id, date, name_i18n, active,
   source, key)` is tenant data seeded from a generator — the Dutch holidays *derived from Easter*,
   so 2028 needs no code change — and never law written in Python: Goede Vrijdag is worked at many
@@ -410,9 +430,12 @@ apply as everywhere.
   have been used. `GET /leave/balance/groups` returns the combined figure per group + the per-pot
   breakdown (accrual year, remaining, `expires_on`, `expired`); the per-type `GET /leave/balance`
   stays (its `remaining` is now expiry-aware and sums to the group's by construction, so
-  `preview`, `summary` and the recurring generator keep working). ADV (standalone, carry 0) gains
-  the same expiry — unused rostered-free-day hours lapse at year-end. The combined display is only
+  `preview`, `summary` and the recurring generator keep working). Free time (standalone, carry 0)
+  gains the same expiry — unused free-time hours lapse at year-end. The combined display is only
   safe *because* expiry is real: hiding the split without it would quietly drop the legal distinction.
+  The **team roster** reads the same combined figures via `GET /leave/balance/groups?all_users=true`
+  (#282) — every member's groups in one batched call, each tagged with its `user_id` — so the
+  manager's table and the employee's own page can never show a different Vakantieverlof number.
 - **Unit:** track in **hours** (matches time tracking and part-time contracts); display as days
   using the employee's **average scheduled working day** — never `hours_per_week / 5`, which tells
   a three-day part-timer their working day is 4,8 hours long.

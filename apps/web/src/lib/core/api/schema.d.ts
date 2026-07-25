@@ -3218,6 +3218,10 @@ export interface paths {
          * @description The employee-facing combined balances (#265): one figure per balance group (statutory +
          *     extra-statutory vacation roll up into one "Vakantieverlof"), with the per-pot breakdown —
          *     accrual year, remaining, expiry — alongside for anyone who needs to see where hours went.
+         *
+         *     ``all_users`` — the manager team roster (#282): every member's groups in one call, each tagged
+         *     with ``user_id``. Needs ``leave.request.read:any``; without it the caller still gets only their
+         *     own.
          */
         get: operations["group_balances_api_v1_leave_balance_groups_get"];
         put?: never;
@@ -9507,8 +9511,9 @@ export interface components {
          * @description The employee-facing balance for a group of pots rolled into one figure (#265).
          *
          *     ``vacation_statutory`` + ``vacation_extra`` present as a single "Vakantieverlof" balance; a
-         *     standalone type (ADV, …) is its own singleton group. ``entitled/approved/pending/remaining``
-         *     are the combined numbers; ``pots`` carries the per-pot breakdown for anyone who needs it.
+         *     standalone type (free time, …) is its own singleton group. ``entitled/approved/pending/
+         *     remaining`` are the combined numbers; ``pots`` carries the per-pot breakdown for anyone who
+         *     needs it.
          */
         LeaveGroupBalance: {
             /** Approved Hours */
@@ -9533,6 +9538,8 @@ export interface components {
             pots: components["schemas"]["LeavePotBreakdown"][];
             /** Remaining Hours */
             remaining_hours: string;
+            /** User Id */
+            user_id?: string | null;
             /** Year */
             year: number;
         };
@@ -22817,6 +22824,7 @@ export interface operations {
             query: {
                 year: number;
                 user_id?: string | null;
+                all_users?: boolean;
             };
             header?: never;
             path?: never;

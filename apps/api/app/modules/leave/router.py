@@ -559,12 +559,19 @@ async def balances(
 async def group_balances(
     year: int = Query(..., ge=2000, le=2100),
     user_id: uuid.UUID | None = Query(None),
+    all_users: bool = Query(False),
     ctx: RequestContext = Depends(require_context),
 ) -> list[LeaveGroupBalance]:
     """The employee-facing combined balances (#265): one figure per balance group (statutory +
     extra-statutory vacation roll up into one "Vakantieverlof"), with the per-pot breakdown —
-    accrual year, remaining, expiry — alongside for anyone who needs to see where hours went."""
-    return await LeaveService(ctx).group_balances(year=year, user_id=user_id)
+    accrual year, remaining, expiry — alongside for anyone who needs to see where hours went.
+
+    ``all_users`` — the manager team roster (#282): every member's groups in one call, each tagged
+    with ``user_id``. Needs ``leave.request.read:any``; without it the caller still gets only their
+    own."""
+    return await LeaveService(ctx).group_balances(
+        year=year, user_id=user_id, all_users=all_users
+    )
 
 
 # --- dashboard widget --------------------------------------------------------------- #
