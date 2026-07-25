@@ -5,9 +5,11 @@
    * Used by the tasks list, the project to-do list and the company panel.
    */
   import { enhance } from "$app/forms";
+  import { page } from "$app/state";
   import Avatar from "$lib/core/ui/Avatar.svelte";
   import { fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { can } from "$lib/core/permissions";
   import { labelChipClass } from "$lib/modules/tasks/labels";
   import {
     defaultStatusKey,
@@ -78,6 +80,11 @@
   const overdue = $derived(!done && !!task.due_date && task.due_date < today);
   const assignee = $derived(members.find((m) => m.user_id === task.assignee_user_id));
 
+  // The complete toggle is a task-status write (PATCH /api/v1/tasks/{id}), so it mirrors the API's
+  // `tasks.task.write`. This row is shared across the tasks list, the project to-do and the company
+  // panel — all of which a read-only portal client can reach (#244) — so it self-gates here rather
+  // than trusting each caller to pass a flag: a viewer without the write sees a static marker.
+  const canToggle = $derived(can(page.data.user, "tasks.task.write"));
 </script>
 
 <!-- `flex-wrap` + a real flex-basis on the title block: with every badge `shrink-0`, a busy row
@@ -85,17 +92,26 @@
      could no longer read or open. Wrapping moves the badge cluster to its own line instead;
      on a desktop everything still fits on one. -->
 <div class="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 hover:bg-surface">
-  <form method="POST" action={toggleAction} use:enhance>
-    <input type="hidden" name="id" value={task.id} />
-    <input type="hidden" name="status" value={toggleTo} />
-    <button
+  {#if canToggle}
+    <form method="POST" action={toggleAction} use:enhance>
+      <input type="hidden" name="id" value={task.id} />
+      <input type="hidden" name="status" value={toggleTo} />
+      <button
+        class="flex h-5 w-5 items-center justify-center rounded border text-xs
+          {done
+          ? 'border-brand bg-brand text-white'
+          : 'border-border text-transparent hover:border-brand'}"
+        aria-label={t("tasks.toggle_done")}>✓</button
+      >
+    </form>
+  {:else}
+    <!-- Read-only viewer (portal client, #244): the status shows, the toggle does not. -->
+    <span
       class="flex h-5 w-5 items-center justify-center rounded border text-xs
-        {done
-        ? 'border-brand bg-brand text-white'
-        : 'border-border text-transparent hover:border-brand'}"
-      aria-label={t("tasks.toggle_done")}>✓</button
+        {done ? 'border-brand bg-brand text-white' : 'border-border text-transparent'}"
+      aria-label={t("tasks.toggle_done")}>✓</span
     >
-  </form>
+  {/if}
 
   <div class="min-w-0 flex-1 basis-40">
     <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5">

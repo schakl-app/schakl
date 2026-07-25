@@ -36,9 +36,12 @@
   let deleteId = $state("");
   let confirmDelete = $state(false);
 
-  // Actions render only for holders of the matching permission (#253).
+  // Actions render only for holders of the matching permission (#253). The complete toggle is a
+  // task-status write (PATCH /api/v1/tasks/{id}), so it mirrors `tasks.task.write` — a read-only
+  // portal client (#244) sees a static status marker, never a clickable checkbox.
   const canCreate = $derived(can(page.data.user, "tasks.task.create"));
   const canDelete = $derived(can(page.data.user, "tasks.task.delete"));
+  const canWrite = $derived(can(page.data.user, "tasks.task.write"));
 
   const dueOptions = ["overdue", "today", "week"] as const;
 
@@ -245,17 +248,26 @@
 {#snippet titleCell(task: Task)}
   {@const done = isDone(task)}
   <div class="flex items-center gap-2.5">
-    <form method="POST" action="?/toggle" use:enhance>
-      <input type="hidden" name="id" value={task.id} />
-      <input type="hidden" name="status" value={toggleTarget(task)} />
-      <button
+    {#if canWrite}
+      <form method="POST" action="?/toggle" use:enhance>
+        <input type="hidden" name="id" value={task.id} />
+        <input type="hidden" name="status" value={toggleTarget(task)} />
+        <button
+          class="flex h-5 w-5 items-center justify-center rounded border text-xs
+            {done
+            ? 'border-brand bg-brand text-white'
+            : 'border-border text-transparent hover:border-brand'}"
+          aria-label={t("tasks.toggle_done")}>✓</button
+        >
+      </form>
+    {:else}
+      <!-- Read-only viewer (portal client, #244): the status shows, the toggle does not. -->
+      <span
         class="flex h-5 w-5 items-center justify-center rounded border text-xs
-          {done
-          ? 'border-brand bg-brand text-white'
-          : 'border-border text-transparent hover:border-brand'}"
-        aria-label={t("tasks.toggle_done")}>✓</button
+          {done ? 'border-brand bg-brand text-white' : 'border-border text-transparent'}"
+        aria-label={t("tasks.toggle_done")}>✓</span
       >
-    </form>
+    {/if}
     <a
       href="/tasks/{task.id}"
       class="truncate font-medium {done

@@ -77,19 +77,25 @@
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
 
-<!-- The panel's <h2> is rendered by the host page, so the toggle sits at the top of the body. -->
-<div class="mb-3 flex justify-end">
-  <ActionsMenu
-    compact
-    items={[
-      {
-        label: editing ? t("common.done") : t("common.edit"),
-        icon: editing ? Check : Pencil,
-        onclick: () => (editing = !editing),
-      },
-    ]}
-  />
-</div>
+<!-- The panel's <h2> is rendered by the host page, so the toggle sits at the top of the body.
+     The edit toggle is the *only* switch that reveals LinkField's link/unlink/promote and the
+     create-contact dialog — all `contacts.contact.write` acts — so it must carry the same gate as
+     the quick-add below, or a read-only portal client (#244) could enter edit mode. The company
+     detail page renders panels without an isPortal filter, so the panel self-gates (CLAUDE.md §15). -->
+{#if can(page.data.user, "contacts.contact.write")}
+  <div class="mb-3 flex justify-end">
+    <ActionsMenu
+      compact
+      items={[
+        {
+          label: editing ? t("common.done") : t("common.edit"),
+          icon: editing ? Check : Pencil,
+          onclick: () => (editing = !editing),
+        },
+      ]}
+    />
+  </div>
+{/if}
 
 {#if links.length === 0}
   <p class="mb-3 text-sm text-text-muted">{t("contacts.empty")}</p>

@@ -72,6 +72,11 @@
   const isPortal = $derived(page.data.user?.isPortal ?? false);
   // `tasks.comment.write:any` lets a manager clean up anyone's comment; the author always can.
   const canDeleteAnyComment = $derived(can(page.data.user, "tasks.comment.write", "any"));
+  // Ticking and quick-adding checklist items are "use mode" affordances that live outside edit
+  // mode (docs/UX.md), but they are still task writes (the API gates the item PATCH/POST on
+  // `tasks.task.write`). A read-only portal client (#244) reaches this page for a client-visible
+  // task, so the controls mirror the API: shown to a writer, read-only for everyone else.
+  const canWriteTask = $derived(can(page.data.user, "tasks.task.write"));
 
   // The org's configured status vocabulary (issue #62), from the /tasks layout load.
   const statuses = $derived(data.statuses);
@@ -697,36 +702,47 @@
               {#each items as item (item.id)}
                 <li class="group">
                   <div class="flex items-center gap-2">
-                    <form
-                      method="POST"
-                      action="?/toggleItem"
-                      use:enhance={() => {
-                        // Snapshot before the server flips it: checking the last open to-do on an
-                        // unfinished task opens the finish prompt after the reload.
-                        const completesLast =
-                          !item.done &&
-                          openItemCount === 1 &&
-                          !isDone &&
-                          !isPortal &&
-                          finishStatus !== null;
-                        return ({ update }) => {
-                          void update().then(() => {
-                            if (completesLast) showFinishPrompt = true;
-                          });
-                        };
-                      }}
-                    >
-                      <input type="hidden" name="checklist_id" value={checklist.id} />
-                      <input type="hidden" name="item_id" value={item.id} />
-                      <input type="hidden" name="done" value={String(!item.done)} />
-                      <button
+                    {#if canWriteTask}
+                      <form
+                        method="POST"
+                        action="?/toggleItem"
+                        use:enhance={() => {
+                          // Snapshot before the server flips it: checking the last open to-do on an
+                          // unfinished task opens the finish prompt after the reload.
+                          const completesLast =
+                            !item.done &&
+                            openItemCount === 1 &&
+                            !isDone &&
+                            !isPortal &&
+                            finishStatus !== null;
+                          return ({ update }) => {
+                            void update().then(() => {
+                              if (completesLast) showFinishPrompt = true;
+                            });
+                          };
+                        }}
+                      >
+                        <input type="hidden" name="checklist_id" value={checklist.id} />
+                        <input type="hidden" name="item_id" value={item.id} />
+                        <input type="hidden" name="done" value={String(!item.done)} />
+                        <button
+                          class="flex h-4 w-4 items-center justify-center rounded border text-[10px]
+                          {item.done
+                            ? 'border-brand bg-brand text-white'
+                            : 'border-border text-transparent hover:border-brand'}"
+                          aria-label={t("tasks.toggle_done")}>✓</button
+                        >
+                      </form>
+                    {:else}
+                      <!-- Read-only viewer (portal client, #244): item state shows, ticking does not. -->
+                      <span
                         class="flex h-4 w-4 items-center justify-center rounded border text-[10px]
                         {item.done
                           ? 'border-brand bg-brand text-white'
-                          : 'border-border text-transparent hover:border-brand'}"
-                        aria-label={t("tasks.toggle_done")}>✓</button
+                          : 'border-border text-transparent'}"
+                        aria-label={t("tasks.toggle_done")}>✓</span
                       >
-                    </form>
+                    {/if}
                     <span
                       class="flex-1 text-sm {item.done
                         ? 'text-text-muted line-through'
@@ -793,23 +809,26 @@
                 </li>
               {/each}
             </ul>
-            <form
-              method="POST"
-              action="?/addItem"
-              use:enhance={busy.wrap(`addItem:${checklist.id}`)}
-              class="mt-2 flex gap-2"
-            >
-              <input type="hidden" name="checklist_id" value={checklist.id} />
-              <input
-                name="title"
-                placeholder={t("tasks.checklist.item_placeholder")}
-                required
-                class="min-w-0 flex-1 rounded-lg border border-border px-2 py-1 text-sm outline-none focus:border-brand"
-              />
-              <Button variant="secondary" size="xs" loading={busy.is(`addItem:${checklist.id}`)}
-                >＋</Button
+            {#if canWriteTask}
+              <!-- Quick-add is a task write (POST item); hidden from a read-only portal client (#244). -->
+              <form
+                method="POST"
+                action="?/addItem"
+                use:enhance={busy.wrap(`addItem:${checklist.id}`)}
+                class="mt-2 flex gap-2"
               >
-            </form>
+                <input type="hidden" name="checklist_id" value={checklist.id} />
+                <input
+                  name="title"
+                  placeholder={t("tasks.checklist.item_placeholder")}
+                  required
+                  class="min-w-0 flex-1 rounded-lg border border-border px-2 py-1 text-sm outline-none focus:border-brand"
+                />
+                <Button variant="secondary" size="xs" loading={busy.is(`addItem:${checklist.id}`)}
+                  >＋</Button
+                >
+              </form>
+            {/if}
           </div>
         {/each}
 

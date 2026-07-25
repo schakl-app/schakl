@@ -48,6 +48,12 @@
   // Header actions render only for holders of the matching permission (#253).
   const canWrite = $derived(can(page.data.user, "projects.project.write"));
   const canDelete = $derived(can(page.data.user, "projects.project.delete"));
+  // The to-do list and the documents block are *task* and *file* writes, not project writes — a
+  // read-only portal client (#244) reaches this page for a readable project but holds none of
+  // these, so each control mirrors its own API permission.
+  const canCreateTask = $derived(can(page.data.user, "tasks.task.create"));
+  const canWriteTask = $derived(can(page.data.user, "tasks.task.write"));
+  const canWriteFile = $derived(can(page.data.user, "files.file.write"));
   let confirmDelete = $state(false);
 
   // Log a contactmoment from the header — quick-add where the user is (docs/UX.md), with the
@@ -505,18 +511,20 @@
     >
   </div>
 
-  <form method="POST" action="?/addTask" use:enhance class="mb-4 flex gap-2">
-    <input type="hidden" name="company_id" value={project.company_id ?? ""} />
-    <input name="title" placeholder={t("projects.add_todo")} required class={inputClass} />
-    <button
-      class="shrink-0 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-      >{t("common.create")}</button
-    >
-  </form>
+  {#if canCreateTask}
+    <form method="POST" action="?/addTask" use:enhance class="mb-4 flex gap-2">
+      <input type="hidden" name="company_id" value={project.company_id ?? ""} />
+      <input name="title" placeholder={t("projects.add_todo")} required class={inputClass} />
+      <button
+        class="shrink-0 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        >{t("common.create")}</button
+      >
+    </form>
+  {/if}
 
   {#if tasks.length === 0}
     <p class="text-sm text-text-muted">{t("tasks.empty")}</p>
-  {:else}
+  {:else if canWriteTask}
     <form method="POST" action="?/reorderTask" use:enhance bind:this={reorderForm} class="hidden">
       <input type="hidden" name="id" value={reorderId} />
       <input type="hidden" name="position" value={reorderPosition} />
@@ -543,6 +551,23 @@
         </div>
       {/each}
     </div>
+  {:else}
+    <!-- Read-only viewer (portal client, #244): a plain, non-reorderable list. TaskRow self-gates
+         its own complete-toggle, so the row shows a static status marker. -->
+    <div class="divide-y divide-border">
+      {#each tasks as task (task.id)}
+        <div class="flex items-center bg-surface-raised">
+          <div class="flex-1">
+            <TaskRow
+              {task}
+              toggleAction="?/toggleTask"
+              members={data.members}
+              statuses={data.statuses}
+            />
+          </div>
+        </div>
+      {/each}
+    </div>
   {/if}
 </section>
 
@@ -552,10 +577,13 @@
   {#if data.files.length === 0}
     <p class="mb-3 text-sm text-text-muted">{t("files.empty")}</p>
   {/if}
+  <!-- Upload / per-row delete both require files.file.write (POST/DELETE /api/v1/files); a
+       read-only portal client (#244) sees the download list only. -->
   <FileAttachments
     files={data.files}
     uploadAction="?/uploadFile"
     deleteAction="?/deleteFile"
+    readonly={!canWriteFile}
     error={form?.fileError ?? null}
   />
 </section>

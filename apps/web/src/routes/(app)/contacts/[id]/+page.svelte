@@ -120,9 +120,12 @@
      under the header's ⋯ → Bewerken, like every other definition change (docs/UX.md §3). -->
 <section class="mb-4 rounded-xl border border-border bg-surface-raised p-5">
   <h2 class="mb-4 text-sm font-semibold text-text">{t("contacts.companies")}</h2>
+  <!-- `editing && canWrite`: read-mode chips stay navigable (a portal client may follow them to
+       /companies/{id}), but link/unlink/make-primary and the inline create-company modal — all
+       contacts.contact.write acts — never render for a read-only portal client (#244). -->
   <LinkField
     {links}
-    {editing}
+    editing={editing && canWrite}
     candidates={candidateCompanies}
     idField="company_id"
     linkAction="?/linkCompany"
