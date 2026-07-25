@@ -144,6 +144,97 @@ async def test_event_fanout_enqueues_a_delivery(client_for) -> None:
         assert deliveries[0].status == "pending"
 
 
+async def test_event_filter_edit_roundtrip(client_for) -> None:
+    """event_filter is settable on create and editable via PATCH; [] means all events (#245)."""
+    t = await make_tenant("chan-filter-edit")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        created = (
+            await c.post(
+                "/api/v1/notifications/channels",
+                json={
+                    "kind": "slack",
+                    "name": "Only tasks",
+                    "url": _SLACK,
+                    "event_filter": ["task.assigned"],
+                },
+                headers=headers,
+            )
+        ).json()
+        assert created["event_filter"] == ["task.assigned"]
+        cid = created["id"]
+
+        widened = await c.patch(
+            f"/api/v1/notifications/channels/{cid}",
+            json={"event_filter": ["task.assigned", "leave.requested"]},
+            headers=headers,
+        )
+        assert widened.status_code == 200
+        assert set(widened.json()["event_filter"]) == {"task.assigned", "leave.requested"}
+
+        # An unknown event is rejected — the picker only ever posts known keys.
+        bad = await c.patch(
+            f"/api/v1/notifications/channels/{cid}",
+            json={"event_filter": ["not.a.real.event"]},
+            headers=headers,
+        )
+        assert bad.status_code == 422
+
+        cleared = await c.patch(
+            f"/api/v1/notifications/channels/{cid}", json={"event_filter": []}, headers=headers
+        )
+        assert cleared.json()["event_filter"] == []
+
+
+async def test_event_filter_routes_only_listed_events(client_for) -> None:
+    """A channel with a non-empty event_filter is skipped for events it does not list (#245)."""
+    t = await make_tenant("chan-filter-route")
+    owner = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        # This channel only wants company events, so a leave request must not reach it.
+        await c.post(
+            "/api/v1/notifications/channels",
+            json={
+                "kind": "slack",
+                "name": "Companies only",
+                "url": _SLACK,
+                "event_filter": ["company.created"],
+            },
+            headers=owner,
+        )
+        member = await _member(c, owner, "emp@filter-route.example")
+        mh = await auth_cookie(member)
+        types = (await c.get("/api/v1/leave/types", headers=owner)).json()
+        special = next(x["id"] for x in types if x["key"] == "special")
+        start = leave_workday(0)
+        res = await c.post(
+            "/api/v1/leave/requests",
+            json={
+                "leave_type_id": special,
+                "start_date": start.isoformat(),
+                "end_date": start.isoformat(),
+            },
+            headers=mh,
+        )
+        assert res.status_code == 201, res.text
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        deliveries = (
+            (
+                await session.execute(
+                    select(NotificationDelivery).where(
+                        NotificationDelivery.org_id == t.org.id,
+                        NotificationDelivery.channel == "external",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert deliveries == []  # leave.requested is not in the channel's filter
+
+
 async def test_channels_are_tenant_isolated(client_for) -> None:
     a = await make_tenant("chan-org-a")
     b = await make_tenant("chan-org-b")

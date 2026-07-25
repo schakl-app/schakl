@@ -70,40 +70,103 @@ def test_normalize_rejects_foreign_input() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# The personal e-mail preference and the digest sweep
+# Per-event e-mail preference (#245) and the digest sweep
 # --------------------------------------------------------------------------- #
 
 
-async def test_email_pref_roundtrip(client_for) -> None:
-    t = await make_tenant("digest-pref")
+async def test_email_matrix_default_off_and_per_event_override(client_for) -> None:
+    """E-mail is off for every event by default; a per-event override turns one on (#245)."""
+    t = await make_tenant("email-matrix")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
-        default = (await c.get("/api/v1/notifications/preferences/email", headers=headers)).json()
-        assert default == {
-            "enabled": False,
-            "digest": "daily",
-            "digest_time": "08:00:00",
-            "digest_weekday": None,
-            "source": "default",
-        }
+        matrix = (await c.get("/api/v1/notifications/preferences", headers=headers)).json()
+        assert all(row["email_enabled"] is False for row in matrix["events"])
+        assert matrix["email"]["source"] == "default"
+
         saved = await c.put(
-            "/api/v1/notifications/preferences/email",
-            json={"enabled": True, "digest": "weekly", "digest_time": "09:30", "digest_weekday": 4},
+            "/api/v1/notifications/preferences",
+            json={
+                "email_events": [
+                    {"event_type": "leave.requested", "enabled": True, "digest": "weekly"}
+                ],
+                "email": {"digest_time": "09:30", "digest_weekday": 4},
+            },
             headers=headers,
         )
         assert saved.status_code == 200, saved.text
-        assert saved.json()["source"] == "user"
-        assert saved.json()["digest"] == "weekly"
+        body = saved.json()
+        row = next(r for r in body["events"] if r["event_type"] == "leave.requested")
+        assert row["email_enabled"] is True and row["email_digest"] == "weekly"
+        assert row["email_source"] == "user"
+        # Every other event stays off and inherited — one override does not touch the rest.
+        other = next(r for r in body["events"] if r["event_type"] == "task.assigned")
+        assert other["email_enabled"] is False and other["email_source"] == "default"
+        assert body["email"]["digest_time"] == "09:30:00"
+        assert body["email"]["digest_weekday"] == 4 and body["email"]["source"] == "user"
+
+
+async def test_email_needs_in_app_enabled(client_for) -> None:
+    """E-mail fans out from the in-app row, so an event switched off in-app never mails (#245)."""
+    t = await make_tenant("email-needs-inapp")
+    owner = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.put(
+            "/api/v1/notifications/preferences",
+            json={
+                "events": [
+                    {"event_type": "leave.requested", "enabled": False, "digest": "immediate"}
+                ],
+                "email_events": [
+                    {"event_type": "leave.requested", "enabled": True, "digest": "immediate"}
+                ],
+            },
+            headers=owner,
+        )
+        member = await _member(c, owner, "emp@needs-inapp.example")
+        mh = await auth_cookie(member)
+        types = (await c.get("/api/v1/leave/types", headers=owner)).json()
+        special = next(x["id"] for x in types if x["key"] == "special")
+        start = leave_workday(0)
+        res = await c.post(
+            "/api/v1/leave/requests",
+            json={
+                "leave_type_id": special,
+                "start_date": start.isoformat(),
+                "end_date": start.isoformat(),
+            },
+            headers=mh,
+        )
+        assert res.status_code == 201, res.text
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        rows = (
+            (
+                await session.execute(
+                    select(NotificationDelivery).where(
+                        NotificationDelivery.org_id == t.org.id,
+                        NotificationDelivery.channel == "email",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert rows == []  # in-app off → no inbox row → no e-mail delivery
 
 
 async def test_fanout_enqueues_email_delivery_at_the_digest_slot(client_for) -> None:
     t = await make_tenant("digest-fanout")
     owner = await auth_cookie(t.user)
     async with client_for(t.host) as c:
-        # The owner (who gets notified about leave requests) wants a daily e-mail digest.
+        # The owner (who gets notified about leave requests) wants that event by daily e-mail.
         await c.put(
-            "/api/v1/notifications/preferences/email",
-            json={"enabled": True, "digest": "daily"},
+            "/api/v1/notifications/preferences",
+            json={
+                "email_events": [
+                    {"event_type": "leave.requested", "enabled": True, "digest": "daily"}
+                ]
+            },
             headers=owner,
         )
         member = await _member(c, owner, "emp@digest-fanout.example")
@@ -148,8 +211,12 @@ async def test_digest_sweep_groups_one_mail_per_recipient(client_for, monkeypatc
     owner = await auth_cookie(t.user)
     async with client_for(t.host) as c:
         await c.put(
-            "/api/v1/notifications/preferences/email",
-            json={"enabled": True, "digest": "immediate"},
+            "/api/v1/notifications/preferences",
+            json={
+                "email_events": [
+                    {"event_type": "leave.requested", "enabled": True, "digest": "immediate"}
+                ]
+            },
             headers=owner,
         )
         member = await _member(c, owner, "emp@digest-sweep.example")
@@ -214,3 +281,26 @@ async def test_digest_sweep_groups_one_mail_per_recipient(client_for, monkeypatc
         assert all(r.status == "sent" for r in rows)
         now = datetime.now(UTC)
         assert all(r.deliver_after is not None and r.deliver_after <= now for r in rows)
+
+
+async def test_org_default_email_is_inherited(client_for) -> None:
+    """An org-default e-mail override reaches a member as an inherited row (#245)."""
+    t = await make_tenant("email-orgdefault")
+    owner = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        member = await _member(c, owner, "emp@orgdef.example")
+        mh = await auth_cookie(member)
+        await c.put(
+            "/api/v1/notifications/preferences/defaults",
+            json={
+                "email_events": [
+                    {"event_type": "task.assigned", "enabled": True, "digest": "daily"}
+                ]
+            },
+            headers=owner,
+        )
+        matrix = (await c.get("/api/v1/notifications/preferences", headers=mh)).json()
+        row = next(r for r in matrix["events"] if r["event_type"] == "task.assigned")
+        assert row["email_enabled"] is True
+        assert row["email_digest"] == "daily"
+        assert row["email_source"] == "org"

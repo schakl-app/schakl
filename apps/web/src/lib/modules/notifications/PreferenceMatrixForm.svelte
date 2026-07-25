@@ -1,25 +1,34 @@
 <script lang="ts">
   /**
-   * The delivery matrix (issue #16) — one surface, one save button (docs/UX.md).
+   * The delivery matrix (issue #16, e-mail per event added in #245) — one surface, one save
+   * button (docs/UX.md).
    *
-   * Preferences resolve default ← org row ← user row, **whole rows at a time**. A save must
-   * therefore not quietly turn every inherited row into an override, or after one click nothing
-   * would inherit again and tomorrow's better default could never reach anyone. So this posts
-   * only the rows that already override at this scope, plus the rows actually changed here.
-   * Everything else keeps falling through, and the badge beside it says where its value came from.
+   * Every event is deliverable on two channels, resolved independently: the bell (in-app) and
+   * personal e-mail. Each channel has its own cadence per event and its own inheritance
+   * (default ← org row ← user row, **whole rows at a time**). A save must not quietly turn every
+   * inherited row into an override, or after one click nothing would inherit again and tomorrow's
+   * better default could never reach anyone. So this posts, per channel, only the events that
+   * already override at this scope plus the ones actually changed here; everything else keeps
+   * falling through, and the badge says where each value came from.
+   *
+   * E-mail is a subset of in-app: an event only mails if it also notifies in-app (the fan-out
+   * writes e-mail deliveries off the bell rows). So the e-mail column is disabled where in-app is
+   * off — the stored value is kept, it simply cannot fire.
    *
    * Edits live in a sparse `edits` map layered over the loaded matrix, rather than a copy of it:
-   * changing a switch and changing it back leaves the row inherited instead of freezing today's
+   * changing a control and changing it back leaves the row inherited instead of freezing today's
    * default into a row of its own.
    *
    * "Reset" posts an empty set, which deletes this scope's rows — the API's own meaning of reset.
    *
-   * Deliberately not exposed yet: a digest's time-of-day and weekday. The columns exist and the
-   * API honours them; left unset they fall back to 08:00 Europe/Amsterdam, on Monday.
+   * Deliberately not exposed: an in-app digest's time-of-day and weekday (the columns exist and
+   * fall back to 08:00 Europe/Amsterdam, on Monday). The e-mail digest schedule *is* exposed, as
+   * one global choice, because e-mail leaves the app and when it lands is worth controlling.
    */
   import { enhance } from "$app/forms";
   import type { SubmitFunction } from "@sveltejs/kit";
 
+  import { dateLocale } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
@@ -34,11 +43,20 @@
     digest_time?: string | null;
     digest_weekday?: number | null;
     source: string;
+    email_enabled: boolean;
+    email_delay_minutes: number;
+    email_digest: string;
+    email_source: string;
   }
   interface General {
     due_soon_days: number;
     quiet_hours_start?: string | null;
     quiet_hours_end?: string | null;
+    source: string;
+  }
+  interface EmailSchedule {
+    digest_time?: string | null;
+    digest_weekday?: number | null;
     source: string;
   }
 
@@ -49,16 +67,25 @@
     error = null,
     saved = false,
   }: {
-    matrix: { events: Row[]; general: General };
+    matrix: { events: Row[]; general: General; email: EmailSchedule };
     scope: "user" | "org";
     error?: string | null;
     saved?: boolean;
   } = $props();
 
   const CADENCES = ["immediate", "hourly", "daily", "weekly"] as const;
+  // The e-mail column is a single select: "off" plus the four cadences.
+  const EMAIL_OPTIONS = ["off", ...CADENCES] as const;
+
+  // Monday-based weekday names in the UI locale (2024-01-01 was a Monday).
+  const weekdayFmt = new Intl.DateTimeFormat(dateLocale(), { weekday: "long", timeZone: "UTC" });
+  const WEEKDAYS = Array.from({ length: 7 }, (_, i) =>
+    weekdayFmt.format(new Date(Date.UTC(2024, 0, 1 + i))),
+  );
 
   let edits = $state<Record<string, Partial<Row>>>({});
   let generalEdit = $state<Partial<General>>({});
+  let emailEdit = $state<Partial<EmailSchedule>>({});
 
   const busy = new InFlight();
   // Save and reset share the form (#279): key off the clicked button's formaction.
@@ -74,6 +101,7 @@
           await update({ reset: false });
           edits = {}; // the reloaded matrix is now the truth; stale edits must not re-apply
           generalEdit = {};
+          emailEdit = {};
         },
     )(input);
 
@@ -93,6 +121,7 @@
     return out;
   });
   const general = $derived({ ...matrix.general, ...generalEdit });
+  const emailSchedule = $derived({ ...matrix.email, ...emailEdit });
 
   function baseline(eventType: string): Row | undefined {
     return matrix.events.find((row) => row.event_type === eventType);
@@ -102,7 +131,26 @@
     edits = { ...edits, [eventType]: { ...edits[eventType], ...patch } };
   }
 
-  function isChanged(row: Row): boolean {
+  /** The e-mail column's value: "off" when disabled, else the cadence. */
+  const emailValue = (row: Row) => (row.email_enabled ? row.email_digest : "off");
+  function editEmail(eventType: string, value: string): void {
+    if (value === "off") edit(eventType, { email_enabled: false });
+    else edit(eventType, { email_enabled: true, email_digest: value });
+  }
+
+  /** Set the e-mail column of every in-app-enabled event at once (a convenience). */
+  function applyAllEmail(value: string): void {
+    const patch =
+      value === "off" ? { email_enabled: false } : { email_enabled: true, email_digest: value };
+    const next = { ...edits };
+    for (const row of rows) {
+      if (!row.enabled) continue; // e-mail can't fire without an in-app row
+      next[row.event_type] = { ...next[row.event_type], ...patch };
+    }
+    edits = next;
+  }
+
+  function inAppChanged(row: Row): boolean {
     const before = baseline(row.event_type);
     if (!before) return true;
     return (
@@ -112,10 +160,19 @@
     );
   }
 
-  /** A row is written when it already overrides at this scope, or was just changed here. */
-  function isOverride(row: Row): boolean {
-    return row.source === scope || isChanged(row);
+  function emailChanged(row: Row): boolean {
+    const before = baseline(row.event_type);
+    if (!before) return true;
+    return (
+      before.email_enabled !== row.email_enabled ||
+      before.email_digest !== row.email_digest ||
+      Number(before.email_delay_minutes) !== Number(row.email_delay_minutes)
+    );
   }
+
+  /** A channel's row is written when it already overrides at this scope, or was just changed. */
+  const inAppOverride = (row: Row) => row.source === scope || inAppChanged(row);
+  const emailOverride = (row: Row) => row.email_source === scope || emailChanged(row);
 
   /** The API returns "HH:MM:SS"; `TimeInput` speaks "HH:MM". */
   const hhmm = (value: string | null | undefined) => (value ? value.slice(0, 5) : "");
@@ -127,16 +184,28 @@
   );
   const generalIsOverride = $derived(matrix.general.source === scope || generalChanged);
 
+  const emailScheduleChanged = $derived(
+    hhmm(emailSchedule.digest_time) !== hhmm(matrix.email.digest_time) ||
+      (emailSchedule.digest_weekday ?? null) !== (matrix.email.digest_weekday ?? null),
+  );
+  const emailScheduleIsOverride = $derived(matrix.email.source === scope || emailScheduleChanged);
+
   /** The body the action forwards on. Only the browser knows what "changed" means here. */
   const payload = $derived(
     JSON.stringify({
-      events: rows.filter(isOverride).map((row) => ({
+      events: rows.filter(inAppOverride).map((row) => ({
         event_type: row.event_type,
         enabled: row.enabled,
         delay_minutes: Number(row.delay_minutes) || 0,
         digest: row.digest,
         digest_time: row.digest_time ?? null,
         digest_weekday: row.digest_weekday ?? null,
+      })),
+      email_events: rows.filter(emailOverride).map((row) => ({
+        event_type: row.event_type,
+        enabled: row.email_enabled,
+        delay_minutes: Number(row.email_delay_minutes) || 0,
+        digest: row.email_digest,
       })),
       general: generalIsOverride
         ? {
@@ -145,15 +214,29 @@
             quiet_hours_end: hhmm(general.quiet_hours_end) || null,
           }
         : null,
+      email: emailScheduleIsOverride
+        ? {
+            digest_time: hhmm(emailSchedule.digest_time) || null,
+            digest_weekday: emailSchedule.digest_weekday ?? null,
+          }
+        : null,
     }),
   );
 
-  const overrideCount = $derived(rows.filter(isOverride).length);
+  const overrideCount = $derived(
+    rows.filter(inAppOverride).length + rows.filter(emailOverride).length,
+  );
 
   const controlClass =
-    "rounded-lg border border-border bg-surface-raised px-2 py-1 text-sm outline-none focus:border-brand";
+    "rounded-lg border border-border bg-surface-raised px-2 py-1 text-sm outline-none focus:border-brand disabled:opacity-40";
   const numberClass =
-    "w-20 rounded-lg border border-border px-2 py-1 text-sm outline-none focus:border-brand disabled:opacity-40";
+    "w-16 rounded-lg border border-border px-2 py-1 text-sm outline-none focus:border-brand disabled:opacity-40";
+
+  function statusText(source: string, isOverride: boolean): string {
+    return isOverride
+      ? t("notifications.settings.overridden")
+      : t(`notifications.settings.inherited_${source}`);
+  }
 </script>
 
 {#if error}
@@ -210,7 +293,53 @@
     <p class="mt-3 text-xs text-text-muted">{t("notifications.settings.quiet_hint")}</p>
   </section>
 
-  <!-- Per-event delivery. -->
+  <!-- E-mail digest schedule + bulk set: one global choice for when e-mail digests leave. -->
+  <section class="rounded-xl border border-border bg-surface-raised p-5">
+    <h2 class="text-sm font-semibold text-text">{t("notifications.settings.email_schedule")}</h2>
+    <p class="mt-1 text-xs text-text-muted">{t("notifications.settings.email_schedule_hint")}</p>
+    <div class="mt-4 flex flex-wrap items-end gap-4">
+      <div>
+        <span class="mb-1 block text-xs font-medium text-text-muted">
+          {t("notifications.settings.digest_time")}
+        </span>
+        <TimeInput
+          name="email_digest_time"
+          value={hhmm(emailSchedule.digest_time)}
+          onchange={(value) => (emailEdit = { ...emailEdit, digest_time: value || null })}
+        />
+      </div>
+      <label class="block">
+        <span class="mb-1 block text-xs font-medium text-text-muted">
+          {t("notifications.settings.digest_weekday")}
+        </span>
+        <select
+          class={controlClass}
+          value={emailSchedule.digest_weekday ?? 0}
+          onchange={(e) => (emailEdit = { ...emailEdit, digest_weekday: +e.currentTarget.value })}
+        >
+          {#each WEEKDAYS as day, i (day)}
+            <option value={i}>{day}</option>
+          {/each}
+        </select>
+      </label>
+    </div>
+    <div class="mt-4">
+      <span class="mb-1 block text-xs font-medium text-text-muted">
+        {t("notifications.settings.apply_all_email")}
+      </span>
+      <div class="flex flex-wrap gap-2">
+        {#each EMAIL_OPTIONS as option (option)}
+          <Button type="button" variant="secondary" size="xs" onclick={() => applyAllEmail(option)}>
+            {option === "off"
+              ? t("notifications.settings.off")
+              : t(`notifications.digest.${option}`)}
+          </Button>
+        {/each}
+      </div>
+    </div>
+  </section>
+
+  <!-- Per-event delivery: in-app and e-mail, each with its own cadence and inheritance. -->
   <section class="overflow-hidden rounded-xl border border-border bg-surface-raised">
     <div class="border-b border-border bg-surface px-4 py-2">
       <h2 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
@@ -221,18 +350,40 @@
       <table class="w-full text-sm">
         <thead>
           <tr class="border-b border-border text-left text-xs text-text-muted">
-            <th class="px-4 py-2 font-medium">{t("notifications.settings.event")}</th>
-            <th class="px-2 py-2 font-medium">{t("notifications.settings.enabled")}</th>
-            <th class="px-2 py-2 font-medium">{t("notifications.settings.delivery")}</th>
-            <th class="px-2 py-2 font-medium">{t("notifications.settings.delay")}</th>
-            <th class="px-4 py-2 font-medium">{t("notifications.settings.source")}</th>
+            <th class="px-4 py-2 font-medium" rowspan="2">{t("notifications.settings.event")}</th>
+            <th
+              class="border-l border-border px-2 py-1 text-center font-semibold uppercase tracking-wide"
+              colspan="3"
+            >
+              {t("notifications.settings.channel_in_app")}
+            </th>
+            <th
+              class="border-l border-border px-2 py-1 text-center font-semibold uppercase tracking-wide"
+              colspan="2"
+            >
+              {t("notifications.settings.channel_email")}
+            </th>
+            <th class="border-l border-border px-4 py-2 font-medium" rowspan="2">
+              {t("notifications.settings.source")}
+            </th>
+          </tr>
+          <tr class="border-b border-border text-left text-xs text-text-muted">
+            <th class="border-l border-border px-2 py-1 font-medium">
+              {t("notifications.settings.enabled")}
+            </th>
+            <th class="px-2 py-1 font-medium">{t("notifications.settings.delivery")}</th>
+            <th class="px-2 py-1 font-medium">{t("notifications.settings.delay")}</th>
+            <th class="border-l border-border px-2 py-1 font-medium">
+              {t("notifications.settings.delivery")}
+            </th>
+            <th class="px-2 py-1 font-medium">{t("notifications.settings.delay")}</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-border">
           {#each groups as group (group.key)}
             <tr class="bg-surface">
               <th
-                colspan="5"
+                colspan="7"
                 scope="colgroup"
                 class="px-4 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-text-muted"
               >
@@ -244,7 +395,8 @@
                 <td class="px-4 py-2 text-text">
                   {t(`notifications.event_label.${row.event_type}`)}
                 </td>
-                <td class="px-2 py-2">
+                <!-- In-app channel. -->
+                <td class="border-l border-border px-2 py-2">
                   <input
                     type="checkbox"
                     checked={row.enabled}
@@ -277,18 +429,66 @@
                     oninput={(e) => edit(row.event_type, { delay_minutes: +e.currentTarget.value })}
                   />
                 </td>
-                <td class="whitespace-nowrap px-4 py-2">
-                  {#if isOverride(row)}
-                    <span
-                      class="rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand"
-                    >
-                      {t("notifications.settings.overridden")}
-                    </span>
-                  {:else}
-                    <span class="text-xs text-text-muted">
-                      {t(`notifications.settings.inherited_${row.source}`)}
-                    </span>
-                  {/if}
+                <!-- E-mail channel: a subset of in-app, so disabled where in-app is off. -->
+                <td class="border-l border-border px-2 py-2">
+                  <select
+                    value={emailValue(row)}
+                    class={controlClass}
+                    disabled={!row.enabled}
+                    aria-label={t("notifications.settings.channel_email")}
+                    onchange={(e) => editEmail(row.event_type, e.currentTarget.value)}
+                  >
+                    {#each EMAIL_OPTIONS as option (option)}
+                      <option value={option}>
+                        {option === "off"
+                          ? t("notifications.settings.off")
+                          : t(`notifications.digest.${option}`)}
+                      </option>
+                    {/each}
+                  </select>
+                </td>
+                <td class="px-2 py-2">
+                  <input
+                    type="number"
+                    min="0"
+                    max="1440"
+                    value={row.email_delay_minutes}
+                    class={numberClass}
+                    disabled={!row.enabled ||
+                      !row.email_enabled ||
+                      row.email_digest !== "immediate"}
+                    aria-label={t("notifications.settings.delay")}
+                    oninput={(e) =>
+                      edit(row.event_type, { email_delay_minutes: +e.currentTarget.value })}
+                  />
+                </td>
+                <td class="whitespace-nowrap border-l border-border px-4 py-2">
+                  <div class="space-y-0.5 text-xs">
+                    <div>
+                      <span class="text-text-muted"
+                        >{t("notifications.settings.channel_in_app")}:</span
+                      >
+                      {#if inAppOverride(row)}
+                        <span class="rounded-full bg-brand/10 px-2 py-0.5 font-medium text-brand">
+                          {t("notifications.settings.overridden")}
+                        </span>
+                      {:else}
+                        <span class="text-text-muted">{statusText(row.source, false)}</span>
+                      {/if}
+                    </div>
+                    <div>
+                      <span class="text-text-muted"
+                        >{t("notifications.settings.channel_email")}:</span
+                      >
+                      {#if emailOverride(row)}
+                        <span class="rounded-full bg-brand/10 px-2 py-0.5 font-medium text-brand">
+                          {t("notifications.settings.overridden")}
+                        </span>
+                      {:else}
+                        <span class="text-text-muted">{statusText(row.email_source, false)}</span>
+                      {/if}
+                    </div>
+                  </div>
                 </td>
               </tr>
             {/each}
@@ -296,6 +496,9 @@
         </tbody>
       </table>
     </div>
+    <p class="border-t border-border px-4 py-2 text-xs text-text-muted">
+      {t("notifications.settings.email_requires_in_app")}
+    </p>
   </section>
 
   <div class="flex flex-wrap items-center justify-between gap-3">

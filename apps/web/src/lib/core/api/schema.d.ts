@@ -4269,7 +4269,7 @@ export interface paths {
         };
         /**
          * Get Preferences
-         * @description My effective matrix: what will actually happen, and which layer decided it.
+         * @description My effective matrix: what will actually happen on both channels, and who decided it.
          */
         get: operations["get_preferences_api_v1_notifications_preferences_get"];
         /** Set Preferences */
@@ -4290,32 +4290,11 @@ export interface paths {
         };
         /**
          * Get Default Preferences
-         * @description What a member inherits before they override anything (org-wide).
+         * @description What a member inherits before they override anything (org-wide), both channels.
          */
         get: operations["get_default_preferences_api_v1_notifications_preferences_defaults_get"];
         /** Set Default Preferences */
         put: operations["set_default_preferences_api_v1_notifications_preferences_defaults_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/notifications/preferences/email": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Email Preference
-         * @description My e-mail delivery rule (#17): off by default, one cadence for all my notifications.
-         */
-        get: operations["get_email_preference_api_v1_notifications_preferences_email_get"];
-        /** Set Email Preference */
-        put: operations["set_email_preference_api_v1_notifications_preferences_email_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -7830,41 +7809,49 @@ export interface components {
             password: string;
         };
         /**
-         * EmailPrefRead
-         * @description The user's effective e-mail rule: off, or a cadence (immediate / daily / weekly).
+         * EmailPreferenceRowWrite
+         * @description One event's e-mail override (#245). The digest schedule is global, so no time/weekday.
          */
-        EmailPrefRead: {
+        EmailPreferenceRowWrite: {
+            /**
+             * Delay Minutes
+             * @default 0
+             */
+            delay_minutes: number;
             /**
              * Digest
-             * @enum {string}
+             * @default immediate
              */
-            digest: "immediate" | "daily" | "weekly";
+            digest: string;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /** Event Type */
+            event_type: string;
+        };
+        /**
+         * EmailSchedule
+         * @description The scope's global e-mail digest schedule: when its daily/weekly mails leave (#245).
+         */
+        EmailSchedule: {
             /** Digest Time */
             digest_time?: string | null;
             /** Digest Weekday */
             digest_weekday?: number | null;
-            /** Enabled */
-            enabled: boolean;
             /**
              * Source
-             * @default default
-             */
-            source: string;
-        };
-        /** EmailPrefWrite */
-        EmailPrefWrite: {
-            /**
-             * Digest
-             * @default daily
              * @enum {string}
              */
-            digest: "immediate" | "daily" | "weekly";
+            source: "default" | "org" | "user";
+        };
+        /** EmailScheduleWrite */
+        EmailScheduleWrite: {
             /** Digest Time */
             digest_time?: string | null;
             /** Digest Weekday */
             digest_weekday?: number | null;
-            /** Enabled */
-            enabled: boolean;
         };
         /**
          * EmailSettingsRead
@@ -11118,13 +11105,14 @@ export interface components {
         };
         /** PreferenceMatrix */
         PreferenceMatrix: {
+            email: components["schemas"]["EmailSchedule"];
             /** Events */
             events: components["schemas"]["PreferenceRow"][];
             general: components["schemas"]["GeneralPreference"];
         };
         /**
          * PreferenceRow
-         * @description One event's effective delivery rule, and which layer decided it.
+         * @description One event's effective delivery rules (in-app + e-mail), and which layer decided each.
          */
         PreferenceRow: {
             /** Delay Minutes */
@@ -11135,6 +11123,27 @@ export interface components {
             digest_time?: string | null;
             /** Digest Weekday */
             digest_weekday?: number | null;
+            /**
+             * Email Delay Minutes
+             * @default 0
+             */
+            email_delay_minutes: number;
+            /**
+             * Email Digest
+             * @default immediate
+             */
+            email_digest: string;
+            /**
+             * Email Enabled
+             * @default false
+             */
+            email_enabled: boolean;
+            /**
+             * Email Source
+             * @default default
+             * @enum {string}
+             */
+            email_source: "default" | "org" | "user";
             /** Enabled */
             enabled: boolean;
             /** Event Type */
@@ -11172,8 +11181,14 @@ export interface components {
         /**
          * PreferenceUpdate
          * @description A PUT replaces this scope's overrides wholesale — an omitted event inherits again.
+         *
+         *     ``events`` and ``email_events`` are the in-app and e-mail overrides, each tracked
+         *     independently, so an event may override one channel while still inheriting the other.
          */
         PreferenceUpdate: {
+            email?: components["schemas"]["EmailScheduleWrite"] | null;
+            /** Email Events */
+            email_events?: components["schemas"]["EmailPreferenceRowWrite"][];
             /** Events */
             events?: components["schemas"]["PreferenceRowWrite"][];
             general?: components["schemas"]["GeneralPreferenceWrite"] | null;
@@ -24911,59 +24926,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PreferenceMatrix"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_email_preference_api_v1_notifications_preferences_email_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EmailPrefRead"];
-                };
-            };
-        };
-    };
-    set_email_preference_api_v1_notifications_preferences_email_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EmailPrefWrite"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EmailPrefRead"];
                 };
             };
             /** @description Validation Error */

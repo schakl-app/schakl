@@ -218,12 +218,14 @@ class ExternalChannel:
 
 
 class EmailChannel:
-    """Personal e-mail (#17): one delivery row per notification the recipient opted into.
+    """Personal e-mail (#245): one delivery row per notification the recipient opted into.
 
-    The recipient's *general* e-mail preference decides cadence: ``immediate`` rows are due
-    at once, digest rows carry ``deliver_after`` — the worker holds them and sends everything
-    due for a user as **one** mail. Same DB-only rule as every channel: no I/O here, and the
-    whole batch resolves its preferences in one query (never one per recipient).
+    The recipient's **per-event** e-mail preference decides whether this event mails and at
+    what cadence: ``immediate`` rows are due at once, digest rows carry ``deliver_after`` — the
+    worker holds them and sends everything due for a user as **one** mail. E-mail is a subset of
+    in-app: it fans out from the freshly-written inbox rows, so an event the recipient switched
+    off in-app never reaches this channel. Same DB-only rule as every channel: no I/O here, and
+    the whole batch resolves its preferences in one query (never one per recipient).
     """
 
     key = CHANNEL_EMAIL
@@ -235,12 +237,15 @@ class EmailChannel:
         event: NotificationEvent,
         notifications: Sequence[Notification],
     ) -> None:
-        from app.modules.notifications.prefs import compute_visible_at, email_prefs_for_recipients
+        from app.modules.notifications.prefs import (
+            compute_visible_at,
+            resolve_email_for_recipients,
+        )
 
         if not notifications:
             return
-        prefs = await email_prefs_for_recipients(
-            ctx.session, ctx.org.id, [row.user_id for row in notifications]
+        prefs = await resolve_email_for_recipients(
+            ctx.session, ctx.org.id, event.event_type, [row.user_id for row in notifications]
         )
         now = datetime.now(UTC)
         for row in notifications:

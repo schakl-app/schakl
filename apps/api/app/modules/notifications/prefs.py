@@ -95,16 +95,19 @@ async def _load(
     session: AsyncSession,
     org_id: uuid.UUID,
     *,
+    channel: str = CHANNEL_IN_APP,
     event_types: Sequence[str] | None,
     user_ids: Sequence[uuid.UUID],
 ) -> _Buckets:
     """One query for every row that can influence the asked-for (user, event) pairs.
 
     ``user_ids=[]`` loads only the org-default rows — the "what does a fresh user get" view.
+    ``channel`` picks which delivery channel's rows to resolve (in-app or e-mail); the bucketing
+    is identical, so one loader serves both matrices.
     """
     stmt = select(NotificationPreference).where(
         NotificationPreference.org_id == org_id,
-        NotificationPreference.channel == CHANNEL_IN_APP,
+        NotificationPreference.channel == channel,
         or_(
             NotificationPreference.user_id.in_(user_ids),
             NotificationPreference.user_id.is_(None),
@@ -209,10 +212,12 @@ async def effective_matrix(
 
 
 # --------------------------------------------------------------------------- #
-# E-mail delivery (#17): one *general* row per user on channel "email"
+# E-mail delivery (#245): per event type, mirroring the in-app matrix
 # --------------------------------------------------------------------------- #
-#: Off until someone opts in — e-mail is the only channel that leaves the app, so it is
-#: never on by default. The cadence fields still carry sane values for the settings form.
+#: Off until someone opts in — e-mail is the only channel that leaves the app, so no event
+#: mails by default. A per-event row (``event_type`` set, channel "email") flips it on and
+#: carries its own cadence; the digest *schedule* (time-of-day + weekday) is one global choice
+#: per scope, kept on the general e-mail row and folded in here.
 EMAIL_PREF_OFF = ResolvedPref(
     enabled=False,
     delay_minutes=0,
@@ -223,81 +228,95 @@ EMAIL_PREF_OFF = ResolvedPref(
 )
 
 
-async def email_prefs_for_recipients(
-    session: AsyncSession, org_id: uuid.UUID, user_ids: Sequence[uuid.UUID]
-) -> dict[uuid.UUID, ResolvedPref]:
-    """The e-mail rule per recipient: the user's general row, else the org default row, else off.
+@dataclass(frozen=True)
+class EmailSchedule:
+    """A scope's global e-mail digest schedule: when its daily/weekly mails leave."""
 
-    Deliberately *not* per event type: "mail me my notifications, at this cadence" is one
-    decision. The per-event nuance stays on the in-app matrix.
-    """
-    if not user_ids:
-        return {}
-    rows = (
-        (
-            await session.execute(
-                select(NotificationPreference).where(
-                    NotificationPreference.org_id == org_id,
-                    NotificationPreference.channel == CHANNEL_EMAIL,
-                    NotificationPreference.event_type.is_(None),
-                    or_(
-                        NotificationPreference.user_id.in_(list(user_ids)),
-                        NotificationPreference.user_id.is_(None),
-                    ),
-                )
-            )
-        )
-        .scalars()
-        .all()
+    digest_time: time
+    digest_weekday: int | None
+    source: str
+
+
+def _email_schedule(user_id: uuid.UUID | None, buckets: _Buckets) -> EmailSchedule:
+    """The scope's digest schedule: user general row ← org general row ← 08:00 / Monday."""
+    row = None
+    source = "default"
+    if user_id is not None:
+        row = buckets.user_general.get(user_id)
+        if row is not None:
+            source = "user"
+    if row is None:
+        row = buckets.org_general
+        source = "org" if row is not None else "default"
+    at = row.digest_time if row is not None and row.digest_time is not None else DEFAULT_DIGEST_TIME
+    return EmailSchedule(
+        digest_time=at,
+        digest_weekday=(row.digest_weekday if row is not None else None),
+        source=source,
     )
-    org_row = next((r for r in rows if r.user_id is None), None)
-    by_user = {r.user_id: r for r in rows if r.user_id is not None}
 
-    def resolved(row: NotificationPreference | None) -> ResolvedPref:
-        if row is None:
-            return EMAIL_PREF_OFF
-        return ResolvedPref(
-            enabled=row.enabled,
-            delay_minutes=row.delay_minutes,
-            digest=row.digest,
-            digest_time=row.digest_time,
-            digest_weekday=row.digest_weekday,
-            channel=CHANNEL_EMAIL,
-            source="user" if row.user_id is not None else "org",
+
+def _merge_email(event_type: str, user_id: uuid.UUID | None, buckets: _Buckets) -> ResolvedPref:
+    """The effective e-mail rule for one (user, event): user row ← org row ← off.
+
+    The digest schedule (time/weekday) is not per event, so it is folded in from the scope's
+    general e-mail row — ``compute_visible_at`` then places a digest mail without another query.
+    """
+    row = None
+    source = "default"
+    if user_id is not None:
+        row = buckets.user_event.get((user_id, event_type))
+        if row is not None:
+            source = "user"
+    if row is None:
+        row = buckets.org_event.get(event_type)
+        source = "org" if row is not None else "default"
+
+    schedule = _email_schedule(user_id, buckets)
+    base = EMAIL_PREF_OFF
+    if row is not None:
+        base = replace(
+            base, enabled=row.enabled, delay_minutes=row.delay_minutes, digest=row.digest
         )
+    return replace(
+        base,
+        digest_time=schedule.digest_time,
+        digest_weekday=schedule.digest_weekday,
+        source=source,
+    )
 
-    return {uid: resolved(by_user.get(uid, org_row)) for uid in user_ids}
 
-
-async def save_email_pref(
+async def resolve_email_for_recipients(
     session: AsyncSession,
     org_id: uuid.UUID,
-    user_id: uuid.UUID,
-    *,
-    enabled: bool,
-    digest: str,
-    digest_time: time | None,
-    digest_weekday: int | None,
-) -> None:
-    """Upsert the user's general e-mail row (one per user, enforced by the partial unique)."""
-    row = await session.scalar(
-        select(NotificationPreference).where(
-            NotificationPreference.org_id == org_id,
-            NotificationPreference.channel == CHANNEL_EMAIL,
-            NotificationPreference.event_type.is_(None),
-            NotificationPreference.user_id == user_id,
-        )
+    event_type: str,
+    user_ids: Sequence[uuid.UUID],
+) -> dict[uuid.UUID, ResolvedPref]:
+    """The e-mail rule for one event and many recipients — a single query (no N+1)."""
+    if not user_ids:
+        return {}
+    buckets = await _load(
+        session, org_id, channel=CHANNEL_EMAIL, event_types=[event_type], user_ids=list(user_ids)
     )
-    if row is None:
-        row = NotificationPreference(
-            org_id=org_id, user_id=user_id, event_type=None, channel=CHANNEL_EMAIL
-        )
-        session.add(row)
-    row.enabled = enabled
-    row.digest = digest
-    row.digest_time = digest_time
-    row.digest_weekday = digest_weekday
-    await session.flush()
+    return {uid: _merge_email(event_type, uid, buckets) for uid in user_ids}
+
+
+async def effective_email_matrix(
+    session: AsyncSession, org_id: uuid.UUID, user_id: uuid.UUID | None
+) -> tuple[dict[str, ResolvedPref], EmailSchedule]:
+    """Every event's e-mail rule for one scope, plus the scope's global digest schedule.
+
+    ``user_id=None`` yields the org defaults — the same two-scope story the in-app matrix tells.
+    """
+    buckets = await _load(
+        session,
+        org_id,
+        channel=CHANNEL_EMAIL,
+        event_types=None,
+        user_ids=[user_id] if user_id is not None else [],
+    )
+    events = {event: _merge_email(event, user_id, buckets) for event in EVENT_TYPES}
+    return events, _email_schedule(user_id, buckets)
 
 
 # --------------------------------------------------------------------------- #
@@ -358,17 +377,39 @@ class GeneralWrite:
     quiet_hours_end: time | None
 
 
+@dataclass(frozen=True)
+class EmailWrite:
+    """One event's e-mail override at a scope. The schedule is global, so no time/weekday here."""
+
+    event_type: str
+    enabled: bool
+    delay_minutes: int
+    digest: str
+
+
+@dataclass(frozen=True)
+class EmailScheduleWrite:
+    """The scope's global e-mail digest schedule (time-of-day + weekday)."""
+
+    digest_time: time | None
+    digest_weekday: int | None
+
+
 async def replace_overrides(
     session: AsyncSession,
     org_id: uuid.UUID,
     user_id: uuid.UUID | None,
     events: Sequence[PrefWrite],
+    email_events: Sequence[EmailWrite],
     general: GeneralWrite | None,
+    email_schedule: EmailScheduleWrite | None,
 ) -> None:
-    """Set this scope's rows to exactly ``events`` (+ ``general``); everything else inherits.
+    """Set this scope's rows to exactly the given in-app + e-mail overrides; the rest inherits.
 
     Delete-then-insert rather than a diff: the partial unique indexes make an interleaved
-    update/insert awkward, and a scope holds at most one row per event.
+    update/insert awkward, and a scope holds at most one row per (event, channel). Both channels
+    are rewritten in one pass — the caller resolves each channel's overrides independently, so
+    an event may override e-mail while its in-app rule keeps inheriting, and vice versa.
     """
     scope = (
         NotificationPreference.user_id.is_(None)
@@ -378,7 +419,7 @@ async def replace_overrides(
     await session.execute(
         delete(NotificationPreference).where(
             NotificationPreference.org_id == org_id,
-            NotificationPreference.channel == CHANNEL_IN_APP,
+            NotificationPreference.channel.in_([CHANNEL_IN_APP, CHANNEL_EMAIL]),
             scope,
         )
     )
@@ -398,6 +439,18 @@ async def replace_overrides(
                 digest_weekday=event.digest_weekday,
             )
         )
+    for event in email_events:
+        session.add(
+            NotificationPreference(
+                org_id=org_id,
+                user_id=user_id,
+                event_type=event.event_type,
+                channel=CHANNEL_EMAIL,
+                enabled=event.enabled,
+                delay_minutes=event.delay_minutes,
+                digest=event.digest,
+            )
+        )
     if general is not None:
         session.add(
             NotificationPreference(
@@ -408,6 +461,17 @@ async def replace_overrides(
                 due_soon_days=general.due_soon_days,
                 quiet_hours_start=general.quiet_hours_start,
                 quiet_hours_end=general.quiet_hours_end,
+            )
+        )
+    if email_schedule is not None:
+        session.add(
+            NotificationPreference(
+                org_id=org_id,
+                user_id=user_id,
+                event_type=None,
+                channel=CHANNEL_EMAIL,
+                digest_time=email_schedule.digest_time,
+                digest_weekday=email_schedule.digest_weekday,
             )
         )
     await session.flush()

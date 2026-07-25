@@ -16,12 +16,15 @@ from app.core.tenancy import RequestContext, require_context
 from app.modules.notifications.channel_admin import ChannelService
 from app.modules.notifications.defaults import ResolvedPref
 from app.modules.notifications.prefs import (
+    EmailScheduleWrite as EmailScheduleData,
+)
+from app.modules.notifications.prefs import (
+    EmailWrite,
     GeneralWrite,
     PrefWrite,
+    effective_email_matrix,
     effective_matrix,
-    email_prefs_for_recipients,
     replace_overrides,
-    save_email_pref,
 )
 from app.modules.notifications.schemas import (
     ActivityItem,
@@ -29,8 +32,7 @@ from app.modules.notifications.schemas import (
     ChannelRead,
     ChannelTestResult,
     ChannelUpdate,
-    EmailPrefRead,
-    EmailPrefWrite,
+    EmailSchedule,
     EntityType,
     GeneralPreference,
     MarkAllResult,
@@ -49,8 +51,16 @@ from app.schemas import Page
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 
-def _matrix(resolved: dict[str, ResolvedPref]) -> PreferenceMatrix:
-    """Every event, always — so the settings table renders complete and badges inheritance."""
+def _matrix(
+    in_app: dict[str, ResolvedPref],
+    email: dict[str, ResolvedPref],
+    schedule: object,
+) -> PreferenceMatrix:
+    """Every event, always — so the settings table renders complete and badges inheritance.
+
+    Each row carries both channels' resolved rules and their independent inheritance sources;
+    ``schedule`` is the scope's global e-mail digest schedule (a ``prefs.EmailSchedule``).
+    """
     rows = [
         PreferenceRow(
             event_type=event_type,
@@ -60,20 +70,41 @@ def _matrix(resolved: dict[str, ResolvedPref]) -> PreferenceMatrix:
             digest_time=pref.digest_time,
             digest_weekday=pref.digest_weekday,
             source=pref.source,
+            email_enabled=email[event_type].enabled,
+            email_delay_minutes=email[event_type].delay_minutes,
+            email_digest=email[event_type].digest,
+            email_source=email[event_type].source,
         )
-        for event_type, pref in resolved.items()
+        for event_type, pref in in_app.items()
     ]
-    any_pref = next(iter(resolved.values()))
+    any_pref = next(iter(in_app.values()))
     general = GeneralPreference(
         due_soon_days=any_pref.due_soon_days,
         quiet_hours_start=any_pref.quiet_hours_start,
         quiet_hours_end=any_pref.quiet_hours_end,
         source=any_pref.general_source,
     )
-    return PreferenceMatrix(events=rows, general=general)
+    return PreferenceMatrix(
+        events=rows,
+        general=general,
+        email=EmailSchedule(
+            digest_time=schedule.digest_time,
+            digest_weekday=schedule.digest_weekday,
+            source=schedule.source,
+        ),
+    )
 
 
-def _writes(payload: PreferenceUpdate) -> tuple[list[PrefWrite], GeneralWrite | None]:
+async def _load_matrix(session, org_id, user_id) -> PreferenceMatrix:  # noqa: ANN001
+    """Resolve both channels' matrices + the e-mail schedule for one scope, then compose."""
+    in_app = await effective_matrix(session, org_id, user_id)
+    email, schedule = await effective_email_matrix(session, org_id, user_id)
+    return _matrix(in_app, email, schedule)
+
+
+def _writes(
+    payload: PreferenceUpdate,
+) -> tuple[list[PrefWrite], list[EmailWrite], GeneralWrite | None, EmailScheduleData | None]:
     events = [
         PrefWrite(
             event_type=row.event_type,
@@ -85,6 +116,15 @@ def _writes(payload: PreferenceUpdate) -> tuple[list[PrefWrite], GeneralWrite | 
         )
         for row in payload.events
     ]
+    email_events = [
+        EmailWrite(
+            event_type=row.event_type,
+            enabled=row.enabled,
+            delay_minutes=row.delay_minutes,
+            digest=row.digest,
+        )
+        for row in payload.email_events
+    ]
     general = (
         GeneralWrite(
             due_soon_days=payload.general.due_soon_days,
@@ -94,7 +134,15 @@ def _writes(payload: PreferenceUpdate) -> tuple[list[PrefWrite], GeneralWrite | 
         if payload.general is not None
         else None
     )
-    return events, general
+    email_schedule = (
+        EmailScheduleData(
+            digest_time=payload.email.digest_time,
+            digest_weekday=payload.email.digest_weekday,
+        )
+        if payload.email is not None
+        else None
+    )
+    return events, email_events, general, email_schedule
 
 
 # --- inbox ---------------------------------------------------------------------------- #
@@ -212,8 +260,8 @@ async def set_watch(
     dependencies=[require_permission("notifications.notification.read")],
 )
 async def get_preferences(ctx: RequestContext = Depends(require_context)) -> PreferenceMatrix:
-    """My effective matrix: what will actually happen, and which layer decided it."""
-    return _matrix(await effective_matrix(ctx.session, ctx.org.id, ctx.user.id))
+    """My effective matrix: what will actually happen on both channels, and who decided it."""
+    return await _load_matrix(ctx.session, ctx.org.id, ctx.user.id)
 
 
 @router.put(
@@ -224,46 +272,11 @@ async def get_preferences(ctx: RequestContext = Depends(require_context)) -> Pre
 async def set_preferences(
     payload: PreferenceUpdate, ctx: RequestContext = Depends(require_context)
 ) -> PreferenceMatrix:
-    events, general = _writes(payload)
-    await replace_overrides(ctx.session, ctx.org.id, ctx.user.id, events, general)
-    return _matrix(await effective_matrix(ctx.session, ctx.org.id, ctx.user.id))
-
-
-@router.get(
-    "/preferences/email",
-    response_model=EmailPrefRead,
-    dependencies=[require_permission("notifications.notification.read")],
-)
-async def get_email_preference(ctx: RequestContext = Depends(require_context)) -> EmailPrefRead:
-    """My e-mail delivery rule (#17): off by default, one cadence for all my notifications."""
-    pref = (await email_prefs_for_recipients(ctx.session, ctx.org.id, [ctx.user.id]))[ctx.user.id]
-    return EmailPrefRead(
-        enabled=pref.enabled,
-        digest=pref.digest,  # type: ignore[arg-type]
-        digest_time=pref.digest_time,
-        digest_weekday=pref.digest_weekday,
-        source=pref.source,
+    events, email_events, general, email_schedule = _writes(payload)
+    await replace_overrides(
+        ctx.session, ctx.org.id, ctx.user.id, events, email_events, general, email_schedule
     )
-
-
-@router.put(
-    "/preferences/email",
-    response_model=EmailPrefRead,
-    dependencies=[require_permission("notifications.notification.write")],
-)
-async def set_email_preference(
-    payload: EmailPrefWrite, ctx: RequestContext = Depends(require_context)
-) -> EmailPrefRead:
-    await save_email_pref(
-        ctx.session,
-        ctx.org.id,
-        ctx.user.id,
-        enabled=payload.enabled,
-        digest=payload.digest,
-        digest_time=payload.digest_time,
-        digest_weekday=payload.digest_weekday,
-    )
-    return await get_email_preference(ctx)
+    return await _load_matrix(ctx.session, ctx.org.id, ctx.user.id)
 
 
 @router.get(
@@ -274,8 +287,8 @@ async def set_email_preference(
 async def get_default_preferences(
     ctx: RequestContext = Depends(require_context),
 ) -> PreferenceMatrix:
-    """What a member inherits before they override anything (org-wide)."""
-    return _matrix(await effective_matrix(ctx.session, ctx.org.id, None))
+    """What a member inherits before they override anything (org-wide), both channels."""
+    return await _load_matrix(ctx.session, ctx.org.id, None)
 
 
 @router.put(
@@ -286,9 +299,11 @@ async def get_default_preferences(
 async def set_default_preferences(
     payload: PreferenceUpdate, ctx: RequestContext = Depends(require_context)
 ) -> PreferenceMatrix:
-    events, general = _writes(payload)
-    await replace_overrides(ctx.session, ctx.org.id, None, events, general)
-    return _matrix(await effective_matrix(ctx.session, ctx.org.id, None))
+    events, email_events, general, email_schedule = _writes(payload)
+    await replace_overrides(
+        ctx.session, ctx.org.id, None, events, email_events, general, email_schedule
+    )
+    return await _load_matrix(ctx.session, ctx.org.id, None)
 
 
 # --- external channels (#17): admin-only, declared before ``/{notification_id}`` ---------- #

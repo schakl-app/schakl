@@ -1,28 +1,25 @@
 <script lang="ts">
   import { enhance } from "$app/forms";
-  import { dateLocale } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import Button from "$lib/core/ui/Button.svelte";
+  import ChannelEventFilter from "$lib/modules/notifications/ChannelEventFilter.svelte";
   import PreferenceMatrixForm from "$lib/modules/notifications/PreferenceMatrixForm.svelte";
 
   let { data, form } = $props();
 
   const busy = new InFlight();
 
-  // --- personal e-mail delivery (#17): off / immediate / daily / weekly ------------------ #
-  const EMAIL_MODES = ["off", "immediate", "daily", "weekly"] as const;
-  let emailModeChosen = $state("");
-  const emailMode = $derived(
-    emailModeChosen || (data.emailPref?.enabled ? (data.emailPref.digest ?? "daily") : "off"),
-  );
+  // The event vocabulary for the channel filter picker comes from the matrix (already loaded).
+  const eventTypes = $derived(data.matrix.events.map((row) => row.event_type));
 
-  // Monday-based weekday names in the UI locale (2024-01-01 was a Monday).
-  const weekdayFmt = new Intl.DateTimeFormat(dateLocale(), { weekday: "long", timeZone: "UTC" });
-  const WEEKDAYS = Array.from({ length: 7 }, (_, i) =>
-    weekdayFmt.format(new Date(Date.UTC(2024, 0, 1 + i))),
-  );
+  // Which existing channel is open in the inline editor (Part 2, #245).
+  let editingId = $state("");
+  // The filter each open editor is composing, keyed by channel id.
+  let editFilter = $state<Record<string, string[]>>({});
+  // The filter the create form is composing (empty = all events).
+  let createFilter = $state<string[]>([]);
 
   // --- external channels (#17): provider cards, never a raw Apprise URL ------------------ #
   // Each kind's guided form: what the admin pastes, in the provider's own vocabulary.
@@ -46,6 +43,12 @@
   };
   let kindChosen = $state("");
   const kind = $derived(kindChosen || "email");
+
+  // Open the inline editor for one channel, seeded with its current filter (Part 2, #245).
+  function openEditor(channel: { id: string; event_filter: string[] }): void {
+    editingId = channel.id;
+    editFilter = { ...editFilter, [channel.id]: [...(channel.event_filter ?? [])] };
+  }
 </script>
 
 <svelte:head>
@@ -64,82 +67,6 @@
   saved={form?.saved ?? false}
 />
 
-<!-- My e-mail delivery (#17): one cadence for everything that reaches me. -->
-<section class="mt-8 rounded-xl border border-border bg-surface-raised p-6">
-  <h2 class="mb-1 text-sm font-semibold text-text">{t("settings.notifications.email.title")}</h2>
-  <p class="mb-4 text-sm text-text-muted">{t("settings.notifications.email.subtitle")}</p>
-
-  <form
-    method="POST"
-    action="?/saveEmailPref"
-    use:enhance={busy.wrap("emailPref")}
-    class="space-y-4"
-  >
-    <input type="hidden" name="mode" value={emailMode} />
-    <div class="grid gap-2 sm:grid-cols-4">
-      {#each EMAIL_MODES as mode (mode)}
-        <button
-          type="button"
-          class="rounded-lg border px-3 py-2 text-sm {emailMode === mode
-            ? 'border-brand bg-surface text-brand'
-            : 'border-border text-text hover:border-brand'}"
-          aria-pressed={emailMode === mode}
-          onclick={() => (emailModeChosen = mode)}
-        >
-          {t(`settings.notifications.email.mode.${mode}`)}
-        </button>
-      {/each}
-    </div>
-
-    {#if emailMode === "daily" || emailMode === "weekly"}
-      <div class="flex flex-wrap items-end gap-4">
-        {#if emailMode === "weekly"}
-          <div>
-            <label for="email-digest-weekday" class="mb-1 block text-sm text-text"
-              >{t("settings.notifications.email.weekday")}</label
-            >
-            <select
-              id="email-digest-weekday"
-              name="digest_weekday"
-              class="rounded-lg border border-border px-3 py-2 text-sm"
-            >
-              {#each WEEKDAYS as day, i (day)}
-                <option value={i} selected={(data.emailPref?.digest_weekday ?? 0) === i}
-                  >{day}</option
-                >
-              {/each}
-            </select>
-          </div>
-        {/if}
-        <div>
-          <label for="email-digest-time" class="mb-1 block text-sm text-text"
-            >{t("settings.notifications.email.time")}</label
-          >
-          <input
-            id="email-digest-time"
-            name="digest_time"
-            type="time"
-            value={data.emailPref?.digest_time?.slice(0, 5) ?? "08:00"}
-            class="rounded-lg border border-border px-3 py-2 text-sm"
-          />
-        </div>
-      </div>
-    {/if}
-
-    <div class="flex items-center gap-3">
-      <Button loading={busy.is("emailPref")} disabled={busy.active}>{t("common.save")}</Button>
-      {#if form?.emailPrefSaved}
-        <span class="text-sm text-green-700 dark:text-green-400"
-          >{t("settings.notifications.email.saved")}</span
-        >
-      {:else if form?.emailPrefError}
-        <span class="text-sm text-red-600 dark:text-red-400">{t(form.emailPrefError)}</span>
-      {/if}
-    </div>
-    <p class="text-xs text-text-muted">{t("settings.notifications.email.transport_hint")}</p>
-  </form>
-</section>
-
 {#if data.canManageChannels}
   <section class="mt-8 rounded-xl border border-border bg-surface-raised p-6">
     <h2 class="mb-1 text-sm font-semibold text-text">{t("settings.notifications.channels")}</h2>
@@ -148,47 +75,115 @@
     {#if data.channels.length > 0}
       <ul class="mb-4 divide-y divide-border rounded-lg border border-border">
         {#each data.channels as channel (channel.id)}
-          <li class="flex items-center gap-3 px-3 py-2 text-sm">
-            <div class="min-w-0 flex-1">
-              <span class="font-medium text-text">{channel.name}</span>
-              <span class="ml-2 rounded-full bg-surface px-2 py-0.5 text-[11px] text-text-muted"
-                >{t(`settings.notifications.kind.${channel.kind}`)}</span
-              >
-              {#if !channel.enabled}
-                <span class="ml-1 text-[11px] text-text-muted"
-                  >({t("settings.notifications.channel_disabled")})</span
+          <li class="px-3 py-2 text-sm">
+            <div class="flex items-center gap-3">
+              <div class="min-w-0 flex-1">
+                <span class="font-medium text-text">{channel.name}</span>
+                <span class="ml-2 rounded-full bg-surface px-2 py-0.5 text-[11px] text-text-muted"
+                  >{t(`settings.notifications.kind.${channel.kind}`)}</span
                 >
-              {/if}
-              <span class="block truncate font-mono text-xs text-text-muted"
-                >{channel.redacted}</span
-              >
-            </div>
-            <form
-              method="POST"
-              action="?/testChannel"
-              use:enhance={busy.wrap(`test-${channel.id}`)}
-            >
-              <input type="hidden" name="channel_id" value={channel.id} />
+                {#if !channel.enabled}
+                  <span class="ml-1 text-[11px] text-text-muted"
+                    >({t("settings.notifications.channel_disabled")})</span
+                  >
+                {/if}
+                <span class="block truncate font-mono text-xs text-text-muted"
+                  >{channel.redacted}</span
+                >
+                <span class="block text-[11px] text-text-muted">
+                  {channel.event_filter.length === 0
+                    ? t("settings.notifications.channel_events_all")
+                    : t("settings.notifications.channel_events_count", {
+                        count: channel.event_filter.length,
+                      })}
+                </span>
+              </div>
               <Button
                 variant="secondary"
                 size="xs"
-                loading={busy.is(`test-${channel.id}`)}
-                disabled={busy.active}>{t("settings.notifications.channel_test")}</Button
+                onclick={() => openEditor(channel)}
+                disabled={busy.active}>{t("common.edit")}</Button
               >
-            </form>
-            <form
-              method="POST"
-              action="?/deleteChannel"
-              use:enhance={busy.wrap(`delete-${channel.id}`)}
-            >
-              <input type="hidden" name="channel_id" value={channel.id} />
-              <Button
-                variant="danger-outline"
-                size="xs"
-                loading={busy.is(`delete-${channel.id}`)}
-                disabled={busy.active}>{t("common.delete")}</Button
+              <form
+                method="POST"
+                action="?/testChannel"
+                use:enhance={busy.wrap(`test-${channel.id}`)}
               >
-            </form>
+                <input type="hidden" name="channel_id" value={channel.id} />
+                <Button
+                  variant="secondary"
+                  size="xs"
+                  loading={busy.is(`test-${channel.id}`)}
+                  disabled={busy.active}>{t("settings.notifications.channel_test")}</Button
+                >
+              </form>
+              <form
+                method="POST"
+                action="?/deleteChannel"
+                use:enhance={busy.wrap(`delete-${channel.id}`)}
+              >
+                <input type="hidden" name="channel_id" value={channel.id} />
+                <Button
+                  variant="danger-outline"
+                  size="xs"
+                  loading={busy.is(`delete-${channel.id}`)}
+                  disabled={busy.active}>{t("common.delete")}</Button
+                >
+              </form>
+            </div>
+
+            {#if editingId === channel.id}
+              <form
+                method="POST"
+                action="?/updateChannel"
+                class="mt-3 space-y-3 rounded-lg border border-border p-3"
+                use:enhance={busy.wrap(`update-${channel.id}`, () => ({ result, update }) => {
+                  if (result.type === "success") editingId = "";
+                  void update({ reset: false });
+                })}
+              >
+                <input type="hidden" name="channel_id" value={channel.id} />
+                <div class="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label for="edit-name-{channel.id}" class="mb-1 block text-sm text-text"
+                      >{t("settings.notifications.channel_name")}</label
+                    >
+                    <input
+                      id="edit-name-{channel.id}"
+                      name="name"
+                      value={channel.name}
+                      required
+                      class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand"
+                    />
+                  </div>
+                  <label class="flex items-end gap-2 pb-2 text-sm text-text">
+                    <input type="checkbox" name="enabled" checked={channel.enabled} />
+                    {t("settings.notifications.channel_enabled")}
+                  </label>
+                </div>
+                <ChannelEventFilter
+                  events={eventTypes}
+                  value={editFilter[channel.id] ?? []}
+                  onchange={(v) => (editFilter = { ...editFilter, [channel.id]: v })}
+                />
+                <input
+                  type="hidden"
+                  name="event_filter"
+                  value={JSON.stringify(editFilter[channel.id] ?? [])}
+                />
+                <div class="flex gap-2">
+                  <Button loading={busy.is(`update-${channel.id}`)} disabled={busy.active}
+                    >{t("common.save")}</Button
+                  >
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onclick={() => (editingId = "")}
+                    disabled={busy.active}>{t("common.cancel")}</Button
+                  >
+                </div>
+              </form>
+            {/if}
           </li>
         {/each}
       </ul>
@@ -231,6 +226,7 @@
       action="?/createChannel"
       class="space-y-3"
       use:enhance={busy.wrap("createChannel", () => ({ result, update }) => {
+        if (result.type === "success") createFilter = [];
         void update({ reset: result.type === "success" });
       })}
     >
@@ -315,6 +311,14 @@
         {/if}
       </div>
       <p class="text-xs text-text-muted">{t(`settings.notifications.kind_hint.${kind}`)}</p>
+
+      <ChannelEventFilter
+        events={eventTypes}
+        value={createFilter}
+        onchange={(v) => (createFilter = v)}
+      />
+      <input type="hidden" name="event_filter" value={JSON.stringify(createFilter)} />
+
       {#if form?.channelError}
         <p class="text-sm text-red-600 dark:text-red-400">{t(form.channelError)}</p>
       {/if}

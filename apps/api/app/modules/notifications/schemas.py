@@ -69,7 +69,7 @@ class WatchUpdate(BaseModel):
 
 
 class PreferenceRow(BaseModel):
-    """One event's effective delivery rule, and which layer decided it."""
+    """One event's effective delivery rules (in-app + e-mail), and which layer decided each."""
 
     event_type: str
     enabled: bool
@@ -78,6 +78,12 @@ class PreferenceRow(BaseModel):
     digest_time: time | None = None
     digest_weekday: int | None = None
     source: PrefSource
+    # E-mail channel (#245): the same granularity as in-app, resolved independently. ``off`` is
+    # ``email_enabled=false``; the digest schedule (time/weekday) lives on the matrix's ``email``.
+    email_enabled: bool = False
+    email_delay_minutes: int = 0
+    email_digest: str = "immediate"
+    email_source: PrefSource = "default"
 
 
 class GeneralPreference(BaseModel):
@@ -87,9 +93,18 @@ class GeneralPreference(BaseModel):
     source: PrefSource
 
 
+class EmailSchedule(BaseModel):
+    """The scope's global e-mail digest schedule: when its daily/weekly mails leave (#245)."""
+
+    digest_time: time | None = None
+    digest_weekday: int | None = None
+    source: PrefSource
+
+
 class PreferenceMatrix(BaseModel):
     events: list[PreferenceRow]
     general: GeneralPreference
+    email: EmailSchedule
 
 
 class PreferenceRowWrite(BaseModel):
@@ -115,17 +130,51 @@ class PreferenceRowWrite(BaseModel):
         return value
 
 
+class EmailPreferenceRowWrite(BaseModel):
+    """One event's e-mail override (#245). The digest schedule is global, so no time/weekday."""
+
+    event_type: str
+    enabled: bool = False
+    delay_minutes: Annotated[int, Field(ge=0, le=24 * 60)] = 0
+    digest: str = "immediate"
+
+    @field_validator("event_type")
+    @classmethod
+    def _known_event(cls, value: str) -> str:
+        if value not in EVENT_TYPES:
+            raise ValueError("unknown event_type")
+        return value
+
+    @field_validator("digest")
+    @classmethod
+    def _known_digest(cls, value: str) -> str:
+        if value not in DIGEST_CADENCES:
+            raise ValueError("unknown digest cadence")
+        return value
+
+
 class GeneralPreferenceWrite(BaseModel):
     due_soon_days: Annotated[int | None, Field(ge=0, le=90)] = None
     quiet_hours_start: time | None = None
     quiet_hours_end: time | None = None
 
 
+class EmailScheduleWrite(BaseModel):
+    digest_time: time | None = None
+    digest_weekday: Annotated[int | None, Field(ge=0, le=6)] = None
+
+
 class PreferenceUpdate(BaseModel):
-    """A PUT replaces this scope's overrides wholesale — an omitted event inherits again."""
+    """A PUT replaces this scope's overrides wholesale — an omitted event inherits again.
+
+    ``events`` and ``email_events`` are the in-app and e-mail overrides, each tracked
+    independently, so an event may override one channel while still inheriting the other.
+    """
 
     events: list[PreferenceRowWrite] = Field(default_factory=list)
+    email_events: list[EmailPreferenceRowWrite] = Field(default_factory=list)
     general: GeneralPreferenceWrite | None = None
+    email: EmailScheduleWrite | None = None
 
     @field_validator("events")
     @classmethod
@@ -135,10 +184,23 @@ class PreferenceUpdate(BaseModel):
             raise ValueError("duplicate event_type")
         return value
 
+    @field_validator("email_events")
+    @classmethod
+    def _no_email_duplicates(
+        cls, value: list[EmailPreferenceRowWrite]
+    ) -> list[EmailPreferenceRowWrite]:
+        seen = {row.event_type for row in value}
+        if len(seen) != len(value):
+            raise ValueError("duplicate event_type")
+        return value
+
 
 __all__ = [
     "ENTITY_TYPES",
     "ActivityItem",
+    "EmailPreferenceRowWrite",
+    "EmailSchedule",
+    "EmailScheduleWrite",
     "EntityType",
     "GeneralPreference",
     "GeneralPreferenceWrite",
@@ -153,26 +215,6 @@ __all__ = [
     "WatchRead",
     "WatchUpdate",
 ]
-
-
-# --- personal e-mail delivery (#17) ---------------------------------------------- #
-class EmailPrefRead(BaseModel):
-    """The user's effective e-mail rule: off, or a cadence (immediate / daily / weekly)."""
-
-    enabled: bool
-    digest: Literal["immediate", "daily", "weekly"]
-    digest_time: time | None = None
-    # 0 = Monday … 6 = Sunday (weekly only).
-    digest_weekday: int | None = None
-    #: Which layer decided: ``default`` (off), ``org``, or ``user``.
-    source: str = "default"
-
-
-class EmailPrefWrite(BaseModel):
-    enabled: bool
-    digest: Literal["immediate", "daily", "weekly"] = "daily"
-    digest_time: time | None = None
-    digest_weekday: int | None = Field(default=None, ge=0, le=6)
 
 
 # --- external channels (#17) --------------------------------------------------- #

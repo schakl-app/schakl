@@ -9,22 +9,33 @@ import type { Actions, PageServerLoad } from "./$types";
 
 // Personal delivery preferences — reachable by every member (NOT manager-gated, unlike the org
 // defaults next door). Reached from the profile menu, because what reaches *me* is mine
-// (docs/UX.md §6). External channels (#17) are admin-only and shown below the matrix.
+// (docs/UX.md §6). E-mail is now per event, inside the matrix (#245); external channels (#17)
+// are admin-only and shown below it.
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const canManageChannels = can(event.locals.user, "notifications.channels.manage");
-  const [prefs, emailPref, channels] = await Promise.all([
+  const [prefs, channels] = await Promise.all([
     api.GET("/api/v1/notifications/preferences"),
-    api.GET("/api/v1/notifications/preferences/email"),
     canManageChannels ? api.GET("/api/v1/notifications/channels") : Promise.resolve({ data: null }),
   ]);
   return {
     matrix: prefs.data ?? EMPTY_MATRIX,
-    emailPref: emailPref.data ?? null,
     canManageChannels,
     channels: channels.data ?? [],
   };
 };
+
+/** A hidden JSON field carries the channel's event filter; `[]` means "all events". */
+function parseChannelFilter(raw: FormDataEntryValue | null): string[] {
+  if (typeof raw !== "string") return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed.filter((x): x is string => typeof x === "string");
+  } catch {
+    /* a malformed blob means "all events", never a 500 */
+  }
+  return [];
+}
 
 export const actions: Actions = {
   save: async (event) => {
@@ -46,23 +57,6 @@ export const actions: Actions = {
     return { saved: true };
   },
 
-  /** My e-mail delivery: off, immediate, or a daily/weekly digest (#17). */
-  saveEmailPref: async (event) => {
-    const form = await event.request.formData();
-    const mode = String(form.get("mode") ?? "off");
-    const digest = mode === "off" ? "daily" : (mode as "daily");
-    const { error } = await apiFor(event).PUT("/api/v1/notifications/preferences/email", {
-      body: {
-        enabled: mode !== "off",
-        digest,
-        digest_time: String(form.get("digest_time") ?? "").trim() || null,
-        digest_weekday: mode === "weekly" ? Number(form.get("digest_weekday") ?? 0) : null,
-      },
-    });
-    if (error) return fail(400, { emailPrefError: apiErrorKey(error).key });
-    return { emailPrefSaved: true };
-  },
-
   // --- external channels (#17), admin-only (the API re-enforces) ---------------------- #
   createChannel: async (event) => {
     const form = await event.request.formData();
@@ -76,7 +70,35 @@ export const actions: Actions = {
     if (!kind || !name || !url || url === "/")
       return fail(400, { channelError: "errors.required" });
     const { error } = await apiFor(event).POST("/api/v1/notifications/channels", {
-      body: { kind: kind as "slack", name, url, enabled: true, event_filter: [] },
+      body: {
+        kind: kind as "slack",
+        name,
+        url,
+        enabled: true,
+        // #245: which event types route here; [] = all events.
+        event_filter: parseChannelFilter(form.get("event_filter")),
+      },
+    });
+    if (error) {
+      const e = apiErrorKey(error);
+      return fail(400, { channelError: e.fields?.url ?? e.key });
+    }
+    return { channelSaved: true };
+  },
+
+  /** Edit a channel's name, enabled state, and event filter (#245). The URL is never touched. */
+  updateChannel: async (event) => {
+    const form = await event.request.formData();
+    const id = String(form.get("channel_id") ?? "");
+    if (!id) return fail(400, { channelError: "errors.required" });
+    const name = String(form.get("name") ?? "").trim();
+    const { error } = await apiFor(event).PATCH("/api/v1/notifications/channels/{channel_id}", {
+      params: { path: { channel_id: id } },
+      body: {
+        name: name || undefined,
+        enabled: form.get("enabled") != null,
+        event_filter: parseChannelFilter(form.get("event_filter")),
+      },
     });
     if (error) {
       const e = apiErrorKey(error);
