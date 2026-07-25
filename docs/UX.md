@@ -447,6 +447,26 @@
   declared permission, base key only (a scoped `:own` holder must still see their button). The
   ⋯ menu hides entirely when no item survives; `DataTable` gets `actions={... ? rowActions :
   undefined}` so the empty column disappears too.
+- **A write control that leaks to the client portal because it's a *shared* component or a
+  "use-mode" affordance.** The portal (a `client`-role login, #193) is not a separate UI: it
+  renders the **same** components as staff, and detail pages compose them without a portal filter —
+  the company hub renders every module panel as-is, and shared rows like `TaskRow` render on the
+  tasks list, the project to-do and the company panel at once. So `#253`'s rule has a second half:
+  **every write control on a client-reachable surface must gate itself**, and that includes the
+  ones that don't look like writes. A checklist tick, a complete-toggle, a drag-reorder handle, a
+  quick-add row, an inline "＋ nieuw" that opens a create form — these read as "using", but each
+  posts a write the `client` role does not hold, and living *outside edit mode* is not a gate
+  (#244). Gate them on the API's own permission (`can(page.data.user, "tasks.task.write")`,
+  `"files.file.write"`, `"contacts.contact.write"`, …), base key, exactly like any other control —
+  not on `!isPortal` (which mirrors the API less precisely and still leaks to a non-writer staff
+  member). A component reused by several hosts **self-gates internally** (`import { page }` +
+  `can`, the way `DomainsPanel` and now `TaskRow` do) so a new caller can never reintroduce the
+  leak by forgetting a prop. The whole `client` write surface is: **its own task comments, its own
+  dashboard/nav layout, and its own notification inbox** — nothing else is writable, so treat any
+  other write affordance reachable by a portal login as a bug. The API side is fenced by
+  `tests/test_rbac_deny_by_default.py::test_client_role_is_read_only_except_own_comments` (it walks
+  the live route table, so a new write route ships covered); the UI side has no automated guard, so
+  audit every write control by hand when you add a client-reachable panel, list or shared row.
 - Taking `.date()` of a UTC instant to name a local day. Amsterdam's midnight is 22:00 UTC the day
   *before* in summer, so a monthly budget reported its period as starting 30 June. Half the year the
   bug is invisible, which is why it is pinned on a fixed date rather than on `today`.

@@ -463,7 +463,13 @@ It is a **core, cross-cutting capability**, like custom fields (§13) — not pe
   `*` or `settings.roles.manage` is applied, flushed, re-counted, and rolled back with
   `409 errors.last_role_manager`.
 - **The frontend guard is UX, not security.** `can()` in the web mirrors the API's
-  `PermissionSet.has` exactly and decides what to *render*. The API is the boundary.
+  `PermissionSet.has` exactly and decides what to *render*. The API is the boundary. The
+  **client portal** (#193) is the hardest case: it renders the *same* components as staff, and
+  detail pages compose panels and shared rows without a portal filter — so every write control on
+  a client-reachable surface must self-gate on its API permission, including "use-mode" ones (a
+  checklist tick, a complete-toggle, a drag handle, an inline "＋ nieuw"). `!isPortal` is not the
+  gate; the API's own key is (`docs/UX.md`, the client-portal entry). The client's whole write
+  surface is its own task comments, dashboard/nav layout and notification inbox — nothing else.
 - **A module that ships later** brings its own permissions; a startup reconciler grants them to
   each org's system roles exactly once, tracked in `org_settings.applied_permission_defaults`.
   A migration must never import the catalog (`docs/WORKFLOW.md`).
