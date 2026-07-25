@@ -21,10 +21,12 @@
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
+  import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import { SUBSCRIPTION_TEMPLATE_COLUMNS } from "$lib/modules/subscriptions/columns";
   import PriceIncreaseModal from "$lib/modules/subscriptions/PriceIncreaseModal.svelte";
   import { subscriptionTypeLabel } from "$lib/modules/subscriptions/types";
+  import { noteVariableItems } from "$lib/modules/subscriptions/variables";
 
   let { data, form } = $props();
 
@@ -93,6 +95,9 @@
 
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm text-text outline-none focus:border-brand";
+  // The insert-a-variable menu items (issue #259): a preset's notes are authored with the
+  // placeholders that fill in when a subscription is made from it.
+  const variableItems = $derived(noteVariableItems(t));
 </script>
 
 <svelte:head>
@@ -339,9 +344,14 @@
         <label for="tpl-notes" class="mb-1 block text-sm text-text"
           >{t("subscriptions.field.notes")}</label
         >
-        <textarea id="tpl-notes" name="notes" rows="2" class={inputClass}
-          >{editing?.notes ?? ""}</textarea
-        >
+        <RichTextEditor
+          id="tpl-notes"
+          name="notes"
+          rows={2}
+          value={editing?.notes ?? ""}
+          variables={variableItems}
+        />
+        <p class="mt-1 text-xs text-text-muted">{t("subscriptions.variables.hint_template")}</p>
       </div>
       <input
         type="hidden"

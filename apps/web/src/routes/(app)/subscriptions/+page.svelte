@@ -4,7 +4,7 @@
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
-  import { fmtMoney, fmtNumericDate } from "$lib/core/format";
+  import { fmtMoney, fmtNumber, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
@@ -24,6 +24,7 @@
   import { SUBSCRIPTION_COLUMNS } from "$lib/modules/subscriptions/columns";
   import PriceIncreaseModal from "$lib/modules/subscriptions/PriceIncreaseModal.svelte";
   import { subscriptionTypeLabel } from "$lib/modules/subscriptions/types";
+  import { noteVariableItems, resolveNoteVariables } from "$lib/modules/subscriptions/variables";
 
   let { data, form } = $props();
 
@@ -195,6 +196,35 @@
 
   const money = (value: string | number | null | undefined) =>
     value == null ? "—" : fmtMoney(Number(value));
+
+  // Note variables (#259): a subscription's notes may carry `{{company_name}}`-style
+  // placeholders — prefilled from a standard subscription or inserted via the editor's menu.
+  // They fill in with this agreement's own details at save time (a snapshot into the stored
+  // markdown), read straight off the submitted form so no field needs a live binding. Only a
+  // known token with a non-empty value resolves; anything else is left as typed.
+  const variableItems = $derived(noteVariableItems(t));
+  function noteValues(fd: FormData): Record<string, string | undefined> {
+    const companyId = String(fd.get("company_id") ?? "");
+    const typeId = String(fd.get("subscription_type_id") ?? "");
+    const amount = String(fd.get("amount") ?? "").trim();
+    const hours = String(fd.get("included_hours") ?? "").trim();
+    const start = String(fd.get("start_date") ?? "").trim();
+    const interval = String(fd.get("interval") ?? "monthly");
+    return {
+      company_name: data.companies.find((c) => c.id === companyId)?.name,
+      subscription_name: String(fd.get("name") ?? "").trim() || undefined,
+      type: typeId ? typeLabel(typeId) : undefined,
+      amount: amount ? fmtMoney(Number(amount)) : undefined,
+      interval: t(`subscriptions.interval.${interval}`),
+      included_hours: hours ? fmtNumber(Number(hours)) : undefined,
+      start_date: start ? fmtNumericDate(start) : undefined,
+      brand_name: page.data.theme?.brandName || undefined,
+    };
+  }
+  function resolveNotesField(fd: FormData): void {
+    const notes = String(fd.get("notes") ?? "");
+    if (notes) fd.set("notes", resolveNoteVariables(notes, noteValues(fd)));
+  }
 
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
@@ -506,9 +536,12 @@
     <form
       method="POST"
       action={editing ? "?/update" : "?/create"}
-      use:enhance={busy.wrap("save", () => ({ result, update }) => {
-        if (result.type === "success") showForm = false;
-        void update({ reset: false });
+      use:enhance={busy.wrap("save", (input) => {
+        resolveNotesField(input.formData);
+        return ({ result, update }) => {
+          if (result.type === "success") showForm = false;
+          void update({ reset: false });
+        };
       })}
       class="space-y-4"
     >
@@ -690,8 +723,10 @@
           name="notes"
           rows={2}
           value={editing?.notes ?? prefill?.notes ?? ""}
+          variables={variableItems}
           scope={{ companyId: (createdCompanyId || editing?.company_id) ?? null }}
         />
+        <p class="mt-1 text-xs text-text-muted">{t("subscriptions.variables.hint")}</p>
       </div>
       {#if data.definitions.length > 0}
         <CustomFieldsForm
