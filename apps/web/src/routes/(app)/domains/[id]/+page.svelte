@@ -431,6 +431,7 @@
   agencyLabel={data.agencyLabel}
   definitions={data.hostingDefinitions}
   locale={data.locale}
+  initialCompanyId={domain.company_id ?? ""}
   error={form?.qcError ?? null}
   oncreatecompany={quickCreateCompany}
   oncreatecontact={quickCreateContact}

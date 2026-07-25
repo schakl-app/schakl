@@ -118,6 +118,13 @@
     const domain = data.domains.find((d) => d.id === selectedDomainId);
     return data.companies.find((c) => c.id === domain?.company_id)?.name ?? "";
   });
+  // The website's own client (#247): a hosting account quick-created from this form belongs to
+  // the same client — the edited site's, else the picked domain's, else the deep-link filter.
+  const ownerCompanyId = $derived.by(() => {
+    if (editing) return editing.company_id ?? "";
+    const domain = data.domains.find((d) => d.id === selectedDomainId);
+    return domain?.company_id ?? initialCompanyId ?? "";
+  });
 
   // Radio selection is component state, never a one-way checked (docs/UX.md).
   let hostChoice = $state<"root" | "www">("root");
@@ -415,6 +422,7 @@
 <HostingQuickCreate
   bind:open={qcHostingOpen}
   name={qcHostingName}
+  initialCompanyId={ownerCompanyId}
   companies={data.companies}
   providers={data.providers}
   employees={data.employees}

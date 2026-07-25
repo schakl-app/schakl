@@ -27,6 +27,7 @@
     agencyLabel,
     definitions,
     locale,
+    initialCompanyId = "",
     action = "?/createHosting",
     error = null,
     oncreatecompany,
@@ -44,6 +45,9 @@
     agencyLabel: string;
     definitions: Definition[];
     locale: string;
+    /** Preselects the client when the host form already fixed one (#247), matching
+     *  DomainQuickCreate — HostingForm has always supported it, this just threads it through. */
+    initialCompanyId?: string;
     action?: string;
     /** The page's `form?.qcError`. */
     error?: string | null;
@@ -78,6 +82,7 @@
         {definitions}
         {locale}
         idPrefix="qc-hosting"
+        {initialCompanyId}
         {oncreatecompany}
         {oncreatecontact}
         {oncreateprovider}

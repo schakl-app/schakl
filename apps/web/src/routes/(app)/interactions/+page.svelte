@@ -164,12 +164,15 @@
   let qcCompanyName = $state("");
   let qcProjectOpen = $state(false);
   let qcProjectName = $state("");
+  // The form's already-picked client (#247): the project dialog opens with it preselected.
+  let qcProjectCompany = $state("");
   // The project dialog's own client picker: fetched on first open, never on page load
   // (docs/PERFORMANCE.md — a rarely opened dialog must not tax every load).
   let qcCompanyItems = $state<{ value: string; label: string }[]>([]);
   let qcCompaniesLoaded = false;
-  async function openProjectQuickCreate(name: string) {
+  async function openProjectQuickCreate(name: string, companyId = "") {
     qcProjectName = name;
+    qcProjectCompany = companyId;
     qcProjectOpen = true;
     if (qcCompaniesLoaded) return;
     qcCompaniesLoaded = true;
@@ -648,7 +651,7 @@
       qcCompanyName = name;
       qcCompanyOpen = true;
     }}
-    oncreateproject={(name) => void openProjectQuickCreate(name)}
+    oncreateproject={(name, companyId) => void openProjectQuickCreate(name, companyId)}
   />
 </Modal>
 
@@ -661,7 +664,7 @@
         qcCompanyName = name;
         qcCompanyOpen = true;
       }}
-      oncreateproject={(name) => void openProjectQuickCreate(name)}
+      oncreateproject={(name, companyId) => void openProjectQuickCreate(name, companyId)}
     />
   {/if}
 </Modal>
@@ -793,6 +796,7 @@
         <Combobox
           items={qcCompanyItems}
           name="company_id"
+          value={qcProjectCompany}
           id="qc-int-project-company"
           placeholder={t("projects.field.company")}
         />

@@ -57,7 +57,9 @@
      * handler that receives what was typed. Absent → the picker offers no ＋.
      */
     oncreatecompany?: (query: string) => void;
-    oncreateproject?: (query: string) => void;
+    /** The moment's effective client rides along (#247) so the project quick-create dialog
+     *  opens with the same client instead of blank. */
+    oncreateproject?: (query: string, companyId?: string) => void;
   } = $props();
 
   // Deliberate initial capture: the host keys this form per row, so props never swap in place.
@@ -375,8 +377,30 @@
   let qcOpen = $state(false);
   let qcName = $state("");
   let contactDefinitions = $state<CustomFieldDefinition[] | null>(null);
+  // Offer to link the new contact to the moment's client (#247), checked by default: resolve
+  // the client's name from the lookups already loaded, else fetch it — an id can't label the box.
+  let contactLinkCompany = $state<{ id: string; name: string } | null>(null);
+  async function resolveLinkCompany(): Promise<{ id: string; name: string } | null> {
+    const id = effCompany;
+    if (!id) return null;
+    let name =
+      linkCompanies.find((c) => c.value === id)?.label ??
+      (interaction?.company_id === id ? (interaction?.company_name ?? "") : "");
+    if (!name) {
+      try {
+        const response = await fetch(`/api/v1/companies/${id}`, {
+          headers: { accept: "application/json" },
+        });
+        if (response.ok) name = ((await response.json()).name as string | undefined) ?? "";
+      } catch {
+        name = "";
+      }
+    }
+    return name ? { id, name } : null;
+  }
   async function quickCreateContact(query: string) {
     qcName = query;
+    contactLinkCompany = await resolveLinkCompany();
     if (contactDefinitions === null) {
       const response = await fetch("/api/v1/custom-fields/definitions?entity_type=contact", {
         headers: { accept: "application/json" },
@@ -395,7 +419,7 @@
   }
   function quickCreateProject(query: string) {
     projectQuery = query;
-    oncreateproject?.(query);
+    oncreateproject?.(query, effCompany);
   }
   // A quick-create action answers with the new row's id; auto-select it in the picker that
   // asked — the slot names are the contract with the host page's dialogs (docs/UX.md).
@@ -717,6 +741,7 @@
 <ContactQuickCreate
   bind:open={qcOpen}
   name={qcName}
+  linkCompany={contactLinkCompany}
   definitions={contactDefinitions ?? []}
   locale={(page.data.locale as string | undefined) ?? "nl"}
   action="?/createInteractionContact"

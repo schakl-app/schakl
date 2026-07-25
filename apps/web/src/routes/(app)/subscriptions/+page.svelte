@@ -41,6 +41,14 @@
   let qcCompanyOpen = $state(false);
   let qcCompanyName = $state("");
   let createdCompanyId = $state("");
+  // A pre-selected existing client (#247): the one picked in the field or carried in via the
+  // ?company= deep link. Unlike createdCompanyId it is never written by the inlineCreated effect,
+  // so the project quick-create still sees a client the user chose without inline-creating it.
+  let pickedCompanyId = $state("");
+  // The client the form is currently on — inline-created, picked/deep-linked, or the edited row.
+  const formCompanyId = $derived(
+    createdCompanyId || pickedCompanyId || (editing?.company_id ?? ""),
+  );
   // Inline project create from the links picker — same pattern, auto-links the new project.
   let qcProjectOpen = $state(false);
   let qcProjectName = $state("");
@@ -168,9 +176,10 @@
     return data.projects.find((p) => p.id === id)?.name ?? "—";
   }
 
-  function openCreate() {
+  function openCreate(company = "") {
     editing = null;
     createdCompanyId = "";
+    pickedCompanyId = company;
     createdTypeId = "";
     prefill = null;
     linkedProjects = [];
@@ -179,6 +188,7 @@
   function openEdit(sub: Subscription) {
     editing = sub;
     createdCompanyId = "";
+    pickedCompanyId = "";
     createdTypeId = "";
     prefill = null;
     linkedProjects = (sub.links ?? [])
@@ -190,8 +200,7 @@
   // Quick-create from a client page (?new=1&company=): the dialog opens with the client set
   // (the same ?company= also filters the list behind it to that client).
   if (page.url.searchParams.has("new")) {
-    openCreate();
-    createdCompanyId = page.url.searchParams.get("company") ?? "";
+    openCreate(page.url.searchParams.get("company") ?? "");
   }
 
   const money = (value: string | number | null | undefined) =>
@@ -247,7 +256,7 @@
     {/if}
     <button
       class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-      onclick={openCreate}>{t("subscriptions.add")}</button
+      onclick={() => openCreate()}>{t("subscriptions.add")}</button
     >
   </div>
 </div>
@@ -569,9 +578,10 @@
         <Combobox
           items={companyItems}
           name="company_id"
-          value={createdCompanyId || (editing?.company_id ?? "")}
+          value={formCompanyId}
           id="sub-company"
           placeholder={t("subscriptions.field.company")}
+          onselect={(v) => (pickedCompanyId = v)}
           oncreate={(name) => {
             qcCompanyName = name;
             qcCompanyOpen = true;
@@ -724,7 +734,7 @@
           rows={2}
           value={editing?.notes ?? prefill?.notes ?? ""}
           variables={variableItems}
-          scope={{ companyId: (createdCompanyId || editing?.company_id) ?? null }}
+          scope={{ companyId: formCompanyId || null }}
         />
         <p class="mt-1 text-xs text-text-muted">{t("subscriptions.variables.hint")}</p>
       </div>
@@ -733,7 +743,7 @@
           definitions={data.definitions}
           values={editing?.custom ?? {}}
           locale={data.locale}
-          scope={{ companyId: (createdCompanyId || editing?.company_id) ?? null }}
+          scope={{ companyId: formCompanyId || null }}
         />
       {:else}
         <input type="hidden" name="custom" value={JSON.stringify(editing?.custom ?? {})} />
@@ -792,6 +802,7 @@
         <Combobox
           items={companyItems}
           name="company_id"
+          value={formCompanyId}
           id="qc-sub-project-company"
           placeholder={t("projects.field.company")}
         />

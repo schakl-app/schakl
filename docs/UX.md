@@ -68,6 +68,16 @@
   the missing registrar / provider / client is a bug — that is precisely what the first domains and
   hosting forms shipped as (#115). The one exception is an entity with no create path of its own —
   an employee is *invited*, not created — so leave those select-only.
+  **A nested quick-create inherits the parent form's context** (#247): when the outer form already
+  has a client selected and its picker opens a quick-create for a second entity (a project, a
+  contact, a hosting account), that dialog opens with the *same* client pre-filled — as a default
+  the user can still change, never a blank field they must re-answer. Re-asking wastes the work
+  they just did and risks silently orphaning the new record onto a different client. Thread the
+  known client id through the create component (`companyId` / `initialCompanyId` / `linkCompany`,
+  as the working examples do) **and** make sure the server action behind it actually reads and
+  sends that id — a pre-filled checkbox the action ignores links nothing. This is easy to
+  reintroduce one field at a time, so when you add a new inline quick-create, check it forwards
+  the context the parent already knows.
 - **Quick-add where the user is**: contacts on the client page, projects/clients from the
   time entry form, checklist items on the card. The full forms still exist on their own
   pages; quick-add is an accelerator, not a replacement.

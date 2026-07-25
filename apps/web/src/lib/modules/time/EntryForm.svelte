@@ -109,7 +109,9 @@
     ondone?: () => void;
     /** When provided, typing an unknown client/project name offers to create it inline. */
     oncreatecompany?: (name: string) => void;
-    oncreateproject?: (name: string) => void;
+    /** The form's currently-picked client rides along (#247), so the project quick-create
+     *  dialog opens with the same client instead of blank. */
+    oncreateproject?: (name: string, companyId: string) => void;
   } = $props();
 
   // --- form state (prefilled when editing; a restored draft fills the create form, #44) ---
@@ -516,7 +518,7 @@
       id="project-{action}"
       placeholder={t("time.field.project")}
       onselect={onProjectPicked}
-      oncreate={oncreateproject}
+      oncreate={oncreateproject ? (name) => oncreateproject(name, fCompany) : undefined}
     />
     {#if pickedBurn}
       <div class="mt-1.5">

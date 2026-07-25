@@ -42,7 +42,9 @@
      *  dialogs (slots `interaction_company` / `interaction_project`), exactly as for the manual
      *  form. Absent → the picker offers no ＋. */
     oncreatecompany?: (query: string) => void;
-    oncreateproject?: (query: string) => void;
+    /** The upload's effective client rides along (#247) so the project quick-create dialog
+     *  opens with the same client instead of blank. */
+    oncreateproject?: (query: string, companyId?: string) => void;
   } = $props();
 
   const busy = new InFlight();
@@ -147,8 +149,28 @@
   let qcOpen = $state(false);
   let qcName = $state("");
   let contactDefinitions = $state<CustomFieldDefinition[] | null>(null);
+  // Offer to link the new contact to the upload's client (#247), checked by default: resolve
+  // the client's name from the loaded lookups, else fetch it — an id can't label the box.
+  let contactLinkCompany = $state<{ id: string; name: string } | null>(null);
+  async function resolveLinkCompany(): Promise<{ id: string; name: string } | null> {
+    const id = effCompany;
+    if (!id) return null;
+    let name = companies.find((c) => c.value === id)?.label ?? "";
+    if (!name) {
+      try {
+        const response = await fetch(`/api/v1/companies/${id}`, {
+          headers: { accept: "application/json" },
+        });
+        if (response.ok) name = ((await response.json()).name as string | undefined) ?? "";
+      } catch {
+        name = "";
+      }
+    }
+    return name ? { id, name } : null;
+  }
   async function quickCreateContact(query: string) {
     qcName = query;
+    contactLinkCompany = await resolveLinkCompany();
     if (contactDefinitions === null) {
       const response = await fetch("/api/v1/custom-fields/definitions?entity_type=contact", {
         headers: { accept: "application/json" },
@@ -297,7 +319,7 @@
           oncreate={oncreateproject
             ? (query) => {
                 projectQuery = query;
-                oncreateproject?.(query);
+                oncreateproject?.(query, effCompany);
               }
             : undefined}
           id="eml-project"
@@ -364,6 +386,7 @@
 <ContactQuickCreate
   bind:open={qcOpen}
   name={qcName}
+  linkCompany={contactLinkCompany}
   definitions={contactDefinitions ?? []}
   locale={(page.data.locale as string | undefined) ?? "nl"}
   action="?/createInteractionContact"

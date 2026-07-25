@@ -45,6 +45,9 @@ export async function createContactAction(event: RequestEvent) {
   const form = await event.request.formData();
   const first_name = String(form.get("first_name") ?? "").trim();
   if (!first_name) return fail(400, { qcError: "errors.required" });
+  // Link to the parent form's client when its checkbox was ticked (#247): the dialog posts
+  // the id under `company_id`, so without reading it here the visible link would never take.
+  const company_id = String(form.get("company_id") ?? "").trim();
   const { data, error } = await apiFor(event).POST("/api/v1/contacts", {
     body: {
       first_name,
@@ -52,6 +55,7 @@ export async function createContactAction(event: RequestEvent) {
       email: String(form.get("email") ?? "").trim() || null,
       phone: String(form.get("phone") ?? "").trim() || null,
       job_title: String(form.get("job_title") ?? "").trim() || null,
+      company_ids: company_id ? [company_id] : undefined,
       custom: parseCustom(form.get("custom")),
     },
   });

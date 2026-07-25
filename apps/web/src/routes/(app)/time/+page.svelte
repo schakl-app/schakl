@@ -107,10 +107,12 @@
     companySlot = slot;
     showNewCompany = true;
   }
-  function quickCreateProject(name: string, slot: string) {
+  function quickCreateProject(name: string, slot: string, companyId = "") {
     draftProjectName = name;
     projectSlot = slot;
-    qcProjectCompany = "";
+    // Carry the caller's already-picked client into the project dialog (#247) instead of
+    // blanking it — the timer's client, or the entry form's `fCompany`.
+    qcProjectCompany = companyId;
     showNewProject = true;
   }
 
@@ -435,7 +437,7 @@
             bind:value={timerProject}
             id="timer-project"
             placeholder={t("time.field.project")}
-            oncreate={(name) => quickCreateProject(name, "timer_project")}
+            oncreate={(name) => quickCreateProject(name, "timer_project", timerCompany)}
           />
         </div>
         <Button size="sm" loading={busy.is("startTimer")} disabled={busy.active}>
@@ -721,7 +723,8 @@
           oncancel={() => (editingId = null)}
           ondone={() => (editingId = null)}
           oncreatecompany={(name) => quickCreateCompany(name, "entry_company")}
-          oncreateproject={(name) => quickCreateProject(name, "entry_project")}
+          oncreateproject={(name, companyId) =>
+            quickCreateProject(name, "entry_project", companyId)}
         />
       {/key}
     {:else}
@@ -745,7 +748,8 @@
             aiParsedSummary = null;
           }}
           oncreatecompany={(name) => quickCreateCompany(name, "entry_company")}
-          oncreateproject={(name) => quickCreateProject(name, "entry_project")}
+          oncreateproject={(name, companyId) =>
+            quickCreateProject(name, "entry_project", companyId)}
         />
       {/key}
     {/if}

@@ -61,8 +61,10 @@
     form: Record<string, unknown> | null;
     oncancel?: () => void;
     /** Inline-create for the contact picker (#115): the host wires this to its
-     *  ContactQuickCreate dialog (slot "contact"); the ＋ only shows when passed. */
-    oncreatecontact?: (name: string) => void;
+     *  ContactQuickCreate dialog (slot "contact"); the ＋ only shows when passed. The
+     *  document's own client rides along (#247) so the new-contact dialog links it by
+     *  default instead of leaving the client blank. */
+    oncreatecontact?: (name: string, company: { id: string; name: string } | null) => void;
     /** Preset client for a fresh document (the client page's "＋ nieuwe factuur"). */
     initialCompanyId?: string;
   } = $props();
@@ -190,6 +192,18 @@
       })
       .map((c) => ({ value: c.id, label: c.name })),
   );
+  // The document's own client, resolved to {id, name} (#247): the contact quick-create dialog
+  // links it by default. Name from the companies lookup (new docs) or the doc itself (edit).
+  const contactLinkCompany = $derived.by(() => {
+    const id = createdCompanyId || companyId || doc?.company_id || "";
+    if (!id) return null;
+    const name =
+      (id === createdCompanyId ? qcCompanyName : "") ||
+      companies.find((c) => c.id === id)?.name ||
+      (id === doc?.company_id ? (doc?.company_name ?? "") : "") ||
+      "";
+    return name ? { id, name } : null;
+  });
 
   // Show the inherited defaults, don't hide them behind empty fields (docs/UX.md #81): a
   // fresh document pre-fills today and the org's payment term / quote validity — visibly,
@@ -247,7 +261,9 @@
           value={createdContactId}
           id="doc-contact"
           placeholder={t("invoicing.field.contact")}
-          oncreate={oncreatecontact}
+          oncreate={oncreatecontact
+            ? (name) => oncreatecontact(name, contactLinkCompany)
+            : undefined}
         />
       </div>
     </div>
@@ -262,7 +278,7 @@
         value={createdContactId || (doc?.contact_id ?? "")}
         id="doc-contact"
         placeholder={t("invoicing.field.contact")}
-        oncreate={oncreatecontact}
+        oncreate={oncreatecontact ? (name) => oncreatecontact(name, contactLinkCompany) : undefined}
       />
     </div>
   {/if}

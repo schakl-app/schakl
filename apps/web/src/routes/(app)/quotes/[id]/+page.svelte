@@ -37,6 +37,8 @@
   // Inline-create from the edit form's contact picker (#115): "＋ … toevoegen" opens this dialog.
   let qcContactOpen = $state(false);
   let qcContactName = $state("");
+  // The quote's client rides along (#247): the new contact links to it by default.
+  let qcContactCompany = $state<{ id: string; name: string } | null>(null);
 
   const template = $derived(data.templates.find((tpl) => tpl.id === quote.template_id) ?? null);
   const theme = $derived(page.data.theme);
@@ -188,8 +190,9 @@
         locale={data.locale}
         {form}
         oncancel={() => (editing = false)}
-        oncreatecontact={(name) => {
+        oncreatecontact={(name, company) => {
           qcContactName = name;
+          qcContactCompany = company;
           qcContactOpen = true;
         }}
       />
@@ -321,6 +324,7 @@
 <ContactQuickCreate
   bind:open={qcContactOpen}
   name={qcContactName}
+  linkCompany={qcContactCompany}
   pickerSlot="contact"
   definitions={data.contactDefinitions}
   locale={data.locale}
