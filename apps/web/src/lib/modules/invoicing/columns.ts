@@ -2,6 +2,37 @@ import type { ColumnMeta } from "$lib/core/table/columns";
 
 export const INVOICES_TABLE_ID = "invoices";
 export const QUOTES_TABLE_ID = "quotes";
+export const UNINVOICED_TABLE_ID = "uninvoiced";
+
+/**
+ * The org-wide "still to invoice" report (#277). No `sortKey`s: rows arrive bucketed under
+ * the chosen grouping, ordered by date inside each section — a header sort would reorder
+ * what the grouping laid out (docs/UX.md #38). The page hides the column that matches the
+ * active grouping; the section headers already say it on every row.
+ */
+export const UNINVOICED_COLUMNS: ColumnMeta[] = [
+  { key: "date", labelKey: "invoicing.uninvoiced.field.date", primary: true, width: 110 },
+  { key: "company", labelKey: "invoicing.uninvoiced.field.company", defaultVisible: true },
+  { key: "project", labelKey: "invoicing.uninvoiced.field.project", defaultVisible: true },
+  { key: "user", labelKey: "invoicing.uninvoiced.field.employee", defaultVisible: true },
+  {
+    key: "description",
+    labelKey: "invoicing.uninvoiced.field.description",
+    defaultVisible: true,
+  },
+  {
+    key: "hours",
+    labelKey: "invoicing.uninvoiced.field.hours",
+    align: "right",
+    defaultVisible: true,
+  },
+  {
+    key: "amount",
+    labelKey: "invoicing.uninvoiced.field.amount",
+    align: "right",
+    defaultVisible: true,
+  },
+];
 
 export const INVOICE_COLUMNS: ColumnMeta[] = [
   {

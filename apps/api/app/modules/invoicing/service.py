@@ -37,7 +37,13 @@ from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_zoneinfo
 from app.errors import AppError
-from app.modules.invoicing.calc import LineInput, Totals, compute_totals, line_amount
+from app.modules.invoicing.calc import (
+    LineInput,
+    Totals,
+    compute_totals,
+    line_amount,
+    round_cents,
+)
 from app.modules.invoicing.models import (
     DocumentTemplate,
     ExternalRef,
@@ -117,6 +123,28 @@ QUOTE_SORTABLE = {
     "valid_until": Quote.valid_until,
     "total": Quote.total,
     "created_at": Quote.created_at,
+}
+
+#: The uninvoiced report's grouping expressions (#277) — static SQL fragments keyed by the
+#: API's closed vocabulary, never user input. Date buckets format the org-local timestamp
+#: (``AT TIME ZONE :tz``) so a bucket is the org's calendar day/week/month/year, not UTC's;
+#: every format sorts chronologically as text (``IYYY``/``IW`` are the ISO week fields).
+_UNINVOICED_DATE_GROUPS = frozenset({"day", "week", "month", "year"})
+_UNINVOICED_GROUP_EXPR = {
+    "day": "to_char(te.started_at AT TIME ZONE :tz, 'YYYY-MM-DD')",
+    "week": "to_char(te.started_at AT TIME ZONE :tz, 'IYYY-\"W\"IW')",
+    "month": "to_char(te.started_at AT TIME ZONE :tz, 'YYYY-MM')",
+    "year": "to_char(te.started_at AT TIME ZONE :tz, 'YYYY')",
+    "company": "COALESCE(te.company_id::text, '')",
+    "project": "COALESCE(te.project_id::text, '')",
+    "user": "te.user_id::text",
+}
+#: Entity groupings: (label expression, its join). Bare-table reads over published columns
+#: (§6), each side org-filtered like every join in ``_unbilled_rows``.
+_UNINVOICED_GROUP_LABEL = {
+    "company": ("c.name", "LEFT JOIN companies c ON c.id = te.company_id AND c.org_id = te.org_id"),
+    "project": ("p.name", "LEFT JOIN projects p ON p.id = te.project_id AND p.org_id = te.org_id"),
+    "user": ("u.full_name", "LEFT JOIN users u ON u.id = te.user_id"),
 }
 
 #: Company columns a document snapshot copies (models.Company, issue #11).
@@ -1199,6 +1227,136 @@ class InvoiceService(_DocumentService):
             """  # noqa: S608 - static column clauses, bound params only
         )
         return list((await self.ctx.session.execute(stmt, params)).mappings().all())
+
+    async def uninvoiced_report(self, *, group: str, limit: int) -> dict[str, Any]:
+        """The org-wide "still to invoice" backlog (#277): the ``_unbilled_rows`` predicate
+        without its company scope, bucketed server-side so the subtotals are exact whatever
+        the entry cap. Read-only — building the invoice stays with ``from_time``.
+
+        Two queries, like ``TimeService.report``: one ``GROUP BY`` over the whole set for
+        the per-group figures, one capped row fetch for the expand/collapse detail. Date
+        buckets live in the org's local calendar (§8) — an entry logged late on the 31st
+        UTC belongs to the 1st where the org works.
+        """
+        self.ctx.require("invoicing.invoice.read")
+        group_expr = _UNINVOICED_GROUP_EXPR[group]
+        # The detail always needs the org zone: each row carries its org-local calendar day.
+        params: dict[str, Any] = {
+            "oid": self.ctx.org.id,
+            "tz": (await org_zoneinfo(self.ctx.session, self.ctx.org.id)).key,
+        }
+        if group in _UNINVOICED_DATE_GROUPS:
+            label_expr, label_join = "NULL", ""
+            # Chronological, oldest first — the longest-outstanding hours lead the page.
+            group_order = f"({group_expr})"
+        else:
+            label_expr, label_join = _UNINVOICED_GROUP_LABEL[group]
+            group_order = f"lower({label_expr}) ASC NULLS LAST, ({group_expr})"
+        # The employee-rate chain of ``_unbilled_rows`` (#226), with the invoicing default
+        # folded into the SQL so the aggregate prices exactly like the entry list.
+        default_rate = (await self.settings.row()).default_hourly_rate or Decimal(0)
+        params["fallback_rate"] = default_rate
+        rate_expr = "COALESCE(lp.hourly_rate, ls.default_hourly_rate, :fallback_rate)"
+        clauses = """
+            te.org_id = :oid AND te.ended_at IS NOT NULL
+            AND te.billable AND te.approved_at IS NOT NULL AND te.invoiced_at IS NULL
+            AND te.minutes > 0
+        """
+        rate_joins = """
+            LEFT JOIN leave_profiles lp
+                   ON lp.org_id = te.org_id AND lp.user_id = te.user_id
+            LEFT JOIN leave_settings ls ON ls.org_id = te.org_id
+        """
+        grouped = list(
+            (
+                await self.ctx.session.execute(
+                    text(
+                        f"""
+                        SELECT {group_expr} AS gkey, {label_expr} AS glabel,
+                               COUNT(*) AS cnt,
+                               SUM(te.minutes) AS minutes,
+                               SUM(te.minutes * {rate_expr} / 60.0) AS amount
+                        FROM time_entries te
+                        {rate_joins}
+                        {label_join}
+                        WHERE {clauses}
+                        GROUP BY 1, 2
+                        ORDER BY {group_order}
+                        """  # noqa: S608 - static fragments from module dicts, bound params
+                    ),
+                    params,
+                )
+            )
+            .mappings()
+            .all()
+        )
+        # The detail follows the group order, then time — so a hit cap truncates the tail
+        # groups instead of scattering gaps through every section.
+        rows = list(
+            (
+                await self.ctx.session.execute(
+                    text(
+                        f"""
+                        SELECT te.id, te.started_at, te.minutes, te.description,
+                               (te.started_at AT TIME ZONE :tz)::date AS entry_date,
+                               te.company_id, c.name AS company_name,
+                               te.project_id, p.name AS project_name,
+                               u.full_name AS user_name,
+                               {group_expr} AS gkey,
+                               {rate_expr} AS rate
+                        FROM time_entries te
+                        LEFT JOIN companies c ON c.id = te.company_id AND c.org_id = te.org_id
+                        LEFT JOIN projects p ON p.id = te.project_id AND p.org_id = te.org_id
+                        LEFT JOIN users u ON u.id = te.user_id
+                        {rate_joins}
+                        WHERE {clauses}
+                        ORDER BY {group_order}, te.started_at
+                        LIMIT :limit
+                        """  # noqa: S608 - static fragments from module dicts, bound params
+                    ),
+                    {**params, "limit": limit},
+                )
+            )
+            .mappings()
+            .all()
+        )
+        total_count = sum(g["cnt"] for g in grouped)
+        return {
+            "group": group,
+            "groups": [
+                {
+                    "key": g["gkey"],
+                    "label": g["glabel"],
+                    "count": g["cnt"],
+                    "minutes": int(g["minutes"]),
+                    "amount": round_cents(Decimal(g["amount"])),
+                }
+                for g in grouped
+            ],
+            "entries": [
+                {
+                    "id": r["id"],
+                    "group_key": r["gkey"],
+                    "started_at": r["started_at"],
+                    "entry_date": r["entry_date"],
+                    "minutes": r["minutes"],
+                    "description": r["description"],
+                    "company_id": r["company_id"],
+                    "company_name": r["company_name"],
+                    "project_id": r["project_id"],
+                    "project_name": r["project_name"],
+                    "user_name": r["user_name"],
+                    "rate": Decimal(r["rate"]),
+                    "amount": round_cents(Decimal(r["minutes"]) * Decimal(r["rate"]) / 60),
+                }
+                for r in rows
+            ],
+            "total_minutes": sum(int(g["minutes"]) for g in grouped),
+            # Rounded once on the exact sum (calc.py's rule) — never a sum of rounded parts.
+            "total_amount": round_cents(sum((Decimal(g["amount"]) for g in grouped), Decimal(0))),
+            "total_count": total_count,
+            "truncated": total_count > len(rows),
+        }
 
     async def from_time(self, data: InvoiceFromTime) -> Invoice:
         """Build a draft invoice from unbilled time and stamp those entries as invoiced —

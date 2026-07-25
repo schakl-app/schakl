@@ -85,6 +85,9 @@ const TAILS: Record<string, string> = {
 
 /** Root-specific tail labels — the same segment reads differently per section (#229). */
 const TAILS_BY_ROOT: Record<string, Record<string, string>> = {
+  invoices: {
+    uninvoiced: "invoicing.uninvoiced.title",
+  },
   subscriptions: {
     templates: "settings.subscriptions.templates_heading",
     types: "settings.subscriptions.types_heading",

@@ -42,6 +42,7 @@
     selection,
     groups,
     groupBy,
+    groupSummary,
     collapsed = [],
     oncollapse,
     onsort,
@@ -75,6 +76,9 @@
      */
     groups?: { key: string; label: string; collapsible?: boolean }[];
     groupBy?: (row: T) => string;
+    /** Per-group figures in the header row (#277) — the caller's, from the API's own
+     *  aggregate, for exactly the reason the footer never sums `rows`. */
+    groupSummary?: Snippet<[string]>;
     /** Keys of the collapsed groups. A personal view option, persisted with the columns. */
     collapsed?: string[];
     oncollapse?: (keys: string[]) => void;
@@ -191,7 +195,10 @@
       {#if grouped}
         {#each grouped as group (group.key)}
           <li class="bg-surface px-4 py-2">
-            {@render groupToggle(group.key, group.label, group.rows.length, group.collapsible)}
+            <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+              {@render groupToggle(group.key, group.label, group.rows.length, group.collapsible)}
+              {#if groupSummary}{@render groupSummary(group.key)}{/if}
+            </div>
           </li>
           {#if !collapsedSet.has(group.key)}
             {#each group.rows as row (row.id)}
@@ -276,7 +283,10 @@
           <tbody class="divide-y divide-border">
             <tr class="bg-surface">
               <th scope="colgroup" colspan={columnCount} class="px-4 py-2 text-left">
-                {@render groupToggle(group.key, group.label, group.rows.length, group.collapsible)}
+                <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                  {@render groupToggle(group.key, group.label, group.rows.length, group.collapsible)}
+                  {#if groupSummary}{@render groupSummary(group.key)}{/if}
+                </div>
               </th>
             </tr>
             {#if !collapsedSet.has(group.key)}

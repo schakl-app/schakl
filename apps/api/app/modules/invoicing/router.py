@@ -41,6 +41,8 @@ from app.modules.invoicing.schemas import (
     TemplateRead,
     TemplateUpdate,
     UnbilledRead,
+    UninvoicedGroupBy,
+    UninvoicedReport,
 )
 from app.modules.invoicing.service import (
     ExternalRefService,
@@ -277,6 +279,26 @@ async def unbilled(
     parsed = date_type.fromisoformat(until) if until else None
     data = await InvoiceService(ctx).unbilled(company_id, project_id=project_id, until=parsed)
     return UnbilledRead.model_validate(data)
+
+
+@router.get(
+    "/uninvoiced",
+    response_model=UninvoicedReport,
+    dependencies=[require_permission("invoicing.invoice.read")],
+)
+async def uninvoiced(
+    group: UninvoicedGroupBy = Query(
+        "company", description="day | week | month | year | company | project | user"
+    ),
+    limit: int = Query(500, ge=1, le=1000, description="cap on the entry detail, not the totals"),
+    ctx: RequestContext = Depends(require_context),
+) -> UninvoicedReport:
+    """Org-wide report of approved + billable + not-yet-invoiced hours (#277), bucketed
+    server-side with exact per-group subtotals. Read-only: the per-company ``/unbilled``
+    stays the invoice-build preview, and building happens via ``/invoices/from-time``."""
+    return UninvoicedReport.model_validate(
+        await InvoiceService(ctx).uninvoiced_report(group=group, limit=limit)
+    )
 
 
 # --- invoices ------------------------------------------------------------------------ #

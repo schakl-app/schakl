@@ -492,6 +492,59 @@ class UnbilledRead(BaseModel):
     hourly_rate: Decimal | None
 
 
+#: The uninvoiced report's closed grouping vocabulary (#277) — what the data model has:
+#: an entry carries a date, a company, a project and a logger, nothing more.
+UninvoicedGroupBy = Literal["day", "week", "month", "year", "company", "project", "user"]
+
+
+class UninvoicedGroup(BaseModel):
+    """One bucket of the org-wide uninvoiced report (#277), summed server-side over the
+    *whole* filtered set — never over the capped entry page."""
+
+    #: Date buckets: an org-local ``YYYY-MM-DD`` / ``IYYY-WIW`` / ``YYYY-MM`` / ``YYYY``.
+    #: Entity buckets: the row's id (empty string for "no company"/"no project").
+    key: str
+    #: The bucket's display name (company/project/user groupings); date buckets render
+    #: their key client-side in the viewer's locale.
+    label: str | None = None
+    count: int
+    minutes: int
+    amount: Decimal
+
+
+class UninvoicedReportEntry(BaseModel):
+    """One backlog entry, with the group key it was bucketed under — computed by the same
+    SQL expression as the subtotals, so client-side sectioning can never disagree."""
+
+    id: uuid.UUID
+    group_key: str
+    started_at: datetime
+    #: The org-local calendar day the entry belongs to (§8) — resolved server-side, like
+    #: every bucket, so the row and its section can never disagree across DST.
+    entry_date: date
+    minutes: int
+    description: str | None
+    company_id: uuid.UUID | None
+    company_name: str | None = None
+    project_id: uuid.UUID | None
+    project_name: str | None = None
+    user_name: str | None = None
+    #: The ``UnbilledEntry`` rate chain (#226), with the invoicing default folded in.
+    rate: Decimal
+    amount: Decimal
+
+
+class UninvoicedReport(BaseModel):
+    group: UninvoicedGroupBy
+    groups: list[UninvoicedGroup]
+    #: Capped at the request's ``limit``; ``truncated`` says so. Subtotals stay exact.
+    entries: list[UninvoicedReportEntry]
+    total_minutes: int
+    total_amount: Decimal
+    total_count: int
+    truncated: bool
+
+
 # --------------------------------------------------------------------------- #
 # Quotes
 # --------------------------------------------------------------------------- #

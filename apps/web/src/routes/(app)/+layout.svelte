@@ -124,6 +124,18 @@
     if (entry.items.some((i) => path.startsWith(i.href))) return true;
     return groupOpen[entry.key] ?? true;
   }
+
+  // Sibling sub-routes ("/invoices", "/invoices/uninvoiced") both prefix-match the deeper
+  // path, so among a group's members the longest matching href wins — and only on a segment
+  // boundary, so "/invoices" never claims "/invoicesx" (#277).
+  function activeGroupHref(items: NavItem[]): string | null {
+    let best: string | null = null;
+    for (const item of items) {
+      if (path !== item.href && !path.startsWith(item.href + "/")) continue;
+      if (!best || item.href.length > best.length) best = item.href;
+    }
+    return best;
+  }
   function toggleGroup(key: string) {
     groupOpen = { ...groupOpen, [key]: !(groupOpen[key] ?? true) };
     localStorage.setItem("schakl:navgroups", JSON.stringify(groupOpen));
@@ -224,21 +236,23 @@
           </a>
         {:else if collapsed}
           <!-- Collapsed rail: group members render flat as icons. -->
+          {@const railActive = activeGroupHref(entry.items)}
           {#each entry.items as item (item.key)}
             {@const Icon = item.icon}
-            <a href={item.href} class={itemClass(path.startsWith(item.href))} title={item.label()}>
+            <a href={item.href} class={itemClass(railActive === item.href)} title={item.label()}>
               {#if Icon}<Icon size={18} class="shrink-0 text-text-muted" />{/if}
             </a>
           {/each}
         {:else}
           {@const open = isGroupOpen(entry)}
+          {@const GroupIcon = entry.items[0].icon ?? Handshake}
           <button
             type="button"
             class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-text hover:bg-surface"
             onclick={() => toggleGroup(entry.key)}
             aria-expanded={open}
           >
-            <Handshake size={18} class="shrink-0 text-text-muted" />
+            <GroupIcon size={18} class="shrink-0 text-text-muted" />
             <span class="flex-1 truncate text-left">{groupLabel(entry.key)}</span>
             {#if open}
               <ChevronDown size={14} class="shrink-0 text-text-muted" />
@@ -247,13 +261,14 @@
             {/if}
           </button>
           {#if open}
+            {@const active = activeGroupHref(entry.items)}
             <div class="space-y-0.5">
               {#each entry.items as item (item.key)}
                 {@const Icon = item.icon}
                 <a
                   href={item.href}
                   class="flex items-center gap-2.5 rounded-lg py-1.5 pl-9 pr-3 text-sm text-text-muted hover:bg-surface
-                    {path.startsWith(item.href) ? 'bg-surface font-medium text-text' : ''}"
+                    {active === item.href ? 'bg-surface font-medium text-text' : ''}"
                 >
                   {#if Icon}<Icon size={15} class="shrink-0 text-text-muted" />{/if}
                   <span class="truncate">{item.label()}</span>

@@ -75,6 +75,14 @@ for accounting packages.
   exactly which entries in `invoice_time_entries` — so deleting/cancelling the draft un-bills
   exactly those and nothing else. `GET /invoicing/unbilled` feeds the dialog. An entry can
   be on one invoice, ever (unique constraint).
+- **The uninvoiced report (#277)**: `GET /invoicing/uninvoiced` is the same "to invoice"
+  predicate **org-wide** — no company scope — bucketed server-side (`group=day | week |
+  month | year | company | project | user`) so the per-group subtotals (hours + amount, the
+  #226 rate chain with the invoicing default folded into the SQL) are exact whatever the
+  entry cap (`limit`, default 500; `truncated` says when the detail was capped — never the
+  totals). Date buckets follow the org's local calendar (§8), computed in Postgres via
+  `AT TIME ZONE`. Read-only and gated on `invoicing.invoice.read`: browsing the backlog is
+  a view, building the invoice stays `from-time` behind `.write`.
 - **Subscriptions (#30)**: the cycle cron emits `subscription.due`; this module's consumer
   (`events.py`) drafts one invoice per `(subscription, period)` — a lookup plus a partial
   unique index make a re-run, resume or double emit unable to double-bill. **Draft, never
@@ -128,7 +136,13 @@ invoices a German client in the client's language without leaving its own.
 
 ## Web
 
-Nav **Facturatie** → `/invoices` | `/quotes` (submenu tabs). Lists are `DataTable`s with
+Nav **Facturatie** is a sidebar submenu (#277, the Domeinen & websites pattern): **Facturen**
+→ `/invoices` | `/quotes` (submenu tabs) and **Nog te factureren** → `/invoices/uninvoiced`.
+The report page is read-only: a group-by combobox (Dag/Week/Maand/Jaar/Klant/Project/
+Medewerker), per-group subtotals rendered by `DataTable`'s `groupSummary` snippet from the
+API's own aggregate, expand/collapse per section, and every row — plus the group header when
+grouped by Klant — links to `/invoices/new?company=<id>` to actually build the invoice.
+Lists are `DataTable`s with
 summary tiles that filter the list they count (UX §7). The editor (`DocumentForm` +
 `LinesEditor`) posts lines as one JSON field with one save button; issue/send/pay/credit are
 explicit actions with confirms. `/invoices/[id]/print` renders `DocumentView` with print CSS

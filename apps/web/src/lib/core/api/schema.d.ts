@@ -3083,6 +3083,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoicing/uninvoiced": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Uninvoiced
+         * @description Org-wide report of approved + billable + not-yet-invoiced hours (#277), bucketed
+         *     server-side with exact per-group subtotals. Read-only: the per-company ``/unbilled``
+         *     stays the invoice-build preview, and building happens via ``/invoices/from-time``.
+         */
+        get: operations["uninvoiced_api_v1_invoicing_uninvoiced_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/leave/balance": {
         parameters: {
             query?: never;
@@ -14457,6 +14479,85 @@ export interface components {
             /** Total Minutes */
             total_minutes: number;
         };
+        /**
+         * UninvoicedGroup
+         * @description One bucket of the org-wide uninvoiced report (#277), summed server-side over the
+         *     *whole* filtered set — never over the capped entry page.
+         */
+        UninvoicedGroup: {
+            /** Amount */
+            amount: string;
+            /** Count */
+            count: number;
+            /** Key */
+            key: string;
+            /** Label */
+            label?: string | null;
+            /** Minutes */
+            minutes: number;
+        };
+        /** UninvoicedReport */
+        UninvoicedReport: {
+            /** Entries */
+            entries: components["schemas"]["UninvoicedReportEntry"][];
+            /**
+             * Group
+             * @enum {string}
+             */
+            group: "day" | "week" | "month" | "year" | "company" | "project" | "user";
+            /** Groups */
+            groups: components["schemas"]["UninvoicedGroup"][];
+            /** Total Amount */
+            total_amount: string;
+            /** Total Count */
+            total_count: number;
+            /** Total Minutes */
+            total_minutes: number;
+            /** Truncated */
+            truncated: boolean;
+        };
+        /**
+         * UninvoicedReportEntry
+         * @description One backlog entry, with the group key it was bucketed under — computed by the same
+         *     SQL expression as the subtotals, so client-side sectioning can never disagree.
+         */
+        UninvoicedReportEntry: {
+            /** Amount */
+            amount: string;
+            /** Company Id */
+            company_id: string | null;
+            /** Company Name */
+            company_name?: string | null;
+            /** Description */
+            description: string | null;
+            /**
+             * Entry Date
+             * Format: date
+             */
+            entry_date: string;
+            /** Group Key */
+            group_key: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Minutes */
+            minutes: number;
+            /** Project Id */
+            project_id: string | null;
+            /** Project Name */
+            project_name?: string | null;
+            /** Rate */
+            rate: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** User Name */
+            user_name?: string | null;
+        };
         /** UnreadCount */
         UnreadCount: {
             /** Count */
@@ -22262,6 +22363,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UnbilledRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    uninvoiced_api_v1_invoicing_uninvoiced_get: {
+        parameters: {
+            query?: {
+                /** @description day | week | month | year | company | project | user */
+                group?: "day" | "week" | "month" | "year" | "company" | "project" | "user";
+                /** @description cap on the entry detail, not the totals */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UninvoicedReport"];
                 };
             };
             /** @description Validation Error */
