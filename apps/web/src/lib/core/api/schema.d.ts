@@ -1136,6 +1136,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/domains/tld-prices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Tld Prices
+         * @description The per-TLD price list: current, scheduled and past rows, plus unpriced TLDs.
+         */
+        get: operations["list_tld_prices_api_v1_domains_tld_prices_get"];
+        put?: never;
+        /**
+         * Set Tld Price
+         * @description Append a price row for a TLD (a same-day row is corrected in place).
+         */
+        post: operations["set_tld_price_api_v1_domains_tld_prices_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/domains/tld-prices/price-increase": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Tld Price Increase
+         * @description Apply a price change: one history row per TLD, effective ``valid_from``.
+         */
+        post: operations["apply_tld_price_increase_api_v1_domains_tld_prices_price_increase_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/domains/tld-prices/price-increase/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Tld Price Increase
+         * @description What a price change would do — nothing is written (#231's preview-then-apply).
+         */
+        post: operations["preview_tld_price_increase_api_v1_domains_tld_prices_price_increase_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/domains/tld-prices/{price_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Tld Price
+         * @description Remove one history row (undo a scheduled increase or a mistake).
+         */
+        delete: operations["delete_tld_price_api_v1_domains_tld_prices__price_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/domains/{domain_id}": {
         parameters: {
             query?: never;
@@ -7469,11 +7553,15 @@ export interface components {
             email_provider_id?: string | null;
             /** Name */
             name: string;
+            /** Price Override */
+            price_override?: number | string | null;
             /** Redirect Url */
             redirect_url?: string | null;
             /** Registrar Provider Id */
             registrar_provider_id?: string | null;
             registry_contact?: components["schemas"]["PartyRef"] | null;
+            /** Start Date */
+            start_date?: string | null;
             /** @default active */
             status: components["schemas"]["DomainStatus-Input"];
         };
@@ -7527,11 +7615,15 @@ export interface components {
             name: string;
             /** Nameservers */
             nameservers?: string[] | null;
+            /** Next Invoice Date */
+            next_invoice_date?: string | null;
             /**
              * Org Id
              * Format: uuid
              */
             org_id: string;
+            /** Price Override */
+            price_override?: string | null;
             /** Redirect Url */
             redirect_url?: string | null;
             /** Registrar Provider Id */
@@ -7539,7 +7631,18 @@ export interface components {
             /** Registrar Provider Name */
             registrar_provider_name?: string | null;
             registry_contact?: components["schemas"]["PartyReadRef"] | null;
+            /** Resolved Currency */
+            resolved_currency?: string | null;
+            /** Resolved Price */
+            resolved_price?: string | null;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
             status: components["schemas"]["app__modules__domains__models__DomainStatus"];
+            /** Tld */
+            tld?: string | null;
             /**
              * Updated At
              * Format: date-time
@@ -7569,11 +7672,15 @@ export interface components {
             email_provider_id?: string | null;
             /** Name */
             name?: string | null;
+            /** Price Override */
+            price_override?: number | string | null;
             /** Redirect Url */
             redirect_url?: string | null;
             /** Registrar Provider Id */
             registrar_provider_id?: string | null;
             registry_contact?: components["schemas"]["PartyRef"] | null;
+            /** Start Date */
+            start_date?: string | null;
             status?: components["schemas"]["DomainStatus-Input"] | null;
         };
         /** DossierRead */
@@ -9021,6 +9128,8 @@ export interface components {
                 [key: string]: unknown;
             };
             customer?: components["schemas"]["CustomerRead"];
+            /** Domain Id */
+            domain_id: string | null;
             /** Due Date */
             due_date: string | null;
             /** Exchange Rate */
@@ -11180,10 +11289,16 @@ export interface components {
         };
         /**
          * PreferenceUpdate
-         * @description A PUT replaces this scope's overrides wholesale — an omitted event inherits again.
+         * @description A PUT replaces this scope's overrides **wholesale** — an omitted event inherits again.
          *
-         *     ``events`` and ``email_events`` are the in-app and e-mail overrides, each tracked
-         *     independently, so an event may override one channel while still inheriting the other.
+         *     The body is a full snapshot of the scope, not a patch: ``events`` and ``email_events`` are
+         *     the in-app and e-mail overrides (each channel tracked independently, so an event may override
+         *     one channel while inheriting the other), and ``general`` / ``email`` are the two scope-wide
+         *     rows. Whatever a channel's list does not contain is cleared, exactly as omitting an ``events``
+         *     entry clears that in-app override. A caller that means to change one channel must therefore
+         *     still send the other channel's current overrides, or they are dropped — the web form always
+         *     posts both. This mirrors the pre-#245 behaviour of ``events``/``general``; e-mail simply joined
+         *     the same wholesale scope when its dedicated endpoint was folded in.
          */
         PreferenceUpdate: {
             email?: components["schemas"]["EmailScheduleWrite"] | null;
@@ -14409,6 +14524,98 @@ export interface components {
             task_id: string | null;
             /** Total */
             total: number;
+        };
+        /**
+         * TldPriceGroup
+         * @description One TLD as the price list shows it: the price in effect today, anything scheduled,
+         *     and the history behind it. TLDs an org holds domains under but hasn't priced appear
+         *     with no rows at all — the list's job is also to show what still needs a price.
+         */
+        TldPriceGroup: {
+            /** Currency */
+            currency: string;
+            current?: components["schemas"]["TldPriceRow"] | null;
+            /**
+             * Domain Count
+             * @default 0
+             */
+            domain_count: number;
+            /** History */
+            history?: components["schemas"]["TldPriceRow"][];
+            /** Tld */
+            tld: string;
+            /** Upcoming */
+            upcoming?: components["schemas"]["TldPriceRow"][];
+        };
+        /** TldPriceIncreaseItem */
+        TldPriceIncreaseItem: {
+            /** Currency */
+            currency: string;
+            /** Current Amount */
+            current_amount: string;
+            /**
+             * Domain Count
+             * @default 0
+             */
+            domain_count: number;
+            /** New Amount */
+            new_amount: string;
+            /** Tld */
+            tld: string;
+        };
+        /**
+         * TldPriceIncreaseRequest
+         * @description #231's request shape applied to the TLD list: preview and apply share it, the base
+         *     is the price in effect on ``valid_from``, and scope is everything or one TLD.
+         */
+        TldPriceIncreaseRequest: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "percent" | "amount" | "set";
+            /** Tld */
+            tld?: string | null;
+            /**
+             * Valid From
+             * Format: date
+             */
+            valid_from: string;
+            /** Value */
+            value: number | string;
+        };
+        /** TldPriceIncreaseResult */
+        TldPriceIncreaseResult: {
+            /** Items */
+            items: components["schemas"]["TldPriceIncreaseItem"][];
+        };
+        /** TldPriceRow */
+        TldPriceRow: {
+            /** Amount */
+            amount: string;
+            /** Currency */
+            currency: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Tld */
+            tld: string;
+            /**
+             * Valid From
+             * Format: date
+             */
+            valid_from: string;
+        };
+        /** TldPriceUpsert */
+        TldPriceUpsert: {
+            /** Amount */
+            amount: number | string;
+            /** Tld */
+            tld: string;
+            /** Valid From */
+            valid_from?: string | null;
         };
         /** TriggerInfo */
         TriggerInfo: {
@@ -17949,7 +18156,7 @@ export interface operations {
                 offset?: number;
                 company_id?: string | null;
                 q?: string | null;
-                /** @description name | company | status | registrar | dns | dnssec | email_enabled | created_at | updated_at, '-' desc */
+                /** @description name | company | status | registrar | dns | dnssec | email_enabled | start_date | next_invoice_date | created_at | updated_at, '-' desc */
                 sort?: string | null;
             };
             header?: never;
@@ -17999,6 +18206,154 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DomainRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tld_prices_api_v1_domains_tld_prices_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TldPriceGroup"][];
+                };
+            };
+        };
+    };
+    set_tld_price_api_v1_domains_tld_prices_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TldPriceUpsert"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TldPriceRow"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_tld_price_increase_api_v1_domains_tld_prices_price_increase_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TldPriceIncreaseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TldPriceIncreaseResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_tld_price_increase_api_v1_domains_tld_prices_price_increase_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TldPriceIncreaseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TldPriceIncreaseResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_tld_price_api_v1_domains_tld_prices__price_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                price_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

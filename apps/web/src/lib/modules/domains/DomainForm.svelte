@@ -3,12 +3,14 @@
    * The domain field set (issue #90). The caller owns the <form>, action and buttons, so create
    * and edit share identical fields. Providers come as one list and are filtered per slot by kind.
    */
+  import { fmtMoney } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import Combobox from "$lib/core/ui/Combobox.svelte";
+  import DateInput from "$lib/core/ui/DateInput.svelte";
   import PartyPicker from "$lib/core/ui/PartyPicker.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import type { components } from "$lib/core/api/schema";
-  import { normalizeDomainName } from "$lib/modules/domains/normalize";
+  import { normalizeDomainName, tldOf } from "$lib/modules/domains/normalize";
 
   type Domain = components["schemas"]["DomainRead"];
   type Provider = components["schemas"]["ProviderRead"];
@@ -27,6 +29,7 @@
     idPrefix = "domain",
     nameDefault = "",
     initialCompanyId = "",
+    tldPrices = [],
     oncreatecompany,
     oncreatecontact,
     oncreateprovider,
@@ -41,6 +44,9 @@
     definitions: Definition[];
     locale: string;
     idPrefix?: string;
+    /** Current TLD list prices (#250): the resolved rate shown while typing a name.
+     * Empty when the viewer lacks `domains.tld_price.read` — the hint simply stays away. */
+    tldPrices?: { tld: string; amount: string; currency: string }[];
     /** Prefills the name on create — for quick-create from another form's picker (#115). */
     nameDefault?: string;
     /** Preselects the client on a fresh form (quick-create from a client page). */
@@ -75,6 +81,18 @@
   // Derived, not a const: a quick-create refreshes `companies` mid-life and the new
   // entity must resolve to its label in the picker.
   const companyItems = $derived(companies.map((c) => ({ value: c.id, label: c.name })));
+
+  // Stateful so the TLD price hint follows what is typed (#250); still normalized on change.
+  // svelte-ignore state_referenced_locally
+  let nameValue = $state(domain?.name ?? normalizeDomainName(nameDefault));
+  // The rate a renewal would draft at: the typed name's TLD in the list, else what the API
+  // resolved for the stored record (covers a viewer whose list came back empty).
+  const tldListPrice = $derived.by(() => {
+    const tld = tldOf(normalizeDomainName(nameValue));
+    const row = tld ? tldPrices.find((p) => p.tld === tld) : null;
+    if (row) return row.amount;
+    return domain && domain.price_override == null ? (domain.resolved_price ?? null) : null;
+  });
 </script>
 
 <div class="space-y-4">
@@ -84,11 +102,47 @@
       id="{idPrefix}-name"
       name="name"
       required
-      value={domain?.name ?? normalizeDomainName(nameDefault)}
+      bind:value={nameValue}
       placeholder="example.nl"
       class="w-full rounded-lg border border-border px-3 py-2 text-sm text-text outline-none focus:border-brand"
-      onchange={(e) => (e.currentTarget.value = normalizeDomainName(e.currentTarget.value))}
+      onchange={() => (nameValue = normalizeDomainName(nameValue))}
     />
+  </div>
+
+  <div class="grid gap-4 sm:grid-cols-2">
+    <div>
+      <label for="{idPrefix}-start-date" class="mb-1 block text-sm text-text"
+        >{t("domains.start_date")}</label
+      >
+      <DateInput
+        name="start_date"
+        id="{idPrefix}-start-date"
+        required
+        value={domain?.start_date ?? new Date().toISOString().slice(0, 10)}
+      />
+      <p class="mt-1 text-xs text-text-muted">{t("domains.start_date_hint")}</p>
+    </div>
+    <div>
+      <label for="{idPrefix}-price-override" class="mb-1 block text-sm text-text"
+        >{t("domains.price_override")}</label
+      >
+      <input
+        id="{idPrefix}-price-override"
+        name="price_override"
+        type="number"
+        step="0.01"
+        min="0"
+        value={domain?.price_override ?? ""}
+        placeholder={tldListPrice != null ? fmtMoney(Number(tldListPrice)) : ""}
+        class="w-full rounded-lg border border-border px-3 py-2 text-sm text-text outline-none focus:border-brand"
+      />
+      <p class="mt-1 text-xs text-text-muted">
+        {t("domains.price_override_hint")}
+        {#if tldListPrice != null}
+          {t("domains.price_source_tld")}: {fmtMoney(Number(tldListPrice))}
+        {/if}
+      </p>
+    </div>
   </div>
 
   <div>

@@ -21,3 +21,11 @@ export function normalizeDomainName(value: string): string {
     name = stripped;
   }
 }
+
+/** Mirror of the API's `tld_of` (domains/schemas.py): everything after the first label of a
+ * normalized name ("example.co.uk" → "co.uk"), or null for a dotless name. Only used to show
+ * the matching TLD price while typing — the API stamps the stored value. */
+export function tldOf(name: string): string | null {
+  const at = name.indexOf(".");
+  return at === -1 ? null : name.slice(at + 1) || null;
+}

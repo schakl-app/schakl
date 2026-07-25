@@ -3,9 +3,10 @@
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
-  import { fmtDateTime } from "$lib/core/format";
+  import { fmtDateTime, fmtMoney, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
+  import { entityPanelsFor } from "$lib/core/registry";
   import { InFlight } from "$lib/core/submit.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
@@ -78,6 +79,14 @@
   function checkedAt(iso: string | null | undefined): string {
     return iso ? fmtDateTime(iso) : t("domains.dns.never");
   }
+
+  // The activity trail rides the core entity-panel seam (§16), like project/contact.
+  const enabled = $derived(page.data.theme?.enabledModules ?? []);
+  const panelSpecs = $derived(entityPanelsFor(enabled, "domain"));
+  function panelComponent(key: string) {
+    return panelSpecs.find((spec) => spec.key === key)?.component;
+  }
+  const emptyLookups = { members: [], companies: [], projects: [], tasks: [] };
 </script>
 
 <svelte:head>
@@ -137,6 +146,7 @@
           definitions={data.definitions}
           locale={data.locale}
           idPrefix="edit-domain"
+          tldPrices={data.tldPrices}
           oncreatecompany={quickCreateCompany}
           oncreatecontact={quickCreateContact}
           oncreateprovider={(kind, name) => {
@@ -183,6 +193,31 @@
             </dd>
           </div>
         {/if}
+        <div class="flex justify-between">
+          <dt class="text-text-muted">{t("domains.start_date")}</dt>
+          <dd class="text-text">{fmtNumericDate(domain.start_date)}</dd>
+        </div>
+        <div class="flex justify-between">
+          <dt class="text-text-muted">{t("domains.renewal")}</dt>
+          <dd class="text-text">
+            {domain.next_invoice_date ? fmtNumericDate(domain.next_invoice_date) : "—"}
+          </dd>
+        </div>
+        <div class="flex justify-between">
+          <dt class="text-text-muted">{t("domains.price")}</dt>
+          <dd class="text-text">
+            {#if domain.resolved_price != null}
+              {t("domains.price_per_year", { amount: fmtMoney(Number(domain.resolved_price)) })}
+              <span class="text-xs text-text-muted">
+                ({domain.price_override != null
+                  ? t("domains.price_source_override")
+                  : t("domains.price_source_tld")})
+              </span>
+            {:else}
+              {t("domains.no_price")}
+            {/if}
+          </dd>
+        </div>
         <div class="flex justify-between">
           <dt class="text-text-muted">{t("domains.registrar")}</dt>
           <dd class="text-text">{domain.registrar_provider_name ?? "—"}</dd>
@@ -418,6 +453,17 @@
     <p class="text-sm text-text-muted">—</p>
   {/if}
 </section>
+
+<!-- Core entity panels (the activity trail, §16) — history hangs last, under the work. -->
+{#each data.panels as panel (panel.key)}
+  {@const PanelComponent = panelComponent(panel.key)}
+  {#if PanelComponent}
+    <section class="mt-4 rounded-xl border border-border bg-surface-raised p-5">
+      <h2 class="mb-3 text-sm font-semibold text-text">{t(panel.titleKey)}</h2>
+      <PanelComponent data={panel.data} context={data.context} lookups={emptyLookups} />
+    </section>
+  {/if}
+{/each}
 
 <!-- The hosting dialog sits over the (inline) website form; the provider/company/contact dialogs
      below it are rendered last so they stack above it (equal z-index → DOM order wins). -->

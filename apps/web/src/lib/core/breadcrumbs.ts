@@ -92,6 +92,9 @@ const TAILS_BY_ROOT: Record<string, Record<string, string>> = {
     templates: "settings.subscriptions.templates_heading",
     types: "settings.subscriptions.types_heading",
   },
+  domains: {
+    "tld-prices": "domains.tld_prices.title",
+  },
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

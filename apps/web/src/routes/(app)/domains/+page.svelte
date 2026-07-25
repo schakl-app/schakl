@@ -3,7 +3,7 @@
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
-  import { fmtNumericDate } from "$lib/core/format";
+  import { fmtMoney, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -89,6 +89,8 @@
       dns: dnsCell,
       dnssec: dnssecCell,
       email_enabled: emailCell,
+      next_invoice: renewalCell,
+      price: priceCell,
       created_at: createdCell,
     }),
   });
@@ -129,6 +131,19 @@
 
 {#snippet emailCell(domain: Domain)}
   <span class="text-text-muted">{domain.email_enabled ? t("common.yes") : t("common.no")}</span>
+{/snippet}
+
+{#snippet renewalCell(domain: Domain)}
+  <span class="tabular-nums text-text-muted">
+    {domain.next_invoice_date ? fmtNumericDate(domain.next_invoice_date) : "—"}
+  </span>
+{/snippet}
+
+{#snippet priceCell(domain: Domain)}
+  <!-- Override → TLD list price → an honest dash, never a reassuring zero (docs/UX.md). -->
+  <span class="tabular-nums text-text-muted">
+    {domain.resolved_price != null ? fmtMoney(Number(domain.resolved_price)) : "—"}
+  </span>
 {/snippet}
 
 {#snippet createdCell(domain: Domain)}
@@ -232,6 +247,7 @@
         definitions={data.definitions}
         locale={data.locale}
         idPrefix="new-domain"
+        tldPrices={data.tldPrices}
         {initialCompanyId}
         oncreatecompany={quickCreateCompany}
         oncreatecontact={quickCreateContact}
