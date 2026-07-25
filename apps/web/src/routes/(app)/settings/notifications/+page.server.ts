@@ -86,11 +86,13 @@ export const actions: Actions = {
     return { channelSaved: true };
   },
 
-  /** Edit a channel's name, enabled state, and event filter (#245). The URL is never touched. */
+  /** Edit a channel's name, enabled state, and event filter (#245). The URL is never touched.
+   *  Errors surface as `updateError` (distinct from the create form's `channelError`) so a failed
+   *  edit reports next to the inline editor, not under the create form far below. */
   updateChannel: async (event) => {
     const form = await event.request.formData();
     const id = String(form.get("channel_id") ?? "");
-    if (!id) return fail(400, { channelError: "errors.required" });
+    if (!id) return fail(400, { updateError: "errors.required", updateErrorId: id });
     const name = String(form.get("name") ?? "").trim();
     const { error } = await apiFor(event).PATCH("/api/v1/notifications/channels/{channel_id}", {
       params: { path: { channel_id: id } },
@@ -102,7 +104,7 @@ export const actions: Actions = {
     });
     if (error) {
       const e = apiErrorKey(error);
-      return fail(400, { channelError: e.fields?.url ?? e.key });
+      return fail(400, { updateError: e.fields?.url ?? e.key, updateErrorId: id });
     }
     return { channelSaved: true };
   },

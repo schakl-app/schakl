@@ -165,10 +165,16 @@ class EmailScheduleWrite(BaseModel):
 
 
 class PreferenceUpdate(BaseModel):
-    """A PUT replaces this scope's overrides wholesale — an omitted event inherits again.
+    """A PUT replaces this scope's overrides **wholesale** — an omitted event inherits again.
 
-    ``events`` and ``email_events`` are the in-app and e-mail overrides, each tracked
-    independently, so an event may override one channel while still inheriting the other.
+    The body is a full snapshot of the scope, not a patch: ``events`` and ``email_events`` are
+    the in-app and e-mail overrides (each channel tracked independently, so an event may override
+    one channel while inheriting the other), and ``general`` / ``email`` are the two scope-wide
+    rows. Whatever a channel's list does not contain is cleared, exactly as omitting an ``events``
+    entry clears that in-app override. A caller that means to change one channel must therefore
+    still send the other channel's current overrides, or they are dropped — the web form always
+    posts both. This mirrors the pre-#245 behaviour of ``events``/``general``; e-mail simply joined
+    the same wholesale scope when its dedicated endpoint was folded in.
     """
 
     events: list[PreferenceRowWrite] = Field(default_factory=list)

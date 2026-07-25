@@ -927,7 +927,7 @@
   "settings.notifications.channel_events": "Gebeurtenissen",
   "settings.notifications.channel_events_all": "Alle gebeurtenissen",
   "settings.notifications.channel_events_selected": "Alleen geselecteerde",
-  "settings.notifications.channel_events_count": "{count} gebeurtenistypen",
+  "settings.notifications.channel_events_count": "{count, plural, one {{count} gebeurtenistype} other {{count} gebeurtenistypen}}",
   "settings.notifications.channel_enabled": "Ingeschakeld",
   "settings.notifications.channel_test_failed": "Test mislukt: {error}",
   "settings.notification_defaults.title": "Standaardmeldingen",

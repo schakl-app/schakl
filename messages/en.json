@@ -927,7 +927,7 @@
   "settings.notifications.channel_events": "Events",
   "settings.notifications.channel_events_all": "All events",
   "settings.notifications.channel_events_selected": "Only selected",
-  "settings.notifications.channel_events_count": "{count} event types",
+  "settings.notifications.channel_events_count": "{count, plural, one {{count} event type} other {{count} event types}}",
   "settings.notifications.channel_enabled": "Enabled",
   "settings.notifications.channel_test_failed": "Test failed: {error}",
   "settings.notification_defaults.title": "Notification defaults",

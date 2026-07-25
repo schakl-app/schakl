@@ -171,6 +171,9 @@
                   name="event_filter"
                   value={JSON.stringify(editFilter[channel.id] ?? [])}
                 />
+                {#if form?.updateError && form?.updateErrorId === channel.id}
+                  <p class="text-sm text-red-600 dark:text-red-400">{t(form.updateError)}</p>
+                {/if}
                 <div class="flex gap-2">
                   <Button loading={busy.is(`update-${channel.id}`)} disabled={busy.active}
                     >{t("common.save")}</Button
