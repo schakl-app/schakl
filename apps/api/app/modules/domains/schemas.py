@@ -8,9 +8,11 @@ per-entity custom values (§13).
 
 from __future__ import annotations
 
+import re
 import uuid
-from datetime import datetime
-from typing import Any
+from datetime import date, datetime
+from decimal import Decimal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -48,6 +50,24 @@ def normalize_domain_name(value: object) -> object:
         name = stripped
 
 
+def tld_of(name: str) -> str | None:
+    """The priced suffix of a (normalized) domain name: everything after the first label —
+    so ``example.co.uk`` prices as ``co.uk`` — stored without a leading dot; ``None`` for a
+    dotless name. Stamped at write time, never reparsed on read (#250)."""
+    _, _, rest = name.partition(".")
+    return rest or None
+
+
+_TLD_RE = re.compile(r"^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$")
+
+
+def normalize_tld(value: object) -> object:
+    """What the user types in the price list ("nl", ".NL", " co.uk ") → the stored form."""
+    if not isinstance(value, str):
+        return value
+    return value.strip().lower().strip(".")
+
+
 class MxRecord(BaseModel):
     priority: int
     exchange: str
@@ -65,11 +85,16 @@ class DomainBase(BaseModel):
     email_enabled: bool = False
     email_provider_id: uuid.UUID | None = None
     email_contact: PartyRef | None = None
+    #: A per-domain price agreed outside the TLD list (#250); NULL = the TLD price applies.
+    price_override: Decimal | None = Field(default=None, ge=0, le=Decimal("9999999999.99"))
     custom: dict[str, Any] = Field(default_factory=dict)
 
 
 class DomainCreate(DomainBase):
     company_id: uuid.UUID
+    #: When the registration began — anchors the renewal cycle (#250). The web form always
+    #: sends it; omitted (an older API consumer), it defaults to the org-local today.
+    start_date: date | None = None
 
 
 class DomainUpdate(BaseModel):
@@ -79,12 +104,14 @@ class DomainUpdate(BaseModel):
     company_id: uuid.UUID | None = None
     status: DomainStatus | None = None
     redirect_url: str | None = Field(default=None, max_length=512)
+    start_date: date | None = None
     registrar_provider_id: uuid.UUID | None = None
     dns_provider_id: uuid.UUID | None = None
     registry_contact: PartyRef | None = None
     email_enabled: bool | None = None
     email_provider_id: uuid.UUID | None = None
     email_contact: PartyRef | None = None
+    price_override: Decimal | None = Field(default=None, ge=0, le=Decimal("9999999999.99"))
     custom: dict[str, Any] | None = None
 
 
@@ -107,6 +134,15 @@ class DomainRead(BaseModel):
     email_provider_id: uuid.UUID | None = None
     email_provider_name: str | None = None
     email_contact: PartyReadRef | None = None
+    # --- pricing & renewal (#250) --- #
+    start_date: date
+    tld: str | None = None
+    price_override: Decimal | None = None
+    next_invoice_date: date | None = None
+    #: The price a renewal would draft at today: ``price_override``, else the TLD's current
+    #: list price, else NULL. Display-only — an invoice snapshots at draft time, never here.
+    resolved_price: Decimal | None = None
+    resolved_currency: str | None = None
     # Fetched from public DNS on a schedule (#92, #125); NULL until first checked.
     nameservers: list[str] | None = None
     dnssec: bool | None = None
@@ -115,3 +151,68 @@ class DomainRead(BaseModel):
     custom: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
     updated_at: datetime
+
+
+# --- TLD price list (#250) ------------------------------------------------------------- #
+
+
+class TldPriceRow(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    tld: str
+    amount: Decimal
+    currency: str
+    valid_from: date
+
+
+class TldPriceGroup(BaseModel):
+    """One TLD as the price list shows it: the price in effect today, anything scheduled,
+    and the history behind it. TLDs an org holds domains under but hasn't priced appear
+    with no rows at all — the list's job is also to show what still needs a price."""
+
+    tld: str
+    domain_count: int = 0
+    currency: str
+    current: TldPriceRow | None = None
+    upcoming: list[TldPriceRow] = Field(default_factory=list)
+    history: list[TldPriceRow] = Field(default_factory=list)
+
+
+class TldPriceUpsert(BaseModel):
+    tld: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$")
+    _normalize_tld = field_validator("tld", mode="before")(normalize_tld)
+    amount: Decimal = Field(ge=0, le=Decimal("9999999999.99"))
+    #: Defaults to the org-local today; a same-day row is corrected in place (the
+    #: subscriptions manual-edit semantics), any other date appends history.
+    valid_from: date | None = None
+
+
+class TldPriceIncreaseRequest(BaseModel):
+    """#231's request shape applied to the TLD list: preview and apply share it, the base
+    is the price in effect on ``valid_from``, and scope is everything or one TLD."""
+
+    mode: Literal["percent", "amount", "set"]
+    #: Percent (5 = +5%) or a currency amount, after ``mode``. Negative = a decrease.
+    value: Decimal = Field(gt=Decimal(-100))
+    valid_from: date
+    #: Narrow to exactly one TLD; NULL = every priced TLD.
+    tld: str | None = Field(
+        default=None, min_length=1, max_length=128,
+        pattern=r"^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$",
+    )
+    _normalize_tld = field_validator("tld", mode="before")(normalize_tld)
+
+
+class TldPriceIncreaseItem(BaseModel):
+    tld: str
+    currency: str
+    current_amount: Decimal
+    new_amount: Decimal
+    #: How many of the org's domains resolve to this TLD price today (overrides excluded) —
+    #: the impact the preview is for.
+    domain_count: int = 0
+
+
+class TldPriceIncreaseResult(BaseModel):
+    items: list[TldPriceIncreaseItem]

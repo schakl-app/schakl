@@ -423,6 +423,7 @@ class InvoiceRead(BaseModel):
     template_id: uuid.UUID | None
     quote_id: uuid.UUID | None
     subscription_id: uuid.UUID | None
+    domain_id: uuid.UUID | None
     period_start: date | None
     period_end: date | None
     prices_include_tax: bool

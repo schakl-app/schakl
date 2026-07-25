@@ -8,7 +8,11 @@ from __future__ import annotations
 
 from arq import cron
 
-from app.modules.domains.jobs import refresh_all_domains, refresh_domain_dns
+from app.modules.domains.jobs import (
+    advance_domain_renewals,
+    refresh_all_domains,
+    refresh_domain_dns,
+)
 from app.modules.domains.panels import domains_company_panel
 from app.modules.domains.permissions import DOMAIN_PERMISSIONS
 from app.modules.domains.router import router
@@ -24,8 +28,12 @@ module = ModuleDescriptor(
     panels=[domains_company_panel],
     permissions=DOMAIN_PERMISSIONS,
     # Refresh every domain's nameservers + DNSSEC + MX daily, off-peak and offset from other
-    # jobs (#92, #125).
-    cron_jobs=[cron(refresh_all_domains, hour=4, minute=30)],
+    # jobs (#92, #125). The renewal cycle (#250) fires after the subscriptions cycle (05:30)
+    # and before invoicing's daily (06:15), so drafts exist when reminders/summaries look.
+    cron_jobs=[
+        cron(refresh_all_domains, hour=4, minute=30),
+        cron(advance_domain_renewals, hour=5, minute=45),
+    ],
     # One-off first fetch right after a domain is created (#125).
     worker_functions=[refresh_domain_dns],
 )

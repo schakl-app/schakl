@@ -65,7 +65,7 @@ _DOMAIN_TABLES = (
     "interactions, interaction_kinds, "
     "calendar_event_links, google_calendar_events, google_calendar_channels, "
     "drive_links, drive_folder_jobs, gmail_suppressions, google_connections, google_settings, "
-    "websites, hosting, domains, providers, "
+    "websites, hosting, domain_tld_prices, domains, providers, "
     "time_entry_drafts, time_entries, time_entry_types, tasks, projects, contacts, contact_types, "
     "custom_field_definitions, "
     "membership_company_groups, company_group_members, company_groups, hr_documents, "

@@ -11,7 +11,16 @@ from fastapi import APIRouter, Depends, Query
 
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
-from app.modules.domains.schemas import DomainCreate, DomainRead, DomainUpdate
+from app.modules.domains.schemas import (
+    DomainCreate,
+    DomainRead,
+    DomainUpdate,
+    TldPriceGroup,
+    TldPriceIncreaseRequest,
+    TldPriceIncreaseResult,
+    TldPriceRow,
+    TldPriceUpsert,
+)
 from app.modules.domains.service import DomainService
 from app.schemas import Page
 
@@ -32,7 +41,7 @@ async def list_domains(
         None,
         description=(
             "name | company | status | registrar | dns | dnssec | email_enabled"
-            " | created_at | updated_at, '-' desc"
+            " | start_date | next_invoice_date | created_at | updated_at, '-' desc"
         ),
     ),
     ctx: RequestContext = Depends(require_context),
@@ -60,6 +69,73 @@ async def create_domain(
 ) -> DomainRead:
     domain = await DomainService(ctx).create(payload)
     return DomainRead.model_validate(domain)
+
+
+# --- TLD price list (#250) — literal segments, so declared before ``/{domain_id}`` ----- #
+
+
+@router.get(
+    "/tld-prices",
+    response_model=list[TldPriceGroup],
+    dependencies=[require_permission("domains.tld_price.read")],
+)
+async def list_tld_prices(
+    ctx: RequestContext = Depends(require_context),
+) -> list[TldPriceGroup]:
+    """The per-TLD price list: current, scheduled and past rows, plus unpriced TLDs."""
+    return await DomainService(ctx).tld_price_groups()
+
+
+@router.post(
+    "/tld-prices",
+    response_model=TldPriceRow,
+    dependencies=[require_permission("domains.tld_price.manage")],
+)
+async def set_tld_price(
+    payload: TldPriceUpsert,
+    ctx: RequestContext = Depends(require_context),
+) -> TldPriceRow:
+    """Append a price row for a TLD (a same-day row is corrected in place)."""
+    return await DomainService(ctx).set_tld_price(payload)
+
+
+@router.post(
+    "/tld-prices/price-increase/preview",
+    response_model=TldPriceIncreaseResult,
+    dependencies=[require_permission("domains.tld_price.manage")],
+)
+async def preview_tld_price_increase(
+    payload: TldPriceIncreaseRequest,
+    ctx: RequestContext = Depends(require_context),
+) -> TldPriceIncreaseResult:
+    """What a price change would do — nothing is written (#231's preview-then-apply)."""
+    return await DomainService(ctx).tld_price_increase(payload, apply=False)
+
+
+@router.post(
+    "/tld-prices/price-increase",
+    response_model=TldPriceIncreaseResult,
+    dependencies=[require_permission("domains.tld_price.manage")],
+)
+async def apply_tld_price_increase(
+    payload: TldPriceIncreaseRequest,
+    ctx: RequestContext = Depends(require_context),
+) -> TldPriceIncreaseResult:
+    """Apply a price change: one history row per TLD, effective ``valid_from``."""
+    return await DomainService(ctx).tld_price_increase(payload, apply=True)
+
+
+@router.delete(
+    "/tld-prices/{price_id}",
+    status_code=204,
+    dependencies=[require_permission("domains.tld_price.manage")],
+)
+async def delete_tld_price(
+    price_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> None:
+    """Remove one history row (undo a scheduled increase or a mistake)."""
+    await DomainService(ctx).delete_tld_price(price_id)
 
 
 @router.get(

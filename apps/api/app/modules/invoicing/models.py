@@ -306,6 +306,15 @@ class Invoice(
             unique=True,
             postgresql_where=text("subscription_id IS NOT NULL"),
         ),
+        # Same guarantee for domain renewals (#250): one invoice per (domain, period).
+        Index(
+            "uq_invoices_domain_period",
+            "org_id",
+            "domain_id",
+            "period_end",
+            unique=True,
+            postgresql_where=text("domain_id IS NOT NULL"),
+        ),
     )
 
     company_id: Mapped[uuid.UUID] = mapped_column(
@@ -342,6 +351,10 @@ class Invoice(
     quote_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
     #: The agreement this bills a period of (#30) — cross-module, so no FK (§6).
     subscription_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), nullable=True, index=True
+    )
+    #: The domain this bills a renewal year of (#250) — cross-module, so no FK (§6).
+    domain_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True), nullable=True, index=True
     )
     period_start: Mapped[date | None] = mapped_column(Date, nullable=True)

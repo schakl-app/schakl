@@ -88,6 +88,11 @@ for accounting packages.
   unique index make a re-run, resume or double emit unable to double-bill. **Draft, never
   auto-issued**: a human sends invoices (#31's rule). The org's default tax rate applies;
   the period rides `period_start`/`period_end`.
+- **Domains (#250)**: the renewal cron emits `domain.due` with the price resolved *at the
+  due date* (`price_override`, else the TLD's `domain_tld_prices` row valid then); the
+  same `events.py` drafts one invoice per `(domain, period)` under its own partial unique
+  index (`uq_invoices_domain_period`), one line ("Domeinverlenging …" in the org locale),
+  same draft-only rule.
 - **Quotes → invoices**: `convert` (accepted only) copies the lines *with their snapshots* —
   the deal keeps the prices it was accepted at. The quote flips to `invoiced` and points at
   the invoice; deleting that draft reverts it to `accepted`.

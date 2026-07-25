@@ -10,7 +10,7 @@ from __future__ import annotations
 from arq import cron
 
 from app.core.events import subscribe
-from app.modules.invoicing.events import on_subscription_due
+from app.modules.invoicing.events import on_domain_due, on_subscription_due
 from app.modules.invoicing.jobs import invoicing_daily
 from app.modules.invoicing.panels import invoicing_company_panel
 from app.modules.invoicing.permissions import INVOICING_PERMISSIONS
@@ -36,3 +36,5 @@ registry.register(module)
 # The subscriptions module deliberately raises no invoices (#30); this is the consumer it
 # emits ``subscription.due`` for. Subscribed at import, like every cross-module reaction.
 subscribe("subscription.due", on_subscription_due)
+# Domain renewals (#250) follow the same seam: the domains cron owns the cycle, this drafts.
+subscribe("domain.due", on_domain_due)
