@@ -489,6 +489,18 @@
   `tests/test_rbac_deny_by_default.py::test_client_role_is_read_only_except_own_comments` (it walks
   the live route table, so a new write route ships covered); the UI side has no automated guard, so
   audit every write control by hand when you add a client-reachable panel, list or shared row.
+- **A whole *screen* that leaks, not just a control.** The pass above gated the controls inside
+  client-reachable pages and missed the page that *is* a write surface: `/tasks/templates` — the
+  org-wide task-automation and checklist repositories — hung off the tasks sub-nav and read behind
+  `tasks.task.read`, which a `client` holds. So a portal login sat one tab from their task list,
+  looking at the agency's internal process library, with a "nieuw sjabloon" form the API refuses.
+  Two lessons. When **every** control on a screen writes, the gate belongs on the screen and on the
+  link to it — the sub-tab, the Instellingen card, and a `redirect(303, …)` in the route load — not
+  on each button: rendering a management page read-only either lies (an empty list that is really a
+  403) or leaks. And **gate the read, not only the write**: a permission-gated form is still a leak
+  while its `GET` sits on a key the client holds. Those two lists now read as "you may edit a task"
+  (`tasks.task.write`) and "you may apply a template" (`tasks.template.apply`), so a portal login
+  cannot enumerate them at all, and the load skips the fetch it would 403 on.
 - Taking `.date()` of a UTC instant to name a local day. Amsterdam's midnight is 22:00 UTC the day
   *before* in summer, so a monthly budget reported its period as starting 30 June. Half the year the
   bug is invisible, which is why it is pinned on a fixed date rather than on `today`.

@@ -508,6 +508,11 @@ It is a **core, cross-cutting capability**, like custom fields (§13) — not pe
   checklist tick, a complete-toggle, a drag handle, an inline "＋ nieuw"). `!isPortal` is not the
   gate; the API's own key is (`docs/UX.md`, the client-portal entry). The client's whole write
   surface is its own task comments, dashboard/nav layout and notification inbox — nothing else.
+  A screen where *every* control writes is gated whole — the route load, and the tab or card that
+  links to it — and its **read** is gated too: the org-wide task-template and checklist
+  repositories sat behind `tasks.task.read`, which a client holds, so the portal reached the
+  agency's internal process library and its create form. They now read on `tasks.template.apply`
+  and `tasks.task.write`.
 - **A module that ships later** brings its own permissions; a startup reconciler grants them to
   each org's system roles exactly once, tracked in `org_settings.applied_permission_defaults`.
   A migration must never import the catalog (`docs/WORKFLOW.md`).

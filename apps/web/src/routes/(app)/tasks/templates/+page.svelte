@@ -18,7 +18,12 @@
 
   const busy = new InFlight();
 
+  // Two repositories, two permissions. Neither section renders for someone who cannot write it:
+  // the load fetches nothing for them (so an ungated list would read as "leeg", which is a lie),
+  // and every control in it is a write the API refuses (#244). The route redirects a visitor
+  // holding neither, so in practice this hides the *other* half from a single-permission holder.
   const canManageTemplates = $derived(can(page.data.user, "tasks.template.write"));
+  const canManageChecklists = $derived(can(page.data.user, "tasks.checklist_template.write"));
 
   // --- checklist template repository state ------------------------------------
   let editingChecklistId = $state<string | null>(null);
@@ -166,7 +171,7 @@
   {/if}
 </div>
 
-{#if editing}
+{#if editing && canManageTemplates}
   <form
     method="POST"
     action={editing.id ? "?/update" : "?/create"}
@@ -359,188 +364,197 @@
   </form>
 {/if}
 
-{#if data.templates.length === 0 && !editing}
-  <div class="rounded-xl border border-dashed border-border bg-surface-raised p-10 text-center">
-    <p class="font-medium text-text">{t("tasks.templates.empty")}</p>
-    <p class="mt-1 text-sm text-text-muted">{t("tasks.templates.empty_hint")}</p>
-  </div>
-{:else}
-  <ul class="space-y-3">
-    {#each data.templates as template (template.id)}
-      <li class="rounded-xl border border-border bg-surface-raised p-4">
-        <div class="flex items-center justify-between gap-3">
-          <div>
-            <div class="flex items-center gap-2">
-              <h3 class="text-sm font-semibold text-text">{template.name}</h3>
-              {#if !template.active}
-                <span class="rounded-full bg-surface px-2 py-0.5 text-[11px] text-text-muted"
-                  >{t("tasks.templates.inactive")}</span
-                >
-              {/if}
-            </div>
-            <p class="mt-0.5 text-xs text-text-muted">
-              {#if template.trigger === "company_status" && template.trigger_status}
-                {t("tasks.templates.auto_hint", {
-                  status: t(`companies.status.${template.trigger_status}`),
-                })}
-              {:else}
-                {t("tasks.templates.trigger_manual")}
-              {/if}
-              · {t("tasks.templates.item_count", { count: (template.items ?? []).length })}
-            </p>
-          </div>
-          {#if canManageTemplates}
-            <ActionsMenu
-              items={[
-                { label: t("common.edit"), icon: Pencil, onclick: () => startEdit(template) },
-                {
-                  label: t("common.delete"),
-                  icon: Trash2,
-                  danger: true,
-                  onclick: () => {
-                    deleteId = template.id;
-                    confirmDelete = true;
-                  },
-                },
-              ]}
-            />
-          {/if}
-        </div>
-        {#if (template.items ?? []).length > 0}
-          <ul class="mt-2 flex flex-wrap gap-1.5">
-            {#each template.items ?? [] as item (item.id)}
-              <li class="rounded-full bg-surface px-2 py-0.5 text-[11px] text-text-muted">
-                {item.title}
-              </li>
-            {/each}
-          </ul>
-        {/if}
-      </li>
-    {/each}
-  </ul>
-{/if}
-
-<!-- Checklist template repository (shared per instance, staff-editable) -->
-<section class="mt-8">
-  <div class="mb-3">
-    <h2 class="text-base font-semibold text-text">{t("tasks.checklist_templates.title")}</h2>
-    <p class="mt-0.5 text-sm text-text-muted">{t("tasks.checklist_templates.subtitle")}</p>
-  </div>
-
-  <div class="grid gap-4 lg:grid-cols-[1fr_320px]">
-    <div class="space-y-3">
-      {#if data.checklistTemplates.length === 0}
-        <div
-          class="rounded-xl border border-dashed border-border bg-surface-raised p-8 text-center"
-        >
-          <p class="text-sm text-text-muted">{t("tasks.checklist_templates.empty")}</p>
-        </div>
-      {:else}
-        {#each data.checklistTemplates as checklistTemplate (checklistTemplate.id)}
-          <div class="rounded-xl border border-border bg-surface-raised p-4">
-            {#if editingChecklistId === checklistTemplate.id}
-              <form
-                method="POST"
-                action="?/updateChecklist"
-                use:enhance={busy.wrap(`checklist:${checklistTemplate.id}`, () => ({ update }) => {
-                  editingChecklistId = null;
-                  void update();
-                })}
-                class="space-y-2"
-              >
-                <input type="hidden" name="id" value={checklistTemplate.id} />
-                <input name="title" value={checklistTemplate.title} required class={inputClass} />
-                <textarea
-                  name="items"
-                  rows="4"
-                  class={inputClass}
-                  placeholder={t("tasks.templates.checklist_items_hint")}
-                  >{(checklistTemplate.items ?? []).join("\n")}</textarea
-                >
-                <div class="flex gap-2">
-                  <Button
-                    size="sm"
-                    loading={busy.is(`checklist:${checklistTemplate.id}`)}
-                    disabled={busy.active}
+<!-- The automation repository belongs to whoever may edit it: no read-only rendering. -->
+{#if canManageTemplates}
+  {#if data.templates.length === 0 && !editing}
+    <div class="rounded-xl border border-dashed border-border bg-surface-raised p-10 text-center">
+      <p class="font-medium text-text">{t("tasks.templates.empty")}</p>
+      <p class="mt-1 text-sm text-text-muted">{t("tasks.templates.empty_hint")}</p>
+    </div>
+  {:else}
+    <ul class="space-y-3">
+      {#each data.templates as template (template.id)}
+        <li class="rounded-xl border border-border bg-surface-raised p-4">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <div class="flex items-center gap-2">
+                <h3 class="text-sm font-semibold text-text">{template.name}</h3>
+                {#if !template.active}
+                  <span class="rounded-full bg-surface px-2 py-0.5 text-[11px] text-text-muted"
+                    >{t("tasks.templates.inactive")}</span
                   >
-                    {t("common.save")}
-                  </Button>
-                  <button
-                    type="button"
-                    class="rounded-lg border border-border px-3 py-1.5 text-xs"
-                    onclick={() => (editingChecklistId = null)}>{t("common.cancel")}</button
-                  >
-                </div>
-              </form>
-            {:else}
-              <div class="flex items-center justify-between gap-3">
-                <h3 class="text-sm font-semibold text-text">{checklistTemplate.title}</h3>
-                <ActionsMenu
-                  items={[
-                    {
-                      label: t("common.edit"),
-                      icon: Pencil,
-                      onclick: () => (editingChecklistId = checklistTemplate.id),
-                    },
-                    {
-                      label: t("common.delete"),
-                      icon: Trash2,
-                      danger: true,
-                      onclick: () => {
-                        deleteChecklistId = checklistTemplate.id;
-                        confirmDeleteChecklist = true;
-                      },
-                    },
-                  ]}
-                />
+                {/if}
               </div>
-              <ul class="mt-2 flex flex-wrap gap-1.5">
-                {#each checklistTemplate.items ?? [] as item, i (i)}
-                  <li class="rounded-full bg-surface px-2 py-0.5 text-[11px] text-text-muted">
-                    {item}
-                  </li>
-                {/each}
-              </ul>
+              <p class="mt-0.5 text-xs text-text-muted">
+                {#if template.trigger === "company_status" && template.trigger_status}
+                  {t("tasks.templates.auto_hint", {
+                    status: t(`companies.status.${template.trigger_status}`),
+                  })}
+                {:else}
+                  {t("tasks.templates.trigger_manual")}
+                {/if}
+                · {t("tasks.templates.item_count", { count: (template.items ?? []).length })}
+              </p>
+            </div>
+            {#if canManageTemplates}
+              <ActionsMenu
+                items={[
+                  { label: t("common.edit"), icon: Pencil, onclick: () => startEdit(template) },
+                  {
+                    label: t("common.delete"),
+                    icon: Trash2,
+                    danger: true,
+                    onclick: () => {
+                      deleteId = template.id;
+                      confirmDelete = true;
+                    },
+                  },
+                ]}
+              />
             {/if}
           </div>
-        {/each}
-      {/if}
+          {#if (template.items ?? []).length > 0}
+            <ul class="mt-2 flex flex-wrap gap-1.5">
+              {#each template.items ?? [] as item (item.id)}
+                <li class="rounded-full bg-surface px-2 py-0.5 text-[11px] text-text-muted">
+                  {item.title}
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </li>
+      {/each}
+    </ul>
+  {/if}
+{/if}
+
+<!-- Checklist template repository (shared per instance, `tasks.checklist_template.write`) -->
+{#if canManageChecklists}
+  <section class="mt-8">
+    <div class="mb-3">
+      <h2 class="text-base font-semibold text-text">{t("tasks.checklist_templates.title")}</h2>
+      <p class="mt-0.5 text-sm text-text-muted">{t("tasks.checklist_templates.subtitle")}</p>
     </div>
 
-    <aside class="h-fit rounded-xl border border-border bg-surface-raised p-5">
-      <h3 class="mb-3 text-sm font-semibold text-text">
-        {t("tasks.checklist_templates.new")}
-      </h3>
-      <form
-        method="POST"
-        action="?/createChecklist"
-        use:enhance={busy.wrap(
-          "createChecklist",
-          () =>
-            ({ update }) =>
-              void update({ reset: true }),
-        )}
-        class="space-y-3"
-      >
-        <input
-          name="title"
-          required
-          placeholder={t("tasks.templates.checklist_title")}
-          class={inputClass}
-        />
-        <textarea
-          name="items"
-          rows="4"
-          required
-          class={inputClass}
-          placeholder={t("tasks.templates.checklist_items_hint")}></textarea>
-        <Button class="w-full" loading={busy.is("createChecklist")} disabled={busy.active}>
-          {t("common.create")}
-        </Button>
-      </form>
-    </aside>
-  </div>
-</section>
+    <div class="grid gap-4 lg:grid-cols-[1fr_320px]">
+      <div class="space-y-3">
+        {#if data.checklistTemplates.length === 0}
+          <div
+            class="rounded-xl border border-dashed border-border bg-surface-raised p-8 text-center"
+          >
+            <p class="text-sm text-text-muted">{t("tasks.checklist_templates.empty")}</p>
+          </div>
+        {:else}
+          {#each data.checklistTemplates as checklistTemplate (checklistTemplate.id)}
+            <div class="rounded-xl border border-border bg-surface-raised p-4">
+              {#if editingChecklistId === checklistTemplate.id}
+                <form
+                  method="POST"
+                  action="?/updateChecklist"
+                  use:enhance={busy.wrap(
+                    `checklist:${checklistTemplate.id}`,
+                    () =>
+                      ({ update }) => {
+                        editingChecklistId = null;
+                        void update();
+                      },
+                  )}
+                  class="space-y-2"
+                >
+                  <input type="hidden" name="id" value={checklistTemplate.id} />
+                  <input name="title" value={checklistTemplate.title} required class={inputClass} />
+                  <textarea
+                    name="items"
+                    rows="4"
+                    class={inputClass}
+                    placeholder={t("tasks.templates.checklist_items_hint")}
+                    >{(checklistTemplate.items ?? []).join("\n")}</textarea
+                  >
+                  <div class="flex gap-2">
+                    <Button
+                      size="sm"
+                      loading={busy.is(`checklist:${checklistTemplate.id}`)}
+                      disabled={busy.active}
+                    >
+                      {t("common.save")}
+                    </Button>
+                    <button
+                      type="button"
+                      class="rounded-lg border border-border px-3 py-1.5 text-xs"
+                      onclick={() => (editingChecklistId = null)}>{t("common.cancel")}</button
+                    >
+                  </div>
+                </form>
+              {:else}
+                <div class="flex items-center justify-between gap-3">
+                  <h3 class="text-sm font-semibold text-text">{checklistTemplate.title}</h3>
+                  <ActionsMenu
+                    items={[
+                      {
+                        label: t("common.edit"),
+                        icon: Pencil,
+                        onclick: () => (editingChecklistId = checklistTemplate.id),
+                      },
+                      {
+                        label: t("common.delete"),
+                        icon: Trash2,
+                        danger: true,
+                        onclick: () => {
+                          deleteChecklistId = checklistTemplate.id;
+                          confirmDeleteChecklist = true;
+                        },
+                      },
+                    ]}
+                  />
+                </div>
+                <ul class="mt-2 flex flex-wrap gap-1.5">
+                  {#each checklistTemplate.items ?? [] as item, i (i)}
+                    <li class="rounded-full bg-surface px-2 py-0.5 text-[11px] text-text-muted">
+                      {item}
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+            </div>
+          {/each}
+        {/if}
+      </div>
+
+      <aside class="h-fit rounded-xl border border-border bg-surface-raised p-5">
+        <h3 class="mb-3 text-sm font-semibold text-text">
+          {t("tasks.checklist_templates.new")}
+        </h3>
+        <form
+          method="POST"
+          action="?/createChecklist"
+          use:enhance={busy.wrap(
+            "createChecklist",
+            () =>
+              ({ update }) =>
+                void update({ reset: true }),
+          )}
+          class="space-y-3"
+        >
+          <input
+            name="title"
+            required
+            placeholder={t("tasks.templates.checklist_title")}
+            class={inputClass}
+          />
+          <textarea
+            name="items"
+            rows="4"
+            required
+            class={inputClass}
+            placeholder={t("tasks.templates.checklist_items_hint")}></textarea>
+          <Button class="w-full" loading={busy.is("createChecklist")} disabled={busy.active}>
+            {t("common.create")}
+          </Button>
+        </form>
+      </aside>
+    </div>
+  </section>
+{/if}
 
 <ConfirmDialog
   bind:open={confirmDelete}

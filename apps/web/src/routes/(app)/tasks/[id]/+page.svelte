@@ -77,6 +77,10 @@
   // `tasks.task.write`). A read-only portal client (#244) reaches this page for a client-visible
   // task, so the controls mirror the API: shown to a writer, read-only for everyone else.
   const canWriteTask = $derived(can(page.data.user, "tasks.task.write"));
+  // Saving a checklist into the org-wide repository is a *different* capability from editing this
+  // task — its own permission, held by nobody by default but admin. Without this gate a member in
+  // edit mode was offered "Als sjabloon opslaan" and got a 403 for their trouble.
+  const canSaveChecklistTemplate = $derived(can(page.data.user, "tasks.checklist_template.write"));
 
   // The org's configured status vocabulary (issue #62), from the /tasks layout load.
   const statuses = $derived(data.statuses);
@@ -612,7 +616,7 @@
                 <span class="text-xs tabular-nums text-text-muted"
                   >{t("tasks.checklist.progress", { done: doneCount, total })}</span
                 >
-                {#if editMode && items.length > 0}
+                {#if editMode && items.length > 0 && canSaveChecklistTemplate}
                   <form method="POST" action="?/saveChecklistTemplate" use:enhance>
                     <input type="hidden" name="title" value={checklist.title} />
                     <!-- Item titles *and* descriptions, so the saved template carries both (issue #66). -->

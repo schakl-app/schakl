@@ -220,7 +220,12 @@ async def delete_status(
 @router.get(
     "/checklist-templates",
     response_model=list[ChecklistTemplateRead],
-    dependencies=[require_permission("tasks.task.read")],
+    # The repository exists to be poured into a task's checklist, so *editing a task* is the read
+    # bar — not `tasks.task.read`, which a portal client holds (#193). A client may read the tasks
+    # of their own companies; the agency's internal process library is not part of that, and it is
+    # the surface whose write controls the portal was rendering (#244).
+    # The floor admits `:own`, so a member still fills the "van sjabloon" picker on their own task.
+    dependencies=[require_permission("tasks.task.write")],
 )
 async def list_checklist_templates(
     ctx: RequestContext = Depends(require_context),
@@ -270,7 +275,11 @@ async def delete_checklist_template(
 @router.get(
     "/templates",
     response_model=list[TemplateRead],
-    dependencies=[require_permission("tasks.task.read")],
+    # Same rule as the checklist repository above: a task template spells out the agency's
+    # internal process — item titles, descriptions, who gets assigned — and reading it is what
+    # applying one needs (#253 already gates the applier UI on this key). `tasks.task.read` put
+    # that list within reach of a portal client, which it never should have been.
+    dependencies=[require_permission("tasks.template.apply")],
 )
 async def list_templates(
     ctx: RequestContext = Depends(require_context),
@@ -293,7 +302,7 @@ async def create_template(
 @router.get(
     "/templates/{template_id}",
     response_model=TemplateRead,
-    dependencies=[require_permission("tasks.task.read")],
+    dependencies=[require_permission("tasks.template.apply")],
 )
 async def get_template(
     template_id: uuid.UUID, ctx: RequestContext = Depends(require_context)

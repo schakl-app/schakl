@@ -1,6 +1,7 @@
-import { fail } from "@sveltejs/kit";
+import { fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
+import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -104,20 +105,26 @@ function parseChecklistItems(raw: FormDataEntryValue | null): {
     .map((title) => ({ title, description: null }));
 }
 
-// The template repository is shared per instance: every staff member sees it. Task templates
-// (automation) are manager-edited — the API enforces that; checklist templates are
-// staff-editable.
+// Two org-wide repositories, each with its own write permission: task automation
+// (`tasks.template.write`) and checklists (`tasks.checklist_template.write`). Every control here
+// writes, so a visitor holding neither has nothing to do on the page — the tab is hidden and the
+// route bounces, rather than rendering forms the API refuses (#244, CLAUDE.md §15). Each list is
+// fetched only for the holder who can act on it: no call the caller would 403 on, and none paid
+// for a section that will not render (docs/PERFORMANCE.md).
 export const load: PageServerLoad = async (event) => {
+  const canManageTemplates = can(event.locals.user, "tasks.template.write");
+  const canManageChecklists = can(event.locals.user, "tasks.checklist_template.write");
+  if (!canManageTemplates && !canManageChecklists) throw redirect(303, "/tasks");
+
   const api = apiFor(event);
   const [templates, checklistTemplates] = await Promise.all([
-    api.GET("/api/v1/tasks/templates"),
-    api.GET("/api/v1/tasks/checklist-templates"),
+    canManageTemplates ? api.GET("/api/v1/tasks/templates").then((r) => r.data ?? []) : [],
+    canManageChecklists
+      ? api.GET("/api/v1/tasks/checklist-templates").then((r) => r.data ?? [])
+      : [],
   ]);
   // Members come from the /tasks layout load.
-  return {
-    templates: templates.data ?? [],
-    checklistTemplates: checklistTemplates.data ?? [],
-  };
+  return { templates, checklistTemplates };
 };
 
 export const actions: Actions = {
