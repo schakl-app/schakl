@@ -157,15 +157,24 @@ export const actions: Actions = {
     };
   },
 
+  /** Delete a pattern, and — when the dialog's checkbox says so — take back the days it placed. */
   deleteRecurring: async (event) => {
     const form = await event.request.formData();
     const id = String(form.get("id") ?? "");
-    if (id) {
-      const { error } = await apiFor(event).DELETE("/api/v1/leave/recurring/{recurring_id}", {
-        params: { path: { recurring_id: id } },
-      });
-      if (error) return fail(400, { error: apiErrorKey(error).key });
-    }
-    return { recurringSaved: true, recurringAdded: false, recurringGenerated: 0 };
+    if (!id) return { recurringSaved: true, recurringAdded: false, recurringGenerated: 0 };
+    const { data, error } = await apiFor(event).DELETE("/api/v1/leave/recurring/{recurring_id}", {
+      params: {
+        path: { recurring_id: id },
+        query: { withdraw_days: form.get("withdraw_days") === "true" },
+      },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return {
+      recurringSaved: true,
+      recurringAdded: false,
+      recurringGenerated: 0,
+      patternDeleted: true,
+      withdrawn: data?.withdrawn ?? 0,
+    };
   },
 };

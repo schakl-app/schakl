@@ -240,7 +240,7 @@
   "leave.recurring.empty": "Nog geen terugkerende vrije tijd.",
   "leave.recurring.hint": "Het patroon zet direct vooraf goedgekeurde vrije dagen in de agenda — tot de einddatum van het contract, of tot de planningshorizon bij onbepaalde tijd — en rolt maandelijks door. Feestdagen en niet-werkdagen worden overgeslagen, het saldo wordt nooit overschreden en elke dag is afzonderlijk te verplaatsen of annuleren.",
   "leave.recurring.generated": "Opgeslagen: {count} vrije dagen ingepland.",
-  "leave.recurring.delete_confirm": "Dit patroon verwijderen? Al ingeplande dagen blijven staan en zijn afzonderlijk te annuleren.",
+  "leave.recurring.delete_confirm": "Het patroon stopt met het plaatsen van nieuwe vrije dagen.",
   "leave.review.title": "Aanvraag beoordelen",
   "leave.bulk.result": "{count} verwerkt · {skipped} overgeslagen",
   "leave.bulk.cancel_confirm": "De geselecteerde verlofaanvragen annuleren? De uren gaan terug naar het saldo.",
@@ -3159,5 +3159,12 @@
   "permissions.impex.import": "Gegevens in bulk importeren",
   "permissions.group.impex": "Import en export",
   "settings.branding.default_country": "Land",
-  "settings.branding.default_country_help": "Waar de organisatie gevestigd is. Wordt gebruikt om een telefoonnummer zonder landcode te lezen, en als standaard voor een nieuwe klant."
+  "settings.branding.default_country_help": "Waar de organisatie gevestigd is. Wordt gebruikt om een telefoonnummer zonder landcode te lezen, en als standaard voor een nieuwe klant.",
+  "leave.recurring.delete_title": "Patroon verwijderen",
+  "leave.recurring.delete_withdraw": "Ook de {count} ingeplande vrije dagen verwijderen",
+  "leave.recurring.delete_withdraw_hint": "Alleen dagen vanaf vandaag; wat al opgenomen is blijft staan. Laat je dit uit, dan blijven de dagen gewoon op de agenda en kun je ze los annuleren.",
+  "leave.recurring.delete_no_days": "Er staan geen ingeplande vrije dagen meer open.",
+  "leave.recurring.upcoming_days": "{count} dagen ingepland",
+  "leave.recurring.deleted": "Patroon verwijderd.",
+  "leave.recurring.deleted_withdrawn": "Patroon verwijderd; {count} vrije dagen teruggenomen."
 }

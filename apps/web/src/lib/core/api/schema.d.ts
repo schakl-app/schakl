@@ -3624,7 +3624,13 @@ export interface paths {
         post?: never;
         /**
          * Delete Recurring
-         * @description Deletes the pattern only; the days it already placed stay individually cancellable.
+         * @description Delete the pattern. By default the days it placed stay — they are real leave somebody
+         *     planned around, and a rule being removed is no reason to wipe a calendar.
+         *
+         *     ``withdraw_days=true`` also takes back the days still standing from today on, in the same
+         *     transaction and through the ordinary cancel path (so the past stays locked and the Google
+         *     mirror is told). The response says how many went, because "deleted" alone would not tell the
+         *     caller whether a year of free Fridays is still on the agenda.
          */
         delete: operations["delete_recurring_api_v1_leave_recurring__recurring_id__delete"];
         options?: never;
@@ -10126,6 +10132,11 @@ export interface components {
             /** Start Time */
             start_time?: string | null;
             /**
+             * Upcoming Days
+             * @default 0
+             */
+            upcoming_days: number;
+            /**
              * Updated At
              * Format: date-time
              */
@@ -10188,6 +10199,11 @@ export interface components {
             /** Start Time */
             start_time?: string | null;
             /**
+             * Upcoming Days
+             * @default 0
+             */
+            upcoming_days: number;
+            /**
              * Updated At
              * Format: date-time
              */
@@ -10216,6 +10232,17 @@ export interface components {
             note?: string | null;
             /** Start Time */
             start_time?: string | null;
+        };
+        /**
+         * LeaveRecurringDeleteResult
+         * @description What deleting a pattern did — the days it took back, if it was asked to.
+         */
+        LeaveRecurringDeleteResult: {
+            /**
+             * Withdrawn
+             * @default 0
+             */
+            withdrawn: number;
         };
         /**
          * LeaveRequestCreate
@@ -23980,7 +24007,9 @@ export interface operations {
     };
     delete_recurring_api_v1_leave_recurring__recurring_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                withdraw_days?: boolean;
+            };
             header?: never;
             path: {
                 recurring_id: string;
@@ -23990,11 +24019,13 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            204: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["LeaveRecurringDeleteResult"];
+                };
             };
             /** @description Validation Error */
             422: {

@@ -870,8 +870,15 @@ class LeaveService:
     # --- recurring free days / free time (#107) ------------------------------------ #
     async def list_recurring(
         self, *, user_id: uuid.UUID | None = None
-    ) -> Sequence[LeaveRecurringDay]:
-        """Patterns: a member sees their own; ``leave.profile.manage`` sees anyone's/all."""
+    ) -> list[tuple[LeaveRecurringDay, int]]:
+        """Patterns + how many days each still has standing ahead of today.
+
+        A member sees their own; ``leave.profile.manage`` sees anyone's/all. The count travels
+        with the row because deleting a pattern is a decision about *those days*: the pattern is
+        a rule, the days it laid down are real leave someone planned around, and "delete" has to
+        say how many are at stake rather than leaving them stranded on the calendar. One grouped
+        query for the whole list, never one per pattern (docs/PERFORMANCE.md).
+        """
         if not self.ctx.can("leave.profile.manage"):
             if user_id is not None and user_id != self.ctx.user.id:
                 raise AppError("forbidden", "errors.forbidden", status_code=403)
@@ -881,7 +888,49 @@ class LeaveService:
         )
         if user_id is not None:
             stmt = stmt.where(LeaveRecurringDay.user_id == user_id)
-        return (await self.ctx.session.execute(stmt)).scalars().all()
+        patterns = list((await self.ctx.session.execute(stmt)).scalars().all())
+        if not patterns:
+            return []
+
+        today = await self._org_today()
+        counts = dict(
+            (
+                await self.ctx.session.execute(
+                    select(LeaveRequest.recurring_day_id, func.count())
+                    .where(
+                        LeaveRequest.org_id == self.ctx.org.id,
+                        LeaveRequest.recurring_day_id.in_([p.id for p in patterns]),
+                        LeaveRequest.status.in_(_OCCUPYING),
+                        LeaveRequest.start_date >= today,
+                    )
+                    .group_by(LeaveRequest.recurring_day_id)
+                )
+            ).all()
+        )
+        return [(p, counts.get(p.id, 0)) for p in patterns]
+
+    async def _upcoming_pattern_days(self, pattern_id: uuid.UUID) -> list[LeaveRequest]:
+        """This pattern's still-standing days from today on, soonest first.
+
+        Today's own day counts as upcoming: it has not been worked yet, and a manager removing a
+        pattern this morning means today too.
+        """
+        today = await self._org_today()
+        return list(
+            (
+                await self.ctx.session.execute(
+                    self.requests.scoped_select()
+                    .where(
+                        LeaveRequest.recurring_day_id == pattern_id,
+                        LeaveRequest.status.in_(_OCCUPYING),
+                        LeaveRequest.start_date >= today,
+                    )
+                    .order_by(LeaveRequest.start_date.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
 
     def _ensure_may_manage_pattern(self, user_id: uuid.UUID, leave_type: LeaveType) -> None:
         """Who may shape a pattern, and for which type.
@@ -965,13 +1014,35 @@ class LeaveService:
             created = await self.generate_recurring_days(pattern_id=pattern.id)
         return pattern, created
 
-    async def delete_recurring(self, recurring_id: uuid.UUID) -> None:
-        """Delete the pattern; days already placed stay (FK is SET NULL) — they are real,
-        individually cancellable leave the employee may have planned around."""
+    async def delete_recurring(
+        self, recurring_id: uuid.UUID, *, withdraw_days: bool = False
+    ) -> int:
+        """Delete the pattern, and optionally take back the days it placed. Returns how many.
+
+        By default the days stay (the FK is ``SET NULL``): they are real, individually cancellable
+        leave the employee planned around, and a rule being deleted is not a reason to wipe
+        someone's calendar. But leaving the caller *no* way to clear them made "delete" a job half
+        done — a year of free Fridays with nothing left pointing at them and no bulk way out. So
+        the choice is offered on the delete itself, and answered explicitly by whoever is deleting.
+
+        ``withdraw_days`` cancels the still-standing days from today on, through the ordinary
+        :meth:`cancel` path, so the past stays locked, the permission rules hold and the Google
+        mirror is told. The past is never touched: those days were taken. A day the caller may not
+        cancel is skipped rather than aborting the delete — the pattern still goes.
+        """
         pattern = await self._owned_recurring_or_404(recurring_id)
         leave_type = await self.types.get_or_404(pattern.leave_type_id)
         self._ensure_may_manage_pattern(pattern.user_id, leave_type)
+        withdrawn = 0
+        if withdraw_days:
+            for request in await self._upcoming_pattern_days(pattern.id):
+                try:
+                    await self.cancel(request.id)
+                except AppError:
+                    continue
+                withdrawn += 1
         await self.recurring.delete(pattern)
+        return withdrawn
 
     @staticmethod
     def _add_months(day: date, months: int) -> date:

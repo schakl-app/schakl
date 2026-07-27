@@ -411,3 +411,156 @@ async def test_withdraw_skips_what_it_cannot_cancel_instead_of_failing(client_fo
         assert res.status_code == 200, res.text
         assert res.json()["cancelled"] == 0
         assert len(res.json()["skipped"]) == 2
+
+
+# --- deleting a pattern, and the days it left behind ------------------------------------- #
+async def _pattern_with_days(client, headers, member_id) -> tuple[str, int]:
+    """A 36-hour contract plus a fortnightly Friday pattern; returns (pattern id, days placed)."""
+    await _contract(client, headers, member_id, "36")
+    res = await client.post(
+        "/api/v1/leave/recurring",
+        json={
+            "user_id": str(member_id),
+            "leave_type_id": await _free_time_id(client, headers),
+            "anchor_date": _next_weekday(4).isoformat(),
+            "days_per_year": 26,
+        },
+        headers=headers,
+    )
+    assert res.status_code == 201, res.text
+    return res.json()["id"], res.json()["generated"]
+
+
+async def test_pattern_carries_its_upcoming_day_count(client_for) -> None:
+    """The list says how many days are at stake, so a delete can ask about them."""
+    t = await make_tenant("ft-del-count")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        member = await _member(c, headers, "delcount@example.com")
+        pattern_id, generated = await _pattern_with_days(c, headers, member.id)
+        rows = (
+            await c.get(
+                "/api/v1/leave/recurring", params={"user_id": str(member.id)}, headers=headers
+            )
+        ).json()
+        row = next(r for r in rows if r["id"] == pattern_id)
+        assert row["upcoming_days"] == generated > 0
+
+
+async def test_deleting_a_pattern_keeps_its_days_by_default(client_for) -> None:
+    """The #107 rule stands: placed days are real leave, not an artefact of the rule.
+
+    Deleting the rule must not wipe a calendar somebody planned around.
+    """
+    t = await make_tenant("ft-del-keep")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        member = await _member(c, headers, "delkeep@example.com")
+        pattern_id, _ = await _pattern_with_days(c, headers, member.id)
+        before = len((await _overview(c, headers, member.id))["days"])
+        assert before > 0
+
+        res = await c.delete(f"/api/v1/leave/recurring/{pattern_id}", headers=headers)
+        assert res.status_code == 200, res.text
+        assert res.json()["withdrawn"] == 0
+        assert len((await _overview(c, headers, member.id))["days"]) == before
+
+
+async def test_deleting_a_pattern_can_take_its_days_back(client_for) -> None:
+    """`withdraw_days` clears the future days in the same act — the way out that did not exist.
+
+    Without it, deleting a pattern left a year of free Fridays standing with nothing pointing at
+    them and no bulk way to remove them.
+    """
+    t = await make_tenant("ft-del-withdraw")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        member = await _member(c, headers, "delwithdraw@example.com")
+        pattern_id, _ = await _pattern_with_days(c, headers, member.id)
+        before = len((await _overview(c, headers, member.id))["days"])
+        assert before > 0
+
+        res = await c.delete(
+            f"/api/v1/leave/recurring/{pattern_id}",
+            params={"withdraw_days": True},
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+        # The withdrawal covers every future day the pattern placed — the generator fills a
+        # 12-month horizon, so it reaches past the current year that ``_overview`` reports on.
+        # That difference is the point of counting them separately, not a discrepancy.
+        assert res.json()["withdrawn"] >= before
+        after = await _overview(c, headers, member.id)
+        assert after["days"] == []
+        # The hours come back to the pot rather than staying spent.
+        assert float(after["placed_hours"]) == 0.0
+        assert float(after["unplaced_hours"]) == float(after["entitled_hours"])
+
+        # And the pattern itself is gone either way.
+        rows = (
+            await c.get(
+                "/api/v1/leave/recurring", params={"user_id": str(member.id)}, headers=headers
+            )
+        ).json()
+        assert all(r["id"] != pattern_id for r in rows)
+
+
+async def test_withdrawing_on_delete_never_touches_the_past(client_for) -> None:
+    """Days already taken stay taken; only what is still ahead is given back."""
+    t = await make_tenant("ft-del-past")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        member = await _member(c, headers, "delpast@example.com")
+        pattern_id, _ = await _pattern_with_days(c, headers, member.id)
+
+        # A free day booked by hand *in the past*, which no pattern owns.
+        past = _next_weekday(0, after=date.today() - timedelta(days=30))
+        booked = await c.post(
+            "/api/v1/leave/requests",
+            json={
+                "user_id": str(member.id),
+                "leave_type_id": await _free_time_id(c, headers),
+                "start_date": past.isoformat(),
+                "end_date": past.isoformat(),
+            },
+            headers=headers,
+        )
+        assert booked.status_code == 201, booked.text
+
+        res = await c.delete(
+            f"/api/v1/leave/recurring/{pattern_id}",
+            params={"withdraw_days": True},
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+
+        kept = (
+            await c.get(f"/api/v1/leave/requests/{booked.json()['id']}", headers=headers)
+        ).json()
+        assert kept["status"] == "approved", "a past day is not a pattern's to take back"
+
+
+async def test_pattern_delete_is_tenant_scoped(client_for) -> None:
+    """Another tenant's pattern is a 404, withdraw flag or not (Golden Rule 1)."""
+    a = await make_tenant("ft-del-iso-a")
+    b = await make_tenant("ft-del-iso-b")
+    headers_a, headers_b = await auth_cookie(a.user), await auth_cookie(b.user)
+    async with client_for(a.host) as c:
+        member = await _member(c, headers_a, "deliso@example.com")
+        pattern_id, _ = await _pattern_with_days(c, headers_a, member.id)
+
+    async with client_for(b.host) as c:
+        res = await c.delete(
+            f"/api/v1/leave/recurring/{pattern_id}",
+            params={"withdraw_days": True},
+            headers=headers_b,
+        )
+        assert res.status_code == 404
+
+    async with client_for(a.host) as c:
+        rows = (
+            await c.get(
+                "/api/v1/leave/recurring", params={"user_id": str(member.id)}, headers=headers_a
+            )
+        ).json()
+        assert any(r["id"] == pattern_id for r in rows), "A's pattern survived B's attempt"

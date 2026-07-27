@@ -240,7 +240,7 @@
   "leave.recurring.empty": "No recurring free time yet.",
   "leave.recurring.hint": "The pattern places pre-approved free days on the calendar right away — up to the contract's end date, or the planning horizon for open-ended contracts — and rolls forward monthly. Holidays and non-working days are skipped, the balance is never exceeded, and each day can be moved or cancelled individually.",
   "leave.recurring.generated": "Saved — {count} free days placed on the calendar.",
-  "leave.recurring.delete_confirm": "Delete this pattern? Days already placed stay and can be cancelled individually.",
+  "leave.recurring.delete_confirm": "The pattern stops placing new free days.",
   "leave.review.title": "Review request",
   "leave.bulk.result": "{count} processed · {skipped} skipped",
   "leave.bulk.cancel_confirm": "Cancel the selected leave requests? The hours return to the balance.",
@@ -3159,5 +3159,12 @@
   "permissions.impex.import": "Import data in bulk",
   "permissions.group.impex": "Import and export",
   "settings.branding.default_country": "Country",
-  "settings.branding.default_country_help": "Where the organisation operates. Used to read a phone number written without a country code, and as the default for a new client."
+  "settings.branding.default_country_help": "Where the organisation operates. Used to read a phone number written without a country code, and as the default for a new client.",
+  "leave.recurring.delete_title": "Delete pattern",
+  "leave.recurring.delete_withdraw": "Also remove the {count} scheduled free days",
+  "leave.recurring.delete_withdraw_hint": "Only days from today on; anything already taken stays. Leave it off and the days remain on the calendar, cancellable one by one.",
+  "leave.recurring.delete_no_days": "No scheduled free days are left standing.",
+  "leave.recurring.upcoming_days": "{count} days scheduled",
+  "leave.recurring.deleted": "Pattern deleted.",
+  "leave.recurring.deleted_withdrawn": "Pattern deleted; {count} free days taken back."
 }

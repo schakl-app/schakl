@@ -45,6 +45,7 @@ from app.modules.leave.schemas import (
     LeaveRecurringDayRead,
     LeaveRecurringDaySaved,
     LeaveRecurringDayUpdate,
+    LeaveRecurringDeleteResult,
     LeaveRequestCreate,
     LeaveRequestDecision,
     LeaveRequestPreview,
@@ -403,8 +404,10 @@ async def list_recurring(
     ctx: RequestContext = Depends(require_context),
 ) -> list[LeaveRecurringDayRead]:
     """Rostered-free-day patterns: a member's own; anyone's/all on ``leave.profile.manage``."""
-    items = await LeaveService(ctx).list_recurring(user_id=user_id)
-    return [LeaveRecurringDayRead.model_validate(p) for p in items]
+    return [
+        LeaveRecurringDayRead.model_validate(p).model_copy(update={"upcoming_days": upcoming})
+        for p, upcoming in await LeaveService(ctx).list_recurring(user_id=user_id)
+    ]
 
 
 @router.post(
@@ -439,15 +442,25 @@ async def update_recurring(
 
 @router.delete(
     "/recurring/{recurring_id}",
-    status_code=204,
+    response_model=LeaveRecurringDeleteResult,
     dependencies=[require_permission("leave.request.write")],
 )
 async def delete_recurring(
     recurring_id: uuid.UUID,
+    withdraw_days: bool = Query(False),
     ctx: RequestContext = Depends(require_context),
-) -> None:
-    """Deletes the pattern only; the days it already placed stay individually cancellable."""
-    await LeaveService(ctx).delete_recurring(recurring_id)
+) -> LeaveRecurringDeleteResult:
+    """Delete the pattern. By default the days it placed stay — they are real leave somebody
+    planned around, and a rule being removed is no reason to wipe a calendar.
+
+    ``withdraw_days=true`` also takes back the days still standing from today on, in the same
+    transaction and through the ordinary cancel path (so the past stays locked and the Google
+    mirror is told). The response says how many went, because "deleted" alone would not tell the
+    caller whether a year of free Fridays is still on the agenda."""
+    withdrawn = await LeaveService(ctx).delete_recurring(
+        recurring_id, withdraw_days=withdraw_days
+    )
+    return LeaveRecurringDeleteResult(withdrawn=withdrawn)
 
 
 # --- hourly rate (#82) --------------------------------------------------------- #

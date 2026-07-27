@@ -322,8 +322,17 @@ class LeaveRecurringDayRead(LeaveRecurringDayBase):
     user_id: uuid.UUID
     leave_type_id: uuid.UUID
     active: bool
+    #: Days this pattern still has standing from today on. Deleting a pattern is a decision about
+    #: these, so the count travels with the row rather than the UI having to go and count them.
+    upcoming_days: int = 0
     created_at: datetime
     updated_at: datetime
+
+
+class LeaveRecurringDeleteResult(BaseModel):
+    """What deleting a pattern did — the days it took back, if it was asked to."""
+
+    withdrawn: int = 0
 
 
 class LeaveRecurringDaySaved(LeaveRecurringDayRead):

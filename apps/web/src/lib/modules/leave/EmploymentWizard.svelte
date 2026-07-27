@@ -30,6 +30,7 @@
   import TimeInput from "$lib/core/ui/TimeInput.svelte";
 
   import { fmtHours, typeLabel, type LeaveTypeInfo } from "./format";
+  import RecurringDeleteDialog from "./RecurringDeleteDialog.svelte";
   import { averageDayHours, cloneSchedule, weekHours, type WorkSchedule } from "./schedule";
   import WorkScheduleEditor from "./WorkScheduleEditor.svelte";
 
@@ -54,12 +55,16 @@
     start_time?: string | null;
     end_time?: string | null;
     active: boolean;
+    /** Days this pattern still has standing from today on — what a delete puts at stake. */
+    upcoming_days?: number;
   }
   /** The `?/saveEmployment` result the wizard reports on. */
   export interface WizardResult {
     employmentSaved?: boolean;
     employmentGenerated?: number;
     withdrawn?: number;
+    /** A pattern delete landed; `withdrawn` then counts the days it took back. */
+    patternDeleted?: boolean;
     error?: string | null;
     freeTime?: {
       entitled_hours: string | number;
@@ -102,6 +107,10 @@
   // wizard instead.
   let deleteId = $state("");
   let deleteOpen = $state(false);
+  // Deleting a pattern asks a second question (what happens to the days it placed), so it gets
+  // its own dialog rather than the plain ConfirmDialog the contract delete uses.
+  let deletePattern = $state<WizardPattern | null>(null);
+  let deletePatternOpen = $state(false);
 
   // --- what exists today ----------------------------------------------------------
   /** The period in force: no end date, or one that has not passed. */
@@ -372,6 +381,61 @@
       </div>
     </div>
 
+    <!-- Step 3's existing patterns, also outside the wizard form: each row carries its own
+         activate/deactivate form, and a form cannot be nested in another form. -->
+    {#if step === 3 && form?.patternDeleted}
+      <p class="text-sm text-green-600 dark:text-green-400">
+        {(form.withdrawn ?? 0) > 0
+          ? t("leave.recurring.deleted_withdrawn", { count: form.withdrawn ?? 0 })
+          : t("leave.recurring.deleted")}
+      </p>
+    {/if}
+
+    {#if step === 3 && patterns.length > 0}
+      <ul class="divide-y divide-border rounded-lg border border-border text-sm">
+        {#each patterns as pattern (pattern.id)}
+          <li class="flex items-center gap-3 px-3 py-2">
+            <div class="min-w-0 flex-1">
+              <span class="text-text">
+                {pattern.days_per_year
+                  ? t("leave.recurring.days_per_year", { count: pattern.days_per_year })
+                  : t("leave.recurring.every_n", { n: pattern.interval_weeks })}
+              </span>
+              <span class="block text-xs text-text-muted">
+                {t("leave.recurring.since", { date: fmtNumericDate(pattern.anchor_date) })}
+                {#if (pattern.upcoming_days ?? 0) > 0}
+                  · {t("leave.recurring.upcoming_days", { count: pattern.upcoming_days ?? 0 })}
+                {/if}
+                {#if !pattern.active}· {t("leave.recurring.inactive")}{/if}
+              </span>
+            </div>
+            <!-- Deactivate is the non-destructive alternative: it stops future generation and
+                 leaves every placed day alone. Offered beside delete so "stop this" does not
+                 have to mean "remove it". -->
+            <form method="POST" action="?/toggleRecurring" use:enhance={busy.wrap(pattern.id)}>
+              <input type="hidden" name="id" value={pattern.id} />
+              <input type="hidden" name="active" value={String(!pattern.active)} />
+              <Button variant="secondary" size="xs" loading={busy.is(pattern.id)}>
+                {pattern.active ? t("settings.leave.deactivate") : t("settings.leave.activate")}
+              </Button>
+            </form>
+            <button
+              type="button"
+              class="rounded-lg p-1 text-text-muted hover:text-red-600 dark:hover:text-red-400"
+              title={t("common.delete")}
+              aria-label={t("common.delete")}
+              onclick={() => {
+                deletePattern = pattern;
+                deletePatternOpen = true;
+              }}
+            >
+              <Trash2 size={14} />
+            </button>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+
     <form
       id="employment-form"
       method="POST"
@@ -623,25 +687,9 @@
       </div>
 
       <!-- ─── Step 3: placing the free days ───────────────────────────────────── -->
+      <!-- The existing patterns and their actions live *outside* this form (just above it) —
+           an activate/deactivate submit cannot be a `<form>` nested inside another one. -->
       <div class:hidden={step !== 3} class="space-y-4">
-        {#if patterns.length > 0}
-          <ul class="divide-y divide-border rounded-lg border border-border text-sm">
-            {#each patterns as pattern (pattern.id)}
-              <li class="px-3 py-2">
-                <span class="text-text">
-                  {pattern.days_per_year
-                    ? t("leave.recurring.days_per_year", { count: pattern.days_per_year })
-                    : t("leave.recurring.every_n", { n: pattern.interval_weeks })}
-                </span>
-                <span class="block text-xs text-text-muted">
-                  {t("leave.recurring.since", { date: fmtNumericDate(pattern.anchor_date) })}
-                  {#if !pattern.active}· {t("leave.recurring.inactive")}{/if}
-                </span>
-              </li>
-            {/each}
-          </ul>
-        {/if}
-
         {#if !canPlan}
           <p class="rounded-lg bg-surface px-3 py-2 text-xs text-text-muted">
             {freeTimeType === null
@@ -820,4 +868,10 @@
   action="?/deleteContract"
   fields={{ contract_id: deleteId }}
   confirmLabel={t("common.delete")}
+/>
+
+<RecurringDeleteDialog
+  bind:open={deletePatternOpen}
+  patternId={deletePattern?.id ?? ""}
+  upcomingDays={deletePattern?.upcoming_days ?? 0}
 />

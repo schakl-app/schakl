@@ -430,7 +430,10 @@
     types={selfServiceTypes}
     userId={page.data.user?.id ?? ""}
     error={form?.error ?? null}
-    generated={form?.recurringSaved && !form.recurringAdded ? (form.recurringGenerated ?? 0) : null}
+    generated={form?.recurringSaved && !form.recurringAdded && !form.patternDeleted
+      ? (form.recurringGenerated ?? 0)
+      : null}
+    deleted={form?.patternDeleted ? { withdrawn: form.withdrawn ?? 0 } : null}
     ondone={() => (recurringOpen = false)}
   />
 </Modal>

@@ -23,11 +23,11 @@
   import { InFlight } from "$lib/core/submit.svelte";
   import { getLocale } from "$lib/paraglide/runtime";
   import Button from "$lib/core/ui/Button.svelte";
-  import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import TimeInput from "$lib/core/ui/TimeInput.svelte";
 
   import { typeLabel, type LeaveTypeInfo } from "./format";
+  import RecurringDeleteDialog from "./RecurringDeleteDialog.svelte";
 
   interface RecurringPattern {
     id: string;
@@ -39,6 +39,8 @@
     start_time?: string | null;
     end_time?: string | null;
     active: boolean;
+    /** Days still standing from today on — what deleting the pattern puts at stake. */
+    upcoming_days?: number;
   }
 
   let {
@@ -47,6 +49,7 @@
     userId,
     error = null,
     generated = null,
+    deleted = null,
     ondone,
   }: {
     /** This user's patterns. */
@@ -56,8 +59,10 @@
     /** Whose pattern a save creates (hidden field; the API re-checks ownership). */
     userId: string;
     error?: string | null;
-    /** How many days a toggle/delete placed — the success line for the paths that stay open. */
+    /** How many days a toggle placed — the success line for the paths that stay open. */
     generated?: number | null;
+    /** A delete landed: how many placed days it took back (0 = the pattern only). */
+    deleted?: { withdrawn: number } | null;
     /** A pattern was added: the host closes its modal and owns the confirmation. */
     ondone?: () => void;
   } = $props();
@@ -73,7 +78,7 @@
   let partDay = $state(false);
   let startTime = $state("");
   let endTime = $state("");
-  let deleteId = $state("");
+  let deletePattern = $state<RecurringPattern | null>(null);
   let deleteOpen = $state(false);
 
   const busy = new InFlight();
@@ -140,7 +145,7 @@
             title={t("common.delete")}
             aria-label={t("common.delete")}
             onclick={() => {
-              deleteId = pattern.id;
+              deletePattern = pattern;
               deleteOpen = true;
             }}
           >
@@ -155,7 +160,13 @@
     </p>
   {/if}
 
-  {#if generated !== null}
+  {#if deleted}
+    <p class="text-sm text-green-600">
+      {deleted.withdrawn > 0
+        ? t("leave.recurring.deleted_withdrawn", { count: deleted.withdrawn })
+        : t("leave.recurring.deleted")}
+    </p>
+  {:else if generated !== null}
     <p class="text-sm text-green-600">
       {t("leave.recurring.generated", { count: generated })}
     </p>
@@ -250,11 +261,10 @@
   {/key}
 </div>
 
-<ConfirmDialog
+<!-- Deleting a pattern also decides what happens to the days it placed; the shared dialog asks,
+     so this surface and the employment wizard cannot answer it differently. -->
+<RecurringDeleteDialog
   bind:open={deleteOpen}
-  title={t("common.delete")}
-  message={t("leave.recurring.delete_confirm")}
-  action="?/deleteRecurring"
-  fields={{ id: deleteId }}
-  confirmLabel={t("common.delete")}
+  patternId={deletePattern?.id ?? ""}
+  upcomingDays={deletePattern?.upcoming_days ?? 0}
 />
