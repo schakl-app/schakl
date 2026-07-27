@@ -57,7 +57,7 @@
   // The fields a note's variables can draw on (#259), mirrored as reactive state so the edit
   // preview resolves live as you type. The picked company/type live here too, so an inline-created
   // one auto-selects and the nested project quick-create inherits the chosen client (#247).
-  // (Re)seeded whenever the dialog opens on a row or a preset is picked.
+  // (Re)seeded whenever the dialog opens on a row.
   let pv = $state({
     name: "",
     companyId: "",
@@ -70,15 +70,32 @@
   });
   function seedPreview() {
     pv = {
-      name: editing?.name ?? prefill?.name ?? "",
+      name: editing?.name ?? "",
       companyId: editing?.company_id ?? "",
-      typeId: editing?.subscription_type_id ?? prefill?.subscription_type_id ?? "",
-      amount: String(editing?.amount ?? prefill?.amount ?? ""),
-      interval: editing?.interval ?? prefill?.interval ?? "monthly",
-      includedHours: String(editing?.included_hours ?? prefill?.included_hours ?? ""),
+      typeId: editing?.subscription_type_id ?? "",
+      amount: String(editing?.amount ?? ""),
+      interval: editing?.interval ?? "monthly",
+      includedHours: String(editing?.included_hours ?? ""),
       startDate: editing?.start_date ?? "",
-      notes: editing?.notes ?? prefill?.notes ?? "",
+      notes: editing?.notes ?? "",
     };
+  }
+  /**
+   * Picking a preset fills in what the preset *defines* and leaves the rest of the form alone.
+   * Re-seeding wholesale wiped the client and the start date — which the preset has no opinion
+   * about — so a dialog opened from a client page (`?company=`) or an inline-created client
+   * (#247) lost it the moment a standard subscription was chosen, and the note's
+   * `{{company_name}}` fell back to the `[Bedrijfsnaam]` placeholder.
+   */
+  function applyTemplate(tpl: Template | null) {
+    prefill = tpl;
+    if (!tpl) return;
+    pv.name = tpl.name;
+    pv.typeId = tpl.subscription_type_id ?? "";
+    pv.amount = String(tpl.amount ?? "");
+    pv.interval = tpl.interval ?? "monthly";
+    pv.includedHours = String(tpl.included_hours ?? "");
+    pv.notes = tpl.notes ?? "";
   }
   $effect(() => {
     const created = form?.inlineCreated;
@@ -578,10 +595,8 @@
         id="sub-template"
         class={inputClass}
         value={prefill?.id ?? ""}
-        onchange={(e) => {
-          prefill = data.templates.find((tpl) => tpl.id === e.currentTarget.value) ?? null;
-          seedPreview();
-        }}
+        onchange={(e) =>
+          applyTemplate(data.templates.find((tpl) => tpl.id === e.currentTarget.value) ?? null)}
       >
         <option value="">—</option>
         {#each data.templates as tpl (tpl.id)}
@@ -783,7 +798,7 @@
           id="sub-notes"
           name="notes"
           rows={2}
-          value={editing?.notes ?? prefill?.notes ?? ""}
+          value={pv.notes}
           variables={variableItems}
           scope={{ companyId: pv.companyId || null }}
           onchange={(v) => (pv.notes = v)}

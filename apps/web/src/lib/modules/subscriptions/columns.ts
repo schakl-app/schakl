@@ -58,6 +58,9 @@ export const SUBSCRIPTION_COLUMNS: ColumnMeta[] = [
     sortKey: "included_hours",
     align: "right",
   },
+  // Off by default, but reachable: this is the one surface that shows a note with its
+  // variables resolved (#259) — without the column the cell that does that was unreachable.
+  { key: "notes", labelKey: "subscriptions.field.notes" },
 ];
 
 /**
