@@ -41,6 +41,7 @@ const SETTINGS: Record<string, string> = {
   ai: "settings.ai.title",
   automation: "automation.title",
   branding: "settings.branding.title",
+  companies: "settings.companies.title",
   "company-groups": "settings.company_groups.title",
   "contact-types": "settings.contact_types.title",
   "custom-fields": "settings.custom_fields.title",

@@ -2,6 +2,7 @@
   import { enhance } from "$app/forms";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import { currencyLabel } from "$lib/core/currencies";
+  import { phoneCountries } from "$lib/core/phone";
   import { localeLabel, t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle, renderTabTitle } from "$lib/core/title";
@@ -107,6 +108,19 @@
             </optgroup>
           </select>
           <p class="mt-1 text-xs text-text-muted">{t("settings.branding.timezone_help")}</p>
+        </div>
+        <div>
+          <label for="default-country" class="mb-1 block text-sm font-medium text-text"
+            >{t("settings.branding.default_country")}</label
+          >
+          <select id="default-country" name="default_country" class={inputClass}>
+            {#each phoneCountries() as country (country.code)}
+              <option value={country.code} selected={branding.default_country === country.code}
+                >{country.name}</option
+              >
+            {/each}
+          </select>
+          <p class="mt-1 text-xs text-text-muted">{t("settings.branding.default_country_help")}</p>
         </div>
         <div>
           <label for="currency" class="mb-1 block text-sm font-medium text-text"

@@ -27,6 +27,8 @@
     /** Present when editing an existing client; scopes the notes editor's #task candidates. */
     id?: string;
     name?: string;
+    /** Klantnummer; blank on create means the org's numbering allocates one. */
+    client_number?: string | null;
     website?: string | null;
     phone?: string | null;
     invoice_email?: string | null;
@@ -78,6 +80,18 @@
         name="name"
         value={company.name ?? ""}
         required
+        class={inputClass}
+      />
+    </div>
+    <div>
+      <label for="{idPrefix}-client-number" class="mb-1 block text-sm font-medium text-neutral-700">
+        {t("companies.client_number")}
+      </label>
+      <input
+        id="{idPrefix}-client-number"
+        name="client_number"
+        value={company.client_number ?? ""}
+        placeholder={t("companies.client_number_auto")}
         class={inputClass}
       />
     </div>

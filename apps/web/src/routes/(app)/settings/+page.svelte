@@ -75,6 +75,11 @@
       t("settings.custom_fields.subtitle"),
     )}
     {@render card(
+      "/settings/companies",
+      t("settings.companies.title"),
+      t("settings.companies.subtitle"),
+    )}
+    {@render card(
       "/settings/contact-types",
       t("settings.contact_types.title"),
       t("settings.contact_types.subtitle"),

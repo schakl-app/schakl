@@ -31,6 +31,7 @@ from app.core.activity.service import snapshot
 from app.core.customfields import CustomFieldsService
 from app.core.events import emit
 from app.core.models import OrgSettings
+from app.core.numbering import format_number
 from app.core.phone import normalize_phone
 from app.core.richtext import sanitize_markdown
 from app.core.sorting import apply_sort
@@ -60,7 +61,6 @@ from app.modules.invoicing.models import (
     QuoteStatus,
     TaxRate,
 )
-from app.modules.invoicing.numbering import format_number
 from app.modules.invoicing.schemas import (
     DocumentSend,
     InvoiceCreate,

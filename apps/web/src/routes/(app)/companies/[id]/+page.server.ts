@@ -69,7 +69,9 @@ export const load: PageServerLoad = async (event) => {
         ? api.GET("/api/v1/tasks/templates").then((r) => r.data ?? [])
         : [],
       api.GET("/api/v1/members/lookup"),
-      api.GET("/api/v1/contacts", { params: { query: { limit: 200, offset: 0, sort: "first_name" } } }),
+      api.GET("/api/v1/contacts", {
+        params: { query: { limit: 200, offset: 0, sort: "first_name" } },
+      }),
       api.GET("/api/v1/custom-fields/definitions", {
         params: { query: { entity_type: "contact" } },
       }),
@@ -100,6 +102,7 @@ export const actions: Actions = {
       params: { path: { company_id } },
       body: {
         name,
+        client_number: String(form.get("client_number") ?? "").trim() || null,
         website: String(form.get("website") ?? "").trim() || null,
         phone: String(form.get("phone") ?? "").trim() || null,
         invoice_email: String(form.get("invoice_email") ?? "").trim() || null,

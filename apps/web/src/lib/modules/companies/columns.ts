@@ -16,6 +16,15 @@ export const COMPANIES_TABLE_ID = "companies";
 export const HOURS_COLUMN = "hours";
 
 export const COMPANY_COLUMNS: ColumnMeta[] = [
+  // Klantnummer first: on a list that carries one it is how people refer to the client, and
+  // it is short. Opt-in, because an org that never numbers its clients would get a column of
+  // blanks (Instellingen → Bedrijven turns numbering on).
+  {
+    key: "client_number",
+    labelKey: "companies.client_number",
+    sortKey: "client_number",
+    width: 120,
+  },
   { key: "name", labelKey: "companies.name", sortKey: "name", primary: true, width: 260 },
   { key: "website", labelKey: "companies.website", defaultVisible: true },
   { key: "status", labelKey: "companies.field.status", sortKey: "status", defaultVisible: true },

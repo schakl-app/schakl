@@ -63,7 +63,9 @@ async def _fetch_page(
     return items
 
 
-async def _find_existing(ctx: RequestContext, values: list[str]) -> dict[str, list[Any]]:
+async def _find_existing(
+    ctx: RequestContext, key: str, values: list[str]
+) -> dict[str, list[Any]]:
     stmt = ctx.repo(Project).scoped_select().where(Project.name.in_(values))
     found: dict[str, list[Any]] = {}
     for project in (await ctx.session.execute(stmt)).scalars():
@@ -71,8 +73,8 @@ async def _find_existing(ctx: RequestContext, values: list[str]) -> dict[str, li
     return found
 
 
-async def _create(ctx: RequestContext, values: dict[str, Any]) -> None:
-    await ProjectService(ctx).create(
+async def _create(ctx: RequestContext, values: dict[str, Any]) -> Any:
+    return await ProjectService(ctx).create(
         ProjectCreate(
             name=values["name"],
             company_id=values.get("company_id"),
@@ -105,7 +107,7 @@ PROJECT_IMPEX = ImpexDescriptor(
     entity_type="project",
     read_permission="projects.project.read",
     write_permission="projects.project.write",
-    natural_key="name",
+    natural_keys=("name",),
     filters=("q", "status", "company_id", "mine", "sort"),
     columns=(
         ImpexColumn("name", required=True),

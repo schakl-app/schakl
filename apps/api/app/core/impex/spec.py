@@ -11,9 +11,12 @@ Vocabulary:
   labels, so an export re-imports cleanly into the same org (round-trip). The tenant's custom
   fields (§13) are *not* declared here — core appends them at request time from the definitions,
   keyed by definition ``key``.
-* ``natural_key`` names the column the import upserts on (company: ``name``, contact:
-  ``email``): a match updates, no match creates. Never a raw ``id`` — ids don't survive a trip
-  through a spreadsheet, names and emails do.
+* ``natural_keys`` names the columns the import upserts on, **in priority order** (company:
+  ``client_number`` then ``name``): the first one a row actually fills decides that row's
+  match — a hit updates, a miss creates. Never a raw ``id``: ids don't survive a trip through a
+  spreadsheet, klantnummers and emails do. Priority order matters because the keys are not
+  equally stable — a company can be renamed but keeps its number, so a file carrying both must
+  match on the number or the rename imports as a second company.
 * ``fk_resolvers`` turn a human reference (an exact name, or a UUID) into a tenant-scoped id.
   An unresolved or ambiguous reference is a **row error**, never a silent orphan.
 
@@ -42,12 +45,17 @@ class FetchPage(Protocol):
     ) -> Awaitable[Sequence[Any]]: ...
 
 
-#: All tenant rows whose natural key is in ``values`` → ``{value: [rows]}``. Returns full rows
-#: (not ids): the import needs the current ``custom`` JSONB to merge before validating.
-FindExisting = Callable[["RequestContext", list[str]], Awaitable[dict[str, list[Any]]]]
+#: All tenant rows whose ``key`` column (one of ``natural_keys``) is in ``values`` →
+#: ``{value: [rows]}``. Takes the key because the query genuinely differs per key
+#: (``client_number IN …`` is not ``name IN …``) and a resolver must never have to infer which
+#: one it was handed from the shape of the values. Returns full rows (not ids): the import needs
+#: the current ``custom`` JSONB to merge before validating.
+FindExisting = Callable[["RequestContext", str, list[str]], Awaitable[dict[str, list[Any]]]]
 
-#: Create one entity from the coerced values dict (keys = column ``field``s + ``custom``).
-CreateRow = Callable[["RequestContext", dict[str, Any]], Awaitable[None]]
+#: Create one entity from the coerced values dict (keys = column ``field``s + ``custom``) and
+#: **return it**. The created row is what an :class:`ImpexExtension` attaches to, so a create
+#: that returns ``None`` silently drops every contributed column.
+CreateRow = Callable[["RequestContext", dict[str, Any]], Awaitable[Any]]
 
 #: Update one existing entity (second arg: a row ``find_existing`` returned).
 UpdateRow = Callable[["RequestContext", Any, dict[str, Any]], Awaitable[None]]
@@ -108,9 +116,9 @@ class ImpexDescriptor:
     read_permission: str             # declared on the export route (§15 deny-by-default)
     write_permission: str            # declared on the import route
     columns: tuple[ImpexColumn, ...]
-    #: Column key the upsert matches on; ``None`` = create-only import (no reliable natural
-    #: key exists — a time entry, a task title that legitimately repeats).
-    natural_key: str | None
+    #: Column keys the upsert matches on, most stable first; empty = create-only import (no
+    #: reliable natural key exists — a time entry, a task title that legitimately repeats).
+    natural_keys: tuple[str, ...]
     #: Which of the core filter params (see ``router.FILTER_PARAMS``) this entity's list
     #: supports; they mirror the entity's own list endpoint.
     filters: tuple[str, ...]

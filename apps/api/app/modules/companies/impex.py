@@ -26,7 +26,9 @@ _BILLING_FIELDS = (
     "vat_number", "coc_number", "address_line1", "address_line2",
     "postal_code", "city", "country",
 )
-_TEXT_FIELDS = ("name", "website", "phone", "invoice_email", "notes", *_BILLING_FIELDS)
+_TEXT_FIELDS = (
+    "name", "client_number", "website", "phone", "invoice_email", "notes", *_BILLING_FIELDS,
+)
 
 
 async def _fetch_page(
@@ -45,18 +47,28 @@ async def _fetch_page(
     return items
 
 
-async def _find_existing(ctx: RequestContext, values: list[str]) -> dict[str, list[Any]]:
-    stmt = ctx.repo(Company).scoped_select().where(Company.name.in_(values))
+async def _find_existing(
+    ctx: RequestContext, key: str, values: list[str]
+) -> dict[str, list[Any]]:
+    """Match on whichever natural key the engine resolved this batch of rows to.
+
+    ``client_number`` is org-unique at the database level, so its buckets hold at most one row
+    and it can never come back ambiguous; ``name`` is not, which is exactly why the number is
+    tried first.
+    """
+    column = Company.client_number if key == "client_number" else Company.name
+    stmt = ctx.repo(Company).scoped_select().where(column.in_(values))
     found: dict[str, list[Any]] = {}
     for company in (await ctx.session.execute(stmt)).scalars():
-        found.setdefault(company.name, []).append(company)
+        found.setdefault(getattr(company, key), []).append(company)
     return found
 
 
-async def _create(ctx: RequestContext, values: dict[str, Any]) -> None:
-    await CompanyService(ctx).create(
+async def _create(ctx: RequestContext, values: dict[str, Any]) -> Any:
+    return await CompanyService(ctx).create(
         CompanyCreate(
             name=values["name"],
+            client_number=values.get("client_number"),
             website=values.get("website"),
             phone=values.get("phone"),
             invoice_email=values.get("invoice_email"),
@@ -86,10 +98,14 @@ COMPANY_IMPEX = ImpexDescriptor(
     entity_type="company",
     read_permission="companies.company.read",
     write_permission="companies.company.write",
-    natural_key="name",
+    natural_keys=("client_number", "name"),
     filters=("q", "status", "mine", "sort"),
     columns=(
         ImpexColumn("name", required=True),
+        # Klantnummer — tried before ``name`` as the upsert key (a client can be renamed and
+        # keep their number). Not clearable: an empty cell means "this file doesn't carry the
+        # number", never "remove the number this client already has".
+        ImpexColumn("client_number", clearable=False),
         ImpexColumn("website"),
         # Stored E.164; a national number needs the org's default country (see app/core/phone).
         ImpexColumn("phone"),

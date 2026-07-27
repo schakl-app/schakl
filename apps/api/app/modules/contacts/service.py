@@ -21,6 +21,7 @@ from app.core.activity import ActivityService
 from app.core.activity.service import snapshot
 from app.core.customfields import CustomFieldsService
 from app.core.phone import normalize_phone
+from app.core.region import org_default_country
 from app.core.richtext import sanitize_markdown
 from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext, TenantScopedRepository
@@ -252,6 +253,15 @@ class ContactService:
                 fields={"email": "errors.contact_email_exists"},
             )
 
+    async def _phone_region(self) -> str:
+        """Which country a national phone number belongs to: the org's.
+
+        Unlike a company, a contact has no country column of its own — the person's number is
+        read in the organisation's country. Called only once a phone value is actually being
+        written, and skipped entirely by an international ``+…`` number.
+        """
+        return await org_default_country(self.ctx.session, self.ctx.org.id)
+
     async def create(self, data: ContactCreate) -> Contact:
         self.ctx.require("contacts.contact.write")
         values = data.model_dump()
@@ -261,7 +271,11 @@ class ContactService:
         values["email"] = (values.get("email") or "").strip() or None
         await self._ensure_email_unique(values["email"])
         # New writes store E.164 (issue #256); only pre-existing freeform rows are grandfathered.
-        values["phone"] = normalize_phone(values.get("phone"))
+        # A contact carries no country of its own, so a national number is read in the org's
+        # (``org_settings.default_country``) — which is what lets a pasted client list import.
+        values["phone"] = normalize_phone(
+            values.get("phone"), region=await self._phone_region()
+        )
         values["custom"] = await self.custom_fields.validate(
             ENTITY_TYPE, values.get("custom") or {}
         )
@@ -285,7 +299,9 @@ class ContactService:
         # Only a *changed* phone is validated (issue #256): rows predating validation hold
         # freeform strings, and an unrelated edit must not force them through the new gate.
         if "phone" in values and values["phone"] != contact.phone:
-            values["phone"] = normalize_phone(values["phone"])
+            values["phone"] = normalize_phone(
+                values["phone"], region=await self._phone_region()
+            )
         if "custom" in values:
             values["custom"] = await self.custom_fields.validate(
                 ENTITY_TYPE, values.get("custom") or {}

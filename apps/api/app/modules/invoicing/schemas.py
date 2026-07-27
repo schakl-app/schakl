@@ -15,13 +15,13 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.core.currency import is_valid_currency
+from app.core.numbering import format_valid
 from app.modules.invoicing.models import (
     InvoiceKind,
     InvoiceStatus,
     QuoteStatus,
     TaxCategory,
 )
-from app.modules.invoicing.numbering import format_valid
 
 
 def _blank_to_none(value: Any) -> Any:

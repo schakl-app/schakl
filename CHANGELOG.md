@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Added
+
+- **Clients have a klantnummer.** Instellingen → Bedrijven sets the format (`{jaar}`, `{seq:4}` and friends, previewed live as you type), the next number, whether new clients are numbered automatically, and offers a one-off "number existing clients" action that fills only the blanks. The number is searchable, sortable and shown as an optional column; typing one by hand is fine, and a duplicate is refused. Invoice and quote number formats gained the same live preview.
+- **Imports match on the klantnummer before the name.** A client that was renamed since the last export re-imports onto itself rather than arriving as a second company, and two rows that reach the same client — one by number, one by name — are reported as a duplicate instead of one silently overwriting the other.
+- **The organisation has a country** (Instellingen → Branding). A phone number written the way people actually write it (`0612345678`) is now read in that country instead of being refused, so a client list imports without hand-editing every number first; a company's own country still wins, and a number that already carries `+32` is never reinterpreted. The phone picker starts on the organisation's country rather than guessing from the browser.
+- The client importer accepts the company phone number, which it previously had no column for.
+
+### Fixed
+
+- **A client-portal login could download the entire client list** as a CSV export. Bulk import and export are now their own capability, held by staff roles only, on top of each entity's own read/write permission.
+- The company importer built its billing block from a positional slice of its field list, so inserting a column would have shifted every imported client's VAT number, address and city one field along without any error.
+
 ## v0.17.0 — 2026-07-21
 
 ### Added

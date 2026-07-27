@@ -811,6 +811,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/companies/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Company Settings
+         * @description How this organisation numbers its clients (klantnummer format + sequence).
+         */
+        get: operations["get_company_settings_api_v1_companies_settings_get"];
+        /** Update Company Settings */
+        put: operations["update_company_settings_api_v1_companies_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/companies/settings/backfill-client-numbers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Backfill Client Numbers
+         * @description Number every client that has no number yet, oldest first.
+         *
+         *     Only fills blanks — an existing number is never rewritten, so this is safe to run twice.
+         */
+        post: operations["backfill_client_numbers_api_v1_companies_settings_backfill_client_numbers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/companies/{company_id}": {
         parameters: {
             query?: never;
@@ -1763,7 +1806,7 @@ export interface paths {
         put?: never;
         /**
          * Impex Import Company
-         * @description Import company rows from CSV, upserting on `name` (max 2000 data rows per request).
+         * @description Import company rows from CSV, upserting on the first of `client_number`, `name` each row fills (max 2000 data rows per request).
          */
         post: operations["impex_import_company_api_v1_impex_company_import_post"];
         delete?: never;
@@ -1803,7 +1846,7 @@ export interface paths {
         put?: never;
         /**
          * Impex Import Contact
-         * @description Import contact rows from CSV, upserting on `email` (max 2000 data rows per request).
+         * @description Import contact rows from CSV, upserting on the first of `email` each row fills (max 2000 data rows per request).
          */
         post: operations["impex_import_contact_api_v1_impex_contact_import_post"];
         delete?: never;
@@ -1863,7 +1906,7 @@ export interface paths {
         put?: never;
         /**
          * Impex Import Project
-         * @description Import project rows from CSV, upserting on `name` (max 2000 data rows per request).
+         * @description Import project rows from CSV, upserting on the first of `name` each row fills (max 2000 data rows per request).
          */
         post: operations["impex_import_project_api_v1_impex_project_import_post"];
         delete?: never;
@@ -1903,7 +1946,7 @@ export interface paths {
         put?: never;
         /**
          * Impex Import Subscription
-         * @description Import subscription rows from CSV, upserting on `name` (max 2000 data rows per request).
+         * @description Import subscription rows from CSV, upserting on the first of `name` each row fills (max 2000 data rows per request).
          */
         post: operations["impex_import_subscription_api_v1_impex_subscription_import_post"];
         delete?: never;
@@ -6934,6 +6977,14 @@ export interface components {
             /** Pin */
             pin: string;
         };
+        /**
+         * ClientNumberBackfillResult
+         * @description What the "number existing companies" action did — it only ever fills blanks.
+         */
+        ClientNumberBackfillResult: {
+            /** Numbered */
+            numbered: number;
+        };
         /** ClientRevenue */
         ClientRevenue: {
             /** Company Id */
@@ -7041,6 +7092,8 @@ export interface components {
             assignees?: components["schemas"]["AssigneeWrite"][] | null;
             /** City */
             city?: string | null;
+            /** Client Number */
+            client_number?: string | null;
             /** Coc Number */
             coc_number?: string | null;
             /** Country */
@@ -7104,6 +7157,38 @@ export interface components {
             /** Websites */
             websites?: components["schemas"]["WebsiteRef"][];
         };
+        /** CompanyNumberingRead */
+        CompanyNumberingRead: {
+            /** Client Number Auto */
+            client_number_auto: boolean;
+            /** Client Number Format */
+            client_number_format: string;
+            /** Client Number Next Seq */
+            client_number_next_seq: number;
+            /** Client Number Reset Yearly */
+            client_number_reset_yearly: boolean;
+            /** Client Number Seq Year */
+            client_number_seq_year: number | null;
+        };
+        /**
+         * CompanyNumberingWrite
+         * @description Partial update: every field optional, applied with ``exclude_unset``.
+         *
+         *     Named for what it carries rather than for its table (``company_settings``): the marketing
+         *     module already publishes a schema called ``CompanySettingsRead``, and two same-named schemas
+         *     make FastAPI fully-qualify **both** in the OpenAPI spec — which would silently rename the
+         *     other module's type in the generated client for no reason of its own.
+         */
+        CompanyNumberingWrite: {
+            /** Client Number Auto */
+            client_number_auto?: boolean | null;
+            /** Client Number Format */
+            client_number_format?: string | null;
+            /** Client Number Next Seq */
+            client_number_next_seq?: number | null;
+            /** Client Number Reset Yearly */
+            client_number_reset_yearly?: boolean | null;
+        };
         /** CompanyRead */
         CompanyRead: {
             /** Address Line1 */
@@ -7114,6 +7199,8 @@ export interface components {
             assignees?: components["schemas"]["AssigneeRead"][];
             /** City */
             city?: string | null;
+            /** Client Number */
+            client_number?: string | null;
             /** Coc Number */
             coc_number?: string | null;
             /** Country */
@@ -7212,6 +7299,8 @@ export interface components {
             assignees?: components["schemas"]["AssigneeWrite"][] | null;
             /** City */
             city?: string | null;
+            /** Client Number */
+            client_number?: string | null;
             /** Coc Number */
             coc_number?: string | null;
             /** Country */
@@ -8830,6 +8919,8 @@ export interface components {
             filters: string[];
             /** Importable */
             importable: boolean;
+            /** Natural Keys */
+            natural_keys: string[];
             /** Read Permission */
             read_permission: string;
             /** Write Permission */
@@ -14314,6 +14405,11 @@ export interface components {
             brand_name: string;
             /** Currency */
             currency: string;
+            /**
+             * Default Country
+             * @default NL
+             */
+            default_country: string;
             /** Default Locale */
             default_locale: string;
             /**
@@ -14361,6 +14457,8 @@ export interface components {
             brand_name?: string | null;
             /** Currency */
             currency?: string | null;
+            /** Default Country */
+            default_country?: string | null;
             /** Default Locale */
             default_locale?: string | null;
             /** Enabled Modules */
@@ -17167,7 +17265,7 @@ export interface operations {
                 status?: string | null;
                 /** @description Only clients I'm assigned to (primary or not) */
                 mine?: boolean;
-                /** @description name | status | created_at | updated_at, '-' desc */
+                /** @description name | client_number | status | created_at | updated_at, '-' desc */
                 sort?: string | null;
                 /** @description Include the budget roll-up; costs three grouped queries */
                 hours?: boolean;
@@ -17412,6 +17510,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_company_settings_api_v1_companies_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyNumberingRead"];
+                };
+            };
+        };
+    };
+    update_company_settings_api_v1_companies_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompanyNumberingWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyNumberingRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    backfill_client_numbers_api_v1_companies_settings_backfill_client_numbers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientNumberBackfillResult"];
                 };
             };
         };

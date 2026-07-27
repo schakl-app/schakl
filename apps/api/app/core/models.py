@@ -133,6 +133,14 @@ class OrgSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     currency: Mapped[str] = mapped_column(
         String(3), nullable=False, default="EUR", server_default="EUR"
     )
+    # ISO 3166-1 alpha-2 the org operates from — the country a value is read *in* when the
+    # value itself doesn't say. Today that is phone parsing: a spreadsheet writes `0612345678`,
+    # not `+31612345678`, and `phonenumbers` cannot resolve a national number without a region
+    # (#256 required E.164, which no real client list carries). Also the default for a new
+    # company's country. A record's own country always wins over this.
+    default_country: Mapped[str] = mapped_column(
+        String(2), nullable=False, default="NL", server_default="NL"
+    )
     # Browser-tab title template (#97, #71 tier 2): free text with {page} / {brand} tokens,
     # e.g. "{page} · {brand}". NULL = the built-in i18n format. Branding, so it lives here.
     tab_title_template: Mapped[str | None] = mapped_column(String(120), nullable=True)

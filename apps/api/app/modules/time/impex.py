@@ -1,6 +1,6 @@
 """CSV import/export shape for time entries — the timesheet (issue #77, settings hub round).
 
-**Create-only import** (``natural_key=None``): a time entry has no natural key a spreadsheet
+**Create-only import** (``natural_keys=()``): a time entry has no natural key a spreadsheet
 could carry. Times are the wall clock the user typed, stored as UTC (§8), so the CSV shape is
 ``date`` + ``start``/``end`` (HH:MM) — exactly what the timesheet shows. Import goes through
 ``TimeEntryService.create``, which means **rows are created as the importer's own entries**
@@ -17,7 +17,7 @@ from typing import Any
 from sqlalchemy import column, select, table
 
 from app.core.impex import ImpexColumn, ImpexDescriptor
-from app.core.impex.resolvers import name_or_id_resolver
+from app.core.impex.resolvers import name_or_id_resolver, no_natural_key
 from app.core.tenancy import RequestContext
 from app.modules.time.schemas import TimeEntryCreate
 from app.modules.time.service import TimeService
@@ -67,11 +67,7 @@ async def _fetch_page(
     return items
 
 
-async def _find_existing(ctx: RequestContext, values: list[str]) -> dict[str, list[Any]]:
-    return {}  # create-only: never matched
-
-
-async def _create(ctx: RequestContext, values: dict[str, Any]) -> None:
+async def _create(ctx: RequestContext, values: dict[str, Any]) -> Any:
     started_at = datetime.fromisoformat(f"{values['date']}T{values['start']}:00").replace(
         tzinfo=UTC
     )
@@ -80,7 +76,7 @@ async def _create(ctx: RequestContext, values: dict[str, Any]) -> None:
         if values.get("end")
         else None
     )
-    await TimeService(ctx).create(
+    return await TimeService(ctx).create(
         TimeEntryCreate(
             started_at=started_at,
             ended_at=ended_at,
@@ -104,7 +100,7 @@ TIME_ENTRY_IMPEX = ImpexDescriptor(
     entity_type="time_entry",
     read_permission="time.entry.read",
     write_permission="time.entry.write",
-    natural_key=None,
+    natural_keys=(),
     filters=("mine", "user_id", "company_id", "project_id", "date_from", "date_to", "sort"),
     columns=(
         ImpexColumn(
@@ -153,7 +149,7 @@ TIME_ENTRY_IMPEX = ImpexDescriptor(
         ),
     ),
     fetch_page=_fetch_page,
-    find_existing=_find_existing,
+    find_existing=no_natural_key,
     create_row=_create,
     update_row=_update,
     fk_resolvers={

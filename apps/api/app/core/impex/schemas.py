@@ -42,3 +42,6 @@ class ImpexEntityInfo(BaseModel):
     write_permission: str
     importable: bool
     filters: list[str]
+    #: Column keys an import upserts on, most stable first. Empty = create-only (every row
+    #: creates; nothing is ever matched against what is already there).
+    natural_keys: list[str]

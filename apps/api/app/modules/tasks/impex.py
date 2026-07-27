@@ -1,6 +1,6 @@
 """CSV import/export shape for tasks (issue #77, settings hub round).
 
-**Create-only import** (``natural_key=None``): task titles legitimately repeat, so there is
+**Create-only import** (``natural_keys=()``): task titles legitimately repeat, so there is
 no honest column to upsert on — every valid row creates, through the module's own service
 (same status validation, activity line and events as the form). ``status`` is tenant data
 (#62), so it is a plain text column the service validates, never a frozen options list.
@@ -15,7 +15,7 @@ from typing import Any
 from sqlalchemy import column, select, table
 
 from app.core.impex import ImpexColumn, ImpexDescriptor
-from app.core.impex.resolvers import name_or_id_resolver, resolve_member_email
+from app.core.impex.resolvers import name_or_id_resolver, no_natural_key, resolve_member_email
 from app.core.tenancy import RequestContext
 from app.modules.tasks.models import TaskPriority
 from app.modules.tasks.schemas import TaskCreate
@@ -70,12 +70,8 @@ async def _fetch_page(
     ]
 
 
-async def _find_existing(ctx: RequestContext, values: list[str]) -> dict[str, list[Any]]:
-    return {}  # create-only: never matched
-
-
-async def _create(ctx: RequestContext, values: dict[str, Any]) -> None:
-    await TaskService(ctx).create(
+async def _create(ctx: RequestContext, values: dict[str, Any]) -> Any:
+    return await TaskService(ctx).create(
         TaskCreate(
             title=values["title"],
             description=values.get("description"),
@@ -103,7 +99,7 @@ TASK_IMPEX = ImpexDescriptor(
     entity_type="task",
     read_permission="tasks.task.read",
     write_permission="tasks.task.write",
-    natural_key=None,
+    natural_keys=(),
     filters=("q", "status", "company_id", "project_id", "mine", "sort"),
     columns=(
         ImpexColumn("title", required=True),
@@ -138,7 +134,7 @@ TASK_IMPEX = ImpexDescriptor(
         ImpexColumn("description"),
     ),
     fetch_page=_fetch_page,
-    find_existing=_find_existing,
+    find_existing=no_natural_key,
     create_row=_create,
     update_row=_update,
     fk_resolvers={

@@ -80,6 +80,7 @@
     pref: () => data.table.pref,
     sort: () => data.table.sort,
     cells: () => ({
+      client_number: clientNumberCell,
       name: nameCell,
       website: websiteCell,
       phone: phoneCell,
@@ -124,6 +125,16 @@
 {#snippet nameCell(company: Company)}
   <a href="/companies/{company.id}" class="font-medium text-text hover:text-brand">{company.name}</a
   >
+{/snippet}
+
+{#snippet clientNumberCell(company: Company)}
+  <!-- Tabular figures so a column of numbers lines up; an unnumbered client reads as a dash
+       rather than as an empty cell you cannot tell from a loading one. -->
+  {#if company.client_number}
+    <span class="font-mono text-sm tabular-nums text-text-muted">{company.client_number}</span>
+  {:else}
+    <span class="text-text-muted">—</span>
+  {/if}
 {/snippet}
 
 {#snippet websiteCell(company: Company)}

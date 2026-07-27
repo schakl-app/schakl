@@ -21,13 +21,21 @@ from app.core.assignees import AssigneeService
 from app.core.auth.models import User
 from app.core.customfields import CustomFieldsService
 from app.core.events import emit
+from app.core.numbering import format_number
 from app.core.phone import normalize_phone
+from app.core.region import is_valid_country, org_default_country
 from app.core.richtext import sanitize_markdown
 from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
+from app.core.timezone import org_today
 from app.core.urls import reject_dangerous_url
-from app.modules.companies.models import Company, CompanyAssignee
-from app.modules.companies.schemas import CompanyCreate, CompanyUpdate
+from app.errors import AppError
+from app.modules.companies.models import Company, CompanyAssignee, CompanySettings
+from app.modules.companies.schemas import (
+    CompanyCreate,
+    CompanyNumberingWrite,
+    CompanyUpdate,
+)
 from app.schemas import CompanyBudgetHours
 
 ENTITY_TYPE = "company"
@@ -35,7 +43,8 @@ ENTITY_TYPE = "company"
 # The definition fields whose before/after values the activity trail records (issue #67). Notes
 # (freeform) and custom (its own concern) are deliberately left out of the trail's diff.
 _AUDITED_FIELDS = (
-    "name", "website", "phone", "invoice_email", "status", "responsible_user_id",
+    "name", "client_number", "website", "phone", "invoice_email", "status",
+    "responsible_user_id",
     # Billing identity (issue #11): what an issued invoice snapshots (#207), so a change
     # here is exactly the kind of definition edit the trail exists to answer for.
     "vat_number", "coc_number", "address_line1", "address_line2",
@@ -70,6 +79,8 @@ def _primary_assignee_name() -> Any:
 # lowercase name after every uppercase one, which reads as broken.
 SORTABLE = {
     "name": func.lower(Company.name),
+    # Unnumbered clients are NULL, which ``apply_sort`` files last in both directions.
+    "client_number": Company.client_number,
     "status": Company.status,
     "assignee": _primary_assignee_name(),
     "created_at": Company.created_at,
@@ -175,7 +186,14 @@ class CompanyService:
         conditions = []
         if q:
             pattern = f"%{q.strip()}%"
-            conditions.append(or_(Company.name.ilike(pattern), Company.website.ilike(pattern)))
+            conditions.append(
+                or_(
+                    Company.name.ilike(pattern),
+                    # Looking a client up by their klantnummer is the point of having one.
+                    Company.client_number.ilike(pattern),
+                    Company.website.ilike(pattern),
+                )
+            )
         if status:
             conditions.append(Company.status == status)
         if mine:
@@ -218,11 +236,59 @@ class CompanyService:
         """Who owns this client. Published so other modules never import our models (§6)."""
         return await self.assignees.primary(company_id)
 
+    async def _phone_region(self, country: str | None) -> str | None:
+        """Which country a national phone number in this row belongs to.
+
+        The company's own ``country`` wins; only a row that doesn't say falls back to the org.
+        Looked up lazily by the callers — an international number never reaches here, so the
+        common form submit costs no extra query (docs/PERFORMANCE.md).
+        """
+        if is_valid_country(country):
+            return country.upper()  # type: ignore[union-attr]
+        return await org_default_country(self.ctx.session, self.ctx.org.id)
+
+    async def client_numbers_taken(
+        self, numbers: list[str]
+    ) -> dict[str, uuid.UUID]:
+        """Which of ``numbers`` an existing company already holds → ``{number: company_id}``.
+
+        Batched on purpose: the importer checks a whole file's numbers in one query during its
+        *planning* phase, so a taken number surfaces as an ordinary row error the dry run shows
+        — rather than as a unique-index violation at commit that aborts the entire transaction
+        after the preview said it was clean.
+        """
+        if not numbers:
+            return {}
+        stmt = self.repo.scoped_select().where(Company.client_number.in_(numbers))
+        return {
+            company.client_number: company.id
+            for company in (await self.ctx.session.execute(stmt)).scalars()
+        }
+
+    async def _assert_client_number_free(
+        self, number: str, *, exclude: uuid.UUID | None = None
+    ) -> None:
+        """409 when another company in this org already holds ``number``.
+
+        ``exclude`` is the row being edited: re-saving a company with its own unchanged number
+        is not a conflict, and the export→import round-trip depends on that.
+        """
+        owner = (await self.client_numbers_taken([number])).get(number)
+        if owner is not None and owner != exclude:
+            raise AppError(
+                "conflict",
+                "errors.companies.client_number_taken",
+                status_code=409,
+                fields={"client_number": "errors.companies.client_number_taken"},
+            )
+
     async def create(self, data: CompanyCreate) -> Company:
         self.ctx.require("companies.company.write")
         values = data.model_dump()
         reject_dangerous_url(values.get("website"), field="website")
-        values["phone"] = normalize_phone(values.get("phone"))
+        values["phone"] = normalize_phone(
+            values.get("phone"), region=await self._phone_region(values.get("country"))
+        )
         # Notes are markdown source (issue #66/#228): strip raw HTML on write, like every
         # markdown-authored field.
         values["notes"] = sanitize_markdown(values.get("notes"))
@@ -235,6 +301,14 @@ class CompanyService:
         values["custom"] = await self.custom_fields.validate(
             ENTITY_TYPE, values.get("custom") or {}
         )
+        # A number the caller supplied is taken as given (subject to uniqueness); otherwise the
+        # org's numbering hands out the next one, unless the tenant keeps its numbers elsewhere.
+        if values.get("client_number"):
+            await self._assert_client_number_free(values["client_number"])
+        else:
+            values["client_number"] = await CompanySettingsService(
+                self.ctx
+            ).allocate_client_number()
         company = await self.repo.create(**values)
         await self.assignees.replace(company.id, links)
         company.assignees = await self.assignees.for_entity(company.id)
@@ -265,7 +339,17 @@ class CompanyService:
         # Validated only when the value changes (issue #256): posting a number back unedited
         # must never fail an unrelated edit.
         if "phone" in values and values["phone"] != company.phone:
-            values["phone"] = normalize_phone(values["phone"])
+            # The country as it will be *after* this write — an import that sets country and
+            # phone in one row must read the phone in the country it just assigned.
+            country = values["country"] if "country" in values else company.country
+            values["phone"] = normalize_phone(
+                values["phone"], region=await self._phone_region(country)
+            )
+        # Same "only when it changes" gate: re-saving a company with its own number is not a
+        # conflict. Clearing it (explicit None) is allowed and never re-allocates — a company
+        # that should have no number must be able to have none.
+        if values.get("client_number") and values["client_number"] != company.client_number:
+            await self._assert_client_number_free(values["client_number"], exclude=company.id)
         if "notes" in values:
             values["notes"] = sanitize_markdown(values.get("notes"))
         # ``replace`` is delete-then-insert, so who is *new* has to be read before the write.
@@ -333,3 +417,110 @@ class CompanyService:
         self.ctx.require("companies.company.delete")
         company = await self.repo.get_or_404(company_id)
         await self.repo.delete(company)
+
+
+# --------------------------------------------------------------------------- #
+# Settings — client numbering
+# --------------------------------------------------------------------------- #
+#: Bound on the walk past numbers a rewound sequence has already handed out. Reaching it means
+#: the format cannot produce a free number (a template whose {seq} is padded shorter than the
+#: numbers already issued), which is a configuration error, not a transient collision.
+_ALLOCATION_PROBES = 1000
+
+
+class CompanySettingsService:
+    """How this tenant numbers its clients (klantnummer).
+
+    Mirrors ``InvoicingSettingsService``: one row per org, created lazily, and an allocator that
+    locks that row for the rest of the caller's transaction so two concurrent company creates
+    serialize rather than collide.
+    """
+
+    def __init__(self, ctx: RequestContext) -> None:
+        self.ctx = ctx
+        self.repo = ctx.repo(CompanySettings)
+
+    async def row(self) -> CompanySettings:
+        """The org's settings row, created lazily with defaults on first touch."""
+        existing = await self.ctx.session.scalar(self.repo.scoped_select())
+        return existing if existing is not None else await self.repo.create()
+
+    async def save(self, data: CompanyNumberingWrite) -> CompanySettings:
+        self.ctx.require("companies.settings.manage")
+        row = await self.row()
+        return await self.repo.update(row, **data.model_dump(exclude_unset=True))
+
+    async def allocate_client_number(self) -> str | None:
+        """The next klantnummer, or ``None`` when the org numbers its clients by hand.
+
+        Race-safe: the settings row is locked (``SELECT … FOR UPDATE``) for the rest of the
+        request's transaction, so two creates cannot read the same sequence value.
+        """
+        row = await self.row()
+        if not row.client_number_auto:
+            return None
+        locked = await self.ctx.session.scalar(
+            select(CompanySettings)
+            .where(CompanySettings.id == row.id, CompanySettings.org_id == self.ctx.org.id)
+            .with_for_update()
+        )
+        return await self._next_number(locked)
+
+    async def backfill_client_numbers(self) -> int:
+        """Give every unnumbered company a number, oldest first. Returns how many were numbered.
+
+        Deliberately an explicit action rather than a migration backfill: which client gets which
+        number is a bookkeeping decision. Only ever fills blanks — an existing number is never
+        rewritten — so running it twice is safe.
+        """
+        self.ctx.require("companies.settings.manage")
+        row = await self.row()
+        locked = await self.ctx.session.scalar(
+            select(CompanySettings)
+            .where(CompanySettings.id == row.id, CompanySettings.org_id == self.ctx.org.id)
+            .with_for_update()
+        )
+        stmt = (
+            self.ctx.repo(Company)
+            .scoped_select()
+            .where(Company.client_number.is_(None))
+            .order_by(Company.created_at.asc(), Company.id.asc())
+        )
+        numbered = 0
+        for company in (await self.ctx.session.execute(stmt)).scalars().all():
+            company.client_number = await self._next_number(locked)
+            numbered += 1
+        await self.ctx.session.flush()
+        return numbered
+
+    async def _next_number(self, locked: CompanySettings) -> str:
+        """Format-and-increment against an already-locked settings row.
+
+        Walks past a number that already exists: the sequence is editable (so an instance can
+        align with numbering it already uses), and a rewound one may point at a number that was
+        handed out. Flushing per allocation is what makes the uniqueness probe see the numbers
+        this same backfill just assigned.
+        """
+        year = (await org_today(self.ctx.session, self.ctx.org.id)).year
+        seq = locked.client_number_next_seq
+        if locked.client_number_reset_yearly and locked.client_number_seq_year not in (
+            None,
+            year,
+        ):
+            seq = 1
+        for _ in range(_ALLOCATION_PROBES):
+            number = format_number(locked.client_number_format, year=year, seq=seq)
+            taken = await self.ctx.session.scalar(
+                select(Company.id).where(
+                    Company.org_id == self.ctx.org.id, Company.client_number == number
+                )
+            )
+            if taken is None:
+                locked.client_number_next_seq = seq + 1
+                locked.client_number_seq_year = year
+                await self.ctx.session.flush()
+                return number
+            seq += 1
+        raise AppError(
+            "conflict", "errors.companies.client_number_exhausted", status_code=409
+        )

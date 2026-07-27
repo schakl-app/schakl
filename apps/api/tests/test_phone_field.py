@@ -51,9 +51,9 @@ async def test_company_phone_rejects_invalid(client_for) -> None:
     async with client_for(t.host) as c:
         for bad in (
             "junk",
-            "0612345678",  # national format: ambiguous without a country, so refused
             "+3161234",  # too short for any Dutch number
             "+31999999999",  # right length, but no such NL number range exists
+            "0699999999",  # national, but no such number in the org's country either
         ):
             resp = await c.post(
                 "/api/v1/companies", json={"name": "Bad", "phone": bad}, headers=headers
@@ -61,6 +61,41 @@ async def test_company_phone_rejects_invalid(client_for) -> None:
             assert resp.status_code == 422, bad
             body = resp.json()["error"]
             assert body["fields"]["phone"] == "errors.invalid_phone"
+
+
+async def test_national_numbers_are_read_in_the_org_country(client_for) -> None:
+    """A national number is no longer refused (#77): it is read in the org's own country.
+
+    Requiring ``+31`` was defensible while every number came from the web's ``PhoneInput``
+    picker, which prefixes the dial code. It is not defensible for a bulk import — no client
+    list in the wild writes E.164 — so ``org_settings.default_country`` supplies the region and
+    the record's own ``country`` overrides it.
+    """
+    t = await make_tenant("phone-co-national")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        dutch = await c.post(
+            "/api/v1/companies", json={"name": "NL BV", "phone": "0612345678"},
+            headers=headers,
+        )
+        assert dutch.status_code == 201
+        assert dutch.json()["phone"] == "+31612345678"
+
+        # The company's own country wins over the org default.
+        belgian = await c.post(
+            "/api/v1/companies",
+            json={"name": "BE BV", "phone": "0475 12 34 56", "country": "BE"},
+            headers=headers,
+        )
+        assert belgian.status_code == 201
+        assert belgian.json()["phone"] == "+32475123456"
+
+        # An explicit dial code is never reinterpreted against either country.
+        intl = await c.post(
+            "/api/v1/companies", json={"name": "Intl BV", "phone": "+32 475 12 34 56"},
+            headers=headers,
+        )
+        assert intl.json()["phone"] == "+32475123456"
 
 
 async def test_contact_phone_validates_on_write(client_for) -> None:

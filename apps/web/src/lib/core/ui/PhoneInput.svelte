@@ -15,6 +15,8 @@
    */
   import { type CountryCode, parsePhoneNumberFromString } from "libphonenumber-js/min";
 
+  import { page } from "$app/state";
+
   import { t } from "$lib/core/i18n";
   import { defaultPhoneCountry, phoneCountries } from "$lib/core/phone";
   import Combobox from "$lib/core/ui/Combobox.svelte";
@@ -45,9 +47,12 @@
   const initial = value ?? "";
   const parsedInitial = initial.startsWith("+") ? parsePhoneNumberFromString(initial) : undefined;
 
-  // `defaultPhoneCountry` reads the browser locale, so on the server it answers from the UI
-  // locale; hydration re-runs this init client-side and lands on the visitor's own region.
-  let country = $state<string>(parsedInitial?.country ?? defaultPhoneCountry());
+  // The org's own country first (Instellingen → Branding): an agency in Amsterdam types Dutch
+  // numbers whatever their browser is set to. `defaultPhoneCountry` — the browser locale — is
+  // the fallback for a page rendered before any tenant resolved.
+  let country = $state<string>(
+    parsedInitial?.country ?? page.data.theme?.defaultCountry ?? defaultPhoneCountry(),
+  );
   let text = $state(parsedInitial ? parsedInitial.formatNational() : initial);
   let touched = $state(false);
   let blurred = $state(false);

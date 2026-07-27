@@ -20,6 +20,11 @@ export interface OrgTheme {
   timezone: string;
   /** ISO 4217 code every money figure renders in (#124) — per-org, like the timezone. */
   currency: string;
+  /**
+   * ISO 3166-1 alpha-2 the org operates from — the country an ambiguous value is read in.
+   * Today: the phone picker's starting country, and a new client's country.
+   */
+  defaultCountry: string;
   /** Tab-title template with {page}/{brand} tokens (#97); null = the built-in format. */
   tabTitleTemplate: string | null;
   enabledModules: string[];
@@ -45,6 +50,7 @@ export const DEFAULT_THEME: OrgTheme = {
   defaultLocale: "nl",
   timezone: "Europe/Amsterdam",
   currency: "EUR",
+  defaultCountry: "NL",
   tabTitleTemplate: null,
   enabledModules: ["companies"],
   demoMode: false,

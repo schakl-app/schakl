@@ -92,7 +92,9 @@ async def _resolve_type(ctx: RequestContext, refs: list[str]) -> dict[str, uuid.
     return resolved
 
 
-async def _find_existing(ctx: RequestContext, values: list[str]) -> dict[str, list[Any]]:
+async def _find_existing(
+    ctx: RequestContext, key: str, values: list[str]
+) -> dict[str, list[Any]]:
     stmt = ctx.repo(Subscription).scoped_select().where(Subscription.name.in_(values))
     found: dict[str, list[Any]] = {}
     for sub in (await ctx.session.execute(stmt)).scalars():
@@ -100,8 +102,8 @@ async def _find_existing(ctx: RequestContext, values: list[str]) -> dict[str, li
     return found
 
 
-async def _create(ctx: RequestContext, values: dict[str, Any]) -> None:
-    await SubscriptionService(ctx).create(
+async def _create(ctx: RequestContext, values: dict[str, Any]) -> Any:
+    return await SubscriptionService(ctx).create(
         SubscriptionCreate(
             name=values["name"],
             company_id=values["company_id"],
@@ -143,7 +145,7 @@ SUBSCRIPTION_IMPEX = ImpexDescriptor(
     entity_type="subscription",
     read_permission="subscriptions.subscription.read",
     write_permission="subscriptions.subscription.write",
-    natural_key="name",
+    natural_keys=("name",),
     filters=("status", "company_id", "sort"),
     columns=(
         ImpexColumn("name", required=True),

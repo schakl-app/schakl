@@ -51,7 +51,9 @@ async def _fetch_page(
     return items
 
 
-async def _find_existing(ctx: RequestContext, values: list[str]) -> dict[str, list[Any]]:
+async def _find_existing(
+    ctx: RequestContext, key: str, values: list[str]
+) -> dict[str, list[Any]]:
     stmt = ctx.repo(Contact).scoped_select().where(Contact.email.in_(values))
     found: dict[str, list[Any]] = {}
     for contact in (await ctx.session.execute(stmt)).scalars():
@@ -114,9 +116,9 @@ async def _resolve_company(
     return resolved
 
 
-async def _create(ctx: RequestContext, values: dict[str, Any]) -> None:
+async def _create(ctx: RequestContext, values: dict[str, Any]) -> Any:
     company_id = values.get("company_id")
-    await ContactService(ctx).create(
+    return await ContactService(ctx).create(
         ContactCreate(
             first_name=values["first_name"],
             last_name=values.get("last_name"),
@@ -146,7 +148,7 @@ CONTACT_IMPEX = ImpexDescriptor(
     entity_type="contact",
     read_permission="contacts.contact.read",
     write_permission="contacts.contact.write",
-    natural_key="email",
+    natural_keys=("email",),
     filters=("q", "company_id", "sort"),
     columns=(
         ImpexColumn("first_name", required=True),

@@ -97,8 +97,10 @@ def _import_endpoint(descriptor: ImpexDescriptor) -> Any:
 
     import_csv.__name__ = f"import_{descriptor.entity_type}_csv"
     upsert = (
-        f"upserting on `{descriptor.natural_key}`"
-        if descriptor.natural_key
+        "upserting on the first of "
+        + ", ".join(f"`{key}`" for key in descriptor.natural_keys)
+        + " each row fills"
+        if descriptor.natural_keys
         else "create-only (no natural key)"
     )
     import_csv.__doc__ = (
@@ -144,6 +146,7 @@ def build_impex_router() -> APIRouter:
                 write_permission=d.write_permission,
                 importable=d.importable,
                 filters=list(d.filters),
+                natural_keys=list(d.natural_keys),
             )
             for d in descriptors
         ]
@@ -154,7 +157,14 @@ def build_impex_router() -> APIRouter:
             _export_endpoint(descriptor),
             methods=["GET"],
             name=f"impex_export_{descriptor.entity_type}",
-            dependencies=[require_permission(descriptor.read_permission)],
+            # Two gates, both required: the entity's own read permission decides *what* may
+            # leave, ``impex.export`` decides *who* may take it out in bulk. A client-portal
+            # login holds `companies.company.read` (its own company) and must never be able to
+            # download the whole client list.
+            dependencies=[
+                require_permission("impex.export"),
+                require_permission(descriptor.read_permission),
+            ],
             response_class=Response,
             responses={200: {"content": {"text/csv": {}}, "description": "CSV file"}},
         )
@@ -164,7 +174,10 @@ def build_impex_router() -> APIRouter:
                 _import_endpoint(descriptor),
                 methods=["POST"],
                 name=f"impex_import_{descriptor.entity_type}",
-                dependencies=[require_permission(descriptor.write_permission)],
+                dependencies=[
+                    require_permission("impex.import"),
+                    require_permission(descriptor.write_permission),
+                ],
                 response_model=ImportReport,
             )
     return router

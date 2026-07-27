@@ -11,6 +11,7 @@
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
+  import NumberFormatField from "$lib/core/ui/NumberFormatField.svelte";
   import PhoneInput from "$lib/core/ui/PhoneInput.svelte";
   import { getCurrency } from "$lib/core/currency";
   import DocumentView from "$lib/modules/invoicing/DocumentView.svelte";
@@ -153,6 +154,11 @@
     active: true,
     position: 0,
   });
+
+  // Bound so the format fields can preview what they will produce (#77) rather than describing
+  // their tokens in prose — the hint they replaced said what {seq:4} means, never what you get.
+  let invoiceFormat = $state(data.settings?.invoice_number_format ?? "");
+  let quoteFormat = $state(data.settings?.quote_number_format ?? "");
 
   const inputClass =
     "w-full rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
@@ -496,34 +502,22 @@
       use:enhance={busy.wrap("defaults")}
       class="grid gap-3 sm:grid-cols-2"
     >
-      <div>
-        <label for="fmt-invoice" class="mb-1 block text-sm font-medium text-text"
-          >{t("settings.invoicing.invoice_format")}</label
-        >
-        <input
-          id="fmt-invoice"
-          name="invoice_number_format"
-          value={data.settings?.invoice_number_format ?? ""}
-          class={inputClass}
-        />
-      </div>
-      <div>
-        <label for="fmt-quote" class="mb-1 block text-sm font-medium text-text"
-          >{t("settings.invoicing.quote_format")}</label
-        >
-        <input
-          id="fmt-quote"
-          name="quote_number_format"
-          value={data.settings?.quote_number_format ?? ""}
-          class={inputClass}
-        />
-      </div>
-      <p class="text-xs text-text-muted sm:col-span-2">
-        {t("settings.invoicing.format_hint", {
-          tokens: "{year}, {yy}, {seq}, {seq:4}",
-          example: "F{year}-{seq:4} → F2026-0001",
-        })}
-      </p>
+      <NumberFormatField
+        id="fmt-invoice"
+        name="invoice_number_format"
+        label={t("settings.invoicing.invoice_format")}
+        bind:value={invoiceFormat}
+        nextSeq={data.settings?.invoice_next_seq ?? 1}
+        class={inputClass}
+      />
+      <NumberFormatField
+        id="fmt-quote"
+        name="quote_number_format"
+        label={t("settings.invoicing.quote_format")}
+        bind:value={quoteFormat}
+        nextSeq={data.settings?.quote_next_seq ?? 1}
+        class={inputClass}
+      />
       <div>
         <label for="seq-invoice" class="mb-1 block text-sm font-medium text-text"
           >{t("settings.invoicing.next_invoice_seq")}</label

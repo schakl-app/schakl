@@ -93,6 +93,9 @@ class _Row:
     custom: dict[str, str] = field(default_factory=dict)  # raw cells, "" = clear
     errors: list[tuple[str | None, str]] = field(default_factory=list)
     nk: str | None = None
+    #: Which of the descriptor's ``natural_keys`` this row matched on — rows in one file may
+    #: legitimately use different ones (a klantnummer here, a bare name there).
+    nk_key: str | None = None
     nk_duplicate: bool = False
     ambiguous: bool = False
 
@@ -112,7 +115,10 @@ class ImpexService:
         re-imports into the same org unchanged (round-trip). UTF-8 with BOM: without it Excel
         guesses a legacy codepage and mangles every accented name.
         """
-        self.ctx.require(d.read_permission)  # the route declares it too; defence-in-depth
+        # Both gates, mirroring the route (defence-in-depth): bulk capability *and* the
+        # entity's own read permission.
+        self.ctx.require("impex.export")
+        self.ctx.require(d.read_permission)
         custom_defs = await self._custom_definitions(d)
 
         rows: list[Any] = []
@@ -152,7 +158,8 @@ class ImpexService:
     async def import_csv(
         self, d: ImpexDescriptor, raw: bytes, *, dry_run: bool
     ) -> ImportReport:
-        self.ctx.require(d.write_permission)  # the route declares it too; defence-in-depth
+        self.ctx.require("impex.import")  # the route declares both too; defence-in-depth
+        self.ctx.require(d.write_permission)
         if not d.importable:
             # Defensive: the router doesn't even mount an import route for these.
             raise AppError("not_found", "errors.not_found", status_code=404)
@@ -186,19 +193,20 @@ class ImpexService:
         ]
         rows = [self._parse_row(index, cells, columns) for index, cells in enumerate(data, 1)]
 
-        if d.natural_key is not None:
-            self._mark_natural_keys(d, rows, by_key[d.natural_key].target)
+        existing: dict[str, dict[str, list[Any]]] = {}
+        if d.natural_keys:
+            self._mark_natural_keys(d, rows, by_key)
             existing = await self._find_existing(d, rows)
-        else:
-            # Create-only entity (no reliable natural key): every valid row creates.
-            existing = {}
+        # else: create-only entity (no reliable natural key) — every valid row creates.
         fk_resolved = await self._resolve_fks(d, rows)
+
+        resolved = [(row, self._plan_row(d, row, existing, fk_resolved)) for row in rows]
+        self._mark_duplicate_targets(resolved)
 
         errors: list[ImportRowError] = []
         plans: list[tuple[str, Any, dict[str, Any]]] = []
         creates = updates = 0
-        for row in rows:
-            entity = self._plan_row(d, row, existing, fk_resolved)
+        for row, entity in resolved:
             self._validate_custom(row, defs, set(custom_defs), entity)
             if row.errors:
                 errors.extend(
@@ -362,26 +370,65 @@ class ImpexService:
         return row
 
     def _mark_natural_keys(
-        self, d: ImpexDescriptor, rows: list[_Row], nk_target: str
+        self, d: ImpexDescriptor, rows: list[_Row], by_key: dict[str, ImpexColumn]
     ) -> None:
-        """A natural key may appear once per file: the second occurrence would silently
-        overwrite what the first just imported."""
-        seen: set[str] = set()
+        """Pick each row's match key — the first of ``natural_keys`` the row actually fills.
+
+        A natural key value may appear once per file: the second occurrence would silently
+        overwrite what the first just imported. Counted **per key**, since a klantnummer and a
+        name are different namespaces; the *same company* reached through two different keys is
+        caught later, once the rows have resolved to entities (:meth:`_mark_duplicate_targets`).
+        """
+        seen: dict[str, set[str]] = {}
         for row in rows:
-            value = row.values.get(nk_target)
-            row.nk = value if isinstance(value, str) and value else None
+            for key in d.natural_keys:
+                value = row.values.get(by_key[key].target)
+                if isinstance(value, str) and value.strip():
+                    row.nk_key, row.nk = key, value
+                    break
             if row.nk is None:
                 continue
-            if row.nk in seen:
+            bucket = seen.setdefault(row.nk_key or "", set())
+            if row.nk in bucket:
                 row.nk_duplicate = True
-                row.errors.append((d.natural_key, "impex.errors.duplicate_in_file"))
-            seen.add(row.nk)
+                row.errors.append((row.nk_key, "impex.errors.duplicate_in_file"))
+            bucket.add(row.nk)
 
     async def _find_existing(
         self, d: ImpexDescriptor, rows: list[_Row]
-    ) -> dict[str, list[Any]]:
-        values = sorted({row.nk for row in rows if row.nk and not row.nk_duplicate})
-        return await d.find_existing(self.ctx, values) if values else {}
+    ) -> dict[str, dict[str, list[Any]]]:
+        """``{natural key: {value: [rows]}}`` — one batched resolver call per key **used**.
+
+        A file that only carries names never queries client numbers.
+        """
+        wanted: dict[str, set[str]] = {}
+        for row in rows:
+            if row.nk and row.nk_key and not row.nk_duplicate:
+                wanted.setdefault(row.nk_key, set()).add(row.nk)
+        return {
+            key: await d.find_existing(self.ctx, key, sorted(values))
+            for key, values in wanted.items()
+        }
+
+    def _mark_duplicate_targets(self, rows: list[tuple[_Row, Any]]) -> None:
+        """Two rows resolving to the **same existing entity** is a duplicate, whichever keys
+        they used.
+
+        Per-key dedup cannot see this: row 1 keyed on ``client_number=K001`` and row 5 keyed on
+        ``name=Acme`` sit in different buckets while pointing at one company, and the later row
+        would silently overwrite what the earlier one just imported.
+        """
+        claimed: dict[Any, int] = {}
+        for row, entity in rows:
+            if entity is None or row.errors:
+                continue
+            identity = getattr(entity, "id", None)
+            if identity is None:
+                continue
+            if identity in claimed:
+                row.errors.append((row.nk_key, "impex.errors.duplicate_in_file"))
+            else:
+                claimed[identity] = row.index
 
     async def _resolve_fks(
         self, d: ImpexDescriptor, rows: list[_Row]
@@ -401,7 +448,7 @@ class ImpexService:
         self,
         d: ImpexDescriptor,
         row: _Row,
-        existing: dict[str, list[Any]],
+        existing: dict[str, dict[str, list[Any]]],
         fk_resolved: dict[str, dict[str, uuid.UUID | str]],
     ) -> Any | None:
         """Resolve FKs and the upsert target; returns the entity to update, or None to create."""
@@ -415,10 +462,10 @@ class ImpexService:
                 )
         if row.nk is None or row.nk_duplicate:
             return None
-        matches = existing.get(row.nk, [])
+        matches = existing.get(row.nk_key or "", {}).get(row.nk, [])
         if len(matches) > 1:
             row.ambiguous = True
-            row.errors.append((d.natural_key, "impex.errors.ambiguous_match"))
+            row.errors.append((row.nk_key, "impex.errors.ambiguous_match"))
             return None
         return matches[0] if matches else None
 

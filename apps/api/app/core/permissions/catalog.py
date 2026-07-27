@@ -132,6 +132,25 @@ CORE_PERMISSIONS: tuple[PermissionSpec, ...] = (
         default_roles=(ROLE_ADMIN, ROLE_MEMBER),
     ),
     PermissionSpec("apikeys.service_account.manage", group="apikeys", position=20),
+    # --- bulk import / export (issue #77) ---------------------------------- #
+    # A *second* gate, on top of each entity's own read/write permission. Bulk is not the same
+    # capability as single-record access: `companies.company.read` legitimately reaches a
+    # client portal login (#193) so a client can see their own company — but that same key on
+    # `/impex/company/export` would hand them the agency's entire client list in one CSV.
+    # Staff-only, so the portal can never bulk-extract, while each entity's own permission
+    # still decides *which* entities a staff member may take out or bring in.
+    PermissionSpec(
+        "impex.export",
+        group="impex",
+        position=10,
+        default_roles=(ROLE_ADMIN, ROLE_MEMBER),
+    ),
+    PermissionSpec(
+        "impex.import",
+        group="impex",
+        position=20,
+        default_roles=(ROLE_ADMIN, ROLE_MEMBER),
+    ),
     # --- file storage (issue #123) ----------------------------------------- #
     # Uploading is a staff act (avatars, attachments, logos); reading is any member — the
     # serve route is RLS-scoped and declares no permission on purpose.

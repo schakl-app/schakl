@@ -10,7 +10,16 @@ from __future__ import annotations
 import uuid
 from enum import StrEnum
 
-from sqlalchemy import ForeignKey, Index, String, Text, UniqueConstraint, text
+from sqlalchemy import (
+    Boolean,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -45,12 +54,27 @@ class Company(
     __company_horizon_attr__ = "id"
     __activity_read_permission__ = "companies.company.read"  # trail read gate (audit F7)
 
-    # GIN index on the JSONB custom-fields column (CLAUDE.md §13).
     __table_args__ = (
+        # GIN index on the JSONB custom-fields column (CLAUDE.md §13).
         Index("ix_companies_custom", "custom", postgresql_using="gin"),
+        # Klantnummer uniqueness, scoped to the tenant (Golden Rule 1 — a global unique index
+        # would let one org's allocation collide with another's). Partial: the column is
+        # nullable and an org that never numbers its clients must not contend on NULL.
+        Index(
+            "uq_companies_client_number",
+            "org_id",
+            "client_number",
+            unique=True,
+            postgresql_where=text("client_number IS NOT NULL"),
+        ),
     )
 
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    #: Klantnummer / klantcode — the key a client list actually carries between systems, so
+    #: the importer upserts on it before falling back to the name (a company can be renamed;
+    #: its number does not change). Allocated from ``CompanySettings.client_number_format``
+    #: on create, or typed by hand; either way unique within the org.
+    client_number: Mapped[str | None] = mapped_column(String(40), nullable=True)
     website: Mapped[str | None] = mapped_column(String(512), nullable=True)
     # E.164 (``+31612345678``), validated via ``app.core.phone`` on write (issue #256).
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -195,4 +219,38 @@ class MembershipCompanyGroup(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin
         PGUUID(as_uuid=True),
         ForeignKey("company_groups.id", ondelete="CASCADE"),
         nullable=False,
+    )
+
+
+class CompanySettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """One row per org: how this tenant numbers its clients.
+
+    The counter lives here rather than in a counter table for the same reason invoicing's
+    does: allocation is then one ``SELECT … FOR UPDATE`` on a row the create path already
+    has to read. Formats use the shared ``app.core.numbering`` tokens.
+    """
+
+    __tablename__ = "company_settings"
+    __table_args__ = (UniqueConstraint("org_id", name="uq_company_settings_org"),)
+
+    #: Klantnummer template — ``{year}``, ``{yy}``, ``{seq}``/``{seq:N}`` (app/core/numbering).
+    #: Plain ``{seq:4}`` by default: unlike an invoice number, a client number is rarely
+    #: year-stamped — a client acquired in 2024 keeps their number in 2027.
+    client_number_format: Mapped[str] = mapped_column(
+        String(60), nullable=False, default="{seq:4}", server_default="{seq:4}"
+    )
+    client_number_next_seq: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    #: The org-local year the sequence counts in; only consulted when resetting yearly.
+    client_number_seq_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: Off by default, mirroring the format: restarting client numbers every year would make
+    #: them ambiguous across years, which is the opposite of what a client number is for.
+    client_number_reset_yearly: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    #: Whether a company created without an explicit number gets the next one automatically.
+    #: A tenant that keeps its numbers in another system turns this off and types them.
+    client_number_auto: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
     )
