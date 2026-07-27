@@ -17,6 +17,7 @@
   import { COMPANY_STATUSES } from "$lib/modules/companies/status";
   import EntryForm from "$lib/modules/time/EntryForm.svelte";
   import { formatMinutes, formatTime } from "$lib/modules/time/format";
+  import ProjectBudgetsPanel from "$lib/modules/time/ProjectBudgetsPanel.svelte";
   import TimesheetGrid from "$lib/modules/time/TimesheetGrid.svelte";
   import { page } from "$app/state";
 
@@ -690,70 +691,76 @@
     {/if}
   </main>
 
-  <!-- New registration / edit panel -->
-  <aside
-    bind:this={panelEl}
-    class="h-fit scroll-mt-4 rounded-xl border border-border bg-surface-raised p-5 transition-shadow duration-500 {aiFlash
-      ? 'ring-2 ring-brand'
-      : ''}"
-  >
-    {#if editingEntry}
-      <div class="mb-4 flex items-center justify-between">
-        <h2 class="text-sm font-semibold text-text">{t("time.edit_entry")}</h2>
-        {#if editingEntry.approved_at}
-          <span
-            class="flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400"
-          >
-            <CircleCheck size={14} />
-            {t("time.approved")}
-          </span>
-        {/if}
-      </div>
-      {#key editingEntry.id}
-        <EntryForm
-          action="?/updateEntry"
-          deleteAction="?/deleteEntry"
-          entry={editingEntry}
-          date={data.selectedDate}
-          companies={data.companies}
-          projects={data.projects}
-          tasks={data.tasks}
-          subscriptions={data.subscriptions}
-          error={form?.error ?? null}
-          oncancel={() => (editingId = null)}
-          ondone={() => (editingId = null)}
-          oncreatecompany={(name) => quickCreateCompany(name, "entry_company")}
-          oncreateproject={(name, companyId) =>
-            quickCreateProject(name, "entry_project", companyId)}
-        />
-      {/key}
-    {:else}
-      <h2 class="mb-4 text-sm font-semibold text-text">{t("time.new_registration")}</h2>
-      {#key `${data.selectedDate}:${aiPrefillVersion}`}
-        <EntryForm
-          action="?/createEntry"
-          date={data.selectedDate}
-          companies={data.companies}
-          projects={data.projects}
-          tasks={data.tasks}
-          subscriptions={data.subscriptions}
-          draftDate={data.selectedDate}
-          draftInitial={aiPrefill ?? data.day?.draft?.payload ?? null}
-          draftSavedAt={aiPrefill ? null : (data.day?.draft?.updated_at ?? null)}
-          defaultCompanyId={aiPrefill ? "" : data.presetCompanyId || (data.lastCompanyId ?? "")}
-          defaultProjectId={aiPrefill || data.presetCompanyId ? "" : (data.lastProjectId ?? "")}
-          error={form?.error ?? null}
-          ondone={() => {
-            aiPrefill = null;
-            aiParsedSummary = null;
-          }}
-          oncreatecompany={(name) => quickCreateCompany(name, "entry_company")}
-          oncreateproject={(name, companyId) =>
-            quickCreateProject(name, "entry_project", companyId)}
-        />
-      {/key}
-    {/if}
-  </aside>
+  <!-- Right column: the registration form, then what's left of the budgets it spends. -->
+  <div class="min-w-0 space-y-4">
+    <!-- New registration / edit panel -->
+    <aside
+      bind:this={panelEl}
+      class="h-fit scroll-mt-4 rounded-xl border border-border bg-surface-raised p-5 transition-shadow duration-500 {aiFlash
+        ? 'ring-2 ring-brand'
+        : ''}"
+    >
+      {#if editingEntry}
+        <div class="mb-4 flex items-center justify-between">
+          <h2 class="text-sm font-semibold text-text">{t("time.edit_entry")}</h2>
+          {#if editingEntry.approved_at}
+            <span
+              class="flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400"
+            >
+              <CircleCheck size={14} />
+              {t("time.approved")}
+            </span>
+          {/if}
+        </div>
+        {#key editingEntry.id}
+          <EntryForm
+            action="?/updateEntry"
+            deleteAction="?/deleteEntry"
+            entry={editingEntry}
+            date={data.selectedDate}
+            companies={data.companies}
+            projects={data.projects}
+            tasks={data.tasks}
+            error={form?.error ?? null}
+            oncancel={() => (editingId = null)}
+            ondone={() => (editingId = null)}
+            oncreatecompany={(name) => quickCreateCompany(name, "entry_company")}
+            oncreateproject={(name, companyId) =>
+              quickCreateProject(name, "entry_project", companyId)}
+          />
+        {/key}
+      {:else}
+        <h2 class="mb-4 text-sm font-semibold text-text">{t("time.new_registration")}</h2>
+        {#key `${data.selectedDate}:${aiPrefillVersion}`}
+          <EntryForm
+            action="?/createEntry"
+            date={data.selectedDate}
+            companies={data.companies}
+            projects={data.projects}
+            tasks={data.tasks}
+            draftDate={data.selectedDate}
+            draftInitial={aiPrefill ?? data.day?.draft?.payload ?? null}
+            draftSavedAt={aiPrefill ? null : (data.day?.draft?.updated_at ?? null)}
+            defaultCompanyId={aiPrefill ? "" : data.presetCompanyId || (data.lastCompanyId ?? "")}
+            defaultProjectId={aiPrefill || data.presetCompanyId ? "" : (data.lastProjectId ?? "")}
+            error={form?.error ?? null}
+            ondone={() => {
+              aiPrefill = null;
+              aiParsedSummary = null;
+            }}
+            oncreatecompany={(name) => quickCreateCompany(name, "entry_company")}
+            oncreateproject={(name, companyId) =>
+              quickCreateProject(name, "entry_project", companyId)}
+          />
+        {/key}
+      {/if}
+    </aside>
+
+    <!-- "Hoeveel uren zijn er nog?" — answered where the hours are logged, from the project
+         lookup this page already holds (#225: a covered project's budget *is* the agreement's
+         included hours, so this is also where retainer hours live now). -->
+    <ProjectBudgetsPanel projects={data.projects} companies={data.companies} />
+  </div>
 </div>
 
 <!-- Quick-create: a full new client/project without leaving the timesheet. Custom fields

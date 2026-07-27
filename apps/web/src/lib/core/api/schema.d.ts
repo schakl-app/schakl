@@ -14165,8 +14165,6 @@ export interface components {
              * Format: date-time
              */
             started_at: string;
-            /** Subscription Id */
-            subscription_id?: string | null;
             /** Task Id */
             task_id?: string | null;
         };
@@ -14191,12 +14189,12 @@ export interface components {
             duration_text?: string | null;
             /** End */
             end?: string | null;
+            /** Entry Type Key */
+            entry_type_key?: string | null;
             /** Project Id */
             project_id?: string | null;
             /** Start */
             start?: string | null;
-            /** Subscription Id */
-            subscription_id?: string | null;
             /** Task Id */
             task_id?: string | null;
         };
@@ -14375,8 +14373,6 @@ export interface components {
             project_id?: string | null;
             /** Started At */
             started_at?: string | null;
-            /** Subscription Id */
-            subscription_id?: string | null;
             /** Task Id */
             task_id?: string | null;
         };
@@ -14508,8 +14504,6 @@ export interface components {
             entry_type_key?: string | null;
             /** Project Id */
             project_id?: string | null;
-            /** Subscription Id */
-            subscription_id?: string | null;
             /** Task Id */
             task_id?: string | null;
         };

@@ -40,9 +40,6 @@ class TimeEntryBase(BaseModel):
     company_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None
     task_id: uuid.UUID | None = None
-    #: Optional link to the subscription these hours are worked under; must belong to the
-    #: entry's client (the service derives the client from it when none is picked).
-    subscription_id: uuid.UUID | None = None
     description: str | None = None
     #: Optional key into the org's time-entry types (#176); NULL stays untyped.
     entry_type_key: str | None = Field(None, min_length=1, max_length=50, pattern=r"^[a-z0-9_]+$")
@@ -66,7 +63,6 @@ class TimeEntryUpdate(BaseModel):
     company_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None
     task_id: uuid.UUID | None = None
-    subscription_id: uuid.UUID | None = None
     description: str | None = None
     entry_type_key: str | None = Field(None, min_length=1, max_length=50, pattern=r"^[a-z0-9_]+$")
     billable: bool | None = None
@@ -93,6 +89,10 @@ class TimeEntryRead(TimeEntryBase):
     approved_at: datetime | None
     approved_by_user_id: uuid.UUID | None
     invoiced_at: datetime | None
+    #: Legacy: hours used to be linkable straight to a subscription. That link is gone — an
+    #: agreement's included hours are consumed through the **projects** it covers (#225) — so
+    #: this is read-only history for rows written before, and NULL on everything new.
+    subscription_id: uuid.UUID | None = None
     #: The interaction this entry was logged from (#175), when it still exists.
     interaction_id: uuid.UUID | None = None
     created_at: datetime
@@ -205,7 +205,10 @@ class TimeEntryDraftPayload(BaseModel):
     company_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None
     task_id: uuid.UUID | None = None
-    subscription_id: uuid.UUID | None = None
+    #: The form has posted this since #176 and the whitelist never learned it, so *every*
+    #: autosave 422'd and the draft silently never saved. A closed shape has to mirror the
+    #: form field for field — that is the cost of ``extra="forbid"``, and the test below it.
+    entry_type_key: str | None = Field(default=None, max_length=50)
     description: str | None = Field(default=None, max_length=4000)
 
 

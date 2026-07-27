@@ -53,6 +53,18 @@ async def test_draft_upsert_rides_day_and_timesheet(client_for) -> None:
             await c.put(f"/api/v1/time/drafts/{day}", json={"evil": "x"}, headers=headers)
         ).status_code == 422
 
+        # ...which is why the whitelist must mirror the form field for field. `entry_type_key`
+        # was posted by the form (#176) and missing here, so every autosave 422'd and the
+        # draft silently never saved — a closed shape fails loudly at the schema and quietly
+        # in the UI, which is the whole failure mode this assertion exists to catch.
+        typed = await c.put(
+            f"/api/v1/time/drafts/{day}",
+            json={"start": "09:00", "entry_type_key": "work", "description": "getypt"},
+            headers=headers,
+        )
+        assert typed.status_code == 200, typed.text
+        assert typed.json()["payload"]["entry_type_key"] == "work"
+
         # Discard, idempotently.
         assert (await c.delete(f"/api/v1/time/drafts/{day}", headers=headers)).status_code == 204
         assert (await c.delete(f"/api/v1/time/drafts/{day}", headers=headers)).status_code == 204

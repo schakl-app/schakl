@@ -808,9 +808,12 @@ class SubscriptionService:
 
     async def _usage(self, sub: Subscription) -> SubscriptionUsage:
         """Current-period consumption from logged time (#25's numbers): entries on the linked
-        projects **or** linked to the subscription itself (the entry form's picker) — one OR
-        over two indexed columns, so a project entry that also carries the subscription link
-        is never counted twice."""
+        projects **or** carrying the legacy direct link — one OR over two indexed columns, so a
+        project entry that also carries the old link is never counted twice.
+
+        Hours are logged against a project now; the entry form's subscription picker is gone, so
+        ``time_entries.subscription_id`` only ever holds history. Keep the OR until that column
+        is dropped, or a retainer's usage would silently shrink on upgrade."""
         months = period_months(sub.interval, sub.interval_count)
         period_end = sub.next_invoice_date
         period_start = add_months(period_end, -months) if period_end else None

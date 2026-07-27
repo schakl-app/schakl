@@ -7,7 +7,7 @@
   import { enhance } from "$app/forms";
   import { beforeNavigate } from "$app/navigation";
   import { page } from "$app/state";
-  import { burnBarClass, burnBarWidth, burnPct } from "$lib/core/burn";
+  import { burnBarClass, burnBarWidth, burnPct, burnTextClass } from "$lib/core/burn";
   import { fmtDateTime, fmtNumber } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -43,6 +43,9 @@
       billable_hours?: number;
       remaining_hours?: number | null;
     } | null;
+    // The agreements this project's hours come from (#225) — non-empty means the budget above
+    // *is* the retainer's included hours, which is why the form no longer picks a subscription.
+    budget_sources?: { subscription_id: string; name: string }[] | null;
   }
 
   interface EntryLike {
@@ -55,14 +58,7 @@
     company_id?: string | null;
     project_id?: string | null;
     task_id?: string | null;
-    subscription_id?: string | null;
     entry_type_key?: string | null;
-  }
-
-  interface SubscriptionOption {
-    id: string;
-    name: string;
-    company_id?: string | null;
   }
 
   let {
@@ -72,7 +68,6 @@
     companies,
     projects,
     tasks,
-    subscriptions = [],
     defaultCompanyId = "",
     defaultProjectId = "",
     error = null,
@@ -91,8 +86,6 @@
     companies: Option[];
     projects: Option[];
     tasks: Option[];
-    /** Active subscriptions for the optional agreement link; empty hides the picker. */
-    subscriptions?: SubscriptionOption[];
     defaultCompanyId?: string;
     defaultProjectId?: string;
     error?: string | null;
@@ -125,7 +118,6 @@
     company_id?: string | null;
     project_id?: string | null;
     task_id?: string | null;
-    subscription_id?: string | null;
     description?: string | null;
     entry_type_key?: string | null;
   } | null;
@@ -137,7 +129,6 @@
   let fCompany = $state(entry?.company_id ?? restored?.company_id ?? defaultCompanyId);
   let fProject = $state(entry?.project_id ?? restored?.project_id ?? defaultProjectId);
   let fTask = $state(entry?.task_id ?? restored?.task_id ?? "");
-  let fSubscription = $state(entry?.subscription_id ?? restored?.subscription_id ?? "");
   let fDescription = $state(entry?.description ?? restored?.description ?? "");
   const locale = $derived((page.data.locale as string | undefined) ?? "nl");
   // Deliberate initial capture, like every f* seed above.
@@ -201,30 +192,26 @@
     if (project?.company_id) fCompany = project.company_id;
   }
 
-  // Subscription picker (owner request): narrowed to the picked client; picking one
-  // back-fills the client, exactly like the project picker — the API enforces the same pair.
-  const subscriptionOptions = $derived(
-    (fCompany ? subscriptions.filter((s) => s.company_id === fCompany) : subscriptions).map(
-      (s) => ({ value: s.id, label: s.name }),
-    ),
-  );
-  function onSubscriptionPicked(subscriptionId: string) {
-    const sub = subscriptions.find((s) => s.id === subscriptionId);
-    if (sub?.company_id) fCompany = sub.company_id;
-  }
-
   // Budget feedback where the hours are spent (#112): the person logging sees how much of the
   // picked project's budget is left *before* saving, not on another screen afterwards. Hours
   // only — money is priced per logging employee (#226), so there is no client-side rate to
   // draw a euro figure from here.
+  //
+  // This is also the *only* place a retainer's included hours surface while logging: an entry
+  // no longer links to a subscription, it links to a project, and a covered project's budget
+  // **is** the agreement's included hours (#225). One number, named after where it comes from.
   const pickedProject = $derived(fProject ? projects.find((p) => p.id === fProject) : undefined);
   const pickedBurn = $derived.by(() => {
     const hours = pickedProject?.hours;
     if (!hours || hours.budget_hours == null) return null;
+    const spent = hours.spent_hours ?? 0;
     return {
-      spent: hours.spent_hours ?? 0,
+      spent,
       budget: hours.budget_hours,
-      pct: burnPct(hours.spent_hours ?? 0, hours.budget_hours),
+      // The API's own remainder (unclamped, so an over-budget project reads negative).
+      remaining: hours.remaining_hours ?? Math.round((hours.budget_hours - spent) * 100) / 100,
+      pct: burnPct(spent, hours.budget_hours),
+      sources: pickedProject?.budget_sources ?? [],
     };
   });
 
@@ -250,7 +237,6 @@
       company_id: fCompany || null,
       project_id: fProject || null,
       task_id: fTask || null,
-      subscription_id: fSubscription || null,
       description: fDescription || null,
       entry_type_key: fType || null,
     };
@@ -265,7 +251,6 @@
     company_id: defaultCompanyId || null,
     project_id: defaultProjectId || null,
     task_id: null,
-    subscription_id: null,
     description: null,
     entry_type_key: null,
   });
@@ -299,7 +284,6 @@
     fCompany = defaultCompanyId;
     fProject = defaultProjectId;
     fTask = "";
-    fSubscription = "";
     fDescription = "";
     durationText = "";
     sawFirstRun = false; // the reset itself must not re-save
@@ -521,17 +505,19 @@
       oncreate={oncreateproject ? (name) => oncreateproject(name, fCompany) : undefined}
     />
     {#if pickedBurn}
-      <div class="mt-1.5">
-        <div class="flex items-center justify-between text-xs text-text-muted">
-          <span class="tabular-nums">
-            {t("time.budget.spent", {
-              spent: fmtNumber(pickedBurn.spent, 1),
-              budget: fmtNumber(pickedBurn.budget, 1),
-            })}
+      <div class="mt-2 rounded-lg border border-border bg-surface p-2.5">
+        <div class="flex items-baseline justify-between gap-2">
+          <span class="text-xs text-text-muted">{t("time.budget.remaining_label")}</span>
+          <!-- Loud when it's gone (UX Principle 4): the same green/amber/red scale as every
+               other burn surface, on the figure the person logging actually needs. -->
+          <span class="text-sm font-semibold tabular-nums {burnTextClass(pickedBurn.pct)}">
+            {pickedBurn.remaining < 0
+              ? t("time.budget.over", { hours: fmtNumber(-pickedBurn.remaining, 1) })
+              : t("time.budget.remaining", { hours: fmtNumber(pickedBurn.remaining, 1) })}
           </span>
         </div>
         {#if pickedBurn.pct != null}
-          <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-surface">
+          <div class="mt-1.5 h-2 overflow-hidden rounded-full bg-surface-raised">
             <!-- The one burn scale (core/burn.ts): the number may exceed 100 %, the bar can't. -->
             <div
               class="h-full rounded-full {burnBarClass(pickedBurn.pct)}"
@@ -539,7 +525,28 @@
             ></div>
           </div>
         {/if}
+        <div class="mt-1.5 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
+          <span class="text-xs tabular-nums text-text-muted">
+            {t("time.budget.spent", {
+              spent: fmtNumber(pickedBurn.spent, 1),
+              budget: fmtNumber(pickedBurn.budget, 1),
+            })}
+          </span>
+          {#if pickedBurn.sources.length > 0}
+            <!-- Where the budget comes from: these hours are a retainer's included hours (#225),
+                 which is what the entry form used to ask for with a subscription picker. -->
+            <span class="min-w-0 truncate text-xs text-text-muted">
+              {t("time.budget.from_subscription", {
+                name: pickedBurn.sources.map((s) => s.name).join(", "),
+              })}
+            </span>
+          {/if}
+        </div>
       </div>
+    {:else if pickedProject?.hours}
+      <!-- Only when the caller asked for the burn and the answer was "no budget". A lookup
+           fetched without `hours=true` knows nothing, and silence beats a false "geen budget". -->
+      <p class="mt-1.5 text-xs text-text-muted">{t("time.budget.none")}</p>
     {/if}
   </div>
   <div>
@@ -554,21 +561,6 @@
       placeholder={t("time.field.task")}
     />
   </div>
-  {#if subscriptions.length > 0}
-    <div>
-      <label for="subscription-{action}" class="mb-1 block text-xs font-medium text-text-muted"
-        >{t("time.field.subscription")}</label
-      >
-      <Combobox
-        items={subscriptionOptions}
-        name="subscription_id"
-        bind:value={fSubscription}
-        id="subscription-{action}"
-        placeholder={t("time.field.subscription")}
-        onselect={onSubscriptionPicked}
-      />
-    </div>
-  {/if}
   <div>
     <label for="description-{action}" class="mb-1 block text-xs font-medium text-text-muted"
       >{t("time.field.description")}</label
@@ -585,12 +577,18 @@
       <label for="entry-type-{action}" class="mb-1 block text-xs font-medium text-text-muted"
         >{t("time.field.entry_type")}</label
       >
-      <select id="entry-type-{action}" name="entry_type_key" bind:value={fType} class={inputClass}>
-        <option value="">{t("time.entry_type_none")}</option>
-        {#each typeOptions as option (option.key)}
-          <option value={option.key}>{entryTypeLabel(option, locale)}</option>
-        {/each}
-      </select>
+      <!-- A closed vocabulary is still a type-ahead (docs/UX.md): the tenant's types are org
+           config, so there is no inline-create path here — no `oncreate`, no ＋. -->
+      <Combobox
+        items={typeOptions.map((option) => ({
+          value: option.key,
+          label: entryTypeLabel(option, locale),
+        }))}
+        name="entry_type_key"
+        bind:value={fType}
+        id="entry-type-{action}"
+        placeholder={t("time.field.entry_type")}
+      />
     </div>
   {/if}
 

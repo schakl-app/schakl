@@ -232,6 +232,18 @@
   red; only the drawn bar's width clamps, because a bar cannot be 130 % long. A record with no
   budget shows an em-dash and still reports what it spent — never a fabricated total, and never a
   reassuring zero.
+- **Hours reach an agreement through its project, never through a second picker.** Logged time
+  attaches to a **project**, and a project covered by an active subscription burns against that
+  agreement's included hours (#225) — so the timesheet's entry form no longer offers a subscription
+  to log against. Two pickers meant two places a retainer's remaining hours could be counted, and
+  they could disagree. What replaced it is the answer itself, on the screen that spends the hours:
+  the picked project's **remaining** hours under the project field (named after the agreement they
+  came from: "Uit: Onderhoudsabonnement"), and a **Beschikbare uren** panel beside the form listing
+  every budgeted project on the one burn scale, hottest first. Both render from the project lookup
+  the page already loads with `hours=true` — a number this useful should cost no extra call, and the
+  form asks for one *less* than it did. The "no budget" hint only appears when the caller actually
+  asked for the burn: a lookup fetched without `hours=true` knows nothing, and silence beats a
+  confident "geen urenbudget" that is really "didn't look".
 - **Forms are SSR form actions** with `use:enhance` — and **a form that stays mounted after a
   successful save always passes `update({ reset: false })`.** The default success path calls
   `form.reset()`, which rewinds every control to its server-rendered default *without firing any
