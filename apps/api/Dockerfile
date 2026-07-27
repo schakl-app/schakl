@@ -21,8 +21,18 @@ RUN uv sync --frozen --no-dev
 
 FROM python:3.12-slim AS runtime
 
-# curl for the container healthcheck.
-RUN apt-get update && apt-get install -y --no-install-recommends curl \
+# curl for the container healthcheck; Inter for the document renderer.
+#
+# Without a real font on disk fpdf2 falls back to the built-in Helvetica, which is latin-1
+# only — every € on an invoice printed as "?" (and the PDF looked nothing like the app).
+# Inter is the face a modern CRM reads in, so the document matches the product. Only the
+# three weights the renderer asks for are kept; the package ships ~21 MB of weights/italics.
+# The prune is best-effort: a future package layout change must cost image size, never the
+# build — and `pdf.py` degrades to DejaVu/Helvetica on its own if the face moves.
+RUN apt-get update && apt-get install -y --no-install-recommends curl fonts-inter \
+    && find /usr/share/fonts/opentype/inter -type f \
+       ! -name 'Inter-Regular.otf' ! -name 'Inter-Medium.otf' ! -name 'Inter-SemiBold.otf' \
+       -delete 2>/dev/null || true \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

@@ -180,6 +180,28 @@ def add_months(day: date, months: int) -> date:
 
 
 @dataclass(frozen=True)
+class BillablePeriod:
+    """One agreement's next billable period, **published** for `invoicing` to offer as a
+    ready-made invoice line (CLAUDE.md §6 — a published interface, not our internals).
+
+    It exists so that billing a month by hand and letting the cycle cron raise it produce
+    the same money: the interval vocabulary and the price-history rule ("the price valid at
+    the period boundary") stay here, where the agreement lives, instead of being re-derived
+    by whoever draws the invoice.
+    """
+
+    subscription_id: uuid.UUID
+    name: str
+    currency: str
+    amount: Decimal
+    period_start: date | None
+    period_end: date | None
+    #: The agreement's own lines, or a single priced line when it has none — exactly the
+    #: shape ``subscription.due`` carries.
+    lines: tuple[tuple[str, Decimal, Decimal], ...]
+
+
+@dataclass(frozen=True)
 class SubscriptionHours:
     """A covering agreement's hours contribution to a linked project (issue #225).
 
@@ -275,6 +297,67 @@ class SubscriptionService:
         if usage:
             sub.usage = await self._usage(sub)  # type: ignore[attr-defined]
         return sub
+
+    async def billable_periods(self, company_id: uuid.UUID) -> list[BillablePeriod]:
+        """This client's active agreements and the period each would bill next (§6).
+
+        `invoicing`'s line editor calls this to offer "＋ abonnement": one pick drops the
+        same lines, at the same price, that the cycle cron would have raised. Read-only —
+        raising the invoice, and claiming the period so the cron skips it, stays with
+        `invoicing`, which owns documents.
+        """
+        subs = list(
+            await self.ctx.session.scalars(
+                self.repo.scoped_select()
+                .where(
+                    Subscription.company_id == company_id,
+                    Subscription.status == SubscriptionStatus.ACTIVE.value,
+                )
+                .order_by(func.lower(Subscription.name))
+            )
+        )
+        if not subs:
+            return []
+        lines_by_sub: dict[uuid.UUID, list[SubscriptionLine]] = {}
+        for line in await self.ctx.session.scalars(
+            self.lines.scoped_select()
+            .where(SubscriptionLine.subscription_id.in_([s.id for s in subs]))
+            .order_by(SubscriptionLine.position)
+        ):
+            lines_by_sub.setdefault(line.subscription_id, []).append(line)
+
+        out: list[BillablePeriod] = []
+        for sub in subs:
+            boundary = sub.next_invoice_date
+            # The price valid at the period boundary — history answers, current state never
+            # reprices (the cron's rule, applied identically here).
+            amount = await self.ctx.session.scalar(
+                self.prices.scoped_select()
+                .where(
+                    SubscriptionPrice.subscription_id == sub.id,
+                    SubscriptionPrice.valid_from <= (boundary or await self._org_today()),
+                )
+                .order_by(SubscriptionPrice.valid_from.desc())
+                .limit(1)
+                .with_only_columns(SubscriptionPrice.amount)
+            ) or Decimal(0)
+            months = period_months(sub.interval, sub.interval_count)
+            rows = lines_by_sub.get(sub.id) or []
+            out.append(
+                BillablePeriod(
+                    subscription_id=sub.id,
+                    name=sub.name,
+                    currency=sub.currency,
+                    amount=amount,
+                    period_start=add_months(boundary, -months) if boundary else None,
+                    period_end=boundary,
+                    lines=tuple(
+                        (row.description, row.quantity, row.unit_amount) for row in rows
+                    )
+                    or ((sub.name, Decimal(1), amount),),
+                )
+            )
+        return out
 
     async def hours_for_projects(
         self, project_ids: Sequence[uuid.UUID]

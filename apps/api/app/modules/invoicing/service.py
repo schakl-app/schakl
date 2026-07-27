@@ -24,10 +24,11 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import bindparam, func, select, text
+from sqlalchemy import bindparam, func, select, text, tuple_
 
 from app.core.activity import ActivityService
 from app.core.activity.service import snapshot
+from app.core.branding import load_brand_logo
 from app.core.customfields import CustomFieldsService
 from app.core.events import emit
 from app.core.models import OrgSettings
@@ -53,8 +54,10 @@ from app.modules.invoicing.models import (
     InvoiceLine,
     InvoicePayment,
     InvoiceStatus,
+    InvoiceSubscriptionPeriod,
     InvoiceTimeEntry,
     InvoicingSettings,
+    LineKind,
     Product,
     Quote,
     QuoteLine,
@@ -528,6 +531,7 @@ async def _snapshot_lines(
         rows.append(
             {
                 "position": index,
+                "line_kind": str(line.line_kind),
                 "description": line.description.strip(),
                 "quantity": line.quantity,
                 "unit": line.unit,
@@ -595,31 +599,45 @@ class _DocumentService:
     async def document_pdf(self, doc: Any, kind: str) -> tuple[bytes, str]:
         """Render this document as PDF bytes + a filename (owner feedback: the API, not the
         browser's print dialog, is where an invoice document comes from). ``doc`` must have
-        its lines attached (``get()`` does)."""
-        from app.modules.invoicing.pdf import render_document_pdf
+        its lines attached (``get()`` does).
+
+        Everything white-label the renderer prints is resolved here — logo bytes, brand
+        colour, brand name — because ``pdf.py`` may not own a default identity of its own
+        (Golden Rule 4). The template resolves exactly as ``DocumentView`` resolves it: the
+        document's own, and nothing implied when it has none, so the paper a client receives
+        and the preview on screen can never be two different designs.
+        """
+        from app.modules.invoicing.pdf import DocumentBrand, render_document_pdf
 
         settings_row = await self.settings.row()
-        template_id = doc.template_id or settings_row.default_template_id
         config: dict[str, Any] = {}
-        if template_id is not None:
+        if doc.template_id is not None:
             template = await self.ctx.session.scalar(
                 self.ctx.repo(DocumentTemplate)
                 .scoped_select()
-                .where(DocumentTemplate.id == template_id)
+                .where(DocumentTemplate.id == doc.template_id)
             )
             if template is not None:
                 config = template.config or {}
         org_settings = await self.ctx.session.scalar(
             select(OrgSettings).where(OrgSettings.org_id == self.ctx.org.id)
         )
-        brand = (org_settings.brand_name if org_settings else None) or self.ctx.org.name
+        logo, logo_type = await load_brand_logo(self.ctx, org_settings)
         content = render_document_pdf(
             kind=kind,
             doc=doc,
             lines=list(doc.lines),
             seller=settings_row.company_details or {},
             config=config,
-            brand_name=brand,
+            brand=DocumentBrand(
+                name=(org_settings.brand_name if org_settings else None) or self.ctx.org.name,
+                primary_color=org_settings.primary_color if org_settings else None,
+                logo=logo,
+                logo_content_type=logo_type,
+            ),
+            tax_groups=_totals_from_rows(
+                list(doc.lines), prices_include_tax=doc.prices_include_tax
+            ).groups,
         )
         prefix = "offerte" if kind == "quote" else "factuur"
         return content, f"{doc.number or f'{prefix}-{doc.id}'}.pdf"
@@ -835,6 +853,7 @@ class InvoiceService(_DocumentService):
         await self._link_time_entries(
             invoice, [line.time_entry_id for line in data.lines if line.time_entry_id]
         )
+        await self._claim_subscription_periods(invoice, data.lines)
         await self._attach([invoice], payments=True)
         return invoice
 
@@ -888,6 +907,9 @@ class InvoiceService(_DocumentService):
                 default_tax_rate_id=await self._default_tax_rate_id(settings_row),
             )
             await self._replace_lines(invoice, line_rows)
+            # Rebuilt from the lines that survive the edit: dropping a subscription line
+            # hands its period back to the cycle cron.
+            await self._claim_subscription_periods(invoice, data.lines)
 
         await ActivityService(self.ctx).record_update(
             self.entity_type, invoice.id, before, snapshot(invoice, self.audited_fields)
@@ -903,6 +925,7 @@ class InvoiceService(_DocumentService):
         if invoice.status != InvoiceStatus.DRAFT.value:
             raise AppError("conflict", "errors.invoicing.not_draft", status_code=409)
         await self._release_time_entries(invoice.id)
+        await self._release_subscription_periods(invoice.id)
         await self._revert_quote(invoice)
         await self.repo.delete(invoice)
 
@@ -961,6 +984,9 @@ class InvoiceService(_DocumentService):
         if invoice.paid_total != 0:
             raise AppError("conflict", "errors.invoicing.has_payments", status_code=409)
         await self._release_time_entries(invoice.id)
+        # A cancelled invoice bills nothing, so its periods go back to the cycle cron —
+        # otherwise cancelling would silently retire an agreement's month for good.
+        await self._release_subscription_periods(invoice.id)
         invoice = await self.repo.update(
             invoice, status=InvoiceStatus.CANCELLED.value, cancelled_at=datetime.now(UTC)
         )
@@ -992,6 +1018,8 @@ class InvoiceService(_DocumentService):
         line_rows = [
             {
                 "position": row.position,
+                # A credit note mirrors the document it corrects, section headings included.
+                "line_kind": row.line_kind,
                 "description": row.description,
                 "quantity": row.quantity,
                 "unit": row.unit,
@@ -1403,6 +1431,7 @@ class InvoiceService(_DocumentService):
                 lines.append(
                     LineWrite(
                         description=bucket["name"] or "Uren",
+                        line_kind=LineKind.HOURS,
                         quantity=hours(bucket["minutes"]),
                         unit="uur",
                         unit_price=bucket["rate"],
@@ -1427,6 +1456,7 @@ class InvoiceService(_DocumentService):
                 lines.append(
                     LineWrite(
                         description=name,
+                        line_kind=LineKind.HOURS,
                         quantity=hours(bucket["minutes"]),
                         unit="uur",
                         unit_price=bucket["rate"],
@@ -1439,6 +1469,7 @@ class InvoiceService(_DocumentService):
                 lines.append(
                     LineWrite(
                         description=f"{label} · {description}"[:512],
+                        line_kind=LineKind.HOURS,
                         quantity=hours(row["minutes"]),
                         unit="uur",
                         unit_price=rate_for(row),
@@ -1501,6 +1532,145 @@ class InvoiceService(_DocumentService):
         await ActivityService(self.ctx).record(
             self.entity_type, invoice.id, "time_attached", {"entries": len(entry_ids)}
         )
+
+    async def billable_subscriptions(self, company_id: uuid.UUID) -> list[dict[str, Any]]:
+        """This client's active agreements and the period each would bill next — what the
+        line editor's "＋ abonnement" picker offers.
+
+        The agreement half comes from the subscriptions module's **published** interface
+        (§6): it owns the interval vocabulary and the "price valid at the period boundary"
+        rule, so a hand-picked line and a cron-raised one bill the same money by
+        construction. What this module adds is the half it owns — whether the period is
+        already claimed by a document.
+        """
+        self.ctx.require("invoicing.invoice.write")
+        from app.modules.subscriptions.service import SubscriptionService
+
+        periods = await SubscriptionService(self.ctx).billable_periods(company_id)
+        if not periods:
+            return []
+        claims = self.ctx.repo(InvoiceSubscriptionPeriod)
+        held = {
+            (row.subscription_id, row.period_end)
+            for row in await self.ctx.session.scalars(
+                claims.scoped_select().where(
+                    InvoiceSubscriptionPeriod.subscription_id.in_(
+                        [p.subscription_id for p in periods]
+                    )
+                )
+            )
+        }
+        return [
+            {
+                "id": period.subscription_id,
+                "name": period.name,
+                "currency": period.currency,
+                "amount": period.amount,
+                "period_start": period.period_start,
+                "period_end": period.period_end,
+                "lines": [
+                    {"description": description, "quantity": quantity, "unit_price": price}
+                    for description, quantity, price in period.lines
+                ],
+                "already_billed": (period.subscription_id, period.period_end) in held,
+            }
+            for period in periods
+        ]
+
+    async def _claim_subscription_periods(
+        self, invoice: Invoice, lines: Sequence[LineWrite]
+    ) -> None:
+        """Record which subscription periods this invoice bills, so the cycle cron skips them.
+
+        Owner's rule: *"the cron should know it is already paid."* ``on_subscription_due``
+        consults this table before drafting, so a period billed by hand — on a mixed invoice
+        with hours and products next to it — is never billed a second time when the cycle
+        comes round. The unique key is ``(org, subscription, period_end)``: a period belongs
+        to exactly one invoice, and a second document trying to claim it is refused rather
+        than silently double-billing a client.
+
+        The claim is rebuilt from the lines on every write, so removing a subscription line
+        gives the period back to the cron. A subscription that isn't this org's, or isn't
+        this invoice's client, claims nothing — the same "bill less, never guess" stance
+        ``_link_time_entries`` takes.
+        """
+        claims = self.ctx.repo(InvoiceSubscriptionPeriod)
+        existing = list(
+            await self.ctx.session.scalars(
+                claims.scoped_select().where(
+                    InvoiceSubscriptionPeriod.invoice_id == invoice.id
+                )
+            )
+        )
+        wanted: dict[tuple[uuid.UUID, date], LineWrite] = {}
+        for line in lines:
+            if line.subscription_id is not None and line.period_end is not None:
+                wanted[(line.subscription_id, line.period_end)] = line
+
+        if wanted:
+            valid = set(
+                (
+                    await self.ctx.session.execute(
+                        text(
+                            """
+                            SELECT s.id FROM subscriptions s
+                            WHERE s.org_id = :oid AND s.company_id = :cid AND s.id IN :ids
+                            """  # noqa: S608 - static clauses, bound params only
+                        ).bindparams(bindparam("ids", expanding=True)),
+                        {
+                            "oid": self.ctx.org.id,
+                            "cid": invoice.company_id,
+                            "ids": [sid for sid, _ in wanted],
+                        },
+                    )
+                ).scalars()
+            )
+            wanted = {key: line for key, line in wanted.items() if key[0] in valid}
+
+        for row in existing:
+            if (row.subscription_id, row.period_end) not in wanted:
+                await claims.delete(row)
+        held = {(row.subscription_id, row.period_end) for row in existing}
+        fresh = {key: line for key, line in wanted.items() if key not in held}
+        if not fresh:
+            return
+
+        # Someone else's claim on the same period: refuse the write rather than let the
+        # unique index 500, and name the conflict so the form can say which line is the
+        # problem. Flush first — the check must see this transaction's own deletes.
+        await self.ctx.session.flush()
+        taken = await self.ctx.session.scalar(
+            claims.scoped_select()
+            .where(
+                tuple_(
+                    InvoiceSubscriptionPeriod.subscription_id,
+                    InvoiceSubscriptionPeriod.period_end,
+                ).in_(list(fresh))
+            )
+            .limit(1)
+        )
+        if taken is not None:
+            raise AppError(
+                "conflict",
+                "errors.invoicing.period_already_billed",
+                status_code=409,
+                fields={"lines": "errors.invoicing.period_already_billed"},
+            )
+        for (subscription_id, period_end), line in fresh.items():
+            await claims.create(
+                invoice_id=invoice.id,
+                subscription_id=subscription_id,
+                period_start=line.period_start,
+                period_end=period_end,
+            )
+
+    async def _release_subscription_periods(self, invoice_id: uuid.UUID) -> None:
+        """Give this invoice's claimed periods back to the cycle cron (delete/cancel path)."""
+        claims = self.ctx.repo(InvoiceSubscriptionPeriod)
+        for row in await self.ctx.session.scalars(
+            claims.scoped_select().where(InvoiceSubscriptionPeriod.invoice_id == invoice_id)
+        ):
+            await claims.delete(row)
 
     async def _release_time_entries(self, invoice_id: uuid.UUID) -> None:
         """Un-bill exactly the entries this invoice billed (delete/cancel path)."""
@@ -1890,6 +2060,8 @@ class QuoteService(_DocumentService):
         line_rows = [
             {
                 "position": row.position,
+                # The quote's own grouping carries over — the client accepted that document.
+                "line_kind": row.line_kind,
                 "description": row.description,
                 "quantity": row.quantity,
                 "unit": row.unit,

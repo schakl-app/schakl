@@ -31,7 +31,9 @@ from app.modules.invoicing.calc import LineInput, compute_totals, line_amount
 from app.modules.invoicing.models import (
     Invoice,
     InvoiceLine,
+    InvoiceSubscriptionPeriod,
     InvoicingSettings,
+    LineKind,
     TaxRate,
 )
 from app.modules.invoicing.service import tax_label
@@ -124,6 +126,8 @@ async def _draft_period_invoice(
         line_rows.append(
             {
                 "position": index,
+                # A cycle raises recurring lines by definition — that is what a cycle is.
+                "line_kind": LineKind.SUBSCRIPTION.value,
                 "description": (raw.get("description") or reference or "")[:512] or "—",
                 "quantity": quantity,
                 "unit": None,
@@ -181,6 +185,15 @@ async def _draft_period_invoice(
     lines = ctx.repo(InvoiceLine)
     for row in line_rows:
         await lines.create(invoice_id=invoice.id, **row)
+    if link_field == "subscription_id":
+        # The cron's own claim on the period, in the same table a hand-built invoice writes
+        # to — so "has this period been billed?" has exactly one answer to look up.
+        await ctx.repo(InvoiceSubscriptionPeriod).create(
+            invoice_id=invoice.id,
+            subscription_id=uuid.UUID(str(link_id)),
+            period_start=period_start,
+            period_end=period_end,
+        )
     await ActivityService(ctx).record_created(
         "invoice",
         invoice.id,
@@ -204,6 +217,25 @@ async def on_subscription_due(ctx: EmitContext, payload: dict[str, Any]) -> None
         return
 
     # Idempotency, part one: the cheap lookup (the unique index is part two).
+    #
+    # The claim table is what makes "already paid" answerable for a period a **human**
+    # billed: a hand-built invoice carrying this subscription's month alongside hours and
+    # products has no ``invoices.subscription_id`` to find, but it does hold a claim. The
+    # invoices lookup stays for rows drafted before the claim table existed and never
+    # backfilled.
+    claimed = await ctx.session.scalar(
+        select(InvoiceSubscriptionPeriod.id).where(
+            InvoiceSubscriptionPeriod.org_id == ctx.org.id,
+            InvoiceSubscriptionPeriod.subscription_id == subscription_id,
+            InvoiceSubscriptionPeriod.period_end == period_end,
+        )
+    )
+    if claimed is not None:
+        logger.info(
+            "subscription %s period %s already billed; skipping draft in org %s",
+            subscription_id, period_end, ctx.org.slug,
+        )
+        return
     existing = await ctx.session.scalar(
         select(Invoice.id).where(
             Invoice.org_id == ctx.org.id,

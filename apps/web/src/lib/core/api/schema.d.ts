@@ -2634,6 +2634,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoicing/billable-subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Billable Subscriptions
+         * @description A client's active agreements as ready-made invoice lines (the "＋ abonnement" pick).
+         *
+         *     ``already_billed`` marks a period a document already claims: shown rather than hidden,
+         *     so the answer to "did I invoice March yet?" is on the picker instead of on a duplicate.
+         */
+        get: operations["billable_subscriptions_api_v1_invoicing_billable_subscriptions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoicing/invoices": {
         parameters: {
             query?: never;
@@ -6490,6 +6513,38 @@ export interface components {
         BackupCodesOut: {
             /** Backup Codes */
             backup_codes: string[];
+        };
+        /**
+         * BillableSubscription
+         * @description One of a client's agreements, offered to the line editor as a ready-made line.
+         *
+         *     ``already_billed`` is the honest half of the answer: the period is *shown* with the claim
+         *     that holds it, rather than hidden, so a user who wonders "did I already invoice March?"
+         *     reads it here instead of finding out from a duplicate.
+         */
+        BillableSubscription: {
+            /**
+             * Already Billed
+             * @default false
+             */
+            already_billed: boolean;
+            /** Amount */
+            amount: string;
+            /** Currency */
+            currency: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Lines */
+            lines?: components["schemas"]["SubscriptionLineOffer"][];
+            /** Name */
+            name: string;
+            /** Period End */
+            period_end: string | null;
+            /** Period Start */
+            period_start: string | null;
         };
         /** Body_auth_cookie_login_api_v1_auth_login_post */
         Body_auth_cookie_login_api_v1_auth_login_post: {
@@ -10684,6 +10739,22 @@ export interface components {
             /** Writable */
             writable: boolean;
         };
+        /**
+         * LineKind
+         * @description What a document line *is* — the three things this platform bills for.
+         *
+         *     An agency's invoice mixes worked hours, recurring agreements and one-off sales, and the
+         *     reader has to tell them apart: "24 uur × € 95" and "Hosting maart" answer different
+         *     questions. So the kind is a **property of the line**, carried from wherever it was built
+         *     (``from_time`` stamps hours, the subscription cycle stamps subscription, a product pick
+         *     stamps product) through to the rendered document, which groups and subtotals by it.
+         *
+         *     It is presentation and provenance, never money: totals are computed from quantity, price
+         *     and tax exactly as before, and a tenant who wants one flat table simply keeps every line
+         *     on the default.
+         * @enum {string}
+         */
+        LineKind: "product" | "hours" | "subscription";
         /** LineRead */
         LineRead: {
             /** Amount */
@@ -10695,6 +10766,7 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            line_kind: components["schemas"]["LineKind"];
             /** Position */
             position: number;
             /** Quantity */
@@ -10715,11 +10787,19 @@ export interface components {
         LineWrite: {
             /** Description */
             description: string;
+            /** @default product */
+            line_kind: components["schemas"]["LineKind"];
+            /** Period End */
+            period_end?: string | null;
+            /** Period Start */
+            period_start?: string | null;
             /**
              * Quantity
              * @default 1
              */
             quantity: number | string;
+            /** Subscription Id */
+            subscription_id?: string | null;
             /** Tax Rate Id */
             tax_rate_id?: string | null;
             /** Time Entry Id */
@@ -13398,6 +13478,15 @@ export interface components {
          * @enum {string}
          */
         SubscriptionInterval: "monthly" | "quarterly" | "yearly";
+        /** SubscriptionLineOffer */
+        SubscriptionLineOffer: {
+            /** Description */
+            description: string;
+            /** Quantity */
+            quantity: string;
+            /** Unit Price */
+            unit_price: string;
+        };
         /** SubscriptionLineRead */
         SubscriptionLineRead: {
             /** Description */
@@ -21890,6 +21979,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InteractionRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    billable_subscriptions_api_v1_invoicing_billable_subscriptions_get: {
+        parameters: {
+            query: {
+                company_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillableSubscription"][];
                 };
             };
             /** @description Validation Error */

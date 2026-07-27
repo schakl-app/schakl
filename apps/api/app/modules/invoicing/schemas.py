@@ -12,13 +12,14 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 from app.core.currency import is_valid_currency
 from app.core.numbering import format_valid
 from app.modules.invoicing.models import (
     InvoiceKind,
     InvoiceStatus,
+    LineKind,
     QuoteStatus,
     TaxCategory,
 )
@@ -265,6 +266,8 @@ class TemplateRead(TemplateBase):
 # --------------------------------------------------------------------------- #
 class LineWrite(BaseModel):
     description: str = Field(min_length=1, max_length=512)
+    #: What this line is (§ ``LineKind``) — drives grouping on the document, never the money.
+    line_kind: LineKind = LineKind.PRODUCT
     quantity: Decimal = Field(default=Decimal(1))
     unit: str | None = Field(default=None, max_length=20)
     #: May be negative: a discount line is an ordinary line with a negative price.
@@ -275,8 +278,25 @@ class LineWrite(BaseModel):
     #: it invoiced. Validated server-side; a stale/foreign id is silently skipped. Ignored by
     #: quotes and by line snapshotting (it is not a document-line column).
     time_entry_id: uuid.UUID | None = None
+    #: When a line bills a subscription period, the agreement and the period it covers — so
+    #: the invoice **claims** that period and the cycle cron never bills it again (owner:
+    #: "the cron should know it is already paid"). Same handling as ``time_entry_id``:
+    #: validated server-side, silently skipped when stale, not a document-line column.
+    subscription_id: uuid.UUID | None = None
+    period_start: date | None = None
+    period_end: date | None = None
 
     _blank_unit = field_validator("unit", mode="before")(_blank_to_none)
+
+    @model_validator(mode="after")
+    def _period_needs_subscription(self) -> LineWrite:
+        # A period without an agreement claims nothing; an agreement without a period would
+        # claim *every* period. Refuse both rather than store a half-claim.
+        if self.subscription_id is not None and self.period_end is None:
+            raise ValueError("errors.invoicing.subscription_period_required")
+        if self.period_end is not None and self.subscription_id is None:
+            raise ValueError("errors.invoicing.subscription_required")
+        return self
 
 
 class LineRead(BaseModel):
@@ -284,6 +304,7 @@ class LineRead(BaseModel):
 
     id: uuid.UUID
     position: int
+    line_kind: LineKind
     description: str
     quantity: Decimal
     unit: str | None
@@ -471,6 +492,32 @@ class InvoiceFromTime(BaseModel):
     group_by: Literal["entry", "day", "project"] = "project"
     #: Overrides every rate for this build — employee rates and the org default alike (#226).
     hourly_rate: Decimal | None = Field(default=None, ge=0)
+
+
+class SubscriptionLineOffer(BaseModel):
+    description: str
+    quantity: Decimal
+    unit_price: Decimal
+
+
+class BillableSubscription(BaseModel):
+    """One of a client's agreements, offered to the line editor as a ready-made line.
+
+    ``already_billed`` is the honest half of the answer: the period is *shown* with the claim
+    that holds it, rather than hidden, so a user who wonders "did I already invoice March?"
+    reads it here instead of finding out from a duplicate.
+    """
+
+    id: uuid.UUID
+    name: str
+    currency: str
+    amount: Decimal
+    period_start: date | None
+    period_end: date | None
+    #: The subscription's own lines when it has them; a single priced line otherwise —
+    #: exactly what the cycle cron would raise, so both paths bill the same document.
+    lines: list[SubscriptionLineOffer] = Field(default_factory=list)
+    already_billed: bool = False
 
 
 class UnbilledEntry(BaseModel):
