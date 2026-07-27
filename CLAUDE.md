@@ -342,15 +342,24 @@ apply as everywhere.
   (its scheduled window resolved for a whole-day request, in `_emit_leave` where the schedule
   lives — the mirror never reads leave internals), an `all_day` type an all-day event, so one
   absence never reads as an hour block in-app and an all-day banner in Google.
-- **Work schedules, not a weekly total** (#46). `leave_profiles.schedule` is a JSONB week: per
-  weekday a working block and **any number of break windows** inside it. Breaks are *windows*,
-  not durations — you cannot subtract "30 minutes" from `15:00–17:00`, there is no break in it.
-  A day is `(end − start) − Σ overlap(window, break_i)`. `NULL` follows
-  `leave_settings.default_schedule` (`08:30–17:00` with one `12:30–13:00` break → 8.0 h/day,
-  40 h/week). `hours_per_week` is **derived** from the schedule and rewritten on every save, never
-  entered — but it stays authoritative while a profile has no schedule, so a pre-#46 part-timer on
-  32 h is not silently regranted the default's 40. A schedule is employment data: it lives on the
-  person (Instellingen → Gebruikers), not buried in leave settings.
+- **Work schedules, not a weekly total** (#46). A JSONB week: per weekday a working block and
+  **any number of break windows** inside it. Breaks are *windows*, not durations — you cannot
+  subtract "30 minutes" from `15:00–17:00`, there is no break in it. A day is
+  `(end − start) − Σ overlap(window, break_i)`. `hours_per_week` is **derived** from the schedule
+  and rewritten on every save, never entered — but it stays authoritative while a profile has no
+  schedule, so a pre-#46 part-timer on 32 h is not silently regranted the default's 40.
+- **The week lives on the employment contract.** A schedule change usually *is* a contract change,
+  so `EmploymentContract.schedule` is the authority for a date and the effective week is resolved
+  **per date**: contract covering that day → `leave_profiles.schedule` (legacy) → the org's
+  `leave_settings.default_schedule` (`08:30–17:00` minus a `12:30–13:00` break → 8.0 h/day,
+  40 h/week). That is what keeps last year's leave priced at last year's roster, and why
+  `compute_hours` resolves day by day: a span can cross a contract boundary. `NULL` at any level
+  means *inherit*, not *unfilled* — which is why the backfill deliberately skipped employees who
+  follow the org default, and why saving a week through the profile endpoint pushes it onto every
+  contract that has not ended (an ended period keeps the week it ran under). Loops that price many
+  days for one employee build the `date → week` lookup once (`schedule_resolver`), never per day.
+  A schedule is employment data: it lives on the person (Instellingen → Gebruikers), not buried in
+  leave settings.
 - **Free time / vrije tijd is the full-time-norm shortfall** (#65, renamed from "ADV / roostervrije
   tijd" in #282). A `leave_types` type flagged `accrues_schedule_gap` (seeded key `roostervrij`, and
   the flag's column name, both **kept internal** to contain the rename) accrues, per contract period,
@@ -362,15 +371,21 @@ apply as everywhere.
   #264). Only the *basis* changed: the recurring-free-day generator, the calendar feed, the Google
   mirror, the FIFO/expiry ledger and the #264 recompute-on-contract-change all consume it unchanged.
   **Two numbers stay** — `EmploymentContract.contract_hours_per_week` (the entered legal number,
-  drives vacation *and* free time) and `LeaveProfile.schedule` (drives per-day pricing + the
-  days-equivalent, unchanged) — because a spendable free-time *balance* needs a full nominal schedule
-  to place the free days against. **Modeling convention (surfaced, never silently assumed):** a
-  part-timer who wants a free-time balance keeps a **full nominal schedule** and a **reduced
-  contract** — their free days land on working days and draw the pot. The contract dialog
-  (Instellingen → Gebruikers, and the team roster's ⋯ menu) shows the resulting `norm − contract`
-  free time live, so a reduced contract never grows a pot in silence. Because the pot is purely
-  contract-vs-norm, reducing the *schedule* instead changes day-shape and pricing but not the pot;
-  a tenant that does not want the type at all deactivates it (never hardcoded CAO law, §14).
+  drives vacation *and* free time) and the contract's own week (drives per-day pricing + the
+  days-equivalent) — because a spendable free-time *balance* needs a nominal schedule to place the
+  free days against.
+- **But the shortfall is only the default, and the choice is per contract.**
+  `EmploymentContract.free_time_hours_per_week` is `NULL` to derive `max(0, norm − contract)`, `0`
+  to say the free time is already in the roster, or an agreed figure no formula expresses
+  (`LeaveService._contract_free_time`). The derived rule alone is right for one arrangement and
+  wrong for the other: a 36-h contract worked as a nominal 40-h week takes the shortfall as movable
+  free days, while a 32-h part-timer already working four 8-hour days would be handed
+  `(40 − 32) × 52 ≈ 52 free days` on top of a roster that already gives them Friday off. **Both
+  arrangements are ordinary and an agency holds them at once**, so "deactivate the type" — the only
+  escape #282 left — is not an answer; per-org config cannot express a per-person fact. The
+  employment wizard makes the choice explicitly in its werkweek step, so neither arrangement is
+  ever inferred from a schedule the admin happened to enter. Never hardcoded CAO law (§14): a
+  tenant who wants none of it still deactivates the type.
 - **A holiday costs no leave hours** (#47). `leave_holidays(org_id, date, name_i18n, active,
   source, key)` is tenant data seeded from a generator — the Dutch holidays *derived from Easter*,
   so 2028 needs no code change — and never law written in Python: Goede Vrijdag is worked at many

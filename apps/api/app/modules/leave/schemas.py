@@ -225,8 +225,12 @@ class EmploymentContractBase(BaseModel):
     end_date: date | None = None
     #: The legal contract hours — entered, never derived from the schedule.
     contract_hours_per_week: Decimal = Field(gt=0, le=Decimal("80"))
-    #: An optional schedule on the contract itself; ``null`` follows the profile / org default.
+    #: This period's working week; ``null`` follows the profile (legacy) / org default.
     schedule: WorkSchedule | None = None
+    #: Free time accrued per week, or ``null`` to derive ``max(0, norm − contract hours)``.
+    #: ``0`` says the free time is already in the roster — see the model docstring for why that
+    #: has to be sayable per contract.
+    free_time_hours_per_week: Decimal | None = Field(default=None, ge=0, le=Decimal("80"))
     note: str | None = None
 
 
@@ -235,12 +239,18 @@ class EmploymentContractCreate(EmploymentContractBase):
 
 
 class EmploymentContractUpdate(BaseModel):
-    """Correcting or terminating a contract. A *changed* contract is a new row, not an edit."""
+    """Correcting or terminating a contract. A *changed* contract is a new row, not an edit.
+
+    Every field is optional, and the service reads ``model_fields_set`` rather than testing for
+    ``None``: on ``schedule`` and ``free_time_hours_per_week`` an explicit ``null`` is a value
+    ("inherit the week", "derive the free time"), not an omission.
+    """
 
     start_date: date | None = None
     end_date: date | None = None
     contract_hours_per_week: Decimal | None = Field(default=None, gt=0, le=Decimal("80"))
     schedule: WorkSchedule | None = None
+    free_time_hours_per_week: Decimal | None = Field(default=None, ge=0, le=Decimal("80"))
     note: str | None = None
 
 
@@ -253,9 +263,15 @@ class EmploymentContractRead(BaseModel):
     start_date: date
     end_date: date | None
     contract_hours_per_week: Decimal
-    #: Derived from the effective schedule — the number the ADV gap is measured against.
+    #: Derived from this period's week — the rostered hours the contract hours are read against.
     scheduled_hours_per_week: Decimal
     schedule: WorkSchedule | None
+    #: ``null`` = derived; see :attr:`EmploymentContractBase.free_time_hours_per_week`.
+    free_time_hours_per_week: Decimal | None
+    #: What this contract actually accrues per week, derived rule applied — so a client renders
+    #: the effective figure without re-implementing the fallback (the same shape as the hourly
+    #: rate's ``effective_hourly_rate``, #113).
+    effective_free_time_per_week: Decimal
     note: str | None
     created_at: datetime
     updated_at: datetime

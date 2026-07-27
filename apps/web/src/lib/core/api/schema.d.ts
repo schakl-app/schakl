@@ -8107,6 +8107,8 @@ export interface components {
             contract_hours_per_week: number | string;
             /** End Date */
             end_date?: string | null;
+            /** Free Time Hours Per Week */
+            free_time_hours_per_week?: number | string | null;
             /** Note */
             note?: string | null;
             schedule?: components["schemas"]["WorkSchedule-Input"] | null;
@@ -8130,8 +8132,12 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Effective Free Time Per Week */
+            effective_free_time_per_week: string;
             /** End Date */
             end_date: string | null;
+            /** Free Time Hours Per Week */
+            free_time_hours_per_week: string | null;
             /**
              * Id
              * Format: uuid
@@ -8166,12 +8172,18 @@ export interface components {
         /**
          * EmploymentContractUpdate
          * @description Correcting or terminating a contract. A *changed* contract is a new row, not an edit.
+         *
+         *     Every field is optional, and the service reads ``model_fields_set`` rather than testing for
+         *     ``None``: on ``schedule`` and ``free_time_hours_per_week`` an explicit ``null`` is a value
+         *     ("inherit the week", "derive the free time"), not an omission.
          */
         EmploymentContractUpdate: {
             /** Contract Hours Per Week */
             contract_hours_per_week?: number | string | null;
             /** End Date */
             end_date?: string | null;
+            /** Free Time Hours Per Week */
+            free_time_hours_per_week?: number | string | null;
             /** Note */
             note?: string | null;
             schedule?: components["schemas"]["WorkSchedule-Input"] | null;

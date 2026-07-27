@@ -294,7 +294,7 @@ async def set_profile(
 
 
 # --- employment contracts (#65) ------------------------------------------------ #
-def _contract_read(contract, scheduled_week) -> EmploymentContractRead:
+def _contract_read(contract, scheduled_week, norm) -> EmploymentContractRead:
     return EmploymentContractRead(
         id=contract.id,
         org_id=contract.org_id,
@@ -304,6 +304,9 @@ def _contract_read(contract, scheduled_week) -> EmploymentContractRead:
         contract_hours_per_week=contract.contract_hours_per_week,
         scheduled_hours_per_week=scheduled_week,
         schedule=parse_schedule(contract.schedule),
+        free_time_hours_per_week=contract.free_time_hours_per_week,
+        # Resolved through the service's own rule, never a second copy of it in the client.
+        effective_free_time_per_week=LeaveService._contract_free_time(contract, norm),
         note=contract.note,
         created_at=contract.created_at,
         updated_at=contract.updated_at,
@@ -323,8 +326,9 @@ async def list_contracts(
     """A user's employment history. Own for a member; anyone's — or everyone's, with
     ``all_users`` — for a manager (the Settings → Users roster)."""
     service = LeaveService(ctx)
+    norm = await service.full_time_norm()
     return [
-        _contract_read(contract, scheduled)
+        _contract_read(contract, scheduled, norm)
         for contract, scheduled in await service.list_contracts(user_id, all_users=all_users)
     ]
 
@@ -341,7 +345,11 @@ async def create_contract(
 ) -> EmploymentContractRead:
     service = LeaveService(ctx)
     contract = await service.create_contract(payload)
-    return _contract_read(contract, await service.scheduled_week(contract.user_id, contract))
+    return _contract_read(
+        contract,
+        await service.scheduled_week(contract.user_id, contract),
+        await service.full_time_norm(),
+    )
 
 
 @router.patch(
@@ -356,7 +364,11 @@ async def update_contract(
 ) -> EmploymentContractRead:
     service = LeaveService(ctx)
     contract = await service.update_contract(contract_id, payload)
-    return _contract_read(contract, await service.scheduled_week(contract.user_id, contract))
+    return _contract_read(
+        contract,
+        await service.scheduled_week(contract.user_id, contract),
+        await service.full_time_norm(),
+    )
 
 
 @router.delete(

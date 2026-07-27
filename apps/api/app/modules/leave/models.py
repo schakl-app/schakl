@@ -387,12 +387,27 @@ class EmploymentContract(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Ba
     start_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     #: ``NULL`` = open-ended (still employed). Termination = setting this, not deleting the row.
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    #: The legal contract hours — entered, never derived. Statutory vacation and ADV both key off
-    #: this, not off the scheduled week.
+    #: The legal contract hours — entered, never derived. Statutory vacation and free time both
+    #: key off this, not off the scheduled week.
     contract_hours_per_week: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
-    #: An optional schedule captured on the contract itself (a schedule change usually *is* a
-    #: contract change). ``NULL`` = follow ``LeaveProfile.schedule`` / the org default. The
-    #: effective scheduled week is still resolved through the profile today; this column is the
-    #: seam for moving it onto the contract later without another migration.
+    #: **The working week for this period.** A schedule change usually *is* a contract change, so
+    #: the week is a property of the employment period rather than one mutable field on the person
+    #: — which is what keeps last year's leave priced at last year's roster. ``NULL`` falls back to
+    #: ``LeaveProfile.schedule`` (legacy, still written by the pre-wizard endpoint) and then to
+    #: ``leave_settings.default_schedule``; that ``NULL`` is meaningful, not merely unfilled, and
+    #: is why the backfill deliberately skipped employees who inherit the org default.
     schedule: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    #: How much free time (vrije tijd) this period accrues per week, or ``NULL`` to **derive** it
+    #: as ``max(0, norm − contract_hours_per_week)`` — the #282 rule, and what every pre-existing
+    #: row means.
+    #:
+    #: The column exists because the derived figure is right for one arrangement and wrong for the
+    #: other. A 36-h contract worked as a nominal 40-h week takes the shortfall as movable free
+    #: days; a 32-h part-timer working four 8-hour days already *has* Friday off, and deriving
+    #: ``40 − 32`` would hand them a second pot of ~52 days on top of it. ``0`` says "the free time
+    #: is already in the roster"; an explicit figure records an agreement no formula expresses.
+    #: Per contract, not per org — an agency holds both arrangements at once (§14).
+    free_time_hours_per_week: Mapped[Decimal | None] = mapped_column(
+        Numeric(5, 2), nullable=True
+    )
     note: Mapped[str | None] = mapped_column(Text, nullable=True)

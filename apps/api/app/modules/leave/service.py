@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import uuid
 from calendar import monthrange
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
@@ -286,6 +286,14 @@ class LeaveService:
             )
         return self._settings_row
 
+    async def full_time_norm(self) -> Decimal:
+        """The org's full-time week — the figure a contract's free time is the shortfall from.
+
+        The org default schedule's own week (today 40 h), so a tenant whose full week is 36 h
+        changes one setting rather than every contract. Named because three surfaces now quote
+        it and none of them should re-derive it."""
+        return sched.week_hours(await self.default_schedule())
+
     async def default_schedule(self) -> sched.WorkSchedule:
         row = await self.settings_row()
         return sched.parse(row.default_schedule) if row else sched.default_schedule()
@@ -477,13 +485,79 @@ class LeaveService:
         stored = profile.hours_per_week if profile else sched.week_hours(default)
         return default, stored, True
 
-    async def profile_for(self, user_id: uuid.UUID) -> tuple[sched.WorkSchedule, Decimal, bool]:
-        """``(effective schedule, contract hours, inherited)`` for one employee."""
+    async def profile_for(
+        self, user_id: uuid.UUID, on: date | None = None
+    ) -> tuple[sched.WorkSchedule, Decimal, bool]:
+        """``(effective schedule, contract hours, inherited)`` for one employee.
+
+        ``on`` asks *which week applied on that date*: the working week lives on the employment
+        contract, so a date covered by a contract carrying one resolves to it. Omit ``on`` for
+        "the current arrangement" (settings screens, the dashboard widget) — it skips the
+        contract lookup entirely and answers from the profile, exactly as before.
+        """
+        if on is not None:
+            week = await self._contract_schedule_on(user_id, on)
+            if week is not None:
+                return week, sched.week_hours(week), False
         return self._effective(await self._profile(user_id), await self.default_schedule())
 
-    async def effective_schedule(self, user_id: uuid.UUID) -> sched.WorkSchedule:
-        """The week ``compute_hours`` measures against: this employee's own, else the org's."""
-        schedule, _, _ = await self.profile_for(user_id)
+    async def _contract_schedule_on(
+        self, user_id: uuid.UUID, day: date
+    ) -> sched.WorkSchedule | None:
+        """The week the contract covering ``day`` carries, or ``None`` to fall through.
+
+        ``None`` covers both "no contract that day" and "a contract that records no week of its
+        own" — the fallback chain is the same either way, so the caller needs no third case.
+        """
+        for contract in await self._user_contracts(user_id):
+            if contract.start_date <= day <= (contract.end_date or date.max):
+                return sched.parse(contract.schedule)
+        return None
+
+    @staticmethod
+    def _resolver_from(
+        periods: Sequence[tuple[date, date | None, sched.WorkSchedule | None]],
+        fallback: sched.WorkSchedule,
+    ) -> Callable[[date], sched.WorkSchedule]:
+        """Build a ``date → week`` lookup over already-loaded contract periods.
+
+        Split out from :meth:`schedule_resolver` so the team feed, which loads every contract in
+        one query, resolves through exactly the same rule instead of a second copy of it.
+        """
+
+        def resolve(day: date) -> sched.WorkSchedule:
+            for start, end, week in periods:
+                if week is not None and start <= day <= (end or date.max):
+                    return week
+            return fallback
+
+        return resolve
+
+    async def schedule_resolver(
+        self, user_id: uuid.UUID
+    ) -> Callable[[date], sched.WorkSchedule]:
+        """A ``date → week`` resolver built from **one** contract read and one profile read.
+
+        Pricing a span walks it day by day, and a span can cross a contract boundary (someone who
+        went from four days to five on 1 March). Resolving per day through ``profile_for`` would be
+        two queries per day; this pays for the lookup once and answers from memory
+        (docs/PERFORMANCE.md).
+        """
+        periods = [
+            (c.start_date, c.end_date, sched.parse(c.schedule))
+            for c in await self._user_contracts(user_id)
+        ]
+        fallback, _, _ = self._effective(
+            await self._profile(user_id), await self.default_schedule()
+        )
+        return self._resolver_from(periods, fallback)
+
+    async def effective_schedule(
+        self, user_id: uuid.UUID, on: date | None = None
+    ) -> sched.WorkSchedule:
+        """The week ``compute_hours`` measures against: the contract covering ``on``, else this
+        employee's own, else the org's."""
+        schedule, _, _ = await self.profile_for(user_id, on)
         return schedule
 
     async def hours_per_week(self, user_id: uuid.UUID) -> Decimal:
@@ -514,6 +588,12 @@ class LeaveService:
             values["hours_per_week"] = sched.week_hours(
                 data.schedule or await self.default_schedule()
             )
+            # The week now lives on the contract, so writing only the profile would save into a
+            # field the resolver never reaches for anyone who has one: "save" would silently do
+            # nothing. Saving *the current week* means saving it onto the arrangement in force,
+            # so it lands on every contract still running. Ended contracts keep their own week —
+            # that history is the whole point of moving it here.
+            await self._apply_schedule_to_current_contracts(user_id, values["schedule"])
         elif data.hours_per_week is not None and (profile is None or profile.schedule is None):
             # Release-N compatibility: an older `web` posts only hours_per_week. Honour it while
             # the employee has no schedule; once they do, the schedule is the source of truth.
@@ -525,6 +605,22 @@ class LeaveService:
         if not values:
             return profile
         return await self.profiles.update(profile, **values)
+
+    async def _apply_schedule_to_current_contracts(
+        self, user_id: uuid.UUID, schedule: dict | None
+    ) -> None:
+        """Push a saved week onto every contract that has not ended yet.
+
+        "Not ended" is ``end_date`` in the future or absent — a contract that ran out yesterday
+        describes a period that is over, and rewriting its week would rewrite history. A future
+        contract is included: it has not started, so it has no history to protect and the week
+        just saved is the best answer anyone has for it.
+        """
+        today = await self._org_today()
+        for contract in await self._user_contracts(user_id):
+            if contract.end_date is not None and contract.end_date < today:
+                continue
+            await self.contracts.update(contract, schedule=schedule)
 
     async def _member_or_404(self, user_id: uuid.UUID) -> None:
         membership = await self.ctx.session.scalar(
@@ -617,12 +713,12 @@ class LeaveService:
         )
 
     async def scheduled_week(self, user_id: uuid.UUID, contract: EmploymentContract) -> Decimal:
-        """The scheduled hours shown alongside a contract: the contract's own schedule if it
-        carries one, else the employee's profile schedule, else the org default.
+        """The rostered hours of this contract's own week: its ``schedule`` when it carries one,
+        else the employee's profile schedule (legacy), else the org default.
 
-        Since #282 this is display-only — free time accrues from the full-time-norm shortfall
-        (``norm − contract``), not from ``scheduled − contract`` — so it no longer feeds any
-        balance, only the "· scheduled X h" line the contract list renders."""
+        Since #282 this feeds no balance — free time accrues from the norm shortfall, not from
+        ``scheduled − contract`` — so it is the number the contract list renders and the figure
+        the wizard reconciles against the contract hours."""
         own = sched.parse(contract.schedule)
         if own is not None:
             return sched.week_hours(own)
@@ -694,6 +790,7 @@ class LeaveService:
             "start_date",
             "end_date",
             "contract_hours_per_week",
+            "free_time_hours_per_week",
             "schedule",
         }:
             await self._recompute_generated_entitlements(updated.user_id)
@@ -744,6 +841,20 @@ class LeaveService:
         start = max(contract.start_date, date(year, 1, 1))
         end = min(contract.end_date or date(year, 12, 31), date(year, 12, 31))
         return (end - start).days + 1 if end >= start else 0
+
+    @staticmethod
+    def _contract_free_time(contract: EmploymentContract, full_time_norm: Decimal) -> Decimal:
+        """Free time (vrije tijd) this contract accrues per week.
+
+        ``free_time_hours_per_week`` when the tenant recorded one, else the #282 rule
+        ``max(0, norm − contract hours)``. The stored value wins even when it is ``0``: "the free
+        time is already in this person's roster" is a deliberate answer, and it is the whole
+        reason the column exists — deriving it would hand a 32-h part-timer who already has
+        Friday off a second pot of ~52 days (see the model docstring).
+        """
+        if contract.free_time_hours_per_week is not None:
+            return max(Decimal(0), contract.free_time_hours_per_week)
+        return max(Decimal(0), full_time_norm - contract.contract_hours_per_week)
 
     @staticmethod
     def _round_half_day(hours: Decimal, avg_day_hours: Decimal) -> Decimal:
@@ -889,7 +1000,7 @@ class LeaveService:
         (never queued elsewhere) when the day is worth no hours (holiday, not scheduled), when
         another occupying request already covers it, or when a balance-tracked type's pot has
         less than the day costs — the pattern must not generate more free hours than the
-        scheduled−contract gap earned (§14). A skipped-for-balance occurrence is retried on
+        contract earned (§14). A skipped-for-balance occurrence is retried on
         the next run, so a far-out day materializes the moment its year's pot is seeded.
         Runs from pattern saves and the monthly cron.
         """
@@ -909,10 +1020,14 @@ class LeaveService:
         for pattern in patterns:
             horizon = await self._recurring_horizon(pattern.user_id, today)
             leave_type = await self.types.get_or_404(pattern.leave_type_id)
+            # One `date → week` lookup for the whole pattern: this loop prices a year of
+            # occurrences, and rebuilding the resolver per day would be two queries a day
+            # (docs/PERFORMANCE.md).
+            schedule_on = await self.schedule_resolver(pattern.user_id)
             # Every occurrence shares the anchor's weekday, so the window snapshot is one
             # resolution per pattern, not one per day.
             resolved_start, resolved_end = self._resolve_bounds(
-                await self.effective_schedule(pattern.user_id),
+                schedule_on(pattern.anchor_date),
                 pattern.anchor_date,
                 pattern.start_time,
                 pattern.anchor_date,
@@ -948,7 +1063,12 @@ class LeaveService:
                 if day in spent:
                     continue
                 hours, _ = await self.compute_hours(
-                    pattern.user_id, day, pattern.start_time, day, pattern.end_time
+                    pattern.user_id,
+                    day,
+                    pattern.start_time,
+                    day,
+                    pattern.end_time,
+                    resolver=schedule_on,
                 )
                 if hours <= 0:
                     continue  # holiday or not a scheduled working day — meaningless free day
@@ -1149,13 +1269,12 @@ class LeaveService:
         Two families of balance-tracked type:
           * ``default_weeks`` types (statutory/extra vacation) → ``weeks × contract hours``,
             **prorated** over the days each contract covers of the year;
-          * ``accrues_schedule_gap`` types (free time / vrije tijd) → the **full-time-norm
-            shortfall** ``(norm − contract hours)`` × the weeks the contract runs in the year,
-            rounded to the nearest half day (#282). ``norm`` is the org's default week
-            (``sched.week_hours(default_schedule)`` — today 40 h): a full-timer (contract = norm)
-            accrues **zero**, a reduced contract a pot of free days. This replaces the old
-            ``scheduled − contract`` basis, which silently turned a 38-h-contract-on-a-40-h-schedule
-            divergence into 2 h/week of "ADV" nobody asked for.
+          * ``accrues_schedule_gap`` types (free time / vrije tijd) → the contract's own
+            ``free_time_hours_per_week`` × the weeks it runs in the year, rounded to the nearest
+            half day. That figure is ``max(0, norm − contract hours)`` unless the contract records
+            one (``_contract_free_time``): the derived rule (#282) is right for a 36-h contract
+            worked as a nominal 40-h week and wrong for a 32-h part-timer already working four
+            days, so it has to be sayable per contract rather than per org.
 
         Contract hours are the legal number, not the scheduled week: a 38-hour contract gets
         ``4 × 38`` statutory hours and ``(40 − 38) × weeks`` of free time. An employee who has
@@ -1190,7 +1309,18 @@ class LeaveService:
             .all()
         )
         contract_rows = (
-            (await self.ctx.session.execute(self.contracts.scoped_select())).scalars().all()
+            (
+                await self.ctx.session.execute(
+                    # Ordered, because the free-time rounding below reads "the last period of the
+                    # year" to pick a working day to measure against. An unordered fetch made that
+                    # whichever row Postgres returned last.
+                    self.contracts.scoped_select().order_by(
+                        EmploymentContract.user_id, EmploymentContract.start_date.asc()
+                    )
+                )
+            )
+            .scalars()
+            .all()
         )
         contracts_by_user: dict[uuid.UUID, list[EmploymentContract]] = {}
         for contract in contract_rows:
@@ -1230,6 +1360,15 @@ class LeaveService:
             has_any_contract = bool(contracts_by_user.get(user_id))
             contracts_year = self._contracts_in_year(contracts_by_user.get(user_id, []), year)
             schedule, scheduled_week, _ = self._effective(by_user.get(user_id), default)
+            # Half-day rounding needs *a* working day to measure against. The week now lives on
+            # the contract, so prefer the one in force at the end of this year's coverage — the
+            # arrangement the free days will actually be taken under. One choice has to be made
+            # (a year can hold several contracts); this is the one that matches the days being
+            # placed, and it falls back to the profile week for a contract carrying none.
+            if contracts_year:
+                last_week = sched.parse(contracts_year[-1].schedule)
+                if last_week is not None:
+                    schedule = last_week
             avg_day = sched.average_day_hours(schedule)
 
             for leave_type in weeks_types:
@@ -1271,7 +1410,7 @@ class LeaveService:
                     continue
                 total = Decimal(0)
                 for c in contracts_year:
-                    gap = full_time_norm - c.contract_hours_per_week
+                    gap = self._contract_free_time(c, full_time_norm)
                     if gap <= 0:
                         continue
                     total += gap * Decimal(self._year_overlap_days(c, year)) / Decimal(7)
@@ -1662,7 +1801,7 @@ class LeaveService:
     def _breakdown(
         self,
         *,
-        schedule: sched.WorkSchedule,
+        schedule_on: Callable[[date], sched.WorkSchedule],
         holidays_off: set[date],
         start_date: date,
         start_time: time | None,
@@ -1674,11 +1813,15 @@ class LeaveService:
         For each date: not a scheduled working day → 0; an active holiday → 0; otherwise the
         day's scheduled window intersected with the requested one, minus every break it overlaps.
         The intersection *is* the clamp — "from 08:00" on an 08:30 day means "from the start".
+
+        The week is resolved **per day**, not once for the span: the working week lives on the
+        employment contract, and a span can cross a contract boundary (someone who went from four
+        days to five on 1 March). ``schedule_on`` answers from memory, so this stays one pass.
         """
         rows: list[tuple[date, int, str | None]] = []
         day = start_date
         while day <= end_date:
-            work_day = schedule.day(day.weekday())
+            work_day = schedule_on(day).day(day.weekday())
             if work_day is None or sched.day_minutes(work_day) == 0:
                 rows.append((day, 0, "not_scheduled"))
             elif day in holidays_off:
@@ -1698,16 +1841,23 @@ class LeaveService:
         start_time: time | None,
         end_date: date,
         end_time: time | None,
+        *,
+        resolver: Callable[[date], sched.WorkSchedule] | None = None,
     ) -> tuple[Decimal, list[LeaveDayHours]]:
         """``(total hours, per-day breakdown)`` — the one place a leave hour is decided.
 
         Rounds to two decimals **once**, on the summed minutes: rounding each day and adding the
         results is how a 40-hour week becomes 39,99.
+
+        ``resolver`` lets a caller that prices many spans for the **same** employee build the
+        ``date → week`` lookup once and hand it in — the recurring generator walks a year of
+        occurrences, and rebuilding it per day would be two queries a day (docs/PERFORMANCE.md).
+        Omit it and one is built here.
         """
-        schedule = await self.effective_schedule(user_id)
+        schedule_on = resolver or await self.schedule_resolver(user_id)
         holidays_off = await self.active_holidays_between(start_date, end_date)
         rows = self._breakdown(
-            schedule=schedule,
+            schedule_on=schedule_on,
             holidays_off=holidays_off,
             start_date=start_date,
             start_time=start_time,
@@ -1777,7 +1927,7 @@ class LeaveService:
         hours, breakdown = await self.compute_hours(
             uid, data.start_date, data.start_time, data.end_date, data.end_time
         )
-        per_day = sched.average_day_hours(await self.effective_schedule(uid))
+        per_day = sched.average_day_hours(await self.effective_schedule(uid, data.start_date))
         days = (hours / per_day).quantize(Decimal("0.01")) if per_day else Decimal("0")
         # Tell the form whether saving would need (re-)approval (#72): a past span always does; a
         # future one only if the chosen type requires approval. The form knows the request's
@@ -1960,7 +2110,7 @@ class LeaveService:
         # Snapshotted alongside the priced hours, so the displayed window is forever the one
         # this schedule gave — a later schedule change must not rewrite past leave (#64).
         resolved_start, resolved_end = self._resolve_bounds(
-            await self.effective_schedule(uid),
+            await self.effective_schedule(uid, data.start_date),
             data.start_date,
             data.start_time,
             data.end_date,
@@ -2052,7 +2202,9 @@ class LeaveService:
                     and await self._type_calendar_display(request.leave_type_id)
                     == LeaveCalendarDisplay.TIMED.value
                 ):
-                    schedule = await self.effective_schedule(request.user_id)
+                    schedule = await self.effective_schedule(
+                        request.user_id, request.start_date
+                    )
                     start, end = self._single_day_window(
                         request, schedule, (payload["start_time"], payload["end_time"])
                     )
@@ -2164,7 +2316,7 @@ class LeaveService:
                 values["resolved_start_time"],
                 values["resolved_end_time"],
             ) = self._resolve_bounds(
-                await self.effective_schedule(request.user_id),
+                await self.effective_schedule(request.user_id, start_date),
                 start_date,
                 start_time,
                 end_date,
@@ -2322,7 +2474,7 @@ class LeaveService:
     def _shaped_days(
         self,
         request: LeaveRequest,
-        schedule: sched.WorkSchedule,
+        schedule_on: Callable[[date], sched.WorkSchedule],
         holidays_off: set[date],
     ) -> list[LeaveDayHours]:
         """The request's stored hours, laid out over its days in the shape the schedule gives.
@@ -2339,7 +2491,7 @@ class LeaveService:
         every day has since become a holiday, has no shape at all — it lands on the start date.
         """
         rows = self._breakdown(
-            schedule=schedule,
+            schedule_on=schedule_on,
             holidays_off=holidays_off,
             start_date=request.start_date,
             start_time=request.start_time,
@@ -2381,8 +2533,9 @@ class LeaveService:
         Open to all staff (who's off is normal team-visible information in an agency). A
         ``client`` role holds no ``leave.request.read`` at all, so the route already refused it.
 
-        Three extra reads, not three per row: every profile, the org default and the holidays in
-        range are fetched once and the per-day shapes computed in Python (docs/PERFORMANCE.md).
+        Four extra reads, not four per row: every profile, every contract, the org default and the
+        holidays in range are fetched once and the per-day shapes computed in Python
+        (docs/PERFORMANCE.md).
         """
         stmt = (
             select(LeaveRequest, User)
@@ -2404,6 +2557,16 @@ class LeaveService:
         default = await self.default_schedule()
         profiles = (await self.ctx.session.execute(self.profiles.scoped_select())).scalars().all()
         by_user = {p.user_id: p for p in profiles}
+        # The working week lives on the contract, so the feed needs every contract too — one
+        # query for the whole org, resolved in Python per row, never one lookup per request.
+        periods_by_user: dict[uuid.UUID, list[tuple[date, date | None, sched.WorkSchedule | None]]]
+        periods_by_user = {}
+        for contract in (
+            (await self.ctx.session.execute(self.contracts.scoped_select())).scalars().all()
+        ):
+            periods_by_user.setdefault(contract.user_id, []).append(
+                (contract.start_date, contract.end_date, sched.parse(contract.schedule))
+            )
         # A request may start before `date_from` and end after `date_to`; shape the whole of it.
         span_from = min(req.start_date for req, _ in rows)
         span_to = max(req.end_date for req, _ in rows)
@@ -2414,7 +2577,13 @@ class LeaveService:
 
         items: list[TeamLeaveItem] = []
         for req, user in rows:
-            schedule = self._effective(by_user.get(req.user_id), default)[0]
+            schedule_on = self._resolver_from(
+                periods_by_user.get(req.user_id, ()),
+                self._effective(by_user.get(req.user_id), default)[0],
+            )
+            # The window and the instants describe the request as a whole, so they read the week
+            # its **start date** fell under; only the per-day shape below resolves day by day.
+            schedule = schedule_on(req.start_date)
             resolved_start, resolved_end = self._resolved_window(req, schedule)
             starts_at, ends_at = self._occupied_instants(
                 req, schedule, (resolved_start, resolved_end), zone
@@ -2435,7 +2604,7 @@ class LeaveService:
                     ends_at=ends_at,
                     hours=req.hours,
                     status=LeaveRequestStatus(req.status),
-                    days=self._shaped_days(req, schedule, holidays_off),
+                    days=self._shaped_days(req, schedule_on, holidays_off),
                 )
             )
         return items
