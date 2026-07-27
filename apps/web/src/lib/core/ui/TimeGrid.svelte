@@ -9,9 +9,14 @@
    * is a better one than a "+1 earlier" badge. All positioning is client-side arithmetic on
    * data the page already loaded — zero extra API calls (docs/PERFORMANCE.md).
    *
-   * Drag-to-reschedule (#106) stays day-granular and lives on the all-day chips, exactly as
-   * on the month grid; timed blocks are not draggable (in v1 only Google events carry times,
-   * and we never write to Google).
+   * Drag-to-reschedule (#106) stays **day-granular** — a block dropped on another column moves to
+   * that day and keeps its window — and works on positioned blocks as well as all-day chips. It
+   * used to be all-day chips only, which excluded exactly the thing people most want to move: a
+   * free-time day is drawn per hour (#270), so the one absence an employee is entitled to shift
+   * was the one the grid would not let them. A source marks an event `draggable` when an edit
+   * could succeed, and the API re-prices and re-approves; dragging a block vertically to change
+   * its *window* is deliberately not offered — that is a different edit, with its own snapping and
+   * validation, and it lives in the request form.
    */
   import { eventChipParts, eventLinkAttrs, eventsByDayMap, isoDiffDays } from "$lib/core/calendar";
   import { fmtWeekdayShort } from "$lib/core/format";
@@ -29,7 +34,7 @@
     days: string[];
     events: CalendarEvent[];
     today: string;
-    /** Reschedule callback for a dropped all-day chip (#106); absent = read-only. */
+    /** Reschedule callback for a dropped chip or block (#106); absent = read-only. */
     onmove?: (event: CalendarEvent, deltaDays: number) => void;
   } = $props();
 
@@ -127,7 +132,7 @@
     scroller.scrollTop = Math.max(0, firstStart - HOUR_PX / 2);
   });
 
-  // --- all-day chip drag (#106), day-granular like the month grid -------------
+  // --- drag (#106), day-granular like the month grid, chips *and* blocks -------------
   let dragging = $state<{ event: CalendarEvent; day: string } | null>(null);
 
   function dragStart(e: DragEvent, event: CalendarEvent, day: string) {
@@ -250,7 +255,19 @@
         {/each}
       </div>
       {#each days as day (day)}
-        <div class="relative border-l border-border">
+        <!-- The whole column is the drop target, so a block only has to land on the right *day*;
+             where in the column it is dropped is deliberately ignored (see the header comment). -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div
+          class="relative border-l border-border"
+          ondragover={(e) => {
+            if (dragging) e.preventDefault();
+          }}
+          ondrop={(e) => {
+            e.preventDefault();
+            drop(day);
+          }}
+        >
           {#each hours as hour (hour)}
             {#if hour > 0}
               <div
@@ -275,10 +292,13 @@
               <a
                 href={block.event.href}
                 {...eventLinkAttrs(block.event.href)}
-                class={parts.class}
+                class="{parts.class} {block.event.draggable && onmove ? 'cursor-grab' : ''}"
                 style="top: {top}px; height: {height}px; left: {block.lane *
                   width}%; width: {width}%; {parts.style}"
                 title={block.event.title}
+                draggable={Boolean(block.event.draggable && onmove)}
+                ondragstart={(e) => dragStart(e, block.event, day)}
+                ondragend={() => (dragging = null)}
               >
                 {#if block.event.tentative}?{/if}
                 {block.event.title}

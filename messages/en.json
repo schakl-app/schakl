@@ -3119,5 +3119,17 @@
   "settings.employment.overhang_hint": "The contract changed, so the balance is lower. These days are still on the calendar; you can take them back here.",
   "settings.employment.overhang_withdraw": "Take days back",
   "settings.employment.overhang_withdrawn": "{count} free days taken back.",
-  "leave.recurring.days_per_year": "{count} days a year"
+  "leave.recurring.days_per_year": "{count} days a year",
+  "leave.free_time.title": "Free time",
+  "leave.free_time.none_planned": "Nothing scheduled yet",
+  "leave.free_time.none_planned_hint": "Your balance is ready; request a day off whenever it suits.",
+  "leave.free_time.upcoming": "{count} free days scheduled",
+  "leave.free_time.entitled": "This year",
+  "leave.free_time.taken": "Taken",
+  "leave.free_time.unplanned": "Still to schedule",
+  "leave.free_time.days_value": "{days} days",
+  "leave.free_time.day_hours": "{days} day",
+  "leave.free_time.move": "Move",
+  "leave.free_time.more": "{count} more later in the year.",
+  "leave.free_time.overhang": "{days} days no longer fit your balance; your manager can settle this."
 }

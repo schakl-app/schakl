@@ -148,9 +148,11 @@ registerWebModule({
             // evening would also claim every night in between, which is the same reason the window
             // text above is single-day only.
             //
-            // One consequence, deliberate: `TimeGrid` offers drag-to-reschedule on all-day chips
-            // only, so a type drawn per hour is not draggable in the day/week views. The month
-            // grid ignores `startsAt` entirely and keeps its drag, as does the request form.
+            // `TimeGrid` drags positioned blocks day-granularly too, so a type drawn per hour is
+            // moved from the week view like anything else — which matters most for exactly this
+            // type, since a free-time day is the absence an employee is entitled to shift. The
+            // window rides along and the API re-prices; the month grid ignores `startsAt` entirely
+            // and keeps its own drag, as does the request form.
             const asBlock =
               leaveType?.calendar_display === "timed" && Boolean(item.starts_at && item.ends_at);
             return {

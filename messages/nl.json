@@ -3119,5 +3119,17 @@
   "settings.employment.overhang_hint": "Het contract is gewijzigd, waardoor het saldo lager uitvalt. Deze dagen staan nog wel op de agenda; je kunt ze hier terugnemen.",
   "settings.employment.overhang_withdraw": "Dagen terugnemen",
   "settings.employment.overhang_withdrawn": "{count} vrije dagen teruggenomen.",
-  "leave.recurring.days_per_year": "{count} dagen per jaar"
+  "leave.recurring.days_per_year": "{count} dagen per jaar",
+  "leave.free_time.title": "Vrije tijd",
+  "leave.free_time.none_planned": "Nog niets ingepland",
+  "leave.free_time.none_planned_hint": "Je saldo staat klaar; vraag een vrije dag aan wanneer het uitkomt.",
+  "leave.free_time.upcoming": "{count} vrije dagen gepland",
+  "leave.free_time.entitled": "Dit jaar",
+  "leave.free_time.taken": "Opgenomen",
+  "leave.free_time.unplanned": "Nog in te plannen",
+  "leave.free_time.days_value": "{days} dagen",
+  "leave.free_time.day_hours": "{days} dag",
+  "leave.free_time.move": "Verplaatsen",
+  "leave.free_time.more": "Nog {count} verderop in het jaar.",
+  "leave.free_time.overhang": "{days} dagen passen niet meer in je saldo; je leidinggevende kan dit rechtzetten."
 }

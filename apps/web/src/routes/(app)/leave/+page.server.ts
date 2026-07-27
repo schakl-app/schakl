@@ -33,17 +33,22 @@ export const load: PageServerLoad = async (event) => {
   // Types + contract hours come from the /leave layout load; only the year data changes here.
   // #265: the combined per-group balances — statutory + extra-statutory vacation roll up into one
   // "Vakantieverlof" figure, with each pot's expiry alongside.
-  const [groups, requests] = await Promise.all([
+  // Free time gets its own read (#65): once the generator has placed every day, the balance card
+  // reads "0 u over" — true, and no answer at all to "when is my next day off". One call, in the
+  // same round trip as the other two (docs/PERFORMANCE.md).
+  const [groups, requests, freeTime] = await Promise.all([
     api.GET("/api/v1/leave/balance/groups", { params: { query: { year } } }),
     api.GET("/api/v1/leave/requests", {
       params: { query: { year, limit: 100, offset: 0, sort } },
     }),
+    api.GET("/api/v1/leave/free-time", { params: { query: { year } } }),
   ]);
   return {
     year,
     currentYear: currentYear(),
     groups: groups.data ?? [],
     requests: requests.data?.items ?? [],
+    freeTime: freeTime.data ?? null,
     table: { pref, sort: sort ?? null, widths: resolved.widths },
   };
 };

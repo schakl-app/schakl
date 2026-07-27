@@ -14,6 +14,7 @@
   import Modal from "$lib/core/ui/Modal.svelte";
   import { labelDotClass } from "$lib/core/ui/colors";
   import { LEAVE_COLUMNS } from "$lib/modules/leave/columns";
+  import FreeTimeCard from "$lib/modules/leave/FreeTimeCard.svelte";
   import LeaveRequestForm from "$lib/modules/leave/LeaveRequestForm.svelte";
   import LeaveStatusPill from "$lib/modules/leave/LeaveStatusPill.svelte";
   import RecurringDaysManager from "$lib/modules/leave/RecurringDaysManager.svelte";
@@ -102,6 +103,12 @@
   function openEdit(request: (typeof data.requests)[number]) {
     editRequest = request;
     editOpen = true;
+  }
+
+  /** "Verplaats" on a free day is an ordinary edit of its request — same modal, same rules. */
+  function openById(id: string) {
+    const match = data.requests.find((r: Request) => r.id === id);
+    if (match) openEdit(match);
   }
 
   // #72: editing and cancelling are no longer pending-only. Approved leave is editable — the API
@@ -228,6 +235,19 @@
     </p>
   {/each}
 </div>
+
+<!-- Free time gets its own card rather than a fourth balance tile: its balance reads "0 u over"
+     as soon as the days are placed, and the question people actually have is when the next one
+     is and whether they can move it (#65). -->
+<FreeTimeCard
+  freeTime={data.freeTime}
+  color={typeById[data.freeTime?.leave_type_ids?.[0] ?? ""]?.color ?? "cyan"}
+  onmove={openById}
+  oncancel={(id) => {
+    cancelId = id;
+    cancelOpen = true;
+  }}
+/>
 
 {#snippet periodCell(request: Request)}
   <span class="font-medium text-text">
