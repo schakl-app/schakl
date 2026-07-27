@@ -68,6 +68,16 @@
   the missing registrar / provider / client is a bug — that is precisely what the first domains and
   hosting forms shipped as (#115). The one exception is an entity with no create path of its own —
   an employee is *invited*, not created — so leave those select-only.
+  **A nested quick-create inherits the parent form's context** (#247): when the outer form already
+  has a client selected and its picker opens a quick-create for a second entity (a project, a
+  contact, a hosting account), that dialog opens with the *same* client pre-filled — as a default
+  the user can still change, never a blank field they must re-answer. Re-asking wastes the work
+  they just did and risks silently orphaning the new record onto a different client. Thread the
+  known client id through the create component (`companyId` / `initialCompanyId` / `linkCompany`,
+  as the working examples do) **and** make sure the server action behind it actually reads and
+  sends that id — a pre-filled checkbox the action ignores links nothing. This is easy to
+  reintroduce one field at a time, so when you add a new inline quick-create, check it forwards
+  the context the parent already knows.
 - **Quick-add where the user is**: contacts on the client page, projects/clients from the
   time entry form, checklist items on the card. The full forms still exist on their own
   pages; quick-add is an accelerator, not a replacement.
@@ -89,9 +99,17 @@
   interactive, because the surface itself is already edit mode.
   `AssigneePicker` posts the whole roster in one hidden field (an edit surface has exactly one
   save button); `LinkField` posts per chip, because there each link is its own record.
-  Detail headers name the primary and render the rest as an `AvatarStack` of initials.
   **"Mine" filters match any assignee, never only the primary** — otherwise the feature is
   invisible to everyone but the owner.
+- **One person, one shape: `PersonChip` — avatar *and* name, together.** Read-only surfaces that
+  show people (list cells, detail headers) render every person the same way through `Assignees`:
+  the verantwoordelijke first in the plain text colour, the rest muted. Naming the first person in
+  full and degrading the rest to bare initials discs — what `AvatarStack` used to do — puts two
+  different renderings of a person in one row, and the second one reads as a badge rather than a
+  colleague. A cell that runs out of room drops *people* — a table cell names the verantwoordelijke
+  and counts the rest (`+3`, all of them named in the tooltip), so a row never grows a second line —
+  and never strips the names off the people it keeps. The bare `Avatar` disc stays the right call
+  where a surface shows **only** discs and nothing else: `TaskRow`'s meta strip, the profile menu.
 - **Show an inherited value, don't hide it behind a placeholder** (#81). When the API will
   auto-assign something on save — a new project inherits the client's verantwoordelijke — the
   form pre-fills that value the moment the client is picked, so the assignment is visible and
@@ -222,8 +240,86 @@
   red; only the drawn bar's width clamps, because a bar cannot be 130 % long. A record with no
   budget shows an em-dash and still reports what it spent — never a fabricated total, and never a
   reassuring zero.
-- **Forms are SSR form actions** with `use:enhance`. Mind the default reset: forms whose
-  inputs must keep their values after save use `update({ reset: false })`.
+- **Hours reach an agreement through its project, never through a second picker.** Logged time
+  attaches to a **project**, and a project covered by an active subscription burns against that
+  agreement's included hours (#225) — so the timesheet's entry form no longer offers a subscription
+  to log against. Two pickers meant two places a retainer's remaining hours could be counted, and
+  they could disagree. What replaced it is the answer itself, on the screen that spends the hours:
+  the picked project's **remaining** hours under the project field (named after the agreement they
+  came from: "Uit: Onderhoudsabonnement"), and a **Beschikbare uren** panel beside the form listing
+  every budgeted project on the one burn scale, hottest first. Both render from the project lookup
+  the page already loads with `hours=true` — a number this useful should cost no extra call, and the
+  form asks for one *less* than it did. The "no budget" hint only appears when the caller actually
+  asked for the burn: a lookup fetched without `hours=true` knows nothing, and silence beats a
+  confident "geen urenbudget" that is really "didn't look".
+- **Forms are SSR form actions** with `use:enhance` — and **a form that stays mounted after a
+  successful save always passes `update({ reset: false })`.** The default success path calls
+  `form.reset()`, which rewinds every control to its server-rendered default *without firing any
+  event Svelte can see*. On a persistent edit surface (a settings `?/save`, an inline editor, the
+  roles matrix, the notification matrix) that is not cosmetic: state-backed controls
+  (`FormCheckbox`, `bind:group` radios, state-driven selects) keep the new value in state while
+  the DOM shows the old mark — the save *looks* undone, and the **next** submit posts the rewound
+  DOM marks, silently stripping what the user saved a minute ago. This shipped as a live bug on
+  Rollen, Gebruikers → rollen, and the notification matrix at once (#253). So: bare `use:enhance`
+  is for one-shot forms only — a delete/toggle/test button, or a create form that unmounts or
+  re-keys itself on success. Everything else says `reset: false`. `FormCheckbox` additionally
+  re-asserts its own state after any form reset, so a forgotten callback can no longer strip
+  checkbox marks — but radios and selects have no component guard; the form-level rule is the
+  convention.
+  - **A `bind:value` text field is the worst case: pressing Save empties it in front of you.**
+    The rule above was written about *marks* (a checkbox rewinding, a select snapping back), which
+    undersold it and let the same bug ship again on Instellingen → Bedrijven and → Facturatie
+    (#77). A bound text input has no `value` **attribute** — Svelte sets the property — so its
+    `defaultValue` is `""`, and `form.reset()` blanks it. Svelte listens for `reset` to keep
+    bindings truthful, so it then writes that emptiness **back into your state**: the content is
+    destroyed, not just hidden, and the next submit posts the blank. The user's word for it is
+    "I pressed save and my text disappeared", and they are describing data loss.
+  - **The affordance: `busy.keep(key)`** (`core/submit.svelte.ts`) — `wrap()` with
+    `reset: false`, named for the intent. Reach for `keep()` on any form that edits something
+    that already exists, and `busy.clear(key)` when you actively want the form emptied for the
+    next entry. Choosing between two named methods is a decision; remembering to hand-write a
+    `reset: false` callback is a thing to forget, and twenty components had each re-derived it.
+  - **The affordance was not enough on its own, so the rule is now enforced**
+    (`scripts/forms-check.mjs`, `pnpm forms:check`, run in CI's web job and by the pre-commit
+    hook on any staged `.svelte`). It shipped a *third* time after the two above — Instellingen
+    → Facturatie again, where the page's defaults block had been given `keep()` and the seller
+    block one section above it had not, so editing the agency's own company name and pressing
+    Opslaan emptied all eleven fields at once. That is the tell: this bug is not a screen anyone
+    forgot, it is a *form* anyone forgets, and it hides next to forms that got it right. The
+    check reads every `use:enhance`d form, and if it carries a control the user types into it
+    demands the intent be **stated**: `keep()`, `clear()`, or an explicit `reset:` in your own
+    callback (`reset: !entry` — the time entry form, which creates *or* edits). `clear()` does
+    exactly what bare `use:enhance` already did; it exists so that emptying a form is something
+    someone chose rather than something everyone inherited. Nothing is exempt by naming or by
+    folder — a form that genuinely wants the reset takes one word to say so.
+  - **The component guard for text is `defaultValue`.** A shared field that owns a `bind:value`
+    input should also set `defaultValue={/* the value it mounted with */}`, so a reset restores
+    the saved value instead of blank — the text-input analogue of what `FormCheckbox` does for
+    marks, and what makes the field safe in a form whose author forgot the rule. See
+    `core/ui/NumberFormatField.svelte`.
+- **Loading / in-flight state: a button whose request is under way says so** (#242, #279). A
+  `use:enhance` submit with no feedback reads as broken on a slow connection and takes a
+  double-click as a double-submit. The wiring is `core/submit.svelte.ts` (`InFlight`): one
+  `const busy = new InFlight()` per component, `use:enhance={busy.wrap(key, existingFn?)}`
+  around the form — it preserves the form's own callback exactly (`reset: false` included; no
+  callback means plain `update()`, like bare `use:enhance`) — and the shared `core/ui/Button`
+  with `loading={busy.is(key)}`, which disables the button and shows the shared
+  `core/ui/Spinner` beside the label (the label itself stays; no "…" rewording, so no extra
+  i18n keys). A surface with one form drops the key (`busy.wrap()` + `loading={busy.active}`);
+  sibling forms that mutate the same record (the contact portal's enable/resend/disable) and
+  per-row action buttons key by action or row id, so the in-flight one spins while
+  `disabled={busy.active}` holds the others; two submit buttons in one form (CSV import's
+  preview/commit) key off `submitter` instead. Every delete already has it: `ConfirmDialog`
+  owns the posting form and spins its confirm button itself. `Button` is also where the house
+  button styles live (`variant`: primary/secondary/success/danger/danger-outline — success is
+  the green approve; `size`: md/sm/xs) instead of being re-typed per call site — a new button
+  starts from it. Auto-submitting
+  controls with no labeled button (checkbox toggles, chip ✕, hidden `requestSubmit()` forms)
+  stay as they are, and so do deliberately *quiet* text-link submits (save-as-template on a
+  checklist, the dashboard's reset-layout): promoting those to a bordered `Button` would
+  un-quiet a surface on purpose kept calm, and quiet is a design decision, not a gap.
+  `Spinner` (a lucide loader on Tailwind's `animate-spin`) is `aria-hidden` — it always
+  accompanies visible text, never replaces it.
 - **A password reveal (eye) toggle sits on user-password fields only** (#235, owner call): login,
   setup, reset-password and the account page's password fields use the shared
   `core/ui/PasswordInput` — the places where a mistyped password locks someone out. Write-only
@@ -256,11 +352,24 @@
   (approve/reject are inline status actions; reject asks an optional reason) and register leave on
   someone's behalf (ziekmelding). Approved leave appears on the timesheet as its own teal row,
   never mixed into worked totals, and on the Agenda.
-- **A work schedule is employment data, so it lives on the person** (Instellingen → Gebruikers →
-  ⋯ → Werkrooster), not buried in Instellingen → Verlof. It is a weekly grid: per weekday a
-  working-day toggle, start/end, and the day's **breaks as a repeater** — a morning coffee break
-  next to lunch is an ordinary shape, so a second break is one click, and each day carries a
-  copy-to-other-days action. Times go through `TimeInput`, never a native `<input type="time">`.
+- **Contract, werkweek and vrije tijd are one wizard, not three modals** (Instellingen →
+  Gebruikers → ⋯ → **Dienstverband**, and the same item on the team leave roster). They used to be
+  three separate ⋯ entries, and that split is exactly why the relationship between contract hours
+  and working hours read as arbitrary: they were never three decisions. Contract hours only mean
+  something measured against the week that is actually worked, and free days exist *because* the
+  two differ. Three steps, one save: **contract** (period + hours) → **werkweek** (the grid, plus
+  the one question the system cannot infer: does this person take the hours below the full-time
+  norm as free time to schedule, built into their roster, or an agreed figure?) → **vrije tijd**
+  (the pattern, prefilled from what the pot buys). Every number is derived on screen as it is
+  typed — contract, rooster, vrije tijd on one line — because the previous design let a reduced
+  contract grow a pot of free days in silence, and a four-day part-timer grow one twice over. The
+  save reports what it did, and when a changed contract orphans already-placed free days it lists
+  them and offers to take them back; it never cancels them as a side effect.
+- **A work schedule is employment data, so it lives on the person**, not buried in Instellingen →
+  Verlof — and on the *contract*, because a schedule change usually is a contract change. It is a
+  weekly grid: per weekday a working-day toggle, start/end, and the day's **breaks as a repeater**
+  — a morning coffee break next to lunch is an ordinary shape, so a second break is one click, and
+  each day carries a copy-to-other-days action. Times go through `TimeInput`, never a native `<input type="time">`.
   Breaks are **not re-sorted while you type**: the API stores them sorted and hands them back that
   way, whereas reordering rows on every committed time yanks the field out from under the cursor.
   The grid renders *outside* its `<form>` and posts through `form="…"` — its `TimeInput`s each emit
@@ -270,6 +379,24 @@
   where they are listed, rather than being silently measured against the org default.
   Org config — verloftypen (wettelijk/bovenwettelijk carry-over rules live here, not in code), het
   standaardrooster, feestdagen, and yearly saldi — lives under Instellingen → Verlof.
+- **How a verloftype draws on the Agenda is a tenant setting, not a side effect** (#270). Each type
+  chooses *Hele dag* (a full-width chip, the default) or *Per uur* (a block on the hours it covers,
+  in the dag- and weekweergave). Roostervrije tijd (ADV) ships as *Per uur*: it is time off inside
+  the normal schedule, and drawing it as a full-day bar makes one free afternoon look like a week of
+  vakantie. A request spanning several days stays a full-day chip whatever the type says — a single
+  block across Monday to Friday would claim the nights too. The maandweergave never draws by hour,
+  so the setting is invisible there. Drag-to-reschedule works on *Per uur* blocks as well as
+  full-day chips, day-granular either way: a free-time day is drawn per hour and is the one absence
+  an employee is entitled to shift, so excluding blocks excluded exactly the thing people move.
+  Dropping a block on another day column keeps its window and lets the API re-price; dragging it
+  *vertically* to change the window is deliberately not offered — that edit lives in the aanvraag.
+- **Vrije tijd has its own card on Verlof, not a balance tile.** Free days are laid down as
+  approved leave, so once they are all placed, entitled and approved are equal and a balance tile
+  reads "0 u over" — true, and no answer to the only two questions anyone has: when is my next day
+  off, and can I move it. The card leads with the next date, lists the upcoming days with
+  Verplaatsen / Annuleren per row, and breaks the pot into dit jaar / opgenomen / nog in te
+  plannen. Its type is filtered out of the balance grid, because stating the same balance twice —
+  once uselessly — is worse than stating it once.
 - **A feestdag is nobody's working day, not somebody's absence.** So it never renders as one more
   coloured chip beside three people's vakantie: on the Agenda it is a quiet dashed marking that
   links nowhere and never counts toward a "busy day" heatmap; on the timesheet it marks the *day
@@ -388,6 +515,65 @@
   one that had just landed on it. Clamp the bar, never the number.
 - A hardcoded `<ul>` per list. Six of them and no user could hide a column; the seventh is what
   `DataTable` exists to prevent.
+- **A bare `use:enhance` on a form that survives its own save.** The default reset rewound the
+  roles matrix and the users-page role ticks to their server-rendered marks on every save — the
+  UI read as "it didn't save", and the next save posted the rewound marks. The rule lives under
+  Interaction patterns: persistent surfaces pass `update({ reset: false })`, one-shot buttons
+  and self-unmounting create forms may stay bare.
+- **A submit button with no in-flight state.** The contact-portal "Enable" gave zero feedback
+  while its request ran (#242): on a slow connection it read as broken, and every extra click
+  was another submit. The convention lives under Interaction patterns (Loading / in-flight
+  state): `submitting` state + `core/ui/Button` with `loading`.
+- **A control that renders without checking `can()`.** Row ⋯ Edit/Delete, New-buttons, and
+  quick-action links shipped ungated on half the lists (#253): every role saw them and the API
+  403'd on submit. A control that posts a permission-gated action renders inside
+  `{#if can(page.data.user, "<module>.<resource>.<action>")}` — matching the API route's
+  declared permission, base key only (a scoped `:own` holder must still see their button). The
+  ⋯ menu hides entirely when no item survives; `DataTable` gets `actions={... ? rowActions :
+  undefined}` so the empty column disappears too.
+- **A write control that leaks to the client portal because it's a *shared* component or a
+  "use-mode" affordance.** The portal (a `client`-role login, #193) is not a separate UI: it
+  renders the **same** components as staff, and detail pages compose them without a portal filter —
+  the company hub renders every module panel as-is, and shared rows like `TaskRow` render on the
+  tasks list, the project to-do and the company panel at once. So `#253`'s rule has a second half:
+  **every write control on a client-reachable surface must gate itself**, and that includes the
+  ones that don't look like writes. A checklist tick, a complete-toggle, a drag-reorder handle, a
+  quick-add row, an inline "＋ nieuw" that opens a create form — these read as "using", but each
+  posts a write the `client` role does not hold, and living *outside edit mode* is not a gate
+  (#244). Gate them on the API's own permission (`can(page.data.user, "tasks.task.write")`,
+  `"files.file.write"`, `"contacts.contact.write"`, …), base key, exactly like any other control —
+  not on `!isPortal` (which mirrors the API less precisely and still leaks to a non-writer staff
+  member). A component reused by several hosts **self-gates internally** (`import { page }` +
+  `can`, the way `DomainsPanel` and now `TaskRow` do) so a new caller can never reintroduce the
+  leak by forgetting a prop. The whole `client` write surface is: **its own task comments, its own
+  dashboard/nav layout, and its own notification inbox** — nothing else is writable, so treat any
+  other write affordance reachable by a portal login as a bug. The API side is fenced by
+  `tests/test_rbac_deny_by_default.py::test_client_role_is_read_only_except_own_comments` (it walks
+  the live route table, so a new write route ships covered); the UI side has no automated guard, so
+  audit every write control by hand when you add a client-reachable panel, list or shared row.
+- **A whole *screen* that leaks, not just a control.** The pass above gated the controls inside
+  client-reachable pages and missed the page that *is* a write surface: `/tasks/templates` — the
+  org-wide task-automation and checklist repositories — hung off the tasks sub-nav and read behind
+  `tasks.task.read`, which a `client` holds. So a portal login sat one tab from their task list,
+  looking at the agency's internal process library, with a "nieuw sjabloon" form the API refuses.
+  Two lessons. When **every** control on a screen writes, the gate belongs on the screen and on the
+  link to it — the sub-tab, the Instellingen card, and a `redirect(303, …)` in the route load — not
+  on each button: rendering a management page read-only either lies (an empty list that is really a
+  403) or leaks. And **gate the read, not only the write**: a permission-gated form is still a leak
+  while its `GET` sits on a key the client holds. Those two lists now read as "you may edit a task"
+  (`tasks.task.write`) and "you may apply a template" (`tasks.template.apply`), so a portal login
+  cannot enumerate them at all, and the load skips the fetch it would 403 on.
+- **A refusal that hides which of the two gates fired.** Permissions say *may they*, the company
+  horizon says *which rows exist for them* (CLAUDE.md §15), and out-of-horizon deliberately answers
+  `404 errors.not_found` so a get-by-id can't leak existence. Correct — but a `client`-role login
+  scoped to no company at all gets that same "niet gevonden" on *everything*, and the admin's only
+  lever, granting permissions, can never fix it. #274 reached us as "we granted the right
+  permission and it still says not found". Two rules came out of it. Where the refusal is about
+  the **caller's own account** rather than a specific row, say so — `errors.no_company_scope` names
+  the missing link and leaks nothing, because it describes their login, not our data. And put the
+  same fact where the admin is already looking: Instellingen → Gebruikers badges such an account
+  "Ziet geen klanten" next to the existing "Beperkte zichtbaarheid" chip. A state that makes every
+  screen fail identically needs one place that explains it.
 - Taking `.date()` of a UTC instant to name a local day. Amsterdam's midnight is 22:00 UTC the day
   *before* in summer, so a monthly budget reported its period as starting 30 June. Half the year the
   bug is invisible, which is why it is pinned on a fixed date rather than on `today`.
@@ -425,3 +611,17 @@
   legitimate but rare — `leave.recurring.hint` is the reference example. Ranges keep the en
   dash without spaces (`ma–vr`, `{from}–{to}`), and the `—` empty-value placeholder in tables
   stays. English strings are unaffected; this is a Dutch-only rule (owner feedback, 2026-07-12).
+
+- **Two lists of one thing, split by a distinction the reader cannot see.** Instellingen →
+  Meldingen showed "Mijn kanalen" *and* "Externe kanalen" stacked on one screen, and the honest
+  answer to "why two?" was an implementation detail: one kind was routed per event from the matrix
+  above, the other by an event-filter checkbox list and a single channel-wide cadence of its own.
+  The reader saw two boxes of the same nouns (Slack, Teams, webhook) and no way to tell which they
+  wanted. Worse, the second mechanism was a **capability gap wearing a UI**: a shared room could
+  not group per event the way e-mail could, because it had one cadence for everything (#295).
+  Two rules. **When a screen needs a heading to explain why something is duplicated, unify the
+  mechanism instead of labelling the halves** — here every channel became one column of the matrix,
+  and the section is just "Kanalen". And **when two variants of one concept differ by scope, the
+  page is the scope**: my transports live on my settings screen, the org's shared rooms on the org
+  defaults screen, each under the matrix that routes it, so neither page ever shows a list it
+  cannot act on. Suspect any screen rendering the same component twice with a boolean prop.

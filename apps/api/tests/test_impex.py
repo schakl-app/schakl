@@ -12,11 +12,16 @@ from app.db import async_session_maker, set_current_org
 from tests.conftest import auth_cookie, make_tenant
 
 COMPANY_HEADER = [
-    "name", "website", "invoice_email", "status",
+    "name", "client_number", "website", "phone", "invoice_email", "status",
     # Billing identity (issue #11, shipped with invoicing #207).
-    "vat_number", "coc_number", "address_line1", "address_line2",
+    "vat_number", "coc_number", "address_line1", "house_number", "address_line2",
     "postal_code", "city", "country",
     "notes",
+    # Contributed by the contacts module (issue #77): the client's contact person, carried in
+    # the company's own row. Present because this caller holds contacts' write permissions —
+    # the header is deliberately caller-dependent (see test_contributed_columns_are_gated).
+    "contact_first_name", "contact_last_name", "contact_email", "contact_phone",
+    "contact_job_title",
 ]
 
 
@@ -225,6 +230,118 @@ async def test_commit_upserts_on_the_natural_key(client_for) -> None:
         # A column absent from the file is never touched.
         assert by_name["Existing"]["notes"] == "keep me"
         assert by_name["Newco"]["status"] == "lead"
+
+
+async def test_client_number_outranks_name_as_the_match_key(client_for) -> None:
+    """A renamed client re-imports onto itself, because the number is the stabler key."""
+    t = await make_tenant("impex-nk-order")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        created = (
+            await c.post(
+                "/api/v1/companies",
+                json={"name": "Oude Naam", "client_number": "K001"},
+                headers=headers,
+            )
+        ).json()
+
+        # Same number, new name: an update, not a second company.
+        content = _csv_bytes(
+            ["client_number", "name", "city"], [["K001", "Nieuwe Naam", "Breda"]]
+        )
+        report = (
+            await c.post(
+                "/api/v1/impex/company/import",
+                params={"dry_run": "false"},
+                files=_file(content),
+                headers=headers,
+            )
+        ).json()
+        assert (report["creates"], report["updates"]) == (0, 1)
+
+        listing = (await c.get("/api/v1/companies", headers=headers)).json()
+        assert listing["total"] == 1
+        assert listing["items"][0]["id"] == created["id"]
+        assert listing["items"][0]["name"] == "Nieuwe Naam"
+        assert listing["items"][0]["city"] == "Breda"
+
+        # A file with no number column still falls back to matching on the name.
+        report = (
+            await c.post(
+                "/api/v1/impex/company/import",
+                params={"dry_run": "false"},
+                files=_file(_csv_bytes(["name", "city"], [["Nieuwe Naam", "Tilburg"]])),
+                headers=headers,
+            )
+        ).json()
+        assert (report["creates"], report["updates"]) == (0, 1)
+
+
+async def test_two_rows_reaching_one_company_by_different_keys_is_a_duplicate(
+    client_for,
+) -> None:
+    """Per-key dedup cannot see this: different buckets, same company.
+
+    Without the resolved-target check the later row silently overwrites what the earlier one
+    just imported, and the report cheerfully calls it two updates.
+    """
+    t = await make_tenant("impex-nk-cross")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.post(
+            "/api/v1/companies",
+            json={"name": "Acme", "client_number": "K001"},
+            headers=headers,
+        )
+        content = _csv_bytes(
+            ["client_number", "name", "city"],
+            [["K001", "Acme", "Breda"], ["", "Acme", "Tilburg"]],
+        )
+        report = (
+            await c.post(
+                "/api/v1/impex/company/import",
+                params={"dry_run": "false"},
+                files=_file(content),
+                headers=headers,
+            )
+        ).json()
+        assert report["applied"] is False
+        assert [(e["row"], e["message_key"]) for e in report["errors"]] == [
+            (2, "impex.errors.duplicate_in_file")
+        ]
+        listing = (await c.get("/api/v1/companies", headers=headers)).json()
+        assert listing["items"][0]["city"] is None  # nothing was written
+
+
+async def test_national_phone_numbers_import_using_the_org_country(client_for) -> None:
+    """No real client list writes +31; rejecting the file over that would be the bug."""
+    t = await make_tenant("impex-phone")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        content = _csv_bytes(
+            ["name", "phone", "country"],
+            [
+                ["Dutch BV", "0612345678", ""],          # national → org default (NL)
+                ["Belgian BV", "0475 12 34 56", "BE"],   # national → the row's own country
+                ["Intl BV", "+3120 624 1111", ""],       # already international, untouched
+            ],
+        )
+        r = await c.post(
+            "/api/v1/impex/company/import",
+            params={"dry_run": "false"},
+            files=_file(content),
+            headers=headers,
+        )
+        report = r.json()
+        assert report["errors"] == []
+        assert report["applied"] is True
+
+        listing = (await c.get("/api/v1/companies", headers=headers)).json()
+        phones = {i["name"]: i["phone"] for i in listing["items"]}
+        assert phones["Dutch BV"] == "+31612345678"
+        # The row's own country wins over the org's — a Belgian client stays Belgian.
+        assert phones["Belgian BV"] == "+32475123456"
+        assert phones["Intl BV"] == "+31206241111"
 
 
 async def test_commit_with_errors_applies_nothing(client_for) -> None:
@@ -509,6 +626,12 @@ async def test_entities_catalog_lists_all_descriptors(client_for) -> None:
     }
     assert all(e["importable"] for e in entities.values())
     assert entities["time_entry"]["read_permission"] == "time.entry.read"
+    # The upsert keys the wizard offers as "match existing rows on", in priority order.
+    assert entities["company"]["natural_keys"] == ["client_number", "name"]
+    assert entities["contact"]["natural_keys"] == ["email"]
+    # Create-only entities advertise no key at all, rather than a misleading one.
+    assert entities["task"]["natural_keys"] == []
+    assert entities["time_entry"]["natural_keys"] == []
 
 
 async def test_project_import_upserts_and_resolves_company(client_for) -> None:

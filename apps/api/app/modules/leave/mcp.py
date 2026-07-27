@@ -30,7 +30,7 @@ async def _day_schedule(ctx: RequestContext, args: dict[str, Any]) -> ToolResult
     service = LeaveService(ctx)
     # The same seams §14's hour calculation reads: the employee's effective schedule (own,
     # else the org default) and the org's active holiday calendar (#46, #47).
-    schedule = await service.effective_schedule(ctx.user.id)
+    schedule = await service.effective_schedule(ctx.user.id, day)
     holidays_off = await service.active_holidays_between(day, day)
     holiday = day in holidays_off
     scheduled_minutes = 0 if holiday else sched.day_minutes(schedule.day(day.weekday()))
@@ -55,7 +55,8 @@ async def _day_schedule(ctx: RequestContext, args: dict[str, Any]) -> ToolResult
     leave_minutes = 0
     for request in requests:
         rows = service._breakdown(
-            schedule=schedule,
+            # One day, one week: `schedule` is already the one that applied on `day`.
+            schedule_on=lambda _day: schedule,
             holidays_off=holidays_off,
             start_date=day,
             start_time=request.start_time if request.start_date == day else None,

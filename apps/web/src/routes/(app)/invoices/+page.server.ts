@@ -36,7 +36,7 @@ export const load: PageServerLoad = async (event) => {
       },
     }),
     api.GET("/api/v1/invoicing/summary"),
-    api.GET("/api/v1/companies", { params: { query: { limit: 200, count: false } } }),
+    api.GET("/api/v1/companies", { params: { query: { limit: 200, count: false, sort: "name" } } }),
   ]);
 
   return {

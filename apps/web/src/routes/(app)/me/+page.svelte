@@ -11,10 +11,13 @@
   import { page } from "$app/state";
   import { fmtDayMonthYear, fmtNumber } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import { GROUP_LABEL_KEYS } from "$lib/modules/leave/format";
 
   let { data, form } = $props();
 
@@ -30,21 +33,27 @@
   const memberItems = $derived(
     data.members.map((m) => ({ value: m.user_id, label: m.full_name || m.email })),
   );
-  const typeLabel = (id: string) => {
-    const lt = data.leaveTypes.find((x) => x.id === id);
-    const labels = (lt?.label_i18n ?? {}) as Record<string, string>;
-    return labels[data.locale] || labels.nl || labels.en || "";
+  // The combined balance's label (#265): the message-catalog copy for a known group, else the
+  // API/representative label the server resolved for a tenant's own group.
+  const groupLabel = (group: { group: string | null; label_i18n: Record<string, string> }) => {
+    const key = group.group ? GROUP_LABEL_KEYS[group.group] : undefined;
+    if (key) return t(key);
+    const l = group.label_i18n;
+    return l[data.locale] || l.nl || l.en || Object.values(l)[0] || "";
   };
   // Newest contract first; the current one leads the section.
   const contract = $derived(
-    [...data.contracts].sort((a, b) => String(b.start_date).localeCompare(String(a.start_date)))[0] ??
-      null,
+    [...data.contracts].sort((a, b) =>
+      String(b.start_date).localeCompare(String(a.start_date)),
+    )[0] ?? null,
   );
   const docsFor = (category: string) =>
     data.dossier.documents.filter((d) => d.category === category);
 
   let confirmDelete = $state(false);
   let deleteId = $state("");
+
+  const busy = new InFlight();
 
   const inputClass =
     "w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text outline-none focus:border-brand";
@@ -69,7 +78,8 @@
         id="dossier-user"
         value={data.viewedUserId}
         placeholder={t("hr.me.pick_employee")}
-        onselect={(v) => goto(v && v !== page.data.user?.id ? `/me?user=${v}` : "/me", { noScroll: true })}
+        onselect={(v) =>
+          goto(v && v !== page.data.user?.id ? `/me?user=${v}` : "/me", { noScroll: true })}
       />
     </div>
   {/if}
@@ -93,9 +103,9 @@
         <p class="text-sm text-text-muted">—</p>
       {:else}
         <ul class="space-y-2">
-          {#each data.balance as row (row.leave_type_id + String(row.year))}
+          {#each data.balance as row (row.leave_type_ids.join(",") + String(row.year))}
             <li class="flex items-baseline justify-between gap-2 text-sm">
-              <span class="min-w-0 truncate text-text">{typeLabel(row.leave_type_id)} {row.year}</span>
+              <span class="min-w-0 truncate text-text">{groupLabel(row)} {row.year}</span>
               <span class="tabular-nums text-text">
                 {fmtNumber(Number(row.remaining_hours), 1)} u
                 <span class="text-text-muted">/ {fmtNumber(Number(row.entitled_hours), 1)} u</span>
@@ -195,7 +205,7 @@
         method="POST"
         action="?/upload"
         enctype="multipart/form-data"
-        use:enhance
+        use:enhance={busy.clear()}
         class="grid gap-3 sm:grid-cols-2"
       >
         <input type="hidden" name="user_id" value={data.viewedUserId} />
@@ -229,11 +239,9 @@
           />
         </div>
         <div class="sm:col-span-2">
-          <button
-            class="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white hover:opacity-90"
-          >
+          <Button size="sm" loading={busy.active}>
             {t("hr.me.upload_submit")}
-          </button>
+          </Button>
         </div>
       </form>
     </section>

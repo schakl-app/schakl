@@ -2,8 +2,12 @@
   import { enhance } from "$app/forms";
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
 
   let { data, form } = $props();
+
+  const busy = new InFlight();
 
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
@@ -29,7 +33,12 @@
   </div>
 {/if}
 
-<form method="POST" action="?/create" use:enhance class="mt-6 flex max-w-md gap-2">
+<form
+  method="POST"
+  action="?/create"
+  use:enhance={busy.wrap("create")}
+  class="mt-6 flex max-w-md gap-2"
+>
   <input
     name="name"
     required
@@ -37,11 +46,9 @@
     placeholder={t("cloud.keys.name")}
     class={inputClass}
   />
-  <button
-    class="whitespace-nowrap rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-  >
+  <Button class="whitespace-nowrap" loading={busy.is("create")} disabled={busy.active}>
     {t("cloud.keys.create")}
-  </button>
+  </Button>
 </form>
 {#if form?.error}
   <p class="mt-2 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
@@ -53,7 +60,9 @@
   {:else}
     <table class="w-full text-sm">
       <thead>
-        <tr class="border-b border-border text-left text-xs uppercase tracking-wide text-text-muted">
+        <tr
+          class="border-b border-border text-left text-xs uppercase tracking-wide text-text-muted"
+        >
           <th class="px-4 py-3">{t("cloud.keys.name")}</th>
           <th class="px-4 py-3">{t("cloud.keys.key")}</th>
           <th class="px-4 py-3">{t("cloud.keys.created")}</th>
@@ -74,11 +83,21 @@
               {#if key.revoked_at}
                 <span class="text-xs text-text-muted">{t("cloud.keys.revoked")}</span>
               {:else}
-                <form method="POST" action="?/revoke" use:enhance class="inline">
+                <form
+                  method="POST"
+                  action="?/revoke"
+                  use:enhance={busy.wrap(key.id)}
+                  class="inline"
+                >
                   <input type="hidden" name="key_id" value={key.id} />
-                  <button class="text-sm font-medium text-red-600 hover:underline dark:text-red-400">
+                  <Button
+                    variant="danger-outline"
+                    size="sm"
+                    loading={busy.is(key.id)}
+                    disabled={busy.active}
+                  >
                     {t("cloud.keys.revoke")}
-                  </button>
+                  </Button>
                 </form>
               {/if}
             </td>

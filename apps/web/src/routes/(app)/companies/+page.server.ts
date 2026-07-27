@@ -2,7 +2,7 @@ import { fail } from "@sveltejs/kit";
 
 import { parseAssignees } from "$lib/core/assignees";
 import { apiErrorKey } from "$lib/core/errors";
-import { importCsvAction } from "$lib/core/impex/actions.server";
+import { impexAction } from "$lib/core/impex/actions.server";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
@@ -72,7 +72,9 @@ export const load: PageServerLoad = async (event) => {
 
   // The create form's remaining lookups still stream in behind the list.
   const createForm = Promise.all([
-    api.GET("/api/v1/contacts", { params: { query: { limit: 200, offset: 0 } } }),
+    api.GET("/api/v1/contacts", {
+      params: { query: { limit: 200, offset: 0, sort: "first_name" } },
+    }),
     api.GET("/api/v1/custom-fields/definitions", { params: { query: { entity_type: "contact" } } }),
   ])
     .then(([contacts, contactDefinitions]) => ({
@@ -105,7 +107,7 @@ export const actions: Actions = {
   },
 
   /** CSV import (issue #77): dry-run preview by default, all-or-nothing commit on demand. */
-  importCsv: (event) => importCsvAction(event, "/api/v1/impex/company/import"),
+  impex: (event) => impexAction(event, "company"),
 
   create: async (event) => {
     const form = await event.request.formData();
@@ -118,11 +120,15 @@ export const actions: Actions = {
     const { data: company, error } = await api.POST("/api/v1/companies", {
       body: {
         name,
+        // Blank means "allocate one" on create; the API decides per the org's settings.
+        client_number: String(form.get("client_number") ?? "").trim() || null,
         website: website || null,
+        phone: String(form.get("phone") ?? "").trim() || null,
         invoice_email: String(form.get("invoice_email") ?? "").trim() || null,
         vat_number: String(form.get("vat_number") ?? "").trim() || null,
         coc_number: String(form.get("coc_number") ?? "").trim() || null,
         address_line1: String(form.get("address_line1") ?? "").trim() || null,
+        house_number: String(form.get("house_number") ?? "").trim() || null,
         address_line2: String(form.get("address_line2") ?? "").trim() || null,
         postal_code: String(form.get("postal_code") ?? "").trim() || null,
         city: String(form.get("city") ?? "").trim() || null,

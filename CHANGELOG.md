@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Added
+
+- **Clients have a klantnummer.** Instellingen → Bedrijven sets the format (`{jaar}`, `{seq:4}` and friends, previewed live as you type), the next number, whether new clients are numbered automatically, and offers a one-off "number existing clients" action that fills only the blanks. The number is searchable, sortable and shown as an optional column; typing one by hand is fine, and a duplicate is refused. Invoice and quote number formats gained the same live preview.
+- **Imports match on the klantnummer before the name.** A client that was renamed since the last export re-imports onto itself rather than arriving as a second company, and two rows that reach the same client — one by number, one by name — are reported as a duplicate instead of one silently overwriting the other.
+- **The organisation has a country** (Instellingen → Branding). A phone number written the way people actually write it (`0612345678`) is now read in that country instead of being refused, so a client list imports without hand-editing every number first; a company's own country still wins, and a number that already carries `+32` is never reinterpreted. The phone picker starts on the organisation's country rather than guessing from the browser.
+- The client importer accepts the company phone number, which it previously had no column for.
+- **You choose what every column of your file means.** Import is now a three-step wizard: pick a file or paste a table, map the columns, check, import. Each column of *your* file gets a row showing its first real values, and a picker for what it should become — a field, one of your own custom fields, or nothing. schakl. fills the mapping in from your column headings ("Klantnummer", "Bedrijfsnaam", "Plaats" and dozens more, in Dutch and English) and leaves what it does not recognise blank rather than guessing. Columns you do not map are simply skipped, so a file carrying ten columns of which three matter no longer has to be cleaned up first, and headers no longer have to be renamed to internal keys. A file that carries more than one column records can be matched on lets you pick which one.
+- **A client list can bring its contact people with it.** Voornaam, achternaam, e-mail, telefoon and functie can be mapped in a *client* import: the contact is created, linked, and the first one becomes that client's primary contact. Re-importing the list updates that person rather than duplicating them, an empty cell never wipes their details, and a later import never reassigns who the primary contact is. The columns only appear for someone who may write contacts.
+- **Import is no longer CSV-only.** An Excel workbook (`.xlsx`, with a worksheet picker), a tab- or semicolon-separated file and a block pasted straight from a spreadsheet all import the same way a CSV does. The file's encoding is detected rather than assumed, so a Dutch Excel export with accented names is read instead of refused, and Excel's own types arrive as the text a column expects: a client number does not become `1234.0`, a date does not become a timestamp. An uploaded workbook is vetted before it is opened — declared sizes, member count and compression ratio — so a zip bomb is refused without being decompressed, and a file over the row, column or size limit is always an error rather than a silent partial import.
+
+### Fixed
+
+- **A client-portal login could download the entire client list** as a CSV export. Bulk import and export are now their own capability, held by staff roles only, on top of each entity's own read/write permission.
+- The company importer built its billing block from a positional slice of its field list, so inserting a column would have shifted every imported client's VAT number, address and city one field along without any error.
+
 ## v0.17.0 — 2026-07-21
 
 ### Added

@@ -17,9 +17,9 @@ _TEMPLATE = {
 
 
 async def test_checklist_template_crud_needs_the_write_permission(client_for) -> None:
-    """The shared repository is org configuration: readable by all, written by
-    ``tasks.checklist_template.write`` (issue #19). The seeded ``member`` role does not hold it;
-    an agency that wants it back ticks one box in Instellingen → Rollen."""
+    """The shared repository is org configuration: read by whoever may edit a task, written by
+    ``tasks.checklist_template.write`` (issue #19). The seeded ``member`` role does not hold the
+    write; an agency that wants it back ticks one box in Instellingen → Rollen."""
     t = await make_tenant("cltpl-crud")
     owner_headers = await auth_cookie(t.user)
     member = await add_member(t)
@@ -47,7 +47,8 @@ async def test_checklist_template_crud_needs_the_write_permission(client_for) ->
         )
         assert [i["title"] for i in updated.json()["items"]] == ["DNS", "SSL"]
 
-        # Everyone reads them — a member applies a template to a task they are on.
+        # A member reads them — they apply a template to a task they are on (`tasks.task.write:own`
+        # is the read bar; a portal client, who may only *read* tasks, is refused below).
         assert (
             len((await c.get("/api/v1/tasks/checklist-templates", headers=member_headers)).json())
             == 1
@@ -57,6 +58,32 @@ async def test_checklist_template_crud_needs_the_write_permission(client_for) ->
                 f"/api/v1/tasks/checklist-templates/{template['id']}", headers=owner_headers
             )
         ).status_code == 204
+
+
+async def test_a_portal_client_neither_reads_nor_writes_the_repository(client_for) -> None:
+    """The client role may read the tasks of their own companies — not the agency's process
+    library (#193, #244). Both repositories sat behind ``tasks.task.read``, which a client holds,
+    so the portal offered a "nieuw sjabloon" form one tab away from the task list."""
+    t = await make_tenant("cltpl-portal")
+    owner_headers = await auth_cookie(t.user)
+    client_user = await add_member(t, role="client")
+    client_headers = await auth_cookie(client_user)
+
+    async with client_for(t.host) as c:
+        assert (
+            await c.post("/api/v1/tasks/checklist-templates", json=_TEMPLATE, headers=owner_headers)
+        ).status_code == 201
+
+        assert (
+            await c.get("/api/v1/tasks/checklist-templates", headers=client_headers)
+        ).status_code == 403
+        assert (
+            await c.post(
+                "/api/v1/tasks/checklist-templates", json=_TEMPLATE, headers=client_headers
+            )
+        ).status_code == 403
+        # The task-template repository is the same surface, same answer.
+        assert (await c.get("/api/v1/tasks/templates", headers=client_headers)).status_code == 403
 
 
 async def test_add_checklist_from_template_copies_items(client_for) -> None:

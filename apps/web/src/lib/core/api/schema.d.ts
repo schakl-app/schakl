@@ -21,6 +21,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/addresslookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Lookup Address */
+        get: operations["lookup_address_api_v1_addresslookup_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ai/assist/write": {
         parameters: {
             query?: never;
@@ -811,6 +828,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/companies/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Company Settings
+         * @description How this organisation numbers its clients (klantnummer format + sequence).
+         */
+        get: operations["get_company_settings_api_v1_companies_settings_get"];
+        /** Update Company Settings */
+        put: operations["update_company_settings_api_v1_companies_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/companies/settings/backfill-client-numbers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Backfill Client Numbers
+         * @description Number every client that has no number yet, oldest first.
+         *
+         *     Only fills blanks — an existing number is never rewritten, so this is safe to run twice.
+         */
+        post: operations["backfill_client_numbers_api_v1_companies_settings_backfill_client_numbers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/companies/{company_id}": {
         parameters: {
             query?: never;
@@ -1131,6 +1191,90 @@ export interface paths {
         /** Create Domain */
         post: operations["create_domain_api_v1_domains_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/domains/tld-prices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Tld Prices
+         * @description The per-TLD price list: current, scheduled and past rows, plus unpriced TLDs.
+         */
+        get: operations["list_tld_prices_api_v1_domains_tld_prices_get"];
+        put?: never;
+        /**
+         * Set Tld Price
+         * @description Append a price row for a TLD (a same-day row is corrected in place).
+         */
+        post: operations["set_tld_price_api_v1_domains_tld_prices_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/domains/tld-prices/price-increase": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Tld Price Increase
+         * @description Apply a price change: one history row per TLD, effective ``valid_from``.
+         */
+        post: operations["apply_tld_price_increase_api_v1_domains_tld_prices_price_increase_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/domains/tld-prices/price-increase/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Tld Price Increase
+         * @description What a price change would do — nothing is written (#231's preview-then-apply).
+         */
+        post: operations["preview_tld_price_increase_api_v1_domains_tld_prices_price_increase_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/domains/tld-prices/{price_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Tld Price
+         * @description Remove one history row (undo a scheduled increase or a mistake).
+         */
+        delete: operations["delete_tld_price_api_v1_domains_tld_prices__price_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1648,6 +1792,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/impex/company/columns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Columns Company
+         * @description Every column a company import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+         */
+        get: operations["impex_columns_company_api_v1_impex_company_columns_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/impex/company/export": {
         parameters: {
             query?: never;
@@ -1679,9 +1843,49 @@ export interface paths {
         put?: never;
         /**
          * Impex Import Company
-         * @description Import company rows from CSV, upserting on `name` (max 2000 data rows per request).
+         * @description Import company rows from a spreadsheet, upserting on the first of `client_number`, `name` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
          */
         post: operations["impex_import_company_api_v1_impex_company_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/company/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Inspect Company
+         * @description Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+         */
+        post: operations["impex_inspect_company_api_v1_impex_company_inspect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/contact/columns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Columns Contact
+         * @description Every column a contact import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+         */
+        get: operations["impex_columns_contact_api_v1_impex_contact_columns_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1719,9 +1923,29 @@ export interface paths {
         put?: never;
         /**
          * Impex Import Contact
-         * @description Import contact rows from CSV, upserting on `email` (max 2000 data rows per request).
+         * @description Import contact rows from a spreadsheet, upserting on the first of `email` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
          */
         post: operations["impex_import_contact_api_v1_impex_contact_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/contact/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Inspect Contact
+         * @description Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+         */
+        post: operations["impex_inspect_contact_api_v1_impex_contact_inspect_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1740,6 +1964,26 @@ export interface paths {
          * @description The entity types with CSV support, for the Instellingen → Import & export screen.
          */
         get: operations["list_impex_entities_api_v1_impex_entities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/project/columns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Columns Project
+         * @description Every column a project import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+         */
+        get: operations["impex_columns_project_api_v1_impex_project_columns_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1779,9 +2023,49 @@ export interface paths {
         put?: never;
         /**
          * Impex Import Project
-         * @description Import project rows from CSV, upserting on `name` (max 2000 data rows per request).
+         * @description Import project rows from a spreadsheet, upserting on the first of `name` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
          */
         post: operations["impex_import_project_api_v1_impex_project_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/project/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Inspect Project
+         * @description Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+         */
+        post: operations["impex_inspect_project_api_v1_impex_project_inspect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/subscription/columns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Columns Subscription
+         * @description Every column a subscription import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+         */
+        get: operations["impex_columns_subscription_api_v1_impex_subscription_columns_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1819,9 +2103,49 @@ export interface paths {
         put?: never;
         /**
          * Impex Import Subscription
-         * @description Import subscription rows from CSV, upserting on `name` (max 2000 data rows per request).
+         * @description Import subscription rows from a spreadsheet, upserting on the first of `name` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
          */
         post: operations["impex_import_subscription_api_v1_impex_subscription_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/subscription/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Inspect Subscription
+         * @description Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+         */
+        post: operations["impex_inspect_subscription_api_v1_impex_subscription_inspect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/task/columns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Columns Task
+         * @description Every column a task import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+         */
+        get: operations["impex_columns_task_api_v1_impex_task_columns_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1859,9 +2183,49 @@ export interface paths {
         put?: never;
         /**
          * Impex Import Task
-         * @description Import task rows from CSV, create-only (no natural key) (max 2000 data rows per request).
+         * @description Import task rows from a spreadsheet, create-only (no natural key) (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
          */
         post: operations["impex_import_task_api_v1_impex_task_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/task/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Inspect Task
+         * @description Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+         */
+        post: operations["impex_inspect_task_api_v1_impex_task_inspect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/time_entry/columns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Columns Time Entry
+         * @description Every column a time_entry import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+         */
+        get: operations["impex_columns_time_entry_api_v1_impex_time_entry_columns_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1899,9 +2263,29 @@ export interface paths {
         put?: never;
         /**
          * Impex Import Time Entry
-         * @description Import time_entry rows from CSV, create-only (no natural key) (max 2000 data rows per request).
+         * @description Import time_entry rows from a spreadsheet, create-only (no natural key) (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
          */
         post: operations["impex_import_time_entry_api_v1_impex_time_entry_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/time_entry/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Inspect Time Entry
+         * @description Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+         */
+        post: operations["impex_inspect_time_entry_api_v1_impex_time_entry_inspect_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2352,6 +2736,31 @@ export interface paths {
         patch: operations["update_interaction_kind_api_v1_interactions_kinds__kind_id__patch"];
         trace?: never;
     };
+    "/api/v1/interactions/upload-eml": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Interaction Eml
+         * @description Log an exported email as a contactmoment (#262).
+         *
+         *     The narrow, audited path that may write the protected ``email`` kind: the ordinary
+         *     ``POST /interactions`` still refuses it, because only a real message — parsed, not typed —
+         *     may claim to be one. Links may be assigned in the same step, exactly like approving a
+         *     gmail row (#183). Declared before ``/{interaction_id}`` so the literal path always wins.
+         */
+        post: operations["upload_interaction_eml_api_v1_interactions_upload_eml_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/interactions/{interaction_id}": {
         parameters: {
             query?: never;
@@ -2369,6 +2778,28 @@ export interface paths {
         head?: never;
         /** Update Interaction */
         patch: operations["update_interaction_api_v1_interactions__interaction_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/interactions/{interaction_id}/add-to-conversation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Interaction To Conversation
+         * @description Manually glue this gmail email onto another's conversation (#272). Gated on ``.review``
+         *     like every gmail-row mutation — the service enforces strict mailbox ownership on both the
+         *     row and the target.
+         */
+        post: operations["add_interaction_to_conversation_api_v1_interactions__interaction_id__add_to_conversation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/interactions/{interaction_id}/approve": {
@@ -2416,6 +2847,50 @@ export interface paths {
         put?: never;
         /** Remap Interaction */
         post: operations["remap_interaction_api_v1_interactions__interaction_id__remap_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/interactions/{interaction_id}/thread": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Interaction Thread
+         * @description The full conversation this interaction belongs to (#272), newest first — what the detail
+         *     modal expands into. A row not in a conversation is its own one-message thread.
+         */
+        get: operations["get_interaction_thread_api_v1_interactions__interaction_id__thread_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/billable-subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Billable Subscriptions
+         * @description A client's active agreements as ready-made invoice lines (the "＋ abonnement" pick).
+         *
+         *     ``already_billed`` marks a period a document already claims: shown rather than hidden,
+         *     so the answer to "did I invoice March yet?" is on the picker instead of on a duplicate.
+         */
+        get: operations["billable_subscriptions_api_v1_invoicing_billable_subscriptions_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3015,6 +3490,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoicing/uninvoiced": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Uninvoiced
+         * @description Org-wide report of approved + billable + not-yet-invoiced hours (#277), bucketed
+         *     server-side with exact per-group subtotals. Read-only: the per-company ``/unbilled``
+         *     stays the invoice-build preview, and building happens via ``/invoices/from-time``.
+         */
+        get: operations["uninvoiced_api_v1_invoicing_uninvoiced_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/leave/balance": {
         parameters: {
             query?: never;
@@ -3024,6 +3521,32 @@ export interface paths {
         };
         /** Balances */
         get: operations["balances_api_v1_leave_balance_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/balance/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Group Balances
+         * @description The employee-facing combined balances (#265): one figure per balance group (statutory +
+         *     extra-statutory vacation roll up into one "Vakantieverlof"), with the per-pot breakdown —
+         *     accrual year, remaining, expiry — alongside for anyone who needs to see where hours went.
+         *
+         *     ``all_users`` — the manager team roster (#282): every member's groups in one call, each tagged
+         *     with ``user_id``. Needs ``leave.request.read:any``; without it the caller still gets only their
+         *     own.
+         */
+        get: operations["group_balances_api_v1_leave_balance_groups_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3104,6 +3627,57 @@ export interface paths {
         put?: never;
         /** Generate Entitlements */
         post: operations["generate_entitlements_api_v1_leave_entitlements_generate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/free-time": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Free Time Overview
+         * @description Everything the free-time card and the employment wizard need, in one call.
+         *
+         *     The per-type balance says "0 h over" as soon as the generator has placed every day — true,
+         *     and no help in answering "when is my next day off" or "does the pot still cover my calendar".
+         *     This carries the placed days, the next one, and the days a contract change orphaned.
+         *
+         *     Own by default; another employee's needs ``leave.request.read:any``, like every leave read.
+         */
+        get: operations["free_time_overview_api_v1_leave_free_time_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/free-time/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Withdraw Free Time
+         * @description Take back free days the pot no longer covers, after a contract change reprorated it (#264).
+         *
+         *     Explicit ids the caller was just shown, never "everything over the pot": a balance that moved
+         *     in between must not cancel more than was agreed to. Each goes through the ordinary cancel
+         *     path, so the past stays locked and the Google mirror is told; an id that will not cancel is
+         *     reported in ``skipped`` rather than abandoning the rest.
+         */
+        post: operations["withdraw_free_time_api_v1_leave_free_time_withdraw_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3330,7 +3904,13 @@ export interface paths {
         post?: never;
         /**
          * Delete Recurring
-         * @description Deletes the pattern only; the days it already placed stay individually cancellable.
+         * @description Delete the pattern. By default the days it placed stay — they are real leave somebody
+         *     planned around, and a rule being removed is no reason to wipe a calendar.
+         *
+         *     ``withdraw_days=true`` also takes back the days still standing from today on, in the same
+         *     transaction and through the ordinary cancel path (so the past stays locked and the Google
+         *     mirror is told). The response says how many went, because "deleted" alone would not tell the
+         *     caller whether a year of free Fridays is still on the agenda.
          */
         delete: operations["delete_recurring_api_v1_leave_recurring__recurring_id__delete"];
         options?: never;
@@ -3683,6 +4263,28 @@ export interface paths {
          * @description Store the encrypted Google Ads developer token (an empty value keeps the stored one).
          */
         put: operations["save_settings_api_v1_marketing_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/marketing/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Summary
+         * @description The dashboard widget's compact digest: top linked clients by their headline KPI, from
+         *     stored data. Horizon-scoped like the per-company metrics read it summarizes — never wider
+         *     than what the caller could fetch client-by-client.
+         */
+        get: operations["summary_api_v1_marketing_summary_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -4135,7 +4737,7 @@ export interface paths {
         };
         /**
          * Get Preferences
-         * @description My effective matrix: what will actually happen, and which layer decided it.
+         * @description My effective matrix: what will actually happen on both channels, and who decided it.
          */
         get: operations["get_preferences_api_v1_notifications_preferences_get"];
         /** Set Preferences */
@@ -4156,32 +4758,14 @@ export interface paths {
         };
         /**
          * Get Default Preferences
-         * @description What a member inherits before they override anything (org-wide).
+         * @description What a member inherits before they override anything (org-wide), plus the shared rooms.
+         *
+         *     A shared room is not something a member inherits and overrides — it is routed once, here, for
+         *     everyone (#295). It rides this matrix because that is where its per-event column lives.
          */
         get: operations["get_default_preferences_api_v1_notifications_preferences_defaults_get"];
         /** Set Default Preferences */
         put: operations["set_default_preferences_api_v1_notifications_preferences_defaults_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/notifications/preferences/email": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Email Preference
-         * @description My e-mail delivery rule (#17): off by default, one cadence for all my notifications.
-         */
-        get: operations["get_email_preference_api_v1_notifications_preferences_email_get"];
-        /** Set Email Preference */
-        put: operations["set_email_preference_api_v1_notifications_preferences_email_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -4741,7 +5325,11 @@ export interface paths {
         delete: operations["delete_subscription_template_api_v1_subscriptions_templates__template_id__delete"];
         options?: never;
         head?: never;
-        /** Update Subscription Template */
+        /**
+         * Update Subscription Template
+         * @description A rename carries over to the agreements made from this preset that still bear its old
+         *     name; ``renamed_subscriptions`` reports how many, so the screen can say so.
+         */
         patch: operations["update_subscription_template_api_v1_subscriptions_templates__template_id__patch"];
         trace?: never;
     };
@@ -5956,6 +6544,24 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** AddressLookupResponse */
+        AddressLookupResponse: {
+            /** Suggestions */
+            suggestions: components["schemas"]["AddressSuggestionOut"][];
+        };
+        /** AddressSuggestionOut */
+        AddressSuggestionOut: {
+            /** City */
+            city: string;
+            /** Country */
+            country: string;
+            /** House Number */
+            house_number: string;
+            /** Postal Code */
+            postal_code: string;
+            /** Street */
+            street: string;
+        };
         /** ApiKeyCreate */
         ApiKeyCreate: {
             /** Expires At */
@@ -6148,6 +6754,38 @@ export interface components {
             /** Backup Codes */
             backup_codes: string[];
         };
+        /**
+         * BillableSubscription
+         * @description One of a client's agreements, offered to the line editor as a ready-made line.
+         *
+         *     ``already_billed`` is the honest half of the answer: the period is *shown* with the claim
+         *     that holds it, rather than hidden, so a user who wonders "did I already invoice March?"
+         *     reads it here instead of finding out from a duplicate.
+         */
+        BillableSubscription: {
+            /**
+             * Already Billed
+             * @default false
+             */
+            already_billed: boolean;
+            /** Amount */
+            amount: string;
+            /** Currency */
+            currency: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Lines */
+            lines?: components["schemas"]["SubscriptionLineOffer"][];
+            /** Name */
+            name: string;
+            /** Period End */
+            period_end: string | null;
+            /** Period Start */
+            period_start: string | null;
+        };
         /** Body_auth_cookie_login_api_v1_auth_login_post */
         Body_auth_cookie_login_api_v1_auth_login_post: {
             /** Client Id */
@@ -6176,49 +6814,379 @@ export interface components {
         Body_impex_import_company_api_v1_impex_company_import_post: {
             /**
              * File
-             * @description CSV file; headers are the export's keys
+             * @description CSV, TSV or .xlsx file; headers are the export's keys
              */
-            file: string;
+            file?: string | null;
+            /**
+             * Fingerprint
+             * @description The fingerprint from `/inspect`. Supplied and mismatched is a 409 — a mapping is positional and must not be applied to a different file.
+             */
+            fingerprint?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Mapping
+             * @description JSON object mapping a file column **index** to a target column key, e.g. `{"0": "name", "3": "city"}`. Unmapped columns are skipped. Omit the field entirely to use the file's own header row as the mapping, where every header must be an exact column key.
+             */
+            mapping?: string | null;
+            /**
+             * Match Key
+             * @description Force the upsert to match on this column (must be one of the entity's natural keys). Default: the first natural key each row fills.
+             */
+            match_key?: string | null;
+            /**
+             * Sheet
+             * @description Which worksheet to read (.xlsx only; default the first).
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file — tab, comma or semicolon separated, first line the header. Max 1 MiB.
+             */
+            text?: string | null;
         };
         /** Body_impex_import_contact_api_v1_impex_contact_import_post */
         Body_impex_import_contact_api_v1_impex_contact_import_post: {
             /**
              * File
-             * @description CSV file; headers are the export's keys
+             * @description CSV, TSV or .xlsx file; headers are the export's keys
              */
-            file: string;
+            file?: string | null;
+            /**
+             * Fingerprint
+             * @description The fingerprint from `/inspect`. Supplied and mismatched is a 409 — a mapping is positional and must not be applied to a different file.
+             */
+            fingerprint?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Mapping
+             * @description JSON object mapping a file column **index** to a target column key, e.g. `{"0": "name", "3": "city"}`. Unmapped columns are skipped. Omit the field entirely to use the file's own header row as the mapping, where every header must be an exact column key.
+             */
+            mapping?: string | null;
+            /**
+             * Match Key
+             * @description Force the upsert to match on this column (must be one of the entity's natural keys). Default: the first natural key each row fills.
+             */
+            match_key?: string | null;
+            /**
+             * Sheet
+             * @description Which worksheet to read (.xlsx only; default the first).
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file — tab, comma or semicolon separated, first line the header. Max 1 MiB.
+             */
+            text?: string | null;
         };
         /** Body_impex_import_project_api_v1_impex_project_import_post */
         Body_impex_import_project_api_v1_impex_project_import_post: {
             /**
              * File
-             * @description CSV file; headers are the export's keys
+             * @description CSV, TSV or .xlsx file; headers are the export's keys
              */
-            file: string;
+            file?: string | null;
+            /**
+             * Fingerprint
+             * @description The fingerprint from `/inspect`. Supplied and mismatched is a 409 — a mapping is positional and must not be applied to a different file.
+             */
+            fingerprint?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Mapping
+             * @description JSON object mapping a file column **index** to a target column key, e.g. `{"0": "name", "3": "city"}`. Unmapped columns are skipped. Omit the field entirely to use the file's own header row as the mapping, where every header must be an exact column key.
+             */
+            mapping?: string | null;
+            /**
+             * Match Key
+             * @description Force the upsert to match on this column (must be one of the entity's natural keys). Default: the first natural key each row fills.
+             */
+            match_key?: string | null;
+            /**
+             * Sheet
+             * @description Which worksheet to read (.xlsx only; default the first).
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file — tab, comma or semicolon separated, first line the header. Max 1 MiB.
+             */
+            text?: string | null;
         };
         /** Body_impex_import_subscription_api_v1_impex_subscription_import_post */
         Body_impex_import_subscription_api_v1_impex_subscription_import_post: {
             /**
              * File
-             * @description CSV file; headers are the export's keys
+             * @description CSV, TSV or .xlsx file; headers are the export's keys
              */
-            file: string;
+            file?: string | null;
+            /**
+             * Fingerprint
+             * @description The fingerprint from `/inspect`. Supplied and mismatched is a 409 — a mapping is positional and must not be applied to a different file.
+             */
+            fingerprint?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Mapping
+             * @description JSON object mapping a file column **index** to a target column key, e.g. `{"0": "name", "3": "city"}`. Unmapped columns are skipped. Omit the field entirely to use the file's own header row as the mapping, where every header must be an exact column key.
+             */
+            mapping?: string | null;
+            /**
+             * Match Key
+             * @description Force the upsert to match on this column (must be one of the entity's natural keys). Default: the first natural key each row fills.
+             */
+            match_key?: string | null;
+            /**
+             * Sheet
+             * @description Which worksheet to read (.xlsx only; default the first).
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file — tab, comma or semicolon separated, first line the header. Max 1 MiB.
+             */
+            text?: string | null;
         };
         /** Body_impex_import_task_api_v1_impex_task_import_post */
         Body_impex_import_task_api_v1_impex_task_import_post: {
             /**
              * File
-             * @description CSV file; headers are the export's keys
+             * @description CSV, TSV or .xlsx file; headers are the export's keys
              */
-            file: string;
+            file?: string | null;
+            /**
+             * Fingerprint
+             * @description The fingerprint from `/inspect`. Supplied and mismatched is a 409 — a mapping is positional and must not be applied to a different file.
+             */
+            fingerprint?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Mapping
+             * @description JSON object mapping a file column **index** to a target column key, e.g. `{"0": "name", "3": "city"}`. Unmapped columns are skipped. Omit the field entirely to use the file's own header row as the mapping, where every header must be an exact column key.
+             */
+            mapping?: string | null;
+            /**
+             * Match Key
+             * @description Force the upsert to match on this column (must be one of the entity's natural keys). Default: the first natural key each row fills.
+             */
+            match_key?: string | null;
+            /**
+             * Sheet
+             * @description Which worksheet to read (.xlsx only; default the first).
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file — tab, comma or semicolon separated, first line the header. Max 1 MiB.
+             */
+            text?: string | null;
         };
         /** Body_impex_import_time_entry_api_v1_impex_time_entry_import_post */
         Body_impex_import_time_entry_api_v1_impex_time_entry_import_post: {
             /**
              * File
-             * @description CSV file; headers are the export's keys
+             * @description CSV, TSV or .xlsx file; headers are the export's keys
              */
-            file: string;
+            file?: string | null;
+            /**
+             * Fingerprint
+             * @description The fingerprint from `/inspect`. Supplied and mismatched is a 409 — a mapping is positional and must not be applied to a different file.
+             */
+            fingerprint?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Mapping
+             * @description JSON object mapping a file column **index** to a target column key, e.g. `{"0": "name", "3": "city"}`. Unmapped columns are skipped. Omit the field entirely to use the file's own header row as the mapping, where every header must be an exact column key.
+             */
+            mapping?: string | null;
+            /**
+             * Match Key
+             * @description Force the upsert to match on this column (must be one of the entity's natural keys). Default: the first natural key each row fills.
+             */
+            match_key?: string | null;
+            /**
+             * Sheet
+             * @description Which worksheet to read (.xlsx only; default the first).
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file — tab, comma or semicolon separated, first line the header. Max 1 MiB.
+             */
+            text?: string | null;
+        };
+        /** Body_impex_inspect_company_api_v1_impex_company_inspect_post */
+        Body_impex_inspect_company_api_v1_impex_company_inspect_post: {
+            /**
+             * File
+             * @description CSV, TSV or .xlsx file
+             */
+            file?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Sheet
+             * @description Worksheet to read (.xlsx only)
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file
+             */
+            text?: string | null;
+        };
+        /** Body_impex_inspect_contact_api_v1_impex_contact_inspect_post */
+        Body_impex_inspect_contact_api_v1_impex_contact_inspect_post: {
+            /**
+             * File
+             * @description CSV, TSV or .xlsx file
+             */
+            file?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Sheet
+             * @description Worksheet to read (.xlsx only)
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file
+             */
+            text?: string | null;
+        };
+        /** Body_impex_inspect_project_api_v1_impex_project_inspect_post */
+        Body_impex_inspect_project_api_v1_impex_project_inspect_post: {
+            /**
+             * File
+             * @description CSV, TSV or .xlsx file
+             */
+            file?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Sheet
+             * @description Worksheet to read (.xlsx only)
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file
+             */
+            text?: string | null;
+        };
+        /** Body_impex_inspect_subscription_api_v1_impex_subscription_inspect_post */
+        Body_impex_inspect_subscription_api_v1_impex_subscription_inspect_post: {
+            /**
+             * File
+             * @description CSV, TSV or .xlsx file
+             */
+            file?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Sheet
+             * @description Worksheet to read (.xlsx only)
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file
+             */
+            text?: string | null;
+        };
+        /** Body_impex_inspect_task_api_v1_impex_task_inspect_post */
+        Body_impex_inspect_task_api_v1_impex_task_inspect_post: {
+            /**
+             * File
+             * @description CSV, TSV or .xlsx file
+             */
+            file?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Sheet
+             * @description Worksheet to read (.xlsx only)
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file
+             */
+            text?: string | null;
+        };
+        /** Body_impex_inspect_time_entry_api_v1_impex_time_entry_inspect_post */
+        Body_impex_inspect_time_entry_api_v1_impex_time_entry_inspect_post: {
+            /**
+             * File
+             * @description CSV, TSV or .xlsx file
+             */
+            file?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Sheet
+             * @description Worksheet to read (.xlsx only)
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file
+             */
+            text?: string | null;
         };
         /** Body_reset_forgot_password_api_v1_auth_forgot_password_post */
         Body_reset_forgot_password_api_v1_auth_forgot_password_post: {
@@ -6249,6 +7217,28 @@ export interface components {
         Body_upload_file_api_v1_files_post: {
             /** File */
             file: string;
+        };
+        /** Body_upload_interaction_eml_api_v1_interactions_upload_eml_post */
+        Body_upload_interaction_eml_api_v1_interactions_upload_eml_post: {
+            /**
+             * Allow Duplicate
+             * @description Log it even though this Message-ID is already on the timeline
+             * @default false
+             */
+            allow_duplicate: boolean;
+            /** Company Id */
+            company_id?: string | null;
+            /** Contact Id */
+            contact_id?: string | null;
+            /**
+             * File
+             * @description An exported .eml message
+             */
+            file: string;
+            /** Project Id */
+            project_id?: string | null;
+            /** Task Id */
+            task_id?: string | null;
         };
         /** Body_verify_request_token_api_v1_auth_request_verify_token_post */
         Body_verify_request_token_api_v1_auth_request_verify_token_post: {
@@ -6388,15 +7378,22 @@ export interface components {
              */
             method: string;
         };
-        /** ChannelCreate */
+        /**
+         * ChannelCreate
+         * @description Connect a transport. **Which events reach it, and how often, is not asked here** (#295):
+         *     that is a per-event column in the matrix of the scope that owns the channel, so a freshly
+         *     connected channel is silent until someone routes something to it.
+         */
         ChannelCreate: {
+            /** Digest Time */
+            digest_time?: string | null;
+            /** Digest Weekday */
+            digest_weekday?: number | null;
             /**
              * Enabled
              * @default true
              */
             enabled: boolean;
-            /** Event Filter */
-            event_filter?: string[];
             /**
              * Kind
              * @enum {string}
@@ -6409,6 +7406,89 @@ export interface components {
             /** User Id */
             user_id?: string | null;
         };
+        /**
+         * ChannelPreference
+         * @description An external channel as the matrix renders it: one column, one row per event.
+         *
+         *     ``digest_time``/``digest_weekday`` are the channel's own digest schedule — not per event, so
+         *     they are edited on the channel (Instellingen → Meldingen → Kanalen), not in the matrix.
+         */
+        ChannelPreference: {
+            /** Digest Time */
+            digest_time?: string | null;
+            /** Digest Weekday */
+            digest_weekday?: number | null;
+            /** Events */
+            events?: components["schemas"]["ChannelPreferenceEvent"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * ChannelPreferenceEvent
+         * @description One event's rule on one external channel (#283). ``enabled=false`` = not routed.
+         */
+        ChannelPreferenceEvent: {
+            /**
+             * Delay Minutes
+             * @default 0
+             */
+            delay_minutes: number;
+            /**
+             * Digest
+             * @default immediate
+             */
+            digest: string;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /** Event Type */
+            event_type: string;
+        };
+        /**
+         * ChannelPreferenceEventWrite
+         * @description One event routed to one channel. Absent = not routed (#283).
+         */
+        ChannelPreferenceEventWrite: {
+            /**
+             * Delay Minutes
+             * @default 0
+             */
+            delay_minutes: number;
+            /**
+             * Digest
+             * @default immediate
+             */
+            digest: string;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /** Event Type */
+            event_type: string;
+        };
+        /**
+         * ChannelPreferenceWrite
+         * @description This channel's whole per-event routing, wholesale like every other block.
+         */
+        ChannelPreferenceWrite: {
+            /**
+             * Channel Config Id
+             * Format: uuid
+             */
+            channel_config_id: string;
+            /** Events */
+            events?: components["schemas"]["ChannelPreferenceEventWrite"][];
+        };
         /** ChannelRead */
         ChannelRead: {
             /**
@@ -6416,10 +7496,12 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Digest Time */
+            digest_time?: string | null;
+            /** Digest Weekday */
+            digest_weekday?: number | null;
             /** Enabled */
             enabled: boolean;
-            /** Event Filter */
-            event_filter: string[];
             /**
              * Id
              * Format: uuid
@@ -6448,10 +7530,12 @@ export interface components {
         };
         /** ChannelUpdate */
         ChannelUpdate: {
+            /** Digest Time */
+            digest_time?: string | null;
+            /** Digest Weekday */
+            digest_weekday?: number | null;
             /** Enabled */
             enabled?: boolean | null;
-            /** Event Filter */
-            event_filter?: string[] | null;
             /** Name */
             name?: string | null;
             /** Url */
@@ -6555,6 +7639,14 @@ export interface components {
         ClaimPinRequest: {
             /** Pin */
             pin: string;
+        };
+        /**
+         * ClientNumberBackfillResult
+         * @description What the "number existing companies" action did — it only ever fills blanks.
+         */
+        ClientNumberBackfillResult: {
+            /** Numbered */
+            numbered: number;
         };
         /** ClientRevenue */
         ClientRevenue: {
@@ -6663,6 +7755,8 @@ export interface components {
             assignees?: components["schemas"]["AssigneeWrite"][] | null;
             /** City */
             city?: string | null;
+            /** Client Number */
+            client_number?: string | null;
             /** Coc Number */
             coc_number?: string | null;
             /** Country */
@@ -6671,12 +7765,16 @@ export interface components {
             custom?: {
                 [key: string]: unknown;
             };
+            /** House Number */
+            house_number?: string | null;
             /** Invoice Email */
             invoice_email?: string | null;
             /** Name */
             name: string;
             /** Notes */
             notes?: string | null;
+            /** Phone */
+            phone?: string | null;
             /** Postal Code */
             postal_code?: string | null;
             /** Responsible User Id */
@@ -6724,6 +7822,38 @@ export interface components {
             /** Websites */
             websites?: components["schemas"]["WebsiteRef"][];
         };
+        /** CompanyNumberingRead */
+        CompanyNumberingRead: {
+            /** Client Number Auto */
+            client_number_auto: boolean;
+            /** Client Number Format */
+            client_number_format: string;
+            /** Client Number Next Seq */
+            client_number_next_seq: number;
+            /** Client Number Reset Yearly */
+            client_number_reset_yearly: boolean;
+            /** Client Number Seq Year */
+            client_number_seq_year: number | null;
+        };
+        /**
+         * CompanyNumberingWrite
+         * @description Partial update: every field optional, applied with ``exclude_unset``.
+         *
+         *     Named for what it carries rather than for its table (``company_settings``): the marketing
+         *     module already publishes a schema called ``CompanySettingsRead``, and two same-named schemas
+         *     make FastAPI fully-qualify **both** in the OpenAPI spec — which would silently rename the
+         *     other module's type in the generated client for no reason of its own.
+         */
+        CompanyNumberingWrite: {
+            /** Client Number Auto */
+            client_number_auto?: boolean | null;
+            /** Client Number Format */
+            client_number_format?: string | null;
+            /** Client Number Next Seq */
+            client_number_next_seq?: number | null;
+            /** Client Number Reset Yearly */
+            client_number_reset_yearly?: boolean | null;
+        };
         /** CompanyRead */
         CompanyRead: {
             /** Address Line1 */
@@ -6734,6 +7864,8 @@ export interface components {
             assignees?: components["schemas"]["AssigneeRead"][];
             /** City */
             city?: string | null;
+            /** Client Number */
+            client_number?: string | null;
             /** Coc Number */
             coc_number?: string | null;
             /** Country */
@@ -6748,6 +7880,8 @@ export interface components {
                 [key: string]: unknown;
             };
             hours?: components["schemas"]["CompanyBudgetHours"] | null;
+            /** House Number */
+            house_number?: string | null;
             /**
              * Id
              * Format: uuid
@@ -6766,6 +7900,8 @@ export interface components {
              * Format: uuid
              */
             org_id: string;
+            /** Phone */
+            phone?: string | null;
             /** Postal Code */
             postal_code?: string | null;
             /** Responsible User Id */
@@ -6830,6 +7966,8 @@ export interface components {
             assignees?: components["schemas"]["AssigneeWrite"][] | null;
             /** City */
             city?: string | null;
+            /** Client Number */
+            client_number?: string | null;
             /** Coc Number */
             coc_number?: string | null;
             /** Country */
@@ -6838,12 +7976,16 @@ export interface components {
             custom?: {
                 [key: string]: unknown;
             } | null;
+            /** House Number */
+            house_number?: string | null;
             /** Invoice Email */
             invoice_email?: string | null;
             /** Name */
             name?: string | null;
             /** Notes */
             notes?: string | null;
+            /** Phone */
+            phone?: string | null;
             /** Postal Code */
             postal_code?: string | null;
             /** Responsible User Id */
@@ -7328,11 +8470,15 @@ export interface components {
             email_provider_id?: string | null;
             /** Name */
             name: string;
+            /** Price Override */
+            price_override?: number | string | null;
             /** Redirect Url */
             redirect_url?: string | null;
             /** Registrar Provider Id */
             registrar_provider_id?: string | null;
             registry_contact?: components["schemas"]["PartyRef"] | null;
+            /** Start Date */
+            start_date?: string | null;
             /** @default active */
             status: components["schemas"]["DomainStatus-Input"];
         };
@@ -7386,11 +8532,15 @@ export interface components {
             name: string;
             /** Nameservers */
             nameservers?: string[] | null;
+            /** Next Invoice Date */
+            next_invoice_date?: string | null;
             /**
              * Org Id
              * Format: uuid
              */
             org_id: string;
+            /** Price Override */
+            price_override?: string | null;
             /** Redirect Url */
             redirect_url?: string | null;
             /** Registrar Provider Id */
@@ -7398,7 +8548,18 @@ export interface components {
             /** Registrar Provider Name */
             registrar_provider_name?: string | null;
             registry_contact?: components["schemas"]["PartyReadRef"] | null;
+            /** Resolved Currency */
+            resolved_currency?: string | null;
+            /** Resolved Price */
+            resolved_price?: string | null;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
             status: components["schemas"]["app__modules__domains__models__DomainStatus"];
+            /** Tld */
+            tld?: string | null;
             /**
              * Updated At
              * Format: date-time
@@ -7428,11 +8589,15 @@ export interface components {
             email_provider_id?: string | null;
             /** Name */
             name?: string | null;
+            /** Price Override */
+            price_override?: number | string | null;
             /** Redirect Url */
             redirect_url?: string | null;
             /** Registrar Provider Id */
             registrar_provider_id?: string | null;
             registry_contact?: components["schemas"]["PartyRef"] | null;
+            /** Start Date */
+            start_date?: string | null;
             status?: components["schemas"]["DomainStatus-Input"] | null;
         };
         /** DossierRead */
@@ -7668,41 +8833,49 @@ export interface components {
             password: string;
         };
         /**
-         * EmailPrefRead
-         * @description The user's effective e-mail rule: off, or a cadence (immediate / daily / weekly).
+         * EmailPreferenceRowWrite
+         * @description One event's e-mail override (#245). The digest schedule is global, so no time/weekday.
          */
-        EmailPrefRead: {
+        EmailPreferenceRowWrite: {
+            /**
+             * Delay Minutes
+             * @default 0
+             */
+            delay_minutes: number;
             /**
              * Digest
-             * @enum {string}
+             * @default immediate
              */
-            digest: "immediate" | "daily" | "weekly";
+            digest: string;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /** Event Type */
+            event_type: string;
+        };
+        /**
+         * EmailSchedule
+         * @description The scope's global e-mail digest schedule: when its daily/weekly mails leave (#245).
+         */
+        EmailSchedule: {
             /** Digest Time */
             digest_time?: string | null;
             /** Digest Weekday */
             digest_weekday?: number | null;
-            /** Enabled */
-            enabled: boolean;
             /**
              * Source
-             * @default default
-             */
-            source: string;
-        };
-        /** EmailPrefWrite */
-        EmailPrefWrite: {
-            /**
-             * Digest
-             * @default daily
              * @enum {string}
              */
-            digest: "immediate" | "daily" | "weekly";
+            source: "default" | "org" | "user";
+        };
+        /** EmailScheduleWrite */
+        EmailScheduleWrite: {
             /** Digest Time */
             digest_time?: string | null;
             /** Digest Weekday */
             digest_weekday?: number | null;
-            /** Enabled */
-            enabled: boolean;
         };
         /**
          * EmailSettingsRead
@@ -7847,6 +9020,8 @@ export interface components {
             contract_hours_per_week: number | string;
             /** End Date */
             end_date?: string | null;
+            /** Free Time Hours Per Week */
+            free_time_hours_per_week?: number | string | null;
             /** Note */
             note?: string | null;
             schedule?: components["schemas"]["WorkSchedule-Input"] | null;
@@ -7870,8 +9045,12 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Effective Free Time Per Week */
+            effective_free_time_per_week: string;
             /** End Date */
             end_date: string | null;
+            /** Free Time Hours Per Week */
+            free_time_hours_per_week: string | null;
             /**
              * Id
              * Format: uuid
@@ -7906,12 +9085,18 @@ export interface components {
         /**
          * EmploymentContractUpdate
          * @description Correcting or terminating a contract. A *changed* contract is a new row, not an edit.
+         *
+         *     Every field is optional, and the service reads ``model_fields_set`` rather than testing for
+         *     ``None``: on ``schedule`` and ``free_time_hours_per_week`` an explicit ``null`` is a value
+         *     ("inherit the week", "derive the free time"), not an omission.
          */
         EmploymentContractUpdate: {
             /** Contract Hours Per Week */
             contract_hours_per_week?: number | string | null;
             /** End Date */
             end_date?: string | null;
+            /** Free Time Hours Per Week */
+            free_time_hours_per_week?: number | string | null;
             /** Note */
             note?: string | null;
             schedule?: components["schemas"]["WorkSchedule-Input"] | null;
@@ -7977,6 +9162,87 @@ export interface components {
             provider: string;
             /** Synced At */
             synced_at: string | null;
+        };
+        /**
+         * FreeTimeDay
+         * @description One free day on the calendar, in the shape the free-time card and the wizard both read.
+         */
+        FreeTimeDay: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** End Time */
+            end_time?: string | null;
+            /** From Pattern */
+            from_pattern: boolean;
+            /** Hours */
+            hours: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Start Time */
+            start_time?: string | null;
+        };
+        /**
+         * FreeTimeOverview
+         * @description Everything the free-time surfaces need, in one read.
+         *
+         *     The per-type balance answers "how many hours are left", which for free time is the *wrong*
+         *     question and reads uselessly: once the generator has placed every day, entitled and approved
+         *     are equal and the balance says "0 h over" — true, and no help at all in answering "when is my
+         *     next day off". This adds the two facts that matter: which days are on the calendar, and
+         *     whether the pot still covers them.
+         */
+        FreeTimeOverview: {
+            /** Days */
+            days: components["schemas"]["FreeTimeDay"][];
+            /** Entitled Hours */
+            entitled_hours: string;
+            /** Hours Per Day */
+            hours_per_day: string;
+            /** Leave Type Ids */
+            leave_type_ids: string[];
+            /** Next Date */
+            next_date: string | null;
+            /** Overhang */
+            overhang: components["schemas"]["FreeTimeDay"][];
+            /** Overhang Hours */
+            overhang_hours: string;
+            /** Placed Hours */
+            placed_hours: string;
+            /** Taken Hours */
+            taken_hours: string;
+            /** Unplaced Hours */
+            unplaced_hours: string;
+            /** Upcoming Hours */
+            upcoming_hours: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Year */
+            year: number;
+        };
+        /**
+         * FreeTimeWithdraw
+         * @description Withdraw specific free days. Ids, never "everything over the pot": the caller confirms a
+         *     list it was shown, so a balance that moved in between cannot cancel more than was agreed.
+         */
+        FreeTimeWithdraw: {
+            /** Request Ids */
+            request_ids: string[];
+        };
+        /** FreeTimeWithdrawResult */
+        FreeTimeWithdrawResult: {
+            /** Cancelled */
+            cancelled: number;
+            /** Skipped */
+            skipped: string[];
         };
         /** GeneralPreference */
         GeneralPreference: {
@@ -8312,6 +9578,60 @@ export interface components {
             token: string;
         };
         /**
+         * ImpexColumnInfo
+         * @description One target column an import may write into — the mapping step's vocabulary.
+         *
+         *     ``key`` is the stable header key and the only thing a mapping ever names. Labels are for
+         *     display: ``label_key`` is an i18n key for the built-in columns, ``label_i18n`` the tenant's
+         *     own per-locale labels for a custom field (§13 data, resolved by the client, never by the
+         *     API — the API has no business picking the caller's locale for tenant content).
+         */
+        ImpexColumnInfo: {
+            /** Aliases */
+            aliases?: string[];
+            /** Clearable */
+            clearable: boolean;
+            /** Data Type */
+            data_type: string;
+            /** Key */
+            key: string;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            } | null;
+            /** Label Key */
+            label_key?: string | null;
+            /** Module */
+            module?: string | null;
+            /**
+             * Natural Key
+             * @default false
+             */
+            natural_key: boolean;
+            /** Options */
+            options?: string[];
+            /** Readonly */
+            readonly: boolean;
+            /** Required */
+            required: boolean;
+            /** Source */
+            source: string;
+        };
+        /**
+         * ImpexColumnsResponse
+         * @description Everything a client needs to render a mapping UI for one entity, in one call.
+         */
+        ImpexColumnsResponse: {
+            /** Columns */
+            columns: components["schemas"]["ImpexColumnInfo"][];
+            /** Entity Type */
+            entity_type: string;
+            /** Importable */
+            importable: boolean;
+            /** Natural Keys */
+            natural_keys: string[];
+        };
+        /**
          * ImpexEntityInfo
          * @description One CSV-capable entity type — the Instellingen → Import & export screen's catalog.
          */
@@ -8322,10 +9642,70 @@ export interface components {
             filters: string[];
             /** Importable */
             importable: boolean;
+            /** Natural Keys */
+            natural_keys: string[];
             /** Read Permission */
             read_permission: string;
             /** Write Permission */
             write_permission: string;
+        };
+        /**
+         * ImpexInspectReport
+         * @description What the file *is*, before anything is mapped or written.
+         *
+         *     Touches no tenant rows: this reads the upload and compares it with the entity's column
+         *     catalog. It is still write-gated — it is a step of an import, and the tighter gate is the
+         *     honest one for a route that accepts an arbitrary upload.
+         */
+        ImpexInspectReport: {
+            /** Columns */
+            columns: components["schemas"]["ImpexSourceColumn"][];
+            /** Delimiter */
+            delimiter?: string | null;
+            /** Encoding */
+            encoding?: string | null;
+            /** Fingerprint */
+            fingerprint: string;
+            /** Missing Required */
+            missing_required?: string[];
+            /**
+             * Rows
+             * @description Data rows (the header row excluded).
+             */
+            rows: number;
+            /** Sheet */
+            sheet?: string | null;
+            /** Sheets */
+            sheets?: string[];
+            /** Source Format */
+            source_format: string;
+            /** Suggested Match Key */
+            suggested_match_key?: string | null;
+            /**
+             * Uncalculated Formulas
+             * @default 0
+             */
+            uncalculated_formulas: number;
+        };
+        /**
+         * ImpexSourceColumn
+         * @description One column **of the uploaded file**, addressed by position.
+         *
+         *     Position, not header name: a spreadsheet export routinely carries duplicate headers and
+         *     empty ones, both of which a name-keyed mapping cannot express, and a header spelling drifts
+         *     while an index does not.
+         */
+        ImpexSourceColumn: {
+            /** Header */
+            header: string;
+            /** Index */
+            index: number;
+            /** Match */
+            match?: string | null;
+            /** Samples */
+            samples?: string[];
+            /** Suggested Key */
+            suggested_key?: string | null;
         };
         /**
          * ImportReport
@@ -8475,6 +9855,18 @@ export interface components {
             needs_setup: boolean;
         };
         /**
+         * InteractionAddToConversation
+         * @description Glue a gmail email onto another's conversation by hand (#272) — for a reply Gmail didn't
+         *     thread automatically. The target must be one of the caller's own logged gmail rows.
+         */
+        InteractionAddToConversation: {
+            /**
+             * Target Interaction Id
+             * Format: uuid
+             */
+            target_interaction_id: string;
+        };
+        /**
          * InteractionApprove
          * @description Approve a gmail row, optionally assigning it in the same step (#183) — the same link
          *     fields as a remap; an absent field leaves the row's current link untouched, ``null``
@@ -8525,6 +9917,25 @@ export interface components {
          * @enum {string}
          */
         InteractionDirection: "inbound" | "outbound" | "none";
+        /**
+         * InteractionEmlUploadRead
+         * @description The result of uploading a ``.eml`` (#262): the logged interaction, plus what happened
+         *     to its attachments. A skipped attachment (disallowed type, over the size ceiling, or no
+         *     ``files.file.write``) must never fail the upload — but it must never be silent either.
+         */
+        InteractionEmlUploadRead: {
+            /**
+             * Attachments Skipped
+             * @default 0
+             */
+            attachments_skipped: number;
+            /**
+             * Attachments Stored
+             * @default 0
+             */
+            attachments_stored: number;
+            interaction: components["schemas"]["InteractionRead"];
+        };
         /** InteractionKindDefCreate */
         InteractionKindDefCreate: {
             /**
@@ -8630,6 +10041,13 @@ export interface components {
             /** Contact Name */
             contact_name?: string | null;
             /**
+             * Conversation Count
+             * @default 1
+             */
+            conversation_count: number;
+            /** Conversation Id */
+            conversation_id?: string | null;
+            /**
              * Created At
              * Format: date-time
              */
@@ -8703,7 +10121,7 @@ export interface components {
          * InteractionSource
          * @enum {string}
          */
-        InteractionSource: "manual" | "gmail";
+        InteractionSource: "manual" | "gmail" | "upload";
         /**
          * InteractionStatus
          * @enum {string}
@@ -8834,6 +10252,8 @@ export interface components {
                 [key: string]: unknown;
             };
             customer?: components["schemas"]["CustomerRead"];
+            /** Domain Id */
+            domain_id: string | null;
             /** Due Date */
             due_date: string | null;
             /** Exchange Rate */
@@ -9104,11 +10524,18 @@ export interface components {
         };
         /**
          * LeaveBalance
-         * @description Balance per tracks_balance type: entitled + carried − approved − pending.
+         * @description Balance per tracks_balance type: entitled + carried − approved − pending − lapsed (#265).
+         *
+         *     ``remaining_hours`` is expiry-aware: it reflects the FIFO-by-expiry pot ledger, so it already
+         *     excludes carried hours that have lapsed and includes prior-year hours still in their window.
+         *     ``balance_group`` echoes the type's group so a client can roll grouped rows into one figure —
+         *     group remaining is exactly the sum of its types' ``remaining_hours`` by construction.
          */
         LeaveBalance: {
             /** Approved Hours */
             approved_hours: string;
+            /** Balance Group */
+            balance_group?: string | null;
             /** Entitled Hours */
             entitled_hours: string;
             /**
@@ -9123,6 +10550,22 @@ export interface components {
             /** Year */
             year: number;
         };
+        /**
+         * LeaveCalendarDisplay
+         * @description How this type's absences are drawn on the agenda (#270).
+         *
+         *     ``ALL_DAY`` is the historical behaviour and the default: a full-width chip, in the month
+         *     grid and in the pinned all-day row of the day/week time grid. ``TIMED`` places the absence
+         *     as a positioned hour block instead, at the window it actually covers.
+         *
+         *     A *type-level* choice, not a per-request one: whether an absence reads as "away today" or
+         *     as "away between 08:30 and 17:00" is a property of the kind of leave, not of the day. It is
+         *     also the only way roostervrije tijd / ADV can be drawn per hour at all — its generated days
+         *     carry no ``start_time``/``end_time`` (they are the whole scheduled day), so there is nothing
+         *     on the request itself to infer a window from.
+         * @enum {string}
+         */
+        LeaveCalendarDisplay: "all_day" | "timed";
         /**
          * LeaveDayHours
          * @description One day of a request. ``reason`` says *why* a day is worth nothing, so the UI can too.
@@ -9154,6 +10597,8 @@ export interface components {
             leave_type_id: string;
             /** Note */
             note: string | null;
+            /** Source */
+            source: string;
             /**
              * User Id
              * Format: uuid
@@ -9178,6 +10623,43 @@ export interface components {
              * Format: uuid
              */
             user_id: string;
+            /** Year */
+            year: number;
+        };
+        /**
+         * LeaveGroupBalance
+         * @description The employee-facing balance for a group of pots rolled into one figure (#265).
+         *
+         *     ``vacation_statutory`` + ``vacation_extra`` present as a single "Vakantieverlof" balance; a
+         *     standalone type (free time, …) is its own singleton group. ``entitled/approved/pending/
+         *     remaining`` are the combined numbers; ``pots`` carries the per-pot breakdown for anyone who
+         *     needs it.
+         */
+        LeaveGroupBalance: {
+            /** Approved Hours */
+            approved_hours: string;
+            /** Entitled Hours */
+            entitled_hours: string;
+            /** Expiring Soon Hours */
+            expiring_soon_hours: string;
+            /** Group */
+            group: string | null;
+            /** Label I18N */
+            label_i18n: {
+                [key: string]: string;
+            };
+            /** Lapsed Hours */
+            lapsed_hours: string;
+            /** Leave Type Ids */
+            leave_type_ids: string[];
+            /** Pending Hours */
+            pending_hours: string;
+            /** Pots */
+            pots: components["schemas"]["LeavePotBreakdown"][];
+            /** Remaining Hours */
+            remaining_hours: string;
+            /** User Id */
+            user_id?: string | null;
             /** Year */
             year: number;
         };
@@ -9231,6 +10713,33 @@ export interface components {
             name_i18n?: {
                 [key: string]: string;
             } | null;
+        };
+        /**
+         * LeavePotBreakdown
+         * @description One entitlement pot inside a group: which type/year it came from, and when it expires.
+         *
+         *     The per-pot detail behind a combined figure, so "why did my balance drop by X / what is
+         *     about to lapse" always has an answer even though the employee sees one number day to day.
+         */
+        LeavePotBreakdown: {
+            /** Accrual Year */
+            accrual_year: number;
+            /** Entitled Hours */
+            entitled_hours: string;
+            /**
+             * Expired
+             * @default false
+             */
+            expired: boolean;
+            /** Expires On */
+            expires_on?: string | null;
+            /**
+             * Leave Type Id
+             * Format: uuid
+             */
+            leave_type_id: string;
+            /** Remaining Hours */
+            remaining_hours: string;
         };
         /** LeavePreviewResult */
         LeavePreviewResult: {
@@ -9331,6 +10840,8 @@ export interface components {
              * Format: date
              */
             anchor_date: string;
+            /** Days Per Year */
+            days_per_year?: number | null;
             /** End Time */
             end_time?: string | null;
             /**
@@ -9367,6 +10878,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Days Per Year */
+            days_per_year?: number | null;
             /** End Time */
             end_time?: string | null;
             /**
@@ -9393,6 +10906,11 @@ export interface components {
             org_id: string;
             /** Start Time */
             start_time?: string | null;
+            /**
+             * Upcoming Days
+             * @default 0
+             */
+            upcoming_days: number;
             /**
              * Updated At
              * Format: date-time
@@ -9422,6 +10940,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Days Per Year */
+            days_per_year?: number | null;
             /** End Time */
             end_time?: string | null;
             /**
@@ -9454,6 +10974,11 @@ export interface components {
             /** Start Time */
             start_time?: string | null;
             /**
+             * Upcoming Days
+             * @default 0
+             */
+            upcoming_days: number;
+            /**
              * Updated At
              * Format: date-time
              */
@@ -9470,6 +10995,8 @@ export interface components {
             active?: boolean | null;
             /** Anchor Date */
             anchor_date?: string | null;
+            /** Days Per Year */
+            days_per_year?: number | null;
             /** End Time */
             end_time?: string | null;
             /** Interval Weeks */
@@ -9480,6 +11007,17 @@ export interface components {
             note?: string | null;
             /** Start Time */
             start_time?: string | null;
+        };
+        /**
+         * LeaveRecurringDeleteResult
+         * @description What deleting a pattern did — the days it took back, if it was asked to.
+         */
+        LeaveRecurringDeleteResult: {
+            /**
+             * Withdrawn
+             * @default 0
+             */
+            withdrawn: number;
         };
         /**
          * LeaveRequestCreate
@@ -9711,6 +11249,10 @@ export interface components {
              * @default true
              */
             active: boolean;
+            /** Balance Group */
+            balance_group?: string | null;
+            /** @default all_day */
+            calendar_display: components["schemas"]["LeaveCalendarDisplay"];
             /** Carry Over Months */
             carry_over_months?: number | null;
             /**
@@ -9759,6 +11301,10 @@ export interface components {
              * @default true
              */
             active: boolean;
+            /** Balance Group */
+            balance_group?: string | null;
+            /** @default all_day */
+            calendar_display: components["schemas"]["LeaveCalendarDisplay"];
             /** Carry Over Months */
             carry_over_months?: number | null;
             /**
@@ -9821,6 +11367,9 @@ export interface components {
             accrues_schedule_gap?: boolean | null;
             /** Active */
             active?: boolean | null;
+            /** Balance Group */
+            balance_group?: string | null;
+            calendar_display?: components["schemas"]["LeaveCalendarDisplay"] | null;
             /** Carry Over Months */
             carry_over_months?: number | null;
             /** Color */
@@ -9878,6 +11427,22 @@ export interface components {
             /** Writable */
             writable: boolean;
         };
+        /**
+         * LineKind
+         * @description What a document line *is* — the three things this platform bills for.
+         *
+         *     An agency's invoice mixes worked hours, recurring agreements and one-off sales, and the
+         *     reader has to tell them apart: "24 uur × € 95" and "Hosting maart" answer different
+         *     questions. So the kind is a **property of the line**, carried from wherever it was built
+         *     (``from_time`` stamps hours, the subscription cycle stamps subscription, a product pick
+         *     stamps product) through to the rendered document, which groups and subtotals by it.
+         *
+         *     It is presentation and provenance, never money: totals are computed from quantity, price
+         *     and tax exactly as before, and a tenant who wants one flat table simply keeps every line
+         *     on the default.
+         * @enum {string}
+         */
+        LineKind: "product" | "hours" | "subscription";
         /** LineRead */
         LineRead: {
             /** Amount */
@@ -9889,6 +11454,7 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            line_kind: components["schemas"]["LineKind"];
             /** Position */
             position: number;
             /** Quantity */
@@ -9909,11 +11475,19 @@ export interface components {
         LineWrite: {
             /** Description */
             description: string;
+            /** @default product */
+            line_kind: components["schemas"]["LineKind"];
+            /** Period End */
+            period_end?: string | null;
+            /** Period Start */
+            period_start?: string | null;
             /**
              * Quantity
              * @default 1
              */
             quantity: number | string;
+            /** Subscription Id */
+            subscription_id?: string | null;
             /** Tax Rate Id */
             tax_rate_id?: string | null;
             /** Time Entry Id */
@@ -9988,6 +11562,31 @@ export interface components {
          * @enum {string}
          */
         MarketingSource: "ga4" | "gsc" | "gads";
+        /** MarketingSummary */
+        MarketingSummary: {
+            /**
+             * Linked Total
+             * @default 0
+             */
+            linked_total: number;
+            /** Range Days */
+            range_days: number;
+            /** Rows */
+            rows?: components["schemas"]["MarketingSummaryRow"][];
+        };
+        /** MarketingSummaryRow */
+        MarketingSummaryRow: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Company Name */
+            company_name: string;
+            kpi: components["schemas"]["KpiValue"];
+            /** Metric */
+            metric: string;
+        };
         /**
          * MeInfo
          * @description The current user *within the resolved tenant* — including what they may do.
@@ -10079,6 +11678,11 @@ export interface components {
         MemberRead: {
             /** Avatar Url */
             avatar_url?: string | null;
+            /**
+             * Company Scope Empty
+             * @default false
+             */
+            company_scope_empty: boolean;
             /** Email */
             email: string;
             /** Full Name */
@@ -10796,13 +12400,16 @@ export interface components {
         };
         /** PreferenceMatrix */
         PreferenceMatrix: {
+            /** Channels */
+            channels?: components["schemas"]["ChannelPreference"][];
+            email: components["schemas"]["EmailSchedule"];
             /** Events */
             events: components["schemas"]["PreferenceRow"][];
             general: components["schemas"]["GeneralPreference"];
         };
         /**
          * PreferenceRow
-         * @description One event's effective delivery rule, and which layer decided it.
+         * @description One event's effective delivery rules (in-app + e-mail), and which layer decided each.
          */
         PreferenceRow: {
             /** Delay Minutes */
@@ -10813,6 +12420,27 @@ export interface components {
             digest_time?: string | null;
             /** Digest Weekday */
             digest_weekday?: number | null;
+            /**
+             * Email Delay Minutes
+             * @default 0
+             */
+            email_delay_minutes: number;
+            /**
+             * Email Digest
+             * @default immediate
+             */
+            email_digest: string;
+            /**
+             * Email Enabled
+             * @default false
+             */
+            email_enabled: boolean;
+            /**
+             * Email Source
+             * @default default
+             * @enum {string}
+             */
+            email_source: "default" | "org" | "user";
             /** Enabled */
             enabled: boolean;
             /** Event Type */
@@ -10849,9 +12477,23 @@ export interface components {
         };
         /**
          * PreferenceUpdate
-         * @description A PUT replaces this scope's overrides wholesale — an omitted event inherits again.
+         * @description A PUT replaces this scope's overrides **wholesale** — an omitted event inherits again.
+         *
+         *     The body is a full snapshot of the scope, not a patch: ``events`` and ``email_events`` are
+         *     the in-app and e-mail overrides (each channel tracked independently, so an event may override
+         *     one channel while inheriting the other), and ``general`` / ``email`` are the two scope-wide
+         *     rows. Whatever a channel's list does not contain is cleared, exactly as omitting an ``events``
+         *     entry clears that in-app override. A caller that means to change one channel must therefore
+         *     still send the other channel's current overrides, or they are dropped — the web form always
+         *     posts both. This mirrors the pre-#245 behaviour of ``events``/``general``; e-mail simply joined
+         *     the same wholesale scope when its dedicated endpoint was folded in.
          */
         PreferenceUpdate: {
+            /** Channels */
+            channels?: components["schemas"]["ChannelPreferenceWrite"][];
+            email?: components["schemas"]["EmailScheduleWrite"] | null;
+            /** Email Events */
+            email_events?: components["schemas"]["EmailPreferenceRowWrite"][];
             /** Events */
             events?: components["schemas"]["PreferenceRowWrite"][];
             general?: components["schemas"]["GeneralPreferenceWrite"] | null;
@@ -12514,6 +14156,8 @@ export interface components {
             start_date: string;
             /** @default active */
             status: components["schemas"]["SubscriptionStatus"];
+            /** Subscription Template Id */
+            subscription_template_id?: string | null;
             /** Subscription Type Id */
             subscription_type_id?: string | null;
         };
@@ -12522,6 +14166,15 @@ export interface components {
          * @enum {string}
          */
         SubscriptionInterval: "monthly" | "quarterly" | "yearly";
+        /** SubscriptionLineOffer */
+        SubscriptionLineOffer: {
+            /** Description */
+            description: string;
+            /** Quantity */
+            quantity: string;
+            /** Unit Price */
+            unit_price: string;
+        };
         /** SubscriptionLineRead */
         SubscriptionLineRead: {
             /** Description */
@@ -12670,6 +14323,8 @@ export interface components {
              */
             start_date: string;
             status: components["schemas"]["SubscriptionStatus"];
+            /** Subscription Template Id */
+            subscription_template_id?: string | null;
             /** Subscription Type Id */
             subscription_type_id?: string | null;
             /**
@@ -12779,6 +14434,72 @@ export interface components {
              * @default 0
              */
             position: number;
+            rollover?: components["schemas"]["RolloverRule"];
+            /** Subscription Type Id */
+            subscription_type_id?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * SubscriptionTemplateSaved
+         * @description The save answer, with what the save reached beyond the preset itself.
+         *
+         *     A rename carries over to the agreements created from this preset that still bear its old
+         *     name; the count comes back so the screen can *say so* rather than change rows silently.
+         */
+        SubscriptionTemplateSaved: {
+            /** Amount */
+            amount?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Currency
+             * @default EUR
+             */
+            currency: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Included Hours */
+            included_hours?: string | null;
+            /** @default monthly */
+            interval: components["schemas"]["SubscriptionInterval"];
+            /**
+             * Interval Count
+             * @default 1
+             */
+            interval_count: number;
+            /** Lines */
+            lines?: components["schemas"]["SubscriptionLineWrite-Output"][];
+            /** Name */
+            name: string;
+            /** Notes */
+            notes?: string | null;
+            /** Notice Period Days */
+            notice_period_days?: number | null;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /**
+             * Renamed Subscriptions
+             * @default 0
+             */
+            renamed_subscriptions: number;
             rollover?: components["schemas"]["RolloverRule"];
             /** Subscription Type Id */
             subscription_type_id?: string | null;
@@ -12925,6 +14646,8 @@ export interface components {
             /** Start Date */
             start_date?: string | null;
             status?: components["schemas"]["SubscriptionStatus"] | null;
+            /** Subscription Template Id */
+            subscription_template_id?: string | null;
             /** Subscription Type Id */
             subscription_type_id?: string | null;
         };
@@ -12962,6 +14685,8 @@ export interface components {
         TaskCreate: {
             /** Allocated Minutes */
             allocated_minutes?: number | null;
+            /** Assignee Contact Id */
+            assignee_contact_id?: string | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
             /** Company Id */
@@ -12999,6 +14724,8 @@ export interface components {
             activities?: components["schemas"]["ActivityRead"][];
             /** Allocated Minutes */
             allocated_minutes?: number | null;
+            /** Assignee Contact Id */
+            assignee_contact_id?: string | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
             /** Checklists */
@@ -13081,6 +14808,8 @@ export interface components {
         TaskListItem: {
             /** Allocated Minutes */
             allocated_minutes?: number | null;
+            /** Assignee Contact Id */
+            assignee_contact_id?: string | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
             /**
@@ -13161,6 +14890,8 @@ export interface components {
         TaskRead: {
             /** Allocated Minutes */
             allocated_minutes?: number | null;
+            /** Assignee Contact Id */
+            assignee_contact_id?: string | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
             /** Closing Interaction Id */
@@ -13219,6 +14950,8 @@ export interface components {
         TaskUpdate: {
             /** Allocated Minutes */
             allocated_minutes?: number | null;
+            /** Assignee Contact Id */
+            assignee_contact_id?: string | null;
             /** Assignee User Id */
             assignee_user_id?: string | null;
             /** Closing Interaction Id */
@@ -13386,6 +15119,8 @@ export interface components {
             end_date: string;
             /** End Time */
             end_time: string | null;
+            /** Ends At */
+            ends_at?: string | null;
             /** Hours */
             hours: string;
             /**
@@ -13409,6 +15144,8 @@ export interface components {
             start_date: string;
             /** Start Time */
             start_time: string | null;
+            /** Starts At */
+            starts_at?: string | null;
             status: components["schemas"]["LeaveRequestStatus"];
             /**
              * User Id
@@ -13581,6 +15318,11 @@ export interface components {
             brand_name: string;
             /** Currency */
             currency: string;
+            /**
+             * Default Country
+             * @default NL
+             */
+            default_country: string;
             /** Default Locale */
             default_locale: string;
             /**
@@ -13628,6 +15370,8 @@ export interface components {
             brand_name?: string | null;
             /** Currency */
             currency?: string | null;
+            /** Default Country */
+            default_country?: string | null;
             /** Default Locale */
             default_locale?: string | null;
             /** Enabled Modules */
@@ -13655,9 +15399,9 @@ export interface components {
         TimeEntryCreate: {
             /**
              * Billable
-             * @default true
+             * @description Omit to inherit the project's billable default (true when there is no project).
              */
-            billable: boolean;
+            billable?: boolean | null;
             /**
              * Break Minutes
              * @default 0
@@ -13680,8 +15424,6 @@ export interface components {
              * Format: date-time
              */
             started_at: string;
-            /** Subscription Id */
-            subscription_id?: string | null;
             /** Task Id */
             task_id?: string | null;
         };
@@ -13706,12 +15448,12 @@ export interface components {
             duration_text?: string | null;
             /** End */
             end?: string | null;
+            /** Entry Type Key */
+            entry_type_key?: string | null;
             /** Project Id */
             project_id?: string | null;
             /** Start */
             start?: string | null;
-            /** Subscription Id */
-            subscription_id?: string | null;
             /** Task Id */
             task_id?: string | null;
         };
@@ -13890,8 +15632,6 @@ export interface components {
             project_id?: string | null;
             /** Started At */
             started_at?: string | null;
-            /** Subscription Id */
-            subscription_id?: string | null;
             /** Task Id */
             task_id?: string | null;
         };
@@ -14007,9 +15747,9 @@ export interface components {
         TimerStart: {
             /**
              * Billable
-             * @default true
+             * @description Omit to inherit the project's billable default (true when there is no project).
              */
-            billable: boolean;
+            billable?: boolean | null;
             /**
              * Break Minutes
              * @default 0
@@ -14023,8 +15763,6 @@ export interface components {
             entry_type_key?: string | null;
             /** Project Id */
             project_id?: string | null;
-            /** Subscription Id */
-            subscription_id?: string | null;
             /** Task Id */
             task_id?: string | null;
         };
@@ -14058,6 +15796,98 @@ export interface components {
             task_id: string | null;
             /** Total */
             total: number;
+        };
+        /**
+         * TldPriceGroup
+         * @description One TLD as the price list shows it: the price in effect today, anything scheduled,
+         *     and the history behind it. TLDs an org holds domains under but hasn't priced appear
+         *     with no rows at all — the list's job is also to show what still needs a price.
+         */
+        TldPriceGroup: {
+            /** Currency */
+            currency: string;
+            current?: components["schemas"]["TldPriceRow"] | null;
+            /**
+             * Domain Count
+             * @default 0
+             */
+            domain_count: number;
+            /** History */
+            history?: components["schemas"]["TldPriceRow"][];
+            /** Tld */
+            tld: string;
+            /** Upcoming */
+            upcoming?: components["schemas"]["TldPriceRow"][];
+        };
+        /** TldPriceIncreaseItem */
+        TldPriceIncreaseItem: {
+            /** Currency */
+            currency: string;
+            /** Current Amount */
+            current_amount: string;
+            /**
+             * Domain Count
+             * @default 0
+             */
+            domain_count: number;
+            /** New Amount */
+            new_amount: string;
+            /** Tld */
+            tld: string;
+        };
+        /**
+         * TldPriceIncreaseRequest
+         * @description #231's request shape applied to the TLD list: preview and apply share it, the base
+         *     is the price in effect on ``valid_from``, and scope is everything or one TLD.
+         */
+        TldPriceIncreaseRequest: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "percent" | "amount" | "set";
+            /** Tld */
+            tld?: string | null;
+            /**
+             * Valid From
+             * Format: date
+             */
+            valid_from: string;
+            /** Value */
+            value: number | string;
+        };
+        /** TldPriceIncreaseResult */
+        TldPriceIncreaseResult: {
+            /** Items */
+            items: components["schemas"]["TldPriceIncreaseItem"][];
+        };
+        /** TldPriceRow */
+        TldPriceRow: {
+            /** Amount */
+            amount: string;
+            /** Currency */
+            currency: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Tld */
+            tld: string;
+            /**
+             * Valid From
+             * Format: date
+             */
+            valid_from: string;
+        };
+        /** TldPriceUpsert */
+        TldPriceUpsert: {
+            /** Amount */
+            amount: number | string;
+            /** Tld */
+            tld: string;
+            /** Valid From */
+            valid_from?: string | null;
         };
         /** TriggerInfo */
         TriggerInfo: {
@@ -14142,6 +15972,85 @@ export interface components {
             hourly_rate: string | null;
             /** Total Minutes */
             total_minutes: number;
+        };
+        /**
+         * UninvoicedGroup
+         * @description One bucket of the org-wide uninvoiced report (#277), summed server-side over the
+         *     *whole* filtered set — never over the capped entry page.
+         */
+        UninvoicedGroup: {
+            /** Amount */
+            amount: string;
+            /** Count */
+            count: number;
+            /** Key */
+            key: string;
+            /** Label */
+            label?: string | null;
+            /** Minutes */
+            minutes: number;
+        };
+        /** UninvoicedReport */
+        UninvoicedReport: {
+            /** Entries */
+            entries: components["schemas"]["UninvoicedReportEntry"][];
+            /**
+             * Group
+             * @enum {string}
+             */
+            group: "day" | "week" | "month" | "year" | "company" | "project" | "user";
+            /** Groups */
+            groups: components["schemas"]["UninvoicedGroup"][];
+            /** Total Amount */
+            total_amount: string;
+            /** Total Count */
+            total_count: number;
+            /** Total Minutes */
+            total_minutes: number;
+            /** Truncated */
+            truncated: boolean;
+        };
+        /**
+         * UninvoicedReportEntry
+         * @description One backlog entry, with the group key it was bucketed under — computed by the same
+         *     SQL expression as the subtotals, so client-side sectioning can never disagree.
+         */
+        UninvoicedReportEntry: {
+            /** Amount */
+            amount: string;
+            /** Company Id */
+            company_id: string | null;
+            /** Company Name */
+            company_name?: string | null;
+            /** Description */
+            description: string | null;
+            /**
+             * Entry Date
+             * Format: date
+             */
+            entry_date: string;
+            /** Group Key */
+            group_key: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Minutes */
+            minutes: number;
+            /** Project Id */
+            project_id: string | null;
+            /** Project Name */
+            project_name?: string | null;
+            /** Rate */
+            rate: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** User Name */
+            user_name?: string | null;
         };
         /** UnreadCount */
         UnreadCount: {
@@ -14827,6 +16736,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["app__core__activity__schemas__ActivityItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    lookup_address_api_v1_addresslookup_get: {
+        parameters: {
+            query: {
+                postal_code: string;
+                house_number: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddressLookupResponse"];
                 };
             };
             /** @description Validation Error */
@@ -16269,7 +18210,7 @@ export interface operations {
                 status?: string | null;
                 /** @description Only clients I'm assigned to (primary or not) */
                 mine?: boolean;
-                /** @description name | status | created_at | updated_at, '-' desc */
+                /** @description name | client_number | status | created_at | updated_at, '-' desc */
                 sort?: string | null;
                 /** @description Include the budget roll-up; costs three grouped queries */
                 hours?: boolean;
@@ -16514,6 +18455,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_company_settings_api_v1_companies_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyNumberingRead"];
+                };
+            };
+        };
+    };
+    update_company_settings_api_v1_companies_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompanyNumberingWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyNumberingRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    backfill_client_numbers_api_v1_companies_settings_backfill_client_numbers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientNumberBackfillResult"];
                 };
             };
         };
@@ -17519,7 +19533,7 @@ export interface operations {
                 offset?: number;
                 company_id?: string | null;
                 q?: string | null;
-                /** @description name | status | created_at | updated_at, '-' desc */
+                /** @description name | company | status | registrar | dns | dnssec | email_enabled | start_date | next_invoice_date | created_at | updated_at, '-' desc */
                 sort?: string | null;
             };
             header?: never;
@@ -17569,6 +19583,154 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DomainRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tld_prices_api_v1_domains_tld_prices_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TldPriceGroup"][];
+                };
+            };
+        };
+    };
+    set_tld_price_api_v1_domains_tld_prices_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TldPriceUpsert"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TldPriceRow"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_tld_price_increase_api_v1_domains_tld_prices_price_increase_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TldPriceIncreaseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TldPriceIncreaseResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_tld_price_increase_api_v1_domains_tld_prices_price_increase_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TldPriceIncreaseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TldPriceIncreaseResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_tld_price_api_v1_domains_tld_prices__price_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                price_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -18659,6 +20821,26 @@ export interface operations {
             };
         };
     };
+    impex_columns_company_api_v1_impex_company_columns_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexColumnsResponse"];
+                };
+            };
+        };
+    };
     impex_export_company_api_v1_impex_company_export_get: {
         parameters: {
             query?: {
@@ -18706,7 +20888,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
+        requestBody?: {
             content: {
                 "multipart/form-data": components["schemas"]["Body_impex_import_company_api_v1_impex_company_import_post"];
             };
@@ -18728,6 +20910,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_inspect_company_api_v1_impex_company_inspect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_inspect_company_api_v1_impex_company_inspect_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexInspectReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_columns_contact_api_v1_impex_contact_columns_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexColumnsResponse"];
                 };
             };
         };
@@ -18777,7 +21012,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
+        requestBody?: {
             content: {
                 "multipart/form-data": components["schemas"]["Body_impex_import_contact_api_v1_impex_contact_import_post"];
             };
@@ -18790,6 +21025,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ImportReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_inspect_contact_api_v1_impex_contact_inspect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_inspect_contact_api_v1_impex_contact_inspect_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexInspectReport"];
                 };
             };
             /** @description Validation Error */
@@ -18819,6 +21087,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ImpexEntityInfo"][];
+                };
+            };
+        };
+    };
+    impex_columns_project_api_v1_impex_project_columns_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexColumnsResponse"];
                 };
             };
         };
@@ -18871,7 +21159,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
+        requestBody?: {
             content: {
                 "multipart/form-data": components["schemas"]["Body_impex_import_project_api_v1_impex_project_import_post"];
             };
@@ -18893,6 +21181,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_inspect_project_api_v1_impex_project_inspect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_inspect_project_api_v1_impex_project_inspect_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexInspectReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_columns_subscription_api_v1_impex_subscription_columns_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexColumnsResponse"];
                 };
             };
         };
@@ -18941,7 +21282,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
+        requestBody?: {
             content: {
                 "multipart/form-data": components["schemas"]["Body_impex_import_subscription_api_v1_impex_subscription_import_post"];
             };
@@ -18963,6 +21304,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_inspect_subscription_api_v1_impex_subscription_inspect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_inspect_subscription_api_v1_impex_subscription_inspect_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexInspectReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_columns_task_api_v1_impex_task_columns_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexColumnsResponse"];
                 };
             };
         };
@@ -19016,7 +21410,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
+        requestBody?: {
             content: {
                 "multipart/form-data": components["schemas"]["Body_impex_import_task_api_v1_impex_task_import_post"];
             };
@@ -19038,6 +21432,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_inspect_task_api_v1_impex_task_inspect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_inspect_task_api_v1_impex_task_inspect_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexInspectReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_columns_time_entry_api_v1_impex_time_entry_columns_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexColumnsResponse"];
                 };
             };
         };
@@ -19093,7 +21540,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
+        requestBody?: {
             content: {
                 "multipart/form-data": components["schemas"]["Body_impex_import_time_entry_api_v1_impex_time_entry_import_post"];
             };
@@ -19106,6 +21553,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ImportReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_inspect_time_entry_api_v1_impex_time_entry_inspect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_inspect_time_entry_api_v1_impex_time_entry_inspect_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexInspectReport"];
                 };
             };
             /** @description Validation Error */
@@ -20221,6 +22701,39 @@ export interface operations {
             };
         };
     };
+    upload_interaction_eml_api_v1_interactions_upload_eml_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_interaction_eml_api_v1_interactions_upload_eml_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InteractionEmlUploadRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_interaction_api_v1_interactions__interaction_id__get: {
         parameters: {
             query?: never;
@@ -20293,6 +22806,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["InteractionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InteractionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_interaction_to_conversation_api_v1_interactions__interaction_id__add_to_conversation_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                interaction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InteractionAddToConversation"];
             };
         };
         responses: {
@@ -20406,6 +22954,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InteractionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_interaction_thread_api_v1_interactions__interaction_id__thread_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                interaction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InteractionRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    billable_subscriptions_api_v1_invoicing_billable_subscriptions_get: {
+        parameters: {
+            query: {
+                company_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillableSubscription"][];
                 };
             };
             /** @description Validation Error */
@@ -21862,6 +24472,40 @@ export interface operations {
             };
         };
     };
+    uninvoiced_api_v1_invoicing_uninvoiced_get: {
+        parameters: {
+            query?: {
+                /** @description day | week | month | year | company | project | user */
+                group?: "day" | "week" | "month" | "year" | "company" | "project" | "user";
+                /** @description cap on the entry detail, not the totals */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UninvoicedReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     balances_api_v1_leave_balance_get: {
         parameters: {
             query: {
@@ -21881,6 +24525,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LeaveBalance"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    group_balances_api_v1_leave_balance_groups_get: {
+        parameters: {
+            query: {
+                year: number;
+                user_id?: string | null;
+                all_users?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveGroupBalance"][];
                 };
             };
             /** @description Validation Error */
@@ -22108,6 +24785,71 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GenerateResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    free_time_overview_api_v1_leave_free_time_get: {
+        parameters: {
+            query: {
+                year: number;
+                user_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FreeTimeOverview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    withdraw_free_time_api_v1_leave_free_time_withdraw_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FreeTimeWithdraw"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FreeTimeWithdrawResult"];
                 };
             };
             /** @description Validation Error */
@@ -22532,7 +25274,9 @@ export interface operations {
     };
     delete_recurring_api_v1_leave_recurring__recurring_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                withdraw_days?: boolean;
+            };
             header?: never;
             path: {
                 recurring_id: string;
@@ -22542,11 +25286,13 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            204: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["LeaveRecurringDeleteResult"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -23364,6 +26110,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MarketingSettingsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    summary_api_v1_marketing_summary_get: {
+        parameters: {
+            query?: {
+                range_days?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketingSummary"];
                 };
             };
             /** @description Validation Error */
@@ -24299,59 +27077,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PreferenceMatrix"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_email_preference_api_v1_notifications_preferences_email_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EmailPrefRead"];
-                };
-            };
-        };
-    };
-    set_email_preference_api_v1_notifications_preferences_email_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EmailPrefWrite"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EmailPrefRead"];
                 };
             };
             /** @description Validation Error */
@@ -25787,7 +28512,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SubscriptionTemplateRead"];
+                    "application/json": components["schemas"]["SubscriptionTemplateSaved"];
                 };
             };
             /** @description Validation Error */
@@ -26086,6 +28811,7 @@ export interface operations {
                 company_id?: string | null;
                 project_id?: string | null;
                 assignee_user_id?: string | null;
+                assignee_contact_id?: string | null;
                 /** @description A configured status key */
                 status?: string | null;
                 label_id?: string | null;
@@ -28481,6 +31207,8 @@ export interface operations {
                 offset?: number;
                 domain_id?: string | null;
                 company_id?: string | null;
+                /** @description name | company | hosting | uptime | created_at | updated_at, '-' desc */
+                sort?: string | null;
             };
             header?: never;
             path?: never;

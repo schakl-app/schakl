@@ -27,7 +27,7 @@ export const load: PageServerLoad = async (event) => {
 
   // The client list feeds the picker (name-only); the metrics load only when a client is picked.
   const companiesP = api.GET("/api/v1/companies", {
-    params: { query: { limit: 200, offset: 0, count: false } },
+    params: { query: { limit: 200, offset: 0, count: false, sort: "name" } },
   });
   const metricsP = companyId
     ? api.GET("/api/v1/marketing/companies/{company_id}/metrics", {

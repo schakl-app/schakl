@@ -59,7 +59,9 @@ export const load: PageServerLoad = async (event) => {
   const [tasks, companies, projects, members, statuses, definitions, cost, files, ...panelData] =
     await Promise.all([
       api.GET("/api/v1/tasks", { params: { query: { project_id, limit: 200, offset: 0 } } }),
-      api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
+      api.GET("/api/v1/companies", {
+        params: { query: { limit: 200, offset: 0, count: false, sort: "name" } },
+      }),
       api.GET("/api/v1/projects", { params: { query: { limit: 200, offset: 0, count: false } } }),
       api.GET("/api/v1/members/lookup"),
       // The tenant's task statuses (issue #62) so the to-do list groups/toggles by the real ones.

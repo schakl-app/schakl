@@ -99,6 +99,26 @@ def test_body_extraction_prefers_plain_text() -> None:
     assert "<" not in (matching.extract_text(html_only) or "")
 
 
+def test_snippet_is_decoded_and_depadded_at_ingest() -> None:
+    """Gmail's snippet is HTML-escaped and preheader-padded (#263).
+
+    Stored raw it renders as escape codes in every list row *and* matches nothing when
+    someone searches the words they actually read — ``list(q=...)`` searches this column.
+    """
+    assert matching.clean_snippet("&#39;s ochtends &amp; morgen") == "'s ochtends & morgen"
+    assert matching.clean_snippet("de &quot;offerte&quot;") == 'de "offerte"'
+    assert matching.clean_snippet("caf&#xe9; om 9u") == "café om 9u"
+    # The invisible padding (zero-width space, soft hyphen, BOM) and the whitespace runs go.
+    assert (
+        matching.clean_snippet("Nieuwsbrief\u200b\u200b   juli\n\n2026\u00ad\ufeff")
+        == "Nieuwsbrief juli 2026"
+    )
+    # Not-an-entity stays as typed, and nothing-at-all stays None rather than becoming "".
+    assert matching.clean_snippet("R&D budget & marge") == "R&D budget & marge"
+    assert matching.clean_snippet(None) is None
+    assert matching.clean_snippet("  \u200b ") is None
+
+
 # --------------------------------------------------------------------------- #
 # The poll pipeline against a scripted Gmail
 # --------------------------------------------------------------------------- #

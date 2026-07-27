@@ -15,6 +15,7 @@
    */
   import {
     Bold,
+    Braces,
     CircleStop,
     ExternalLink,
     Heading as HeadingIcon,
@@ -51,6 +52,7 @@
     class: klass = "",
     mentions = [],
     tasks = [],
+    variables = [],
     scope,
     onchange,
   }: {
@@ -74,6 +76,9 @@
       due?: string;
       overdue?: boolean;
     }[];
+    /** Insert-a-placeholder menu (issue #259): opt-in `{token, label}` items a toolbar button
+     *  inserts at the caret. Absent → no menu, so every other editor is unchanged. */
+    variables?: { token: string; label: string }[];
     /** Host context for the default candidate fetch (#237): tasks of this project/company,
      *  contacts of this company. Only read where no explicit list is passed. */
     scope?: CandidateScope;
@@ -177,10 +182,19 @@
           onchange?.(markdown);
         },
         onTransaction: () => {
-          tick += 1;
-          // An existing-link popover follows the caret: leave the link, and it goes. Insert-mode
-          // popovers stay — the caret is on plain text there by definition.
-          if (linkOpen && linkExisting && !editor?.isActive("link")) linkOpen = false;
+          // Deferred one microtask (#257): unmounting a still-focused editor (a save's
+          // re-render) removes its DOM *before* this component's teardown runs, the browser
+          // fires blur during the removal, and Tiptap dispatches the focus plugin's
+          // transaction from that blur — synchronously inside Svelte's template flush, where
+          // a $state write is state_unsafe_mutation. A microtask later the flush is over,
+          // and after teardown `editor` is null, so a destroyed editor never writes.
+          queueMicrotask(() => {
+            if (!editor) return;
+            tick += 1;
+            // An existing-link popover follows the caret: leave the link, and it goes.
+            // Insert-mode popovers stay — the caret is on plain text there by definition.
+            if (linkOpen && linkExisting && !editor.isActive("link")) linkOpen = false;
+          });
         },
         // Clicking a blue label is how a hidden URL is reached: open the popover prefilled.
         // No focus steal — the caret stays where the user clicked.
@@ -225,6 +239,16 @@
   const toolbarButton =
     "flex h-7 w-7 items-center justify-center rounded text-text-muted hover:bg-surface hover:text-brand disabled:opacity-40";
   const activeClass = " bg-surface text-brand";
+
+  // --- insert-variable menu (issue #259) --------------------------------------
+  // Opt-in (`variables` non-empty), so no other editor gains a button. Inserts the token as
+  // plain text at the caret: a programmatic insert fires no input rule, so `{{…}}` survives
+  // round-tripping through the markdown serializer as literal source.
+  let varMenuOpen = $state(false);
+  function insertVariable(token: string) {
+    varMenuOpen = false;
+    editor?.chain().focus().insertContent(token).run();
+  }
 
   // --- link popover -------------------------------------------------------------
   // Inline UI under the toolbar button (issue #228) — never `window.prompt`. With the caret on
@@ -511,6 +535,42 @@
     >
       <ListOrdered size={15} />
     </button>
+    {#if variables.length > 0}
+      <div class="relative" data-var-menu>
+        <button
+          type="button"
+          class={toolbarButton}
+          disabled={!ready}
+          aria-label={t("richtext.insert_variable")}
+          title={t("richtext.insert_variable")}
+          aria-haspopup="menu"
+          aria-expanded={varMenuOpen}
+          onclick={() => (varMenuOpen = !varMenuOpen)}
+        >
+          <Braces size={15} />
+        </button>
+        {#if varMenuOpen}
+          <ul
+            class="absolute left-0 top-full z-30 mt-1 w-60 rounded-lg border border-border bg-surface-raised py-1 shadow-lg"
+            role="menu"
+          >
+            {#each variables as variable (variable.token)}
+              <li>
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-sm text-text hover:bg-surface"
+                  onclick={() => insertVariable(variable.token)}
+                >
+                  <span class="truncate">{variable.label}</span>
+                  <span class="shrink-0 font-mono text-xs text-text-muted">{variable.token}</span>
+                </button>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </div>
+    {/if}
     {#if assistAvailable}
       <div class="relative" data-assist-menu>
         <button

@@ -16,6 +16,16 @@ export const COMPANIES_TABLE_ID = "companies";
 export const HOURS_COLUMN = "hours";
 
 export const COMPANY_COLUMNS: ColumnMeta[] = [
+  // Klantnummer first: on a list that carries one it is how people refer to the client, and
+  // it is short. Shown by default because numbering is on by default — an org that turns it
+  // off in Instellingen → Bedrijven hides the column with the personal column picker.
+  {
+    key: "client_number",
+    labelKey: "companies.client_number",
+    sortKey: "client_number",
+    defaultVisible: true,
+    width: 120,
+  },
   { key: "name", labelKey: "companies.name", sortKey: "name", primary: true, width: 260 },
   { key: "website", labelKey: "companies.website", defaultVisible: true },
   { key: "status", labelKey: "companies.field.status", sortKey: "status", defaultVisible: true },
@@ -35,6 +45,8 @@ export const COMPANY_COLUMNS: ColumnMeta[] = [
     defaultVisible: true,
     width: 200,
   },
+  // Opt-in like invoice_email: a hidden column costs nothing, and most lists lead with name.
+  { key: "phone", labelKey: "companies.phone" },
   { key: "invoice_email", labelKey: "companies.invoice_email" },
   { key: "created_at", labelKey: "table.column.created_at", sortKey: "created_at", align: "right" },
 ];

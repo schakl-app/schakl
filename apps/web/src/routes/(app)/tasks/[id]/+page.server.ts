@@ -4,6 +4,7 @@ import { error, fail, redirect } from "@sveltejs/kit";
 
 import { apiBaseUrl } from "$lib/core/api/client";
 import { apiErrorKey } from "$lib/core/errors";
+import { can } from "$lib/core/permissions";
 import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { entityPanelsFor } from "$lib/core/registry";
 import { apiFor } from "$lib/core/session";
@@ -35,7 +36,7 @@ export const load: PageServerLoad = async (event) => {
   // A viewer without activity.read simply gets an empty list (openapi-fetch returns no data).
   const [
     { data: task },
-    { data: checklistTemplates },
+    checklistTemplates,
     { data: files },
     { data: hostActivity },
     { data: schedules },
@@ -43,7 +44,12 @@ export const load: PageServerLoad = async (event) => {
     ...panelData
   ] = await Promise.all([
     api.GET("/api/v1/tasks/{task_id}", { params: { path: { task_id } } }),
-    api.GET("/api/v1/tasks/checklist-templates"),
+    // Only someone who may edit the task can pour a checklist template into it, and the API
+    // now says so too — a portal client (#193) has no business enumerating the agency's
+    // process library, and nobody should pay for a call whose picker will not render.
+    can(event.locals.user, "tasks.task.write")
+      ? api.GET("/api/v1/tasks/checklist-templates").then((r) => r.data ?? [])
+      : [],
     api.GET("/api/v1/files", {
       params: { query: { entity_type: "task", entity_id: task_id } },
     }),
@@ -63,7 +69,7 @@ export const load: PageServerLoad = async (event) => {
 
   return {
     task,
-    checklistTemplates: checklistTemplates ?? [],
+    checklistTemplates,
     files: files ?? [],
     hostActivity: hostActivity ?? [],
     schedules: schedules ?? [],
@@ -93,6 +99,9 @@ export const actions: Actions = {
       "company_id",
       "project_id",
       "assignee_user_id",
+      // The assignee picker (#273) always posts both fields (one empty), so switching between an
+      // employee and a client contact actively clears the other — the API rejects both at once.
+      "assignee_contact_id",
       "due_date",
       "due_change_reason",
     ]) {
@@ -135,7 +144,11 @@ export const actions: Actions = {
       // generic "some fields are invalid" — the message is what tells the user what to do.
       const e = apiErrorKey(apiError);
       return fail(400, {
-        error: e.fields?.status ?? e.fields?.closing_interaction_id ?? e.key,
+        error:
+          e.fields?.status ??
+          e.fields?.closing_interaction_id ??
+          e.fields?.assignee_contact_id ??
+          e.key,
       });
     }
     return { updated: true };

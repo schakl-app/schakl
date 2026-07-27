@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * One surface for recurring rostered free days (#107), shared by the manager's modal
+   * One surface for recurring free days (#107), shared by the manager's modal
    * (Instellingen → Gebruikers) and the employee's own on /leave — one form, one row shape,
    * so the two can't drift (docs/UX.md). The caller decides whose patterns and which types:
    * managers pass every active type, the self-service surface passes only auto-approve ones
@@ -9,18 +9,25 @@
    *
    * Posts to `?/saveRecurring`, `?/toggleRecurring` and `?/deleteRecurring` — both host pages
    * declare all three.
+   *
+   * Adding a pattern is a completed act, not a form you sit in: it fires `ondone` so the host
+   * closes the modal (#271). The "N days placed" confirmation then belongs to the host page —
+   * a modal that closes takes its own success line with it. Toggling and deleting keep the
+   * modal open, so those keep reporting through `generated` right here.
    */
   import { Clock, Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
   import { fmtClockTime, fmtNumericDate, fmtWeekdayShort } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { getLocale } from "$lib/paraglide/runtime";
-  import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import TimeInput from "$lib/core/ui/TimeInput.svelte";
 
   import { typeLabel, type LeaveTypeInfo } from "./format";
+  import RecurringDeleteDialog from "./RecurringDeleteDialog.svelte";
 
   interface RecurringPattern {
     id: string;
@@ -32,6 +39,8 @@
     start_time?: string | null;
     end_time?: string | null;
     active: boolean;
+    /** Days still standing from today on — what deleting the pattern puts at stake. */
+    upcoming_days?: number;
   }
 
   let {
@@ -40,6 +49,8 @@
     userId,
     error = null,
     generated = null,
+    deleted = null,
+    ondone,
   }: {
     /** This user's patterns. */
     patterns: RecurringPattern[];
@@ -48,8 +59,12 @@
     /** Whose pattern a save creates (hidden field; the API re-checks ownership). */
     userId: string;
     error?: string | null;
-    /** How many days the last save placed — shown as the success line. */
+    /** How many days a toggle placed — the success line for the paths that stay open. */
     generated?: number | null;
+    /** A delete landed: how many placed days it took back (0 = the pattern only). */
+    deleted?: { withdrawn: number } | null;
+    /** A pattern was added: the host closes its modal and owns the confirmation. */
+    ondone?: () => void;
   } = $props();
 
   const locale = getLocale();
@@ -63,8 +78,10 @@
   let partDay = $state(false);
   let startTime = $state("");
   let endTime = $state("");
-  let deleteId = $state("");
+  let deletePattern = $state<RecurringPattern | null>(null);
   let deleteOpen = $state(false);
+
+  const busy = new InFlight();
 
   function intervalText(weeks: number): string {
     return weeks === 1
@@ -110,14 +127,17 @@
               {/if}
             </span>
           </div>
-          <form method="POST" action="?/toggleRecurring" use:enhance>
+          <form method="POST" action="?/toggleRecurring" use:enhance={busy.wrap(pattern.id)}>
             <input type="hidden" name="id" value={pattern.id} />
             <input type="hidden" name="active" value={String(!pattern.active)} />
-            <button
-              class="rounded-lg border border-border px-2 py-1 text-xs text-text-muted hover:text-text"
+            <Button
+              variant="secondary"
+              size="xs"
+              loading={busy.is(pattern.id)}
+              disabled={busy.active}
             >
               {pattern.active ? t("settings.leave.deactivate") : t("settings.leave.activate")}
-            </button>
+            </Button>
           </form>
           <button
             type="button"
@@ -125,7 +145,7 @@
             title={t("common.delete")}
             aria-label={t("common.delete")}
             onclick={() => {
-              deleteId = pattern.id;
+              deletePattern = pattern;
               deleteOpen = true;
             }}
           >
@@ -140,7 +160,13 @@
     </p>
   {/if}
 
-  {#if generated !== null}
+  {#if deleted}
+    <p class="text-sm text-green-600">
+      {deleted.withdrawn > 0
+        ? t("leave.recurring.deleted_withdrawn", { count: deleted.withdrawn })
+        : t("leave.recurring.deleted")}
+    </p>
+  {:else if generated !== null}
     <p class="text-sm text-green-600">
       {t("leave.recurring.generated", { count: generated })}
     </p>
@@ -151,11 +177,10 @@
       method="POST"
       action="?/saveRecurring"
       class="space-y-3 border-t border-border pt-4"
-      use:enhance={() =>
-        ({ result, update }) => {
-          if (result.type === "success") void update({ reset: true });
-          else void update({ reset: false });
-        }}
+      use:enhance={busy.wrap("save", () => async ({ result, update }) => {
+        if (result.type === "success") ondone?.();
+        await update({ reset: result.type === "success" });
+      })}
     >
       <input type="hidden" name="user_id" value={userId} />
       <p class="text-xs font-semibold uppercase tracking-wide text-text-muted">
@@ -228,21 +253,18 @@
         <p class="text-sm text-red-600 dark:text-red-400">{t(error)}</p>
       {/if}
       <div class="flex justify-end">
-        <button
-          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
+        <Button loading={busy.is("save")} disabled={busy.active}>
           {t("leave.recurring.add")}
-        </button>
+        </Button>
       </div>
     </form>
   {/key}
 </div>
 
-<ConfirmDialog
+<!-- Deleting a pattern also decides what happens to the days it placed; the shared dialog asks,
+     so this surface and the employment wizard cannot answer it differently. -->
+<RecurringDeleteDialog
   bind:open={deleteOpen}
-  title={t("common.delete")}
-  message={t("leave.recurring.delete_confirm")}
-  action="?/deleteRecurring"
-  fields={{ id: deleteId }}
-  confirmLabel={t("common.delete")}
+  patternId={deletePattern?.id ?? ""}
+  upcomingDays={deletePattern?.upcoming_days ?? 0}
 />

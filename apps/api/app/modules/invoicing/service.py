@@ -24,19 +24,28 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import bindparam, func, select, text
+from sqlalchemy import bindparam, func, select, text, tuple_
 
 from app.core.activity import ActivityService
 from app.core.activity.service import snapshot
+from app.core.branding import load_brand_logo
 from app.core.customfields import CustomFieldsService
 from app.core.events import emit
 from app.core.models import OrgSettings
+from app.core.numbering import format_number
+from app.core.phone import normalize_phone
 from app.core.richtext import sanitize_markdown
 from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_zoneinfo
 from app.errors import AppError
-from app.modules.invoicing.calc import LineInput, Totals, compute_totals, line_amount
+from app.modules.invoicing.calc import (
+    LineInput,
+    Totals,
+    compute_totals,
+    line_amount,
+    round_cents,
+)
 from app.modules.invoicing.models import (
     DocumentTemplate,
     ExternalRef,
@@ -45,15 +54,16 @@ from app.modules.invoicing.models import (
     InvoiceLine,
     InvoicePayment,
     InvoiceStatus,
+    InvoiceSubscriptionPeriod,
     InvoiceTimeEntry,
     InvoicingSettings,
+    LineKind,
     Product,
     Quote,
     QuoteLine,
     QuoteStatus,
     TaxRate,
 )
-from app.modules.invoicing.numbering import format_number
 from app.modules.invoicing.schemas import (
     DocumentSend,
     InvoiceCreate,
@@ -118,11 +128,46 @@ QUOTE_SORTABLE = {
     "created_at": Quote.created_at,
 }
 
+#: The uninvoiced report's grouping expressions (#277) — static SQL fragments keyed by the
+#: API's closed vocabulary, never user input. Date buckets format the org-local timestamp
+#: (``AT TIME ZONE :tz``) so a bucket is the org's calendar day/week/month/year, not UTC's;
+#: every format sorts chronologically as text (``IYYY``/``IW`` are the ISO week fields).
+_UNINVOICED_DATE_GROUPS = frozenset({"day", "week", "month", "year"})
+_UNINVOICED_GROUP_EXPR = {
+    "day": "to_char(te.started_at AT TIME ZONE :tz, 'YYYY-MM-DD')",
+    "week": "to_char(te.started_at AT TIME ZONE :tz, 'IYYY-\"W\"IW')",
+    "month": "to_char(te.started_at AT TIME ZONE :tz, 'YYYY-MM')",
+    "year": "to_char(te.started_at AT TIME ZONE :tz, 'YYYY')",
+    "company": "COALESCE(te.company_id::text, '')",
+    "project": "COALESCE(te.project_id::text, '')",
+    "user": "te.user_id::text",
+}
+#: Entity groupings: (label expression, its join). Bare-table reads over published columns
+#: (§6), each side org-filtered like every join in ``_unbilled_rows``.
+_UNINVOICED_GROUP_LABEL = {
+    "company": ("c.name", "LEFT JOIN companies c ON c.id = te.company_id AND c.org_id = te.org_id"),
+    "project": ("p.name", "LEFT JOIN projects p ON p.id = te.project_id AND p.org_id = te.org_id"),
+    "user": ("u.full_name", "LEFT JOIN users u ON u.id = te.user_id"),
+}
+
 #: Company columns a document snapshot copies (models.Company, issue #11).
 _CUSTOMER_FIELDS = (
     "name", "address_line1", "address_line2", "postal_code", "city", "country",
     "vat_number", "coc_number",
 )
+
+
+def street_line(street: str | None, house_number: str | None) -> str | None:
+    """The one address line a document prints: street + house number (#241).
+
+    The company stores them apart since the postcode lookup; a snapshot keeps the composed
+    line so every issued document — old and new — carries the same ``address_line1`` shape
+    and the PDF/UBL renderers never learn about the split. A pre-split row (house number
+    still inside ``address_line1``, ``house_number`` NULL) composes to itself.
+    """
+    if not street:
+        return house_number or None
+    return f"{street} {house_number}" if house_number else street
 
 
 def tax_label(label_i18n: dict, locale: str) -> str:
@@ -163,7 +208,12 @@ class InvoicingSettingsService:
         row = await self.row()
         values = data.model_dump(exclude_unset=True)
         if "company_details" in values and data.company_details is not None:
-            values["company_details"] = data.company_details.model_dump(mode="json")
+            details = data.company_details.model_dump(mode="json")
+            # Same gate as companies/contacts (#256): only a *changed* phone is validated,
+            # so a pre-existing freeform seller phone never blocks an unrelated save.
+            if details.get("phone") != (row.company_details or {}).get("phone"):
+                details["phone"] = normalize_phone(details.get("phone"))
+            values["company_details"] = details
         if values.get("tax_country"):
             values["tax_country"] = values["tax_country"].upper()
         if "default_tax_rate_id" in values and data.default_tax_rate_id is not None:
@@ -427,7 +477,7 @@ async def _company_row(ctx: Any, company_id: uuid.UUID) -> Any:
         await ctx.session.execute(
             text(
                 "SELECT id, name, invoice_email, vat_number, coc_number, address_line1,"
-                " address_line2, postal_code, city, country"
+                " house_number, address_line2, postal_code, city, country"
                 " FROM companies WHERE id = :cid AND org_id = :oid"
             ),
             {"cid": company_id, "oid": ctx.org.id},
@@ -455,6 +505,7 @@ async def _contact_email(ctx: Any, contact_id: uuid.UUID) -> str | None:
 
 def _customer_snapshot(company: Any, *, email: str | None) -> dict[str, Any]:
     data = {field: company[field] for field in _CUSTOMER_FIELDS}
+    data["address_line1"] = street_line(company["address_line1"], company["house_number"])
     data["email"] = email or company["invoice_email"]
     return data
 
@@ -494,6 +545,7 @@ async def _snapshot_lines(
         rows.append(
             {
                 "position": index,
+                "line_kind": str(line.line_kind),
                 "description": line.description.strip(),
                 "quantity": line.quantity,
                 "unit": line.unit,
@@ -561,31 +613,45 @@ class _DocumentService:
     async def document_pdf(self, doc: Any, kind: str) -> tuple[bytes, str]:
         """Render this document as PDF bytes + a filename (owner feedback: the API, not the
         browser's print dialog, is where an invoice document comes from). ``doc`` must have
-        its lines attached (``get()`` does)."""
-        from app.modules.invoicing.pdf import render_document_pdf
+        its lines attached (``get()`` does).
+
+        Everything white-label the renderer prints is resolved here — logo bytes, brand
+        colour, brand name — because ``pdf.py`` may not own a default identity of its own
+        (Golden Rule 4). The template resolves exactly as ``DocumentView`` resolves it: the
+        document's own, and nothing implied when it has none, so the paper a client receives
+        and the preview on screen can never be two different designs.
+        """
+        from app.modules.invoicing.pdf import DocumentBrand, render_document_pdf
 
         settings_row = await self.settings.row()
-        template_id = doc.template_id or settings_row.default_template_id
         config: dict[str, Any] = {}
-        if template_id is not None:
+        if doc.template_id is not None:
             template = await self.ctx.session.scalar(
                 self.ctx.repo(DocumentTemplate)
                 .scoped_select()
-                .where(DocumentTemplate.id == template_id)
+                .where(DocumentTemplate.id == doc.template_id)
             )
             if template is not None:
                 config = template.config or {}
         org_settings = await self.ctx.session.scalar(
             select(OrgSettings).where(OrgSettings.org_id == self.ctx.org.id)
         )
-        brand = (org_settings.brand_name if org_settings else None) or self.ctx.org.name
+        logo, logo_type = await load_brand_logo(self.ctx, org_settings)
         content = render_document_pdf(
             kind=kind,
             doc=doc,
             lines=list(doc.lines),
             seller=settings_row.company_details or {},
             config=config,
-            brand_name=brand,
+            brand=DocumentBrand(
+                name=(org_settings.brand_name if org_settings else None) or self.ctx.org.name,
+                primary_color=org_settings.primary_color if org_settings else None,
+                logo=logo,
+                logo_content_type=logo_type,
+            ),
+            tax_groups=_totals_from_rows(
+                list(doc.lines), prices_include_tax=doc.prices_include_tax
+            ).groups,
         )
         prefix = "offerte" if kind == "quote" else "factuur"
         return content, f"{doc.number or f'{prefix}-{doc.id}'}.pdf"
@@ -687,9 +753,10 @@ class InvoiceService(_DocumentService):
         )
         total = int(
             await self.ctx.session.scalar(
-                select(func.count())
-                .select_from(Invoice)
-                .where(Invoice.org_id == self.ctx.org.id, *conditions)
+                # ``scoped_count_select`` carries the company horizon; the hand-built
+                # ``select(count())`` it replaces counted the org's invoices above a restricted
+                # membership's filtered rows (#285) — the count leak #252 fixed elsewhere.
+                self.repo.scoped_count_select().where(*conditions)
             )
             or 0
         )
@@ -801,6 +868,7 @@ class InvoiceService(_DocumentService):
         await self._link_time_entries(
             invoice, [line.time_entry_id for line in data.lines if line.time_entry_id]
         )
+        await self._claim_subscription_periods(invoice, data.lines)
         await self._attach([invoice], payments=True)
         return invoice
 
@@ -854,6 +922,9 @@ class InvoiceService(_DocumentService):
                 default_tax_rate_id=await self._default_tax_rate_id(settings_row),
             )
             await self._replace_lines(invoice, line_rows)
+            # Rebuilt from the lines that survive the edit: dropping a subscription line
+            # hands its period back to the cycle cron.
+            await self._claim_subscription_periods(invoice, data.lines)
 
         await ActivityService(self.ctx).record_update(
             self.entity_type, invoice.id, before, snapshot(invoice, self.audited_fields)
@@ -869,6 +940,7 @@ class InvoiceService(_DocumentService):
         if invoice.status != InvoiceStatus.DRAFT.value:
             raise AppError("conflict", "errors.invoicing.not_draft", status_code=409)
         await self._release_time_entries(invoice.id)
+        await self._release_subscription_periods(invoice.id)
         await self._revert_quote(invoice)
         await self.repo.delete(invoice)
 
@@ -927,6 +999,9 @@ class InvoiceService(_DocumentService):
         if invoice.paid_total != 0:
             raise AppError("conflict", "errors.invoicing.has_payments", status_code=409)
         await self._release_time_entries(invoice.id)
+        # A cancelled invoice bills nothing, so its periods go back to the cycle cron —
+        # otherwise cancelling would silently retire an agreement's month for good.
+        await self._release_subscription_periods(invoice.id)
         invoice = await self.repo.update(
             invoice, status=InvoiceStatus.CANCELLED.value, cancelled_at=datetime.now(UTC)
         )
@@ -958,6 +1033,8 @@ class InvoiceService(_DocumentService):
         line_rows = [
             {
                 "position": row.position,
+                # A credit note mirrors the document it corrects, section headings included.
+                "line_kind": row.line_kind,
                 "description": row.description,
                 "quantity": row.quantity,
                 "unit": row.unit,
@@ -1194,6 +1271,136 @@ class InvoiceService(_DocumentService):
         )
         return list((await self.ctx.session.execute(stmt, params)).mappings().all())
 
+    async def uninvoiced_report(self, *, group: str, limit: int) -> dict[str, Any]:
+        """The org-wide "still to invoice" backlog (#277): the ``_unbilled_rows`` predicate
+        without its company scope, bucketed server-side so the subtotals are exact whatever
+        the entry cap. Read-only — building the invoice stays with ``from_time``.
+
+        Two queries, like ``TimeService.report``: one ``GROUP BY`` over the whole set for
+        the per-group figures, one capped row fetch for the expand/collapse detail. Date
+        buckets live in the org's local calendar (§8) — an entry logged late on the 31st
+        UTC belongs to the 1st where the org works.
+        """
+        self.ctx.require("invoicing.invoice.read")
+        group_expr = _UNINVOICED_GROUP_EXPR[group]
+        # The detail always needs the org zone: each row carries its org-local calendar day.
+        params: dict[str, Any] = {
+            "oid": self.ctx.org.id,
+            "tz": (await org_zoneinfo(self.ctx.session, self.ctx.org.id)).key,
+        }
+        if group in _UNINVOICED_DATE_GROUPS:
+            label_expr, label_join = "NULL", ""
+            # Chronological, oldest first — the longest-outstanding hours lead the page.
+            group_order = f"({group_expr})"
+        else:
+            label_expr, label_join = _UNINVOICED_GROUP_LABEL[group]
+            group_order = f"lower({label_expr}) ASC NULLS LAST, ({group_expr})"
+        # The employee-rate chain of ``_unbilled_rows`` (#226), with the invoicing default
+        # folded into the SQL so the aggregate prices exactly like the entry list.
+        default_rate = (await self.settings.row()).default_hourly_rate or Decimal(0)
+        params["fallback_rate"] = default_rate
+        rate_expr = "COALESCE(lp.hourly_rate, ls.default_hourly_rate, :fallback_rate)"
+        clauses = """
+            te.org_id = :oid AND te.ended_at IS NOT NULL
+            AND te.billable AND te.approved_at IS NOT NULL AND te.invoiced_at IS NULL
+            AND te.minutes > 0
+        """
+        rate_joins = """
+            LEFT JOIN leave_profiles lp
+                   ON lp.org_id = te.org_id AND lp.user_id = te.user_id
+            LEFT JOIN leave_settings ls ON ls.org_id = te.org_id
+        """
+        grouped = list(
+            (
+                await self.ctx.session.execute(
+                    text(
+                        f"""
+                        SELECT {group_expr} AS gkey, {label_expr} AS glabel,
+                               COUNT(*) AS cnt,
+                               SUM(te.minutes) AS minutes,
+                               SUM(te.minutes * {rate_expr} / 60.0) AS amount
+                        FROM time_entries te
+                        {rate_joins}
+                        {label_join}
+                        WHERE {clauses}
+                        GROUP BY 1, 2
+                        ORDER BY {group_order}
+                        """  # noqa: S608 - static fragments from module dicts, bound params
+                    ),
+                    params,
+                )
+            )
+            .mappings()
+            .all()
+        )
+        # The detail follows the group order, then time — so a hit cap truncates the tail
+        # groups instead of scattering gaps through every section.
+        rows = list(
+            (
+                await self.ctx.session.execute(
+                    text(
+                        f"""
+                        SELECT te.id, te.started_at, te.minutes, te.description,
+                               (te.started_at AT TIME ZONE :tz)::date AS entry_date,
+                               te.company_id, c.name AS company_name,
+                               te.project_id, p.name AS project_name,
+                               u.full_name AS user_name,
+                               {group_expr} AS gkey,
+                               {rate_expr} AS rate
+                        FROM time_entries te
+                        LEFT JOIN companies c ON c.id = te.company_id AND c.org_id = te.org_id
+                        LEFT JOIN projects p ON p.id = te.project_id AND p.org_id = te.org_id
+                        LEFT JOIN users u ON u.id = te.user_id
+                        {rate_joins}
+                        WHERE {clauses}
+                        ORDER BY {group_order}, te.started_at
+                        LIMIT :limit
+                        """  # noqa: S608 - static fragments from module dicts, bound params
+                    ),
+                    {**params, "limit": limit},
+                )
+            )
+            .mappings()
+            .all()
+        )
+        total_count = sum(g["cnt"] for g in grouped)
+        return {
+            "group": group,
+            "groups": [
+                {
+                    "key": g["gkey"],
+                    "label": g["glabel"],
+                    "count": g["cnt"],
+                    "minutes": int(g["minutes"]),
+                    "amount": round_cents(Decimal(g["amount"])),
+                }
+                for g in grouped
+            ],
+            "entries": [
+                {
+                    "id": r["id"],
+                    "group_key": r["gkey"],
+                    "started_at": r["started_at"],
+                    "entry_date": r["entry_date"],
+                    "minutes": r["minutes"],
+                    "description": r["description"],
+                    "company_id": r["company_id"],
+                    "company_name": r["company_name"],
+                    "project_id": r["project_id"],
+                    "project_name": r["project_name"],
+                    "user_name": r["user_name"],
+                    "rate": Decimal(r["rate"]),
+                    "amount": round_cents(Decimal(r["minutes"]) * Decimal(r["rate"]) / 60),
+                }
+                for r in rows
+            ],
+            "total_minutes": sum(int(g["minutes"]) for g in grouped),
+            # Rounded once on the exact sum (calc.py's rule) — never a sum of rounded parts.
+            "total_amount": round_cents(sum((Decimal(g["amount"]) for g in grouped), Decimal(0))),
+            "total_count": total_count,
+            "truncated": total_count > len(rows),
+        }
+
     async def from_time(self, data: InvoiceFromTime) -> Invoice:
         """Build a draft invoice from unbilled time and stamp those entries as invoiced —
         remembering which (``invoice_time_entries``), so deleting the draft un-bills exactly
@@ -1239,6 +1446,7 @@ class InvoiceService(_DocumentService):
                 lines.append(
                     LineWrite(
                         description=bucket["name"] or "Uren",
+                        line_kind=LineKind.HOURS,
                         quantity=hours(bucket["minutes"]),
                         unit="uur",
                         unit_price=bucket["rate"],
@@ -1263,6 +1471,7 @@ class InvoiceService(_DocumentService):
                 lines.append(
                     LineWrite(
                         description=name,
+                        line_kind=LineKind.HOURS,
                         quantity=hours(bucket["minutes"]),
                         unit="uur",
                         unit_price=bucket["rate"],
@@ -1275,6 +1484,7 @@ class InvoiceService(_DocumentService):
                 lines.append(
                     LineWrite(
                         description=f"{label} · {description}"[:512],
+                        line_kind=LineKind.HOURS,
                         quantity=hours(row["minutes"]),
                         unit="uur",
                         unit_price=rate_for(row),
@@ -1338,6 +1548,145 @@ class InvoiceService(_DocumentService):
             self.entity_type, invoice.id, "time_attached", {"entries": len(entry_ids)}
         )
 
+    async def billable_subscriptions(self, company_id: uuid.UUID) -> list[dict[str, Any]]:
+        """This client's active agreements and the period each would bill next — what the
+        line editor's "＋ abonnement" picker offers.
+
+        The agreement half comes from the subscriptions module's **published** interface
+        (§6): it owns the interval vocabulary and the "price valid at the period boundary"
+        rule, so a hand-picked line and a cron-raised one bill the same money by
+        construction. What this module adds is the half it owns — whether the period is
+        already claimed by a document.
+        """
+        self.ctx.require("invoicing.invoice.write")
+        from app.modules.subscriptions.service import SubscriptionService
+
+        periods = await SubscriptionService(self.ctx).billable_periods(company_id)
+        if not periods:
+            return []
+        claims = self.ctx.repo(InvoiceSubscriptionPeriod)
+        held = {
+            (row.subscription_id, row.period_end)
+            for row in await self.ctx.session.scalars(
+                claims.scoped_select().where(
+                    InvoiceSubscriptionPeriod.subscription_id.in_(
+                        [p.subscription_id for p in periods]
+                    )
+                )
+            )
+        }
+        return [
+            {
+                "id": period.subscription_id,
+                "name": period.name,
+                "currency": period.currency,
+                "amount": period.amount,
+                "period_start": period.period_start,
+                "period_end": period.period_end,
+                "lines": [
+                    {"description": description, "quantity": quantity, "unit_price": price}
+                    for description, quantity, price in period.lines
+                ],
+                "already_billed": (period.subscription_id, period.period_end) in held,
+            }
+            for period in periods
+        ]
+
+    async def _claim_subscription_periods(
+        self, invoice: Invoice, lines: Sequence[LineWrite]
+    ) -> None:
+        """Record which subscription periods this invoice bills, so the cycle cron skips them.
+
+        Owner's rule: *"the cron should know it is already paid."* ``on_subscription_due``
+        consults this table before drafting, so a period billed by hand — on a mixed invoice
+        with hours and products next to it — is never billed a second time when the cycle
+        comes round. The unique key is ``(org, subscription, period_end)``: a period belongs
+        to exactly one invoice, and a second document trying to claim it is refused rather
+        than silently double-billing a client.
+
+        The claim is rebuilt from the lines on every write, so removing a subscription line
+        gives the period back to the cron. A subscription that isn't this org's, or isn't
+        this invoice's client, claims nothing — the same "bill less, never guess" stance
+        ``_link_time_entries`` takes.
+        """
+        claims = self.ctx.repo(InvoiceSubscriptionPeriod)
+        existing = list(
+            await self.ctx.session.scalars(
+                claims.scoped_select().where(
+                    InvoiceSubscriptionPeriod.invoice_id == invoice.id
+                )
+            )
+        )
+        wanted: dict[tuple[uuid.UUID, date], LineWrite] = {}
+        for line in lines:
+            if line.subscription_id is not None and line.period_end is not None:
+                wanted[(line.subscription_id, line.period_end)] = line
+
+        if wanted:
+            valid = set(
+                (
+                    await self.ctx.session.execute(
+                        text(
+                            """
+                            SELECT s.id FROM subscriptions s
+                            WHERE s.org_id = :oid AND s.company_id = :cid AND s.id IN :ids
+                            """  # noqa: S608 - static clauses, bound params only
+                        ).bindparams(bindparam("ids", expanding=True)),
+                        {
+                            "oid": self.ctx.org.id,
+                            "cid": invoice.company_id,
+                            "ids": [sid for sid, _ in wanted],
+                        },
+                    )
+                ).scalars()
+            )
+            wanted = {key: line for key, line in wanted.items() if key[0] in valid}
+
+        for row in existing:
+            if (row.subscription_id, row.period_end) not in wanted:
+                await claims.delete(row)
+        held = {(row.subscription_id, row.period_end) for row in existing}
+        fresh = {key: line for key, line in wanted.items() if key not in held}
+        if not fresh:
+            return
+
+        # Someone else's claim on the same period: refuse the write rather than let the
+        # unique index 500, and name the conflict so the form can say which line is the
+        # problem. Flush first — the check must see this transaction's own deletes.
+        await self.ctx.session.flush()
+        taken = await self.ctx.session.scalar(
+            claims.scoped_select()
+            .where(
+                tuple_(
+                    InvoiceSubscriptionPeriod.subscription_id,
+                    InvoiceSubscriptionPeriod.period_end,
+                ).in_(list(fresh))
+            )
+            .limit(1)
+        )
+        if taken is not None:
+            raise AppError(
+                "conflict",
+                "errors.invoicing.period_already_billed",
+                status_code=409,
+                fields={"lines": "errors.invoicing.period_already_billed"},
+            )
+        for (subscription_id, period_end), line in fresh.items():
+            await claims.create(
+                invoice_id=invoice.id,
+                subscription_id=subscription_id,
+                period_start=line.period_start,
+                period_end=period_end,
+            )
+
+    async def _release_subscription_periods(self, invoice_id: uuid.UUID) -> None:
+        """Give this invoice's claimed periods back to the cycle cron (delete/cancel path)."""
+        claims = self.ctx.repo(InvoiceSubscriptionPeriod)
+        for row in await self.ctx.session.scalars(
+            claims.scoped_select().where(InvoiceSubscriptionPeriod.invoice_id == invoice_id)
+        ):
+            await claims.delete(row)
+
     async def _release_time_entries(self, invoice_id: uuid.UUID) -> None:
         """Un-bill exactly the entries this invoice billed (delete/cancel path)."""
         links = self.ctx.repo(InvoiceTimeEntry)
@@ -1371,12 +1720,39 @@ class InvoiceService(_DocumentService):
     # --- summary ---------------------------------------------------------------- #
     async def summary(self) -> dict[str, Any]:
         """The list-header tiles, in org currency (foreign documents convert through their
-        stored rate; 1 when unset). Approximate for steering — documents stay exact."""
+        stored rate; 1 when unset). Approximate for steering — documents stay exact.
+
+        Hand-written SQL (six conditional aggregates in one pass), so it cannot ride
+        ``scoped_select`` and had no company horizon: a membership restricted to one company
+        group read *"2 concepten"* above a list showing one, which is the count leak #252 named
+        and #285 found here — a tile is a fact about clients it cannot see. The scope is spliced
+        as a bound ``IN``; an empty horizon short-circuits, since ``IN ()`` is not valid SQL and
+        the honest answer is all-zeroes anyway.
+        """
         today = await org_today(self.ctx)
         base = "COALESCE(exchange_rate, 1)"
+        scope = self.ctx.company_scope
+        if scope is not None and not scope:
+            return {
+                "open_count": 0, "open_total": 0.0,
+                "overdue_count": 0, "overdue_total": 0.0,
+                "draft_count": 0, "paid_this_year": 0.0,
+                "quotes_open_count": 0, "quotes_open_total": 0.0,
+            }
+        horizon_sql = "" if scope is None else " AND company_id IN :companies"
+        params: dict[str, Any] = {"oid": self.ctx.org.id}
+        if scope is not None:
+            params["companies"] = list(scope)
+
+        def _scoped_text(sql: str):  # noqa: ANN202 — a bound `IN` needs the expanding param
+            stmt = text(sql)
+            return stmt if scope is None else stmt.bindparams(
+                bindparam("companies", expanding=True)
+            )
+
         row = (
             await self.ctx.session.execute(
-                text(
+                _scoped_text(
                     f"""
                     SELECT
                       COUNT(*) FILTER (WHERE status = 'open') AS open_count,
@@ -1392,22 +1768,23 @@ class InvoiceService(_DocumentService):
                                FILTER (WHERE status = 'paid'
                                        AND EXTRACT(YEAR FROM paid_at) = :year), 0)
                         AS paid_this_year
-                    FROM invoices WHERE org_id = :oid
-                    """  # noqa: S608 - f-string only splices the constant COALESCE expr
+                    FROM invoices WHERE org_id = :oid{horizon_sql}
+                    """  # noqa: S608 - f-string splices the constant COALESCE expr and a
+                    # bound-parameter `IN`, never a value
                 ),
-                {"oid": self.ctx.org.id, "today": today, "year": today.year},
+                {**params, "today": today, "year": today.year},
             )
         ).mappings().one()
         quotes = (
             await self.ctx.session.execute(
-                text(
+                _scoped_text(
                     f"""
                     SELECT COUNT(*) AS open_count,
                            COALESCE(SUM(total * {base}), 0) AS open_total
-                    FROM quotes WHERE org_id = :oid AND status = 'open'
+                    FROM quotes WHERE org_id = :oid AND status = 'open'{horizon_sql}
                     """  # noqa: S608
                 ),
-                {"oid": self.ctx.org.id},
+                params,
             )
         ).mappings().one()
         return {
@@ -1458,9 +1835,8 @@ class QuoteService(_DocumentService):
         )
         total = int(
             await self.ctx.session.scalar(
-                select(func.count())
-                .select_from(Quote)
-                .where(Quote.org_id == self.ctx.org.id, *conditions)
+                # Horizon-carrying, like the invoice list's (#285).
+                self.repo.scoped_count_select().where(*conditions)
             )
             or 0
         )
@@ -1726,6 +2102,8 @@ class QuoteService(_DocumentService):
         line_rows = [
             {
                 "position": row.position,
+                # The quote's own grouping carries over — the client accepted that document.
+                "line_kind": row.line_kind,
                 "description": row.description,
                 "quantity": row.quantity,
                 "unit": row.unit,

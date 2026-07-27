@@ -3,8 +3,9 @@
 The timeline is team-visible by design (that is its CRM value), so ``read`` defaults to both
 system roles. Writing and deleting are own/any scoped like time entries: a member manages their
 own logged touchpoints, an admin anyone's. ``review`` gates the gmail approve/reject/remap
-routes, but note the service enforces **strict ownership** on gmail-sourced rows regardless of
-scope — there is deliberately no ``:any`` that lets an admin decide about a colleague's mailbox.
+routes — and, since #272, the manual "add to conversation" merge, another gmail-row mutation —
+but note the service enforces **strict ownership** on gmail-sourced rows regardless of scope:
+there is deliberately no ``:any`` that lets an admin decide about a colleague's mailbox.
 """
 
 from __future__ import annotations

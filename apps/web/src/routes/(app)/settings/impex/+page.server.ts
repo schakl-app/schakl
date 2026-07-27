@@ -1,6 +1,6 @@
 import { redirect } from "@sveltejs/kit";
 
-import { importCsvActionFor } from "$lib/core/impex/actions.server";
+import { impexActionFor } from "$lib/core/impex/actions.server";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 
@@ -16,6 +16,7 @@ export const load: PageServerLoad = async (event) => {
   const entities = (data ?? []).filter((e) => can(event.locals.user, e.read_permission));
   if (entities.length === 0) throw redirect(303, "/settings");
   return {
+    locale: event.locals.locale,
     entities: entities.map((e) => ({
       entity_type: e.entity_type,
       importable: e.importable && can(event.locals.user, e.write_permission),
@@ -24,6 +25,5 @@ export const load: PageServerLoad = async (event) => {
 };
 
 export const actions: Actions = {
-  importCsv: async (event) =>
-    importCsvActionFor(event, event.url.searchParams.get("entity") ?? ""),
+  impex: async (event) => impexActionFor(event, event.url.searchParams.get("entity") ?? ""),
 };

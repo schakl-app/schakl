@@ -7,10 +7,12 @@
  * once per group; exempt/reverse-charge groups charge nothing; inclusive prices peel the
  * tax out of the group gross.
  */
-import type { TaxRate } from "./types";
+import type { LineKind, TaxRate } from "./types";
 
 export interface EditableLine {
   description: string;
+  /** Hours / subscription / product — drives how the document groups this line. */
+  line_kind: LineKind;
   quantity: string;
   unit: string;
   unit_price: string;
@@ -18,6 +20,11 @@ export interface EditableLine {
   /** The unbilled time entry this line was prefilled from (new-invoice form). Posted so the
    *  API bills that entry; absent on hand-typed lines. */
   time_entry_id?: string;
+  /** The agreement and period a subscription line bills. Posted so the API claims that
+   *  period and the cycle cron never invoices it a second time. */
+  subscription_id?: string;
+  period_start?: string;
+  period_end?: string;
   /** Client-only: this line was auto-added from unbilled time, so a client change may replace
    *  it — hand-typed lines (falsy) are never clobbered. Never serialized to the API. */
   auto?: boolean;

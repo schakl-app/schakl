@@ -41,6 +41,15 @@ async def _domains_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
                 "status": d.status,
                 "email_enabled": d.email_enabled,
                 "has_website": d.id in website_by_domain,
+                # Renewal + resolved price (#250): what this domain costs and when it next
+                # bills — the numbers the client conversation is about.
+                "next_invoice_date": (
+                    d.next_invoice_date.isoformat() if d.next_invoice_date else None
+                ),
+                "resolved_price": (
+                    str(d.resolved_price) if d.resolved_price is not None else None  # type: ignore[attr-defined]
+                ),
+                "resolved_currency": d.resolved_currency,  # type: ignore[attr-defined]
             }
             for d in domains
         ],

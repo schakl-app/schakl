@@ -7,8 +7,10 @@
   import { fmtDateTime, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { entityPanelsFor } from "$lib/core/registry";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
@@ -28,6 +30,7 @@
     if (form?.saved || form?.issued) editing = false;
   });
 
+  const busy = new InFlight();
   let confirmIssue = $state(false);
   let confirmCancel = $state(false);
   let confirmDelete = $state(false);
@@ -41,6 +44,8 @@
   // Inline-create from the edit form's contact picker (#115): "＋ … toevoegen" opens this dialog.
   let qcContactOpen = $state(false);
   let qcContactName = $state("");
+  // The invoice's client rides along (#247): the new contact links to it by default.
+  let qcContactCompany = $state<{ id: string; name: string } | null>(null);
 
   const template = $derived(data.templates.find((tpl) => tpl.id === invoice.template_id) ?? null);
   const theme = $derived(page.data.theme);
@@ -220,8 +225,9 @@
           locale={data.locale}
           {form}
           oncancel={() => (editing = false)}
-          oncreatecontact={(name) => {
+          oncreatecontact={(name, company) => {
             qcContactName = name;
+            qcContactCompany = company;
             qcContactOpen = true;
           }}
         />
@@ -352,12 +358,15 @@
   title={t("invoicing.action.issue")}
   message={t("invoicing.issue_confirm")}
   action="?/issue"
+  confirmLabel={t("invoicing.action.issue")}
+  variant="primary"
 />
 <ConfirmDialog
   bind:open={confirmCancel}
   title={t("invoicing.action.cancel")}
   message={t("invoicing.cancel_confirm")}
   action="?/cancel"
+  confirmLabel={t("invoicing.action.cancel")}
 />
 <ConfirmDialog
   bind:open={confirmDelete}
@@ -368,8 +377,10 @@
 <ConfirmDialog
   bind:open={confirmCredit}
   title={t("invoicing.action.credit")}
-  message={t("invoicing.issue_confirm")}
+  message={t("invoicing.credit_confirm")}
   action="?/credit"
+  confirmLabel={t("invoicing.action.credit")}
+  variant="primary"
 />
 <ConfirmDialog
   bind:open={confirmDeletePayment}
@@ -383,11 +394,10 @@
   <form
     method="POST"
     action="?/send"
-    use:enhance={() =>
-      ({ result, update }) => {
-        if (result.type === "success") sendOpen = false;
-        void update({ reset: false });
-      }}
+    use:enhance={busy.wrap("send", () => ({ result, update }) => {
+      if (result.type === "success") sendOpen = false;
+      void update({ reset: false });
+    })}
     class="space-y-3"
   >
     <div>
@@ -422,9 +432,9 @@
         class="rounded-lg border border-border px-4 py-2 text-sm text-text"
         onclick={() => (sendOpen = false)}>{t("common.cancel")}</button
       >
-      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white">
+      <Button loading={busy.is("send")} disabled={busy.active}>
         <Send size={14} class="mr-1 inline" />{t("invoicing.action.send")}
-      </button>
+      </Button>
     </div>
   </form>
 </Modal>
@@ -433,11 +443,10 @@
   <form
     method="POST"
     action="?/payment"
-    use:enhance={() =>
-      ({ result, update }) => {
-        if (result.type === "success") payOpen = false;
-        void update({ reset: false });
-      }}
+    use:enhance={busy.wrap("payment", () => ({ result, update }) => {
+      if (result.type === "success") payOpen = false;
+      void update({ reset: false });
+    })}
     class="space-y-3"
   >
     <div class="grid gap-3 sm:grid-cols-2">
@@ -487,9 +496,7 @@
         class="rounded-lg border border-border px-4 py-2 text-sm text-text"
         onclick={() => (payOpen = false)}>{t("common.cancel")}</button
       >
-      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-        >{t("common.save")}</button
-      >
+      <Button loading={busy.is("payment")} disabled={busy.active}>{t("common.save")}</Button>
     </div>
   </form>
 </Modal>
@@ -497,6 +504,7 @@
 <ContactQuickCreate
   bind:open={qcContactOpen}
   name={qcContactName}
+  linkCompany={qcContactCompany}
   pickerSlot="contact"
   definitions={data.contactDefinitions}
   locale={data.locale}

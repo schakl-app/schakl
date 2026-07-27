@@ -27,7 +27,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from pydantic import BaseModel
-from sqlalchemy import bindparam, func, select, text
+from sqlalchemy import bindparam, case, func, select, text
 from sqlalchemy.sql.expression import column as sa_column
 from sqlalchemy.sql.expression import table as sa_table
 
@@ -132,6 +132,24 @@ def _amount_sort(today: date) -> Any:
     )
 
 
+#: Months per interval — the one place the calendar arithmetic lives.
+_INTERVAL_MONTHS = {
+    SubscriptionInterval.MONTHLY.value: 1,
+    SubscriptionInterval.QUARTERLY.value: 3,
+    SubscriptionInterval.YEARLY.value: 12,
+}
+
+
+def _interval_sort() -> Any:
+    """A small closed vocabulary sorts by *meaning* (docs/UX.md): monthly → quarterly → yearly,
+    the order the labels mean, which alphabetically they do not read in every locale. The same
+    ranking the templates table sorts by. ``interval_count`` stays out of it — the cell prints the
+    interval alone, so a monthly×3 row must not file itself among the quarterlies."""
+    return case(
+        *((Subscription.interval == key, months) for key, months in _INTERVAL_MONTHS.items())
+    )
+
+
 # ``amount`` is also sortable, but its expression needs the org-local "today" — ``list``
 # adds it per request rather than pinning a process-start date here.
 SORTABLE = {
@@ -141,14 +159,8 @@ SORTABLE = {
     "start_date": Subscription.start_date,
     "company": _company_sort_name(),
     "type": _type_sort_position(),
+    "interval": _interval_sort(),
     "included_hours": Subscription.included_hours,
-}
-
-#: Months per interval — the one place the calendar arithmetic lives.
-_INTERVAL_MONTHS = {
-    SubscriptionInterval.MONTHLY.value: 1,
-    SubscriptionInterval.QUARTERLY.value: 3,
-    SubscriptionInterval.YEARLY.value: 12,
 }
 
 
@@ -165,6 +177,28 @@ def add_months(day: date, months: int) -> date:
     next_month_start = date(year + (month == 12), month % 12 + 1, 1)
     last_day = (next_month_start - date.resolution).day
     return date(year, month, min(day.day, last_day))
+
+
+@dataclass(frozen=True)
+class BillablePeriod:
+    """One agreement's next billable period, **published** for `invoicing` to offer as a
+    ready-made invoice line (CLAUDE.md §6 — a published interface, not our internals).
+
+    It exists so that billing a month by hand and letting the cycle cron raise it produce
+    the same money: the interval vocabulary and the price-history rule ("the price valid at
+    the period boundary") stay here, where the agreement lives, instead of being re-derived
+    by whoever draws the invoice.
+    """
+
+    subscription_id: uuid.UUID
+    name: str
+    currency: str
+    amount: Decimal
+    period_start: date | None
+    period_end: date | None
+    #: The agreement's own lines, or a single priced line when it has none — exactly the
+    #: shape ``subscription.due`` carries.
+    lines: tuple[tuple[str, Decimal, Decimal], ...]
 
 
 @dataclass(frozen=True)
@@ -243,9 +277,9 @@ class SubscriptionService:
         )
         total = int(
             await self.ctx.session.scalar(
-                select(func.count())
-                .select_from(Subscription)
-                .where(Subscription.org_id == self._org_id, *conditions)
+                # Horizon-carrying: the hand-built count it replaces totalled the org's
+                # agreements above a restricted membership's filtered rows (#285).
+                self.repo.scoped_count_select().where(*conditions)
             )
             or 0
         )
@@ -263,6 +297,67 @@ class SubscriptionService:
         if usage:
             sub.usage = await self._usage(sub)  # type: ignore[attr-defined]
         return sub
+
+    async def billable_periods(self, company_id: uuid.UUID) -> list[BillablePeriod]:
+        """This client's active agreements and the period each would bill next (§6).
+
+        `invoicing`'s line editor calls this to offer "＋ abonnement": one pick drops the
+        same lines, at the same price, that the cycle cron would have raised. Read-only —
+        raising the invoice, and claiming the period so the cron skips it, stays with
+        `invoicing`, which owns documents.
+        """
+        subs = list(
+            await self.ctx.session.scalars(
+                self.repo.scoped_select()
+                .where(
+                    Subscription.company_id == company_id,
+                    Subscription.status == SubscriptionStatus.ACTIVE.value,
+                )
+                .order_by(func.lower(Subscription.name))
+            )
+        )
+        if not subs:
+            return []
+        lines_by_sub: dict[uuid.UUID, list[SubscriptionLine]] = {}
+        for line in await self.ctx.session.scalars(
+            self.lines.scoped_select()
+            .where(SubscriptionLine.subscription_id.in_([s.id for s in subs]))
+            .order_by(SubscriptionLine.position)
+        ):
+            lines_by_sub.setdefault(line.subscription_id, []).append(line)
+
+        out: list[BillablePeriod] = []
+        for sub in subs:
+            boundary = sub.next_invoice_date
+            # The price valid at the period boundary — history answers, current state never
+            # reprices (the cron's rule, applied identically here).
+            amount = await self.ctx.session.scalar(
+                self.prices.scoped_select()
+                .where(
+                    SubscriptionPrice.subscription_id == sub.id,
+                    SubscriptionPrice.valid_from <= (boundary or await self._org_today()),
+                )
+                .order_by(SubscriptionPrice.valid_from.desc())
+                .limit(1)
+                .with_only_columns(SubscriptionPrice.amount)
+            ) or Decimal(0)
+            months = period_months(sub.interval, sub.interval_count)
+            rows = lines_by_sub.get(sub.id) or []
+            out.append(
+                BillablePeriod(
+                    subscription_id=sub.id,
+                    name=sub.name,
+                    currency=sub.currency,
+                    amount=amount,
+                    period_start=add_months(boundary, -months) if boundary else None,
+                    period_end=boundary,
+                    lines=tuple(
+                        (row.description, row.quantity, row.unit_amount) for row in rows
+                    )
+                    or ((sub.name, Decimal(1), amount),),
+                )
+            )
+        return out
 
     async def hours_for_projects(
         self, project_ids: Sequence[uuid.UUID]
@@ -324,10 +419,13 @@ class SubscriptionService:
         await self._ensure_company(data.company_id)
         if data.subscription_type_id is not None:
             await self._ensure_type(data.subscription_type_id)
+        if data.subscription_template_id is not None:
+            await self._ensure_template(data.subscription_template_id)
         custom = await self.custom_fields.validate(ENTITY_TYPE, data.custom or {})
         sub = await self.repo.create(
             company_id=data.company_id,
             subscription_type_id=data.subscription_type_id,
+            subscription_template_id=data.subscription_template_id,
             name=data.name.strip(),
             status=data.status.value,
             currency=data.currency.upper(),
@@ -380,6 +478,11 @@ class SubscriptionService:
             if data.subscription_type_id is not None:
                 await self._ensure_type(data.subscription_type_id)
             values["subscription_type_id"] = data.subscription_type_id
+        if "subscription_template_id" in sent:
+            # Same rule for the preset it follows; null stops it following one.
+            if data.subscription_template_id is not None:
+                await self._ensure_template(data.subscription_template_id)
+            values["subscription_template_id"] = data.subscription_template_id
         if "currency" in sent and data.currency is not None:
             values["currency"] = data.currency.upper()
         if "rollover" in sent and data.rollover is not None:
@@ -692,12 +795,34 @@ class SubscriptionService:
     ) -> None:
         for link in links:
             await self._ensure_link_target(link)
-        for row in await self.ctx.session.scalars(
-            self.links.scoped_select().where(SubscriptionLink.subscription_id == subscription_id)
-        ):
+        # Delete-then-insert, so which project is *newly* covered has to be read before the
+        # write — a save that merely re-posts the same links must not re-announce them.
+        existing = list(
+            await self.ctx.session.scalars(
+                self.links.scoped_select().where(
+                    SubscriptionLink.subscription_id == subscription_id
+                )
+            )
+        )
+        before = {(row.entity_type, row.entity_id) for row in existing}
+        for row in existing:
             await self.links.delete(row)
         for link in links:
             await self.links.create(subscription_id=subscription_id, **link.model_dump())
+        added = [
+            link.entity_id
+            for link in links
+            if link.entity_type == "project" and ("project", link.entity_id) not in before
+        ]
+        if added:
+            # Work a retainer already pays for is not separately invoiceable (#284): the
+            # projects module reacts by clearing those projects' billable default. On the bus,
+            # never by reaching into another module's table (§6).
+            await emit(
+                "subscription.project_linked",
+                self.ctx,
+                {"subscription_id": subscription_id, "project_ids": added},
+            )
 
     async def _ensure_company(self, company_id: uuid.UUID) -> None:
         ok = await self.ctx.session.scalar(
@@ -719,6 +844,23 @@ class SubscriptionService:
                 "errors.validation",
                 status_code=400,
                 fields={"subscription_type_id": "errors.validation"},
+            )
+
+    async def _ensure_template(self, subscription_template_id: uuid.UUID) -> None:
+        """The preset an agreement claims to come from must be this tenant's (Golden Rule 1) —
+        a foreign id would otherwise let another org's rename reach in here later."""
+        ok = await self.ctx.session.scalar(
+            self.ctx.repo(SubscriptionTemplate)
+            .scoped_select()
+            .where(SubscriptionTemplate.id == subscription_template_id)
+            .with_only_columns(SubscriptionTemplate.id)
+        )
+        if ok is None:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=400,
+                fields={"subscription_template_id": "errors.validation"},
             )
 
     async def _mark_activated(self, sub: Subscription) -> None:
@@ -796,9 +938,12 @@ class SubscriptionService:
 
     async def _usage(self, sub: Subscription) -> SubscriptionUsage:
         """Current-period consumption from logged time (#25's numbers): entries on the linked
-        projects **or** linked to the subscription itself (the entry form's picker) — one OR
-        over two indexed columns, so a project entry that also carries the subscription link
-        is never counted twice."""
+        projects **or** carrying the legacy direct link — one OR over two indexed columns, so a
+        project entry that also carries the old link is never counted twice.
+
+        Hours are logged against a project now; the entry form's subscription picker is gone, so
+        ``time_entries.subscription_id`` only ever holds history. Keep the OR until that column
+        is dropped, or a retainer's usage would silently shrink on upgrade."""
         months = period_months(sub.interval, sub.interval_count)
         period_end = sub.next_invoice_date
         period_start = add_months(period_end, -months) if period_end else None
@@ -997,15 +1142,22 @@ class SubscriptionTypeService:
 class SubscriptionTemplateService:
     """CRUD for subscription presets (issue #142).
 
-    A template only ever *prefills* the create form — nothing references it afterwards, so it
-    deletes freely (no ``active`` dance). Managed under Instellingen, and creatable from a live
-    subscription ("save as template"), per the UX template rule.
+    A template *prefills* the create form: its money and hours are copied into the agreement's
+    own columns and are that agreement's from then on, so editing the preset never repriced
+    anything — and must not, because a signed fee changes through the price history, per
+    client. Managed under Instellingen, and creatable from a live subscription ("save as
+    template"), per the UX template rule.
+
+    **The name is the one value that keeps following**, because it is the one value the create
+    form does not let the operator choose: it is copied in read-only, so a preset's name is
+    literally the label of every agreement made from it. See ``update``.
     """
 
     def __init__(self, ctx: RequestContext) -> None:
         self.ctx = ctx
         self.repo = ctx.repo(SubscriptionTemplate)
         self.types = ctx.repo(SubscriptionType)
+        self.subscriptions = ctx.repo(Subscription)
 
     async def list(self) -> Sequence[SubscriptionTemplate]:
         stmt = self.repo.scoped_select().order_by(
@@ -1021,14 +1173,57 @@ class SubscriptionTemplateService:
 
     async def update(
         self, template_id: uuid.UUID, data: SubscriptionTemplateUpdate
-    ) -> SubscriptionTemplate:
+    ) -> tuple[SubscriptionTemplate, int]:
+        """Save the preset, and carry a **rename** over to the agreements it created.
+
+        Returns the preset and how many agreements followed. The rename touches only rows that
+        both came from this preset and *still carry its old name*: an agreement someone
+        deliberately renamed ("Hosting Basis — extra IP") is that tenant's own wording, and a
+        catalog edit must not overwrite it. Renaming an agreement is therefore also how it
+        opts out of following the preset for good.
+
+        No second permission check: the preset is where these agreements' name comes from, so
+        following through is the same write, not a new capability — and each rename lands on
+        that agreement's own activity trail (§16), in this transaction, so a bulk change is
+        never invisible. The repository's tenant scope (and the company horizon, #191) decides
+        which rows are reachable; nothing here widens it.
+        """
         self.ctx.require("subscriptions.template.manage")
         template = await self.repo.get_or_404(template_id)
         if data.subscription_type_id is not None:
             await self._ensure_type(data.subscription_type_id)
-        return await self.repo.update(
+        old_name = template.name
+        template = await self.repo.update(
             template, **self._values(data, data.model_dump(exclude_unset=True))
         )
+        renamed = 0
+        if template.name != old_name:
+            renamed = await self._rename_agreements(template, old_name)
+        return template, renamed
+
+    async def _rename_agreements(self, template: SubscriptionTemplate, old_name: str) -> int:
+        subs = list(
+            (
+                await self.ctx.session.execute(
+                    self.subscriptions.scoped_select().where(
+                        Subscription.subscription_template_id == template.id,
+                        Subscription.name == old_name,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        activity = ActivityService(self.ctx)
+        for sub in subs:
+            await self.subscriptions.update(sub, name=template.name)
+            await activity.record(
+                ENTITY_TYPE,
+                sub.id,
+                "renamed_with_template",
+                {"from": old_name, "to": template.name},
+            )
+        return len(subs)
 
     async def delete(self, template_id: uuid.UUID) -> None:
         self.ctx.require("subscriptions.template.manage")

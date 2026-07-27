@@ -1,40 +1,30 @@
 <script lang="ts">
-  import {
-    BadgeEuro,
-    CalendarClock,
-    FileText,
-    Repeat,
-    ShieldOff,
-    Trash2,
-    UserMinus,
-  } from "@lucide/svelte";
+  import { ShieldOff, UserMinus } from "@lucide/svelte";
   import Avatar from "$lib/core/ui/Avatar.svelte";
 
   import { enhance } from "$app/forms";
-  import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
-  import { type LeaveTypeInfo } from "$lib/modules/leave/format";
-  import RecurringDaysManager from "$lib/modules/leave/RecurringDaysManager.svelte";
   import { pageTitle } from "$lib/core/title";
   import { localeName } from "$lib/core/roles/name";
   import { effectivePermissions, WILDCARD } from "$lib/core/roles/permissions";
+  import { InFlight } from "$lib/core/submit.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
-  import DateInput from "$lib/core/ui/DateInput.svelte";
-  import Modal from "$lib/core/ui/Modal.svelte";
-  import { fmtHours } from "$lib/modules/leave/format";
-  import WorkScheduleEditor from "$lib/modules/leave/WorkScheduleEditor.svelte";
-  import {
-    cloneSchedule,
-    defaultSchedule,
-    weekHours,
-    type WorkSchedule,
-  } from "$lib/modules/leave/schedule";
+  // Employment editors (schedule, contracts, recurring, rate) as one shared surface, so this page
+  // and the team leave roster can't drift.
+  import EmploymentModals, {
+    employmentMenuItems,
+    type OpenEmployment,
+  } from "$lib/modules/leave/EmploymentModals.svelte";
+  import { fmtHours, type LeaveTypeInfo } from "$lib/modules/leave/format";
+  import { weekHours, type WorkSchedule } from "$lib/modules/leave/schedule";
 
   let { data, form } = $props();
 
   let showInvite = $state(false);
+  const busy = new InFlight();
   let revokeId = $state("");
   let confirmRevoke = $state(false);
   let resetTwoFactorId = $state("");
@@ -49,24 +39,14 @@
 
   const effectiveFor = (roleIds: string[]) => effectivePermissions(roles, roleIds);
 
-  // --- work schedules (leave module, #46) ---------------------------------------
-  // Employment data, so it lives on the person rather than under Instellingen → Verlof.
+  // Employment data (schedule, contracts, recurring, rate) lives on the person, not under
+  // Instellingen → Verlof (#46). Its ⋯ actions and modals are the shared EmploymentModals, so this
+  // page and the team leave roster stay in lockstep; this page keeps the roster-level readouts.
   type Member = (typeof data.members)[number];
   const profileByUser = $derived(Object.fromEntries(data.profiles.map((p) => [p.user_id, p])));
 
-  let scheduleOpen = $state(false);
-  let scheduleFor = $state<Member | null>(null);
-  let inherit = $state(true);
-  // Filled by `openSchedule` before the modal is ever shown; the initial value is never rendered.
-  let draft = $state<WorkSchedule>(defaultSchedule());
-
-  function openSchedule(member: Member) {
-    const own = profileByUser[member.user_id]?.schedule ?? null;
-    inherit = own === null;
-    draft = cloneSchedule((own ?? data.defaultSchedule) as WorkSchedule);
-    scheduleFor = member;
-    scheduleOpen = true;
-  }
+  // The opener the shared modals hand back through `register`; a ⋯ item calls it for a member.
+  let openEmployment = $state<OpenEmployment>();
 
   /**
    * A pre-#46 part-timer carries contract hours that predate any schedule. Say so out loud:
@@ -80,8 +60,9 @@
     return stored === inherited ? null : stored;
   }
 
-  // --- hourly rate (#82, #113) ----------------------------------------------------
+  // --- hourly rate readouts (#82, #113) -------------------------------------------
   // Salary-adjacent, so its own permission (`leave.rate.read`/`.write`), not `profile.manage`.
+  // The edit surface is the shared rate modal; the roster still prints the effective figure.
   const rateByUser = $derived(
     Object.fromEntries((data.rateRows ?? []).map((r) => [r.user_id, r.hourly_rate])),
   );
@@ -90,75 +71,14 @@
   const effectiveRateByUser = $derived(
     Object.fromEntries((data.rateRows ?? []).map((r) => [r.user_id, r.effective_hourly_rate])),
   );
-  let rateOpen = $state(false);
-  let rateFor = $state<Member | null>(null);
-  let rateDraft = $state("");
-
-  function openRate(member: Member) {
-    const current = rateByUser[member.user_id];
-    rateDraft = current == null ? "" : String(current);
-    rateFor = member;
-    rateOpen = true;
-  }
-
-  // --- employment contracts (#65) -----------------------------------------------
-  const contractsByUser = $derived.by(() => {
-    const map: Record<string, typeof data.contracts> = {};
-    for (const c of data.contracts ?? []) (map[c.user_id] ??= []).push(c);
-    return map;
-  });
-  let contractsOpen = $state(false);
-  let contractsFor = $state<Member | null>(null);
-  const todayIso = new Date().toISOString().slice(0, 10);
-
-  function openContracts(member: Member) {
-    contractsFor = member;
-    contractsOpen = true;
-  }
-
-  // --- recurring rostered free days / ADV (#107) ----------------------------------
-  const activeLeaveTypes = $derived(
-    ((data.leaveTypes ?? []) as LeaveTypeInfo[]).filter((lt) => lt.active),
-  );
-  const recurringByUser = $derived.by(() => {
-    const map: Record<string, typeof data.recurring> = {};
-    for (const p of data.recurring ?? []) (map[p.user_id] ??= []).push(p);
-    return map;
-  });
-  let recurringOpen = $state(false);
-  let recurringFor = $state<Member | null>(null);
-
-  function openRecurring(member: Member) {
-    recurringFor = member;
-    recurringOpen = true;
-  }
 
   function memberActions(member: Member) {
-    const items = [];
-    if (data.schedules) {
-      items.push({
-        label: t("settings.users.schedule"),
-        icon: CalendarClock,
-        onclick: () => openSchedule(member),
-      });
-      items.push({
-        label: t("settings.users.contracts"),
-        icon: FileText,
-        onclick: () => openContracts(member),
-      });
-      items.push({
-        label: t("settings.users.recurring"),
-        icon: Repeat,
-        onclick: () => openRecurring(member),
-      });
-    }
-    if (data.rates) {
-      items.push({
-        label: t("settings.users.rate"),
-        icon: BadgeEuro,
-        onclick: () => openRate(member),
-      });
-    }
+    // Schedule, contracts, recurring and (rate, where permitted) come from the shared helper;
+    // this page adds the trust actions (2FA reset, revoke) that only belong on the roster.
+    const items = employmentMenuItems(member, openEmployment, {
+      schedules: data.schedules,
+      rates: data.rates,
+    });
     if (!member.is_self) {
       // 2FA reset is the lost-phone escape hatch (docs/TWOFACTOR.md) — only offered where the
       // member actually has 2FA, and confirmed like every destructive trust change.
@@ -207,14 +127,28 @@
   </button>
 </div>
 
+<!-- The Dienstverband wizard (contract + werkweek + vrije tijd) and the hourly rate, shared with
+     the team leave roster. One instance; each row's ⋯ menu opens it through `openEmployment`. -->
+{#if data.schedules || data.rates}
+  <EmploymentModals
+    register={(open) => (openEmployment = open)}
+    contracts={data.contracts}
+    recurring={data.recurring}
+    leaveTypes={data.leaveTypes as LeaveTypeInfo[]}
+    orgDefaultSchedule={data.defaultSchedule as WorkSchedule}
+    {rateByUser}
+    canEditRates={data.canEditRates}
+    {form}
+  />
+{/if}
+
 {#if showInvite}
   <form
     method="POST"
     action="?/invite"
-    use:enhance={() =>
-      ({ update }) => {
-        void update().then(() => (showInvite = false));
-      }}
+    use:enhance={busy.wrap("invite", () => ({ update }) => {
+      void update({ reset: true }).then(() => (showInvite = false));
+    })}
     class="mb-6 rounded-xl border border-border bg-surface-raised p-4"
   >
     <div class="grid gap-3 sm:grid-cols-3">
@@ -248,9 +182,9 @@
       {t("settings.users.send_invite_email")}
     </label>
     <div class="mt-4 flex items-center gap-3">
-      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+      <Button loading={busy.is("invite")}>
         {t("settings.users.send_invite")}
-      </button>
+      </Button>
       <span class="text-xs text-text-muted">{t("settings.users.invited_hint")}</span>
     </div>
   </form>
@@ -313,6 +247,17 @@
                 title={t("settings.users.restricted_hint")}>{t("settings.users.restricted")}</a
               >
             {/if}
+            {#if member.company_scope_empty}
+              <!-- #274: a client-role login scoped to no company gets "niet gevonden" on every
+                   company-scoped read and write, whatever permissions the role carries — so
+                   granting more looks like the fix and never is. Say what is actually missing,
+                   here, where the admin is already looking at the account. -->
+              <span
+                class="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                title={t("settings.users.no_company_scope_hint")}
+                >{t("settings.users.no_company_scope")}</span
+              >
+            {/if}
             {#if member.two_factor_enabled}
               <span
                 class="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-700 dark:bg-green-950 dark:text-green-300"
@@ -362,8 +307,19 @@
       {#if expanded === member.membership_id}
         <li class="bg-surface px-4 py-4">
           <!-- The whole role set, one save (docs/UX.md). A user may hold several roles; their
-               permissions are the union. -->
-          <form method="POST" action="?/saveRoles" use:enhance class="space-y-3">
+               permissions are the union. `reset: false`: the ticks are component state and a
+               form reset would revert the DOM behind that state's back (docs/UX.md). -->
+          <form
+            method="POST"
+            action="?/saveRoles"
+            class="space-y-3"
+            use:enhance={busy.wrap(
+              `roles:${member.membership_id}`,
+              () =>
+                ({ update }) =>
+                  update({ reset: false }),
+            )}
+          >
             <input type="hidden" name="membership_id" value={member.membership_id} />
             <p class="text-xs font-semibold uppercase tracking-wide text-text-muted">
               {t("settings.users.roles")}
@@ -414,266 +370,15 @@
               </details>
             {/if}
 
-            <button
-              class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-            >
+            <Button loading={busy.is(`roles:${member.membership_id}`)}>
               {t("settings.users.save_roles")}
-            </button>
+            </Button>
           </form>
         </li>
       {/if}
     {/each}
   </ul>
 {/if}
-
-<!-- This person's working week (#46). One save; contract hours are derived from it. -->
-<Modal bind:open={scheduleOpen} title={t("settings.users.schedule")}>
-  {#if scheduleFor}
-    {#key scheduleFor.user_id}
-      <div class="space-y-4">
-        <p class="text-sm text-text-muted">
-          {scheduleFor.full_name || scheduleFor.email}
-        </p>
-
-        <label class="flex items-center gap-2 text-sm text-text">
-          <input type="checkbox" bind:checked={inherit} class="h-4 w-4 rounded border-border" />
-          {t("settings.users.schedule_inherit")}
-        </label>
-
-        {#if inherit}
-          <p class="rounded-lg bg-surface px-3 py-2 text-xs text-text-muted">
-            {t("settings.users.schedule_inherited_hint", {
-              hours: fmtHours(weekHours(data.defaultSchedule as WorkSchedule)),
-            })}
-          </p>
-        {/if}
-
-        <!-- Rendered outside the form on purpose: its TimeInputs post hidden fields of their own
-             and a form they are not inside is a form they cannot pollute. -->
-        <div class:opacity-50={inherit} class:pointer-events-none={inherit}>
-          <WorkScheduleEditor
-            bind:schedule={draft}
-            formId="user-schedule-form"
-            disabled={inherit}
-          />
-        </div>
-
-        {#if form?.error}<p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
-
-        <form
-          id="user-schedule-form"
-          method="POST"
-          action="?/saveSchedule"
-          class="flex justify-end"
-          use:enhance={() =>
-            ({ result, update }) => {
-              if (result.type === "success") scheduleOpen = false;
-              void update({ reset: false });
-            }}
-        >
-          <input type="hidden" name="user_id" value={scheduleFor.user_id} />
-          <input type="hidden" name="inherit" value={String(inherit)} />
-          <button
-            class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-          >
-            {t("common.save")}
-          </button>
-        </form>
-      </div>
-    {/key}
-  {/if}
-</Modal>
-
-<!-- Employment contracts (#65): contract hours, distinct from scheduled hours; ADV accrues on
-     the gap. A changed contract is a new row, so this is add + terminate, never edit-in-place. -->
-<Modal bind:open={contractsOpen} title={t("settings.users.contracts")}>
-  {#if contractsFor}
-    {#key contractsFor.user_id}
-      {@const rows = contractsByUser[contractsFor.user_id] ?? []}
-      <div class="space-y-4">
-        <p class="text-sm text-text-muted">{contractsFor.full_name || contractsFor.email}</p>
-
-        {#if rows.length > 0}
-          <ul class="divide-y divide-border rounded-lg border border-border">
-            {#each rows as contract (contract.id)}
-              <li class="flex items-center gap-3 px-3 py-2 text-sm">
-                <div class="min-w-0 flex-1">
-                  <span class="font-medium text-text">
-                    {t("settings.users.contract_hours_value", {
-                      hours: fmtHours(contract.contract_hours_per_week),
-                    })}
-                  </span>
-                  <span class="block text-xs text-text-muted">
-                    <!-- Through the shared formatter, so the period honors the personal
-                         date-format preference like the rest of the app (#104). -->
-                    {fmtNumericDate(contract.start_date)} → {contract.end_date
-                      ? fmtNumericDate(contract.end_date)
-                      : t("settings.users.contract_open")}
-                    · {t("settings.users.contract_scheduled", {
-                      hours: fmtHours(contract.scheduled_hours_per_week),
-                    })}
-                  </span>
-                </div>
-                {#if !contract.end_date}
-                  <form method="POST" action="?/terminateContract" use:enhance>
-                    <input type="hidden" name="contract_id" value={contract.id} />
-                    <input type="hidden" name="end_date" value={todayIso} />
-                    <button
-                      class="rounded-lg border border-border px-2 py-1 text-xs text-text-muted hover:text-text"
-                      title={t("settings.users.contract_terminate")}
-                    >
-                      {t("settings.users.contract_terminate")}
-                    </button>
-                  </form>
-                {/if}
-                <form method="POST" action="?/deleteContract" use:enhance>
-                  <input type="hidden" name="contract_id" value={contract.id} />
-                  <button
-                    class="rounded-lg p-1 text-text-muted hover:text-red-600 dark:hover:text-red-400"
-                    title={t("common.delete")}
-                    aria-label={t("common.delete")}
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </form>
-              </li>
-            {/each}
-          </ul>
-        {:else}
-          <p class="rounded-lg bg-surface px-3 py-2 text-xs text-text-muted">
-            {t("settings.users.contract_empty")}
-          </p>
-        {/if}
-
-        <!-- Keyed on the row count: a successful add re-mounts the form, which is what clears
-             the DateInputs — their display text is component state a form reset cannot reach. -->
-        {#key rows.length}
-          <form
-            method="POST"
-            action="?/saveContract"
-            class="space-y-3 border-t border-border pt-4"
-            use:enhance={() =>
-              ({ result, update }) => {
-                if (result.type === "success") void update({ reset: true });
-                else void update({ reset: false });
-              }}
-          >
-            <input type="hidden" name="user_id" value={contractsFor.user_id} />
-            <p class="text-xs font-semibold uppercase tracking-wide text-text-muted">
-              {t("settings.users.contract_add")}
-            </p>
-            <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <!-- Shared DateInput, never a native type="date": browsers render those after the
-                 browser locale, ignoring the personal date-format preference (#104, docs/UX.md). -->
-              <div>
-                <label for="c-start" class="mb-1 block text-xs text-text-muted"
-                  >{t("settings.users.contract_start")}</label
-                >
-                <DateInput id="c-start" name="start_date" required />
-              </div>
-              <div>
-                <label for="c-end" class="mb-1 block text-xs text-text-muted"
-                  >{t("settings.users.contract_end")}</label
-                >
-                <DateInput id="c-end" name="end_date" />
-              </div>
-              <div>
-                <label for="c-hours" class="mb-1 block text-xs text-text-muted"
-                  >{t("settings.users.contract_hours")}</label
-                >
-                <input
-                  id="c-hours"
-                  name="contract_hours_per_week"
-                  inputmode="decimal"
-                  required
-                  placeholder="38"
-                  class={inputClass}
-                />
-              </div>
-            </div>
-            <p class="text-xs text-text-muted">{t("settings.users.contract_hint")}</p>
-            {#if form?.error}<p class="text-sm text-red-600 dark:text-red-400">
-                {t(form.error)}
-              </p>{/if}
-            <div class="flex justify-end">
-              <button
-                class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-              >
-                {t("settings.users.contract_add")}
-              </button>
-            </div>
-          </form>
-        {/key}
-      </div>
-    {/key}
-  {/if}
-</Modal>
-
-<!-- Recurring rostered free days / ADV (#107): a schedule-derived pattern the generator lays
-     onto the calendar as pre-approved, individually movable free days. Shared surface with
-     the employee's own on /leave; here a manager may plan any active type. -->
-<Modal bind:open={recurringOpen} title={t("settings.users.recurring")}>
-  {#if recurringFor}
-    {#key recurringFor.user_id}
-      <div class="space-y-4">
-        <p class="text-sm text-text-muted">{recurringFor.full_name || recurringFor.email}</p>
-        <RecurringDaysManager
-          patterns={recurringByUser[recurringFor.user_id] ?? []}
-          types={activeLeaveTypes}
-          userId={recurringFor.user_id}
-          error={form?.error ?? null}
-          generated={form?.recurringSaved ? (form.recurringGenerated ?? 0) : null}
-        />
-      </div>
-    {/key}
-  {/if}
-</Modal>
-
-<!-- This person's hourly rate (#82). Salary-adjacent — its own permission gates edit. -->
-<Modal bind:open={rateOpen} title={t("settings.users.rate")}>
-  {#if rateFor}
-    {#key rateFor.user_id}
-      <form
-        method="POST"
-        action="?/saveRate"
-        class="space-y-4"
-        use:enhance={() =>
-          ({ result, update }) => {
-            if (result.type === "success") rateOpen = false;
-            void update({ reset: false });
-          }}
-      >
-        <input type="hidden" name="user_id" value={rateFor.user_id} />
-        <p class="text-sm text-text-muted">{rateFor.full_name || rateFor.email}</p>
-        <div>
-          <label for="hourly_rate" class="mb-1 block text-sm font-medium text-text">
-            {t("settings.users.rate_label")}
-          </label>
-          <input
-            id="hourly_rate"
-            name="hourly_rate"
-            inputmode="decimal"
-            bind:value={rateDraft}
-            disabled={!data.canEditRates}
-            placeholder={t("settings.users.rate_placeholder")}
-            class={inputClass}
-          />
-          <p class="mt-1 text-xs text-text-muted">{t("settings.users.rate_hint")}</p>
-        </div>
-        {#if form?.error}<p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
-        {#if data.canEditRates}
-          <div class="flex justify-end">
-            <button
-              class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-            >
-              {t("common.save")}
-            </button>
-          </div>
-        {/if}
-      </form>
-    {/key}
-  {/if}
-</Modal>
 
 <ConfirmDialog
   bind:open={confirmResetTwoFactor}

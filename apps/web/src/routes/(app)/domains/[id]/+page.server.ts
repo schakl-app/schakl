@@ -2,12 +2,15 @@ import { error, fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey, lookupItems } from "$lib/core/errors";
 import { parseParty } from "$lib/core/party";
+import { can } from "$lib/core/permissions";
 import {
   createCompanyAction,
   createContactAction,
   createProviderAction,
 } from "$lib/core/quickcreate.server";
+import { entityPanelsFor } from "$lib/core/registry";
 import { apiFor } from "$lib/core/session";
+import "$lib/modules";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -23,6 +26,13 @@ export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const domain_id = event.params.id;
 
+  // The activity trail rides the core entity-panel seam (§16) — composed, never imported.
+  const context = { entityId: domain_id, periodStart: null };
+  const enabled = event.locals.theme?.enabledModules ?? [];
+  const panels = entityPanelsFor(enabled, "domain");
+  // The form's TLD price hint (#250): only fetched for holders of the read permission.
+  const canReadPrices = can(event.locals.user, "domains.tld_price.read");
+
   const [
     domain,
     companies,
@@ -36,12 +46,18 @@ export const load: PageServerLoad = async (event) => {
     companyDefs,
     hostingDefs,
     contactDefs,
+    tldPrices,
+    ...panelData
   ] = await Promise.all([
     api.GET("/api/v1/domains/{domain_id}", { params: { path: { domain_id } } }),
-    api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
+    api.GET("/api/v1/companies", {
+      params: { query: { limit: 200, offset: 0, count: false, sort: "name" } },
+    }),
     api.GET("/api/v1/providers"),
     api.GET("/api/v1/members/lookup"),
-    api.GET("/api/v1/contacts", { params: { query: { limit: 200, offset: 0 } } }),
+    api.GET("/api/v1/contacts", {
+      params: { query: { limit: 200, offset: 0, sort: "first_name" } },
+    }),
     api.GET("/api/v1/custom-fields/definitions", {
       params: { query: { entity_type: "domain" } },
     }),
@@ -60,6 +76,8 @@ export const load: PageServerLoad = async (event) => {
     api.GET("/api/v1/custom-fields/definitions", {
       params: { query: { entity_type: "contact" } },
     }),
+    canReadPrices ? api.GET("/api/v1/domains/tld-prices") : Promise.resolve({ data: null }),
+    ...panels.map((panel) => panel.load(api, context)),
   ]);
 
   if (!domain.data) throw error(404, { code: "not_found", message: "errors.not_found" });
@@ -80,6 +98,15 @@ export const load: PageServerLoad = async (event) => {
     contactDefinitions: contactDefs.data ?? [],
     website: websites.data?.items?.[0] ?? null,
     hosting: lookupItems(hosting, "hosting").map((h) => ({ id: h.id, name: h.name })),
+    tldPrices: (tldPrices.data ?? [])
+      .filter((g) => g.current != null)
+      .map((g) => ({ tld: g.tld, amount: g.current!.amount, currency: g.currency })),
+    panels: panels.map((panel, i) => ({
+      key: panel.key,
+      titleKey: panel.titleKey,
+      data: panelData[i],
+    })),
+    context,
     agencyLabel: event.locals.theme?.brandName ?? "",
     locale: event.locals.locale,
   };
@@ -96,6 +123,9 @@ export const actions: Actions = {
         company_id: String(form.get("company_id") ?? "") || undefined,
         status: String(form.get("status") ?? "active") as never,
         redirect_url: String(form.get("redirect_url") ?? "").trim() || null,
+        start_date: String(form.get("start_date") ?? "").trim() || undefined,
+        // Empty clears the override: the TLD list price applies again.
+        price_override: String(form.get("price_override") ?? "").trim() || null,
         registrar_provider_id: String(form.get("registrar_provider_id") ?? "") || null,
         dns_provider_id: String(form.get("dns_provider_id") ?? "") || null,
         registry_contact: parseParty(form.get("registry_contact")),

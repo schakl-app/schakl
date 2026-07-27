@@ -7,11 +7,15 @@
    * The date+time post as the tenant's wall clock (naive); the API attaches the org zone, so
    * a hand-typed 14:00 lands on the same timeline instant the reader sees.
    */
+  import { Plus } from "@lucide/svelte";
+
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
+  import { InFlight } from "$lib/core/submit.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
@@ -25,8 +29,10 @@
     type InteractionItem,
     type InteractionKindDef,
     instantToLocal,
+    interactionKinds,
     kindLabel,
     manualKinds,
+    PROTECTED_KIND,
   } from "./format";
   import { loadLinkLookups, type LinkOption, type ProjectOption, type TaskOption } from "./lookups";
 
@@ -51,8 +57,14 @@
      * handler that receives what was typed. Absent → the picker offers no ＋.
      */
     oncreatecompany?: (query: string) => void;
-    oncreateproject?: (query: string) => void;
+    /** The moment's effective client rides along (#247) so the project quick-create dialog
+     *  opens with the same client instead of blank. */
+    oncreateproject?: (query: string, companyId?: string) => void;
   } = $props();
+
+  // Deliberate initial capture: the host keys this form per row, so props never swap in place.
+  // svelte-ignore state_referenced_locally
+  const own = interaction;
 
   const local = interaction ? instantToLocal(interaction.occurred_at) : null;
   let kind = $state(interaction?.kind ?? "");
@@ -60,18 +72,24 @@
   let time = $state(local?.time ?? "");
   let error = $state("");
 
+  const busy = new InFlight();
+
   // Kinds are tenant-defined (#174), fetched once per session (module-level cache). The
   // list shows the active ones, plus the row's own kind when editing — a deactivated kind
   // must stay pickable on the rows that already carry it.
   const locale = $derived((page.data.locale as string | undefined) ?? "nl");
+  // Editing an uploaded email (#262): `email` is not a kind anyone may pick, so it is shown
+  // rather than offered — a select without it would silently re-type the message on save.
+  const emailRow = $derived(interaction?.kind === PROTECTED_KIND);
   let allKinds = $state<InteractionKindDef[]>([]);
   $effect(() => {
-    void manualKinds().then((fetched) => {
+    void (emailRow ? interactionKinds() : manualKinds()).then((fetched) => {
       allKinds = fetched;
       if (!kind) kind = fetched.find((k) => k.active)?.key ?? "";
     });
   });
   const kinds = $derived(allKinds.filter((k) => k.active || k.key === kind));
+  const kindDef = $derived(allKinds.find((k) => k.key === kind));
 
   const DIRECTIONS = ["none", "inbound", "outbound"] as const;
 
@@ -79,11 +97,15 @@
   // an unpinned one gets a picker below (#183 follow-up) — all three on the Interacties page,
   // project+task on a company page, client+project on a task page (preset from the task's own
   // links, see below). contact_id is always a picker (#173).
+  //
+  // `prefill` is a **create**-time concept: what the host pinned onto a new row. An edit opens
+  // on the row's own links and may repoint them (#263) — until now the only way to fix a
+  // mis-filed moment was the separate Verplaatsen dialog, two menus away from "bewerken".
   const pinned = (field: string) =>
-    typeof prefill[field] === "string" && (prefill[field] as string).length > 0;
-  const showCompany = $derived(!interaction && !pinned("company_id"));
-  const showProject = $derived(!interaction && !pinned("project_id"));
-  const showTask = $derived(!interaction && !pinned("task_id"));
+    !own && typeof prefill[field] === "string" && (prefill[field] as string).length > 0;
+  const showCompany = $derived(!pinned("company_id"));
+  const showProject = $derived(!pinned("project_id"));
+  const showTask = $derived(!pinned("task_id"));
   const showLinkPickers = $derived(showCompany || showProject || showTask);
 
   // Pinned dims stay hidden inputs; unpinned ones (and contact) are pickers, so no name clash.
@@ -104,23 +126,70 @@
   );
 
   // --- assign to client / project / task (#183 follow-up) ------------------------------- //
-  let fCompany = $state("");
-  let fProject = $state("");
-  let fTask = $state("");
+  let fCompany = $state(own?.company_id ?? "");
+  let fProject = $state(own?.project_id ?? "");
+  let fTask = $state(own?.task_id ?? "");
+  /**
+   * Which link a kind leads with (#263). A phone call or a meeting is primarily *with a
+   * person*; a note is primarily *about work*. So the contact picker is up front for every
+   * kind, and the client/project/task block only opens by default where it is the point — a
+   * logged call no longer pays three empty dropdowns of vertical space before anything at all
+   * is picked, and reaches them in one click when it needs them.
+   *
+   * Kinds are tenant data (#174) and carry no `link_hint` of their own yet, so the **known**
+   * system keys drive this and anything a tenant added falls back to the open default — the
+   * same "known keys get the extra, new ones get the neutral one" rule `kindIcon` already uses.
+   */
+  const PERSON_KINDS = new Set(["call", "email", "online_meeting", "physical_meeting"]);
+  /** null = follow the kind; true/false = the user said so, and keeps saying so. */
+  let linksExpanded = $state<boolean | null>(null);
+  const hasLink = $derived(Boolean(fCompany || fProject || fTask));
+  const linksOpen = $derived(linksExpanded ?? (hasLink || !PERSON_KINDS.has(kind)));
+
   let linkCompanies = $state<LinkOption[]>([]);
   let linkProjects = $state<ProjectOption[]>([]);
   let linkTasks = $state<TaskOption[]>([]);
+  let lookupsLoaded = false;
   $effect(() => {
-    if (!showLinkPickers) return;
+    // Nothing is fetched until the block is actually open (docs/PERFORMANCE.md): a logged call
+    // that never links anywhere must not cost three lookups.
+    if (!showLinkPickers || !linksOpen || lookupsLoaded) return;
+    lookupsLoaded = true;
     // Only host-pinned dims scope the fetch (#222): they never change, while an unpinned
     // picker's own pick must not re-fetch — the derivations below narrow client-side.
     void loadLinkLookups({
       companyId: pinned("company_id") ? (prefill.company_id as string) : null,
       projectId: pinned("project_id") ? (prefill.project_id as string) : null,
     }).then((l) => {
-      linkCompanies = l.companies;
-      linkProjects = l.projects;
-      linkTasks = l.tasks;
+      // An edited row's own links stay labelled even when they fall outside the fetched 200 —
+      // the same rule the contact picker below follows.
+      linkCompanies =
+        own?.company_id && own.company_name && !l.companies.some((c) => c.value === own.company_id)
+          ? [{ value: own.company_id, label: own.company_name }, ...l.companies]
+          : l.companies;
+      linkProjects =
+        own?.project_id && own.project_name && !l.projects.some((p) => p.value === own.project_id)
+          ? [
+              {
+                value: own.project_id,
+                label: own.project_name,
+                company_id: own.company_id ?? null,
+              },
+              ...l.projects,
+            ]
+          : l.projects;
+      linkTasks =
+        own?.task_id && own.task_title && !l.tasks.some((task) => task.value === own.task_id)
+          ? [
+              {
+                value: own.task_id,
+                label: own.task_title,
+                project_id: own.project_id ?? null,
+                company_id: own.company_id ?? null,
+              },
+              ...l.tasks,
+            ]
+          : l.tasks;
     });
   });
   // A pinned task/project implies the levels above it: resolve the host row once, when the
@@ -162,6 +231,13 @@
   const effProject = $derived(
     fProject || (typeof prefill.project_id === "string" ? prefill.project_id : ""),
   );
+  // The API derives `company_id` from a project/task link on write (`_resolve_links`,
+  // models.py:13-15), so the form stops *asking* for it the moment either is picked: it shows
+  // the client the moment will land on and posts that same id, instead of offering a fourth
+  // dropdown the write path would overrule anyway.
+  const companyDerived = $derived(Boolean(fProject || fTask));
+  const companyLabel = $derived(linkCompanies.find((c) => c.value === fCompany)?.label ?? "");
+
   const projectOptions = $derived(
     effCompany
       ? linkProjects.filter((p) => !p.company_id || p.company_id === effCompany)
@@ -184,6 +260,8 @@
     fTask = id;
     const task = linkTasks.find((option) => option.value === id);
     if (task?.project_id) onProjectPicked(task.project_id);
+    // A task filed straight under a client, with no project of its own, still fixes the client.
+    else if (task?.company_id && showCompany) fCompany = task.company_id;
   }
 
   // --- close the picked task with this contact moment (#232, the approve dialog's #157
@@ -199,8 +277,10 @@
   let terminalLoaded = $state(false);
   let closeStatus = $state("");
   // Offered once a task is picked; the guard mirrors the API (a close is a task write),
-  // which stays the boundary.
-  const canCloseTask = $derived(Boolean(fTask) && can(page.data.user, "tasks.task.write"));
+  // which stays the boundary. Create-only: the link pickers reach the edit form now (#263),
+  // but `?/updateInteraction` runs no close — an existing row closes its task through the
+  // panel's own CloseTaskDialog, and a checkbox that silently did nothing would be worse.
+  const canCloseTask = $derived(!own && Boolean(fTask) && can(page.data.user, "tasks.task.write"));
   // Terminal statuses load when the box is first ticked — never on page load (PERFORMANCE.md).
   $effect(() => {
     if (closeTask && !terminalLoaded) {
@@ -243,7 +323,7 @@
     // Host company's roster first; an org without links there falls back to all contacts.
     const scope = hostCompanyId ? `&company_id=${hostCompanyId}` : "";
     void (async () => {
-      let response = await fetch(`/api/v1/contacts?limit=200${scope}`, {
+      let response = await fetch(`/api/v1/contacts?limit=200&sort=first_name${scope}`, {
         headers: { accept: "application/json" },
       });
       interface ContactRow {
@@ -255,7 +335,7 @@
       }
       let items: ContactRow[] = response.ok ? ((await response.json()).items ?? []) : [];
       if (items.length === 0 && scope) {
-        response = await fetch("/api/v1/contacts?limit=200", {
+        response = await fetch("/api/v1/contacts?limit=200&sort=first_name", {
           headers: { accept: "application/json" },
         });
         items = response.ok ? ((await response.json()).items ?? []) : [];
@@ -297,8 +377,30 @@
   let qcOpen = $state(false);
   let qcName = $state("");
   let contactDefinitions = $state<CustomFieldDefinition[] | null>(null);
+  // Offer to link the new contact to the moment's client (#247), checked by default: resolve
+  // the client's name from the lookups already loaded, else fetch it — an id can't label the box.
+  let contactLinkCompany = $state<{ id: string; name: string } | null>(null);
+  async function resolveLinkCompany(): Promise<{ id: string; name: string } | null> {
+    const id = effCompany;
+    if (!id) return null;
+    let name =
+      linkCompanies.find((c) => c.value === id)?.label ??
+      (interaction?.company_id === id ? (interaction?.company_name ?? "") : "");
+    if (!name) {
+      try {
+        const response = await fetch(`/api/v1/companies/${id}`, {
+          headers: { accept: "application/json" },
+        });
+        if (response.ok) name = ((await response.json()).name as string | undefined) ?? "";
+      } catch {
+        name = "";
+      }
+    }
+    return name ? { id, name } : null;
+  }
   async function quickCreateContact(query: string) {
     qcName = query;
+    contactLinkCompany = await resolveLinkCompany();
     if (contactDefinitions === null) {
       const response = await fetch("/api/v1/custom-fields/definitions?entity_type=contact", {
         headers: { accept: "application/json" },
@@ -317,7 +419,7 @@
   }
   function quickCreateProject(query: string) {
     projectQuery = query;
-    oncreateproject?.(query);
+    oncreateproject?.(query, effCompany);
   }
   // A quick-create action answers with the new row's id; auto-select it in the picker that
   // asked — the slot names are the contract with the host page's dialogs (docs/UX.md).
@@ -360,18 +462,17 @@
   method="POST"
   action={interaction ? "?/updateInteraction" : "?/createInteraction"}
   class="space-y-4"
-  use:enhance={() =>
-    async ({ result, update }) => {
-      if (result.type === "failure") {
-        closeFailedAfterCreate = Boolean(result.data?.createdButCloseFailed);
-        error = String(result.data?.error ?? "errors.validation");
-        return;
-      }
-      error = "";
-      closeFailedAfterCreate = false;
-      await update({ reset: false });
-      onsaved?.();
-    }}
+  use:enhance={busy.wrap("", () => async ({ result, update }) => {
+    if (result.type === "failure") {
+      closeFailedAfterCreate = Boolean(result.data?.createdButCloseFailed);
+      error = String(result.data?.error ?? "errors.validation");
+      return;
+    }
+    error = "";
+    closeFailedAfterCreate = false;
+    await update({ reset: false });
+    onsaved?.();
+  })}
 >
   {#if interaction}
     <input type="hidden" name="id" value={interaction.id} />
@@ -381,18 +482,29 @@
   {/each}
 
   <div class="grid gap-4 sm:grid-cols-2">
-    <label class="block text-sm">
-      <span class="mb-1 block font-medium text-text">{t("interactions.field.kind")}</span>
-      <select
-        name="kind"
-        bind:value={kind}
-        class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
-      >
-        {#each kinds as option (option.key)}
-          <option value={option.key}>{kindLabel(option, locale)}</option>
-        {/each}
-      </select>
-    </label>
+    {#if emailRow}
+      <!-- An email stays an email (#262): shown, not offered, and posted unchanged. -->
+      <div class="block text-sm">
+        <span class="mb-1 block font-medium text-text">{t("interactions.field.kind")}</span>
+        <input type="hidden" name="kind" value={kind} />
+        <p class="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-muted">
+          {kindDef ? kindLabel(kindDef, locale) : t("interactions.kind.email")}
+        </p>
+      </div>
+    {:else}
+      <label class="block text-sm">
+        <span class="mb-1 block font-medium text-text">{t("interactions.field.kind")}</span>
+        <select
+          name="kind"
+          bind:value={kind}
+          class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+        >
+          {#each kinds as option (option.key)}
+            <option value={option.key}>{kindLabel(option, locale)}</option>
+          {/each}
+        </select>
+      </label>
+    {/if}
     <label class="block text-sm">
       <span class="mb-1 block font-medium text-text">{t("interactions.field.date")}</span>
       <DateInput name="occurred_date" bind:value={date} required />
@@ -444,22 +556,66 @@
     />
   </label>
 
-  {#if showLinkPickers}
+  <!-- Who the moment was *with* comes first (#263): for a logged call or a meeting that is the
+       primary fact, not an afterthought below three organisational pickers. -->
+  <div class="block text-sm">
+    <span class="mb-1 block font-medium text-text">{t("interactions.field.contact")}</span>
+    <Combobox
+      items={contactOptions}
+      name="contact_id"
+      bind:value={contactId}
+      placeholder={t("interactions.field.contact_placeholder")}
+      oncreate={(query) => void quickCreateContact(query)}
+    />
+  </div>
+
+  {#if showLinkPickers && !linksOpen}
+    <!-- A call or a meeting opens on the person alone and reaches the rest in one click (#263).
+         A note — work, not a conversation — opens with these already unfolded. -->
+    <button
+      type="button"
+      onclick={() => (linksExpanded = true)}
+      class="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-border px-3 py-2 text-sm text-text-muted hover:border-brand hover:text-brand"
+    >
+      <Plus size={14} aria-hidden="true" />
+      {t("interactions.link.add")}
+    </button>
+  {/if}
+
+  {#if showLinkPickers && linksOpen}
     <!-- Assign the moment to a client / project / task while logging (#183 follow-up); only the
          dimensions the host page hasn't already pinned are offered. -->
+    <span class="block text-sm font-medium text-text">{t("interactions.link.title")}</span>
     <div class="grid gap-4 sm:grid-cols-2">
       {#if showCompany}
-        <label class="block text-sm">
-          <span class="mb-1 block font-medium text-text">{t("interactions.field.company")}</span>
-          <Combobox
-            items={linkCompanies}
-            name="company_id"
-            value={fCompany}
-            placeholder={t("common.none")}
-            onselect={(v) => (fCompany = v)}
-            oncreate={oncreatecompany ? quickCreateCompany : undefined}
-          />
-        </label>
+        {#if companyDerived}
+          <!-- Derived, not asked (#263): the write path fills the client in from the project or
+               the task, so the form shows where the moment lands instead of a fourth dropdown. -->
+          <div class="block text-sm">
+            <span class="mb-1 block font-medium text-text">{t("interactions.field.company")}</span>
+            <p class="rounded-lg border border-dashed border-border px-3 py-2 text-sm text-text">
+              {companyLabel || t("common.none")}
+              <span class="mt-0.5 block text-xs text-text-muted">
+                {fTask
+                  ? t("interactions.link.company_from_task")
+                  : t("interactions.link.company_from_project")}
+              </span>
+            </p>
+            <input type="hidden" name="company_id" value={fCompany} />
+          </div>
+        {:else}
+          <label class="block text-sm">
+            <span class="mb-1 block font-medium text-text">{t("interactions.field.company")}</span>
+            <Combobox
+              items={linkCompanies}
+              name="company_id"
+              value={fCompany}
+              placeholder={t("common.none")}
+              onselect={(v) => (fCompany = v)}
+              oncreate={oncreatecompany ? quickCreateCompany : undefined}
+            />
+          </label>
+        {/if}
       {/if}
       {#if showProject}
         <label class="block text-sm">
@@ -522,17 +678,6 @@
     {/if}
   {/if}
 
-  <div class="block text-sm">
-    <span class="mb-1 block font-medium text-text">{t("interactions.field.contact")}</span>
-    <Combobox
-      items={contactOptions}
-      name="contact_id"
-      bind:value={contactId}
-      placeholder={t("interactions.field.contact_placeholder")}
-      oncreate={(query) => void quickCreateContact(query)}
-    />
-  </div>
-
   {#if kind === "call"}
     <label class="block text-sm">
       <span class="mb-1 block font-medium text-text">{t("interactions.field.direction")}</span>
@@ -548,21 +693,36 @@
     </label>
   {/if}
 
-  <div class="text-sm">
-    <span class="mb-1 block font-medium text-text">{t("interactions.field.notes")}</span>
-    <!-- #task references (#237) resolve against the moment's own links: the picked (or
-         stored) project, else the client — same deeper-link-wins rule as the task picker. -->
-    <RichTextEditor
-      name="body_text"
-      value={interaction?.body_text ?? ""}
-      rows={4}
-      mentions={editorMentions}
-      scope={{
-        companyId: (interaction?.company_id ?? effCompany) || null,
-        projectId: (interaction?.project_id ?? effProject) || null,
-      }}
-    />
-  </div>
+  {#if emailRow}
+    <!-- A received message is not ours to re-type (#262): shown for context while the links
+         are corrected, and deliberately not posted — the API leaves an unsent field alone. -->
+    {#if interaction?.body_text}
+      <div class="text-sm">
+        <span class="mb-1 block font-medium text-text">{t("interactions.eml.message")}</span>
+        <p
+          class="max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-muted"
+        >
+          {interaction.body_text}
+        </p>
+      </div>
+    {/if}
+  {:else}
+    <div class="text-sm">
+      <span class="mb-1 block font-medium text-text">{t("interactions.field.notes")}</span>
+      <!-- #task references (#237) resolve against the moment's own links: the picked (or
+           stored) project, else the client — same deeper-link-wins rule as the task picker. -->
+      <RichTextEditor
+        name="body_text"
+        value={interaction?.body_text ?? ""}
+        rows={4}
+        mentions={editorMentions}
+        scope={{
+          companyId: (interaction?.company_id ?? effCompany) || null,
+          projectId: (interaction?.project_id ?? effProject) || null,
+        }}
+      />
+    </div>
+  {/if}
 
   {#if closeFailedAfterCreate}
     <p class="text-sm text-red-600">{t("interactions.close_after_create_failed")}</p>
@@ -572,18 +732,16 @@
   {/if}
 
   <div class="flex justify-end">
-    <button
-      type="submit"
-      class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-    >
+    <Button type="submit" loading={busy.active}>
       {t("common.save")}
-    </button>
+    </Button>
   </div>
 </form>
 
 <ContactQuickCreate
   bind:open={qcOpen}
   name={qcName}
+  linkCompany={contactLinkCompany}
   definitions={contactDefinitions ?? []}
   locale={(page.data.locale as string | undefined) ?? "nl"}
   action="?/createInteractionContact"

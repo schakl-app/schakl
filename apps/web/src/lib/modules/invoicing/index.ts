@@ -2,7 +2,7 @@
  * invoicing web module (issue #207): nav, company panel. Routes live under
  * `routes/(app)/invoices` + `/quotes`; settings under `settings/invoicing`.
  */
-import { FileText } from "@lucide/svelte";
+import { FileClock, FileText } from "@lucide/svelte";
 
 import { t } from "$lib/core/i18n";
 import { registerWebModule } from "$lib/core/registry";
@@ -37,14 +37,28 @@ registerWebModule({
       component: QuotesOpenWidget,
     },
   ],
+  // A submenu like Domeinen & websites (#277): documents and the uninvoiced-hours report
+  // are two surfaces of one Facturatie group. The keys stay stable so tenant nav renames
+  // and saved orderings survive the regrouping.
   nav: [
     {
       key: "invoicing",
       href: "/invoices",
-      label: () => t("nav.invoicing"),
+      label: () => t("nav.invoices"),
       module: "invoicing",
       icon: FileText,
       position: 36,
+      group: "invoicing",
+      requiresPermission: "invoicing.invoice.read",
+    },
+    {
+      key: "invoicing.uninvoiced",
+      href: "/invoices/uninvoiced",
+      label: () => t("nav.uninvoiced"),
+      module: "invoicing",
+      icon: FileClock,
+      position: 37,
+      group: "invoicing",
       requiresPermission: "invoicing.invoice.read",
     },
   ],

@@ -1,7 +1,7 @@
 import { fail } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
-import { importCsvAction } from "$lib/core/impex/actions.server";
+import { impexAction } from "$lib/core/impex/actions.server";
 import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
@@ -37,7 +37,9 @@ export const load: PageServerLoad = async (event) => {
       params: { query: { entity_type: "company" } },
     }),
     // For the create form's "connected companies" picker (#80). Lean list — no counts.
-    api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
+    api.GET("/api/v1/companies", {
+      params: { query: { limit: 200, offset: 0, count: false, sort: "name" } },
+    }),
     api.GET("/api/v1/contacts/types"),
   ]);
   return {
@@ -81,7 +83,7 @@ export const actions: Actions = {
   },
 
   /** CSV import (issue #77): dry-run preview by default, all-or-nothing commit on demand. */
-  importCsv: (event) => importCsvAction(event, "/api/v1/impex/contact/import"),
+  impex: (event) => impexAction(event, "contact"),
 
   /** Inline company create from the "connected companies" picker (#115). */
   createCompany: createCompanyAction,

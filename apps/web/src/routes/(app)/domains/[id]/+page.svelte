@@ -2,9 +2,14 @@
   import { RefreshCw, Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
-  import { fmtDateTime } from "$lib/core/format";
+  import { page } from "$app/state";
+  import { fmtDateTime, fmtMoney, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { can } from "$lib/core/permissions";
+  import { entityPanelsFor } from "$lib/core/registry";
+  import { InFlight } from "$lib/core/submit.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import PartyPicker from "$lib/core/ui/PartyPicker.svelte";
@@ -23,6 +28,7 @@
   // Radio selection is component state, never a one-way checked (docs/UX.md).
   let websiteHost = $state<"root" | "www">("root");
   let confirmDelete = $state(false);
+  const busy = new InFlight();
 
   // Inline-create from the pickers (#115): "＋ … toevoegen" opens these dialogs.
   // The slot names the picker that asked, so its `inlineCreated` auto-selects only there.
@@ -61,11 +67,26 @@
   const website = $derived(data.website);
   const hostingItems = $derived(data.hosting.map((h) => ({ value: h.id, label: h.name })));
 
+  // Actions render only for holders of the matching permission (#253). The DNS refresh posts
+  // a write on the API, so it follows domains.domain.write.
+  const canWrite = $derived(can(page.data.user, "domains.domain.write"));
+  const canDelete = $derived(can(page.data.user, "domains.domain.delete"));
+  const canWriteWebsite = $derived(can(page.data.user, "websites.website.write"));
+  const canDeleteWebsite = $derived(can(page.data.user, "websites.website.delete"));
+
   // Through the shared formatter (#125): tenant timezone + the personal clock/date prefs,
   // instead of the browser-locale toLocaleString dump this replaced.
   function checkedAt(iso: string | null | undefined): string {
     return iso ? fmtDateTime(iso) : t("domains.dns.never");
   }
+
+  // The activity trail rides the core entity-panel seam (§16), like project/contact.
+  const enabled = $derived(page.data.theme?.enabledModules ?? []);
+  const panelSpecs = $derived(entityPanelsFor(enabled, "domain"));
+  function panelComponent(key: string) {
+    return panelSpecs.find((spec) => spec.key === key)?.component;
+  }
+  const emptyLookups = { members: [], companies: [], projects: [], tasks: [] };
 </script>
 
 <svelte:head>
@@ -75,20 +96,30 @@
 <div class="mb-6">
   <div class="mt-2 flex items-center justify-between">
     <h1 class="text-xl font-semibold text-text">{domain.name}</h1>
-    <ActionsMenu
-      items={[
-        {
-          label: editing ? t("common.cancel") : t("common.edit"),
-          onclick: () => (editing = !editing),
-        },
-        {
-          label: t("common.delete"),
-          icon: Trash2,
-          danger: true,
-          onclick: () => (confirmDelete = true),
-        },
-      ]}
-    />
+    {#if canWrite || canDelete}
+      <ActionsMenu
+        items={[
+          ...(canWrite
+            ? [
+                {
+                  label: editing ? t("common.cancel") : t("common.edit"),
+                  onclick: () => (editing = !editing),
+                },
+              ]
+            : []),
+          ...(canDelete
+            ? [
+                {
+                  label: t("common.delete"),
+                  icon: Trash2,
+                  danger: true,
+                  onclick: () => (confirmDelete = true),
+                },
+              ]
+            : []),
+        ]}
+      />
+    {/if}
   </div>
 </div>
 
@@ -100,11 +131,10 @@
       <form
         method="POST"
         action="?/update"
-        use:enhance={() =>
-          ({ result, update }) => {
-            if (result.type === "success") editing = false;
-            void update({ reset: false });
-          }}
+        use:enhance={busy.wrap("update", () => ({ result, update }) => {
+          if (result.type === "success") editing = false;
+          void update({ reset: false });
+        })}
       >
         <DomainForm
           {domain}
@@ -116,6 +146,7 @@
           definitions={data.definitions}
           locale={data.locale}
           idPrefix="edit-domain"
+          tldPrices={data.tldPrices}
           oncreatecompany={quickCreateCompany}
           oncreatecontact={quickCreateContact}
           oncreateprovider={(kind, name) => {
@@ -134,9 +165,7 @@
             class="rounded-lg border border-border px-4 py-2 text-sm text-text"
             onclick={() => (editing = false)}>{t("common.cancel")}</button
           >
-          <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-            >{t("common.save")}</button
-          >
+          <Button loading={busy.is("update")} disabled={busy.active}>{t("common.save")}</Button>
         </div>
       </form>
     {:else}
@@ -165,6 +194,31 @@
           </div>
         {/if}
         <div class="flex justify-between">
+          <dt class="text-text-muted">{t("domains.start_date")}</dt>
+          <dd class="text-text">{fmtNumericDate(domain.start_date)}</dd>
+        </div>
+        <div class="flex justify-between">
+          <dt class="text-text-muted">{t("domains.renewal")}</dt>
+          <dd class="text-text">
+            {domain.next_invoice_date ? fmtNumericDate(domain.next_invoice_date) : "—"}
+          </dd>
+        </div>
+        <div class="flex justify-between">
+          <dt class="text-text-muted">{t("domains.price")}</dt>
+          <dd class="text-text">
+            {#if domain.resolved_price != null}
+              {t("domains.price_per_year", { amount: fmtMoney(Number(domain.resolved_price)) })}
+              <span class="text-xs text-text-muted">
+                ({domain.price_override != null
+                  ? t("domains.price_source_override")
+                  : t("domains.price_source_tld")})
+              </span>
+            {:else}
+              {t("domains.no_price")}
+            {/if}
+          </dd>
+        </div>
+        <div class="flex justify-between">
           <dt class="text-text-muted">{t("domains.registrar")}</dt>
           <dd class="text-text">{domain.registrar_provider_name ?? "—"}</dd>
         </div>
@@ -192,13 +246,13 @@
   <section class="rounded-xl border border-border bg-surface-raised p-5">
     <div class="mb-4 flex items-center justify-between">
       <h2 class="text-sm font-semibold text-text">{t("domains.dns.title")}</h2>
-      <form method="POST" action="?/refresh" use:enhance>
-        <button
-          class="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-text hover:border-brand"
-        >
-          <RefreshCw size={14} />{t("domains.dns.refresh")}
-        </button>
-      </form>
+      {#if canWrite}
+        <form method="POST" action="?/refresh" use:enhance={busy.wrap("refresh")}>
+          <Button variant="secondary" size="sm" loading={busy.is("refresh")} disabled={busy.active}>
+            <RefreshCw size={14} />{t("domains.dns.refresh")}
+          </Button>
+        </form>
+      {/if}
     </div>
     <dl class="space-y-2 text-sm">
       <div>
@@ -245,25 +299,33 @@
 <section id="website" class="mt-4 rounded-xl border border-border bg-surface-raised p-5">
   <div class="mb-4 flex items-center justify-between">
     <h2 class="text-sm font-semibold text-text">{t("websites.title")}</h2>
-    {#if website && !editingWebsite}
+    {#if website && !editingWebsite && (canWriteWebsite || canDeleteWebsite)}
       <ActionsMenu
         items={[
-          {
-            label: t("common.edit"),
-            onclick: () => {
-              websiteHost = website?.root ? "root" : "www";
-              editingWebsite = true;
-            },
-          },
-          {
-            label: t("common.delete"),
-            icon: Trash2,
-            danger: true,
-            onclick: () =>
-              (
-                document.getElementById("delete-website-form") as HTMLFormElement | null
-              )?.requestSubmit(),
-          },
+          ...(canWriteWebsite
+            ? [
+                {
+                  label: t("common.edit"),
+                  onclick: () => {
+                    websiteHost = website?.root ? "root" : "www";
+                    editingWebsite = true;
+                  },
+                },
+              ]
+            : []),
+          ...(canDeleteWebsite
+            ? [
+                {
+                  label: t("common.delete"),
+                  icon: Trash2,
+                  danger: true,
+                  onclick: () =>
+                    (
+                      document.getElementById("delete-website-form") as HTMLFormElement | null
+                    )?.requestSubmit(),
+                },
+              ]
+            : []),
         ]}
       />
     {/if}
@@ -297,15 +359,14 @@
     >
       <input type="hidden" name="website_id" value={website.id} />
     </form>
-  {:else if editingWebsite || !website}
+  {:else if canWriteWebsite && (editingWebsite || !website)}
     <form
       method="POST"
       action="?/saveWebsite"
-      use:enhance={() =>
-        ({ result, update }) => {
-          if (result.type === "success") editingWebsite = false;
-          void update({ reset: false });
-        }}
+      use:enhance={busy.wrap("save-website", () => ({ result, update }) => {
+        if (result.type === "success") editingWebsite = false;
+        void update({ reset: false });
+      })}
     >
       {#if website}<input type="hidden" name="website_id" value={website.id} />{/if}
       <div class="space-y-4">
@@ -382,13 +443,27 @@
             onclick={() => (editingWebsite = false)}>{t("common.cancel")}</button
           >
         {/if}
-        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-          >{website ? t("common.save") : t("websites.add")}</button
-        >
+        <Button loading={busy.is("save-website")} disabled={busy.active}>
+          {website ? t("common.save") : t("websites.add")}
+        </Button>
       </div>
     </form>
+  {:else}
+    <!-- No website and no permission to connect one: an honest empty value, not a form. -->
+    <p class="text-sm text-text-muted">—</p>
   {/if}
 </section>
+
+<!-- Core entity panels (the activity trail, §16) — history hangs last, under the work. -->
+{#each data.panels as panel (panel.key)}
+  {@const PanelComponent = panelComponent(panel.key)}
+  {#if PanelComponent}
+    <section class="mt-4 rounded-xl border border-border bg-surface-raised p-5">
+      <h2 class="mb-3 text-sm font-semibold text-text">{t(panel.titleKey)}</h2>
+      <PanelComponent data={panel.data} context={data.context} lookups={emptyLookups} />
+    </section>
+  {/if}
+{/each}
 
 <!-- The hosting dialog sits over the (inline) website form; the provider/company/contact dialogs
      below it are rendered last so they stack above it (equal z-index → DOM order wins). -->
@@ -402,6 +477,7 @@
   agencyLabel={data.agencyLabel}
   definitions={data.hostingDefinitions}
   locale={data.locale}
+  initialCompanyId={domain.company_id ?? ""}
   error={form?.qcError ?? null}
   oncreatecompany={quickCreateCompany}
   oncreatecontact={quickCreateContact}

@@ -22,6 +22,7 @@ from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import select
 
 from app.core.permissions.deps import no_permission_required, require_permission
+from app.core.scope import entity_visible
 from app.core.storage.backend import StorageUnavailableError, storage_for
 from app.core.storage.models import StoredFile
 from app.core.storage.schemas import StoredFileRead
@@ -125,6 +126,10 @@ async def upload_file(
     ctx: RequestContext = Depends(require_context),
 ) -> StoredFileRead:
     """Multipart upload. Size and content type are bounded by instance config."""
+    # You cannot attach a document to a record you cannot see (#285) — the same rule the
+    # repository applies to ``company_id`` on an ordinary write, for the entity-reference pair.
+    if entity_type and entity_id and not await entity_visible(ctx, entity_type, entity_id):
+        raise AppError("not_found", "errors.not_found", status_code=404)
     # UploadFile is already spooled to disk past a small threshold; size it without trusting
     # the client's Content-Length.
     file.file.seek(0, 2)
@@ -165,6 +170,12 @@ async def list_files(
         # Dossier documents list only for their owner or a dossier manager.
         if entity_id != ctx.user.id and not ctx.can("hr.dossier.read", scope="any"):
             return []
+    # Every *other* entity type went unchecked, so a membership restricted to a company group
+    # could list the documents attached to a client, task or project it cannot otherwise see
+    # (#285). Ask the record's own model through the tenant-scoped repository — the company_logo
+    # special case above predates the registry and stays as the cheaper direct answer.
+    if not await entity_visible(ctx, entity_type, entity_id):
+        return []
     rows = await FileService(ctx).list_for(entity_type, entity_id)
     return [StoredFileRead.model_validate(row) for row in rows]
 

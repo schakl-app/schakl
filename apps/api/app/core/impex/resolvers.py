@@ -9,6 +9,7 @@ descriptor established): a resolver is a lookup, not a data path into another mo
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from sqlalchemy import column, select, table
 
@@ -107,3 +108,14 @@ async def resolve_member_email(
             if ref not in resolved and lowered in emails:
                 resolved[ref] = by_email.get(lowered, "impex.errors.unresolved_reference")
     return resolved
+
+
+async def no_natural_key(
+    ctx: RequestContext, key: str, values: list[str]
+) -> dict[str, list[Any]]:
+    """``find_existing`` for a create-only entity — the engine never calls it.
+
+    A descriptor with empty ``natural_keys`` still has to supply the callable; one shared stub
+    beats the same unreachable three lines in every create-only module.
+    """
+    return {}

@@ -6,16 +6,20 @@
   import { editHref } from "$lib/core/edit-intent";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
-  import ImportCsvModal from "$lib/core/impex/ImportCsvModal.svelte";
+  import ImportWizard from "$lib/core/impex/ImportWizard.svelte";
   import { can } from "$lib/core/permissions";
+  import { formatPhone } from "$lib/core/phone";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { customFieldColumns } from "$lib/core/table/columns";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
+  import PhoneInput from "$lib/core/ui/PhoneInput.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import { page } from "$app/state";
@@ -40,6 +44,11 @@
   let deleteName = $state("");
   let confirmDelete = $state(false);
   let showImport = $state(false);
+  const busy = new InFlight();
+
+  // Row actions render only for holders of the matching permission (#253).
+  const canWrite = $derived(can(page.data.user, "contacts.contact.write"));
+  const canDelete = $derived(can(page.data.user, "contacts.contact.delete"));
 
   // The Export link carries the page's current filters, so the file holds exactly the
   // filtered list on screen — the whole set, not just the loaded page (issue #77).
@@ -161,7 +170,9 @@
 
 {#snippet phoneCell(contact: Contact)}
   {#if contact.phone}
-    <a href="tel:{contact.phone}" class="text-text-muted hover:text-brand">{contact.phone}</a>
+    <a href="tel:{contact.phone}" class="text-text-muted hover:text-brand"
+      >{formatPhone(contact.phone)}</a
+    >
   {:else}<span class="text-text-muted">—</span>{/if}
 {/snippet}
 
@@ -176,13 +187,19 @@
 {#snippet rowActions(contact: Contact)}
   <ActionsMenu
     items={[
-      { label: t("common.edit"), icon: Pencil, href: editHref(`/contacts/${contact.id}`) },
-      {
-        label: t("common.delete"),
-        icon: Trash2,
-        danger: true,
-        onclick: () => confirmDeleteOf(contact),
-      },
+      ...(canWrite
+        ? [{ label: t("common.edit"), icon: Pencil, href: editHref(`/contacts/${contact.id}`) }]
+        : []),
+      ...(canDelete
+        ? [
+            {
+              label: t("common.delete"),
+              icon: Trash2,
+              danger: true,
+              onclick: () => confirmDeleteOf(contact),
+            },
+          ]
+        : []),
     ]}
   />
 {/snippet}
@@ -196,7 +213,9 @@
         <span class="mt-0.5 block truncate text-sm text-text-muted">{contact.email}</span>
       {/if}
     </a>
-    {@render rowActions(contact)}
+    {#if canWrite || canDelete}
+      {@render rowActions(contact)}
+    {/if}
   </div>
 {/snippet}
 
@@ -218,12 +237,16 @@
     <h1 class="text-xl font-semibold text-text">{navLabel("contacts", t("contacts.title"))}</h1>
     <p class="mt-1 text-sm text-text-muted">{t("contacts.count", { count: data.total })}</p>
   </div>
-  <button
-    class="shrink-0 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-    onclick={() => (showCreate = !showCreate)}
-  >
-    {t("contacts.new")}
-  </button>
+  {#if canWrite}
+    <!-- Opening the inline create form is a contacts.contact.write act; hidden from a read-only
+         portal client (#244), like the row edit/delete actions and the Import button below. -->
+    <button
+      class="shrink-0 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+      onclick={() => (showCreate = !showCreate)}
+    >
+      {t("contacts.new")}
+    </button>
+  {/if}
 </div>
 
 <!-- Search + the personal column picker, on their own wrapping row (issue #36): title, a fixed
@@ -272,9 +295,12 @@
   </div>
 </div>
 
-<ImportCsvModal
+<ImportWizard
   bind:open={showImport}
+  locale={data.locale}
   report={form?.impex ?? null}
+  inspect={form?.impexInspect ?? null}
+  columns={form?.impexColumns ?? null}
   error={form?.impexError ?? null}
 />
 
@@ -303,15 +329,14 @@
   <form
     method="POST"
     action="?/create"
-    use:enhance={() =>
-      ({ result, update }) => {
-        // Close only on success: a 409 (duplicate email) must stay visible in the form.
-        if (result.type === "success") {
-          showCreate = false;
-          linkedCompanyIds = [];
-        }
-        void update({ reset: false });
-      }}
+    use:enhance={busy.wrap("", () => ({ result, update }) => {
+      // Close only on success: a 409 (duplicate email) must stay visible in the form.
+      if (result.type === "success") {
+        showCreate = false;
+        linkedCompanyIds = [];
+      }
+      void update({ reset: false });
+    })}
     class="mb-6 rounded-xl border border-border bg-surface-raised p-4"
   >
     <div class="grid gap-3 sm:grid-cols-2">
@@ -351,11 +376,7 @@
         <label for="phone" class="mb-1 block text-sm font-medium text-text">
           {t("contacts.phone")}
         </label>
-        <input
-          id="phone"
-          name="phone"
-          class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-        />
+        <PhoneInput id="phone" name="phone" />
       </div>
       <div class="sm:col-span-2">
         <label for="job_title" class="mb-1 block text-sm font-medium text-text">
@@ -419,9 +440,9 @@
       <p class="mt-2 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
     {/if}
     <div class="mt-4 flex gap-2">
-      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+      <Button loading={busy.active}>
         {t("common.save")}
-      </button>
+      </Button>
       <button
         type="button"
         class="rounded-lg border border-border px-4 py-2 text-sm"
@@ -441,7 +462,7 @@
   definitions={data.definitions}
   locale={data.locale}
   rowHref={(contact) => `/contacts/${contact.id}`}
-  actions={rowActions}
+  actions={canWrite || canDelete ? rowActions : undefined}
   {mobileRow}
   empty={emptyState}
   onsort={table.onSort}

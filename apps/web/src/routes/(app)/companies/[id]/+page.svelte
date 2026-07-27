@@ -10,8 +10,10 @@
   import { pageTitle } from "$lib/core/title";
   import { can } from "$lib/core/permissions";
   import { companyPanelComponent } from "$lib/core/registry";
+  import { InFlight } from "$lib/core/submit.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
-  import AvatarStack from "$lib/core/ui/AvatarStack.svelte";
+  import Assignees from "$lib/core/ui/Assignees.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import CompanyForm from "$lib/modules/companies/CompanyForm.svelte";
@@ -39,6 +41,11 @@
   // Opened straight into edit when reached from the overview's ⋯ → Bewerken (#78).
   let showEdit = $state(editIntent());
   let confirmDelete = $state(false);
+  const busy = new InFlight();
+
+  // Header actions render only for holders of the matching permission (#253).
+  const canWrite = $derived(can(page.data.user, "companies.company.write"));
+  const canDelete = $derived(can(page.data.user, "companies.company.delete"));
 
   // Log a contactmoment from the header — quick-add where the user is (docs/UX.md), with the
   // client pinned. The panel's own ＋ stays; this is the reachable top-of-page entry.
@@ -88,7 +95,7 @@
       {#if assignees.length > 0}
         <p class="mt-1 flex flex-wrap items-center gap-2 text-sm text-text-muted">
           <span>{t("companies.field.responsible")}:</span>
-          <AvatarStack {assignees} members={data.members} />
+          <Assignees {assignees} members={data.members} max={6} />
         </p>
       {/if}
     </div>
@@ -106,39 +113,57 @@
         <!-- Create-then-edit (#230): a POST that makes a minimal task pre-linked to this client
              and lands on its detail page in edit mode — never a link, which would create on
              hover-preload. -->
-        <form method="POST" action="/tasks?/create" use:enhance>
+        <form method="POST" action="/tasks?/create" use:enhance={busy.wrap("new-task")}>
           <input type="hidden" name="company_id" value={company.id} />
-          <button
-            class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={busy.is("new-task")}
+            disabled={busy.active}
           >
             {t("companies.actions.new_task")}
-          </button>
+          </Button>
         </form>
       {/if}
-      <a
-        href="/time"
-        class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"
-      >
-        {t("companies.actions.log_time")}
-      </a>
+      {#if can(page.data.user, "time.entry.write")}
+        <a
+          href="/time"
+          class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"
+        >
+          {t("companies.actions.log_time")}
+        </a>
+      {/if}
       {#if hasReporting}
         <CompanyAIActions companyId={company.id} companyName={company.name} />
       {/if}
-      <ActionsMenu
-        items={[
-          { label: t("common.edit"), icon: Pencil, onclick: () => (showEdit = true) },
-          {
-            label: t("common.delete"),
-            icon: Trash2,
-            danger: true,
-            onclick: () => (confirmDelete = true),
-          },
-        ]}
-      />
+      {#if canWrite || canDelete}
+        <ActionsMenu
+          items={[
+            ...(canWrite
+              ? [{ label: t("common.edit"), icon: Pencil, onclick: () => (showEdit = true) }]
+              : []),
+            ...(canDelete
+              ? [
+                  {
+                    label: t("common.delete"),
+                    icon: Trash2,
+                    danger: true,
+                    onclick: () => (confirmDelete = true),
+                  },
+                ]
+              : []),
+          ]}
+        />
+      {/if}
     </div>
   </div>
-  {#if data.templates.length > 0}
-    <form method="POST" action="?/applyTemplate" use:enhance class="mt-3 flex items-center gap-2">
+  {#if data.templates.length > 0 && can(page.data.user, "tasks.template.apply")}
+    <form
+      method="POST"
+      action="?/applyTemplate"
+      use:enhance={busy.clear("apply-template")}
+      class="mt-3 flex items-center gap-2"
+    >
       <select
         name="template_id"
         class="rounded-lg border border-border px-2 py-1.5 text-sm"
@@ -148,11 +173,14 @@
           <option value={template.id}>{template.name}</option>
         {/each}
       </select>
-      <button
-        class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"
+      <Button
+        variant="secondary"
+        size="sm"
+        loading={busy.is("apply-template")}
+        disabled={busy.active}
       >
         {t("companies.actions.apply_template")}
-      </button>
+      </Button>
       {#if form?.templateApplied}
         <span class="text-xs text-green-600 dark:text-green-400"
           >{t("companies.template_applied")}</span
@@ -189,72 +217,73 @@
   />
 </Modal>
 
-<Modal bind:open={showEdit} title={t("companies.edit")}>
-  <form
-    method="POST"
-    action="?/update"
-    enctype="multipart/form-data"
-    use:enhance={() =>
-      ({ update }) => {
+{#if canWrite}
+  <Modal bind:open={showEdit} title={t("companies.edit")}>
+    <form
+      method="POST"
+      action="?/update"
+      enctype="multipart/form-data"
+      use:enhance={busy.wrap("update", () => ({ update }) => {
         showEdit = false;
-        void update();
-      }}
-    class="space-y-3"
-  >
-    <!-- Same component the create form uses: one definition of a client's fields. Every editable
+        void update({ reset: false });
+      })}
+      class="space-y-3"
+    >
+      <!-- Same component the create form uses: one definition of a client's fields. Every editable
          field is here, contact persons included — an edit surface that hides a field the view
          shows sends you hunting for it (docs/UX.md). -->
-    <CompanyForm
-      {company}
-      members={data.members}
-      definitions={data.definitions}
-      locale={data.locale}
-      idPrefix="edit-company"
-    >
-      <ContactDraftField
-        contacts={data.contacts}
-        definitions={data.contactDefinitions}
+      <CompanyForm
+        {company}
+        members={data.members}
+        definitions={data.definitions}
         locale={data.locale}
-        value={companyContacts}
-        id="edit-company-contacts"
-      />
-    </CompanyForm>
-    <div>
-      <!-- Per-client logo (#196): shown on this page's header and on the client's portal
+        idPrefix="edit-company"
+      >
+        <ContactDraftField
+          contacts={data.contacts}
+          definitions={data.contactDefinitions}
+          locale={data.locale}
+          value={companyContacts}
+          id="edit-company-contacts"
+        />
+      </CompanyForm>
+      <div>
+        <!-- Per-client logo (#196): shown on this page's header and on the client's portal
            dashboard. Not the agency's branding — that lives under Instellingen. -->
-      <label for="edit-company-logo" class="mb-1 block text-sm font-medium text-text"
-        >{t("companies.logo.label")}</label
-      >
-      <input
-        id="edit-company-logo"
-        name="logo_file"
-        type="file"
-        accept="image/png,image/jpeg,image/webp,image/gif"
-        class="block w-full text-sm text-text-muted file:mr-3 file:cursor-pointer file:rounded-lg file:border file:border-solid file:border-border file:bg-transparent file:px-3 file:py-1.5 file:text-sm file:text-text hover:file:border-brand"
-      />
-      {#if company.logo_file_id}
-        <label class="mt-2 flex items-center gap-2 text-sm text-text">
-          <input type="checkbox" name="logo_remove" value="1" />
-          {t("companies.logo.remove")}
-        </label>
-      {/if}
-      <p class="mt-1 text-xs text-text-muted">{t("companies.logo.hint")}</p>
-    </div>
-    {#if form?.error}<p class="text-sm text-red-600">{t(form.error)}</p>{/if}
-    <div class="flex justify-end gap-2 pt-1">
-      <button
-        type="button"
-        class="rounded-lg border border-border px-4 py-2 text-sm"
-        onclick={() => (showEdit = false)}
-      >
-        {t("common.cancel")}
-      </button>
-      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
-        {t("common.save")}
-      </button>
-    </div>
-  </form>
-</Modal>
+        <label for="edit-company-logo" class="mb-1 block text-sm font-medium text-text"
+          >{t("companies.logo.label")}</label
+        >
+        <input
+          id="edit-company-logo"
+          name="logo_file"
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          class="block w-full text-sm text-text-muted file:mr-3 file:cursor-pointer file:rounded-lg file:border file:border-solid file:border-border file:bg-transparent file:px-3 file:py-1.5 file:text-sm file:text-text hover:file:border-brand"
+        />
+        {#if company.logo_file_id}
+          <label class="mt-2 flex items-center gap-2 text-sm text-text">
+            <input type="checkbox" name="logo_remove" value="1" />
+            {t("companies.logo.remove")}
+          </label>
+        {/if}
+        <p class="mt-1 text-xs text-text-muted">{t("companies.logo.hint")}</p>
+      </div>
+      {#if form?.error}<p class="text-sm text-red-600">{t(form.error)}</p>{/if}
+      <div class="flex justify-end gap-2 pt-1">
+        <button
+          type="button"
+          class="rounded-lg border border-border px-4 py-2 text-sm"
+          onclick={() => (showEdit = false)}
+        >
+          {t("common.cancel")}
+        </button>
+        <Button loading={busy.is("update")} disabled={busy.active}>
+          {t("common.save")}
+        </Button>
+      </div>
+    </form>
+  </Modal>
+{/if}
 
 <ConfirmDialog
   bind:open={confirmDelete}

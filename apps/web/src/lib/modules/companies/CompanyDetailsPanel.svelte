@@ -1,10 +1,13 @@
 <script lang="ts">
   import { t } from "$lib/core/i18n";
+  import { formatPhone } from "$lib/core/phone";
   import Markdown from "$lib/core/ui/Markdown.svelte";
 
   let { data }: { companyId: string; data: Record<string, unknown> } = $props();
 
+  const clientNumber = $derived(data.client_number as string | null);
   const website = $derived(data.website as string | null);
+  const phone = $derived(data.phone as string | null);
   const invoiceEmail = $derived(data.invoice_email as string | null);
   const notes = $derived(data.notes as string | null);
   const custom = $derived((data.custom ?? {}) as Record<string, unknown>);
@@ -20,6 +23,19 @@
 
   <div>
     <dt class="text-xs font-medium uppercase tracking-wide text-neutral-500">
+      {t("companies.client_number")}
+    </dt>
+    <dd class="mt-1 text-sm">
+      {#if clientNumber}
+        <span class="font-mono tabular-nums text-neutral-900">{clientNumber}</span>
+      {:else}
+        <span class="text-neutral-400">—</span>
+      {/if}
+    </dd>
+  </div>
+
+  <div>
+    <dt class="text-xs font-medium uppercase tracking-wide text-neutral-500">
       {t("companies.website")}
     </dt>
     <dd class="mt-1 text-sm">
@@ -27,6 +43,19 @@
         <a class="text-brand underline" href={website} target="_blank" rel="noreferrer">
           {website}
         </a>
+      {:else}
+        <span class="text-neutral-400">—</span>
+      {/if}
+    </dd>
+  </div>
+
+  <div>
+    <dt class="text-xs font-medium uppercase tracking-wide text-neutral-500">
+      {t("companies.phone")}
+    </dt>
+    <dd class="mt-1 text-sm">
+      {#if phone}
+        <a class="text-brand underline" href="tel:{phone}">{formatPhone(phone)}</a>
       {:else}
         <span class="text-neutral-400">—</span>
       {/if}
@@ -52,7 +81,13 @@
     </dt>
     <dd class="mt-1 text-sm text-neutral-900">
       {#if data.address_line1 || data.city || data.vat_number || data.coc_number}
-        {#if data.address_line1}<span class="block">{data.address_line1}</span>{/if}
+        <!-- Street and house number are separate columns (#241); display recomposes the line,
+             so a pre-split record (number still inside the street field) reads unchanged. -->
+        {#if data.address_line1}
+          <span class="block">
+            {[data.address_line1, data.house_number].filter(Boolean).join(" ")}
+          </span>
+        {/if}
         {#if data.address_line2}<span class="block">{data.address_line2}</span>{/if}
         {#if data.postal_code || data.city}
           <span class="block"

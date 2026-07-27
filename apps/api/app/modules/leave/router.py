@@ -22,12 +22,16 @@ from app.modules.leave.schemas import (
     EmploymentContractRead,
     EmploymentContractUpdate,
     EntitlementGenerate,
+    FreeTimeOverview,
+    FreeTimeWithdraw,
+    FreeTimeWithdrawResult,
     GenerateResult,
     HolidayImport,
     HolidayImportResult,
     LeaveBalance,
     LeaveEntitlementRead,
     LeaveEntitlementUpsert,
+    LeaveGroupBalance,
     LeaveHolidayCreate,
     LeaveHolidayRead,
     LeaveHolidayUpdate,
@@ -41,6 +45,7 @@ from app.modules.leave.schemas import (
     LeaveRecurringDayRead,
     LeaveRecurringDaySaved,
     LeaveRecurringDayUpdate,
+    LeaveRecurringDeleteResult,
     LeaveRequestCreate,
     LeaveRequestDecision,
     LeaveRequestPreview,
@@ -293,7 +298,7 @@ async def set_profile(
 
 
 # --- employment contracts (#65) ------------------------------------------------ #
-def _contract_read(contract, scheduled_week) -> EmploymentContractRead:
+def _contract_read(contract, scheduled_week, norm) -> EmploymentContractRead:
     return EmploymentContractRead(
         id=contract.id,
         org_id=contract.org_id,
@@ -303,6 +308,9 @@ def _contract_read(contract, scheduled_week) -> EmploymentContractRead:
         contract_hours_per_week=contract.contract_hours_per_week,
         scheduled_hours_per_week=scheduled_week,
         schedule=parse_schedule(contract.schedule),
+        free_time_hours_per_week=contract.free_time_hours_per_week,
+        # Resolved through the service's own rule, never a second copy of it in the client.
+        effective_free_time_per_week=LeaveService._contract_free_time(contract, norm),
         note=contract.note,
         created_at=contract.created_at,
         updated_at=contract.updated_at,
@@ -322,8 +330,9 @@ async def list_contracts(
     """A user's employment history. Own for a member; anyone's — or everyone's, with
     ``all_users`` — for a manager (the Settings → Users roster)."""
     service = LeaveService(ctx)
+    norm = await service.full_time_norm()
     return [
-        _contract_read(contract, scheduled)
+        _contract_read(contract, scheduled, norm)
         for contract, scheduled in await service.list_contracts(user_id, all_users=all_users)
     ]
 
@@ -340,7 +349,11 @@ async def create_contract(
 ) -> EmploymentContractRead:
     service = LeaveService(ctx)
     contract = await service.create_contract(payload)
-    return _contract_read(contract, await service.scheduled_week(contract.user_id, contract))
+    return _contract_read(
+        contract,
+        await service.scheduled_week(contract.user_id, contract),
+        await service.full_time_norm(),
+    )
 
 
 @router.patch(
@@ -355,7 +368,11 @@ async def update_contract(
 ) -> EmploymentContractRead:
     service = LeaveService(ctx)
     contract = await service.update_contract(contract_id, payload)
-    return _contract_read(contract, await service.scheduled_week(contract.user_id, contract))
+    return _contract_read(
+        contract,
+        await service.scheduled_week(contract.user_id, contract),
+        await service.full_time_norm(),
+    )
 
 
 @router.delete(
@@ -387,8 +404,10 @@ async def list_recurring(
     ctx: RequestContext = Depends(require_context),
 ) -> list[LeaveRecurringDayRead]:
     """Rostered-free-day patterns: a member's own; anyone's/all on ``leave.profile.manage``."""
-    items = await LeaveService(ctx).list_recurring(user_id=user_id)
-    return [LeaveRecurringDayRead.model_validate(p) for p in items]
+    return [
+        LeaveRecurringDayRead.model_validate(p).model_copy(update={"upcoming_days": upcoming})
+        for p, upcoming in await LeaveService(ctx).list_recurring(user_id=user_id)
+    ]
 
 
 @router.post(
@@ -423,15 +442,25 @@ async def update_recurring(
 
 @router.delete(
     "/recurring/{recurring_id}",
-    status_code=204,
+    response_model=LeaveRecurringDeleteResult,
     dependencies=[require_permission("leave.request.write")],
 )
 async def delete_recurring(
     recurring_id: uuid.UUID,
+    withdraw_days: bool = Query(False),
     ctx: RequestContext = Depends(require_context),
-) -> None:
-    """Deletes the pattern only; the days it already placed stay individually cancellable."""
-    await LeaveService(ctx).delete_recurring(recurring_id)
+) -> LeaveRecurringDeleteResult:
+    """Delete the pattern. By default the days it placed stay — they are real leave somebody
+    planned around, and a rule being removed is no reason to wipe a calendar.
+
+    ``withdraw_days=true`` also takes back the days still standing from today on, in the same
+    transaction and through the ordinary cancel path (so the past stays locked and the Google
+    mirror is told). The response says how many went, because "deleted" alone would not tell the
+    caller whether a year of free Fridays is still on the agenda."""
+    withdrawn = await LeaveService(ctx).delete_recurring(
+        recurring_id, withdraw_days=withdraw_days
+    )
+    return LeaveRecurringDeleteResult(withdrawn=withdrawn)
 
 
 # --- hourly rate (#82) --------------------------------------------------------- #
@@ -548,6 +577,69 @@ async def balances(
     ctx: RequestContext = Depends(require_context),
 ) -> list[LeaveBalance]:
     return await LeaveService(ctx).balances(year=year, user_id=user_id)
+
+
+@router.get(
+    "/balance/groups",
+    response_model=list[LeaveGroupBalance],
+    dependencies=[require_permission("leave.request.read")],
+)
+async def group_balances(
+    year: int = Query(..., ge=2000, le=2100),
+    user_id: uuid.UUID | None = Query(None),
+    all_users: bool = Query(False),
+    ctx: RequestContext = Depends(require_context),
+) -> list[LeaveGroupBalance]:
+    """The employee-facing combined balances (#265): one figure per balance group (statutory +
+    extra-statutory vacation roll up into one "Vakantieverlof"), with the per-pot breakdown —
+    accrual year, remaining, expiry — alongside for anyone who needs to see where hours went.
+
+    ``all_users`` — the manager team roster (#282): every member's groups in one call, each tagged
+    with ``user_id``. Needs ``leave.request.read:any``; without it the caller still gets only their
+    own."""
+    return await LeaveService(ctx).group_balances(
+        year=year, user_id=user_id, all_users=all_users
+    )
+
+
+# --- free time (#65): the pot, the days on the calendar, and the overhang ------------- #
+@router.get(
+    "/free-time",
+    response_model=FreeTimeOverview,
+    dependencies=[require_permission("leave.request.read")],
+)
+async def free_time_overview(
+    year: int = Query(..., ge=2000, le=2100),
+    user_id: uuid.UUID | None = Query(None),
+    ctx: RequestContext = Depends(require_context),
+) -> FreeTimeOverview:
+    """Everything the free-time card and the employment wizard need, in one call.
+
+    The per-type balance says "0 h over" as soon as the generator has placed every day — true,
+    and no help in answering "when is my next day off" or "does the pot still cover my calendar".
+    This carries the placed days, the next one, and the days a contract change orphaned.
+
+    Own by default; another employee's needs ``leave.request.read:any``, like every leave read."""
+    return await LeaveService(ctx).free_time_overview(year=year, user_id=user_id)
+
+
+@router.post(
+    "/free-time/withdraw",
+    response_model=FreeTimeWithdrawResult,
+    dependencies=[require_permission("leave.request.write")],
+)
+async def withdraw_free_time(
+    payload: FreeTimeWithdraw,
+    ctx: RequestContext = Depends(require_context),
+) -> FreeTimeWithdrawResult:
+    """Take back free days the pot no longer covers, after a contract change reprorated it (#264).
+
+    Explicit ids the caller was just shown, never "everything over the pot": a balance that moved
+    in between must not cancel more than was agreed to. Each goes through the ordinary cancel
+    path, so the past stays locked and the Google mirror is told; an id that will not cancel is
+    reported in ``skipped`` rather than abandoning the rest."""
+    cancelled, skipped = await LeaveService(ctx).withdraw_free_time(payload.request_ids)
+    return FreeTimeWithdrawResult(cancelled=cancelled, skipped=skipped)
 
 
 # --- dashboard widget --------------------------------------------------------------- #

@@ -12,6 +12,7 @@
     "prepare": "git config core.hooksPath .githooks || true",
     "i18n:check": "node scripts/i18n-check.mjs",
     "docs:check": "node scripts/docs-check.mjs",
+    "forms:check": "node scripts/forms-check.mjs",
     "gen:client": "bash scripts/gen-client.sh",
     "web": "pnpm --filter @schakl/web",
     "site": "pnpm --filter @schakl/site",

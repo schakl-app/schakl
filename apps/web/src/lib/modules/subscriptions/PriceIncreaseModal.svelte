@@ -7,8 +7,11 @@
    * computation: the numbers shown are exactly what an apply writes.
    */
   import { enhance } from "$app/forms";
+  import type { SubmitFunction } from "@sveltejs/kit";
   import { fmtMoney } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
@@ -54,6 +57,20 @@
   let priceMode = $state<"percent" | "amount" | "set">("percent");
   const PRICE_MODES = ["percent", "amount", "set"] as const;
 
+  const busy = new InFlight();
+  // Preview and apply share the form (#279): key off the clicked button's formaction.
+  const submit: SubmitFunction = (input) =>
+    busy.wrap(
+      input.submitter?.getAttribute("formaction") === "?/applyPriceIncrease" ? "apply" : "preview",
+      () =>
+        ({ result, update }) => {
+          if (result.type === "success" && result.data && "priceApplied" in result.data) {
+            open = false;
+          }
+          void update({ reset: false });
+        },
+    )(input);
+
   const scopeLabel = $derived(scopeItems.find((i) => i.value === scope)?.label ?? "");
   // Templates only ride along on the broad scopes; a single row never drags them (#231).
   const scopeTakesTemplates = $derived(scope === "all" || scope.startsWith("type:"));
@@ -82,18 +99,7 @@
 
 <Modal bind:open title={t("subscriptions.price_increase.title")}>
   <!-- Enter previews (the safe default); only the explicit Doorvoeren button applies. -->
-  <form
-    method="POST"
-    action="?/previewPriceIncrease"
-    use:enhance={() =>
-      ({ result, update }) => {
-        if (result.type === "success" && result.data && "priceApplied" in result.data) {
-          open = false;
-        }
-        void update({ reset: false });
-      }}
-    class="space-y-4"
-  >
+  <form method="POST" action="?/previewPriceIncrease" use:enhance={submit} class="space-y-4">
     <p class="text-sm text-text-muted">{t("subscriptions.price_increase.help")}</p>
     <div class="grid gap-3 sm:grid-cols-2">
       <div>
@@ -216,16 +222,17 @@
         class="rounded-lg border border-border px-4 py-2 text-sm text-text"
         onclick={() => (open = false)}>{t("common.cancel")}</button
       >
-      <button
+      <Button
+        variant="secondary"
         formaction="?/previewPriceIncrease"
-        class="rounded-lg border border-border px-4 py-2 text-sm font-medium text-text hover:border-brand hover:text-brand"
-        >{t("subscriptions.price_increase.preview")}</button
+        loading={busy.is("preview")}
+        disabled={busy.active}
       >
-      <button
-        formaction="?/applyPriceIncrease"
-        class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-        >{t("subscriptions.price_increase.apply")}</button
-      >
+        {t("subscriptions.price_increase.preview")}
+      </Button>
+      <Button formaction="?/applyPriceIncrease" loading={busy.is("apply")} disabled={busy.active}>
+        {t("subscriptions.price_increase.apply")}
+      </Button>
     </div>
   </form>
 </Modal>

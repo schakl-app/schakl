@@ -7,13 +7,16 @@
   import { editHref } from "$lib/core/edit-intent";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
-  import ImportCsvModal from "$lib/core/impex/ImportCsvModal.svelte";
+  import ImportWizard from "$lib/core/impex/ImportWizard.svelte";
   import { can } from "$lib/core/permissions";
+  import { formatPhone } from "$lib/core/phone";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { customFieldColumns } from "$lib/core/table/columns";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
-  import AvatarStack from "$lib/core/ui/AvatarStack.svelte";
+  import Assignees from "$lib/core/ui/Assignees.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
@@ -42,6 +45,12 @@
   let deleteName = $state("");
   let confirmDelete = $state(false);
   let showImport = $state(false);
+  const busy = new InFlight();
+
+  // Row actions render only for holders of the matching permission (#253) — the API refuses
+  // them anyway; this stops a client-role login seeing buttons that only 403.
+  const canWrite = $derived(can(page.data.user, "companies.company.write"));
+  const canDelete = $derived(can(page.data.user, "companies.company.delete"));
 
   // The Export link carries the page's current filters, so the file holds exactly the
   // filtered list on screen — the whole set, not just the loaded page (issue #77).
@@ -71,8 +80,10 @@
     pref: () => data.table.pref,
     sort: () => data.table.sort,
     cells: () => ({
+      client_number: clientNumberCell,
       name: nameCell,
       website: websiteCell,
+      phone: phoneCell,
       status: statusCell,
       assignees: assigneesCell,
       hours: hoursCell,
@@ -116,9 +127,27 @@
   >
 {/snippet}
 
+{#snippet clientNumberCell(company: Company)}
+  <!-- Tabular figures so a column of numbers lines up; an unnumbered client reads as a dash
+       rather than as an empty cell you cannot tell from a loading one. -->
+  {#if company.client_number}
+    <span class="font-mono text-sm tabular-nums text-text-muted">{company.client_number}</span>
+  {:else}
+    <span class="text-text-muted">—</span>
+  {/if}
+{/snippet}
+
 {#snippet websiteCell(company: Company)}
   {#if company.website}
     <span class="truncate text-text-muted">{company.website}</span>
+  {:else}<span class="text-text-muted">—</span>{/if}
+{/snippet}
+
+{#snippet phoneCell(company: Company)}
+  {#if company.phone}
+    <a href="tel:{company.phone}" class="text-text-muted hover:text-brand"
+      >{formatPhone(company.phone)}</a
+    >
   {:else}<span class="text-text-muted">—</span>{/if}
 {/snippet}
 
@@ -129,7 +158,7 @@
 {/snippet}
 
 {#snippet assigneesCell(company: Company)}
-  <AvatarStack assignees={company.assignees ?? []} members={data.members} />
+  <Assignees assignees={company.assignees ?? []} members={data.members} />
 {/snippet}
 
 {#snippet hoursCell(company: Company)}
@@ -143,13 +172,19 @@
 {#snippet rowActions(company: Company)}
   <ActionsMenu
     items={[
-      { label: t("common.edit"), icon: Pencil, href: editHref(`/companies/${company.id}`) },
-      {
-        label: t("common.delete"),
-        icon: Trash2,
-        danger: true,
-        onclick: () => confirmDeleteOf(company),
-      },
+      ...(canWrite
+        ? [{ label: t("common.edit"), icon: Pencil, href: editHref(`/companies/${company.id}`) }]
+        : []),
+      ...(canDelete
+        ? [
+            {
+              label: t("common.delete"),
+              icon: Trash2,
+              danger: true,
+              onclick: () => confirmDeleteOf(company),
+            },
+          ]
+        : []),
     ]}
   />
 {/snippet}
@@ -172,7 +207,9 @@
     >
       {t(`companies.status.${company.status}`)}
     </span>
-    {@render rowActions(company)}
+    {#if canWrite || canDelete}
+      {@render rowActions(company)}
+    {/if}
   </div>
 {/snippet}
 
@@ -192,12 +229,14 @@
     <h1 class="text-xl font-semibold text-text">{navLabel("companies", t("companies.title"))}</h1>
     <p class="mt-1 text-sm text-text-muted">{t("companies.count", { count: data.total })}</p>
   </div>
-  <button
-    class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-    onclick={() => (showCreate = !showCreate)}
-  >
-    {t("companies.new")}
-  </button>
+  {#if canWrite}
+    <button
+      class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+      onclick={() => (showCreate = !showCreate)}
+    >
+      {t("companies.new")}
+    </button>
+  {/if}
 </div>
 
 <!-- Search + status filter pills + the personal column picker -->
@@ -259,9 +298,12 @@
   </div>
 </div>
 
-<ImportCsvModal
+<ImportWizard
   bind:open={showImport}
+  locale={data.locale}
   report={form?.impex ?? null}
+  inspect={form?.impexInspect ?? null}
+  columns={form?.impexColumns ?? null}
   error={form?.impexError ?? null}
 />
 
@@ -272,17 +314,16 @@
     <form
       method="POST"
       action="?/create"
-      use:enhance={() =>
-        async ({ result, update }) => {
-          if (result.type === "success") {
-            await update();
-            showCreate = false;
-            return;
-          }
-          // Leave the form standing on a rejected save: closing it would take the error message
-          // down with it, along with everything typed and every contact picked.
-          await applyAction(result);
-        }}
+      use:enhance={busy.wrap("", () => async ({ result, update }) => {
+        if (result.type === "success") {
+          await update();
+          showCreate = false;
+          return;
+        }
+        // Leave the form standing on a rejected save: closing it would take the error message
+        // down with it, along with everything typed and every contact picked.
+        await applyAction(result);
+      })}
       class="mb-6 rounded-xl border border-border bg-surface-raised p-4"
     >
       <CompanyForm
@@ -301,11 +342,9 @@
         <p class="mt-2 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
       {/if}
       <div class="mt-4 flex gap-2">
-        <button
-          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
+        <Button loading={busy.active}>
           {t("common.save")}
-        </button>
+        </Button>
         <button
           type="button"
           class="rounded-lg border border-border px-4 py-2 text-sm"
@@ -328,7 +367,7 @@
   definitions={data.definitions}
   locale={data.locale}
   rowHref={(company) => `/companies/${company.id}`}
-  actions={rowActions}
+  actions={canWrite || canDelete ? rowActions : undefined}
   {mobileRow}
   empty={emptyState}
   onsort={table.onSort}

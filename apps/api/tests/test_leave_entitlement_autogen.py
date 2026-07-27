@@ -45,6 +45,18 @@ async def _entitlements(client, headers, user_id, year=_YEAR) -> dict[str, float
     return {e["leave_type_id"]: float(e["hours"]) for e in rows}
 
 
+async def _ent_rows(client, headers, user_id, year=_YEAR) -> dict[str, dict]:
+    """Entitlement rows keyed by type, carrying both ``hours`` and ``source`` (#264)."""
+    rows = (
+        await client.get(
+            "/api/v1/leave/entitlements",
+            params={"year": year, "user_id": str(user_id)},
+            headers=headers,
+        )
+    ).json()
+    return {e["leave_type_id"]: {"hours": float(e["hours"]), "source": e["source"]} for e in rows}
+
+
 async def _add_contract(client, headers, user_id, **overrides) -> dict:
     body = {
         "user_id": str(user_id),
@@ -77,7 +89,10 @@ async def test_contract_add_seeds_that_users_entitlements(client_for) -> None:
         assert await _entitlements(c, headers, bystander.id) == {}
 
 
-async def test_contract_seeding_is_idempotent_and_non_destructive(client_for) -> None:
+async def test_manual_override_survives_but_generated_rows_re_derive(client_for) -> None:
+    """A hand-set entitlement is the admin's and a later contract change never overwrites it
+    (#105) — but the *generated* rows around it now **do** re-derive when the contract they were
+    prorated from changes (#264, superseding the pre-#264 "terminate recalculates nothing")."""
     t = await make_tenant("autogen-idempotent")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
@@ -85,7 +100,7 @@ async def test_contract_seeding_is_idempotent_and_non_destructive(client_for) ->
         types = await _types(c, headers)
 
         first = await _add_contract(c, headers, member.id, end_date=f"{_YEAR}-05-31")
-        # The admin corrects the statutory grant by hand.
+        # The admin corrects the statutory grant by hand → the pot becomes ``manual``.
         res = await c.put(
             "/api/v1/leave/entitlements",
             json={
@@ -98,25 +113,28 @@ async def test_contract_seeding_is_idempotent_and_non_destructive(client_for) ->
         )
         assert res.status_code == 200
 
-        # A follow-up contract (new period, more hours) creates nothing new for existing rows
-        # and never overwrites the manual adjustment.
+        # A follow-up period leaves the manual statutory alone, but re-derives the generated ADV.
         await _add_contract(
             c, headers, member.id, start_date=f"{_YEAR}-06-01", end_date=None,
             contract_hours_per_week="40",
         )
-        ent = await _entitlements(c, headers, member.id)
-        assert ent[types["vacation_statutory"]] == 99.0
+        rows = await _ent_rows(c, headers, member.id)
+        assert rows[types["vacation_statutory"]] == {"hours": 99.0, "source": "manual"}
+        assert rows[types["roostervrij"]]["source"] == "generated"
+        adv_before = rows[types["roostervrij"]]["hours"]
+        assert adv_before > 0
 
-        # Correcting a contract (terminate) doesn't recalculate anything either.
+        # Terminating the first contract earlier shrinks its schedule gap: the generated ADV drops,
+        # the manual statutory holds. (Pre-#264 this asserted "terminate changes nothing".)
         res = await c.patch(
             f"/api/v1/leave/contracts/{first['id']}",
             json={"end_date": f"{_YEAR}-04-30"},
             headers=headers,
         )
         assert res.status_code == 200, res.text
-        assert (await _entitlements(c, headers, member.id))[
-            types["vacation_statutory"]
-        ] == 99.0
+        rows = await _ent_rows(c, headers, member.id)
+        assert rows[types["vacation_statutory"]]["hours"] == 99.0
+        assert rows[types["roostervrij"]]["hours"] < adv_before
 
 
 async def test_next_year_only_contract_does_not_seed_the_current_year(client_for) -> None:
@@ -229,7 +247,17 @@ async def test_member_can_request_leave_for_next_year(client_for) -> None:
             await c.get("/api/v1/leave/balance", params={"year": _YEAR + 1}, headers=mh)
         ).json()
         statutory = next(b for b in balance if b["leave_type_id"] == types["vacation_statutory"])
-        assert float(statutory["entitled_hours"]) == 152.0
+        # ...seeded and non-zero. (The balance figure may exceed one year's grant: with #265's
+        # carry-over now live, this year's untaken statutory carries into next year on top of the
+        # fresh pot — so assert the *fresh grant* itself via the entitlement row it just seeded.)
+        assert float(statutory["entitled_hours"]) > 0
+        fresh = (
+            await c.get(
+                "/api/v1/leave/entitlements", params={"year": _YEAR + 1}, headers=mh
+            )
+        ).json()
+        seeded = next(e for e in fresh if e["leave_type_id"] == types["vacation_statutory"])
+        assert float(seeded["hours"]) == 152.0
 
         # ...and a next-year request goes through instead of dying on an empty pot.
         day = _next_year_workday().isoformat()
@@ -259,6 +287,46 @@ async def test_balance_read_never_backfills_history(client_for) -> None:
             res = await c.get("/api/v1/leave/balance", params={"year": year}, headers=mh)
             assert res.status_code == 200
             assert await _entitlements(c, headers, member.id, year=year) == {}
+
+
+async def test_free_time_is_the_full_time_norm_shortfall(client_for) -> None:
+    """Free time = ``(norm − contract) × weeks`` (#282), keyed off the org's 40 h norm — **not**
+    the employee's own scheduled week. A full-timer (contract = norm) accrues zero; a 32 h contract
+    a pot even on a matching 32 h *schedule*, where the old ``scheduled − contract`` basis gave 0.
+    """
+    from decimal import ROUND_HALF_UP, Decimal
+
+    t = await make_tenant("free-time-norm")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        full = await _member(c, headers, "full@example.com")
+        part = await _member(c, headers, "part@example.com")
+        types = await _types(c, headers)
+
+        # Full-timer: contract meets the 40 h org norm → no free time row at all.
+        await _add_contract(c, headers, full.id, contract_hours_per_week="40")
+        assert types["roostervrij"] not in await _entitlements(c, headers, full.id)
+
+        # Part-timer on a reduced 32 h *schedule* (Mon–Thu) AND a matching 32 h contract. The old
+        # scheduled−contract basis would net 0; the norm shortfall is 40 − 32 = 8 h/week.
+        workday = {"start": "08:30", "end": "17:00", "breaks": [{"start": "12:30", "end": "13:00"}]}
+        res = await c.put(
+            f"/api/v1/leave/profiles/{part.id}",
+            json={"schedule": {d: workday for d in ("mon", "tue", "wed", "thu")}},
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+        await _add_contract(c, headers, part.id, contract_hours_per_week="32")
+
+        # 8 h/week over the whole year, rounded to the nearest half of an 8 h day — the exact
+        # pipeline `_round_half_day` runs, recomputed here so a leap year stays green.
+        days = (date(_YEAR, 12, 31) - date(_YEAR, 1, 1)).days + 1
+        raw = Decimal(8) * Decimal(days) / Decimal(7)
+        steps = (raw / Decimal(4)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        expected = float(steps * Decimal(4))
+        part_ent = await _entitlements(c, headers, part.id)
+        assert part_ent[types["roostervrij"]] > 0  # the discriminator: old basis gave 0 here
+        assert part_ent[types["roostervrij"]] == expected
 
 
 async def test_contract_seeding_is_tenant_isolated(client_for) -> None:

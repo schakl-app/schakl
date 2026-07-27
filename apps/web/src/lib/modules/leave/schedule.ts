@@ -83,6 +83,19 @@ export function weekHours(schedule: WorkSchedule): number {
 }
 
 /**
+ * The average **scheduled** working day. Mirrors `schedule.average_day_hours` — never
+ * `weekHours / 5`, which tells a three-day part-timer their working day is 4,8 hours long
+ * (CLAUDE.md §14). Used to turn a free-time pot into "≈ n dagen" while the user is still typing;
+ * the API computes the same figure for everything it stores.
+ */
+export function averageDayHours(schedule: WorkSchedule): number {
+  const working = WEEKDAYS.filter((day) => dayMinutes(schedule[day]) > 0).length;
+  if (working === 0) return 0;
+  const minutes = WEEKDAYS.reduce((total, day) => total + dayMinutes(schedule[day]), 0);
+  return Math.round((Math.floor(minutes / working) / 60) * 100) / 100;
+}
+
+/**
  * What the day is wrong about, as an i18n key — or `null` when it's fine. Same rules the API
  * enforces (`WorkDay._check`), so the grid can say so before you press save.
  */

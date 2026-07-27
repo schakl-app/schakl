@@ -69,7 +69,7 @@ class WatchUpdate(BaseModel):
 
 
 class PreferenceRow(BaseModel):
-    """One event's effective delivery rule, and which layer decided it."""
+    """One event's effective delivery rules (in-app + e-mail), and which layer decided each."""
 
     event_type: str
     enabled: bool
@@ -78,6 +78,12 @@ class PreferenceRow(BaseModel):
     digest_time: time | None = None
     digest_weekday: int | None = None
     source: PrefSource
+    # E-mail channel (#245): the same granularity as in-app, resolved independently. ``off`` is
+    # ``email_enabled=false``; the digest schedule (time/weekday) lives on the matrix's ``email``.
+    email_enabled: bool = False
+    email_delay_minutes: int = 0
+    email_digest: str = "immediate"
+    email_source: PrefSource = "default"
 
 
 class GeneralPreference(BaseModel):
@@ -87,9 +93,45 @@ class GeneralPreference(BaseModel):
     source: PrefSource
 
 
+class EmailSchedule(BaseModel):
+    """The scope's global e-mail digest schedule: when its daily/weekly mails leave (#245)."""
+
+    digest_time: time | None = None
+    digest_weekday: int | None = None
+    source: PrefSource
+
+
+class ChannelPreferenceEvent(BaseModel):
+    """One event's rule on one external channel (#283). ``enabled=false`` = not routed."""
+
+    event_type: str
+    enabled: bool = False
+    delay_minutes: int = 0
+    digest: str = "immediate"
+
+
+class ChannelPreference(BaseModel):
+    """An external channel as the matrix renders it: one column, one row per event.
+
+    ``digest_time``/``digest_weekday`` are the channel's own digest schedule — not per event, so
+    they are edited on the channel (Instellingen → Meldingen → Kanalen), not in the matrix.
+    """
+
+    id: uuid.UUID
+    name: str
+    kind: str
+    digest_time: time | None = None
+    digest_weekday: int | None = None
+    events: list[ChannelPreferenceEvent] = Field(default_factory=list)
+
+
 class PreferenceMatrix(BaseModel):
     events: list[PreferenceRow]
     general: GeneralPreference
+    email: EmailSchedule
+    #: This scope's external channels, each with its per-event rules (#283, #295): the caller's
+    #: own transports on the personal matrix, the org's shared rooms on the default one.
+    channels: list[ChannelPreference] = Field(default_factory=list)
 
 
 class PreferenceRowWrite(BaseModel):
@@ -115,17 +157,101 @@ class PreferenceRowWrite(BaseModel):
         return value
 
 
+class EmailPreferenceRowWrite(BaseModel):
+    """One event's e-mail override (#245). The digest schedule is global, so no time/weekday."""
+
+    event_type: str
+    enabled: bool = False
+    delay_minutes: Annotated[int, Field(ge=0, le=24 * 60)] = 0
+    digest: str = "immediate"
+
+    @field_validator("event_type")
+    @classmethod
+    def _known_event(cls, value: str) -> str:
+        if value not in EVENT_TYPES:
+            raise ValueError("unknown event_type")
+        return value
+
+    @field_validator("digest")
+    @classmethod
+    def _known_digest(cls, value: str) -> str:
+        if value not in DIGEST_CADENCES:
+            raise ValueError("unknown digest cadence")
+        return value
+
+
 class GeneralPreferenceWrite(BaseModel):
     due_soon_days: Annotated[int | None, Field(ge=0, le=90)] = None
     quiet_hours_start: time | None = None
     quiet_hours_end: time | None = None
 
 
+class EmailScheduleWrite(BaseModel):
+    digest_time: time | None = None
+    digest_weekday: Annotated[int | None, Field(ge=0, le=6)] = None
+
+
+class ChannelPreferenceEventWrite(BaseModel):
+    """One event routed to one channel. Absent = not routed (#283)."""
+
+    event_type: str
+    enabled: bool = False
+    delay_minutes: Annotated[int, Field(ge=0, le=24 * 60)] = 0
+    digest: str = "immediate"
+
+    @field_validator("event_type")
+    @classmethod
+    def _known_event(cls, value: str) -> str:
+        if value not in EVENT_TYPES:
+            raise ValueError("unknown event_type")
+        return value
+
+    @field_validator("digest")
+    @classmethod
+    def _known_digest(cls, value: str) -> str:
+        if value not in DIGEST_CADENCES:
+            raise ValueError("unknown digest cadence")
+        return value
+
+
+class ChannelPreferenceWrite(BaseModel):
+    """This channel's whole per-event routing, wholesale like every other block."""
+
+    channel_config_id: uuid.UUID
+    events: list[ChannelPreferenceEventWrite] = Field(default_factory=list)
+
+    @field_validator("events")
+    @classmethod
+    def _no_duplicates(
+        cls, value: list[ChannelPreferenceEventWrite]
+    ) -> list[ChannelPreferenceEventWrite]:
+        if len({row.event_type for row in value}) != len(value):
+            raise ValueError("duplicate event_type")
+        return value
+
+
 class PreferenceUpdate(BaseModel):
-    """A PUT replaces this scope's overrides wholesale — an omitted event inherits again."""
+    """A PUT replaces this scope's overrides **wholesale** — an omitted event inherits again.
+
+    The body is a full snapshot of the scope, not a patch: ``events`` and ``email_events`` are
+    the in-app and e-mail overrides (each channel tracked independently, so an event may override
+    one channel while inheriting the other), and ``general`` / ``email`` are the two scope-wide
+    rows. Whatever a channel's list does not contain is cleared, exactly as omitting an ``events``
+    entry clears that in-app override. A caller that means to change one channel must therefore
+    still send the other channel's current overrides, or they are dropped — the web form always
+    posts both. This mirrors the pre-#245 behaviour of ``events``/``general``; e-mail simply joined
+    the same wholesale scope when its dedicated endpoint was folded in.
+    """
 
     events: list[PreferenceRowWrite] = Field(default_factory=list)
+    email_events: list[EmailPreferenceRowWrite] = Field(default_factory=list)
     general: GeneralPreferenceWrite | None = None
+    email: EmailScheduleWrite | None = None
+    #: Per external channel (#283, #295), wholesale like every other block: what this list does
+    #: not carry is cleared, so a caller that means to change one channel still sends the others
+    #: (the web form always posts every column). Each id must belong to the scope being written —
+    #: the caller's own channels here, the org's shared rooms on the org-default endpoint.
+    channels: list[ChannelPreferenceWrite] = Field(default_factory=list)
 
     @field_validator("events")
     @classmethod
@@ -135,10 +261,27 @@ class PreferenceUpdate(BaseModel):
             raise ValueError("duplicate event_type")
         return value
 
+    @field_validator("email_events")
+    @classmethod
+    def _no_email_duplicates(
+        cls, value: list[EmailPreferenceRowWrite]
+    ) -> list[EmailPreferenceRowWrite]:
+        seen = {row.event_type for row in value}
+        if len(seen) != len(value):
+            raise ValueError("duplicate event_type")
+        return value
+
 
 __all__ = [
     "ENTITY_TYPES",
     "ActivityItem",
+    "ChannelPreference",
+    "ChannelPreferenceEvent",
+    "ChannelPreferenceEventWrite",
+    "ChannelPreferenceWrite",
+    "EmailPreferenceRowWrite",
+    "EmailSchedule",
+    "EmailScheduleWrite",
     "EntityType",
     "GeneralPreference",
     "GeneralPreferenceWrite",
@@ -155,26 +298,6 @@ __all__ = [
 ]
 
 
-# --- personal e-mail delivery (#17) ---------------------------------------------- #
-class EmailPrefRead(BaseModel):
-    """The user's effective e-mail rule: off, or a cadence (immediate / daily / weekly)."""
-
-    enabled: bool
-    digest: Literal["immediate", "daily", "weekly"]
-    digest_time: time | None = None
-    # 0 = Monday … 6 = Sunday (weekly only).
-    digest_weekday: int | None = None
-    #: Which layer decided: ``default`` (off), ``org``, or ``user``.
-    source: str = "default"
-
-
-class EmailPrefWrite(BaseModel):
-    enabled: bool
-    digest: Literal["immediate", "daily", "weekly"] = "daily"
-    digest_time: time | None = None
-    digest_weekday: int | None = Field(default=None, ge=0, le=6)
-
-
 # --- external channels (#17) --------------------------------------------------- #
 # ``email`` sends to a recipient address through the org's own transport (Instellingen →
 # E-mail, ``app.core.email``); the rest are Apprise families.
@@ -184,23 +307,22 @@ CHANNEL_KINDS = Literal[
 
 
 class ChannelCreate(BaseModel):
+    """Connect a transport. **Which events reach it, and how often, is not asked here** (#295):
+    that is a per-event column in the matrix of the scope that owns the channel, so a freshly
+    connected channel is silent until someone routes something to it.
+    """
+
     kind: CHANNEL_KINDS
     name: str = Field(min_length=1, max_length=120)
     #: The full Apprise URL. Write-only: encrypted at rest, never returned (#17).
     url: str = Field(min_length=1)
     enabled: bool = True
-    #: Event types routed here; empty = all. Validated against the known set.
-    event_filter: list[str] = Field(default_factory=list)
     #: A personal channel (my DM) when set to a member; ``None`` = an org channel.
     user_id: uuid.UUID | None = None
-
-    @field_validator("event_filter")
-    @classmethod
-    def _known_events(cls, value: list[str]) -> list[str]:
-        for event in value:
-            if event not in EVENT_TYPES:
-                raise ValueError("errors.validation")
-        return value
+    #: This channel's digest *schedule*: which hour, which weekday its bundles land on. One
+    #: question per channel rather than one per matrix row, because it has one answer.
+    digest_time: time | None = None
+    digest_weekday: Annotated[int | None, Field(ge=0, le=6)] = None
 
 
 class ChannelUpdate(BaseModel):
@@ -208,16 +330,8 @@ class ChannelUpdate(BaseModel):
     #: Rotate the URL by sending a new one; omit to leave it unchanged.
     url: str | None = None
     enabled: bool | None = None
-    event_filter: list[str] | None = None
-
-    @field_validator("event_filter")
-    @classmethod
-    def _known_events(cls, value: list[str] | None) -> list[str] | None:
-        if value is not None:
-            for event in value:
-                if event not in EVENT_TYPES:
-                    raise ValueError("errors.validation")
-        return value
+    digest_time: time | None = None
+    digest_weekday: Annotated[int | None, Field(ge=0, le=6)] = None
 
 
 class ChannelRead(BaseModel):
@@ -228,8 +342,10 @@ class ChannelRead(BaseModel):
     #: A redacted preview (``slack://xoxb-****``) — never the secret-bearing URL.
     redacted: str
     enabled: bool
-    event_filter: list[str]
+    #: ``None`` = a shared room the org routes; set = that person's own transport.
     user_id: uuid.UUID | None
+    digest_time: time | None = None
+    digest_weekday: int | None = None
     created_at: datetime
 
 

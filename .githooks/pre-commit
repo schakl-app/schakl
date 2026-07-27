@@ -1,34 +1,54 @@
 #!/usr/bin/env bash
-# Pre-commit hook — run the API's ruff lint locally so lint drift never reaches CI.
+# Pre-commit hook — run the repo's cheap lint gates locally so drift never reaches CI.
 #
-# Mirrors the CI step exactly (.github/workflows/ci.yml → API job → "Ruff"):
-#     cd apps/api && uv run ruff check app tests
-# Because it runs the repo's own `uv run ruff`, the hook and CI use the same ruff
-# version and the same pyproject config — they can never disagree.
+# Two gates, each mirroring its CI step exactly and each scoped to what the commit stages:
+#
+#   apps/api/**.py   → ruff  (.github/workflows/ci.yml → API job → "Ruff")
+#                        cd apps/api && uv run ruff check app tests
+#                      Because it runs the repo's own `uv run ruff`, hook and CI share a
+#                      ruff version and a pyproject config — they can never disagree.
+#
+#   apps/web/**.svelte → forms:check  (→ Web job → "Form reset check")
+#                        node scripts/forms-check.mjs
+#                      Catches a form that would blank what the user just saved. Plain node,
+#                      whole-tree and instant, so it also catches a form your commit didn't
+#                      touch — which is the point: it has shipped three times.
 #
 # Activation is automatic after `pnpm install` (root package.json "prepare"), or once by hand:
 #     git config core.hooksPath .githooks
 #
-# Scope: only fires when the commit stages Python files under apps/api. A web/site/docs-only
-# commit skips it and needs no uv. Emergency bypass: `git commit --no-verify`.
+# A commit that stages neither kind of file runs nothing and needs no toolchain.
+# Emergency bypass: `git commit --no-verify`.
 set -euo pipefail
 
-# Staged (Added/Copied/Modified) Python files under apps/api. `|| true` so "no match" (grep
-# exit 1) doesn't trip `set -e`.
+# Staged (Added/Copied/Modified) files. `|| true` so "no match" (grep exit 1) doesn't trip `set -e`.
 staged_py=$(git diff --cached --name-only --diff-filter=ACM -- apps/api | grep '\.py$' || true)
-[ -z "$staged_py" ] && exit 0
+staged_svelte=$(git diff --cached --name-only --diff-filter=ACM -- apps/web | grep '\.svelte$' || true)
 
-if ! command -v uv >/dev/null 2>&1; then
-  echo "pre-commit: 'uv' not found but apps/api Python files are staged." >&2
-  echo "            Install uv, or bypass with: git commit --no-verify" >&2
-  exit 1
+if [ -n "$staged_py" ]; then
+  if ! command -v uv >/dev/null 2>&1; then
+    echo "pre-commit: 'uv' not found but apps/api Python files are staged." >&2
+    echo "            Install uv, or bypass with: git commit --no-verify" >&2
+    exit 1
+  fi
+
+  echo "pre-commit: ruff check (apps/api)…"
+  if ! ( cd apps/api && uv run ruff check app tests ); then
+    echo >&2
+    echo "pre-commit: ruff found problems — this would go red in CI." >&2
+    echo "            Fix:    (cd apps/api && uv run ruff check --fix app tests)" >&2
+    echo "            then re-stage and commit. Bypass (not recommended): git commit --no-verify" >&2
+    exit 1
+  fi
 fi
 
-echo "pre-commit: ruff check (apps/api)…"
-if ! ( cd apps/api && uv run ruff check app tests ); then
-  echo >&2
-  echo "pre-commit: ruff found problems — this would go red in CI." >&2
-  echo "            Fix:    (cd apps/api && uv run ruff check --fix app tests)" >&2
-  echo "            then re-stage and commit. Bypass (not recommended): git commit --no-verify" >&2
-  exit 1
+if [ -n "$staged_svelte" ]; then
+  echo "pre-commit: forms:check (apps/web)…"
+  if ! node scripts/forms-check.mjs; then
+    echo >&2
+    echo "pre-commit: a form would blank what the user just saved — this would go red in CI." >&2
+    echo "            Read:   docs/UX.md, \"Saving must never blank the form\"" >&2
+    echo "            Bypass (not recommended): git commit --no-verify" >&2
+    exit 1
+  fi
 fi

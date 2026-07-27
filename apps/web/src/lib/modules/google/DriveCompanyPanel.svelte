@@ -12,11 +12,15 @@
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
+  import { InFlight } from "$lib/core/submit.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
 
   import DriveBrowser from "./DriveBrowser.svelte";
   import DriveLinkList, { type DriveLinkItem } from "./DriveLinkList.svelte";
 
   let { companyId, data }: { companyId: string; data: Record<string, unknown> } = $props();
+
+  const busy = new InFlight();
 
   const links = $derived((data.links ?? []) as DriveLinkItem[]);
   const folder = $derived((data.folder ?? null) as DriveLinkItem | null);
@@ -48,16 +52,13 @@
     <div class="flex flex-wrap items-center justify-between gap-2 py-2">
       <p class="text-sm text-text-muted">{t("google.drive.no_folder_yet")}</p>
       {#if canProvision}
-        <form method="POST" action="?/provisionDriveFolder" use:enhance>
+        <form method="POST" action="?/provisionDriveFolder" use:enhance={busy.wrap()}>
           <input type="hidden" name="entity_type" value="company" />
           <input type="hidden" name="entity_id" value={companyId} />
-          <button
-            type="submit"
-            class="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-text hover:border-brand"
-          >
+          <Button type="submit" variant="secondary" size="xs" loading={busy.active}>
             <FolderPlus size={13} aria-hidden="true" />
             {t("google.drive.create_folder")}
-          </button>
+          </Button>
         </form>
       {/if}
     </div>

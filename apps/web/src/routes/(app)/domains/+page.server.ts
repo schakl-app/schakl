@@ -2,12 +2,16 @@ import { fail } from "@sveltejs/kit";
 
 import { apiErrorKey, lookupItems } from "$lib/core/errors";
 import { parseParty } from "$lib/core/party";
+import { can } from "$lib/core/permissions";
 import {
   createCompanyAction,
   createContactAction,
   createProviderAction,
 } from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
+import { readTablePref, resolveColumns } from "$lib/core/table/columns";
+import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
+import { DOMAIN_COLUMNS, DOMAINS_TABLE_ID } from "$lib/modules/domains/columns";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -22,7 +26,16 @@ function parseCustom(raw: FormDataEntryValue | null): Record<string, unknown> {
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const q = event.url.searchParams.get("q") || undefined;
-  const sort = event.url.searchParams.get("sort") ?? undefined;
+
+  // The saved column layout comes from the layout load (docs/PERFORMANCE.md). The URL wins
+  // over the saved sort so a sorted list stays shareable and the back button works.
+  const { prefs } = await event.parent();
+  const pref = readTablePref(prefs, DOMAINS_TABLE_ID);
+  const resolved = resolveColumns(DOMAIN_COLUMNS, pref);
+  const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
+
+  // The form's TLD price hint (#250): only fetched for holders of the read permission.
+  const canReadPrices = can(event.locals.user, "domains.tld_price.read");
 
   const [
     domains,
@@ -33,12 +46,17 @@ export const load: PageServerLoad = async (event) => {
     definitions,
     companyDefinitions,
     contactDefinitions,
+    tldPrices,
   ] = await Promise.all([
     api.GET("/api/v1/domains", { params: { query: { limit: 200, offset: 0, q, sort } } }),
-    api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
+    api.GET("/api/v1/companies", {
+      params: { query: { limit: 200, offset: 0, count: false, sort: "name" } },
+    }),
     api.GET("/api/v1/providers"),
     api.GET("/api/v1/members/lookup"),
-    api.GET("/api/v1/contacts", { params: { query: { limit: 200, offset: 0 } } }),
+    api.GET("/api/v1/contacts", {
+      params: { query: { limit: 200, offset: 0, sort: "first_name" } },
+    }),
     api.GET("/api/v1/custom-fields/definitions", {
       params: { query: { entity_type: "domain" } },
     }),
@@ -49,6 +67,7 @@ export const load: PageServerLoad = async (event) => {
     api.GET("/api/v1/custom-fields/definitions", {
       params: { query: { entity_type: "contact" } },
     }),
+    canReadPrices ? api.GET("/api/v1/domains/tld-prices") : Promise.resolve({ data: null }),
   ]);
 
   return {
@@ -64,13 +83,24 @@ export const load: PageServerLoad = async (event) => {
     definitions: definitions.data ?? [],
     companyDefinitions: companyDefinitions.data ?? [],
     contactDefinitions: contactDefinitions.data ?? [],
+    tldPrices: (tldPrices.data ?? [])
+      .filter((g) => g.current != null)
+      .map((g) => ({ tld: g.tld, amount: g.current!.amount, currency: g.currency })),
     agencyLabel: event.locals.theme?.brandName ?? "",
     q: q ?? "",
+    table: { pref, sort: sort ?? null, widths: resolved.widths },
     locale: event.locals.locale,
   };
 };
 
 export const actions: Actions = {
+  /** Persist this user's column layout. Personal, in-view — never org settings (docs/UX.md §6). */
+  saveTable: async (event) => {
+    const form = await event.request.formData();
+    await saveTablePref(event, DOMAINS_TABLE_ID, parseTablePref(form));
+    return { tableSaved: true };
+  },
+
   create: async (event) => {
     const form = await event.request.formData();
     const name = String(form.get("name") ?? "").trim();
@@ -84,6 +114,8 @@ export const actions: Actions = {
         company_id,
         status: String(form.get("status") ?? "active") as never,
         redirect_url: String(form.get("redirect_url") ?? "").trim() || null,
+        start_date: String(form.get("start_date") ?? "").trim() || undefined,
+        price_override: String(form.get("price_override") ?? "").trim() || null,
         registrar_provider_id: String(form.get("registrar_provider_id") ?? "") || null,
         dns_provider_id: String(form.get("dns_provider_id") ?? "") || null,
         registry_contact: parseParty(form.get("registry_contact")),

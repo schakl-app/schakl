@@ -29,7 +29,8 @@ from app.config import settings
 from app.core.auth.models import User
 from app.core.auth.users import current_active_user_optional
 from app.core.models import Membership, Org, OrgStatus
-from app.core.permissions.models import MembershipRole, RolePermission
+from app.core.permissions.catalog import ROLE_CLIENT
+from app.core.permissions.models import MembershipRole, Role, RolePermission
 from app.core.permissions.permset import PermissionSet
 from app.db import async_session_maker, set_current_org
 from app.errors import AppError
@@ -97,8 +98,12 @@ class RequestContext:
     #: ``None`` = unrestricted (the default and the owner's guarantee); a set = this
     #: membership sees only those companies' rows. Enforced by the repository below.
     company_scope: frozenset[uuid.UUID] | None = None
-    #: A contact-linked (client-portal) login (#193). Services use it where "what a client
-    #: may see" is narrower than the horizon alone — e.g. only tasks ticked visible.
+    #: An **external** (client) login: a contact-linked portal membership (#193) *or* any
+    #: membership holding the seeded ``client`` role (#274). Services use it where "what a
+    #: client may see" is narrower than the horizon alone — e.g. only tasks ticked visible,
+    #: only their companies' contacts. Both are the same kind of login: #252 already decided
+    #: that "the client role marks a login as external", and gating these narrowings on the
+    #: contact link alone left a directly-invited client reading the whole address book.
     is_portal: bool = False
     # Set only during an instance-admin impersonation (issue #26): ``user`` is then the
     # impersonated member and ``impersonated_by`` the real, authenticated instance owner.
@@ -204,6 +209,10 @@ async def require_context(
         #
         # ``array_agg(...).filter(...)`` is load-bearing: a bare ``array_agg`` over the LEFT JOIN
         # of a role-less membership yields ``{NULL}``, not an empty array.
+        #
+        # "Does this membership hold the seeded ``client`` role?" rides the same statement as a
+        # ``bool_or`` (the ``roles`` join is 1:1 on ``membership_roles``, so it cannot fan the
+        # permission aggregate out) — one round-trip, whatever the role count.
         row = (
             await session.execute(
                 select(
@@ -211,8 +220,10 @@ async def require_context(
                     func.array_agg(RolePermission.permission).filter(
                         RolePermission.permission.is_not(None)
                     ),
+                    func.bool_or(Role.key == ROLE_CLIENT),
                 )
                 .outerjoin(MembershipRole, MembershipRole.membership_id == Membership.id)
+                .outerjoin(Role, Role.id == MembershipRole.role_id)
                 .outerjoin(RolePermission, RolePermission.role_id == MembershipRole.role_id)
                 .where(
                     Membership.user_id == user.id,
@@ -223,7 +234,7 @@ async def require_context(
         ).first()
         if row is None:
             raise AppError("forbidden", "errors.forbidden", status_code=403)
-        membership, granted = row
+        membership, granted, holds_client = row
         permissions = PermissionSet.of(granted)
 
         # Company data horizon (issue #191): one indexed query over the assignment tables,
@@ -238,10 +249,12 @@ async def require_context(
             if permissions.wildcard
             else await resolve_company_scope(session, org.id, membership.id)
         )
+        # External login (#193 + #274): the client role already marks one, so the contact-link
+        # lookup is skipped when it does — and a client with no contact link is external too.
         is_portal = (
             False
             if permissions.wildcard
-            else bool(await portal_user_ids(session, org.id, {user.id}))
+            else bool(holds_client) or bool(await portal_user_ids(session, org.id, {user.id}))
         )
 
         ctx = RequestContext(
@@ -278,6 +291,14 @@ class TenantScopedRepository(Generic[ModelT]):
     filter by ``id``, and writes cannot place a row onto an invisible company. Out-of-horizon
     reads answer 404, never 403 — a 403 on get-by-id leaks existence (#19's ``_owned_or_404``
     reasoning).
+
+    A ``company_id`` column is not the only way a row belongs to a client, and the ones that
+    lack it are exactly where the horizon silently did nothing (#285): a website belongs to its
+    *domain's* client, a contact to whatever ``company_contacts`` links it to. Such a model
+    declares ``__company_horizon_clause__(scope)`` and returns the predicate itself; every path
+    through this repository — ``get_or_404``, ``scoped_select``, ``scoped_count_select``,
+    ``count`` — then carries it, which is the point of putting it here rather than in one
+    module's ``list()``.
     """
 
     def __init__(
@@ -292,24 +313,43 @@ class TenantScopedRepository(Generic[ModelT]):
         self.org_id = org_id
         self.model = model
         self.company_scope = company_scope
-        # Which column anchors the model to a company: `companies` itself declares its pk via
+        # How this model anchors to a company, in precedence order: a clause it builds itself
+        # (an indirect link — #285), else a column. `companies` names its own pk via
         # `__company_horizon_attr__`; every other model is matched on a `company_id` column.
+        self._horizon_clause = getattr(model, "__company_horizon_clause__", None)
         attr = getattr(model, "__company_horizon_attr__", "company_id")
         self._horizon_col = getattr(model, attr, None)
         table_col = getattr(model, "__table__", None)
         table_col = table_col.c.get(attr) if table_col is not None else None
         self._horizon_nullable = bool(table_col.nullable) if table_col is not None else False
 
-    def _horizon(self, stmt):
-        """AND the company horizon onto a statement (no-op when unrestricted, #191)."""
-        if self.company_scope is None or self._horizon_col is None:
-            return stmt
+    def horizon_condition(self):
+        """The company horizon as a standalone predicate, or ``None`` when unrestricted (#191).
+
+        ``scoped_select()`` is the normal path and already carries this. A read that *cannot*
+        be built from it — a window fold over a subquery, a hand-built ``count(DISTINCT …)`` —
+        takes the predicate from here and ANDs it onto its own statement, so the horizon is
+        still expressed in exactly one place. Interactions' folded feed re-derived nothing and
+        simply had no horizon at all (#240); this is the seam it was missing.
+        """
+        if self.company_scope is None:
+            return None
+        if self._horizon_clause is not None:
+            # The model owns the shape of its own company link (#285).
+            return self._horizon_clause(self.company_scope)
+        if self._horizon_col is None:
+            return None
         col = self._horizon_col
         if self._horizon_nullable:
             # A row not attached to any company (a company-less task, shared-infra hosting)
             # is not company data; the horizon governs company rows only.
-            return stmt.where((col.is_(None)) | (col.in_(self.company_scope)))
-        return stmt.where(col.in_(self.company_scope))
+            return (col.is_(None)) | (col.in_(self.company_scope))
+        return col.in_(self.company_scope)
+
+    def _horizon(self, stmt):
+        """AND the company horizon onto a statement (no-op when unrestricted, #191)."""
+        condition = self.horizon_condition()
+        return stmt if condition is None else stmt.where(condition)
 
     def _guard_company_write(self, values: dict[str, Any]) -> None:
         """Refuse placing a row onto a company outside the horizon (#191) — as a 404, the
@@ -332,6 +372,20 @@ class TenantScopedRepository(Generic[ModelT]):
         (#191) rides along the same way.
         """
         return self._scoped()
+
+    def scoped_count_select(self):
+        """A ``select(func.count())`` over this model, tenant- **and horizon**-filtered.
+
+        A list's ``total`` must count exactly the rows its query could return. Every service
+        that hand-built ``select(func.count()).where(org_id == …)`` skipped the company
+        horizon, so a scoped login read the org-wide count above its own filtered rows
+        (#252) — build totals from this instead.
+        """
+        return self._horizon(
+            select(func.count())
+            .select_from(self.model)
+            .where(self.model.org_id == self.org_id)
+        )
 
     def _apply_filters(self, stmt, filters: dict[str, Any]):
         for key, value in filters.items():

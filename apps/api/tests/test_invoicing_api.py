@@ -11,6 +11,10 @@ import uuid as uuid_mod
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from app.core.events import SystemContext
+from app.core.models import Org
+from app.db import async_session_maker, set_current_org
+from app.modules.invoicing.events import on_subscription_due
 from tests.conftest import Tenant, auth_cookie, make_tenant
 
 AMS = ZoneInfo("Europe/Amsterdam")
@@ -702,6 +706,16 @@ async def test_tenant_isolation_across_invoicing_tables(client_for) -> None:
         ).json()
         assert b_settings["company_details"].get("vat_number") is None
 
+        # The subscription-period claim is scoped too: A's client resolves to no agreements
+        # for B, so B can neither read A's claims nor be told a period of A's is taken.
+        assert (
+            await cb.get(
+                "/api/v1/invoicing/billable-subscriptions",
+                params={"company_id": company_id},
+                headers=b_headers,
+            )
+        ).json() == []
+
 
 async def test_products_catalog(client_for) -> None:
     """Owner request: default products — named line presets with price and tax rate,
@@ -797,3 +811,266 @@ async def test_invoice_pdf_download(client_for) -> None:
         assert res.headers["content-type"] == "application/pdf"
         assert res.content.startswith(b"%PDF")
         assert "attachment" in res.headers["content-disposition"]
+
+
+async def test_line_kinds_travel_from_builder_to_document(client_for) -> None:
+    """The three kinds are provenance, not decoration: whoever builds a line stamps it, and
+    the document reads it back. A hand-typed line defaults to ``product`` — the shape every
+    pre-existing line already had, so nothing already sent changes appearance."""
+    t: Tenant = await make_tenant("inv-kinds")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await _setup_org(c, headers)
+        company_id = await _company(c, headers)
+        invoice = (
+            await c.post(
+                "/api/v1/invoicing/invoices",
+                json={
+                    "company_id": company_id,
+                    "lines": [
+                        {"description": "Sprint 12", "line_kind": "hours",
+                         "quantity": "8", "unit": "uur", "unit_price": "95"},
+                        {"description": "Domeinnaam", "quantity": "1", "unit_price": "15"},
+                    ],
+                },
+                headers=headers,
+            )
+        ).json()
+        by_description = {line["description"]: line for line in invoice["lines"]}
+        assert by_description["Sprint 12"]["line_kind"] == "hours"
+        assert by_description["Domeinnaam"]["line_kind"] == "product"
+
+        # A credit note mirrors the document it corrects, section headings included.
+        await c.post(f"/api/v1/invoicing/invoices/{invoice['id']}/issue", json={}, headers=headers)
+        credit = (
+            await c.post(
+                f"/api/v1/invoicing/invoices/{invoice['id']}/credit", headers=headers
+            )
+        ).json()
+        assert {line["description"]: line["line_kind"] for line in credit["lines"]} == {
+            "Sprint 12": "hours",
+            "Domeinnaam": "product",
+        }
+
+
+async def test_from_time_builds_hours_lines(client_for) -> None:
+    """Invoicing hours produces *hours* lines, so the document groups them under Uren
+    without anyone choosing a type by hand."""
+    t: Tenant = await make_tenant("inv-kind-time")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await _setup_org(c, headers)
+        company_id = await _company(c, headers)
+        project = (
+            await c.post(
+                "/api/v1/projects",
+                json={"name": "Portaal", "company_id": company_id},
+                headers=headers,
+            )
+        ).json()
+        start = datetime.now(UTC) - timedelta(days=1)
+        entry = await c.post(
+            "/api/v1/time/entries",
+            json={
+                "project_id": project["id"],
+                "company_id": company_id,
+                "started_at": start.isoformat(),
+                "minutes": 120,
+                "description": "Bouwen",
+                "billable": True,
+            },
+            headers=headers,
+        )
+        assert entry.status_code == 201, entry.text
+        await c.post(
+            "/api/v1/time/entries/approve",
+            json={"entry_ids": [entry.json()["id"]], "approved": True},
+            headers=headers,
+        )
+        built = await c.post(
+            "/api/v1/invoicing/invoices/from-time",
+            json={"company_id": company_id, "hourly_rate": "100"},
+            headers=headers,
+        )
+        assert built.status_code == 201, built.text
+        assert {line["line_kind"] for line in built.json()["lines"]} == {"hours"}
+
+
+async def test_manual_subscription_line_claims_the_period_the_cron_would_bill(client_for) -> None:
+    """Owner's rule: *the cron should know it is already paid.*
+
+    Billing an agreement's period by hand claims it, so ``subscription.due`` finds the month
+    taken and drafts nothing; a second document may not claim the same period; and deleting
+    the invoice gives the period back."""
+    t: Tenant = await make_tenant("inv-sub-claim")
+    headers = await auth_cookie(t.user)
+    today = _today()
+    async with client_for(t.host) as c:
+        await _setup_org(c, headers)
+        company_id = await _company(c, headers)
+        sub = (
+            await c.post(
+                "/api/v1/subscriptions",
+                json={
+                    "company_id": company_id,
+                    "name": "Hosting & onderhoud",
+                    "status": "active",
+                    "interval": "monthly",
+                    "start_date": (today - timedelta(days=40)).isoformat(),
+                    "next_invoice_date": today.isoformat(),
+                    "amount": "249.00",
+                    "lines": [
+                        {"description": "Hosting", "quantity": "1", "unit_amount": "249.00"}
+                    ],
+                },
+                headers=headers,
+            )
+        ).json()
+
+        # The picker offers it, priced and dated exactly as the cron would raise it.
+        offers = (
+            await c.get(
+                "/api/v1/invoicing/billable-subscriptions",
+                params={"company_id": company_id},
+                headers=headers,
+            )
+        ).json()
+        assert len(offers) == 1
+        offer = offers[0]
+        assert offer["amount"] == "249.00"
+        assert offer["period_end"] == today.isoformat()
+        assert offer["already_billed"] is False
+
+        claim = {
+            "subscription_id": sub["id"],
+            "period_start": offer["period_start"],
+            "period_end": offer["period_end"],
+        }
+        invoice = await c.post(
+            "/api/v1/invoicing/invoices",
+            json={
+                "company_id": company_id,
+                "lines": [
+                    {"description": "Hosting maart", "line_kind": "subscription",
+                     "quantity": "1", "unit_price": "249", **claim},
+                    {"description": "Extra werk", "line_kind": "hours",
+                     "quantity": "2", "unit_price": "95"},
+                ],
+            },
+            headers=headers,
+        )
+        assert invoice.status_code == 201, invoice.text
+        invoice_id = invoice.json()["id"]
+
+        # The picker now says so, rather than silently hiding the agreement.
+        offers = (
+            await c.get(
+                "/api/v1/invoicing/billable-subscriptions",
+                params={"company_id": company_id},
+                headers=headers,
+            )
+        ).json()
+        assert offers[0]["already_billed"] is True
+
+        # A second document may not bill the same period.
+        clash = await c.post(
+            "/api/v1/invoicing/invoices",
+            json={
+                "company_id": company_id,
+                "lines": [
+                    {"description": "Nog een keer", "line_kind": "subscription",
+                     "quantity": "1", "unit_price": "249", **claim},
+                ],
+            },
+            headers=headers,
+        )
+        assert clash.status_code == 409, clash.text
+        assert clash.json()["error"]["message"] == "errors.invoicing.period_already_billed"
+
+        before = await _invoice_count(c, headers)
+
+    # The cycle cron finds the month taken and drafts nothing — the handler runs on the
+    # cron's own SystemContext, the shape the subscriptions job emits.
+    async with async_session_maker() as session:
+        org = await session.get(Org, t.org.id)
+        await set_current_org(session, org.id)
+        await on_subscription_due(
+            SystemContext(org=org, session=session),
+            {
+                "subscription_id": sub["id"],
+                "company_id": company_id,
+                "name": "Hosting & onderhoud",
+                "amount": "249.00",
+                "currency": "EUR",
+                "period_start": offer["period_start"],
+                "period_end": offer["period_end"],
+                "lines": [],
+            },
+        )
+        await session.commit()
+
+    async with client_for(t.host) as c:
+        assert await _invoice_count(c, headers) == before
+
+        # Deleting the draft hands the period back to the cron.
+        assert (
+            await c.delete(f"/api/v1/invoicing/invoices/{invoice_id}", headers=headers)
+        ).status_code == 204
+        offers = (
+            await c.get(
+                "/api/v1/invoicing/billable-subscriptions",
+                params={"company_id": company_id},
+                headers=headers,
+            )
+        ).json()
+        assert offers[0]["already_billed"] is False
+
+
+async def _invoice_count(client, headers) -> int:
+    return (await client.get("/api/v1/invoicing/invoices", headers=headers)).json()["total"]
+
+
+async def test_bill_to_snapshot_composes_street_and_house_number(client_for) -> None:
+    """A document's bill-to keeps one composed address line (#241): the split lives on the
+    company, the snapshot shape never changes, and a pre-split company (number still inside
+    ``address_line1``) snapshots exactly what it stored."""
+    tenant: Tenant = await make_tenant("inv-housenr")
+    headers = await auth_cookie(tenant.user)
+    async with client_for(tenant.host) as client:
+        await _setup_org(client, headers)
+
+        split = await client.post(
+            "/api/v1/companies",
+            json={
+                "name": "Gesplitst BV",
+                "invoice_email": "f@klant.nl",
+                "address_line1": "Binnenhof",
+                "house_number": "1A",
+                "city": "Den Haag",
+            },
+            headers=headers,
+        )
+        legacy = await client.post(
+            "/api/v1/companies",
+            json={
+                "name": "Ongesplitst BV",
+                "invoice_email": "f@oud.nl",
+                "address_line1": "Kerkstraat 12",
+                "city": "Utrecht",
+            },
+            headers=headers,
+        )
+        line = [{"description": "Werk", "quantity": "1", "unit_price": "100"}]
+        for company, expected_line1 in (
+            (split.json(), "Binnenhof 1A"),
+            (legacy.json(), "Kerkstraat 12"),
+        ):
+            created = await client.post(
+                "/api/v1/invoicing/invoices",
+                json={"company_id": company["id"], "lines": line},
+                headers=headers,
+            )
+            assert created.status_code == 201, created.text
+            customer = created.json()["customer"]
+            assert customer["address_line1"] == expected_line1
+            assert "house_number" not in customer  # the snapshot shape is unchanged

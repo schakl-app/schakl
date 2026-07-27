@@ -122,6 +122,10 @@ CHANNEL_IN_APP = "in_app"
 #: Personal e-mail delivery through the org transport (Instellingen → E-mail, #17). One
 #: *general* preference row per user (no per-event matrix): off, immediate, or a digest.
 CHANNEL_EMAIL = "email"
+#: Any configured external transport (Apprise — Slack, Teams, Discord, a webhook; #17). Unlike
+#: the two above it is not implicit: each one is a ``notification_channels`` row, and a
+#: *personal* one carries its own per-event preference rows keyed by ``channel_config_id`` (#283).
+CHANNEL_EXTERNAL = "external"
 
 #: Reserved payload keys the emitter uses to carry recipients/dedup to the subscriber. They
 #: are stripped before the event row is persisted (they are routing, not content).

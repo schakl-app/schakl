@@ -33,7 +33,7 @@ from datetime import UTC, date, datetime, time
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import exists, func, select, update
 
 from app.core.auth.models import User
 from app.core.events import EmitContext
@@ -228,17 +228,32 @@ class NotificationService:
 
     async def _members_only(self, recipients: set[uuid.UUID]) -> set[uuid.UUID]:
         """Drop anyone who is not a *staff* member of this org — one query, no per-recipient
-        check. A portal login (a contact-linked membership, #193) is a member too, but staff
-        events must never reach a client's inbox; portal-facing notifications are a later,
-        opt-in story."""
+        check. A client login is a member too, but staff events must never reach a client's
+        inbox; portal-facing notifications are a later, opt-in story.
+
+        Both kinds of client count (#274): the contact-linked portal membership (#193) *and* a
+        directly-invited holder of the seeded ``client`` role. The contact link alone was the
+        test, so an invited client received the staff fan-out. The role half rides the
+        membership query as a correlated ``NOT EXISTS`` — the fan-out's cost must stay flat in
+        the recipient count (docs/PERFORMANCE.md), so it may not become a second statement.
+        """
         if not recipients:
             return recipients
+        from app.core.permissions.catalog import ROLE_CLIENT
+        from app.core.permissions.models import MembershipRole
+        from app.core.permissions.models import Role as RoleRow
         from app.core.portal import portal_user_ids
 
         rows = await self.session.execute(
             select(Membership.user_id).where(
                 Membership.org_id == self.org_id,
                 Membership.user_id.in_(recipients),
+                ~exists().where(
+                    MembershipRole.membership_id == Membership.id,
+                    MembershipRole.org_id == self.org_id,
+                    RoleRow.id == MembershipRole.role_id,
+                    RoleRow.key == ROLE_CLIENT,
+                ),
             )
         )
         members = set(rows.scalars())

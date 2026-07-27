@@ -9,14 +9,17 @@ capability tier. Manual rows follow the ordinary own/any write/delete scopes.
 
 from __future__ import annotations
 
+import io
+import logging
 import uuid
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 from sqlalchemy import bindparam, func, or_, select, text
 from sqlalchemy.sql.expression import column as sa_column
 from sqlalchemy.sql.expression import table as sa_table
 
+from app.config import settings
 from app.core.activity import ActivityService
 from app.core.activity.service import snapshot
 from app.core.auth.models import User
@@ -24,15 +27,18 @@ from app.core.events import emit
 from app.core.models import Membership
 from app.core.richtext import extract_contact_mention_ids, extract_mention_ids, sanitize_markdown
 from app.core.sorting import apply_sort, user_sort_name
+from app.core.storage.service import FileService
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_zoneinfo
 from app.errors import AppError
+from app.modules.interactions.eml import EmlAttachment, EmlParseError, looks_like_eml, parse_eml
 from app.modules.interactions.models import (
     DEFAULT_KINDS,
     ENTITY_TYPE,
     HOST_ENTITY,
     PROTECTED_KIND,
     Interaction,
+    InteractionDirection,
     InteractionKindDef,
     InteractionSource,
     InteractionStatus,
@@ -45,6 +51,12 @@ from app.modules.interactions.schemas import (
     InteractionRemap,
     InteractionUpdate,
 )
+from app.modules.interactions.system import (
+    resolve_conversation_id,
+    resolve_upload_conversation_id,
+)
+
+logger = logging.getLogger("schakl.interactions")
 
 #: Fields whose edits land in the activity trail (§16) — the record's own definition, not body.
 _AUDITED_FIELDS = (
@@ -129,6 +141,18 @@ class InteractionService:
     def _org_id(self) -> uuid.UUID:
         return self.ctx.org.id
 
+    def _horizon(self, stmt):
+        """AND the caller's company data horizon (#191) onto a hand-built statement.
+
+        This module's reads are window folds, thread fetches and ``count(DISTINCT …)``
+        expressions, none of which can be built from ``scoped_select()`` — which is exactly how
+        the overview ended up with no horizon at all (#240). Everything reading or counting
+        ``Interaction`` rows goes through here instead. A no-op for an unrestricted membership,
+        which is every owner and everyone in no company group.
+        """
+        condition = self.repo.horizon_condition()
+        return stmt if condition is None else stmt.where(condition)
+
     # --- reads ---------------------------------------------------------------- #
     async def list(
         self,
@@ -160,6 +184,15 @@ class InteractionService:
                 Interaction.owner_user_id == self.ctx.user.id,
             )
         )
+        # The company data horizon (#191, #240) — as a plain condition rather than via
+        # ``_horizon``, because the fold subquery and the total each build their own statement
+        # from ``conditions``. That is the point: the rows the fold considers, the
+        # representative it picks and the total all describe the same horizon, so the page and
+        # its count can't disagree (#252's rule). An explicit ``company_id`` outside the
+        # horizon ANDs to nothing and returns an empty page, never another client's timeline.
+        horizon = self.repo.horizon_condition()
+        if horizon is not None:
+            conditions.append(horizon)
         if not self.ctx.can("interactions.interaction.read_all"):
             # Someone else's queue is not a filter you may use (#168).
             if owner_user_id is not None and owner_user_id != self.ctx.user.id:
@@ -213,21 +246,43 @@ class InteractionService:
             if date_to is not None:
                 upper = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=tz)
                 conditions.append(Interaction.occurred_at < upper)
+        # Gmail-style folding (#272): a conversation collapses to one representative row — the
+        # newest message — before pagination and the total, so paging/totals describe what's
+        # shown, not raw rows. The group key is COALESCE(conversation_id, id): a NULL row (every
+        # manual/pending row, by construction) is its own singleton, so this is a no-op for them.
+        group_key = func.coalesce(Interaction.conversation_id, Interaction.id)
+        folded = (
+            select(
+                Interaction.id.label("iid"),
+                func.row_number()
+                .over(
+                    partition_by=group_key,
+                    order_by=(Interaction.occurred_at.desc(), Interaction.id.desc()),
+                )
+                .label("rn"),
+            )
+            .where(Interaction.org_id == self._org_id, *conditions)
+            .subquery()
+        )
         stmt = (
             select(Interaction, User.full_name, User.email)
+            .join(folded, folded.c.iid == Interaction.id)
             .outerjoin(User, User.id == Interaction.owner_user_id)
-            .where(Interaction.org_id == self._org_id, *conditions)
+            .where(folded.c.rn == 1)
         )
         # Newest-first stays the default (#238); an explicit sort tiebreaks on the timeline so
-        # pagination is deterministic when the sorted values repeat.
+        # pagination is deterministic when the sorted values repeat. Sorting acts on the
+        # representative rows (the fold already picked the newest per conversation).
         stmt = apply_sort(stmt, sort, SORTABLE, default=Interaction.occurred_at.desc())
         if sort:
             stmt = stmt.order_by(Interaction.occurred_at.desc())
         stmt = stmt.limit(limit).offset(offset)
         rows = (await self.ctx.session.execute(stmt)).all()
+        # The total is the number of distinct conversations matching the filter, not raw rows,
+        # so pagination lines up with the folded list.
         total = int(
             await self.ctx.session.scalar(
-                select(func.count())
+                select(func.count(func.distinct(group_key)))
                 .select_from(Interaction)
                 .where(Interaction.org_id == self._org_id, *conditions)
             )
@@ -238,12 +293,43 @@ class InteractionService:
         contacts_by_email = await self._participant_contacts(plain_rows)
         members_by_email = await self._participant_members(plain_rows)
         closing_ids = await self._closing_task_ids(plain_rows)
+        # The badge counts the **whole** conversation, not just the rows matching this filter
+        # (#272): an entity panel filtered to one company/project/task still shows the true
+        # message count and opens the full thread, even when only the representative is linked
+        # here. Batched over the page's conversation ids — never per row (docs/PERFORMANCE.md) —
+        # and consistent with what _present_one/thread() already report for a single row.
+        conv_counts = await self._conversation_counts(plain_rows)
         return [
             self._present(
-                row, full_name, email, names, contacts_by_email, members_by_email, closing_ids
+                row,
+                full_name,
+                email,
+                names,
+                contacts_by_email,
+                members_by_email,
+                closing_ids,
+                conversation_count=conv_counts.get(row.conversation_id, 1),
             )
             for row, full_name, email in rows
         ], total
+
+    async def _conversation_counts(
+        self, rows: list[Interaction]
+    ) -> dict[uuid.UUID, int]:
+        """How many logged messages each conversation on this page holds (#272) — one batched,
+        org-scoped count over the page's distinct conversation ids, so the fold badge reflects
+        the whole thread rather than only the rows that matched the current filter."""
+        conv_ids = {row.conversation_id for row in rows if row.conversation_id is not None}
+        if not conv_ids:
+            return {}
+        stmt = self._horizon(
+            select(Interaction.conversation_id, func.count()).where(
+                Interaction.org_id == self._org_id,
+                Interaction.conversation_id.in_(conv_ids),
+                Interaction.status == InteractionStatus.LOGGED.value,
+            )
+        ).group_by(Interaction.conversation_id)
+        return {cid: int(n) for cid, n in (await self.ctx.session.execute(stmt)).all()}
 
     async def get(self, interaction_id: uuid.UUID) -> dict[str, Any]:
         row = await self.repo.get_or_404(interaction_id)
@@ -255,6 +341,52 @@ class InteractionService:
         ):
             raise AppError("not_found", "errors.not_found", status_code=404)
         return await self._present_one(row)
+
+    async def thread(self, interaction_id: uuid.UUID) -> list[dict[str, Any]]:
+        """The full conversation an interaction belongs to (#272), newest first — what the
+        detail modal expands into. A row not in a conversation is its own one-message thread.
+
+        No owner filter: a logged row is team-visible regardless of who owns it, exactly like
+        the plain list. The anchor still runs the pending-privacy check via ``get()``, and the
+        thread carries the company horizon like the feed does (#240) — a conversation can be
+        remapped message by message, so reaching one visible row must not hand a restricted
+        membership the messages filed under a client it cannot see.
+        """
+        anchor = await self.get(interaction_id)
+        conversation_id = anchor["conversation_id"]
+        if conversation_id is None:
+            return [anchor]
+        stmt = (
+            select(Interaction, User.full_name, User.email)
+            .outerjoin(User, User.id == Interaction.owner_user_id)
+            .where(
+                Interaction.org_id == self._org_id,
+                Interaction.conversation_id == conversation_id,
+                Interaction.status == InteractionStatus.LOGGED.value,
+            )
+            .order_by(Interaction.occurred_at.desc(), Interaction.id.desc())
+        )
+        stmt = self._horizon(stmt)
+        rows = (await self.ctx.session.execute(stmt)).all()
+        plain_rows = [row for row, _, _ in rows]
+        names = await self._link_names(plain_rows)
+        contacts_by_email = await self._participant_contacts(plain_rows)
+        members_by_email = await self._participant_members(plain_rows)
+        closing_ids = await self._closing_task_ids(plain_rows)
+        count = len(plain_rows)
+        return [
+            self._present(
+                row,
+                full_name,
+                email,
+                names,
+                contacts_by_email,
+                members_by_email,
+                closing_ids,
+                conversation_count=count,
+            )
+            for row, full_name, email in rows
+        ]
 
     # --- manual writes ---------------------------------------------------------- #
     async def create(self, data: InteractionCreate) -> dict[str, Any]:
@@ -324,14 +456,182 @@ class InteractionService:
             interaction_id=row.id,
         )
 
+    # --- uploaded email (#262) --------------------------------------------------- #
+    async def create_from_eml(
+        self,
+        *,
+        data: bytes,
+        filename: str,
+        content_type: str | None,
+        links: dict[str, uuid.UUID | None],
+        allow_duplicate: bool = False,
+    ) -> tuple[dict[str, Any], int, int]:
+        """Log an uploaded ``.eml`` as a ``kind="email"`` interaction (#262).
+
+        Deliberately **not** a loosening of ``create()``: ``email`` stays the one kind a person
+        may never type into the ordinary form (#174), because a hand-written "email" is a note
+        pretending to be a message. This path may write one because it isn't hand-written — the
+        fields come out of a real RFC 5322 message, in the same shape the gmail feed produces.
+
+        It lands ``logged``, not ``pending``: the review step exists to catch mail the poller
+        ingested *for* you, which cannot apply to a file someone deliberately picked.
+        """
+        self.ctx.require("interactions.interaction.write")
+        if not looks_like_eml(filename, content_type):
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"file": "errors.interactions_eml_type"},
+            )
+        if not data:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"file": "errors.required"},
+            )
+        if len(data) > settings.upload_max_bytes:
+            raise AppError(
+                "validation",
+                "errors.upload_too_large",
+                status_code=413,
+                fields={"file": "errors.upload_too_large"},
+            )
+        try:
+            parsed = parse_eml(data)
+        except EmlParseError:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"file": "errors.interactions_eml_invalid"},
+            ) from None
+        # Cross-source dedup on the global Message-ID, the same key the gmail feed dedups on.
+        # A warning, not a wall (#262): the same message may legitimately need logging from a
+        # mailbox nobody connected — so the caller confirms and re-sends with allow_duplicate.
+        if parsed.rfc822_message_id and not allow_duplicate:
+            duplicate = await self.ctx.session.scalar(
+                select(Interaction.id).where(
+                    Interaction.org_id == self._org_id,
+                    Interaction.rfc822_message_id == parsed.rfc822_message_id,
+                )
+            )
+            if duplicate is not None:
+                raise AppError(
+                    "conflict", "errors.interactions_eml_duplicate", status_code=409
+                )
+        resolved = await self._resolve_links(links)
+        user = self.ctx.user
+        # Conversation grouping by RFC 5322 headers (#272): the thread root is the oldest id in
+        # the References/In-Reply-To chain, or the message's own id when it starts a thread. The
+        # upload folds onto any logged email it threads with (a gmail-synced original it replies
+        # to, or another upload of the same thread) — see resolve_upload_conversation_id.
+        thread_root_id = (
+            parsed.reference_ids[0] if parsed.reference_ids else parsed.rfc822_message_id
+        ) or None
+        conversation_id = await resolve_upload_conversation_id(
+            self.ctx,
+            rfc822_message_id=parsed.rfc822_message_id,
+            reference_ids=parsed.reference_ids,
+            thread_root_id=thread_root_id,
+        )
+        row = await self.repo.create(
+            kind=PROTECTED_KIND,
+            status=InteractionStatus.LOGGED.value,
+            # No usable Date header: the upload itself is the only honest timestamp, and the
+            # uploader can correct it — inventing one from the filename would be worse.
+            occurred_at=parsed.occurred_at or datetime.now(UTC),
+            subject=(parsed.subject or "")[:500] or None,
+            snippet=parsed.snippet,
+            # Stored raw, like a gmail body: it is a received message, never markdown of ours.
+            body_text=parsed.body_text,
+            direction=await self._upload_direction(parsed.from_email),
+            owner_user_id=user.id,
+            owner_name=user.full_name or user.email,
+            participants=parsed.participants,
+            source=InteractionSource.UPLOAD.value,
+            rfc822_message_id=(parsed.rfc822_message_id or None),
+            conversation_id=conversation_id,
+            thread_root_id=thread_root_id,
+            **resolved,
+        )
+        await ActivityService(self.ctx).record_created(ENTITY_TYPE, row.id, {"source": "eml"})
+        await self._record_on_hosts(row, "interaction.logged")
+        stored, skipped = await self._store_eml_attachments(row.id, parsed.attachments)
+        return await self._present_one(row), stored, skipped
+
+    async def _upload_direction(self, from_email: str | None) -> str:
+        """Inbound unless the sender is one of us — the closest an uploaded file can get to the
+        ``SENT`` label the gmail feed reads, using the same membership match the participant
+        chips already do (#167)."""
+        if not from_email:
+            return InteractionDirection.NONE.value
+        mine = await self.ctx.session.scalar(
+            select(User.id)
+            .join(Membership, Membership.user_id == User.id)
+            .where(Membership.org_id == self._org_id, func.lower(User.email) == from_email)
+        )
+        return (
+            InteractionDirection.OUTBOUND if mine is not None else InteractionDirection.INBOUND
+        ).value
+
+    async def _store_eml_attachments(
+        self, interaction_id: uuid.UUID, attachments: list[EmlAttachment]
+    ) -> tuple[int, int]:
+        """Store the message's attachments through the ordinary, permission-checked file
+        service (#123) — this is a person's own upload, not the gmail worker's system write.
+
+        One rejected attachment must never lose the message (the gmail path's rule, #180), so
+        anything the storage guardrails would refuse is skipped and **counted**: the response
+        says how many, rather than quietly dropping a client's PDF.
+        """
+        if not attachments:
+            return 0, 0
+        if not self.ctx.can("files.file.write"):
+            return 0, len(attachments)
+        files = FileService(self.ctx)
+        stored = skipped = 0
+        for attachment in attachments:
+            if (
+                attachment.content_type not in settings.upload_allowed_types
+                or len(attachment.data) > settings.upload_max_bytes
+            ):
+                logger.info(
+                    "eml attachment skipped (type/size) for %s: %s",
+                    interaction_id,
+                    attachment.filename,
+                )
+                skipped += 1
+                continue
+            await files.create(
+                filename=attachment.filename,
+                content_type=attachment.content_type,
+                stream=io.BytesIO(attachment.data),
+                size_bytes=len(attachment.data),
+                entity_type=ENTITY_TYPE,
+                entity_id=interaction_id,
+            )
+            stored += 1
+        return stored, skipped
+
     async def update(self, interaction_id: uuid.UUID, data: InteractionUpdate) -> dict[str, Any]:
         row = await self._writable_or_404(interaction_id, "interactions.interaction.write")
-        self._manual_only(row)
+        self._reviewless_only(row)
         before = snapshot(row, _AUDITED_FIELDS)
         sent = data.model_dump(exclude_unset=True)
         # Keeping the row's own kind is always allowed — a deactivated kind must not brick
         # editing the rows that already carry it (#174).
         if sent.get("kind") is not None and sent["kind"] != row.kind:
+            # An email is an email: the protected kind is no more re-typeable *away* than it is
+            # settable by hand (#262), or an uploaded message would launder itself into a note.
+            if row.kind == PROTECTED_KIND:
+                raise AppError(
+                    "validation",
+                    "errors.validation",
+                    status_code=422,
+                    fields={"kind": "errors.interactions_kind_not_manual"},
+                )
             await self._require_manual_kind(sent["kind"])
         link_updates = {k: sent[k] for k in _LINK_TABLES if k in sent}
         values: dict[str, Any] = {
@@ -371,7 +671,7 @@ class InteractionService:
 
     async def delete(self, interaction_id: uuid.UUID) -> None:
         row = await self._writable_or_404(interaction_id, "interactions.interaction.delete")
-        self._manual_only(row)
+        self._reviewless_only(row)
         await self.repo.delete(row)
 
     # --- gmail review flow (owner-only, no :any escape) ------------------------- #
@@ -391,7 +691,18 @@ class InteractionService:
             sent = data.model_dump(exclude_unset=True)
             if sent:
                 link_values = await self._resolve_links(sent, partial=True)
-        row = await self.repo.update(row, status=InteractionStatus.LOGGED.value, **link_values)
+        # A pending row becoming logged is the other moment it can join a conversation (#272):
+        # inherit the newest logged sibling's id in this gmail thread, minting one if that
+        # sibling has none yet, so the two fold together the instant this one lands.
+        conversation_id = await resolve_conversation_id(
+            self.ctx, row.gmail_thread_id, exclude_id=row.id
+        )
+        row = await self.repo.update(
+            row,
+            status=InteractionStatus.LOGGED.value,
+            conversation_id=conversation_id,
+            **link_values,
+        )
         await ActivityService(self.ctx).record(ENTITY_TYPE, row.id, "approved")
         if link_values:
             await ActivityService(self.ctx).record_update(
@@ -447,6 +758,48 @@ class InteractionService:
             "interaction.remapped",
             self.ctx,
             {"interaction_id": row.id, "owner_user_id": row.owner_user_id},
+        )
+        return await self._present_one(row)
+
+    async def add_to_conversation(
+        self, interaction_id: uuid.UUID, target_interaction_id: uuid.UUID
+    ) -> dict[str, Any]:
+        """Manually glue this gmail email onto another's conversation (#272) — for a reply Gmail
+        didn't thread automatically (a different-address sender, a forwarded copy).
+
+        Gated like every other gmail-row mutation here (module docstring): only the mailbox owner
+        decides about their own gmail-sourced rows, no ``:any`` escape. The target is scoped to
+        the owner's own logged gmail rows too, which sidesteps mutating a colleague's row.
+        """
+        row = await self._owned_gmail_or_404(interaction_id)
+        if row.status != InteractionStatus.LOGGED.value:
+            raise AppError("invalid_state", "errors.interactions_not_logged", status_code=409)
+        target = await self.repo.get_or_404(target_interaction_id)  # tenant-scoped
+        if (
+            target.id == row.id
+            or target.source != InteractionSource.GMAIL.value
+            or target.status != InteractionStatus.LOGGED.value
+            or target.owner_user_id != self.ctx.user.id
+        ):
+            # 422 for an ineligible *body-supplied* reference (like ``_ensure_exists``); the URL
+            # path id still 404s via ``_owned_gmail_or_404``.
+            raise AppError(
+                "validation",
+                "errors.interactions_conversation_invalid_target",
+                status_code=422,
+                fields={"target_interaction_id": "errors.interactions_conversation_invalid_target"},
+            )
+        if target.conversation_id is None:
+            target.conversation_id = uuid.uuid4()
+        row.conversation_id = target.conversation_id
+        await self.ctx.session.flush()
+        # No bus emit — nothing reacts to this today. It is the owner engaging with the row, so
+        # it lands on the interaction's own trail like a remap.
+        await ActivityService(self.ctx).record(
+            ENTITY_TYPE,
+            row.id,
+            "interaction.conversation_linked",
+            {"target_interaction_id": str(target.id)},
         )
         return await self._present_one(row)
 
@@ -554,9 +907,13 @@ class InteractionService:
             fields={"kind": "errors.interactions_kind_not_manual"},
         )
 
-    def _manual_only(self, row: Interaction) -> None:
-        """Gmail rows change through the review flow, never through plain edit/delete."""
-        if row.source != InteractionSource.MANUAL.value:
+    def _reviewless_only(self, row: Interaction) -> None:
+        """Gmail rows change through the review flow, never through plain edit/delete.
+
+        An uploaded ``.eml`` (#262) has no review flow — nobody's mailbox is behind it — so it
+        edits and deletes like any row its owner logged by hand.
+        """
+        if row.source == InteractionSource.GMAIL.value:
             raise AppError("invalid_state", "errors.interactions_gmail_readonly", status_code=409)
 
     async def _writable_or_404(self, interaction_id: uuid.UUID, permission: str) -> Interaction:
@@ -683,6 +1040,25 @@ class InteractionService:
         contacts_by_email = await self._participant_contacts([row])
         members_by_email = await self._participant_members([row])
         closing_ids = await self._closing_task_ids([row])
+        # A single-row endpoint, not list-scale: one extra indexed count is fine here, only when
+        # the row is actually in a conversation (docs/PERFORMANCE.md — the concern is per-row
+        # lookups over a *page*, not one lookup for one record).
+        conversation_count = 1
+        if row.conversation_id is not None:
+            conversation_count = int(
+                await self.ctx.session.scalar(
+                    self._horizon(
+                        select(func.count())
+                        .select_from(Interaction)
+                        .where(
+                            Interaction.org_id == self._org_id,
+                            Interaction.conversation_id == row.conversation_id,
+                            Interaction.status == InteractionStatus.LOGGED.value,
+                        )
+                    )
+                )
+                or 1
+            )
         return self._present(
             row,
             owner[0] if owner else None,
@@ -691,6 +1067,7 @@ class InteractionService:
             contacts_by_email,
             members_by_email,
             closing_ids,
+            conversation_count=conversation_count,
         )
 
     async def _participant_contacts(self, rows: list[Interaction]) -> dict[str, uuid.UUID]:
@@ -740,6 +1117,7 @@ class InteractionService:
         contacts_by_email: dict[str, uuid.UUID] | None = None,
         members_by_email: dict[str, uuid.UUID] | None = None,
         closing_ids: set[uuid.UUID] | None = None,
+        conversation_count: int = 1,
     ) -> dict[str, Any]:
         """Owner resolved like the activity trail (issue #64): live account wins, snapshot after."""
         if live_email is not None:
@@ -783,6 +1161,8 @@ class InteractionService:
             ],
             "source": row.source,
             "gmail_thread_id": row.gmail_thread_id,
+            "conversation_id": row.conversation_id,
+            "conversation_count": conversation_count,
             "deep_link": row.deep_link,
             "created_at": row.created_at,
         }

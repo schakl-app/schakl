@@ -8,29 +8,38 @@ preference matrix, which curates what a member inherits before they touch their 
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 
 from fastapi import APIRouter, Depends, Query
 
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
+from app.errors import AppError
 from app.modules.notifications.channel_admin import ChannelService
 from app.modules.notifications.defaults import ResolvedPref
 from app.modules.notifications.prefs import (
+    ChannelWrite,
+    EmailWrite,
     GeneralWrite,
     PrefWrite,
+    effective_channel_matrix,
+    effective_email_matrix,
     effective_matrix,
-    email_prefs_for_recipients,
     replace_overrides,
-    save_email_pref,
+    scope_channels,
+)
+from app.modules.notifications.prefs import (
+    EmailScheduleWrite as EmailScheduleData,
 )
 from app.modules.notifications.schemas import (
     ActivityItem,
     ChannelCreate,
+    ChannelPreference,
+    ChannelPreferenceEvent,
     ChannelRead,
     ChannelTestResult,
     ChannelUpdate,
-    EmailPrefRead,
-    EmailPrefWrite,
+    EmailSchedule,
     EntityType,
     GeneralPreference,
     MarkAllResult,
@@ -49,8 +58,20 @@ from app.schemas import Page
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 
-def _matrix(resolved: dict[str, ResolvedPref]) -> PreferenceMatrix:
-    """Every event, always — so the settings table renders complete and badges inheritance."""
+def _matrix(
+    in_app: dict[str, ResolvedPref],
+    email: dict[str, ResolvedPref],
+    schedule: object,
+    configs: Sequence[object] = (),
+    channel_events: dict[uuid.UUID, dict[str, ResolvedPref]] | None = None,
+) -> PreferenceMatrix:
+    """Every event, always — so the settings table renders complete and badges inheritance.
+
+    Each row carries both implicit channels' resolved rules and their independent inheritance
+    sources; ``schedule`` is the scope's global e-mail digest schedule (a ``prefs.EmailSchedule``).
+    ``configs`` are this scope's external channels (#283, #295) — each becomes one more column,
+    with its own per-event cadence and its own digest schedule.
+    """
     rows = [
         PreferenceRow(
             event_type=event_type,
@@ -60,20 +81,125 @@ def _matrix(resolved: dict[str, ResolvedPref]) -> PreferenceMatrix:
             digest_time=pref.digest_time,
             digest_weekday=pref.digest_weekday,
             source=pref.source,
+            email_enabled=email[event_type].enabled,
+            email_delay_minutes=email[event_type].delay_minutes,
+            email_digest=email[event_type].digest,
+            email_source=email[event_type].source,
         )
-        for event_type, pref in resolved.items()
+        for event_type, pref in in_app.items()
     ]
-    any_pref = next(iter(resolved.values()))
+    any_pref = next(iter(in_app.values()))
     general = GeneralPreference(
         due_soon_days=any_pref.due_soon_days,
         quiet_hours_start=any_pref.quiet_hours_start,
         quiet_hours_end=any_pref.quiet_hours_end,
         source=any_pref.general_source,
     )
-    return PreferenceMatrix(events=rows, general=general)
+    resolved = channel_events or {}
+    return PreferenceMatrix(
+        events=rows,
+        general=general,
+        email=EmailSchedule(
+            digest_time=schedule.digest_time,
+            digest_weekday=schedule.digest_weekday,
+            source=schedule.source,
+        ),
+        channels=[
+            ChannelPreference(
+                id=config.id,
+                name=config.name,
+                kind=config.kind,
+                digest_time=config.digest_time,
+                digest_weekday=config.digest_weekday,
+                events=[
+                    ChannelPreferenceEvent(
+                        event_type=event_type,
+                        enabled=pref.enabled,
+                        delay_minutes=pref.delay_minutes,
+                        digest=pref.digest,
+                    )
+                    for event_type, pref in resolved.get(config.id, {}).items()
+                ],
+            )
+            for config in configs
+        ],
+    )
 
 
-def _writes(payload: PreferenceUpdate) -> tuple[list[PrefWrite], GeneralWrite | None]:
+def _manages_channels(ctx: RequestContext, user_id: uuid.UUID | None) -> bool:
+    """May this caller configure the channels of this scope? (#295)
+
+    One predicate for *seeing* a channel's column and for *writing* it, deliberately, because the
+    channel blocks are wholesale: a caller shown no columns posts an empty list, and if that were
+    still allowed to write it would clear every route the scope had. Reading and writing must
+    therefore agree, or saving an unrelated in-app default silently un-routes `#crm`.
+
+    Configuring a shared room is an administrative act (the same reason ``channels.manage`` gates
+    connecting one), so on the org scope it takes that key **on top of** ``defaults.manage``. Both
+    are admin-only by default, so this refuses nobody who could route a room before.
+    """
+    return ctx.can(
+        "notifications.channels.manage"
+        if user_id is None
+        else "notifications.channels.manage_own"
+    )
+
+
+async def _load_matrix(  # noqa: ANN001
+    session, org_id, user_id, *, include_channels: bool = True
+) -> PreferenceMatrix:
+    """Resolve every channel's matrix for one scope, then compose.
+
+    Four queries flat, whatever the number of channels: the in-app rows, the e-mail rows, the
+    scope's channel configs, and every per-channel preference in one go (docs/PERFORMANCE.md —
+    never one query per channel). ``include_channels=False`` skips the last two entirely — a
+    caller who may not configure them has no use for the answer, and not asking is cheaper.
+    """
+    in_app = await effective_matrix(session, org_id, user_id)
+    email, schedule = await effective_email_matrix(session, org_id, user_id)
+    configs = await scope_channels(session, org_id, user_id) if include_channels else []
+    channel_events = await effective_channel_matrix(session, org_id, configs)
+    return _matrix(in_app, email, schedule, configs, channel_events)
+
+
+async def _channel_writes(
+    ctx: RequestContext, payload: PreferenceUpdate, user_id: uuid.UUID | None
+) -> list[ChannelWrite] | None:
+    """Flatten the per-channel blocks, refusing any channel outside the scope being written.
+
+    ``None`` means *leave this scope's channel rows alone* — what a caller who does not manage
+    them gets, and the only safe answer given the wholesale semantics (see ``_manages_channels``).
+    An empty list is the opposite instruction: "route nothing", which is what a reset means.
+
+    The route's permission says "may set this scope's preferences"; only the row can say whether
+    a channel belongs to that scope (CLAUDE.md §15's two-layer rule). An id from another scope is
+    a 404, not a 403 — a 403 would confirm that somebody else's channel exists.
+    """
+    if not _manages_channels(ctx, user_id):
+        return None
+    in_scope = {
+        config.id for config in await scope_channels(ctx.session, ctx.org.id, user_id)
+    }
+    writes: list[ChannelWrite] = []
+    for block in payload.channels:
+        if block.channel_config_id not in in_scope:
+            raise AppError("not_found", "errors.not_found", status_code=404)
+        writes.extend(
+            ChannelWrite(
+                channel_config_id=block.channel_config_id,
+                event_type=row.event_type,
+                enabled=row.enabled,
+                delay_minutes=row.delay_minutes,
+                digest=row.digest,
+            )
+            for row in block.events
+        )
+    return writes
+
+
+def _writes(
+    payload: PreferenceUpdate,
+) -> tuple[list[PrefWrite], list[EmailWrite], GeneralWrite | None, EmailScheduleData | None]:
     events = [
         PrefWrite(
             event_type=row.event_type,
@@ -85,6 +211,15 @@ def _writes(payload: PreferenceUpdate) -> tuple[list[PrefWrite], GeneralWrite | 
         )
         for row in payload.events
     ]
+    email_events = [
+        EmailWrite(
+            event_type=row.event_type,
+            enabled=row.enabled,
+            delay_minutes=row.delay_minutes,
+            digest=row.digest,
+        )
+        for row in payload.email_events
+    ]
     general = (
         GeneralWrite(
             due_soon_days=payload.general.due_soon_days,
@@ -94,7 +229,15 @@ def _writes(payload: PreferenceUpdate) -> tuple[list[PrefWrite], GeneralWrite | 
         if payload.general is not None
         else None
     )
-    return events, general
+    email_schedule = (
+        EmailScheduleData(
+            digest_time=payload.email.digest_time,
+            digest_weekday=payload.email.digest_weekday,
+        )
+        if payload.email is not None
+        else None
+    )
+    return events, email_events, general, email_schedule
 
 
 # --- inbox ---------------------------------------------------------------------------- #
@@ -212,8 +355,13 @@ async def set_watch(
     dependencies=[require_permission("notifications.notification.read")],
 )
 async def get_preferences(ctx: RequestContext = Depends(require_context)) -> PreferenceMatrix:
-    """My effective matrix: what will actually happen, and which layer decided it."""
-    return _matrix(await effective_matrix(ctx.session, ctx.org.id, ctx.user.id))
+    """My effective matrix: what will actually happen on both channels, and who decided it."""
+    return await _load_matrix(
+        ctx.session,
+        ctx.org.id,
+        ctx.user.id,
+        include_channels=_manages_channels(ctx, ctx.user.id),
+    )
 
 
 @router.put(
@@ -224,46 +372,23 @@ async def get_preferences(ctx: RequestContext = Depends(require_context)) -> Pre
 async def set_preferences(
     payload: PreferenceUpdate, ctx: RequestContext = Depends(require_context)
 ) -> PreferenceMatrix:
-    events, general = _writes(payload)
-    await replace_overrides(ctx.session, ctx.org.id, ctx.user.id, events, general)
-    return _matrix(await effective_matrix(ctx.session, ctx.org.id, ctx.user.id))
-
-
-@router.get(
-    "/preferences/email",
-    response_model=EmailPrefRead,
-    dependencies=[require_permission("notifications.notification.read")],
-)
-async def get_email_preference(ctx: RequestContext = Depends(require_context)) -> EmailPrefRead:
-    """My e-mail delivery rule (#17): off by default, one cadence for all my notifications."""
-    pref = (await email_prefs_for_recipients(ctx.session, ctx.org.id, [ctx.user.id]))[ctx.user.id]
-    return EmailPrefRead(
-        enabled=pref.enabled,
-        digest=pref.digest,  # type: ignore[arg-type]
-        digest_time=pref.digest_time,
-        digest_weekday=pref.digest_weekday,
-        source=pref.source,
-    )
-
-
-@router.put(
-    "/preferences/email",
-    response_model=EmailPrefRead,
-    dependencies=[require_permission("notifications.notification.write")],
-)
-async def set_email_preference(
-    payload: EmailPrefWrite, ctx: RequestContext = Depends(require_context)
-) -> EmailPrefRead:
-    await save_email_pref(
+    events, email_events, general, email_schedule = _writes(payload)
+    await replace_overrides(
         ctx.session,
         ctx.org.id,
         ctx.user.id,
-        enabled=payload.enabled,
-        digest=payload.digest,
-        digest_time=payload.digest_time,
-        digest_weekday=payload.digest_weekday,
+        events,
+        email_events,
+        general,
+        email_schedule,
+        await _channel_writes(ctx, payload, ctx.user.id),
     )
-    return await get_email_preference(ctx)
+    return await _load_matrix(
+        ctx.session,
+        ctx.org.id,
+        ctx.user.id,
+        include_channels=_manages_channels(ctx, ctx.user.id),
+    )
 
 
 @router.get(
@@ -274,8 +399,14 @@ async def set_email_preference(
 async def get_default_preferences(
     ctx: RequestContext = Depends(require_context),
 ) -> PreferenceMatrix:
-    """What a member inherits before they override anything (org-wide)."""
-    return _matrix(await effective_matrix(ctx.session, ctx.org.id, None))
+    """What a member inherits before they override anything (org-wide), plus the shared rooms.
+
+    A shared room is not something a member inherits and overrides — it is routed once, here, for
+    everyone (#295). It rides this matrix because that is where its per-event column lives.
+    """
+    return await _load_matrix(
+        ctx.session, ctx.org.id, None, include_channels=_manages_channels(ctx, None)
+    )
 
 
 @router.put(
@@ -286,16 +417,31 @@ async def get_default_preferences(
 async def set_default_preferences(
     payload: PreferenceUpdate, ctx: RequestContext = Depends(require_context)
 ) -> PreferenceMatrix:
-    events, general = _writes(payload)
-    await replace_overrides(ctx.session, ctx.org.id, None, events, general)
-    return _matrix(await effective_matrix(ctx.session, ctx.org.id, None))
+    events, email_events, general, email_schedule = _writes(payload)
+    await replace_overrides(
+        ctx.session,
+        ctx.org.id,
+        None,
+        events,
+        email_events,
+        general,
+        email_schedule,
+        await _channel_writes(ctx, payload, None),
+    )
+    return await _load_matrix(
+        ctx.session, ctx.org.id, None, include_channels=_manages_channels(ctx, None)
+    )
 
 
-# --- external channels (#17): admin-only, declared before ``/{notification_id}`` ---------- #
+# --- external channels (#17, #283): declared before ``/{notification_id}`` ---------------- #
+# The route floor is ``manage_own`` — every member may connect a channel *of their own*. Which
+# channels a caller may see or touch is refined in the service, where the row is in hand: an org
+# channel or someone else's personal channel is a **404** to a member, never a 403 that would
+# confirm it exists (CLAUDE.md §15, the two-layer rule).
 @router.get(
     "/channels",
     response_model=list[ChannelRead],
-    dependencies=[require_permission("notifications.channels.manage")],
+    dependencies=[require_permission("notifications.channels.manage_own")],
 )
 async def list_channels(
     ctx: RequestContext = Depends(require_context),
@@ -307,7 +453,7 @@ async def list_channels(
     "/channels",
     response_model=ChannelRead,
     status_code=201,
-    dependencies=[require_permission("notifications.channels.manage")],
+    dependencies=[require_permission("notifications.channels.manage_own")],
 )
 async def create_channel(
     payload: ChannelCreate,
@@ -319,7 +465,7 @@ async def create_channel(
 @router.patch(
     "/channels/{channel_id}",
     response_model=ChannelRead,
-    dependencies=[require_permission("notifications.channels.manage")],
+    dependencies=[require_permission("notifications.channels.manage_own")],
 )
 async def update_channel(
     channel_id: uuid.UUID,
@@ -332,7 +478,7 @@ async def update_channel(
 @router.delete(
     "/channels/{channel_id}",
     status_code=204,
-    dependencies=[require_permission("notifications.channels.manage")],
+    dependencies=[require_permission("notifications.channels.manage_own")],
 )
 async def delete_channel(
     channel_id: uuid.UUID,
@@ -344,7 +490,7 @@ async def delete_channel(
 @router.post(
     "/channels/{channel_id}/test",
     response_model=ChannelTestResult,
-    dependencies=[require_permission("notifications.channels.manage")],
+    dependencies=[require_permission("notifications.channels.manage_own")],
 )
 async def test_channel(
     channel_id: uuid.UUID,

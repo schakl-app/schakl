@@ -22,7 +22,10 @@
   import { X } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
+  import type { SubmitFunction } from "@sveltejs/kit";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
 
   let {
     rule = null,
@@ -104,6 +107,18 @@
   );
   let dryRunEntity = $state("");
 
+  const busy = new InFlight();
+  // Save and dry-run share the form (#279): key off the clicked button's formaction.
+  const submit: SubmitFunction = (input) =>
+    busy.wrap(
+      input.submitter?.getAttribute("formaction") === "?/dryRun" ? "dryRun" : "save",
+      () =>
+        ({ update }) => {
+          // Keep the editor's values: a dry run (or a validation error) must not wipe the form.
+          void update({ reset: false });
+        },
+    )(input);
+
   function coerce(value: string): unknown {
     const trimmed = value.trim();
     if (trimmed !== "" && !Number.isNaN(Number(trimmed))) return Number(trimmed);
@@ -161,16 +176,7 @@
   const labelClass = "mb-1 block text-sm font-medium text-text";
 </script>
 
-<form
-  method="POST"
-  {action}
-  use:enhance={() =>
-    ({ update }) => {
-      // Keep the editor's values: a dry run (or a validation error) must not wipe the form.
-      void update({ reset: false });
-    }}
-  class="space-y-6"
->
+<form method="POST" {action} use:enhance={submit} class="space-y-6">
   <input type="hidden" name="conditions" value={conditionsJson} />
   <input type="hidden" name="actions" value={actionsJson} />
 
@@ -461,13 +467,15 @@
         aria-label={t("automation.dry_run_entity")}
         class="{inputClass} min-w-0 flex-1 sm:max-w-96 font-mono text-xs"
       />
-      <button
+      <Button
+        variant="secondary"
         formaction="?/dryRun"
         formnovalidate
-        class="rounded-lg border border-border px-4 py-2 text-sm text-text hover:border-brand"
+        loading={busy.is("dryRun")}
+        disabled={busy.active}
       >
         {t("automation.dry_run")}
-      </button>
+      </Button>
     </div>
     {#if dryRun}
       <div class="mt-3 text-sm">
@@ -497,8 +505,8 @@
     >
       {t("common.cancel")}
     </a>
-    <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+    <Button loading={busy.is("save")} disabled={busy.active}>
       {t("common.save")}
-    </button>
+    </Button>
   </div>
 </form>

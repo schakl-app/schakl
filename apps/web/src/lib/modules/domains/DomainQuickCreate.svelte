@@ -12,6 +12,8 @@
   import { enhance } from "$app/forms";
   import type { components } from "$lib/core/api/schema";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import DomainForm from "$lib/modules/domains/DomainForm.svelte";
 
@@ -58,6 +60,8 @@
     /** The entity a nested quick-create just made; auto-selected inside the form. */
     created?: { slot: string; id: string } | null;
   } = $props();
+
+  const busy = new InFlight();
 </script>
 
 <Modal bind:open title={t("domains.new")}>
@@ -65,17 +69,16 @@
     <form
       method="POST"
       {action}
-      use:enhance={() =>
-        ({ result, update }) => {
-          if (result.type === "success") open = false;
-          void update({ reset: false });
-        }}
+      use:enhance={busy.wrap("", () => ({ result, update }) => {
+        if (result.type === "success") open = false;
+        void update({ reset: false });
+      })}
     >
       <DomainForm
-        companies={companies}
-        providers={providers}
-        employees={employees}
-        contacts={contacts}
+        {companies}
+        {providers}
+        {employees}
+        {contacts}
         {agencyLabel}
         {definitions}
         {locale}
@@ -94,10 +97,7 @@
           class="rounded-lg border border-border px-4 py-2 text-sm"
           onclick={() => (open = false)}>{t("common.cancel")}</button
         >
-        <button
-          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-          >{t("common.create")}</button
-        >
+        <Button loading={busy.active}>{t("common.create")}</Button>
       </div>
     </form>
   {/key}

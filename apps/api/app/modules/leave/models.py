@@ -41,6 +41,24 @@ class LeaveRequestStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class LeaveCalendarDisplay(StrEnum):
+    """How this type's absences are drawn on the agenda (#270).
+
+    ``ALL_DAY`` is the historical behaviour and the default: a full-width chip, in the month
+    grid and in the pinned all-day row of the day/week time grid. ``TIMED`` places the absence
+    as a positioned hour block instead, at the window it actually covers.
+
+    A *type-level* choice, not a per-request one: whether an absence reads as "away today" or
+    as "away between 08:30 and 17:00" is a property of the kind of leave, not of the day. It is
+    also the only way roostervrije tijd / ADV can be drawn per hour at all — its generated days
+    carry no ``start_time``/``end_time`` (they are the whole scheduled day), so there is nothing
+    on the request itself to infer a window from.
+    """
+
+    ALL_DAY = "all_day"
+    TIMED = "timed"
+
+
 class LeaveType(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     """A tenant-configurable kind of leave (vacation, sick, unpaid, …).
 
@@ -66,13 +84,29 @@ class LeaveType(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     requires_approval: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     default_weeks: Mapped[Decimal | None] = mapped_column(Numeric(4, 2), nullable=True)
     carry_over_months: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    #: Roostervrije tijd / ADV (#65): this type's yearly entitlement is not ``default_weeks``
-    #: but the *gap* between scheduled and contract hours — ``(scheduled − contract) × weeks``.
-    #: A flag, not the type ``key``, so a tenant may rename or re-seed it without breaking the
-    #: computation. Only meaningful when the employee has a contract whose hours are below their
-    #: scheduled week; otherwise the gap is zero and nothing is granted. Dutch CAO artifact, so
-    #: it ships switch-off-able (deactivate the type), never assumed.
+    #: Types sharing a non-null ``balance_group`` present as **one** employee-facing balance
+    #: (#265): the Dutch ``vacation_statutory`` + ``vacation_extra`` pots keep their own
+    #: ``default_weeks`` and ``carry_over_months`` — that is what preserves the legal wettelijk /
+    #: bovenwettelijk split — but roll up into a single entitled/remaining figure wherever a
+    #: balance is shown to the employee. ``NULL`` = standalone (its own singleton group). A slug,
+    #: not law: a locale with no statutory/extra distinction seeds one type in the group with a
+    #: single figure, and a tenant may regroup via Instellingen → Verlof (§14, "config, not law").
+    balance_group: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    #: Free time / vrije tijd (#65, renamed #282): this type's yearly entitlement is not
+    #: ``default_weeks`` but the **full-time-norm shortfall** — ``(norm − contract) × weeks``,
+    #: where ``norm`` is the org's default week. The column name is kept (internal identifier,
+    #: #282) even though the basis is no longer the *scheduled* gap: it is a flag, not the type
+    #: ``key``, so a tenant may rename or re-seed the type without breaking the computation. Only
+    #: meaningful when the employee has a contract whose hours are below the norm; otherwise the
+    #: shortfall is zero and nothing is granted. Dutch CAO artifact, so it ships switch-off-able
+    #: (deactivate the type), never assumed.
     accrues_schedule_gap: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    #: How the agenda draws this type's absences (#270) — see :class:`LeaveCalendarDisplay`.
+    #: ``String``, not a PG enum, like every other small vocabulary here (``LeaveRequest.status``):
+    #: adding a value is then a code change, never a migration on somebody's live database.
+    calendar_display: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=LeaveCalendarDisplay.ALL_DAY.value
+    )
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
@@ -166,7 +200,16 @@ class LeaveProfile(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
 
 
 class LeaveEntitlement(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
-    """Granted hours per user / leave type / year (incl. manual carry-over grants)."""
+    """Granted hours per user / leave type / year (incl. manual carry-over grants).
+
+    ``source`` is what lets a contract change **re-derive** a pot without trampling a deliberate
+    admin grant (#264). ``generated`` rows are the output of ``seed_entitlements`` — safe to delete
+    and recompute when the contract they were prorated from changes. ``manual`` rows come through
+    ``upsert_entitlement`` (a carry-over correction, an override the schedule can't express): the
+    admin owns them, so recompute never touches them. A manual edit of a generated row *claims* it
+    as ``manual`` — the same "an admin deliberately overrode this" distinction the model's own
+    prior "never touched" guard couldn't express.
+    """
 
     __tablename__ = "leave_entitlements"
     __table_args__ = (UniqueConstraint("org_id", "user_id", "leave_type_id", "year"),)
@@ -186,6 +229,11 @@ class LeaveEntitlement(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base
     year: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     hours: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False, default=Decimal("0"))
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: ``generated`` (re-derivable by ``seed_entitlements``) or ``manual`` (an admin override
+    #: recompute must never overwrite). See the class docstring (#264).
+    source: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="generated", server_default="generated"
+    )
 
 
 class LeaveRequest(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
@@ -296,6 +344,18 @@ class LeaveRecurringDay(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Bas
     #: The first free day; its weekday *is* the pattern's weekday.
     anchor_date: Mapped[date] = mapped_column(Date, nullable=False)
     interval_weeks: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    #: **Spread mode**: place this many free days a year on the anchor's weekday, evenly, instead
+    #: of following ``interval_weeks``. ``NULL`` = interval mode (every pattern predating this).
+    #:
+    #: Two modes because two different things are known. Sometimes the arrangement *is* a cadence
+    #: ("every Wednesday afternoon") and the day count follows from it; sometimes the pot is the
+    #: known quantity ("26 free days") and no whole number of weeks expresses it — 13 days is
+    #: almost, but not, every four weeks. Spread mode also slides past holidays and non-working
+    #: days so the count actually lands, which a fixed cadence cannot do.
+    #:
+    #: ``interval_weeks`` is still written alongside it (the nearest equivalent cadence), so a
+    #: rolled-back image generates on a comparable rhythm rather than the column default of weekly.
+    days_per_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     #: Part-day patterns ("every Wednesday off from 15:00"): the window each occurrence
     #: covers, ``NULL`` = whole scheduled day — the same wall-clock ``TIME`` semantics as
     #: ``LeaveRequest`` (#48). Generated requests carry the window and the server prices it.
@@ -339,12 +399,27 @@ class EmploymentContract(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Ba
     start_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     #: ``NULL`` = open-ended (still employed). Termination = setting this, not deleting the row.
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    #: The legal contract hours — entered, never derived. Statutory vacation and ADV both key off
-    #: this, not off the scheduled week.
+    #: The legal contract hours — entered, never derived. Statutory vacation and free time both
+    #: key off this, not off the scheduled week.
     contract_hours_per_week: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
-    #: An optional schedule captured on the contract itself (a schedule change usually *is* a
-    #: contract change). ``NULL`` = follow ``LeaveProfile.schedule`` / the org default. The
-    #: effective scheduled week is still resolved through the profile today; this column is the
-    #: seam for moving it onto the contract later without another migration.
+    #: **The working week for this period.** A schedule change usually *is* a contract change, so
+    #: the week is a property of the employment period rather than one mutable field on the person
+    #: — which is what keeps last year's leave priced at last year's roster. ``NULL`` falls back to
+    #: ``LeaveProfile.schedule`` (legacy, still written by the pre-wizard endpoint) and then to
+    #: ``leave_settings.default_schedule``; that ``NULL`` is meaningful, not merely unfilled, and
+    #: is why the backfill deliberately skipped employees who inherit the org default.
     schedule: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    #: How much free time (vrije tijd) this period accrues per week, or ``NULL`` to **derive** it
+    #: as ``max(0, norm − contract_hours_per_week)`` — the #282 rule, and what every pre-existing
+    #: row means.
+    #:
+    #: The column exists because the derived figure is right for one arrangement and wrong for the
+    #: other. A 36-h contract worked as a nominal 40-h week takes the shortfall as movable free
+    #: days; a 32-h part-timer working four 8-hour days already *has* Friday off, and deriving
+    #: ``40 − 32`` would hand them a second pot of ~52 days on top of it. ``0`` says "the free time
+    #: is already in the roster"; an explicit figure records an agreement no formula expresses.
+    #: Per contract, not per org — an agency holds both arrangements at once (§14).
+    free_time_hours_per_week: Mapped[Decimal | None] = mapped_column(
+        Numeric(5, 2), nullable=True
+    )
     note: Mapped[str | None] = mapped_column(Text, nullable=True)

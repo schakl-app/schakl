@@ -2,9 +2,13 @@
   import { enhance } from "$app/forms";
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
+  import Button from "$lib/core/ui/Button.svelte";
 
   let { data, form } = $props();
+
+  const busy = new InFlight();
 </script>
 
 <svelte:head>
@@ -43,12 +47,10 @@
         <p class="text-text-muted">{t("settings.service_access.unclaimed")}</p>
       {/if}
     </div>
-    <form method="POST" action="?/revoke" use:enhance class="mt-4">
-      <button
-        class="rounded-lg border border-border px-4 py-2 text-sm font-medium text-red-600 hover:bg-surface dark:text-red-400"
-      >
+    <form method="POST" action="?/revoke" use:enhance={busy.wrap("revoke")} class="mt-4">
+      <Button variant="danger-outline" loading={busy.is("revoke")} disabled={busy.active}>
         {t("settings.service_access.revoke")}
-      </button>
+      </Button>
     </form>
   {:else}
     <p class="text-sm text-text-muted">{t("settings.service_access.none")}</p>
@@ -63,12 +65,15 @@
     <p class="mt-3 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
   {/if}
 
-  <form method="POST" action="?/generate" use:enhance class="mt-5 border-t border-border pt-4">
-    <button
-      class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-    >
+  <form
+    method="POST"
+    action="?/generate"
+    use:enhance={busy.wrap("generate")}
+    class="mt-5 border-t border-border pt-4"
+  >
+    <Button loading={busy.is("generate")} disabled={busy.active}>
       {t("settings.service_access.generate")}
-    </button>
+    </Button>
     <p class="mt-2 text-xs text-text-muted">{t("settings.service_access.generate_hint")}</p>
   </form>
 </section>

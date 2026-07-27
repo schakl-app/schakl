@@ -75,6 +75,11 @@
       t("settings.custom_fields.subtitle"),
     )}
     {@render card(
+      "/settings/companies",
+      t("settings.companies.title"),
+      t("settings.companies.subtitle"),
+    )}
+    {@render card(
       "/settings/contact-types",
       t("settings.contact_types.title"),
       t("settings.contact_types.subtitle"),
@@ -122,6 +127,13 @@
       "/subscriptions/templates",
       t("settings.subscriptions.title"),
       t("settings.subscriptions.subtitle"),
+    )}
+    <!-- The TLD price catalog lives as a tab on the domains section (#229's pattern);
+         this card is the Instellingen deep link to it (#250). -->
+    {@render card(
+      "/domains/tld-prices",
+      t("settings.domains.title"),
+      t("settings.domains.subtitle"),
     )}
     {@render card(
       "/settings/invoicing",

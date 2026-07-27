@@ -8,6 +8,8 @@
   import { COMMON_CURRENCIES, otherCurrencies } from "$lib/core/currencies";
   import { getCurrency } from "$lib/core/currency";
   import { LOCALES, t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
@@ -15,7 +17,14 @@
 
   import LinesEditor from "./LinesEditor.svelte";
   import type { EditableLine } from "./calc";
-  import type { DocTemplate, Invoice, InvoicingSettings, Quote, TaxRate } from "./types";
+  import type {
+    BillableSubscription,
+    DocTemplate,
+    Invoice,
+    InvoicingSettings,
+    Quote,
+    TaxRate,
+  } from "./types";
   import type { components } from "$lib/core/api/schema";
 
   type FieldDefinition = components["schemas"]["CustomFieldDefinitionRead"];
@@ -59,8 +68,10 @@
     form: Record<string, unknown> | null;
     oncancel?: () => void;
     /** Inline-create for the contact picker (#115): the host wires this to its
-     *  ContactQuickCreate dialog (slot "contact"); the ＋ only shows when passed. */
-    oncreatecontact?: (name: string) => void;
+     *  ContactQuickCreate dialog (slot "contact"); the ＋ only shows when passed. The
+     *  document's own client rides along (#247) so the new-contact dialog links it by
+     *  default instead of leaving the client blank. */
+    oncreatecontact?: (name: string, company: { id: string; name: string } | null) => void;
     /** Preset client for a fresh document (the client page's "＋ nieuwe factuur"). */
     initialCompanyId?: string;
   } = $props();
@@ -68,6 +79,7 @@
   const isNew = $derived(doc === null);
   const locked = $derived(doc !== null && doc.status !== "draft");
   const orgCurrency = getCurrency();
+  const busy = new InFlight();
 
   // Deliberate initial capture: the preset only seeds a fresh form.
   // svelte-ignore state_referenced_locally
@@ -91,6 +103,7 @@
   let lines = $state<EditableLine[]>(
     (doc?.lines ?? []).map((line) => ({
       description: line.description,
+      line_kind: line.line_kind ?? "product",
       quantity: String(Number(line.quantity)),
       unit: line.unit ?? "",
       unit_price: String(Number(line.unit_price)),
@@ -103,6 +116,7 @@
       lines = [
         {
           description: "",
+          line_kind: "product",
           quantity: "1",
           unit: "",
           unit_price: "",
@@ -143,6 +157,7 @@
     return {
       description:
         entry.description?.trim() || entry.project_name || t("invoicing.new.time_line_fallback"),
+      line_kind: "hours",
       quantity: (entry.minutes / 60).toFixed(2),
       unit: t("invoicing.from_time.hours_unit"),
       unit_price: String(Number(entry.rate)),
@@ -172,6 +187,33 @@
     });
   });
 
+  // The client's active agreements for the "＋ abonnement" pick. Unlike the hours prefill
+  // this adds nothing on its own — it only fills the picker, because which months to bill
+  // is a decision, not a default. Invoices only: a quote bills no period, so offering the
+  // pick there would produce a line whose claim goes nowhere.
+  const currentCompanyId = $derived(createdCompanyId || companyId || doc?.company_id || "");
+  let subscriptions = $state<BillableSubscription[]>([]);
+  $effect(() => {
+    const target = currentCompanyId;
+    if (kind !== "invoice" || locked || !target) {
+      subscriptions = [];
+      return;
+    }
+    let current = true;
+    void fetch(`/invoices/subscriptions?company_id=${encodeURIComponent(target)}`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((rows: BillableSubscription[]) => {
+        // A slower earlier fetch must not clobber a later client pick.
+        if (current) subscriptions = rows;
+      })
+      .catch(() => {
+        if (current) subscriptions = []; // no permission / offline: no picker
+      });
+    return () => {
+      current = false;
+    };
+  });
+
   // Bound state, not a one-way checked (docs/UX.md): the mark must survive hydration, and
   // the line calculations must follow the toggle live — a derived-only value did neither.
   // svelte-ignore state_referenced_locally
@@ -181,12 +223,26 @@
   const companyItems = $derived(companies.map((c) => ({ value: c.id, label: c.name })));
   const contactItems = $derived(
     contacts
-      .filter((c) => {
-        const target = createdCompanyId || companyId || doc?.company_id;
-        return !target || c.company_ids.length === 0 || c.company_ids.includes(target);
-      })
+      .filter(
+        (c) =>
+          !currentCompanyId ||
+          c.company_ids.length === 0 ||
+          c.company_ids.includes(currentCompanyId),
+      )
       .map((c) => ({ value: c.id, label: c.name })),
   );
+  // The document's own client, resolved to {id, name} (#247): the contact quick-create dialog
+  // links it by default. Name from the companies lookup (new docs) or the doc itself (edit).
+  const contactLinkCompany = $derived.by(() => {
+    const id = createdCompanyId || companyId || doc?.company_id || "";
+    if (!id) return null;
+    const name =
+      (id === createdCompanyId ? qcCompanyName : "") ||
+      companies.find((c) => c.id === id)?.name ||
+      (id === doc?.company_id ? (doc?.company_name ?? "") : "") ||
+      "";
+    return name ? { id, name } : null;
+  });
 
   // Show the inherited defaults, don't hide them behind empty fields (docs/UX.md #81): a
   // fresh document pre-fills today and the org's payment term / quote validity — visibly,
@@ -210,10 +266,9 @@
   id={FORM_ID}
   method="POST"
   {action}
-  use:enhance={() =>
-    ({ update }) => {
-      void update({ reset: false });
-    }}
+  use:enhance={busy.wrap("", () => ({ update }) => {
+    void update({ reset: false });
+  })}
   class="space-y-4"
 >
   {#if isNew}
@@ -245,7 +300,9 @@
           value={createdContactId}
           id="doc-contact"
           placeholder={t("invoicing.field.contact")}
-          oncreate={oncreatecontact}
+          oncreate={oncreatecontact
+            ? (name) => oncreatecontact(name, contactLinkCompany)
+            : undefined}
         />
       </div>
     </div>
@@ -260,7 +317,7 @@
         value={createdContactId || (doc?.contact_id ?? "")}
         id="doc-contact"
         placeholder={t("invoicing.field.contact")}
-        oncreate={oncreatecontact}
+        oncreate={oncreatecontact ? (name) => oncreatecontact(name, contactLinkCompany) : undefined}
       />
     </div>
   {/if}
@@ -399,7 +456,9 @@
       bind:lines
       {taxRates}
       {products}
+      {subscriptions}
       defaultTaxRateId={settings?.default_tax_rate_id ?? ""}
+      defaultHourlyRate={settings?.default_hourly_rate ?? ""}
       currency={effectiveCurrency}
       {locale}
       pricesIncludeTax={includeTax}
@@ -431,9 +490,7 @@
         onclick={oncancel}>{t("common.cancel")}</button
       >
     {/if}
-    <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-      >{t("common.save")}</button
-    >
+    <Button loading={busy.active}>{t("common.save")}</Button>
   </div>
 </form>
 

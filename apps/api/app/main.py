@@ -18,6 +18,7 @@ from starlette.middleware.sessions import SessionMiddleware
 import app.core.activity.panels  # noqa: F401  — registers the core activity panel on import
 from app.config import settings
 from app.core.activity.router import router as activity_router
+from app.core.addresslookup.router import router as addresslookup_router
 from app.core.ai.router import router as ai_router
 from app.core.apikeys.router import router as apikeys_router
 from app.core.auth.router import build_auth_router
@@ -108,6 +109,7 @@ def create_app() -> FastAPI:
     api.include_router(permissions_router)
     api.include_router(customfields_router)
     api.include_router(activity_router)
+    api.include_router(addresslookup_router)
     api.include_router(providers_router)
     api.include_router(files_router)
     api.include_router(email_settings_router)

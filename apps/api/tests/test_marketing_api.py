@@ -1102,3 +1102,151 @@ async def test_link_attaches_to_client_website(client_for) -> None:
         assert [w["name"] for w in metrics["websites"]] == ["tweesites.nl"]
         assert metrics["sources"][0]["website_id"] == website["id"]
         assert metrics["sources"][0]["website_name"] == "tweesites.nl"
+
+
+async def _link(c, headers, company_id: str, source: str, external_id: str) -> dict:
+    res = await c.post(
+        "/api/v1/marketing/links",
+        json={
+            "company_id": company_id,
+            "source": source,
+            "external_id": external_id,
+            "display_name": external_id,
+        },
+        headers=headers,
+    )
+    assert res.status_code == 201, res.text
+    return res.json()
+
+
+async def test_summary_top_clients_headline_fallback_and_cap(client_for) -> None:
+    """The My Day digest (#254): one headline KPI per linked client — GA4 sessions, else GSC
+    clicks — sorted on the current value, capped but honest about the cap, and per-client
+    curation (#192) withholds a hidden tile here exactly like the panel/tab."""
+    t = await make_tenant("mktg-summary")
+    headers = await auth_cookie(t.user)
+    today = date.today()
+
+    async with client_for(t.host) as c:
+        ga4_co = (
+            await c.post("/api/v1/companies", json={"name": "Sessies BV"}, headers=headers)
+        ).json()
+        gsc_co = (
+            await c.post("/api/v1/companies", json={"name": "Klikken BV"}, headers=headers)
+        ).json()
+        ads_co = (
+            await c.post("/api/v1/companies", json={"name": "AdsOnly BV"}, headers=headers)
+        ).json()
+
+        ga4 = await _link(c, headers, ga4_co["id"], "ga4", "properties/11")
+        gsc = await _link(c, headers, gsc_co["id"], "gsc", "sc-domain:klikken.nl")
+        await _link(c, headers, ads_co["id"], "gads", "customers/123")
+
+        await _seed_metrics(
+            t.org.id,
+            uuid.UUID(ga4["id"]),
+            {
+                today - timedelta(days=2): {"sessions": 120},
+                today - timedelta(days=40): {"sessions": 80},
+            },
+        )
+        await _seed_metrics(
+            t.org.id,
+            uuid.UUID(gsc["id"]),
+            {today - timedelta(days=2): {"clicks": 300, "impressions": 1000}},
+        )
+
+        body = (
+            await c.get("/api/v1/marketing/summary", params={"range_days": 30}, headers=headers)
+        ).json()
+        # The Ads-only client feeds neither headline: counted, never listed.
+        assert body["linked_total"] == 3
+        assert [r["company_name"] for r in body["rows"]] == ["Klikken BV", "Sessies BV"]
+        clicks_row, sessions_row = body["rows"]
+        assert clicks_row["metric"] == "clicks"
+        assert clicks_row["kpi"]["current"] == 300
+        assert sessions_row["metric"] == "sessions"
+        assert sessions_row["kpi"]["current"] == 120
+        assert sessions_row["kpi"]["delta_pct"] == 50.0
+
+        # The cap truncates rows but never the count the widget's "top n of this" prints.
+        capped = (
+            await c.get("/api/v1/marketing/summary", params={"limit": 1}, headers=headers)
+        ).json()
+        assert [r["company_name"] for r in capped["rows"]] == ["Klikken BV"]
+        assert capped["linked_total"] == 3
+
+        # Curating sessions away (#192) drops that client's headline from the digest too.
+        hidden = await c.put(
+            f"/api/v1/marketing/companies/{ga4_co['id']}/settings",
+            json={"layout": {"sources": {"ga4": {"tiles": ["conversions"]}}}},
+            headers=headers,
+        )
+        assert hidden.status_code == 200, hidden.text
+        curated = (await c.get("/api/v1/marketing/summary", headers=headers)).json()
+        assert [r["company_name"] for r in curated["rows"]] == ["Klikken BV"]
+        assert curated["linked_total"] == 3
+
+
+async def test_summary_is_horizon_scoped_for_portal_logins(client_for) -> None:
+    """The summary rides ``marketing.metrics.read``, which the portal ``client`` role holds
+    (#193) — so it must honour the company horizon (#191): a contact-linked login gets only
+    its own companies' rows, while staff read the whole book."""
+    from app.core.auth.models import User as AuthUser
+
+    t = await make_tenant("mktg-sum-portal")
+    headers = await auth_cookie(t.user)
+    today = date.today()
+
+    async with client_for(t.host) as c:
+        mine = (
+            await c.post("/api/v1/companies", json={"name": "Mijn BV"}, headers=headers)
+        ).json()
+        other = (
+            await c.post("/api/v1/companies", json={"name": "Andermans BV"}, headers=headers)
+        ).json()
+        mine_link = await _link(c, headers, mine["id"], "ga4", "properties/21")
+        other_link = await _link(c, headers, other["id"], "ga4", "properties/22")
+        for link in (mine_link, other_link):
+            await _seed_metrics(
+                t.org.id,
+                uuid.UUID(link["id"]),
+                {today - timedelta(days=2): {"sessions": 50}},
+            )
+
+        contact = (
+            await c.post(
+                "/api/v1/contacts",
+                json={
+                    "first_name": "Piet",
+                    "last_name": "Klant",
+                    "email": "piet-mktg-sum@example.com",
+                    "company_ids": [mine["id"]],
+                },
+                headers=headers,
+            )
+        ).json()
+        assert (
+            await c.post(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)
+        ).status_code == 200
+        async with async_session_maker() as session:
+            portal_user = await session.scalar(
+                select(AuthUser).where(AuthUser.email == contact["email"])
+            )
+        portal_headers = await auth_cookie(portal_user)
+
+        staff = (await c.get("/api/v1/marketing/summary", headers=headers)).json()
+        assert staff["linked_total"] == 2
+        assert {r["company_name"] for r in staff["rows"]} == {"Mijn BV", "Andermans BV"}
+
+        portal = (await c.get("/api/v1/marketing/summary", headers=portal_headers)).json()
+        assert portal["linked_total"] == 1
+        assert [r["company_name"] for r in portal["rows"]] == ["Mijn BV"]
+
+    # Tenant isolation: a fresh org's digest is empty, whatever its neighbours link.
+    o = await make_tenant("mktg-sum-other")
+    o_headers = await auth_cookie(o.user)
+    async with client_for(o.host) as co:
+        empty = (await co.get("/api/v1/marketing/summary", headers=o_headers)).json()
+        assert empty["linked_total"] == 0
+        assert empty["rows"] == []

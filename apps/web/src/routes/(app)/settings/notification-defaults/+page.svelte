@@ -1,6 +1,7 @@
 <script lang="ts">
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
+  import ChannelSection from "$lib/modules/notifications/ChannelSection.svelte";
   import PreferenceMatrixForm from "$lib/modules/notifications/PreferenceMatrixForm.svelte";
 
   let { data, form } = $props();
@@ -21,3 +22,8 @@
   error={form?.error ?? null}
   saved={form?.saved ?? false}
 />
+
+<!-- The org's shared rooms, under the matrix that routes them: each is a column above (#295). -->
+{#if data.canManageChannels}
+  <ChannelSection channels={data.channels} scope="org" {form} />
+{/if}

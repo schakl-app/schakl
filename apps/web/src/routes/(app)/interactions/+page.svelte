@@ -7,7 +7,7 @@
    * other list (#238); the day sections only render while the order is the timeline, so
    * sections and sort can never disagree.
    */
-  import { ArrowRightLeft, Pencil, Plus, Trash2, X } from "@lucide/svelte";
+  import { ArrowRightLeft, Link2, Mail, Pencil, Plus, Trash2, X } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
@@ -16,9 +16,11 @@
   import { fmtDateTime, fmtMonthYear, fmtPeriod } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
@@ -28,14 +30,18 @@
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import { INTERACTION_COLUMNS } from "$lib/modules/interactions/columns";
+  import EmlUploadForm from "$lib/modules/interactions/EmlUploadForm.svelte";
   import {
     dayLabel,
     type InteractionItem,
     type InteractionKindDef,
+    isGmailRow,
     kindIcon,
     kindLabel,
     localDay,
   } from "$lib/modules/interactions/format";
+  import { snippetPreview } from "$lib/modules/interactions/snippet";
+  import InteractionConversationDialog from "$lib/modules/interactions/InteractionConversationDialog.svelte";
   import InteractionDetailModal from "$lib/modules/interactions/InteractionDetailModal.svelte";
   import InteractionForm from "$lib/modules/interactions/InteractionForm.svelte";
   import InteractionMoveDialog from "$lib/modules/interactions/InteractionMoveDialog.svelte";
@@ -135,17 +141,20 @@
   // --- row actions: the panel body's rules, on table rows ----------------------- //
   const isOwner = (item: InteractionItem) =>
     item.owner_user_id !== null && item.owner_user_id === me;
+  // An uploaded .eml (#262) has no mailbox behind it, so it edits like a hand-logged row;
+  // only gmail rows belong to the review flow.
   const mayEdit = (item: InteractionItem) =>
-    item.source === "manual" &&
+    !isGmailRow(item) &&
     (isOwner(item)
       ? can(page.data.user, "interactions.interaction.write", "own")
       : can(page.data.user, "interactions.interaction.write", "any"));
-  const mayMove = (item: InteractionItem) =>
-    item.source === "gmail" ? isOwner(item) : mayEdit(item);
+  const mayMove = (item: InteractionItem) => (isGmailRow(item) ? isOwner(item) : mayEdit(item));
 
   let showCreate = $state(false);
+  let showUpload = $state(false);
   let showEdit = $state(false);
   let editing = $state<InteractionItem | null>(null);
+  const busy = new InFlight();
 
   // Inline company / project create from the form's pickers (#115, docs/UX.md — per-picker
   // definition of done). The form passes what was typed out; the dialogs live here and answer
@@ -155,16 +164,19 @@
   let qcCompanyName = $state("");
   let qcProjectOpen = $state(false);
   let qcProjectName = $state("");
+  // The form's already-picked client (#247): the project dialog opens with it preselected.
+  let qcProjectCompany = $state("");
   // The project dialog's own client picker: fetched on first open, never on page load
   // (docs/PERFORMANCE.md — a rarely opened dialog must not tax every load).
   let qcCompanyItems = $state<{ value: string; label: string }[]>([]);
   let qcCompaniesLoaded = false;
-  async function openProjectQuickCreate(name: string) {
+  async function openProjectQuickCreate(name: string, companyId = "") {
     qcProjectName = name;
+    qcProjectCompany = companyId;
     qcProjectOpen = true;
     if (qcCompaniesLoaded) return;
     qcCompaniesLoaded = true;
-    const response = await fetch("/api/v1/companies?limit=200&count=false", {
+    const response = await fetch("/api/v1/companies?limit=200&count=false&sort=name", {
       headers: { accept: "application/json" },
     });
     const items: { id: string; name: string }[] = response.ok
@@ -174,6 +186,8 @@
   }
   let showMove = $state(false);
   let moving = $state<InteractionItem | null>(null);
+  let showConversation = $state(false);
+  let linkingConv = $state<InteractionItem | null>(null);
   let deleteId = $state("");
   let confirmDelete = $state(false);
   let showReject = $state(false);
@@ -223,6 +237,23 @@
         },
       });
     }
+    // Glue an email Gmail didn't thread automatically onto another conversation (#272) —
+    // owner-only, logged gmail rows only, mirroring the API's own gate.
+    if (
+      item.kind === "email" &&
+      item.source === "gmail" &&
+      item.status === "logged" &&
+      isOwner(item)
+    ) {
+      entries.push({
+        label: t("interactions.add_to_conversation"),
+        icon: Link2,
+        onclick: () => {
+          linkingConv = item;
+          showConversation = true;
+        },
+      });
+    }
     if (item.source === "gmail" && item.status === "pending" && isOwner(item)) {
       entries.push({
         label: t("interactions.reject"),
@@ -237,17 +268,29 @@
     return entries;
   }
 
-  function linkChips(item: InteractionItem): { href: string; label: string }[] {
-    const chips: { href: string; label: string }[] = [];
-    if (item.company_id && item.company_name)
-      chips.push({ href: `/companies/${item.company_id}`, label: item.company_name });
-    if (item.project_id && item.project_name)
-      chips.push({ href: `/projects/${item.project_id}`, label: item.project_name });
+  /**
+   * What a row hangs on, capped (#263). Four unbounded chips wrapped to two or three lines and
+   * broke the day-grouped timeline's single-line rhythm, so a row shows only the **most
+   * specific** organisational link — a task or a project already implies its client — plus the
+   * person, and counts the rest into a "+N" the detail modal opens in full.
+   */
+  interface LinkChip {
+    href: string;
+    label: string;
+  }
+  function linkChips(item: InteractionItem): { visible: LinkChip[]; hidden: LinkChip[] } {
+    const org: LinkChip[] = [];
     if (item.task_id && item.task_title)
-      chips.push({ href: `/tasks/${item.task_id}`, label: item.task_title });
-    if (item.contact_id && item.contact_name)
-      chips.push({ href: `/contacts/${item.contact_id}`, label: item.contact_name });
-    return chips;
+      org.push({ href: `/tasks/${item.task_id}`, label: item.task_title });
+    if (item.project_id && item.project_name)
+      org.push({ href: `/projects/${item.project_id}`, label: item.project_name });
+    if (item.company_id && item.company_name)
+      org.push({ href: `/companies/${item.company_id}`, label: item.company_name });
+    const contact: LinkChip[] =
+      item.contact_id && item.contact_name
+        ? [{ href: `/contacts/${item.contact_id}`, label: item.contact_name }]
+        : [];
+    return { visible: [...org.slice(0, 1), ...contact], hidden: org.slice(1) };
   }
 
   function kindText(key: string): string {
@@ -265,14 +308,25 @@
     {navLabel("interactions", t("interactions.title"))}
   </h1>
   {#if canWrite}
-    <button
-      type="button"
-      class="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-      onclick={() => (showCreate = true)}
-    >
-      <Plus size={15} aria-hidden="true" />
-      {t("interactions.add")}
-    </button>
+    <div class="flex flex-wrap items-center gap-2">
+      <!-- An email from outside a connected mailbox is logged from its .eml export (#262). -->
+      <button
+        type="button"
+        class="inline-flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-text hover:border-brand hover:text-brand"
+        onclick={() => (showUpload = true)}
+      >
+        <Mail size={15} aria-hidden="true" />
+        {t("interactions.eml.add")}
+      </button>
+      <button
+        type="button"
+        class="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        onclick={() => (showCreate = true)}
+      >
+        <Plus size={15} aria-hidden="true" />
+        {t("interactions.add")}
+      </button>
+    </div>
   {/if}
 </div>
 
@@ -300,20 +354,29 @@
       <option value={kind.key}>{kindLabel(kind, data.locale)}</option>
     {/each}
   </select>
-  {#if data.canReadAll}
-    <!-- Widening past yourself is the read_all grant (#168); the API enforces it harder. -->
-    <select
-      value={data.filters.owner ?? ""}
-      onchange={(e) => applyFilter({ owner: e.currentTarget.value || null, mine: null })}
-      class="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm text-text"
-      aria-label={t("interactions.filter.owner")}
-    >
-      <option value="">{t("interactions.filter.everyone")}</option>
+  <!-- You land on your own moments (#263) and widen from there. Narrowing to yourself is
+       nobody's grant; naming a *colleague* is the read_all one (#168), so only that option
+       list is gated — the API enforces it harder either way. -->
+  <select
+    value={data.filters.ownerValue}
+    onchange={(e) =>
+      applyFilter({
+        owner: e.currentTarget.value === "me" ? null : e.currentTarget.value,
+        mine: null,
+      })}
+    class="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm text-text"
+    aria-label={t("interactions.filter.owner")}
+  >
+    <option value="me">{t("interactions.filter.mine")}</option>
+    <option value="all">{t("interactions.filter.everyone")}</option>
+    {#if data.canReadAll}
       {#each data.members as member (member.user_id)}
-        <option value={member.user_id}>{member.full_name || member.email}</option>
+        {#if member.user_id !== me}
+          <option value={member.user_id}>{member.full_name || member.email}</option>
+        {/if}
       {/each}
-    </select>
-  {/if}
+    {/if}
+  </select>
   <div class="ml-auto flex items-center gap-2">
     <SearchInput placeholder={t("interactions.search")} />
     <ColumnPicker
@@ -398,6 +461,19 @@
       <span class="truncate font-medium text-text">
         {item.subject || kindText(item.kind)}
       </span>
+      {#if (item.conversation_count ?? 1) > 1}
+        <!-- The email folds a conversation (#272): a small message-count badge. -->
+        <span
+          title={t("interactions.conversation_count", { count: item.conversation_count })}
+          class="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-surface px-2 py-0.5 text-[11px] font-medium text-text-muted ring-1 ring-inset ring-border"
+        >
+          <Mail size={10} aria-hidden="true" />
+          {item.conversation_count}
+          <span class="sr-only"
+            >{t("interactions.conversation_count", { count: item.conversation_count })}</span
+          >
+        </span>
+      {/if}
       {#if item.status === "pending"}
         <span
           class="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-400"
@@ -407,7 +483,12 @@
       {/if}
     </span>
     {#if item.snippet}
-      <span class="mt-0.5 block truncate text-xs text-text-muted">{item.snippet}</span>
+      <!-- A teaser, not the mail (#263): Gmail's snippet arrives HTML-escaped and two hundred
+           characters long, so it is decoded and cut at a word boundary before `truncate` ever
+           gets to fit it to the column. -->
+      <span class="mt-0.5 block truncate text-xs text-text-muted">
+        {snippetPreview(item.snippet)}
+      </span>
     {/if}
   </span>
 {/snippet}
@@ -421,18 +502,29 @@
 {/snippet}
 
 {#snippet linkedCell(item: InteractionItem)}
-  <span class="flex flex-wrap gap-1">
-    {#each linkChips(item) as chip (chip.href)}
+  {@const chips = linkChips(item)}
+  <span class="flex min-w-0 flex-nowrap items-center gap-1">
+    {#each chips.visible as chip (chip.href)}
       <!-- `relative z-10` keeps the chip clickable above the row's stretched link (#59).
            Who the moment was with must not read quieter than its timestamp (#238): the chip
            carries full text colour at `text-xs`, above the muted date beside it. -->
       <a
         href={chip.href}
-        class="relative z-10 rounded-full bg-surface px-2 py-0.5 text-xs text-text ring-1 ring-inset ring-border hover:text-brand"
+        title={chip.label}
+        class="relative z-10 max-w-full truncate rounded-full bg-surface px-2 py-0.5 text-xs text-text ring-1 ring-inset ring-border hover:text-brand"
       >
         {chip.label}
       </a>
     {/each}
+    {#if chips.hidden.length > 0}
+      <!-- Not a link: the row click opens the detail modal, which lists every link in full. -->
+      <span
+        title={chips.hidden.map((chip) => chip.label).join(", ")}
+        class="shrink-0 rounded-full bg-surface px-2 py-0.5 text-xs text-text-muted ring-1 ring-inset ring-border"
+      >
+        {t("interactions.linked_more", { count: chips.hidden.length })}
+      </span>
+    {/if}
   </span>
 {/snippet}
 
@@ -471,6 +563,18 @@
         <span class="truncate text-sm font-medium text-text">
           {item.subject || kindText(item.kind)}
         </span>
+        {#if (item.conversation_count ?? 1) > 1}
+          <span
+            title={t("interactions.conversation_count", { count: item.conversation_count })}
+            class="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-surface px-2 py-0.5 text-[11px] font-medium text-text-muted ring-1 ring-inset ring-border"
+          >
+            <Mail size={10} aria-hidden="true" />
+            {item.conversation_count}
+            <span class="sr-only"
+              >{t("interactions.conversation_count", { count: item.conversation_count })}</span
+            >
+          </span>
+        {/if}
         {#if item.status === "pending"}
           <span
             class="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-400"
@@ -547,8 +651,22 @@
       qcCompanyName = name;
       qcCompanyOpen = true;
     }}
-    oncreateproject={(name) => void openProjectQuickCreate(name)}
+    oncreateproject={(name, companyId) => void openProjectQuickCreate(name, companyId)}
   />
+</Modal>
+
+<!-- Upload an exported email (#262): the same inline-create dialogs the manual form uses. -->
+<Modal bind:open={showUpload} title={t("interactions.eml.title")}>
+  {#if showUpload}
+    <EmlUploadForm
+      onsaved={() => (showUpload = false)}
+      oncreatecompany={(name) => {
+        qcCompanyName = name;
+        qcCompanyOpen = true;
+      }}
+      oncreateproject={(name, companyId) => void openProjectQuickCreate(name, companyId)}
+    />
+  {/if}
 </Modal>
 
 <Modal bind:open={showEdit} title={t("interactions.edit")}>
@@ -580,6 +698,18 @@
   {/if}
 </Modal>
 
+<!-- Glue an unthreaded email onto another conversation by hand (#272). -->
+<Modal bind:open={showConversation} title={t("interactions.add_to_conversation_title")}>
+  {#if linkingConv}
+    {#key linkingConv.id}
+      <InteractionConversationDialog
+        interaction={linkingConv}
+        onsaved={() => (showConversation = false)}
+      />
+    {/key}
+  {/if}
+</Modal>
+
 <ConfirmDialog
   bind:open={confirmDelete}
   title={t("interactions.delete_title")}
@@ -594,11 +724,10 @@
       method="POST"
       action="?/rejectInteraction"
       class="space-y-4"
-      use:enhance={() =>
-        async ({ update }) => {
-          showReject = false;
-          await update();
-        }}
+      use:enhance={busy.wrap("reject", () => async ({ update }) => {
+        showReject = false;
+        await update();
+      })}
     >
       <input type="hidden" name="id" value={rejecting.id} />
       <p class="text-sm text-text-muted">{t("interactions.reject_message")}</p>
@@ -614,12 +743,9 @@
         >
           {t("common.cancel")}
         </button>
-        <button
-          type="submit"
-          class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
+        <Button type="submit" variant="danger" loading={busy.is("reject")} disabled={busy.active}>
           {t("interactions.reject")}
-        </button>
+        </Button>
       </div>
     </form>
   {/if}
@@ -645,11 +771,10 @@
     <form
       method="POST"
       action="?/createProject"
-      use:enhance={() =>
-        ({ result, update }) => {
-          if (result.type === "success") qcProjectOpen = false;
-          void update({ reset: false });
-        }}
+      use:enhance={busy.wrap("create-project", () => ({ result, update }) => {
+        if (result.type === "success") qcProjectOpen = false;
+        void update({ reset: false });
+      })}
       class="space-y-3"
     >
       <div>
@@ -671,6 +796,7 @@
         <Combobox
           items={qcCompanyItems}
           name="company_id"
+          value={qcProjectCompany}
           id="qc-int-project-company"
           placeholder={t("projects.field.company")}
         />
@@ -684,9 +810,9 @@
           class="rounded-lg border border-border px-4 py-2 text-sm text-text"
           onclick={() => (qcProjectOpen = false)}>{t("common.cancel")}</button
         >
-        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-          >{t("common.create")}</button
-        >
+        <Button loading={busy.is("create-project")} disabled={busy.active}>
+          {t("common.create")}
+        </Button>
       </div>
     </form>
   {/key}

@@ -8,6 +8,8 @@
   import { enhance } from "$app/forms";
   import type { components } from "$lib/core/api/schema";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import HostingForm from "$lib/modules/hosting/HostingForm.svelte";
 
@@ -25,6 +27,7 @@
     agencyLabel,
     definitions,
     locale,
+    initialCompanyId = "",
     action = "?/createHosting",
     error = null,
     oncreatecompany,
@@ -42,6 +45,9 @@
     agencyLabel: string;
     definitions: Definition[];
     locale: string;
+    /** Preselects the client when the host form already fixed one (#247), matching
+     *  DomainQuickCreate — HostingForm has always supported it, this just threads it through. */
+    initialCompanyId?: string;
     action?: string;
     /** The page's `form?.qcError`. */
     error?: string | null;
@@ -52,6 +58,8 @@
     oncreateprovider?: (kind: "hosting", name: string) => void;
     created?: { slot: string; id: string } | null;
   } = $props();
+
+  const busy = new InFlight();
 </script>
 
 <Modal bind:open title={t("hosting.new")}>
@@ -59,11 +67,10 @@
     <form
       method="POST"
       {action}
-      use:enhance={() =>
-        ({ result, update }) => {
-          if (result.type === "success") open = false;
-          void update({ reset: false });
-        }}
+      use:enhance={busy.wrap("", () => ({ result, update }) => {
+        if (result.type === "success") open = false;
+        void update({ reset: false });
+      })}
     >
       <HostingForm
         nameDefault={name}
@@ -75,6 +82,7 @@
         {definitions}
         {locale}
         idPrefix="qc-hosting"
+        {initialCompanyId}
         {oncreatecompany}
         {oncreatecontact}
         {oncreateprovider}
@@ -87,10 +95,7 @@
           class="rounded-lg border border-border px-4 py-2 text-sm"
           onclick={() => (open = false)}>{t("common.cancel")}</button
         >
-        <button
-          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-          >{t("common.create")}</button
-        >
+        <Button loading={busy.active}>{t("common.create")}</Button>
       </div>
     </form>
   {/key}

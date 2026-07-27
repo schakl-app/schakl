@@ -1,6 +1,7 @@
-import { fail } from "@sveltejs/kit";
+import { fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
+import { can } from "$lib/core/permissions";
 import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
 import { holidayName } from "$lib/modules/leave/format";
@@ -57,6 +58,9 @@ function leaveHoursForWeek(
 }
 
 export const load: PageServerLoad = async (event) => {
+  // A viewer without time access (a client-role login) has no business here — the nav item
+  // is already hidden, so a direct URL redirects instead of erroring (#253).
+  if (!can(event.locals.user, "time.entry.read")) throw redirect(303, "/");
   const api = apiFor(event);
   const selectedDate = event.url.searchParams.get("date") || todayIso();
   const week_start = event.url.searchParams.get("week") || weekStartOf(selectedDate);
@@ -118,7 +122,10 @@ export const actions: Actions = {
         description: String(form.get("description") ?? "").trim() || null,
         company_id: String(form.get("company_id") ?? "").trim() || null,
         project_id: String(form.get("project_id") ?? "").trim() || null,
-        billable: form.get("billable") !== "false",
+        // The timer bar has no billable control, so it says nothing and the API seeds the
+        // flag from the project (#284) — a retainer project starts a non-billable timer.
+        // Hardcoding `true` here is what used to bill covered work twice.
+        billable: form.has("billable") ? form.get("billable") !== "false" : undefined,
         entry_type_key: String(form.get("entry_type_key") ?? "").trim() || null,
         break_minutes: 0,
       },
@@ -149,8 +156,9 @@ export const actions: Actions = {
         company_id: String(form.get("company_id") ?? "").trim() || null,
         project_id: String(form.get("project_id") ?? "").trim() || null,
         task_id: String(form.get("task_id") ?? "").trim() || null,
-        subscription_id: String(form.get("subscription_id") ?? "").trim() || null,
-        billable: form.get("billable") !== "false",
+        // Stated by the form's toggle; a caller that omits it gets the project's own
+        // default (#284) rather than a hardcoded "factureerbaar".
+        billable: form.has("billable") ? form.get("billable") !== "false" : undefined,
         entry_type_key: String(form.get("entry_type_key") ?? "").trim() || null,
       },
     });
@@ -176,7 +184,6 @@ export const actions: Actions = {
         company_id: String(form.get("company_id") ?? "").trim() || null,
         project_id: String(form.get("project_id") ?? "").trim() || null,
         task_id: String(form.get("task_id") ?? "").trim() || null,
-        subscription_id: String(form.get("subscription_id") ?? "").trim() || null,
         billable: form.get("billable") !== "false",
         entry_type_key: String(form.get("entry_type_key") ?? "").trim() || null,
       },

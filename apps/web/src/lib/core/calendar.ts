@@ -3,7 +3,7 @@
  * like `core/format.ts`) shared by the page load (fetch range) and the view components.
  */
 import type { CalendarEvent } from "./registry";
-import { labelChipClass } from "./ui/colors";
+import { labelChipParts, type ColorParts } from "./ui/colors";
 
 export const CALENDAR_VIEWS = ["day", "week", "month", "year"] as const;
 export type CalendarView = (typeof CALENDAR_VIEWS)[number];
@@ -166,9 +166,15 @@ export function eventLinkAttrs(
   return href && /^https?:\/\//i.test(href) ? { target: "_blank", rel: "noopener noreferrer" } : {};
 }
 
-export function eventChipClass(event: CalendarEvent): string {
+/**
+ * How one event's chip is coloured, split into a Tailwind `class` and an inline `style` so a
+ * personal custom hex (#281) can ride `--evc` where a named token rides a class — callers spread
+ * both. A holiday keeps its quiet dashed band and never wears a colour (#47).
+ */
+export function eventChipParts(event: CalendarEvent): ColorParts {
   if (event.kind === "holiday") {
-    return "border border-dashed border-border bg-surface text-text-muted";
+    return { class: "border border-dashed border-border bg-surface text-text-muted", style: "" };
   }
-  return `${labelChipClass(event.color)} ${event.tentative ? "opacity-60" : ""}`;
+  const parts = labelChipParts(event.color);
+  return { class: `${parts.class} ${event.tentative ? "opacity-60" : ""}`, style: parts.style };
 }

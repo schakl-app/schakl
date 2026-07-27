@@ -20,9 +20,22 @@ export interface LeaveTypeInfo {
   requires_approval: boolean;
   default_weeks: string | null;
   carry_over_months: number | null;
+  /** Types sharing this present as one employee-facing balance (#265); null = standalone. */
+  balance_group: string | null;
+  /** Free time / vrije tijd (#65, renamed #282): entitlement is the full-time-norm shortfall
+   *  `(norm − contract)`, not `default_weeks`. The `roostervrij` key stays internal (#282). */
+  accrues_schedule_gap: boolean;
+  /** How the agenda draws this type's absences (#270): a full-day chip, or an hour block. */
+  calendar_display: LeaveCalendarDisplay;
   position: number;
   active: boolean;
 }
+
+/** Mirrors the API's `LeaveCalendarDisplay` (leave/models.py) — see `CALENDAR_DISPLAYS`. */
+export type LeaveCalendarDisplay = "all_day" | "timed";
+
+/** The choices Instellingen → Verlof offers, in the order it offers them. */
+export const CALENDAR_DISPLAYS: readonly LeaveCalendarDisplay[] = ["all_day", "timed"];
 
 export interface HolidayInfo {
   id: string;
@@ -37,6 +50,30 @@ export interface HolidayInfo {
 export function typeLabel(type: LeaveTypeInfo | undefined, locale: string): string {
   if (!type) return "";
   return type.label_i18n[locale] ?? type.label_i18n.nl ?? type.label_i18n.en ?? type.key;
+}
+
+/**
+ * Combined-balance labels for known balance groups (#265). The UI's single home for these
+ * strings is the message catalog; the API's ``LeaveGroupBalance.label_i18n`` is a mirror for
+ * non-web clients (MCP). A group slug not listed here falls back to its API/representative label.
+ */
+export const GROUP_LABEL_KEYS: Record<string, string> = {
+  vacation: "leave.balance.vacation_group",
+};
+
+/**
+ * A group's representative type: the one whose pot expires soonest (smallest `carry_over_months`,
+ * `null` = never). That is the id a grouped request posts against — the API spends that pot first
+ * anyway (#265) — and, absent a known group label, whose label the collapsed option shows.
+ */
+export function representativeType(members: LeaveTypeInfo[]): LeaveTypeInfo | undefined {
+  return [...members].sort(
+    (a, b) =>
+      (a.carry_over_months ?? Number.POSITIVE_INFINITY) -
+        (b.carry_over_months ?? Number.POSITIVE_INFINITY) ||
+      a.position - b.position ||
+      a.key.localeCompare(b.key),
+  )[0];
 }
 
 /** Same rule for a holiday's name — tenant data, in whatever locales the tenant filled in. */

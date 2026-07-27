@@ -64,6 +64,25 @@ body {
 }
 
 /*
+ * Custom calendar colours (#281): a viewer may recolour a feed — or an individual colleague's
+ * leave — to any hue, stored per user. A raw hex can't ride Tailwind's `dark:` class pairs (the
+ * named tokens in lib/core/ui/colors.ts), so the hex arrives in `--evc` (set inline by
+ * `labelChipParts`/`labelDotParts`) and the light/dark contrast is derived once, here, by mixing
+ * the hue into the theme surface — the same trick the tenant theme already uses for its brand.
+ */
+.cal-chip-custom {
+  background-color: color-mix(in srgb, var(--evc) 15%, var(--surface-raised));
+  color: color-mix(in srgb, var(--evc) 78%, var(--text));
+}
+:root[data-theme="dark"] .cal-chip-custom {
+  background-color: color-mix(in srgb, var(--evc) 26%, var(--surface-raised));
+  color: color-mix(in srgb, var(--evc) 70%, var(--text));
+}
+.cal-dot-custom {
+  background-color: var(--evc);
+}
+
+/*
  * iOS Safari zooms the page *in* whenever a focused <input>/<select>/<textarea> renders
  * below 16px (issue #85). Our controls use `text-sm` (14px), so on phones bump every form
  * control to 16px — the accessible fix. The alternative, locking the viewport with

@@ -6,15 +6,18 @@
   import { page } from "$app/state";
   import { fmtMoney, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
+  import Markdown from "$lib/core/ui/Markdown.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
@@ -22,12 +25,20 @@
   import { SUBSCRIPTION_COLUMNS } from "$lib/modules/subscriptions/columns";
   import PriceIncreaseModal from "$lib/modules/subscriptions/PriceIncreaseModal.svelte";
   import { subscriptionTypeLabel } from "$lib/modules/subscriptions/types";
+  import {
+    hasNoteVariables,
+    noteVariableItems,
+    notePlaceholder,
+    resolveNoteVariables,
+    subscriptionNoteValues,
+  } from "$lib/modules/subscriptions/variables";
 
   let { data, form } = $props();
 
   type Subscription = (typeof data.subscriptions)[number];
   type Template = (typeof data.templates)[number];
 
+  const busy = new InFlight();
   let showForm = $state(false);
   let editing = $state<Subscription | null>(null);
   let deleteId = $state("");
@@ -36,18 +47,60 @@
   // Inline company create from the picker (#115, docs/UX.md — per-picker definition of done).
   let qcCompanyOpen = $state(false);
   let qcCompanyName = $state("");
-  let createdCompanyId = $state("");
   // Inline project create from the links picker — same pattern, auto-links the new project.
   let qcProjectOpen = $state(false);
   let qcProjectName = $state("");
   // Inline subscription-type create from the type picker (#142) — same pattern again.
   let qcTypeOpen = $state(false);
   let qcTypeName = $state("");
-  let createdTypeId = $state("");
+
+  // The fields a note's variables can draw on (#259), mirrored as reactive state so the edit
+  // preview resolves live as you type. The picked company/type live here too, so an inline-created
+  // one auto-selects and the nested project quick-create inherits the chosen client (#247).
+  // (Re)seeded whenever the dialog opens on a row.
+  let pv = $state({
+    name: "",
+    companyId: "",
+    typeId: "",
+    amount: "",
+    interval: "monthly",
+    includedHours: "",
+    startDate: "",
+    notes: "",
+  });
+  function seedPreview() {
+    pv = {
+      name: editing?.name ?? "",
+      companyId: editing?.company_id ?? "",
+      typeId: editing?.subscription_type_id ?? "",
+      amount: String(editing?.amount ?? ""),
+      interval: editing?.interval ?? "monthly",
+      includedHours: String(editing?.included_hours ?? ""),
+      startDate: editing?.start_date ?? "",
+      notes: editing?.notes ?? "",
+    };
+  }
+  /**
+   * Picking a preset fills in what the preset *defines* and leaves the rest of the form alone.
+   * Re-seeding wholesale wiped the client and the start date — which the preset has no opinion
+   * about — so a dialog opened from a client page (`?company=`) or an inline-created client
+   * (#247) lost it the moment a standard subscription was chosen, and the note's
+   * `{{company_name}}` fell back to the `[Bedrijfsnaam]` placeholder.
+   */
+  function applyTemplate(tpl: Template | null) {
+    prefill = tpl;
+    if (!tpl) return;
+    pv.name = tpl.name;
+    pv.typeId = tpl.subscription_type_id ?? "";
+    pv.amount = String(tpl.amount ?? "");
+    pv.interval = tpl.interval ?? "monthly";
+    pv.includedHours = String(tpl.included_hours ?? "");
+    pv.notes = tpl.notes ?? "";
+  }
   $effect(() => {
     const created = form?.inlineCreated;
-    if (created?.slot === "company") createdCompanyId = created.id;
-    if (created?.slot === "subscription_type") createdTypeId = created.id;
+    if (created?.slot === "company") pv.companyId = created.id;
+    if (created?.slot === "subscription_type") pv.typeId = created.id;
     if (created?.slot === "project" && !linkedProjects.some((p) => p.id === created.id)) {
       const name = "name" in created ? created.name : projectName(created.id);
       linkedProjects = [...linkedProjects, { id: created.id, name }];
@@ -89,11 +142,13 @@
       name: nameCell,
       company: companyCell,
       type: typeCell,
+      interval: intervalCell,
       amount: amountCell,
       next_invoice: nextInvoiceCell,
       status: statusCell,
       start_date: startCell,
       included_hours: includedCell,
+      notes: notesCell,
     }),
   });
 
@@ -105,6 +160,16 @@
   // "Create from template" (#142): prefill, never a server-side copy — the create form stays
   // the single validation path. Rekeys the form so the defaults re-read.
   let prefill = $state<Template | null>(null);
+
+  // The preset an agreement came from, while it still carries that preset's name: renaming the
+  // preset renames this row too, and giving it its own name here is how it stops following.
+  const followedTemplate = $derived(
+    editing?.subscription_template_id
+      ? (data.templates.find(
+          (tpl) => tpl.id === editing?.subscription_template_id && tpl.name === editing?.name,
+        ) ?? null)
+      : null,
+  );
 
   // Price increase (#231): scope is everything, one type, one subscription or one template.
   // A row's ⋮ shortcut opens the same modal locked to that row.
@@ -163,34 +228,71 @@
     return data.projects.find((p) => p.id === id)?.name ?? "—";
   }
 
-  function openCreate() {
+  function openCreate(companyId = "") {
     editing = null;
-    createdCompanyId = "";
-    createdTypeId = "";
     prefill = null;
     linkedProjects = [];
+    seedPreview();
+    if (companyId) pv.companyId = companyId;
     showForm = true;
   }
   function openEdit(sub: Subscription) {
     editing = sub;
-    createdCompanyId = "";
-    createdTypeId = "";
     prefill = null;
     linkedProjects = (sub.links ?? [])
       .filter((l) => l.entity_type === "project")
       .map((l) => ({ id: l.entity_id, name: projectName(l.entity_id) }));
+    seedPreview();
     showForm = true;
   }
 
   // Quick-create from a client page (?new=1&company=): the dialog opens with the client set
   // (the same ?company= also filters the list behind it to that client).
   if (page.url.searchParams.has("new")) {
-    openCreate();
-    createdCompanyId = page.url.searchParams.get("company") ?? "";
+    openCreate(page.url.searchParams.get("company") ?? "");
   }
 
   const money = (value: string | number | null | undefined) =>
     value == null ? "—" : fmtMoney(Number(value));
+
+  // Note variables (#259): the note keeps its `{{company_name}}`-style tokens in storage. They
+  // are resolved only for reading — a live preview while editing (an unknown value shown as a
+  // `[label]` placeholder), and the finished text wherever the note is displayed.
+  const variableItems = $derived(noteVariableItems(t));
+  const previewNotes = $derived(
+    hasNoteVariables(pv.notes)
+      ? resolveNoteVariables(
+          pv.notes,
+          subscriptionNoteValues({
+            companyName: data.companies.find((c) => c.id === pv.companyId)?.name ?? null,
+            subscriptionName: pv.name,
+            typeLabel: pv.typeId ? typeLabel(pv.typeId) : null,
+            amount: pv.amount,
+            interval: pv.interval,
+            includedHours: pv.includedHours,
+            startDate: pv.startDate,
+            brandName: page.data.theme?.brandName ?? null,
+          }),
+          { placeholder: notePlaceholder(t) },
+        )
+      : "",
+  );
+  // A saved subscription resolves its own tokens for display — a reader never meets a variable.
+  function subNoteDisplay(sub: Subscription): string {
+    return resolveNoteVariables(
+      sub.notes ?? "",
+      subscriptionNoteValues({
+        companyName: sub.company_name,
+        subscriptionName: sub.name,
+        typeLabel: sub.subscription_type_id ? typeLabel(sub.subscription_type_id) : null,
+        amount: sub.amount,
+        interval: sub.interval,
+        includedHours: sub.included_hours,
+        startDate: sub.start_date,
+        brandName: page.data.theme?.brandName ?? null,
+      }),
+    );
+  }
 
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
@@ -213,7 +315,7 @@
     {/if}
     <button
       class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-      onclick={openCreate}>{t("subscriptions.add")}</button
+      onclick={() => openCreate()}>{t("subscriptions.add")}</button
     >
   </div>
 </div>
@@ -335,9 +437,14 @@
   >
 {/snippet}
 
+{#snippet intervalCell(sub: Subscription)}
+  <span class="text-text-muted">{t(`subscriptions.interval.${sub.interval}`)}</span>
+{/snippet}
+
+<!-- Numbers only (#261): the interval used to ride along inline, and because its label is a
+     different length per row it pushed every amount to its own horizontal position. -->
 {#snippet amountCell(sub: Subscription)}
   <span class="tabular-nums text-text">{money(sub.amount)}</span>
-  <span class="text-xs text-text-muted">· {t(`subscriptions.interval.${sub.interval}`)}</span>
 {/snippet}
 
 {#snippet nextInvoiceCell(sub: Subscription)}
@@ -360,6 +467,11 @@
 
 {#snippet includedCell(sub: Subscription)}
   <span class="tabular-nums text-text-muted">{sub.included_hours ?? "—"}</span>
+{/snippet}
+
+<!-- Notes resolve their variables for reading (#259): a variable is never shown as one. -->
+{#snippet notesCell(sub: Subscription)}
+  <span class="block max-w-64 truncate text-text-muted">{subNoteDisplay(sub) || "—"}</span>
 {/snippet}
 
 {#snippet rowActions(sub: Subscription)}
@@ -414,7 +526,12 @@
 
 {#snippet bulkBar(ids: string[])}
   <span class="text-xs font-medium text-text">{t("table.selected", { count: ids.length })}</span>
-  <form method="POST" action="?/bulkStatus" use:enhance class="flex items-center gap-1.5">
+  <form
+    method="POST"
+    action="?/bulkStatus"
+    use:enhance={busy.clear("bulkStatus")}
+    class="flex items-center gap-1.5"
+  >
     {#each ids as id (id)}
       <input type="hidden" name="ids" value={id} />
     {/each}
@@ -428,9 +545,9 @@
         <option value={status}>{t(`subscriptions.status.${status}`)}</option>
       {/each}
     </select>
-    <button class="rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white hover:opacity-90">
+    <Button size="sm" loading={busy.is("bulkStatus")} disabled={busy.active}>
       {t("subscriptions.bulk.set_status")}
-    </button>
+    </Button>
   </form>
   <button
     type="button"
@@ -479,7 +596,7 @@
         class={inputClass}
         value={prefill?.id ?? ""}
         onchange={(e) =>
-          (prefill = data.templates.find((tpl) => tpl.id === e.currentTarget.value) ?? null)}
+          applyTemplate(data.templates.find((tpl) => tpl.id === e.currentTarget.value) ?? null)}
       >
         <option value="">—</option>
         {#each data.templates as tpl (tpl.id)}
@@ -492,14 +609,18 @@
     <form
       method="POST"
       action={editing ? "?/update" : "?/create"}
-      use:enhance={() =>
-        ({ result, update }) => {
-          if (result.type === "success") showForm = false;
-          void update({ reset: false });
-        }}
+      use:enhance={busy.wrap("save", () => ({ result, update }) => {
+        if (result.type === "success") showForm = false;
+        void update({ reset: false });
+      })}
       class="space-y-4"
     >
       {#if editing}<input type="hidden" name="id" value={editing.id} />{/if}
+      <!-- Which preset this came from: provenance, so a later rename of the standard
+           subscription reaches this agreement's (read-only, preset-owned) name. -->
+      {#if !editing && prefill}
+        <input type="hidden" name="subscription_template_id" value={prefill.id} />
+      {/if}
       <div>
         <label for="sub-name" class="mb-1 block text-sm font-medium text-text"
           >{t("subscriptions.field.name")}</label
@@ -509,11 +630,15 @@
           name="name"
           required
           readonly={!editing && !!prefill}
-          value={editing?.name ?? prefill?.name ?? ""}
+          bind:value={pv.name}
           class="{inputClass} read-only:bg-surface read-only:text-text-muted"
         />
         {#if !editing && prefill}
           <p class="mt-1 text-xs text-text-muted">{t("subscriptions.name_from_template")}</p>
+        {:else if followedTemplate}
+          <p class="mt-1 text-xs text-text-muted">
+            {t("subscriptions.follows_template", { name: followedTemplate.name })}
+          </p>
         {/if}
       </div>
       <div>
@@ -523,7 +648,7 @@
         <Combobox
           items={companyItems}
           name="company_id"
-          value={createdCompanyId || (editing?.company_id ?? "")}
+          bind:value={pv.companyId}
           id="sub-company"
           placeholder={t("subscriptions.field.company")}
           oncreate={(name) => {
@@ -539,8 +664,7 @@
         <Combobox
           items={typeItems}
           name="subscription_type_id"
-          value={createdTypeId ||
-            (editing?.subscription_type_id ?? prefill?.subscription_type_id ?? "")}
+          bind:value={pv.typeId}
           id="sub-type"
           placeholder={t("subscriptions.field.type")}
           oncreate={data.canManageTypes
@@ -568,13 +692,9 @@
           <label for="sub-interval" class="mb-1 block text-sm font-medium text-text"
             >{t("subscriptions.field.interval")}</label
           >
-          <select id="sub-interval" name="interval" class={inputClass}>
+          <select id="sub-interval" name="interval" class={inputClass} bind:value={pv.interval}>
             {#each INTERVALS as interval (interval)}
-              <option
-                value={interval}
-                selected={(editing?.interval ?? prefill?.interval ?? "monthly") === interval}
-                >{t(`subscriptions.interval.${interval}`)}</option
-              >
+              <option value={interval}>{t(`subscriptions.interval.${interval}`)}</option>
             {/each}
           </select>
         </div>
@@ -589,7 +709,8 @@
             min="0"
             step="0.01"
             required={!editing}
-            value={editing?.amount ?? prefill?.amount ?? ""}
+            value={pv.amount}
+            oninput={(e) => (pv.amount = e.currentTarget.value)}
             class={inputClass}
           />
         </div>
@@ -603,7 +724,8 @@
             type="number"
             min="0"
             step="0.5"
-            value={editing?.included_hours ?? prefill?.included_hours ?? ""}
+            value={pv.includedHours}
+            oninput={(e) => (pv.includedHours = e.currentTarget.value)}
             class={inputClass}
           />
         </div>
@@ -611,7 +733,7 @@
           <label for="sub-start" class="mb-1 block text-sm font-medium text-text"
             >{t("subscriptions.field.start_date")}</label
           >
-          <DateInput name="start_date" id="sub-start" required value={editing?.start_date ?? ""} />
+          <DateInput name="start_date" id="sub-start" required bind:value={pv.startDate} />
         </div>
         <!-- Edit only (#223): on create there is nothing to anchor a "next invoice" against —
              the API derives the first cycle boundary (start + one period) on activation. -->
@@ -676,16 +798,27 @@
           id="sub-notes"
           name="notes"
           rows={2}
-          value={editing?.notes ?? prefill?.notes ?? ""}
-          scope={{ companyId: (createdCompanyId || editing?.company_id) ?? null }}
+          value={pv.notes}
+          variables={variableItems}
+          scope={{ companyId: pv.companyId || null }}
+          onchange={(v) => (pv.notes = v)}
         />
+        <p class="mt-1 text-xs text-text-muted">{t("subscriptions.variables.hint")}</p>
+        {#if hasNoteVariables(pv.notes)}
+          <div class="mt-2 rounded-lg border border-border bg-surface p-3">
+            <p class="mb-1 text-xs font-medium text-text-muted">
+              {t("subscriptions.variables.preview")}
+            </p>
+            <Markdown value={previewNotes} />
+          </div>
+        {/if}
       </div>
       {#if data.definitions.length > 0}
         <CustomFieldsForm
           definitions={data.definitions}
           values={editing?.custom ?? {}}
           locale={data.locale}
-          scope={{ companyId: (createdCompanyId || editing?.company_id) ?? null }}
+          scope={{ companyId: pv.companyId || null }}
         />
       {:else}
         <input type="hidden" name="custom" value={JSON.stringify(editing?.custom ?? {})} />
@@ -699,9 +832,7 @@
           class="rounded-lg border border-border px-4 py-2 text-sm text-text"
           onclick={() => (showForm = false)}>{t("common.cancel")}</button
         >
-        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-          >{t("common.save")}</button
-        >
+        <Button loading={busy.is("save")} disabled={busy.active}>{t("common.save")}</Button>
       </div>
     </form>
   {/key}
@@ -721,11 +852,10 @@
     <form
       method="POST"
       action="?/createProject"
-      use:enhance={() =>
-        ({ result, update }) => {
-          if (result.type === "success") qcProjectOpen = false;
-          void update({ reset: false });
-        }}
+      use:enhance={busy.wrap("qcProject", () => ({ result, update }) => {
+        if (result.type === "success") qcProjectOpen = false;
+        void update({ reset: false });
+      })}
       class="space-y-3"
     >
       <div>
@@ -747,6 +877,7 @@
         <Combobox
           items={companyItems}
           name="company_id"
+          value={pv.companyId}
           id="qc-sub-project-company"
           placeholder={t("projects.field.company")}
         />
@@ -760,9 +891,7 @@
           class="rounded-lg border border-border px-4 py-2 text-sm text-text"
           onclick={() => (qcProjectOpen = false)}>{t("common.cancel")}</button
         >
-        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-          >{t("common.create")}</button
-        >
+        <Button loading={busy.is("qcProject")} disabled={busy.active}>{t("common.create")}</Button>
       </div>
     </form>
   {/key}
@@ -775,11 +904,10 @@
     <form
       method="POST"
       action="?/createType"
-      use:enhance={() =>
-        ({ result, update }) => {
-          if (result.type === "success") qcTypeOpen = false;
-          void update({ reset: false });
-        }}
+      use:enhance={busy.wrap("qcType", () => ({ result, update }) => {
+        if (result.type === "success") qcTypeOpen = false;
+        void update({ reset: false });
+      })}
       class="space-y-3"
     >
       {#key qcTypeName}
@@ -799,9 +927,7 @@
           class="rounded-lg border border-border px-4 py-2 text-sm text-text"
           onclick={() => (qcTypeOpen = false)}>{t("common.cancel")}</button
         >
-        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-          >{t("common.create")}</button
-        >
+        <Button loading={busy.is("qcType")} disabled={busy.active}>{t("common.create")}</Button>
       </div>
     </form>
   {/key}
@@ -817,6 +943,9 @@
   <input type="hidden" name="included_hours" value={tplDraft?.included_hours ?? ""} />
   <input type="hidden" name="notice_period_days" value={tplDraft?.notice_period_days ?? ""} />
   <input type="hidden" name="notes" value={tplDraft?.notes ?? ""} />
+  <!-- This agreement becomes an instance of the preset it just defined, so renaming the
+       standard subscription later renames it along with the rest. -->
+  <input type="hidden" name="link_subscription_id" value={tplDraft?.id ?? ""} />
 </form>
 
 <ConfirmDialog

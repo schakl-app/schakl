@@ -2,9 +2,13 @@
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
+  import Button from "$lib/core/ui/Button.svelte";
 
   let { form } = $props();
+
+  const busy = new InFlight();
 
   const brand = $derived(page.data.theme?.brandName || "");
 </script>
@@ -32,7 +36,7 @@
         </a>
       </p>
     {:else}
-      <form method="POST" use:enhance class="space-y-4">
+      <form method="POST" use:enhance={busy.wrap()} class="space-y-4">
         <div>
           <label for="email" class="mb-1 block text-sm font-medium text-text">
             {t("auth.email")}
@@ -49,12 +53,9 @@
         {#if form?.error}
           <p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
         {/if}
-        <button
-          type="submit"
-          class="w-full rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
-        >
+        <Button type="submit" class="w-full" loading={busy.active}>
           {t("auth.forgot_action")}
-        </button>
+        </Button>
         <p class="text-center">
           <a href="/login" class="text-sm text-text-muted hover:text-brand">
             {t("auth.back_to_login")}

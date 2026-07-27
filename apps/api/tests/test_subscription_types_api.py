@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime
 
 from tests.conftest import auth_cookie, make_tenant
@@ -365,3 +366,185 @@ async def test_member_without_grants_cannot_manage_types(client_for) -> None:
             headers=headers,
         )
         assert denied_tpl.status_code == 403
+
+
+async def test_template_rename_follows_the_subscriptions_it_created(client_for) -> None:
+    """Renaming a standard subscription renames the agreements made from it.
+
+    The create form takes the name *from* the preset (read-only there), so the preset's name
+    is literally their label. What must not move: an agreement someone deliberately renamed,
+    and one that merely happens to share the name without coming from the preset.
+    """
+    t = await make_tenant("subtpl-rename")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = await _company(c, headers)
+        template = (
+            await c.post(
+                "/api/v1/subscriptions/templates",
+                json={"name": "Hosting Basis", "amount": "25.00"},
+                headers=headers,
+            )
+        ).json()
+
+        follower, renamed_by_hand = [
+            (
+                await c.post(
+                    "/api/v1/subscriptions",
+                    json=_subscription_body(
+                        company["id"],
+                        name="Hosting Basis",
+                        subscription_template_id=template["id"],
+                    ),
+                    headers=headers,
+                )
+            ).json()
+            for _ in range(2)
+        ]
+        assert follower["subscription_template_id"] == template["id"]
+
+        # A deliberate per-client wording opts that agreement out for good.
+        await c.patch(
+            f"/api/v1/subscriptions/{renamed_by_hand['id']}",
+            json={"name": "Hosting Basis extra IP"},
+            headers=headers,
+        )
+        # Same name, but not made from the preset: coincidence is not provenance.
+        namesake = (
+            await c.post(
+                "/api/v1/subscriptions",
+                json=_subscription_body(company["id"], name="Hosting Basis"),
+                headers=headers,
+            )
+        ).json()
+
+        # A save that does not touch the name moves nothing.
+        priced = await c.patch(
+            f"/api/v1/subscriptions/templates/{template['id']}",
+            json={"amount": "30.00"},
+            headers=headers,
+        )
+        assert priced.status_code == 200, priced.text
+        assert priced.json()["renamed_subscriptions"] == 0
+
+        renamed = await c.patch(
+            f"/api/v1/subscriptions/templates/{template['id']}",
+            json={"name": "Hosting Start"},
+            headers=headers,
+        )
+        assert renamed.status_code == 200, renamed.text
+        assert renamed.json()["renamed_subscriptions"] == 1
+
+        async def name_of(subscription: dict) -> str:
+            row = await c.get(f"/api/v1/subscriptions/{subscription['id']}", headers=headers)
+            return row.json()["name"]
+
+        assert await name_of(follower) == "Hosting Start"
+        assert await name_of(renamed_by_hand) == "Hosting Basis extra IP"
+        assert await name_of(namesake) == "Hosting Basis"
+
+        # The bulk change is never invisible: it lands on the agreement's own trail (§16).
+        trail = (
+            await c.get(
+                "/api/v1/activity",
+                params={"entity_type": "subscription", "entity_id": follower["id"]},
+                headers=headers,
+            )
+        ).json()
+        entry = next(row for row in trail if row["action"] == "renamed_with_template")
+        assert entry["payload"] == {"from": "Hosting Basis", "to": "Hosting Start"}
+
+        # Deleting the preset unlinks; the agreement keeps the name it was left with.
+        await c.delete(f"/api/v1/subscriptions/templates/{template['id']}", headers=headers)
+        survivor = (
+            await c.get(f"/api/v1/subscriptions/{follower['id']}", headers=headers)
+        ).json()
+        assert survivor["subscription_template_id"] is None
+        assert survivor["name"] == "Hosting Start"
+
+
+async def test_subscription_cannot_claim_another_tenants_template(client_for) -> None:
+    """A foreign preset id is a validation error, not a stranded FK — otherwise another org's
+    rename would reach in here later (Golden Rule 1)."""
+    a = await make_tenant("subtpl-iso-a")
+    b = await make_tenant("subtpl-iso-b")
+    headers_a = await auth_cookie(a.user)
+    headers_b = await auth_cookie(b.user)
+
+    async with client_for(a.host) as ca:
+        template_a = (
+            await ca.post(
+                "/api/v1/subscriptions/templates",
+                json={"name": "Alleen van A", "amount": "10.00"},
+                headers=headers_a,
+            )
+        ).json()
+
+    async with client_for(b.host) as cb:
+        company_b = await _company(cb, headers_b, name="B Klant")
+        crossed = await cb.post(
+            "/api/v1/subscriptions",
+            json=_subscription_body(
+                company_b["id"], subscription_template_id=template_a["id"]
+            ),
+            headers=headers_b,
+        )
+        assert crossed.status_code == 400
+
+
+async def test_an_agreement_can_be_pointed_at_a_preset_after_the_fact(client_for) -> None:
+    """"Opslaan als standaardabonnement" makes an agreement the preset, then points that same
+    agreement at it — so a later rename of either keeps the two in step. Explicit ``null``
+    stops it following; a foreign preset is refused like on create."""
+    t = await make_tenant("subtpl-relink")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = await _company(c, headers)
+        sub = (
+            await c.post(
+                "/api/v1/subscriptions",
+                json=_subscription_body(company["id"], name="Onderhoud Basis"),
+                headers=headers,
+            )
+        ).json()
+        assert sub["subscription_template_id"] is None
+        template = (
+            await c.post(
+                "/api/v1/subscriptions/templates",
+                json={"name": "Onderhoud Basis", "amount": "25.00"},
+                headers=headers,
+            )
+        ).json()
+
+        linked = await c.patch(
+            f"/api/v1/subscriptions/{sub['id']}",
+            json={"subscription_template_id": template["id"]},
+            headers=headers,
+        )
+        assert linked.status_code == 200, linked.text
+        assert linked.json()["subscription_template_id"] == template["id"]
+
+        # It now follows the preset like any agreement created from it.
+        renamed = await c.patch(
+            f"/api/v1/subscriptions/templates/{template['id']}",
+            json={"name": "Onderhoud Compleet"},
+            headers=headers,
+        )
+        assert renamed.json()["renamed_subscriptions"] == 1
+        after = (await c.get(f"/api/v1/subscriptions/{sub['id']}", headers=headers)).json()
+        assert after["name"] == "Onderhoud Compleet"
+
+        cleared = await c.patch(
+            f"/api/v1/subscriptions/{sub['id']}",
+            json={"subscription_template_id": None},
+            headers=headers,
+        )
+        assert cleared.status_code == 200, cleared.text
+        assert cleared.json()["subscription_template_id"] is None
+
+        stranger = await c.patch(
+            f"/api/v1/subscriptions/{sub['id']}",
+            json={"subscription_template_id": str(uuid.uuid4())},
+            headers=headers,
+        )
+        assert stranger.status_code == 400

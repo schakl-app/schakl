@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import uuid
 from calendar import monthrange
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 
@@ -31,6 +32,7 @@ from app.modules.leave import holidays
 from app.modules.leave import schedule as sched
 from app.modules.leave.models import (
     EmploymentContract,
+    LeaveCalendarDisplay,
     LeaveEntitlement,
     LeaveHoliday,
     LeaveProfile,
@@ -43,13 +45,17 @@ from app.modules.leave.models import (
 from app.modules.leave.schemas import (
     EmploymentContractCreate,
     EmploymentContractUpdate,
+    FreeTimeDay,
+    FreeTimeOverview,
     HolidayImport,
     HolidayImportResult,
     LeaveBalance,
     LeaveDayHours,
     LeaveEntitlementUpsert,
+    LeaveGroupBalance,
     LeaveHolidayCreate,
     LeaveHolidayUpdate,
+    LeavePotBreakdown,
     LeavePreviewResult,
     LeaveProfileUpdate,
     LeaveRecurringDayCreate,
@@ -77,6 +83,10 @@ DEFAULT_LEAVE_TYPES: list[dict] = [
         "requires_approval": True,
         "default_weeks": Decimal("4"),
         "carry_over_months": 6,
+        # Statutory + extra present as one "Vakantieverlof" balance (#265): the two pots keep
+        # their differing expiry (6 vs 60 months) so the legal split survives, but the employee
+        # sees one number and a request spends the soonest-to-expire pot (statutory) first.
+        "balance_group": "vacation",
         "position": 10,
     },
     {
@@ -88,19 +98,26 @@ DEFAULT_LEAVE_TYPES: list[dict] = [
         "requires_approval": True,
         "default_weeks": Decimal("1"),
         "carry_over_months": 60,
+        "balance_group": "vacation",
         "position": 20,
     },
     {
-        # Roostervrije tijd / ADV (#65): a movable free day drawn from the gap between the
-        # scheduled and the contract week. Auto-approve (the employee moves it themselves),
-        # balance-tracked, no carry-over by default (tenant-editable — never hardcoded law, §14).
+        # Free time / vrije tijd (#65, renamed #282): a movable free day drawn from the shortfall
+        # between the employee's contract and the full-time norm. Auto-approve (the employee moves
+        # it themselves), balance-tracked, no carry-over by default (tenant-editable — never
+        # hardcoded law, §14). The key stays ``roostervrij`` (internal identifier — #282 kept it to
+        # contain the rename); only the user-facing label became "Free time".
         "key": "roostervrij",
-        "label_i18n": {"nl": "Roostervrije tijd (ADV)", "en": "Rostered days off (ADV)"},
+        "label_i18n": {"nl": "Vrije tijd", "en": "Free time"},
         "color": "cyan",
         "paid": True,
         "tracks_balance": True,
         "requires_approval": False,
         "accrues_schedule_gap": True,
+        # Drawn as an hour block, not a full-day bar (#270): a free-time day is time off
+        # *within* the normal schedule, and reading it as a week-of-vacation-shaped bar is what
+        # this default corrects. Tenant-editable like every other property of a type.
+        "calendar_display": LeaveCalendarDisplay.TIMED.value,
         "default_weeks": None,
         "carry_over_months": 0,
         "position": 25,
@@ -141,6 +158,19 @@ DEFAULT_LEAVE_TYPES: list[dict] = [
 ]
 
 _OCCUPYING = (LeaveRequestStatus.PENDING.value, LeaveRequestStatus.APPROVED.value)
+
+#: Combined labels for known balance groups (#265). Seed/label data like ``DEFAULT_LEAVE_TYPES``
+#: itself (which hardcodes "Wettelijke vakantie" etc.), keyed by group slug — so a tenant renaming
+#: the underlying types still reads one "Vakantieverlof" balance. The canonical UI copy is the web
+#: message key ``leave.balance.vacation_group``; this is the API-side mirror non-web clients read.
+#: An unknown tenant group falls back to its soonest-expiring type's own ``label_i18n``.
+_GROUP_LABELS: dict[str, dict[str, str]] = {
+    "vacation": {"nl": "Vakantieverlof", "en": "Vacation"},
+}
+
+#: A still-valid carried pot counts as "expiring soon" when it lapses within this many months of
+#: org-local today — the "use it before it's gone" nudge on the combined balance (#265).
+_EXPIRING_SOON_MONTHS = 6
 
 #: "Not looked up yet", distinct from "looked up, and there is no row".
 _UNSET = object()
@@ -257,6 +287,14 @@ class LeaveService:
                 self.settings.scoped_select().limit(1)
             )
         return self._settings_row
+
+    async def full_time_norm(self) -> Decimal:
+        """The org's full-time week — the figure a contract's free time is the shortfall from.
+
+        The org default schedule's own week (today 40 h), so a tenant whose full week is 36 h
+        changes one setting rather than every contract. Named because three surfaces now quote
+        it and none of them should re-derive it."""
+        return sched.week_hours(await self.default_schedule())
 
     async def default_schedule(self) -> sched.WorkSchedule:
         row = await self.settings_row()
@@ -449,13 +487,79 @@ class LeaveService:
         stored = profile.hours_per_week if profile else sched.week_hours(default)
         return default, stored, True
 
-    async def profile_for(self, user_id: uuid.UUID) -> tuple[sched.WorkSchedule, Decimal, bool]:
-        """``(effective schedule, contract hours, inherited)`` for one employee."""
+    async def profile_for(
+        self, user_id: uuid.UUID, on: date | None = None
+    ) -> tuple[sched.WorkSchedule, Decimal, bool]:
+        """``(effective schedule, contract hours, inherited)`` for one employee.
+
+        ``on`` asks *which week applied on that date*: the working week lives on the employment
+        contract, so a date covered by a contract carrying one resolves to it. Omit ``on`` for
+        "the current arrangement" (settings screens, the dashboard widget) — it skips the
+        contract lookup entirely and answers from the profile, exactly as before.
+        """
+        if on is not None:
+            week = await self._contract_schedule_on(user_id, on)
+            if week is not None:
+                return week, sched.week_hours(week), False
         return self._effective(await self._profile(user_id), await self.default_schedule())
 
-    async def effective_schedule(self, user_id: uuid.UUID) -> sched.WorkSchedule:
-        """The week ``compute_hours`` measures against: this employee's own, else the org's."""
-        schedule, _, _ = await self.profile_for(user_id)
+    async def _contract_schedule_on(
+        self, user_id: uuid.UUID, day: date
+    ) -> sched.WorkSchedule | None:
+        """The week the contract covering ``day`` carries, or ``None`` to fall through.
+
+        ``None`` covers both "no contract that day" and "a contract that records no week of its
+        own" — the fallback chain is the same either way, so the caller needs no third case.
+        """
+        for contract in await self._user_contracts(user_id):
+            if contract.start_date <= day <= (contract.end_date or date.max):
+                return sched.parse(contract.schedule)
+        return None
+
+    @staticmethod
+    def _resolver_from(
+        periods: Sequence[tuple[date, date | None, sched.WorkSchedule | None]],
+        fallback: sched.WorkSchedule,
+    ) -> Callable[[date], sched.WorkSchedule]:
+        """Build a ``date → week`` lookup over already-loaded contract periods.
+
+        Split out from :meth:`schedule_resolver` so the team feed, which loads every contract in
+        one query, resolves through exactly the same rule instead of a second copy of it.
+        """
+
+        def resolve(day: date) -> sched.WorkSchedule:
+            for start, end, week in periods:
+                if week is not None and start <= day <= (end or date.max):
+                    return week
+            return fallback
+
+        return resolve
+
+    async def schedule_resolver(
+        self, user_id: uuid.UUID
+    ) -> Callable[[date], sched.WorkSchedule]:
+        """A ``date → week`` resolver built from **one** contract read and one profile read.
+
+        Pricing a span walks it day by day, and a span can cross a contract boundary (someone who
+        went from four days to five on 1 March). Resolving per day through ``profile_for`` would be
+        two queries per day; this pays for the lookup once and answers from memory
+        (docs/PERFORMANCE.md).
+        """
+        periods = [
+            (c.start_date, c.end_date, sched.parse(c.schedule))
+            for c in await self._user_contracts(user_id)
+        ]
+        fallback, _, _ = self._effective(
+            await self._profile(user_id), await self.default_schedule()
+        )
+        return self._resolver_from(periods, fallback)
+
+    async def effective_schedule(
+        self, user_id: uuid.UUID, on: date | None = None
+    ) -> sched.WorkSchedule:
+        """The week ``compute_hours`` measures against: the contract covering ``on``, else this
+        employee's own, else the org's."""
+        schedule, _, _ = await self.profile_for(user_id, on)
         return schedule
 
     async def hours_per_week(self, user_id: uuid.UUID) -> Decimal:
@@ -486,6 +590,12 @@ class LeaveService:
             values["hours_per_week"] = sched.week_hours(
                 data.schedule or await self.default_schedule()
             )
+            # The week now lives on the contract, so writing only the profile would save into a
+            # field the resolver never reaches for anyone who has one: "save" would silently do
+            # nothing. Saving *the current week* means saving it onto the arrangement in force,
+            # so it lands on every contract still running. Ended contracts keep their own week —
+            # that history is the whole point of moving it here.
+            await self._apply_schedule_to_current_contracts(user_id, values["schedule"])
         elif data.hours_per_week is not None and (profile is None or profile.schedule is None):
             # Release-N compatibility: an older `web` posts only hours_per_week. Honour it while
             # the employee has no schedule; once they do, the schedule is the source of truth.
@@ -497,6 +607,22 @@ class LeaveService:
         if not values:
             return profile
         return await self.profiles.update(profile, **values)
+
+    async def _apply_schedule_to_current_contracts(
+        self, user_id: uuid.UUID, schedule: dict | None
+    ) -> None:
+        """Push a saved week onto every contract that has not ended yet.
+
+        "Not ended" is ``end_date`` in the future or absent — a contract that ran out yesterday
+        describes a period that is over, and rewriting its week would rewrite history. A future
+        contract is included: it has not started, so it has no history to protect and the week
+        just saved is the best answer anyone has for it.
+        """
+        today = await self._org_today()
+        for contract in await self._user_contracts(user_id):
+            if contract.end_date is not None and contract.end_date < today:
+                continue
+            await self.contracts.update(contract, schedule=schedule)
 
     async def _member_or_404(self, user_id: uuid.UUID) -> None:
         membership = await self.ctx.session.scalar(
@@ -589,8 +715,12 @@ class LeaveService:
         )
 
     async def scheduled_week(self, user_id: uuid.UUID, contract: EmploymentContract) -> Decimal:
-        """Scheduled hours the ADV gap is measured against: the contract's own schedule if it
-        carries one, else the employee's profile schedule, else the org default."""
+        """The rostered hours of this contract's own week: its ``schedule`` when it carries one,
+        else the employee's profile schedule (legacy), else the org default.
+
+        Since #282 this feeds no balance — free time accrues from the norm shortfall, not from
+        ``scheduled − contract`` — so it is the number the contract list renders and the figure
+        the wizard reconciles against the contract hours."""
         own = sched.parse(contract.schedule)
         if own is not None:
             return sched.week_hours(own)
@@ -633,8 +763,10 @@ class LeaveService:
         values["schedule"] = sched.dump(data.schedule) if data.schedule else None
         contract = await self.contracts.create(**values)
         # #105: the contract and the entitlements it earns commit atomically — no separate,
-        # easily-forgotten "Genereer" step before the new hire has a balance.
-        await self._seed_after_contract_change(contract.user_id)
+        # easily-forgotten "Genereer" step before the new hire has a balance. A new contract
+        # always changes coverage (a raise's second period folds into the year), so always
+        # recompute (#264).
+        await self._recompute_generated_entitlements(contract.user_id)
         return contract
 
     async def update_contract(
@@ -652,14 +784,27 @@ class LeaveService:
             contract.user_id, start, end, exclude_id=contract.id
         )
         updated = await self.contracts.update(contract, **values)
-        # A corrected period can pull a year into scope that had nothing for this user yet.
-        # Missing rows only — never a recalculation of what was already granted (§14).
-        await self._seed_after_contract_change(updated.user_id)
+        # A corrected/terminated period re-derives the generated pots for the current + future
+        # years it touches (#264): a shorter span prorates down, a raise folds in. Only when a
+        # field that actually feeds the entitlement moved — a note-only edit changes no balance,
+        # so it shouldn't churn the rows.
+        if data.model_fields_set & {
+            "start_date",
+            "end_date",
+            "contract_hours_per_week",
+            "free_time_hours_per_week",
+            "schedule",
+        }:
+            await self._recompute_generated_entitlements(updated.user_id)
         return updated
 
     async def delete_contract(self, contract_id: uuid.UUID) -> None:
         self.ctx.require("leave.profile.manage")
-        await self.contracts.delete(await self.contracts.get_or_404(contract_id))
+        contract = await self.contracts.get_or_404(contract_id)
+        user_id = contract.user_id
+        await self.contracts.delete(contract)
+        # A removed contract's auto pots are now derived from a period that no longer exists (#264).
+        await self._recompute_generated_entitlements(user_id)
 
     def _validate_contract_dates(self, start: date, end: date | None) -> None:
         if end is not None and end < start:
@@ -700,19 +845,40 @@ class LeaveService:
         return (end - start).days + 1 if end >= start else 0
 
     @staticmethod
+    def _contract_free_time(contract: EmploymentContract, full_time_norm: Decimal) -> Decimal:
+        """Free time (vrije tijd) this contract accrues per week.
+
+        ``free_time_hours_per_week`` when the tenant recorded one, else the #282 rule
+        ``max(0, norm − contract hours)``. The stored value wins even when it is ``0``: "the free
+        time is already in this person's roster" is a deliberate answer, and it is the whole
+        reason the column exists — deriving it would hand a 32-h part-timer who already has
+        Friday off a second pot of ~52 days (see the model docstring).
+        """
+        if contract.free_time_hours_per_week is not None:
+            return max(Decimal(0), contract.free_time_hours_per_week)
+        return max(Decimal(0), full_time_norm - contract.contract_hours_per_week)
+
+    @staticmethod
     def _round_half_day(hours: Decimal, avg_day_hours: Decimal) -> Decimal:
-        """ADV accrues in awkward totals (104,3 h); round to the nearest bookable half day."""
+        """Free time accrues in awkward totals (104,3 h); round to the nearest bookable half day."""
         half = avg_day_hours / 2
         if half <= 0:
             return hours.quantize(Decimal("0.01"))
         steps = (hours / half).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
         return (steps * half).quantize(Decimal("0.01"))
 
-    # --- recurring rostered free days / ADV (#107) --------------------------------- #
+    # --- recurring free days / free time (#107) ------------------------------------ #
     async def list_recurring(
         self, *, user_id: uuid.UUID | None = None
-    ) -> Sequence[LeaveRecurringDay]:
-        """Patterns: a member sees their own; ``leave.profile.manage`` sees anyone's/all."""
+    ) -> list[tuple[LeaveRecurringDay, int]]:
+        """Patterns + how many days each still has standing ahead of today.
+
+        A member sees their own; ``leave.profile.manage`` sees anyone's/all. The count travels
+        with the row because deleting a pattern is a decision about *those days*: the pattern is
+        a rule, the days it laid down are real leave someone planned around, and "delete" has to
+        say how many are at stake rather than leaving them stranded on the calendar. One grouped
+        query for the whole list, never one per pattern (docs/PERFORMANCE.md).
+        """
         if not self.ctx.can("leave.profile.manage"):
             if user_id is not None and user_id != self.ctx.user.id:
                 raise AppError("forbidden", "errors.forbidden", status_code=403)
@@ -722,7 +888,49 @@ class LeaveService:
         )
         if user_id is not None:
             stmt = stmt.where(LeaveRecurringDay.user_id == user_id)
-        return (await self.ctx.session.execute(stmt)).scalars().all()
+        patterns = list((await self.ctx.session.execute(stmt)).scalars().all())
+        if not patterns:
+            return []
+
+        today = await self._org_today()
+        counts = dict(
+            (
+                await self.ctx.session.execute(
+                    select(LeaveRequest.recurring_day_id, func.count())
+                    .where(
+                        LeaveRequest.org_id == self.ctx.org.id,
+                        LeaveRequest.recurring_day_id.in_([p.id for p in patterns]),
+                        LeaveRequest.status.in_(_OCCUPYING),
+                        LeaveRequest.start_date >= today,
+                    )
+                    .group_by(LeaveRequest.recurring_day_id)
+                )
+            ).all()
+        )
+        return [(p, counts.get(p.id, 0)) for p in patterns]
+
+    async def _upcoming_pattern_days(self, pattern_id: uuid.UUID) -> list[LeaveRequest]:
+        """This pattern's still-standing days from today on, soonest first.
+
+        Today's own day counts as upcoming: it has not been worked yet, and a manager removing a
+        pattern this morning means today too.
+        """
+        today = await self._org_today()
+        return list(
+            (
+                await self.ctx.session.execute(
+                    self.requests.scoped_select()
+                    .where(
+                        LeaveRequest.recurring_day_id == pattern_id,
+                        LeaveRequest.status.in_(_OCCUPYING),
+                        LeaveRequest.start_date >= today,
+                    )
+                    .order_by(LeaveRequest.start_date.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
 
     def _ensure_may_manage_pattern(self, user_id: uuid.UUID, leave_type: LeaveType) -> None:
         """Who may shape a pattern, and for which type.
@@ -730,7 +938,7 @@ class LeaveService:
         ``leave.profile.manage`` may plan any active type for anyone — their act is the
         approval, as everywhere. An employee may plan their **own** pattern, but only for a
         **balance-tracked self-service type** (``requires_approval = false`` and
-        ``tracks_balance``, i.e. ADV): generated days are auto-approved, so an
+        ``tracks_balance``, i.e. free time): generated days are auto-approved, so an
         approval-requiring type would be a batch bypass of the approval flow — and a
         trackless one ("sick") has no pot to bound it, besides a *recurring sick day* not
         being a thing anyone plans. The balance cap bounds what self-service can grant.
@@ -768,6 +976,10 @@ class LeaveService:
         # for a TIME column — the ORM needs the actual time objects.
         values["start_time"] = data.start_time
         values["end_time"] = data.end_time
+        if data.days_per_year:
+            # The nearest equivalent cadence, so a rolled-back image (which reads only
+            # ``interval_weeks``) keeps a comparable rhythm — see the migration.
+            values["interval_weeks"] = self._interval_for(data.days_per_year)
         pattern = await self.recurring.create(**values)
         created = await self.generate_recurring_days(pattern_id=pattern.id)
         return pattern, created
@@ -782,6 +994,8 @@ class LeaveService:
             values["start_time"] = data.start_time
         if "end_time" in values:
             values["end_time"] = data.end_time
+        if values.get("days_per_year"):
+            values["interval_weeks"] = self._interval_for(values["days_per_year"])
         leave_type = await self.types.get_or_404(
             values.get("leave_type_id", pattern.leave_type_id)
         )
@@ -800,13 +1014,35 @@ class LeaveService:
             created = await self.generate_recurring_days(pattern_id=pattern.id)
         return pattern, created
 
-    async def delete_recurring(self, recurring_id: uuid.UUID) -> None:
-        """Delete the pattern; days already placed stay (FK is SET NULL) — they are real,
-        individually cancellable leave the employee may have planned around."""
+    async def delete_recurring(
+        self, recurring_id: uuid.UUID, *, withdraw_days: bool = False
+    ) -> int:
+        """Delete the pattern, and optionally take back the days it placed. Returns how many.
+
+        By default the days stay (the FK is ``SET NULL``): they are real, individually cancellable
+        leave the employee planned around, and a rule being deleted is not a reason to wipe
+        someone's calendar. But leaving the caller *no* way to clear them made "delete" a job half
+        done — a year of free Fridays with nothing left pointing at them and no bulk way out. So
+        the choice is offered on the delete itself, and answered explicitly by whoever is deleting.
+
+        ``withdraw_days`` cancels the still-standing days from today on, through the ordinary
+        :meth:`cancel` path, so the past stays locked, the permission rules hold and the Google
+        mirror is told. The past is never touched: those days were taken. A day the caller may not
+        cancel is skipped rather than aborting the delete — the pattern still goes.
+        """
         pattern = await self._owned_recurring_or_404(recurring_id)
         leave_type = await self.types.get_or_404(pattern.leave_type_id)
         self._ensure_may_manage_pattern(pattern.user_id, leave_type)
+        withdrawn = 0
+        if withdraw_days:
+            for request in await self._upcoming_pattern_days(pattern.id):
+                try:
+                    await self.cancel(request.id)
+                except AppError:
+                    continue
+                withdrawn += 1
         await self.recurring.delete(pattern)
+        return withdrawn
 
     @staticmethod
     def _add_months(day: date, months: int) -> date:
@@ -815,6 +1051,92 @@ class LeaveService:
         month = month % 12 + 1
         last_day = monthrange(year, month)[1]
         return date(year, month, min(day.day, last_day))
+
+    @staticmethod
+    def _weekday_dates(weekday: int, start: date, end: date) -> list[date]:
+        """Every ``weekday`` in ``[start, end]``, in order (empty when the range holds none)."""
+        day = start + timedelta(days=(weekday - start.weekday()) % 7)
+        out: list[date] = []
+        while day <= end:
+            out.append(day)
+            day += timedelta(weeks=1)
+        return out
+
+    @staticmethod
+    def _round_half_up(value: Decimal) -> int:
+        """Round half **up**, not to even. ``round()`` turns 2,5 days into 2, which reads as an
+        off-by-one to everyone who did the arithmetic themselves."""
+        return int(value.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+    @classmethod
+    def _interval_for(cls, days_per_year: int) -> int:
+        """The cadence a spread pattern most nearly is, clamped to the schema's 1..8 weeks.
+
+        Written alongside ``days_per_year`` purely so a **rolled-back** image — which knows only
+        ``interval_weeks`` — keeps a comparable rhythm instead of falling to the column default of
+        every week (see the migration).
+        """
+        if days_per_year <= 0:
+            return 1
+        return max(1, min(8, cls._round_half_up(Decimal(52) / Decimal(days_per_year))))
+
+    def _occurrence_plan(
+        self, pattern: LeaveRecurringDay, today: date, horizon: date
+    ) -> list[tuple[date, int | None]]:
+        """The dates to attempt, each with the running per-year cap that applies after it.
+
+        Two shapes, because two different things are known (see the model docstring):
+
+        * **Interval** (``days_per_year`` is ``NULL``) — every ``interval_weeks`` from the anchor.
+          The cap is ``None``: the cadence *is* the answer, so every occurrence is attempted.
+        * **Spread** — every candidate weekday is offered, but a candidate may only be used while
+          the year's placed count is still under ``ceil((i + 1) × target / total)``. That is what
+          makes the days come out evenly *and* self-correcting: a candidate skipped for a holiday
+          consumes no quota, so the next week immediately becomes eligible and the year still ends
+          up with the number of days the pot bought. A fixed cadence cannot recover a lost day.
+
+        Never backfills either way — the first attempted date is on or after today.
+        """
+        weekday = pattern.anchor_date.weekday()
+        start = max(pattern.anchor_date, today)
+        if pattern.days_per_year is None:
+            step = timedelta(weeks=pattern.interval_weeks)
+            occurrence = pattern.anchor_date
+            if occurrence < today:
+                behind = (today - occurrence).days
+                occurrence += -(-behind // (pattern.interval_weeks * 7)) * step  # ceil
+            plan: list[tuple[date, int | None]] = []
+            while occurrence <= horizon:
+                plan.append((occurrence, None))
+                occurrence += step
+            return plan
+
+        plan = []
+        for year in range(start.year, horizon.year + 1):
+            candidates = self._weekday_dates(
+                weekday,
+                max(start, date(year, 1, 1)),
+                min(horizon, date(year, 12, 31)),
+            )
+            if not candidates:
+                continue
+            # Prorate to the part of the year actually in range: a pattern started in July buys
+            # half the days, which is also what the entitlement prorated to.
+            full_year = len(
+                self._weekday_dates(weekday, date(year, 1, 1), date(year, 12, 31))
+            )
+            target = self._round_half_up(
+                Decimal(pattern.days_per_year) * Decimal(len(candidates)) / Decimal(full_year)
+            )
+            if target <= 0:
+                continue
+            total = len(candidates)
+            for index, day in enumerate(candidates):
+                # Ceiling, so the **first** free day is the anchor the user picked rather than
+                # one cadence later.
+                cap = -(-(index + 1) * target // total)
+                plan.append((day, cap))
+        return plan
 
     async def _recurring_horizon(self, user_id: uuid.UUID, today: date) -> date:
         """How far this employee's free days are generated ahead (#107).
@@ -843,9 +1165,13 @@ class LeaveService:
         (never queued elsewhere) when the day is worth no hours (holiday, not scheduled), when
         another occupying request already covers it, or when a balance-tracked type's pot has
         less than the day costs — the pattern must not generate more free hours than the
-        scheduled−contract gap earned (§14). A skipped-for-balance occurrence is retried on
+        contract earned (§14). A skipped-for-balance occurrence is retried on
         the next run, so a far-out day materializes the moment its year's pot is seeded.
         Runs from pattern saves and the monthly cron.
+
+        Which dates are attempted is :meth:`_occurrence_plan`'s business — a fixed cadence, or a
+        year's worth of days spread evenly. Everything below is identical either way: the plan
+        only decides *when* to try, never whether a day may be taken.
         """
         stmt = self.recurring.scoped_select().where(LeaveRecurringDay.active.is_(True))
         if pattern_id is not None:
@@ -863,22 +1189,20 @@ class LeaveService:
         for pattern in patterns:
             horizon = await self._recurring_horizon(pattern.user_id, today)
             leave_type = await self.types.get_or_404(pattern.leave_type_id)
+            # One `date → week` lookup for the whole pattern: this loop prices a year of
+            # occurrences, and rebuilding the resolver per day would be two queries a day
+            # (docs/PERFORMANCE.md).
+            schedule_on = await self.schedule_resolver(pattern.user_id)
             # Every occurrence shares the anchor's weekday, so the window snapshot is one
             # resolution per pattern, not one per day.
             resolved_start, resolved_end = self._resolve_bounds(
-                await self.effective_schedule(pattern.user_id),
+                schedule_on(pattern.anchor_date),
                 pattern.anchor_date,
                 pattern.start_time,
                 pattern.anchor_date,
                 pattern.end_time,
             )
-            step = timedelta(weeks=pattern.interval_weeks)
-            occurrence = pattern.anchor_date
-            # Never backfill: the first generated day is the first occurrence from today on.
-            if occurrence < today:
-                behind = (today - occurrence).days
-                cycles = -(-behind // (pattern.interval_weeks * 7))  # ceil
-                occurrence += cycles * step
+            plan = self._occurrence_plan(pattern, today, horizon)
 
             spent = set(
                 (
@@ -895,14 +1219,23 @@ class LeaveService:
             # One balance read per (year) the horizon touches, decremented locally as days
             # land — not one query per occurrence (docs/PERFORMANCE.md).
             remaining_by_year: dict[int, Decimal] = {}
+            placed_by_year: dict[int, int] = {}
 
-            while occurrence <= horizon:
-                day = occurrence
-                occurrence += step
+            for day, cap in plan:
                 if day in spent:
+                    # A spent occurrence still counts against the year's cap. Without this, a
+                    # second run would read the quota as unfilled and place the same days again.
+                    placed_by_year[day.year] = placed_by_year.get(day.year, 0) + 1
                     continue
+                if cap is not None and placed_by_year.get(day.year, 0) >= cap:
+                    continue  # spread mode: this year is far enough ahead already
                 hours, _ = await self.compute_hours(
-                    pattern.user_id, day, pattern.start_time, day, pattern.end_time
+                    pattern.user_id,
+                    day,
+                    pattern.start_time,
+                    day,
+                    pattern.end_time,
+                    resolver=schedule_on,
                 )
                 if hours <= 0:
                     continue  # holiday or not a scheduled working day — meaningless free day
@@ -951,22 +1284,39 @@ class LeaveService:
                     recurring_day_id=pattern.id,
                     recurring_date=day,
                 )
+                placed_by_year[day.year] = placed_by_year.get(day.year, 0) + 1
                 created += 1
         return created
 
     # --- entitlements ------------------------------------------------------------ #
-    async def _seed_after_contract_change(self, user_id: uuid.UUID) -> None:
-        """Fill this user's missing entitlements after a contract create/correct (#105).
+    async def _recompute_generated_entitlements(self, user_id: uuid.UUID) -> None:
+        """Re-derive this user's **generated** entitlements after a contract create/correct/
+        terminate (#105, #264).
 
-        Which years: the current org-local year, plus any **future** year the org has already
-        generated for other staff — a hire in December also gets next year when next year
-        already exists for everyone else. Past years are never backfilled, and nothing existing
-        is touched. Runs in the contract write's own transaction and is deliberately not gated
-        on ``leave.entitlement.write``: a profile-manager adding a contract was already allowed
-        to make this write, and the entitlements are its consequence.
+        The pre-#264 version only *filled missing* years, so a year already seeded from an
+        earlier contract stayed frozen: terminating an open-ended contract mid-year left the
+        full-year pot in place, and a raise via "terminate old + add new" was ignored for the
+        rest of the year. This wipes the auto rows for every affected year and recomputes them
+        from the current contracts — so a shorter period prorates down, and a period that no
+        longer covers a year loses its pot entirely.
+
+        Which years: the current org-local year, any **future** year the org has already
+        generated for other staff (the #105 December-hire policy), **and** every current/future
+        year this user already holds a generated row for — that last set is what lets a
+        termination *remove* the future-year pot the ended contract used to justify. Past years
+        are frozen (§14): a closed year is never re-priced by a later correction.
+
+        ``manual`` rows (``upsert_entitlement``) are never deleted or recreated — they survive
+        both the wipe and ``seed_entitlements``'s own "skip what already exists" guard. A year the
+        contracts no longer cover is wiped but **not** reseeded: ``seed_entitlements`` would
+        otherwise hand a departed employee who still holds ``time.entry.write`` a full
+        contract-less-fallback pot. Runs in the contract write's own transaction and, like the
+        old seeder, is deliberately not gated on ``leave.entitlement.write`` — the entitlements
+        are the consequence of a write the caller was already allowed to make.
         """
         current = (await self._org_today()).year
-        future_years = (
+        contracts = await self._user_contracts(user_id)
+        org_future_years = set(
             (
                 await self.ctx.session.execute(
                     select(LeaveEntitlement.year)
@@ -980,11 +1330,40 @@ class LeaveService:
             .scalars()
             .all()
         )
-        # Only years this user's contracts actually cover: without the overlap filter, a hire
-        # whose contract starts next January would fall into the contract-less fallback for the
-        # *current* year and be granted a full pot for a year they don't work.
-        contracts = await self._user_contracts(user_id)
-        for year in sorted({current, *future_years}):
+        user_generated_years = set(
+            (
+                await self.ctx.session.execute(
+                    select(LeaveEntitlement.year)
+                    .where(
+                        LeaveEntitlement.org_id == self.ctx.org.id,
+                        LeaveEntitlement.user_id == user_id,
+                        LeaveEntitlement.year >= current,
+                        LeaveEntitlement.source == "generated",
+                    )
+                    .distinct()
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for year in sorted({current} | org_future_years | user_generated_years):
+            if year < current:
+                continue
+            stale = (
+                (
+                    await self.ctx.session.execute(
+                        self.entitlements.scoped_select().where(
+                            LeaveEntitlement.user_id == user_id,
+                            LeaveEntitlement.year == year,
+                            LeaveEntitlement.source == "generated",
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            for row in stale:
+                await self.entitlements.delete(row)
             if self._contracts_in_year(contracts, year):
                 await self.seed_entitlements(year, only_users={user_id})
 
@@ -1036,9 +1415,14 @@ class LeaveService:
                 LeaveEntitlement.year == data.year,
             )
         )
+        # Either branch claims the row as a deliberate override (#264): a contract-change
+        # recompute recreates only ``generated`` rows, so an admin's grant survives it. The update
+        # branch matters most — a correction is usually a PUT over an already-generated row.
         if existing is None:
-            return await self.entitlements.create(**data.model_dump())
-        return await self.entitlements.update(existing, hours=data.hours, note=data.note)
+            return await self.entitlements.create(**data.model_dump(), source="manual")
+        return await self.entitlements.update(
+            existing, hours=data.hours, note=data.note, source="manual"
+        )
 
     async def generate_entitlements(self, year: int) -> int:
         """Create missing entitlements for a year (#65) — the guarded bulk endpoint."""
@@ -1053,16 +1437,23 @@ class LeaveService:
         Two families of balance-tracked type:
           * ``default_weeks`` types (statutory/extra vacation) → ``weeks × contract hours``,
             **prorated** over the days each contract covers of the year;
-          * ``accrues_schedule_gap`` types (roostervrije tijd / ADV) → the scheduled-minus-contract
-            hours gap × the weeks the contract runs in the year, rounded to the nearest half day.
+          * ``accrues_schedule_gap`` types (free time / vrije tijd) → the contract's own
+            ``free_time_hours_per_week`` × the weeks it runs in the year, rounded to the nearest
+            half day. That figure is ``max(0, norm − contract hours)`` unless the contract records
+            one (``_contract_free_time``): the derived rule (#282) is right for a 36-h contract
+            worked as a nominal 40-h week and wrong for a 32-h part-timer already working four
+            days, so it has to be sayable per contract rather than per org.
 
-        Contract hours are the legal number, not the scheduled week: a 38-hour contract worked as
-        40 scheduled hours gets ``4 × 38`` statutory hours and ``2 × weeks`` of ADV. An employee
-        with **no** contract falls back to the pre-#65 behaviour — a full year on their *scheduled*
-        hours — so upgrading moves nobody's balance and needs no contract backfill.
+        Contract hours are the legal number, not the scheduled week: a 38-hour contract gets
+        ``4 × 38`` statutory hours and ``(40 − 38) × weeks`` of free time. An employee who has
+        **never** had a contract falls back to the pre-#65 behaviour — a full year on their
+        *scheduled* hours — so upgrading moves nobody's balance and needs no contract backfill.
 
         "Who is staff for year N" is anyone with a contract overlapping the year, unioned with the
-        legacy ``time.entry.write`` holders so a contract-less org still generates.
+        legacy ``time.entry.write`` holders so a contract-less org still generates. But the union
+        only makes someone *eligible*: an employee who **has** contracts, none of which cover year
+        N (they left before it, or start after), earns nothing for N — only a genuinely
+        contract-less employee takes the scheduled-hours fallback (#264).
 
         **Deliberately not permission-checked** (#105): besides the guarded bulk endpoint it runs
         as a *side effect of writes the caller was already allowed to make* — adding a contract
@@ -1086,7 +1477,18 @@ class LeaveService:
             .all()
         )
         contract_rows = (
-            (await self.ctx.session.execute(self.contracts.scoped_select())).scalars().all()
+            (
+                await self.ctx.session.execute(
+                    # Ordered, because the free-time rounding below reads "the last period of the
+                    # year" to pick a working day to measure against. An unordered fetch made that
+                    # whichever row Postgres returned last.
+                    self.contracts.scoped_select().order_by(
+                        EmploymentContract.user_id, EmploymentContract.start_date.asc()
+                    )
+                )
+            )
+            .scalars()
+            .all()
         )
         contracts_by_user: dict[uuid.UUID, list[EmploymentContract]] = {}
         for contract in contract_rows:
@@ -1114,14 +1516,27 @@ class LeaveService:
         )
         existing = {(e.user_id, e.leave_type_id) for e in existing_rows}
         default = await self.default_schedule()
+        # Free time is the shortfall from the full-time norm — the org's default week (#282), not
+        # the employee's own scheduled week. Fetched once: it is the same figure for everyone.
+        full_time_norm = sched.week_hours(default)
         rows = (await self.ctx.session.execute(self.profiles.scoped_select())).scalars().all()
         by_user = {p.user_id: p for p in rows}
         year_days = (date(year, 12, 31) - date(year, 1, 1)).days + 1
 
         created = 0
         for user_id in staff:
+            has_any_contract = bool(contracts_by_user.get(user_id))
             contracts_year = self._contracts_in_year(contracts_by_user.get(user_id, []), year)
             schedule, scheduled_week, _ = self._effective(by_user.get(user_id), default)
+            # Half-day rounding needs *a* working day to measure against. The week now lives on
+            # the contract, so prefer the one in force at the end of this year's coverage — the
+            # arrangement the free days will actually be taken under. One choice has to be made
+            # (a year can hold several contracts); this is the one that matches the days being
+            # placed, and it falls back to the profile week for a contract carrying none.
+            if contracts_year:
+                last_week = sched.parse(contracts_year[-1].schedule)
+                if last_week is not None:
+                    schedule = last_week
             avg_day = sched.average_day_hours(schedule)
 
             for leave_type in weeks_types:
@@ -1139,10 +1554,22 @@ class LeaveService:
                         ),
                         Decimal(0),
                     ).quantize(Decimal("0.01"))
+                elif has_any_contract:
+                    # Staff by the legacy union, but this employee's own contracts don't cover the
+                    # year (they left before it, or start later): they are not staff *for this
+                    # year*, so no pot. Without this, a terminated employee who still holds
+                    # ``time.entry.write`` would be handed a full contract-less pot on the next
+                    # balance read — undoing a termination's re-prorate (#264). The fallback below
+                    # is only for a user who has never had a contract at all.
+                    continue
                 else:
                     hours = (weeks * scheduled_week).quantize(Decimal("0.01"))
                 await self.entitlements.create(
-                    user_id=user_id, leave_type_id=leave_type.id, year=year, hours=hours
+                    user_id=user_id,
+                    leave_type_id=leave_type.id,
+                    year=year,
+                    hours=hours,
+                    source="generated",
                 )
                 created += 1
 
@@ -1151,70 +1578,532 @@ class LeaveService:
                     continue
                 total = Decimal(0)
                 for c in contracts_year:
-                    gap = (await self.scheduled_week(user_id, c)) - c.contract_hours_per_week
+                    gap = self._contract_free_time(c, full_time_norm)
                     if gap <= 0:
                         continue
                     total += gap * Decimal(self._year_overlap_days(c, year)) / Decimal(7)
                 hours = self._round_half_day(total, avg_day) if total > 0 else Decimal("0.00")
                 if hours <= 0:
-                    # No scheduling gap → no ADV. Don't clutter the balance with a zero row.
+                    # Contract meets the norm → no free time. Don't clutter the balance with a
+                    # zero row.
                     continue
                 await self.entitlements.create(
-                    user_id=user_id, leave_type_id=leave_type.id, year=year, hours=hours
+                    user_id=user_id,
+                    leave_type_id=leave_type.id,
+                    year=year,
+                    hours=hours,
+                    source="generated",
                 )
                 created += 1
         return created
 
-    # --- balances ------------------------------------------------------------------ #
-    async def _request_hours_by_type(
-        self, user_id: uuid.UUID, year: int, status: str
-    ) -> dict[uuid.UUID, Decimal]:
-        stmt = (
-            select(LeaveRequest.leave_type_id, func.coalesce(func.sum(LeaveRequest.hours), 0))
-            .where(
-                LeaveRequest.org_id == self.ctx.org.id,
-                LeaveRequest.user_id == user_id,
-                LeaveRequest.status == status,
-                LeaveRequest.start_date >= date(year, 1, 1),
-                LeaveRequest.start_date < date(year + 1, 1, 1),
-            )
-            .group_by(LeaveRequest.leave_type_id)
-        )
-        return {row[0]: Decimal(row[1]) for row in (await self.ctx.session.execute(stmt)).all()}
+    # --- balances / the pot ledger (#265) --------------------------------------------- #
+    @staticmethod
+    def _pot_expiry(carry_over_months: int | None, accrual_year: int) -> date | None:
+        """When a pot accrued in ``accrual_year`` lapses (#265).
 
-    async def balances(self, *, year: int, user_id: uuid.UUID | None = None) -> list[LeaveBalance]:
-        uid = self._effective_user_id(user_id)
-        # First touch of an ungenerated current/next-year pot seeds it (#108), so "book next
-        # summer in December" finds a balance instead of a zero.
+        Hours are fully usable through the end of their accrual year, then carry into the next and
+        lapse ``carry_over_months`` after it begins: NL statutory (6) → 1 July of the next year,
+        extra-statutory (60) → 1 January five years on, free time (0) → 1 January of next year.
+        ``None`` — the column's "never" — means the pot never expires. Config, not law: the months
+        come from ``leave_types``, so another jurisdiction is a data change, not a code one (§14).
+        """
+        if carry_over_months is None:
+            return None
+        return LeaveService._add_months(date(accrual_year + 1, 1, 1), carry_over_months)
+
+    async def _entitlement_rows_upto(
+        self, user_id: uuid.UUID, upto_year: int
+    ) -> Sequence[LeaveEntitlement]:
+        """Every entitlement pot for this user up to and including ``upto_year`` (#265).
+
+        Carry-over means a year's balance depends on prior years' unused pots, so this spans years
+        rather than one. Org- and user-scoped; the caller is already access-checked (``balances``
+        gates on ``leave.request.read`` and resolves the effective user first).
+        """
+        stmt = self.entitlements.scoped_select().where(
+            LeaveEntitlement.user_id == user_id, LeaveEntitlement.year <= upto_year
+        )
+        return (await self.ctx.session.execute(stmt)).scalars().all()
+
+    async def _occupying_requests_upto(
+        self, user_id: uuid.UUID, upto_year: int
+    ) -> Sequence[LeaveRequest]:
+        """This user's occupying (pending/approved) requests that start in ``upto_year`` or before.
+
+        One query, grouped in Python (bounded to one person's leave), so consumption can be
+        allocated across pots by year without an aggregate-per-year round trip (PERFORMANCE.md).
+        """
+        stmt = self.requests.scoped_select().where(
+            LeaveRequest.user_id == user_id,
+            LeaveRequest.status.in_(_OCCUPYING),
+            LeaveRequest.start_date < date(upto_year + 1, 1, 1),
+        )
+        return (await self.ctx.session.execute(stmt)).scalars().all()
+
+    @staticmethod
+    def _allocate_pots(
+        pots: list[dict], consumption_by_year: dict[int, Decimal], display_year: int
+    ) -> Decimal:
+        """FIFO-by-expiry consumption across one group's pots (#265) — "favour the employee" made
+        concrete.
+
+        For each consumption year in ascending order, its hours are drawn from the pots still
+        valid that year (accrued by then, not yet expired at the year's start) **soonest-expiry-
+        first**, so short-lived statutory hours are spent before long-lived extra ones and nothing
+        lapses that could have been used. Mutates each pot's ``allocated`` and snapshots
+        ``allocated_before`` — allocation from years strictly before ``display_year``, i.e. the
+        carry-in state at the start of the shown year. Returns the ``display_year`` over-request
+        shortfall (consumption no pot could cover), which makes that year read negative (#109);
+        a shortfall in any other year stays in its own year and never dents a later fresh grant.
+        """
+        snapshotted = False
+        shortfall = Decimal(0)
+        for yc in sorted(consumption_by_year):
+            if yc >= display_year and not snapshotted:
+                for pot in pots:
+                    pot["allocated_before"] = pot["allocated"]
+                snapshotted = True
+            need = consumption_by_year[yc]
+            if need <= 0:
+                continue
+            year_start = date(yc, 1, 1)
+            candidates = [
+                pot
+                for pot in pots
+                if pot["accrual_year"] <= yc
+                and (pot["expiry"] is None or pot["expiry"] > year_start)
+            ]
+            candidates.sort(key=lambda pot: (pot["expiry"] or date.max, pot["accrual_year"]))
+            for pot in candidates:
+                available = pot["granted"] - pot["allocated"]
+                if available <= 0:
+                    continue
+                take = min(available, need)
+                pot["allocated"] += take
+                need -= take
+                if need <= 0:
+                    break
+            if need > 0 and yc == display_year:
+                shortfall += need
+        if not snapshotted:
+            for pot in pots:
+                pot["allocated_before"] = pot["allocated"]
+        return shortfall
+
+    async def _ledger(
+        self, *, year: int, uid: uuid.UUID
+    ) -> tuple[list[LeaveBalance], list[LeaveGroupBalance]]:
+        """The pot ledger (#265) for one employee: carry-over + expiry over every tracked type,
+        yielding both the per-type balances (shape unchanged) and the combined per-group balances.
+
+        First touch of an ungenerated current/next-year pot seeds it (#108); prior years are read
+        for carry-over, never seeded (history is not backfilled, §14). The assembly itself is
+        :meth:`_assemble_ledger`, shared with the batched roster read (#282).
+        """
         await self._ensure_entitlements(uid, year)
-        types = [t for t in await self.list_types() if t.tracks_balance]
-        entitled: dict[uuid.UUID, Decimal] = {}
-        for ent in await self.list_entitlements(year=year, user_id=uid):
-            entitled[ent.leave_type_id] = entitled.get(ent.leave_type_id, Decimal(0)) + ent.hours
-        approved = await self._request_hours_by_type(uid, year, LeaveRequestStatus.APPROVED.value)
-        pending = await self._request_hours_by_type(uid, year, LeaveRequestStatus.PENDING.value)
-        result: list[LeaveBalance] = []
-        for t in types:
-            ent = entitled.get(t.id, Decimal(0))
-            appr = approved.get(t.id, Decimal(0))
-            pend = pending.get(t.id, Decimal(0))
-            result.append(
-                LeaveBalance(
-                    leave_type_id=t.id,
-                    year=year,
-                    entitled_hours=ent,
-                    approved_hours=appr,
-                    pending_hours=pend,
-                    remaining_hours=ent - appr - pend,
+        tracked = [t for t in await self.list_types() if t.tracks_balance]
+        if not tracked:
+            return [], []
+        today = await self._org_today()
+        return self._assemble_ledger(
+            uid=uid,
+            year=year,
+            tracked=tracked,
+            today=today,
+            ent_rows=await self._entitlement_rows_upto(uid, year),
+            occ_reqs=await self._occupying_requests_upto(uid, year),
+        )
+
+    async def group_balances_all(self, *, year: int) -> list[LeaveGroupBalance]:
+        """Every member's combined balances in a handful of bulk queries — the manager team table
+        (#282). Each carries its ``user_id`` so the roster keys a figure to a member.
+
+        Unlike the single-user ledger this does **not** seed on read: the roster is a read-only
+        overview (the pre-#282 team table read raw entitlement rows and never seeded either), and a
+        manager glancing at next year should not trigger a bulk write of everyone's pots. The
+        per-user assembly (carry-over, FIFO-by-expiry, lapse) is identical — only the fetch is
+        batched, two org-wide selects instead of two per member (docs/PERFORMANCE.md).
+
+        Whose rows: the union of members with an entitlement pot up to the year and members with an
+        occupying request in it. A member with neither has an all-zero balance the caller renders
+        straight from the type config, so there is nothing to compute for them.
+        """
+        tracked = [t for t in await self.list_types() if t.tracks_balance]
+        if not tracked:
+            return []
+        tracked_ids = {t.id for t in tracked}
+        today = await self._org_today()
+
+        ent_by_user: dict[uuid.UUID, list[LeaveEntitlement]] = {}
+        ent_rows = (
+            await self.ctx.session.execute(
+                self.entitlements.scoped_select().where(LeaveEntitlement.year <= year)
+            )
+        ).scalars().all()
+        for ent in ent_rows:
+            if ent.leave_type_id in tracked_ids:
+                ent_by_user.setdefault(ent.user_id, []).append(ent)
+
+        occ_by_user: dict[uuid.UUID, list[LeaveRequest]] = {}
+        occ_rows = (
+            await self.ctx.session.execute(
+                self.requests.scoped_select().where(
+                    LeaveRequest.status.in_(_OCCUPYING),
+                    LeaveRequest.start_date < date(year + 1, 1, 1),
                 )
             )
+        ).scalars().all()
+        for req in occ_rows:
+            if req.leave_type_id in tracked_ids:
+                occ_by_user.setdefault(req.user_id, []).append(req)
+
+        result: list[LeaveGroupBalance] = []
+        for uid in ent_by_user.keys() | occ_by_user.keys():
+            _, grouped = self._assemble_ledger(
+                uid=uid,
+                year=year,
+                tracked=tracked,
+                today=today,
+                ent_rows=ent_by_user.get(uid, []),
+                occ_reqs=occ_by_user.get(uid, []),
+            )
+            result.extend(grouped)
         return result
+
+    def _assemble_ledger(
+        self,
+        *,
+        uid: uuid.UUID,
+        year: int,
+        tracked: list[LeaveType],
+        today: date,
+        ent_rows: Sequence[LeaveEntitlement],
+        occ_reqs: Sequence[LeaveRequest],
+    ) -> tuple[list[LeaveBalance], list[LeaveGroupBalance]]:
+        """Pure (no I/O) assembly of one employee's pot ledger from already-fetched rows.
+
+        Grouping is by ``balance_group``; a type without one is its own singleton group, so free
+        time gains real expiry too (carry 0 → unused hours lapse at year-end). A pot's leftover
+        belongs to exactly one type, so **group remaining is the sum of its types' remaining** —
+        the two views cannot disagree. Shared by the single-user ledger and the batched roster read
+        (#282) so both compute balances the identical way.
+        """
+        tracked_ids = {t.id for t in tracked}
+        carry_by_type = {t.id: t.carry_over_months for t in tracked}
+        year_start = date(year, 1, 1)
+        soon_cutoff = self._add_months(today, _EXPIRING_SOON_MONTHS)
+
+        pots_by_type: dict[uuid.UUID, list[dict]] = {tid: [] for tid in tracked_ids}
+        for ent in ent_rows:
+            if ent.leave_type_id not in tracked_ids:
+                continue
+            pots_by_type[ent.leave_type_id].append(
+                {
+                    "type_id": ent.leave_type_id,
+                    "accrual_year": ent.year,
+                    "granted": Decimal(ent.hours),
+                    "expiry": self._pot_expiry(carry_by_type[ent.leave_type_id], ent.year),
+                    "allocated": Decimal(0),
+                    "allocated_before": Decimal(0),
+                }
+            )
+
+        # Occupying hours per (type, start-year, status): per-type approved/pending for the display
+        # year, and — summed over a group — that group's consumption per year for the FIFO pass.
+        occ: dict[tuple[uuid.UUID, int, str], Decimal] = {}
+        for req in occ_reqs:
+            if req.leave_type_id not in tracked_ids:
+                continue
+            occ_key = (req.leave_type_id, req.start_date.year, req.status)
+            occ[occ_key] = occ.get(occ_key, Decimal(0)) + Decimal(req.hours)
+
+        groups: dict[str, list[LeaveType]] = {}
+        for t in tracked:
+            groups.setdefault(t.balance_group or f"\x00type:{t.id}", []).append(t)
+
+        per_type: dict[uuid.UUID, LeaveBalance] = {}
+        grouped: list[tuple[int, str, LeaveGroupBalance]] = []
+        for gtypes in groups.values():
+            group_value = gtypes[0].balance_group  # None for a synthetic singleton group
+            gtype_ids = [t.id for t in gtypes]
+            gtype_id_set = set(gtype_ids)
+            representative = min(
+                gtypes,
+                key=lambda t: (
+                    t.carry_over_months if t.carry_over_months is not None else 10**9,
+                    t.position,
+                    t.key,
+                ),
+            )
+            pots = [pot for tid in gtype_ids for pot in pots_by_type[tid]]
+
+            consumption_by_year: dict[int, Decimal] = {}
+            for (tid, yc, _status), hours in occ.items():
+                if tid in gtype_id_set:
+                    consumption_by_year[yc] = consumption_by_year.get(yc, Decimal(0)) + hours
+
+            shortfall = self._allocate_pots(pots, consumption_by_year, year)
+
+            entitled_by_type = {tid: Decimal(0) for tid in gtype_ids}
+            remaining_by_type = {tid: Decimal(0) for tid in gtype_ids}
+            group_lapsed = Decimal(0)
+            group_expiring = Decimal(0)
+            breakdown: list[LeavePotBreakdown] = []
+            for pot in sorted(
+                pots, key=lambda pot: (pot["expiry"] or date.max, pot["accrual_year"])
+            ):
+                granted = pot["granted"]
+                leftover = max(Decimal(0), granted - pot["allocated"])
+                expiry = pot["expiry"]
+                expired = expiry is not None and expiry <= today
+
+                if pot["accrual_year"] == year:
+                    entitled_contrib = granted
+                elif expiry is None or expiry > year_start:
+                    # A prior-year pot still alive at the start of the shown year: its carry-in is
+                    # whatever remained after earlier years drew on it.
+                    entitled_contrib = max(Decimal(0), granted - pot["allocated_before"])
+                else:
+                    entitled_contrib = Decimal(0)
+                entitled_by_type[pot["type_id"]] += entitled_contrib
+
+                remaining_contrib = Decimal(0) if expired else leftover
+                remaining_by_type[pot["type_id"]] += remaining_contrib
+
+                if expired and expiry is not None and expiry > year_start:
+                    group_lapsed += leftover
+                elif not expired and expiry is not None and expiry <= soon_cutoff:
+                    group_expiring += leftover
+
+                breakdown.append(
+                    LeavePotBreakdown(
+                        leave_type_id=pot["type_id"],
+                        accrual_year=pot["accrual_year"],
+                        entitled_hours=granted,
+                        remaining_hours=remaining_contrib,
+                        expires_on=expiry,
+                        expired=expired,
+                    )
+                )
+
+            # An over-request no pot could cover reads as negative remaining, carried on the group's
+            # representative (soonest-expiring) type so Σ per-type remaining == group remaining.
+            remaining_by_type[representative.id] -= shortfall
+
+            for t in gtypes:
+                per_type[t.id] = LeaveBalance(
+                    leave_type_id=t.id,
+                    year=year,
+                    entitled_hours=entitled_by_type[t.id],
+                    approved_hours=occ.get(
+                        (t.id, year, LeaveRequestStatus.APPROVED.value), Decimal(0)
+                    ),
+                    pending_hours=occ.get(
+                        (t.id, year, LeaveRequestStatus.PENDING.value), Decimal(0)
+                    ),
+                    remaining_hours=remaining_by_type[t.id],
+                    balance_group=t.balance_group,
+                )
+
+            label = _GROUP_LABELS.get(group_value) if group_value else None
+            if label is None:
+                label = dict(representative.label_i18n or {})
+            grouped.append(
+                (
+                    representative.position,
+                    representative.key,
+                    LeaveGroupBalance(
+                        user_id=uid,
+                        group=group_value,
+                        leave_type_ids=gtype_ids,
+                        label_i18n=label,
+                        year=year,
+                        entitled_hours=sum(entitled_by_type.values(), Decimal(0)),
+                        approved_hours=sum(
+                            (per_type[t.id].approved_hours for t in gtypes), Decimal(0)
+                        ),
+                        pending_hours=sum(
+                            (per_type[t.id].pending_hours for t in gtypes), Decimal(0)
+                        ),
+                        remaining_hours=sum(remaining_by_type.values(), Decimal(0)),
+                        lapsed_hours=group_lapsed,
+                        expiring_soon_hours=group_expiring,
+                        pots=breakdown,
+                    ),
+                )
+            )
+
+        ordered_per_type = [per_type[t.id] for t in tracked]
+        grouped.sort(key=lambda item: (item[0], item[1]))
+        return ordered_per_type, [gb for _, _, gb in grouped]
+
+    async def balances(self, *, year: int, user_id: uuid.UUID | None = None) -> list[LeaveBalance]:
+        """Per-type balances (#265): entitled + carried − approved − pending, expiry-aware.
+
+        Shape unchanged so ``preview``, ``summary``, the recurring generator and existing clients
+        keep working; ``remaining_hours`` now reflects the FIFO-by-expiry pot ledger.
+        """
+        uid = self._effective_user_id(user_id)
+        per_type, _ = await self._ledger(year=year, uid=uid)
+        return per_type
+
+    # --- free time overview (#65's card, and the wizard's reconciliation) ---------------- #
+    async def free_time_overview(
+        self, *, year: int, user_id: uuid.UUID | None = None
+    ) -> FreeTimeOverview:
+        """Pot, placed days and overhang for one employee's free time, in one read.
+
+        The per-type balance cannot answer the questions people actually ask of free time. Once
+        the generator has laid every day down, entitled and approved are equal and it reports
+        "0 h over" — true, and no use whatsoever for "when is my next day off" or "does the pot
+        still cover what is on my calendar". Both of those live here.
+
+        Five queries at most regardless of how many days are placed (docs/PERFORMANCE.md): the
+        types, the entitlement ledger, the requests, the contracts and the profile behind the
+        schedule. ``leave.request.read`` scoping comes from ``_effective_user_id``, so a member
+        reads their own and a manager anyone's — the same rule as every other leave read.
+        """
+        uid = self._effective_user_id(user_id)
+        types = [t for t in await self.list_types() if t.accrues_schedule_gap]
+        schedule = await self.effective_schedule(uid)
+        blank = FreeTimeOverview(
+            user_id=uid,
+            year=year,
+            leave_type_ids=[],
+            entitled_hours=Decimal("0.00"),
+            placed_hours=Decimal("0.00"),
+            taken_hours=Decimal("0.00"),
+            upcoming_hours=Decimal("0.00"),
+            unplaced_hours=Decimal("0.00"),
+            overhang_hours=Decimal("0.00"),
+            hours_per_day=sched.average_day_hours(schedule),
+            next_date=None,
+            days=[],
+            overhang=[],
+        )
+        if not types:
+            # The tenant deactivated free time. Zeroes, not an error: the card simply renders
+            # nothing, and the wizard's third step has nothing to offer.
+            return blank
+
+        type_ids = [t.id for t in types]
+        await self._ensure_entitlements(uid, year)
+        balances = {b.leave_type_id: b for b in await self.balances(year=year, user_id=uid)}
+        entitled = sum(
+            (balances[tid].entitled_hours for tid in type_ids if tid in balances), Decimal(0)
+        )
+
+        rows = (
+            (
+                await self.ctx.session.execute(
+                    self.requests.scoped_select()
+                    .where(
+                        LeaveRequest.user_id == uid,
+                        LeaveRequest.leave_type_id.in_(type_ids),
+                        LeaveRequest.status.in_(_OCCUPYING),
+                        LeaveRequest.start_date >= date(year, 1, 1),
+                        LeaveRequest.start_date <= date(year, 12, 31),
+                    )
+                    .order_by(LeaveRequest.start_date.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        today = await self._org_today()
+
+        def as_day(request: LeaveRequest) -> FreeTimeDay:
+            start, end = self._resolved_window(request, schedule)
+            return FreeTimeDay(
+                request_id=request.id,
+                date=request.start_date,
+                hours=request.hours,
+                start_time=start,
+                end_time=end,
+                from_pattern=request.recurring_day_id is not None,
+            )
+
+        placed = sum((Decimal(r.hours) for r in rows), Decimal(0))
+        taken = sum((Decimal(r.hours) for r in rows if r.end_date < today), Decimal(0))
+        upcoming_rows = [r for r in rows if r.end_date >= today]
+
+        overhang_hours = max(Decimal(0), placed - entitled)
+        # Peel the **latest** future pattern-generated days until the excess is covered: the most
+        # recently planned days are the least disruptive to withdraw, and a day the employee
+        # booked by hand is theirs — a contract correction must not silently eat it.
+        overhang: list[FreeTimeDay] = []
+        excess = overhang_hours
+        for request in sorted(
+            (r for r in upcoming_rows if r.recurring_day_id is not None),
+            key=lambda r: r.start_date,
+            reverse=True,
+        ):
+            if excess <= 0:
+                break
+            overhang.append(as_day(request))
+            excess -= Decimal(request.hours)
+
+        return blank.model_copy(
+            update={
+                "leave_type_ids": type_ids,
+                "entitled_hours": entitled.quantize(Decimal("0.01")),
+                "placed_hours": placed.quantize(Decimal("0.01")),
+                "taken_hours": taken.quantize(Decimal("0.01")),
+                "upcoming_hours": (placed - taken).quantize(Decimal("0.01")),
+                "unplaced_hours": max(Decimal(0), entitled - placed).quantize(Decimal("0.01")),
+                "overhang_hours": overhang_hours.quantize(Decimal("0.01")),
+                "next_date": upcoming_rows[0].start_date if upcoming_rows else None,
+                "days": [as_day(r) for r in upcoming_rows],
+                "overhang": overhang,
+            }
+        )
+
+    async def withdraw_free_time(
+        self, request_ids: Sequence[uuid.UUID]
+    ) -> tuple[int, list[uuid.UUID]]:
+        """Cancel free days the pot no longer covers, one by one through :meth:`cancel`.
+
+        Through ``cancel`` and not a bulk UPDATE, so every rule still holds: the past stays
+        locked, self-approval policy applies, and a cancelled day emits ``leave.cancelled`` so
+        the Google mirror removes its event. An id that cannot be cancelled is **skipped, not
+        raised** — the caller is confirming a list it was shown, and one stale row should not
+        abandon the rest of a withdrawal.
+        """
+        cancelled = 0
+        skipped: list[uuid.UUID] = []
+        for request_id in request_ids:
+            try:
+                await self.cancel(request_id)
+            except AppError:
+                skipped.append(request_id)
+            else:
+                cancelled += 1
+        return cancelled, skipped
+
+    async def group_balances(
+        self, *, year: int, user_id: uuid.UUID | None = None, all_users: bool = False
+    ) -> list[LeaveGroupBalance]:
+        """The employee-facing combined balances (#265): one figure per group, per-pot breakdown
+        alongside. ``vacation_statutory`` + ``vacation_extra`` roll up into one "Vakantieverlof".
+
+        ``all_users`` returns every member's groups for the manager team table (#282), each tagged
+        with its ``user_id`` — but only for a caller who may read anyone's leave
+        (``leave.request.read:any``, like ``list_entitlements``). Without that scope it degrades to
+        the caller's own, never another's, exactly as a bare read would.
+        """
+        if all_users and self.ctx.can("leave.request.read", scope="any"):
+            return await self.group_balances_all(year=year)
+        uid = self._effective_user_id(user_id)
+        _, grouped = await self._ledger(year=year, uid=uid)
+        return grouped
 
     # --- the hour calculation (#48) --------------------------------------------------- #
     def _breakdown(
         self,
         *,
-        schedule: sched.WorkSchedule,
+        schedule_on: Callable[[date], sched.WorkSchedule],
         holidays_off: set[date],
         start_date: date,
         start_time: time | None,
@@ -1226,11 +2115,15 @@ class LeaveService:
         For each date: not a scheduled working day → 0; an active holiday → 0; otherwise the
         day's scheduled window intersected with the requested one, minus every break it overlaps.
         The intersection *is* the clamp — "from 08:00" on an 08:30 day means "from the start".
+
+        The week is resolved **per day**, not once for the span: the working week lives on the
+        employment contract, and a span can cross a contract boundary (someone who went from four
+        days to five on 1 March). ``schedule_on`` answers from memory, so this stays one pass.
         """
         rows: list[tuple[date, int, str | None]] = []
         day = start_date
         while day <= end_date:
-            work_day = schedule.day(day.weekday())
+            work_day = schedule_on(day).day(day.weekday())
             if work_day is None or sched.day_minutes(work_day) == 0:
                 rows.append((day, 0, "not_scheduled"))
             elif day in holidays_off:
@@ -1250,16 +2143,23 @@ class LeaveService:
         start_time: time | None,
         end_date: date,
         end_time: time | None,
+        *,
+        resolver: Callable[[date], sched.WorkSchedule] | None = None,
     ) -> tuple[Decimal, list[LeaveDayHours]]:
         """``(total hours, per-day breakdown)`` — the one place a leave hour is decided.
 
         Rounds to two decimals **once**, on the summed minutes: rounding each day and adding the
         results is how a 40-hour week becomes 39,99.
+
+        ``resolver`` lets a caller that prices many spans for the **same** employee build the
+        ``date → week`` lookup once and hand it in — the recurring generator walks a year of
+        occurrences, and rebuilding it per day would be two queries a day (docs/PERFORMANCE.md).
+        Omit it and one is built here.
         """
-        schedule = await self.effective_schedule(user_id)
+        schedule_on = resolver or await self.schedule_resolver(user_id)
         holidays_off = await self.active_holidays_between(start_date, end_date)
         rows = self._breakdown(
-            schedule=schedule,
+            schedule_on=schedule_on,
             holidays_off=holidays_off,
             start_date=start_date,
             start_time=start_time,
@@ -1329,7 +2229,7 @@ class LeaveService:
         hours, breakdown = await self.compute_hours(
             uid, data.start_date, data.start_time, data.end_date, data.end_time
         )
-        per_day = sched.average_day_hours(await self.effective_schedule(uid))
+        per_day = sched.average_day_hours(await self.effective_schedule(uid, data.start_date))
         days = (hours / per_day).quantize(Decimal("0.01")) if per_day else Decimal("0")
         # Tell the form whether saving would need (re-)approval (#72): a past span always does; a
         # future one only if the chosen type requires approval. The form knows the request's
@@ -1345,22 +2245,42 @@ class LeaveService:
                 # form's own balance props belong to the *viewer*, which on the manager's
                 # register-for-someone flow is the wrong employee (#109).
                 year = data.start_date.year
-                balances = {
-                    b.leave_type_id: b for b in await self.balances(year=year, user_id=uid)
-                }
-                balance = balances.get(leave_type.id)
-                remaining = balance.remaining_hours if balance else Decimal(0)
+                if leave_type.balance_group:
+                    # A grouped type spends one combined "Vakantieverlof" pool (#265) — the warning
+                    # is the group remaining, not the single stored type's.
+                    group = next(
+                        (
+                            g
+                            for g in await self.group_balances(year=year, user_id=uid)
+                            if leave_type.id in g.leave_type_ids
+                        ),
+                        None,
+                    )
+                    remaining = group.remaining_hours if group else Decimal(0)
+                else:
+                    balances = {
+                        b.leave_type_id: b for b in await self.balances(year=year, user_id=uid)
+                    }
+                    balance = balances.get(leave_type.id)
+                    remaining = balance.remaining_hours if balance else Decimal(0)
                 if data.request_id is not None:
-                    # Editing: the request's own current hours still occupy the balance, so
-                    # they are given back before the form compares against the new span.
+                    # Editing: the request's own current hours still occupy the balance, so they
+                    # are given back before the form compares against the new span — but only when
+                    # the edit stays in the same pool (same group, or the same standalone type), so
+                    # moving leave between pools never over-credits the target.
                     current = await self.requests.get_or_404(data.request_id)
                     if (
                         current.user_id == uid
-                        and current.leave_type_id == leave_type.id
                         and current.start_date.year == year
                         and current.status in _OCCUPYING
                     ):
-                        remaining += Decimal(current.hours)
+                        current_type = await self.types.get_or_404(current.leave_type_id)
+                        same_pool = current.leave_type_id == leave_type.id or (
+                            leave_type.balance_group is not None
+                            and current_type.balance_group == leave_type.balance_group
+                        )
+                        if same_pool:
+                            remaining += Decimal(current.hours)
         return LeavePreviewResult(
             hours=hours,
             days=days,
@@ -1492,7 +2412,7 @@ class LeaveService:
         # Snapshotted alongside the priced hours, so the displayed window is forever the one
         # this schedule gave — a later schedule change must not rewrite past leave (#64).
         resolved_start, resolved_end = self._resolve_bounds(
-            await self.effective_schedule(uid),
+            await self.effective_schedule(uid, data.start_date),
             data.start_date,
             data.start_time,
             data.end_date,
@@ -1572,7 +2492,35 @@ class LeaveService:
                 for row in breakdown
                 if row.hours
             ]
+            # A "timed" type is drawn as an hour block on every calendar (#270), so the Google
+            # mirror must push a timed event — not an all-day banner — even for a whole-day
+            # request that carries no times of its own (free time / vrije tijd). Resolve its
+            # scheduled window here, where the schedule lives, so the mirror never reads leave
+            # internals (§6) and draws the same shape the in-app agenda does. Single-day only;
+            # a multi-day span stays all-day everywhere. An `all_day` type is left untouched.
+            if payload["start_time"] is None or payload["end_time"] is None:
+                if (
+                    request.start_date == request.end_date
+                    and await self._type_calendar_display(request.leave_type_id)
+                    == LeaveCalendarDisplay.TIMED.value
+                ):
+                    schedule = await self.effective_schedule(
+                        request.user_id, request.start_date
+                    )
+                    start, end = self._single_day_window(
+                        request, schedule, (payload["start_time"], payload["end_time"])
+                    )
+                    payload["start_time"] = start
+                    payload["end_time"] = end
         await emit(event, self.ctx, payload)
+
+    async def _type_calendar_display(self, type_id: uuid.UUID) -> str:
+        """This type's agenda-rendering choice (#270), read for the leave→Google mirror without
+        loading the whole row. Tenant-scoped by the session's RLS GUC like every other read."""
+        display = await self.ctx.session.scalar(
+            select(LeaveType.calendar_display).where(LeaveType.id == type_id)
+        )
+        return display or LeaveCalendarDisplay.ALL_DAY.value
 
     async def update(self, request_id: uuid.UUID, data: LeaveRequestUpdate) -> LeaveRequest:
         """Edit a request, re-triggering approval when the rule says so (#72).
@@ -1670,7 +2618,7 @@ class LeaveService:
                 values["resolved_start_time"],
                 values["resolved_end_time"],
             ) = self._resolve_bounds(
-                await self.effective_schedule(request.user_id),
+                await self.effective_schedule(request.user_id, start_date),
                 start_date,
                 start_time,
                 end_date,
@@ -1755,7 +2703,7 @@ class LeaveService:
 
         The same rule as an edit governs the approved case: an approved request is the owner's to
         cancel when it would not need approval — an auto-approve type (a free day, a sick report)
-        that does not touch the past. "Moving" an ADV free day is exactly this: cancel one, create
+        that does not touch the past. "Moving" a free-time day is exactly this: cancel one, create
         another (#65). Cancelling approved leave that needed approval, or that reaches into the
         past, stays a manager's call.
         """
@@ -1828,7 +2776,7 @@ class LeaveService:
     def _shaped_days(
         self,
         request: LeaveRequest,
-        schedule: sched.WorkSchedule,
+        schedule_on: Callable[[date], sched.WorkSchedule],
         holidays_off: set[date],
     ) -> list[LeaveDayHours]:
         """The request's stored hours, laid out over its days in the shape the schedule gives.
@@ -1845,7 +2793,7 @@ class LeaveService:
         every day has since become a holiday, has no shape at all — it lands on the start date.
         """
         rows = self._breakdown(
-            schedule=schedule,
+            schedule_on=schedule_on,
             holidays_off=holidays_off,
             start_date=request.start_date,
             start_time=request.start_time,
@@ -1887,8 +2835,9 @@ class LeaveService:
         Open to all staff (who's off is normal team-visible information in an agency). A
         ``client`` role holds no ``leave.request.read`` at all, so the route already refused it.
 
-        Three extra reads, not three per row: every profile, the org default and the holidays in
-        range are fetched once and the per-day shapes computed in Python (docs/PERFORMANCE.md).
+        Four extra reads, not four per row: every profile, every contract, the org default and the
+        holidays in range are fetched once and the per-day shapes computed in Python
+        (docs/PERFORMANCE.md).
         """
         stmt = (
             select(LeaveRequest, User)
@@ -1910,15 +2859,37 @@ class LeaveService:
         default = await self.default_schedule()
         profiles = (await self.ctx.session.execute(self.profiles.scoped_select())).scalars().all()
         by_user = {p.user_id: p for p in profiles}
+        # The working week lives on the contract, so the feed needs every contract too — one
+        # query for the whole org, resolved in Python per row, never one lookup per request.
+        periods_by_user: dict[uuid.UUID, list[tuple[date, date | None, sched.WorkSchedule | None]]]
+        periods_by_user = {}
+        for contract in (
+            (await self.ctx.session.execute(self.contracts.scoped_select())).scalars().all()
+        ):
+            periods_by_user.setdefault(contract.user_id, []).append(
+                (contract.start_date, contract.end_date, sched.parse(contract.schedule))
+            )
         # A request may start before `date_from` and end after `date_to`; shape the whole of it.
         span_from = min(req.start_date for req, _ in rows)
         span_to = max(req.end_date for req, _ in rows)
         holidays_off = await self.active_holidays_between(span_from, span_to)
+        # One lookup for the whole feed, not one per row: the zone every wall clock below is
+        # anchored in (#270). Same shape as the three reads above (docs/PERFORMANCE.md).
+        zone = await org_zoneinfo(self.ctx.session, self.ctx.org.id)
 
         items: list[TeamLeaveItem] = []
         for req, user in rows:
-            schedule = self._effective(by_user.get(req.user_id), default)[0]
+            schedule_on = self._resolver_from(
+                periods_by_user.get(req.user_id, ()),
+                self._effective(by_user.get(req.user_id), default)[0],
+            )
+            # The window and the instants describe the request as a whole, so they read the week
+            # its **start date** fell under; only the per-day shape below resolves day by day.
+            schedule = schedule_on(req.start_date)
             resolved_start, resolved_end = self._resolved_window(req, schedule)
+            starts_at, ends_at = self._occupied_instants(
+                req, schedule, (resolved_start, resolved_end), zone
+            )
             items.append(
                 TeamLeaveItem(
                     id=req.id,
@@ -1931,12 +2902,75 @@ class LeaveService:
                     end_time=req.end_time,
                     resolved_start_time=resolved_start,
                     resolved_end_time=resolved_end,
+                    starts_at=starts_at,
+                    ends_at=ends_at,
                     hours=req.hours,
                     status=LeaveRequestStatus(req.status),
-                    days=self._shaped_days(req, schedule, holidays_off),
+                    days=self._shaped_days(req, schedule_on, holidays_off),
                 )
             )
         return items
+
+    @staticmethod
+    def _single_day_window(
+        request: LeaveRequest,
+        schedule: sched.WorkSchedule,
+        resolved: tuple[time | None, time | None],
+    ) -> tuple[time | None, time | None]:
+        """The clock window a **single-day** absence covers, for a calendar that draws it by the
+        hour (#270). ``(None, None)`` whenever one honestly cannot be drawn.
+
+        Three refusals, each deliberate:
+
+        * **Multi-day spans.** A single window from Monday morning to Friday evening also claims
+          Monday night and Wednesday 03:00. ``days`` already breaks those down per day.
+        * **A day nobody works.** No scheduled window means no hours to draw. (A whole-day
+          request on such a day prices at zero and is refused at write time; a manager's
+          ``hours_override`` can still produce one, and it stays a full-day chip.)
+        * **An empty window.** Defensive: a start at or after the end would render as a
+          zero-height block, which is worse than the all-day form it fell back from.
+
+        The window is the request's own resolved one where it has times, and otherwise the
+        scheduled day itself — "whole scheduled day" is exactly what a free-time day is, and
+        the only window it could ever be drawn at (#107). Shared by the in-app agenda
+        (``_occupied_instants``) and the Google mirror (``_emit_leave``), so both agree.
+        """
+        if request.start_date != request.end_date:
+            return None, None
+        start, end = resolved
+        if start is None or end is None:
+            work_day = schedule.day(request.start_date.weekday())
+            if work_day is None:
+                return None, None
+            # `is None`, not `or`: midnight is a legitimate bound and only happens to be truthy.
+            if start is None:
+                start = work_day.start
+            if end is None:
+                end = work_day.end
+        if sched.to_minutes(start) >= sched.to_minutes(end):
+            return None, None
+        return start, end
+
+    @staticmethod
+    def _occupied_instants(
+        request: LeaveRequest,
+        schedule: sched.WorkSchedule,
+        resolved: tuple[time | None, time | None],
+        zone: ZoneInfo,
+    ) -> tuple[datetime | None, datetime | None]:
+        """``_single_day_window`` as a UTC instant pair, the field the time grid positions a
+        block by (#270).
+
+        ``.replace(tzinfo=...)`` on a ``ZoneInfo`` — never a fixed offset — is what makes an
+        08:30 block still start at 08:30 on the two days a year the clocks move.
+        """
+        start, end = LeaveService._single_day_window(request, schedule, resolved)
+        if start is None or end is None:
+            return None, None
+        return (
+            datetime.combine(request.start_date, start).replace(tzinfo=zone),
+            datetime.combine(request.start_date, end).replace(tzinfo=zone),
+        )
 
     @staticmethod
     def _resolve_bounds(

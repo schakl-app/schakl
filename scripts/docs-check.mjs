@@ -25,6 +25,7 @@ const REQUIRED = ['index.mdx', 'admin/installation.mdx', 'admin/upgrades.mdx'];
 const EXPECTED_MODULES = [
   'companies',
   'contacts',
+  'import-export',
   'projects',
   'tasks',
   'time',

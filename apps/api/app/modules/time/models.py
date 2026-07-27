@@ -79,9 +79,13 @@ class TimeEntry(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
         nullable=True,
         index=True,
     )
-    #: The recurring agreement these hours are worked under (owner request): consumption
-    #: against ``subscriptions.included_hours`` counts entries linked directly here alongside
-    #: the linked-project roll-up. SET NULL — ending an agreement never erases logged work.
+    #: **Legacy, no longer written.** Hours used to be linkable straight to an agreement; an
+    #: agreement's ``included_hours`` are now consumed only through the **projects** it covers
+    #: (#225), so there is one answer to "how many hours are left" instead of two that can
+    #: disagree. The column stays for the rows already written — subscription usage still ORs
+    #: over it, and dropping a populated column belongs in the contract release
+    #: (docs/WORKFLOW.md) — but nothing sets it anymore. SET NULL: ending an agreement never
+    #: erases logged work.
     subscription_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("subscriptions.id", ondelete="SET NULL"),

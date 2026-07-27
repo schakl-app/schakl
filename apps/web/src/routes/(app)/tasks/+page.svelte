@@ -1,12 +1,13 @@
 <script lang="ts">
   import { Trash2 } from "@lucide/svelte";
-  import Avatar from "$lib/core/ui/Avatar.svelte";
+  import PersonChip from "$lib/core/ui/PersonChip.svelte";
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { fmtDayMonth, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { can } from "$lib/core/permissions";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
@@ -16,6 +17,7 @@
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import { TASK_COLUMNS } from "$lib/modules/tasks/columns";
+  import { ALL_ASSIGNEES } from "$lib/modules/tasks/filters";
   import { labelChipClass } from "$lib/modules/tasks/labels";
   import {
     defaultStatusKey,
@@ -33,6 +35,13 @@
 
   let deleteId = $state("");
   let confirmDelete = $state(false);
+
+  // Actions render only for holders of the matching permission (#253). The complete toggle is a
+  // task-status write (PATCH /api/v1/tasks/{id}), so it mirrors `tasks.task.write` — a read-only
+  // portal client (#244) sees a static status marker, never a clickable checkbox.
+  const canCreate = $derived(can(page.data.user, "tasks.task.create"));
+  const canDelete = $derived(can(page.data.user, "tasks.task.delete"));
+  const canWrite = $derived(can(page.data.user, "tasks.task.write"));
 
   const dueOptions = ["overdue", "today", "week"] as const;
 
@@ -103,6 +112,19 @@
     else url.searchParams.delete(key);
     void goto(url, { keepFocus: true, noScroll: true });
   }
+
+  // The person switcher defaults to yourself (an absent `assignee_user_id` resolves to
+  // `event.locals.user.id` server-side); reflect that resolved value here too, so the picker
+  // shows you pre-selected rather than empty. Explicitly clearing it writes `ALL_ASSIGNEES`
+  // instead of deleting the param — deleting it would just resolve back to yourself.
+  const assigneeFilterValue = $derived(
+    data.filters.assignee_user_id === ALL_ASSIGNEES
+      ? ""
+      : (data.filters.assignee_user_id ?? page.data.user?.id ?? ""),
+  );
+  function setAssigneeFilter(value: string) {
+    setFilter("assignee_user_id", value || ALL_ASSIGNEES);
+  }
   const hasFilters = $derived(Object.values(data.filters).some(Boolean));
   const activeFilterCount = $derived(Object.values(data.filters).filter(Boolean).length);
   // On a phone the filter bar collapses behind one toggle: five stacked controls otherwise push
@@ -131,11 +153,13 @@
   </div>
   <!-- Create-then-edit (#230): the server creates a minimal task and redirects to its detail
        page in edit mode — creating and editing share one surface (docs/UX.md Principle 3). -->
-  <form method="POST" action="?/create" use:enhance>
-    <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
-      {t("tasks.new")}
-    </button>
-  </form>
+  {#if canCreate}
+    <form method="POST" action="?/create" use:enhance>
+      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+        {t("tasks.new")}
+      </button>
+    </form>
+  {/if}
 </div>
 
 {#if form?.error}
@@ -185,9 +209,9 @@
     <Combobox
       items={memberItems}
       name="_filter_assignee"
-      value={data.filters.assignee_user_id ?? ""}
+      value={assigneeFilterValue}
       placeholder={t("tasks.field.assignee")}
-      onselect={(v) => setFilter("assignee_user_id", v)}
+      onselect={setAssigneeFilter}
       id="filter-assignee"
     />
   </div>
@@ -224,17 +248,26 @@
 {#snippet titleCell(task: Task)}
   {@const done = isDone(task)}
   <div class="flex items-center gap-2.5">
-    <form method="POST" action="?/toggle" use:enhance>
-      <input type="hidden" name="id" value={task.id} />
-      <input type="hidden" name="status" value={toggleTarget(task)} />
-      <button
+    {#if canWrite}
+      <form method="POST" action="?/toggle" use:enhance>
+        <input type="hidden" name="id" value={task.id} />
+        <input type="hidden" name="status" value={toggleTarget(task)} />
+        <button
+          class="flex h-5 w-5 items-center justify-center rounded border text-xs
+            {done
+            ? 'border-brand bg-brand text-white'
+            : 'border-border text-transparent hover:border-brand'}"
+          aria-label={t("tasks.toggle_done")}>✓</button
+        >
+      </form>
+    {:else}
+      <!-- Read-only viewer (portal client, #244): the status shows, the toggle does not. -->
+      <span
         class="flex h-5 w-5 items-center justify-center rounded border text-xs
-          {done
-          ? 'border-brand bg-brand text-white'
-          : 'border-border text-transparent hover:border-brand'}"
-        aria-label={t("tasks.toggle_done")}>✓</button
+          {done ? 'border-brand bg-brand text-white' : 'border-border text-transparent'}"
+        aria-label={t("tasks.toggle_done")}>✓</span
       >
-    </form>
+    {/if}
     <a
       href="/tasks/{task.id}"
       class="truncate font-medium {done
@@ -259,15 +292,11 @@
 {#snippet assigneeCell(task: Task)}
   {@const member = data.members.find((m) => m.user_id === task.assignee_user_id)}
   {#if member}
-    <span class="flex items-center gap-2">
-      <Avatar
-        name={member.full_name}
-        email={member.email}
-        avatarUrl={member.avatar_url ?? null}
-        size="sm"
-      />
-      <span class="truncate text-text">{member.full_name || member.email}</span>
-    </span>
+    <PersonChip
+      name={member.full_name}
+      email={member.email}
+      avatarUrl={member.avatar_url ?? null}
+    />
   {:else}
     <span class="text-text-muted">—</span>
   {/if}
@@ -365,7 +394,9 @@
     <div class="min-w-0 flex-1">
       <TaskRow {task} members={data.members} statuses={data.statuses} {today} />
     </div>
-    {@render rowActions(task)}
+    {#if canDelete}
+      {@render rowActions(task)}
+    {/if}
   </div>
 {/snippet}
 
@@ -396,7 +427,7 @@
   {groups}
   groupBy={(task) => task.status}
   collapsed={table.collapsed}
-  actions={rowActions}
+  actions={canDelete ? rowActions : undefined}
   {mobileRow}
   {empty}
   oncollapse={table.onCollapse}

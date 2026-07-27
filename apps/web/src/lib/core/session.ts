@@ -63,6 +63,7 @@ export async function fetchTenant(event: ApiEvent): Promise<OrgTheme> {
     defaultLocale: data.default_locale,
     timezone: data.timezone,
     currency: data.currency,
+    defaultCountry: data.default_country ?? "NL",
     tabTitleTemplate: data.tab_title_template ?? null,
     enabledModules: data.enabled_modules,
     demoMode: data.demo_mode ?? false,

@@ -20,6 +20,8 @@
     ArrowRightLeft,
     ArrowUpRight,
     CheckCircle2,
+    Link2,
+    Mail,
     Pencil,
     Plus,
     Trash2,
@@ -31,12 +33,17 @@
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
+  import { InFlight } from "$lib/core/submit.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
 
   import CloseTaskDialog from "./CloseTaskDialog.svelte";
-  import { type InteractionItem, kindIcon } from "./format";
+  import EmlUploadForm from "./EmlUploadForm.svelte";
+  import { type InteractionItem, isGmailRow, kindIcon } from "./format";
+  import { snippetPreview } from "./snippet";
+  import InteractionConversationDialog from "./InteractionConversationDialog.svelte";
   import InteractionDetailModal from "./InteractionDetailModal.svelte";
   import InteractionForm from "./InteractionForm.svelte";
   import InteractionMoveDialog from "./InteractionMoveDialog.svelte";
@@ -63,17 +70,22 @@
   const canWrite = $derived(can(page.data.user, "interactions.interaction.write"));
 
   let showCreate = $state(false);
+  let showUpload = $state(false);
   let showEdit = $state(false);
   let editing = $state<InteractionItem | null>(null);
   let showMove = $state(false);
   let moving = $state<InteractionItem | null>(null);
   let showCloseTask = $state(false);
   let closingWith = $state<InteractionItem | null>(null);
+  let showConversation = $state(false);
+  let linkingConv = $state<InteractionItem | null>(null);
 
   let deleteId = $state("");
   let confirmDelete = $state(false);
   let showReject = $state(false);
   let rejecting = $state<InteractionItem | null>(null);
+
+  const busy = new InFlight();
 
   // Clicking a row opens the shared detail modal (#184) rather than expanding inline — a long
   // email no longer stretches the panel or scrolls it sideways, and its line breaks survive.
@@ -94,16 +106,17 @@
 
   const isOwner = (item: InteractionItem) =>
     item.owner_user_id !== null && item.owner_user_id === me;
+  // An uploaded .eml (#262) edits like a hand-logged row: there is no mailbox behind it, so
+  // no review flow owns it. Only gmail rows are off-limits here.
   const mayEdit = (item: InteractionItem) =>
-    item.source === "manual" &&
+    !isGmailRow(item) &&
     (isOwner(item)
       ? can(page.data.user, "interactions.interaction.write", "own")
       : can(page.data.user, "interactions.interaction.write", "any"));
 
   // Moving a manual row rides the ordinary write scope; a gmail row stays the mailbox
   // owner's call (the review rule) — the API enforces both, harder (#147).
-  const mayMove = (item: InteractionItem) =>
-    item.source === "gmail" ? isOwner(item) : mayEdit(item);
+  const mayMove = (item: InteractionItem) => (isGmailRow(item) ? isOwner(item) : mayEdit(item));
 
   /** Where this row also belongs (#147): clickable chips for links beyond the current host. */
   function linkChips(item: InteractionItem): { href: string; label: string }[] {
@@ -165,6 +178,23 @@
         },
       });
     }
+    // Glue an email Gmail didn't thread automatically onto another conversation (#272) —
+    // owner-only, logged gmail rows only, mirroring the API's own gate.
+    if (
+      item.kind === "email" &&
+      item.source === "gmail" &&
+      item.status === "logged" &&
+      isOwner(item)
+    ) {
+      entries.push({
+        label: t("interactions.add_to_conversation"),
+        icon: Link2,
+        onclick: () => {
+          linkingConv = item;
+          showConversation = true;
+        },
+      });
+    }
     if (item.source === "gmail" && isOwner(item)) {
       entries.push({
         label: t("interactions.reject"),
@@ -183,14 +213,26 @@
 <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
   <p class="text-sm text-text-muted">{t("interactions.panel.count", { count: total })}</p>
   {#if canWrite}
-    <button
-      type="button"
-      class="inline-flex items-center gap-1 text-sm font-medium text-brand hover:underline"
-      onclick={() => (showCreate = true)}
-    >
-      <Plus size={16} aria-hidden="true" />
-      {t("interactions.add")}
-    </button>
+    <div class="flex flex-wrap items-center gap-3">
+      <!-- An email nobody's connected mailbox saw is logged from its export (#262) — the same
+           affordance the Interacties page carries, so it exists on every record too. -->
+      <button
+        type="button"
+        class="inline-flex items-center gap-1 text-sm font-medium text-text-muted hover:text-brand"
+        onclick={() => (showUpload = true)}
+      >
+        <Mail size={16} aria-hidden="true" />
+        {t("interactions.eml.add")}
+      </button>
+      <button
+        type="button"
+        class="inline-flex items-center gap-1 text-sm font-medium text-brand hover:underline"
+        onclick={() => (showCreate = true)}
+      >
+        <Plus size={16} aria-hidden="true" />
+        {t("interactions.add")}
+      </button>
+    </div>
   {/if}
 </div>
 
@@ -224,6 +266,21 @@
                   <span class="sr-only">{t("interactions.direction.outbound")}</span>
                 {/if}
               {/if}
+              {#if (item.conversation_count ?? 1) > 1}
+                <!-- The email folds a conversation (#272): show how many messages it holds. -->
+                <span
+                  title={t("interactions.conversation_count", { count: item.conversation_count })}
+                  class="inline-flex items-center gap-0.5 rounded-full bg-surface px-2 py-0.5 text-[11px] font-medium text-text-muted ring-1 ring-inset ring-border"
+                >
+                  <Mail size={10} aria-hidden="true" />
+                  {item.conversation_count}
+                  <span class="sr-only"
+                    >{t("interactions.conversation_count", {
+                      count: item.conversation_count,
+                    })}</span
+                  >
+                </span>
+              {/if}
               {#if item.status === "pending"}
                 <span
                   class="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-400"
@@ -244,23 +301,27 @@
               {fmtDateTime(item.occurred_at)}{#if item.owner_name}&nbsp;· {item.owner_name}{/if}
             </span>
             {#if item.snippet}
-              <!-- First couple of lines only, wrapped — never a sideways scroll (#184). -->
+              <!-- A teaser, wrapped — never a sideways scroll (#184), and decoded before it is
+                   shown: Gmail's snippet arrives HTML-escaped and preheader-padded (#263). -->
               <span class="mt-0.5 line-clamp-2 break-words text-xs text-text-muted"
-                >{item.snippet}</span
+                >{snippetPreview(item.snippet, 140)}</span
               >
             {/if}
           </button>
 
           {#if item.status === "pending" && isOwner(item)}
             <!-- The owner's call, made where the email shows up. Non-destructive → inline. -->
-            <form method="POST" action="?/approveInteraction" use:enhance>
+            <form method="POST" action="?/approveInteraction" use:enhance={busy.wrap(item.id)}>
               <input type="hidden" name="id" value={item.id} />
-              <button
+              <Button
                 type="submit"
-                class="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-text hover:bg-surface"
+                variant="secondary"
+                size="xs"
+                loading={busy.is(item.id)}
+                disabled={busy.active}
               >
                 {t("interactions.approve")}
-              </button>
+              </Button>
             </form>
           {/if}
           {#if menuItems(item).length > 0}
@@ -307,6 +368,13 @@
   <InteractionForm {prefill} mentions={mentionCandidates} onsaved={() => (showCreate = false)} />
 </Modal>
 
+<!-- Upload an exported email (#262): the same host actions, one more of them. -->
+<Modal bind:open={showUpload} title={t("interactions.eml.title")}>
+  {#if showUpload}
+    <EmlUploadForm {prefill} onsaved={() => (showUpload = false)} />
+  {/if}
+</Modal>
+
 <Modal bind:open={showEdit} title={t("interactions.edit")}>
   {#if editing}
     {#key editing.id}
@@ -323,6 +391,18 @@
   {#if closingWith}
     {#key closingWith.id}
       <CloseTaskDialog interaction={closingWith} onsaved={() => (showCloseTask = false)} />
+    {/key}
+  {/if}
+</Modal>
+
+<!-- Glue an unthreaded email onto another conversation by hand (#272). -->
+<Modal bind:open={showConversation} title={t("interactions.add_to_conversation_title")}>
+  {#if linkingConv}
+    {#key linkingConv.id}
+      <InteractionConversationDialog
+        interaction={linkingConv}
+        onsaved={() => (showConversation = false)}
+      />
     {/key}
   {/if}
 </Modal>
@@ -365,11 +445,10 @@
       method="POST"
       action="?/rejectInteraction"
       class="space-y-4"
-      use:enhance={() =>
-        async ({ update }) => {
-          showReject = false;
-          await update();
-        }}
+      use:enhance={busy.wrap("reject", () => async ({ update }) => {
+        showReject = false;
+        await update();
+      })}
     >
       <input type="hidden" name="id" value={rejecting.id} />
       <p class="text-sm text-text-muted">{t("interactions.reject_message")}</p>
@@ -385,12 +464,9 @@
         >
           {t("common.cancel")}
         </button>
-        <button
-          type="submit"
-          class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
+        <Button type="submit" variant="danger" loading={busy.is("reject")} disabled={busy.active}>
           {t("interactions.reject")}
-        </button>
+        </Button>
       </div>
     </form>
   {/if}

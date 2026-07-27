@@ -14,8 +14,15 @@ from app.core.tenancy import RequestContext, require_context
 from app.errors import AppError
 from app.modules.companies.groups import groups_router
 from app.modules.companies.models import Company
-from app.modules.companies.schemas import CompanyCreate, CompanyRead, CompanyUpdate
-from app.modules.companies.service import CompanyService
+from app.modules.companies.schemas import (
+    ClientNumberBackfillResult,
+    CompanyCreate,
+    CompanyNumberingRead,
+    CompanyNumberingWrite,
+    CompanyRead,
+    CompanyUpdate,
+)
+from app.modules.companies.service import CompanyService, CompanySettingsService
 from app.schemas import Page, PanelData
 
 router = APIRouter(prefix="/companies", tags=["companies"])
@@ -33,6 +40,53 @@ async def _enabled_modules(ctx: RequestContext) -> list[str]:
     return list(settings.enabled_modules)
 
 
+# --------------------------------------------------------------------------- #
+# Settings — client numbering
+#
+# Above ``/{company_id}`` for the same reason ``groups_router`` is: "settings" would otherwise
+# be parsed as a company id and 422 on every request.
+# --------------------------------------------------------------------------- #
+@router.get(
+    "/settings",
+    response_model=CompanyNumberingRead,
+    dependencies=[require_permission("companies.settings.manage")],
+)
+async def get_company_settings(
+    ctx: RequestContext = Depends(require_context),
+) -> CompanyNumberingRead:
+    """How this organisation numbers its clients (klantnummer format + sequence)."""
+    return CompanyNumberingRead.model_validate(await CompanySettingsService(ctx).row())
+
+
+@router.put(
+    "/settings",
+    response_model=CompanyNumberingRead,
+    dependencies=[require_permission("companies.settings.manage")],
+)
+async def update_company_settings(
+    payload: CompanyNumberingWrite,
+    ctx: RequestContext = Depends(require_context),
+) -> CompanyNumberingRead:
+    return CompanyNumberingRead.model_validate(await CompanySettingsService(ctx).save(payload))
+
+
+@router.post(
+    "/settings/backfill-client-numbers",
+    response_model=ClientNumberBackfillResult,
+    dependencies=[require_permission("companies.settings.manage")],
+)
+async def backfill_client_numbers(
+    ctx: RequestContext = Depends(require_context),
+) -> ClientNumberBackfillResult:
+    """Number every client that has no number yet, oldest first.
+
+    Only fills blanks — an existing number is never rewritten, so this is safe to run twice.
+    """
+    return ClientNumberBackfillResult(
+        numbered=await CompanySettingsService(ctx).backfill_client_numbers()
+    )
+
+
 @router.get(
     "",
     response_model=Page[CompanyRead],
@@ -44,7 +98,9 @@ async def list_companies(
     q: str | None = Query(None, max_length=200),
     status: str | None = Query(None, max_length=50, description="Filter on one lifecycle status"),
     mine: bool = Query(False, description="Only clients I'm assigned to (primary or not)"),
-    sort: str | None = Query(None, description="name | status | created_at | updated_at, '-' desc"),
+    sort: str | None = Query(
+        None, description="name | client_number | status | created_at | updated_at, '-' desc"
+    ),
     hours: bool = Query(
         False, description="Include the budget roll-up; costs three grouped queries"
     ),

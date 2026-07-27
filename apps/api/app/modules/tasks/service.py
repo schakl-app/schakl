@@ -88,6 +88,7 @@ _TRACKED_FIELDS = (
     "due_date",
     "allocated_minutes",
     "assignee_user_id",
+    "assignee_contact_id",
     "company_id",
     "project_id",
     "recurrence",
@@ -328,6 +329,7 @@ class TaskService:
         company_id: uuid.UUID | None = None,
         project_id: uuid.UUID | None = None,
         assignee_user_id: uuid.UUID | None = None,
+        assignee_contact_id: uuid.UUID | None = None,
         status: str | None = None,
         label_id: uuid.UUID | None = None,
         due: str | None = None,
@@ -347,6 +349,8 @@ class TaskService:
             stmt = stmt.where(Task.project_id == project_id)
         if assignee_user_id is not None:
             stmt = stmt.where(Task.assignee_user_id == assignee_user_id)
+        if assignee_contact_id is not None:
+            stmt = stmt.where(Task.assignee_contact_id == assignee_contact_id)
         if status is not None:
             stmt = stmt.where(Task.status == status)
         if label_id is not None:
@@ -551,9 +555,17 @@ class TaskService:
             await ensure_parent_in_tenant(self.ctx.session, _tbl, values.get(_fk), self.ctx.org.id)
         # Markdown source is stored; strip any raw HTML on write (issue #66, app/core/richtext).
         values["description"] = sanitize_markdown(values.get("description"))
-        # Verantwoordelijke defaults down: project's responsible → else the company's,
-        # when the task has no explicit assignee (overridable per task).
-        if values.get("assignee_user_id") is None:
+        # An employee or a client contact, never both, and a contact only from this task's own
+        # company (#273). Validate the pair as given before any default fills the employee slot.
+        await self._validate_assignee(
+            user_id=values.get("assignee_user_id"),
+            contact_id=values.get("assignee_contact_id"),
+            company_id=values.get("company_id"),
+        )
+        # Verantwoordelijke defaults down: project's responsible → else the company's, when the
+        # task names neither an employee nor a contact (a contact assignee is a deliberate choice
+        # that must not be silently overwritten by the client's responsible employee).
+        if values.get("assignee_user_id") is None and values.get("assignee_contact_id") is None:
             values["assignee_user_id"] = await self._default_assignee(
                 values.get("project_id"), values.get("company_id")
             )
@@ -603,6 +615,53 @@ class TaskService:
 
             return await CompanyService(self.ctx).primary_assignee(company_id)
         return None
+
+    async def _validate_assignee(
+        self,
+        *,
+        user_id: uuid.UUID | None,
+        contact_id: uuid.UUID | None,
+        company_id: uuid.UUID | None,
+    ) -> None:
+        """Guard the two mutually exclusive assignee kinds (#273).
+
+        A task is assigned to an employee **or** to a contact of its own client company, never
+        both. And a contact assignee is company-scoped one level deeper than the usual org
+        isolation: it must be linked to *this task's* ``company_id`` through ``company_contacts``,
+        so staff can never attach an unrelated client's contact. Both checks reject through the
+        standard i18n envelope.
+
+        The company-link probe is raw org-scoped SQL against the contacts join — never a
+        cross-module import (§6) — and runs *before* the FK insert, so a foreign ``contact_id``
+        (another org, or another company in this org) is refused here and never reaches the
+        FK check that would otherwise turn into a cross-tenant existence oracle (audit F19).
+        """
+        if user_id is not None and contact_id is not None:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"assignee_contact_id": "errors.tasks_assignee_conflict"},
+            )
+        if contact_id is None:
+            return
+        # A contact assignee needs a client to draw from; an internal task (no company) has none.
+        if company_id is not None:
+            linked = await self.ctx.session.scalar(
+                sql_text(
+                    "SELECT 1 FROM company_contacts WHERE org_id = :oid"
+                    " AND company_id = :cid AND contact_id = :ctid"
+                ),
+                {"oid": self.ctx.org.id, "cid": company_id, "ctid": contact_id},
+            )
+            if linked:
+                return
+        raise AppError(
+            "validation",
+            "errors.validation",
+            status_code=422,
+            fields={"assignee_contact_id": "errors.tasks_assignee_contact_company"},
+        )
 
     async def _next_position(self) -> float:
         result = await self.ctx.session.scalar(
@@ -658,6 +717,16 @@ class TaskService:
                 await ensure_parent_in_tenant(
                     self.ctx.session, _tbl, values.get(_fk), self.ctx.org.id
                 )
+        # Re-check the assignee whenever either kind or the company moves (#273): the resulting
+        # pair must stay exclusive, and a contact assignee must still belong to the resulting
+        # company — so re-homing a task to another client, or clearing its company, is refused
+        # while it holds that client's contact rather than silently orphaning the assignment.
+        if {"assignee_user_id", "assignee_contact_id", "company_id"} & values.keys():
+            await self._validate_assignee(
+                user_id=values.get("assignee_user_id", task.assignee_user_id),
+                contact_id=values.get("assignee_contact_id", task.assignee_contact_id),
+                company_id=values.get("company_id", task.company_id),
+            )
         reason = values.pop("due_change_reason", None)
         if "description" in values:
             values["description"] = sanitize_markdown(values["description"])

@@ -4,8 +4,10 @@
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import ProviderQuickCreate from "$lib/core/ui/ProviderQuickCreate.svelte";
@@ -24,6 +26,7 @@
   let editing = $state<Hosting | null>(null);
   let deleteId = $state("");
   let confirmDelete = $state(false);
+  const busy = new InFlight();
 
   // Inline-create from the form's pickers (#115): "＋ … toevoegen" opens these over the modal.
   // The slot names the picker that asked, so its `inlineCreated` auto-selects only there.
@@ -114,11 +117,10 @@
     <form
       method="POST"
       action="?/save"
-      use:enhance={() =>
-        ({ result, update }) => {
-          if (result.type === "success") showModal = false;
-          void update({ reset: false });
-        }}
+      use:enhance={busy.wrap("", () => ({ result, update }) => {
+        if (result.type === "success") showModal = false;
+        void update({ reset: false });
+      })}
     >
       {#if editing}<input type="hidden" name="id" value={editing.id} />{/if}
       <HostingForm
@@ -149,9 +151,7 @@
           class="rounded-lg border border-border px-4 py-2 text-sm text-text"
           onclick={() => (showModal = false)}>{t("common.cancel")}</button
         >
-        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-          >{t("common.save")}</button
-        >
+        <Button loading={busy.active}>{t("common.save")}</Button>
       </div>
     </form>
   {/key}

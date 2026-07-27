@@ -27,7 +27,8 @@ export const load: PageServerLoad = async (event) => {
   const [dossier, balance, contracts, types, members] = await Promise.all([
     api.GET("/api/v1/hr/dossier", { params: { query: { user_id: userId } } }),
     leaveEnabled
-      ? api.GET("/api/v1/leave/balance", {
+      ? // #265: combined per-group balances — one "Vakantieverlof" figure, not two vacation rows.
+        api.GET("/api/v1/leave/balance/groups", {
           params: { query: { user_id: userId, year: new Date().getFullYear() } },
         })
       : Promise.resolve({ data: null }),

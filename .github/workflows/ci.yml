@@ -63,6 +63,7 @@ jobs:
               - '.github/workflows/ci.yml'
             web:
               - 'apps/web/**'
+              - 'scripts/forms-check.mjs'
               - 'messages/**'
               - 'project.inlang/**'
               - 'pnpm-lock.yaml'
@@ -168,6 +169,10 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      # Before the install: plain node, and it guards a bug class that type-checking cannot
+      # see — a form that blanks what the user just saved (docs/UX.md).
+      - name: Form reset check
+        run: node scripts/forms-check.mjs
       - run: pnpm install --frozen-lockfile
       - name: Type check
         run: pnpm --filter @schakl/web check

@@ -16,6 +16,7 @@ from app.core.activity.registry import is_auditable, read_permission_for
 from app.core.activity.schemas import ActivityItem
 from app.core.activity.service import ActivityService
 from app.core.permissions.deps import require_permission
+from app.core.scope import entity_visible
 from app.core.tenancy import RequestContext, require_context
 
 router = APIRouter(prefix="/activity", tags=["activity"])
@@ -47,5 +48,11 @@ async def entity_activity(
     entity_read = read_permission_for(entity_type)
     if entity_read is not None:
         ctx.require(entity_read)
+    # …and holding the permission is not the same as being able to see *this* record. The pair
+    # comes straight from the caller, so a membership restricted to a company group (#191) could
+    # read the change history of a client whose every other surface answers 404 (#285). Empty,
+    # not 404: the panel simply isn't there, exactly as for a portal login above.
+    if not await entity_visible(ctx, entity_type, entity_id):
+        return []
     items = await ActivityService(ctx).feed(entity_type, entity_id, limit)
     return [ActivityItem(**item) for item in items]

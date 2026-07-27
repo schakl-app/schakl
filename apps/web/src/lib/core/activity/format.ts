@@ -11,7 +11,7 @@
  * label — a raw UUID is worse than saying nothing — so the trail reads "changed Verantwoordelijke"
  * rather than leaking an id. The full before/after values still live in the stored row.
  */
-import { fmtDayMonth } from "$lib/core/format";
+import { fmtDayMonth, fmtMoney, fmtNumericDate } from "$lib/core/format";
 import { t } from "$lib/core/i18n";
 
 export interface ActivityLike {
@@ -53,6 +53,22 @@ function renderValue(entityType: string, field: string, value: unknown): string 
   return String(value);
 }
 
+/** A stored amount, printed as money; anything unparseable prints as the empty marker. */
+function money(value: unknown): string {
+  const amount = Number(value);
+  if (value === null || value === undefined || value === "" || Number.isNaN(amount)) {
+    return t("activity.value.empty");
+  }
+  return fmtMoney(amount);
+}
+
+/** A stored date-only value, printed European. Guarded: `Intl` throws on an invalid Date. */
+function isoDate(value: unknown): string {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? fmtNumericDate(value)
+    : t("activity.value.empty");
+}
+
 function changeText(entityType: string, field: string, change: Change): string {
   const label = fieldLabel(field);
   if (LABEL_ONLY_FIELDS.has(field)) return label;
@@ -81,6 +97,20 @@ export function activityText(item: ActivityLike): string {
       filename: String(item.payload?.filename ?? ""),
     });
   }
+  // A price change written by a (possibly bulk) price increase (#231). The amounts are stored
+  // raw, so the *reader's* locale formats them, like every other money cell.
+  if (item.action === "price_increased") {
+    return t("activity.action.price_increased", {
+      from: money(item.payload?.from),
+      to: money(item.payload?.to),
+      valid_from: isoDate(item.payload?.valid_from),
+    });
+  }
+  // Two contactmomenten tied into one conversation (#272). Handled before the prefix branch
+  // below: its payload is a pointer, not the kind/subject those messages interpolate.
+  if (item.action === "interaction.conversation_linked") {
+    return t("activity.action.interaction.conversation_linked");
+  }
   // A contactmoment milestone mirrored onto its host record (#152): logged / linked / unlinked.
   if (item.action.startsWith("interaction.")) {
     return t(`activity.action.${item.action}`, {
@@ -95,6 +125,9 @@ export function activityText(item: ActivityLike): string {
       name: String(item.payload?.name ?? ""),
     });
   }
-  // `created` today; an unknown action falls back to its own key rather than throwing.
-  return t(`activity.action.${item.action}`);
+  // Everything else reads its own key **with the payload as ICU params**: a recorded action's
+  // payload keys are exactly its message's placeholders (`{email}`, `{title}`, `{count}`), so a
+  // module can add an action without touching this file. An unknown action still falls back to
+  // its key rather than throwing.
+  return t(`activity.action.${item.action}`, item.payload ?? {});
 }

@@ -8,7 +8,9 @@
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
   import { can } from "$lib/core/permissions";
+  import { InFlight } from "$lib/core/submit.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
@@ -19,6 +21,7 @@
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import { LABEL_COLORS, labelChipClass, labelDotClass } from "$lib/modules/tasks/labels";
+  import TaskAssigneePicker from "$lib/modules/tasks/TaskAssigneePicker.svelte";
   import TaskSchedulePanel from "$lib/modules/tasks/TaskSchedulePanel.svelte";
   import { formatMinutes } from "$lib/modules/time/format";
 
@@ -69,6 +72,15 @@
   const isPortal = $derived(page.data.user?.isPortal ?? false);
   // `tasks.comment.write:any` lets a manager clean up anyone's comment; the author always can.
   const canDeleteAnyComment = $derived(can(page.data.user, "tasks.comment.write", "any"));
+  // Ticking and quick-adding checklist items are "use mode" affordances that live outside edit
+  // mode (docs/UX.md), but they are still task writes (the API gates the item PATCH/POST on
+  // `tasks.task.write`). A read-only portal client (#244) reaches this page for a client-visible
+  // task, so the controls mirror the API: shown to a writer, read-only for everyone else.
+  const canWriteTask = $derived(can(page.data.user, "tasks.task.write"));
+  // Saving a checklist into the org-wide repository is a *different* capability from editing this
+  // task — its own permission, held by nobody by default but admin. Without this gate a member in
+  // edit mode was offered "Als sjabloon opslaan" and got a 403 for their trouble.
+  const canSaveChecklistTemplate = $derived(can(page.data.user, "tasks.checklist_template.write"));
 
   // The org's configured status vocabulary (issue #62), from the /tasks layout load.
   const statuses = $derived(data.statuses);
@@ -127,7 +139,14 @@
   // else its company, else the org's recent tasks — fetched lazily in the browser so the SSR
   // load pays nothing (docs/PERFORMANCE.md: meta=false&count=false skips discarded aggregates).
   let taskCandidates = $state<
-    { id: string; name: string; subtitle?: string; assignee?: string; due?: string; overdue?: boolean }[]
+    {
+      id: string;
+      name: string;
+      subtitle?: string;
+      assignee?: string;
+      due?: string;
+      overdue?: boolean;
+    }[]
   >([]);
   $effect(() => {
     const scope = task.project_id
@@ -178,9 +197,6 @@
   const freqs = ["daily", "weekly", "monthly", "quarterly", "yearly"] as const;
 
   const companyItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
-  const memberItems = $derived(
-    data.members.map((m) => ({ value: m.user_id, label: m.full_name || m.email })),
-  );
 
   // Live company/project picks for the edit form (#227): the client narrows the project list
   // and a picked project backfills its client, like every create-side pairing of these two
@@ -218,6 +234,46 @@
     const project = data.projects.find((p) => p.id === id);
     if (project?.company_id) fCompany = project.company_id;
   }
+  // The task's own client contacts (#273): the options for a contact assignee, and the source
+  // for naming a contact assignee in the read view. Follows the *live* company pick (fCompany) so
+  // re-homing the task in edit mode narrows the options; reuses the mention fetch when the company
+  // is unchanged (the common case), only issuing a fresh request when the client differs.
+  let editContacts = $state<{ id: string; name: string }[]>([]);
+  let editContactsFor = $state<string>("");
+  $effect(() => {
+    const companyId = fCompany;
+    if (!companyId || companyId === (task.company_id ?? "")) return;
+    if (companyId === editContactsFor) return;
+    void (async () => {
+      const response = await fetch(`/api/v1/contacts?limit=200&company_id=${companyId}`, {
+        headers: { accept: "application/json" },
+      });
+      if (!response.ok) return;
+      interface ContactRow {
+        id: string;
+        first_name: string;
+        last_name?: string | null;
+      }
+      const rows: ContactRow[] = (await response.json()).items ?? [];
+      editContacts = rows.map((c) => ({
+        id: c.id,
+        name: `${c.first_name} ${c.last_name ?? ""}`.trim(),
+      }));
+      editContactsFor = companyId;
+    })();
+  });
+  const assigneeContacts = $derived(
+    !fCompany
+      ? []
+      : fCompany === (task.company_id ?? "")
+        ? contactCandidates.map((c) => ({ id: c.id, name: c.name }))
+        : editContactsFor === fCompany
+          ? editContacts
+          : [],
+  );
+  const contactName = (id?: string | null) =>
+    id ? (assigneeContacts.find((c) => c.id === id)?.name ?? null) : null;
+
   const memberName = (id?: string | null) => {
     const m = data.members.find((mm) => mm.user_id === id);
     return m ? m.full_name || m.email : null;
@@ -233,6 +289,7 @@
   // Arriving with the `?edit=1` marker (#78; a fresh create lands here with it, #230) opens
   // edit mode once — never for a portal login, whose surface is use-only.
   let editMode = $state(editIntent() && !(page.data.user?.isPortal ?? false));
+  const busy = new InFlight();
   let confirmDelete = $state(false);
   // Inline create from the relation pickers (#115, docs/UX.md — per-picker definition of
   // done): the dialog posts to ?/createCompany / ?/createProject and the new record
@@ -559,7 +616,7 @@
                 <span class="text-xs tabular-nums text-text-muted"
                   >{t("tasks.checklist.progress", { done: doneCount, total })}</span
                 >
-                {#if editMode && items.length > 0}
+                {#if editMode && items.length > 0 && canSaveChecklistTemplate}
                   <form method="POST" action="?/saveChecklistTemplate" use:enhance>
                     <input type="hidden" name="title" value={checklist.title} />
                     <!-- Item titles *and* descriptions, so the saved template carries both (issue #66). -->
@@ -609,11 +666,10 @@
               <form
                 method="POST"
                 action="?/editChecklist"
-                use:enhance={() =>
-                  ({ update }) => {
-                    editingChecklistId = null;
-                    void update();
-                  }}
+                use:enhance={busy.wrap("editChecklist", () => ({ update }) => {
+                  editingChecklistId = null;
+                  void update({ reset: false });
+                })}
                 class="mb-2 space-y-2"
               >
                 <input type="hidden" name="checklist_id" value={checklist.id} />
@@ -627,9 +683,7 @@
                   tasks={taskCandidates}
                 />
                 <div class="flex gap-2">
-                  <button class="rounded-lg bg-brand px-2 py-1 text-xs font-medium text-white"
-                    >{t("common.save")}</button
-                  >
+                  <Button size="xs" loading={busy.is("editChecklist")}>{t("common.save")}</Button>
                   <button
                     type="button"
                     class="rounded-lg border border-border px-2 py-1 text-xs"
@@ -652,36 +706,47 @@
               {#each items as item (item.id)}
                 <li class="group">
                   <div class="flex items-center gap-2">
-                    <form
-                      method="POST"
-                      action="?/toggleItem"
-                      use:enhance={() => {
-                        // Snapshot before the server flips it: checking the last open to-do on an
-                        // unfinished task opens the finish prompt after the reload.
-                        const completesLast =
-                          !item.done &&
-                          openItemCount === 1 &&
-                          !isDone &&
-                          !isPortal &&
-                          finishStatus !== null;
-                        return ({ update }) => {
-                          void update().then(() => {
-                            if (completesLast) showFinishPrompt = true;
-                          });
-                        };
-                      }}
-                    >
-                      <input type="hidden" name="checklist_id" value={checklist.id} />
-                      <input type="hidden" name="item_id" value={item.id} />
-                      <input type="hidden" name="done" value={String(!item.done)} />
-                      <button
+                    {#if canWriteTask}
+                      <form
+                        method="POST"
+                        action="?/toggleItem"
+                        use:enhance={() => {
+                          // Snapshot before the server flips it: checking the last open to-do on an
+                          // unfinished task opens the finish prompt after the reload.
+                          const completesLast =
+                            !item.done &&
+                            openItemCount === 1 &&
+                            !isDone &&
+                            !isPortal &&
+                            finishStatus !== null;
+                          return ({ update }) => {
+                            void update().then(() => {
+                              if (completesLast) showFinishPrompt = true;
+                            });
+                          };
+                        }}
+                      >
+                        <input type="hidden" name="checklist_id" value={checklist.id} />
+                        <input type="hidden" name="item_id" value={item.id} />
+                        <input type="hidden" name="done" value={String(!item.done)} />
+                        <button
+                          class="flex h-4 w-4 items-center justify-center rounded border text-[10px]
+                          {item.done
+                            ? 'border-brand bg-brand text-white'
+                            : 'border-border text-transparent hover:border-brand'}"
+                          aria-label={t("tasks.toggle_done")}>✓</button
+                        >
+                      </form>
+                    {:else}
+                      <!-- Read-only viewer (portal client, #244): item state shows, ticking does not. -->
+                      <span
                         class="flex h-4 w-4 items-center justify-center rounded border text-[10px]
                         {item.done
                           ? 'border-brand bg-brand text-white'
-                          : 'border-border text-transparent hover:border-brand'}"
-                        aria-label={t("tasks.toggle_done")}>✓</button
+                          : 'border-border text-transparent'}"
+                        aria-label={t("tasks.toggle_done")}>✓</span
                       >
-                    </form>
+                    {/if}
                     <span
                       class="flex-1 text-sm {item.done
                         ? 'text-text-muted line-through'
@@ -716,11 +781,10 @@
                     <form
                       method="POST"
                       action="?/editItem"
-                      use:enhance={() =>
-                        ({ update }) => {
-                          editingItemId = null;
-                          void update();
-                        }}
+                      use:enhance={busy.wrap("editItem", () => ({ update }) => {
+                        editingItemId = null;
+                        void update({ reset: false });
+                      })}
                       class="mt-1 space-y-2 pl-6"
                     >
                       <input type="hidden" name="checklist_id" value={checklist.id} />
@@ -735,9 +799,7 @@
                         tasks={taskCandidates}
                       />
                       <div class="flex gap-2">
-                        <button class="rounded-lg bg-brand px-2 py-1 text-xs font-medium text-white"
-                          >{t("common.save")}</button
-                        >
+                        <Button size="xs" loading={busy.is("editItem")}>{t("common.save")}</Button>
                         <button
                           type="button"
                           class="rounded-lg border border-border px-2 py-1 text-xs"
@@ -751,24 +813,36 @@
                 </li>
               {/each}
             </ul>
-            <form method="POST" action="?/addItem" use:enhance class="mt-2 flex gap-2">
-              <input type="hidden" name="checklist_id" value={checklist.id} />
-              <input
-                name="title"
-                placeholder={t("tasks.checklist.item_placeholder")}
-                required
-                class="min-w-0 flex-1 rounded-lg border border-border px-2 py-1 text-sm outline-none focus:border-brand"
-              />
-              <button
-                class="rounded-lg border border-border px-2 py-1 text-xs text-text-muted hover:border-brand hover:text-brand"
-                >＋</button
+            {#if canWriteTask}
+              <!-- Quick-add is a task write (POST item); hidden from a read-only portal client (#244). -->
+              <form
+                method="POST"
+                action="?/addItem"
+                use:enhance={busy.wrap(`addItem:${checklist.id}`)}
+                class="mt-2 flex gap-2"
               >
-            </form>
+                <input type="hidden" name="checklist_id" value={checklist.id} />
+                <input
+                  name="title"
+                  placeholder={t("tasks.checklist.item_placeholder")}
+                  required
+                  class="min-w-0 flex-1 rounded-lg border border-border px-2 py-1 text-sm outline-none focus:border-brand"
+                />
+                <Button variant="secondary" size="xs" loading={busy.is(`addItem:${checklist.id}`)}
+                  >＋</Button
+                >
+              </form>
+            {/if}
           </div>
         {/each}
 
         {#if editMode}
-          <form method="POST" action="?/addChecklist" use:enhance class="flex gap-2">
+          <form
+            method="POST"
+            action="?/addChecklist"
+            use:enhance={busy.wrap("addChecklist")}
+            class="flex gap-2"
+          >
             <!-- `min-w-0`: a flex `<input>` keeps its browser-default width (~228px here) as its
                min-content floor, so `flex-1` alone cannot shrink it and the row pushed the whole
                card past a phone's width (issue #36). -->
@@ -778,14 +852,17 @@
               required
               class="min-w-0 flex-1 rounded-lg border border-dashed border-border px-3 py-1.5 text-sm outline-none focus:border-brand"
             />
-            <button
-              class="rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:border-brand hover:text-brand"
-            >
+            <Button variant="secondary" size="sm" loading={busy.is("addChecklist")}>
               {t("common.create")}
-            </button>
+            </Button>
           </form>
           {#if data.checklistTemplates.length > 0}
-            <form method="POST" action="?/addChecklist" use:enhance class="mt-2 flex gap-2">
+            <form
+              method="POST"
+              action="?/addChecklist"
+              use:enhance={busy.clear("addChecklistTpl")}
+              class="mt-2 flex gap-2"
+            >
               <select
                 name="template_id"
                 required
@@ -797,11 +874,9 @@
                   </option>
                 {/each}
               </select>
-              <button
-                class="rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:border-brand hover:text-brand"
-              >
+              <Button variant="secondary" size="sm" loading={busy.is("addChecklistTpl")}>
                 {t("tasks.checklist.from_template")}
-              </button>
+              </Button>
             </form>
           {/if}
         {/if}
@@ -857,9 +932,12 @@
           <form
             method="POST"
             action="?/addLink"
-            use:enhance={() =>
-              ({ update }) =>
-                void update({ reset: true })}
+            use:enhance={busy.wrap(
+              "addLink",
+              () =>
+                ({ update }) =>
+                  void update({ reset: true }),
+            )}
             class="flex flex-wrap gap-2"
           >
             <input
@@ -873,11 +951,9 @@
               placeholder={t("tasks.links.title_placeholder")}
               class="w-40 rounded-lg border border-border px-3 py-1.5 text-sm outline-none focus:border-brand"
             />
-            <button
-              class="rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:border-brand hover:text-brand"
-            >
+            <Button variant="secondary" size="sm" loading={busy.is("addLink")}>
               {t("common.create")}
-            </button>
+            </Button>
           </form>
         {/if}
 
@@ -908,12 +984,11 @@
       <form
         method="POST"
         action="?/addComment"
-        use:enhance={() =>
-          ({ update, result }) => {
-            // Reset the editor by remounting it; its internal state survives a plain form reset.
-            if (result.type === "success") newCommentKey += 1;
-            void update({ reset: true });
-          }}
+        use:enhance={busy.wrap("addComment", () => ({ update, result }) => {
+          // Reset the editor by remounting it; its internal state survives a plain form reset.
+          if (result.type === "success") newCommentKey += 1;
+          void update({ reset: true });
+        })}
         class="mb-4"
       >
         {#key newCommentKey}
@@ -927,10 +1002,7 @@
           />
         {/key}
         <div class="mt-2 flex justify-end">
-          <button
-            class="rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
-            >{t("tasks.comments.send")}</button
-          >
+          <Button size="sm" loading={busy.is("addComment")}>{t("tasks.comments.send")}</Button>
         </div>
       </form>
 
@@ -982,11 +1054,10 @@
                 <form
                   method="POST"
                   action="?/editComment"
-                  use:enhance={() =>
-                    ({ update }) => {
-                      editingCommentId = null;
-                      void update();
-                    }}
+                  use:enhance={busy.wrap("editComment", () => ({ update }) => {
+                    editingCommentId = null;
+                    void update({ reset: false });
+                  })}
                 >
                   <input type="hidden" name="comment_id" value={comment.id} />
                   <RichTextEditor
@@ -998,9 +1069,7 @@
                     tasks={taskCandidates}
                   />
                   <div class="mt-1 flex gap-2">
-                    <button class="rounded-lg bg-brand px-2 py-1 text-xs font-medium text-white"
-                      >{t("common.save")}</button
-                    >
+                    <Button size="xs" loading={busy.is("editComment")}>{t("common.save")}</Button>
                     <button
                       type="button"
                       class="rounded-lg border border-border px-2 py-1 text-xs"
@@ -1089,7 +1158,7 @@
               {statuses.find((s) => s.key === task.status)?.name ?? task.status}
             </p>
           {:else}
-            <form method="POST" action="?/update" use:enhance>
+            <form method="POST" action="?/update" use:enhance={busy.keep("status")}>
               <select
                 id="status"
                 name="status"
@@ -1168,15 +1237,18 @@
             </select>
           </div>
           <div>
-            <label for="assignee" class="mb-1 block text-xs font-medium text-text-muted"
+            <label for="assignee-entity" class="mb-1 block text-xs font-medium text-text-muted"
               >{t("tasks.field.assignee")}</label
             >
-            <Combobox
-              items={memberItems}
-              name="assignee_user_id"
-              value={task.assignee_user_id ?? ""}
-              id="assignee"
+            <!-- Employee, or — when the task has a client (#273) — one of that client's contacts.
+                 The contact list follows the live company pick above (fCompany). -->
+            <TaskAssigneePicker
               formId="task-edit"
+              employees={data.members}
+              contacts={assigneeContacts}
+              contactsEnabled={!!fCompany}
+              userValue={task.assignee_user_id ?? ""}
+              contactValue={task.assignee_contact_id ?? ""}
             />
           </div>
           <div>
@@ -1270,7 +1342,16 @@
           <dl class="space-y-2 text-sm">
             <div class="flex items-center justify-between gap-2">
               <dt class="text-xs font-medium text-text-muted">{t("tasks.field.assignee")}</dt>
-              <dd class="text-text">{memberName(task.assignee_user_id) ?? "—"}</dd>
+              <dd class="text-text">
+                <!-- A contact assignee (#273) reads with its kind, so it isn't mistaken for an
+                     employee; its name resolves from the client's contacts, loaded client-side. -->
+                {#if task.assignee_contact_id}
+                  {contactName(task.assignee_contact_id) ?? t("party.contact")}
+                  <span class="text-xs text-text-muted">({t("party.contact")})</span>
+                {:else}
+                  {memberName(task.assignee_user_id) ?? "—"}
+                {/if}
+              </dd>
             </div>
             <div class="flex items-center justify-between gap-2">
               <dt class="text-xs font-medium text-text-muted">{t("tasks.field.project")}</dt>
@@ -1344,11 +1425,10 @@
           <form
             method="POST"
             action="?/setLabels"
-            use:enhance={() =>
-              ({ update }) => {
-                showLabelPicker = false;
-                void update();
-              }}
+            use:enhance={busy.wrap("setLabels", () => ({ update }) => {
+              showLabelPicker = false;
+              void update({ reset: false });
+            })}
             class="space-y-1"
           >
             {#each data.labels as label (label.id)}
@@ -1363,20 +1443,18 @@
                 <span class="text-text">{label.name}</span>
               </label>
             {/each}
-            <button
-              class="mt-2 w-full rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
-              >{t("common.apply")}</button
+            <Button size="sm" loading={busy.is("setLabels")} class="mt-2 w-full"
+              >{t("common.apply")}</Button
             >
           </form>
 
           <form
             method="POST"
             action="?/createLabel"
-            use:enhance={() =>
-              ({ update }) => {
-                showLabelPicker = false;
-                void update();
-              }}
+            use:enhance={busy.wrap("createLabel", () => ({ update }) => {
+              showLabelPicker = false;
+              void update();
+            })}
             class="mt-3 border-t border-border pt-3"
           >
             {#each currentLabelIds as id (id)}
@@ -1401,11 +1479,14 @@
                 ></button>
               {/each}
             </div>
-            <button
-              class="mt-2 w-full rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:border-brand hover:text-brand"
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={busy.is("createLabel")}
+              class="mt-2 w-full"
             >
               {t("tasks.labels.create")}
-            </button>
+            </Button>
           </form>
         {:else if (task.labels ?? []).length === 0}
           <p class="text-sm text-text-muted">{t("tasks.labels.empty")}</p>
@@ -1472,19 +1553,16 @@
         id="task-edit"
         method="POST"
         action="?/update"
-        use:enhance={() =>
-          ({ update }) => {
-            editMode = false;
-            dueReason = "";
-            void update();
-          }}
+        use:enhance={busy.wrap("update", () => ({ update }) => {
+          editMode = false;
+          dueReason = "";
+          void update();
+        })}
       >
         <input type="hidden" name="due_change_reason" value={dueReason} />
-        <button
-          class="w-full rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
+        <Button loading={busy.is("update")} class="w-full">
           {t("common.save")}
-        </button>
+        </Button>
       </form>
     {/if}
   </aside>
@@ -1573,18 +1651,15 @@
       <form
         method="POST"
         action="?/update"
-        use:enhance={() =>
-          ({ update }) => {
-            showFinishPrompt = false;
-            return update();
-          }}
+        use:enhance={busy.wrap("finish", () => ({ update }) => {
+          showFinishPrompt = false;
+          return update();
+        })}
       >
         <input type="hidden" name="status" value={finishStatus?.key ?? ""} />
-        <button
-          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
+        <Button loading={busy.is("finish")}>
           {t("tasks.finish_prompt.confirm")}
-        </button>
+        </Button>
       </form>
     </div>
   {/if}
@@ -1604,11 +1679,10 @@
     <form
       method="POST"
       action="?/createProject"
-      use:enhance={() =>
-        ({ result, update }) => {
-          if (result.type === "success") qcProjectOpen = false;
-          void update({ reset: false });
-        }}
+      use:enhance={busy.wrap("createProject", () => ({ result, update }) => {
+        if (result.type === "success") qcProjectOpen = false;
+        void update({ reset: false });
+      })}
       class="space-y-3"
     >
       <div>
@@ -1644,9 +1718,7 @@
           class="rounded-lg border border-border px-4 py-2 text-sm text-text"
           onclick={() => (qcProjectOpen = false)}>{t("common.cancel")}</button
         >
-        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-          >{t("common.create")}</button
-        >
+        <Button loading={busy.is("createProject")}>{t("common.create")}</Button>
       </div>
     </form>
   {/key}

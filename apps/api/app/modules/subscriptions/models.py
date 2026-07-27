@@ -83,10 +83,17 @@ class SubscriptionType(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base
 class SubscriptionTemplate(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     """A named preset — "Hosting Basis, €25/maand, 1 uur inbegrepen" (issue #142).
 
-    Picking one *prefills* the normal create form (one validation path, no server-side copy);
-    nothing references a template afterwards, so unlike a type it carries no FK from
-    ``subscriptions`` and may be deleted freely. ``amount`` seeds the first price-history row
-    at create time; a later template change never touches existing agreements.
+    Picking one *prefills* the normal create form (one validation path, no server-side copy),
+    so a later change to the preset's money or hours never reaches an agreement already
+    signed — those are negotiated per client and move through the price history.
+
+    **The name is the exception.** The create form takes it *from* the preset and shows it
+    read-only, so "Hosting Basis" on twelve clients is one label repeated twelve times, not
+    twelve independent names. Renaming the preset and leaving them behind would rename
+    nothing anyone reads. That is why an agreement now records which preset it came from
+    (``Subscription.subscription_template_id``) and a rename follows through — see
+    ``SubscriptionTemplateService.update``. The FK is SET NULL, so a preset still deletes
+    freely: its agreements keep their name and simply stop following one.
     """
 
     __tablename__ = "subscription_templates"
@@ -140,6 +147,17 @@ class Subscription(
     subscription_type_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("subscription_types.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    #: The standard subscription this agreement was created from — provenance, not a copy
+    #: source: every other preset value was resolved into columns at create time and is the
+    #: agreement's own from then on. It exists so a preset *rename* can follow through to the
+    #: agreements still carrying its name (see ``SubscriptionTemplate``). SET NULL, so
+    #: deleting a preset unlinks rather than strands.
+    subscription_template_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("subscription_templates.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )

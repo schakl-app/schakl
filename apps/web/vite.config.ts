@@ -24,7 +24,7 @@ export default defineConfig({
   // is reachable on the server and must be bundled too, not left as a bare `import` the
   // node_modules-less runtime image can't resolve (#66).
   ssr: {
-    noExternal: ["openapi-fetch", "dompurify", "marked"],
+    noExternal: ["openapi-fetch", "dompurify", "marked", "libphonenumber-js"],
   },
   server: {
     host: true,

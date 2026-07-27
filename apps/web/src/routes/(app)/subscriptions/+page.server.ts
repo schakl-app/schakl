@@ -100,7 +100,9 @@ export const load: PageServerLoad = async (event) => {
       params: { query: { include_inactive: canManageTypes || canManageTemplates } },
     }),
     api.GET("/api/v1/subscriptions/templates"),
-    api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, count: false } } }),
+    api.GET("/api/v1/companies", {
+      params: { query: { limit: 200, offset: 0, count: false, sort: "name" } },
+    }),
     api.GET("/api/v1/projects", { params: { query: { limit: 200, offset: 0, count: false } } }),
     api.GET("/api/v1/custom-fields/definitions", {
       params: { query: { entity_type: "subscription" } },
@@ -188,8 +190,13 @@ export const actions: Actions = {
     if (!body.name || !company_id || !body.start_date || body.amount === undefined) {
       return fail(400, { error: "errors.required" });
     }
+    // Only create carries it: it records which preset the form was prefilled from, so a
+    // later rename of that standard subscription reaches this agreement (an edit never
+    // re-links, and renaming the agreement itself is how it stops following).
+    const subscription_template_id =
+      String(form.get("subscription_template_id") ?? "").trim() || null;
     const { error } = await apiFor(event).POST("/api/v1/subscriptions", {
-      body: { ...body, company_id, amount: body.amount } as never,
+      body: { ...body, company_id, amount: body.amount, subscription_template_id } as never,
     });
     if (error) {
       const e = apiErrorKey(error);
@@ -228,7 +235,10 @@ export const actions: Actions = {
         status: "active",
         budget_period: "total",
         currency: event.locals.theme.currency,
-        billable_default: true,
+        // Made for an agreement, so it starts non-billable (#284): the retainer already pays
+        // for this work. Saving the agreement links it and would clear the flag anyway — this
+        // is so the project reads right the moment it exists, not one save later.
+        billable_default: false,
         custom: {},
       },
     });

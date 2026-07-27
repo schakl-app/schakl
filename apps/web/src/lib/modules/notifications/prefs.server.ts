@@ -21,13 +21,42 @@ export interface MatrixEventWrite {
   digest_weekday: number | null;
 }
 
+/** One event's e-mail override (#245). The digest schedule is global, so no time/weekday here. */
+export interface MatrixEmailEventWrite {
+  event_type: string;
+  enabled: boolean;
+  delay_minutes: number;
+  digest: string;
+}
+
+/** One event routed to one external channel (#283, #295). Absent = not routed. */
+export interface MatrixChannelEventWrite {
+  event_type: string;
+  enabled: boolean;
+  delay_minutes: number;
+  digest: string;
+}
+
+export interface MatrixChannelWrite {
+  channel_config_id: string;
+  events: MatrixChannelEventWrite[];
+}
+
 export interface MatrixWrite {
   events: MatrixEventWrite[];
+  email_events: MatrixEmailEventWrite[];
   general: {
     due_soon_days: number | null;
     quiet_hours_start: string | null;
     quiet_hours_end: string | null;
   } | null;
+  /** The scope's global e-mail digest schedule; null = inherit. */
+  email: {
+    digest_time: string | null;
+    digest_weekday: number | null;
+  } | null;
+  /** This scope's external channels, each with its per-event routing (#283, #295). */
+  channels: MatrixChannelWrite[];
 }
 
 /**
@@ -43,6 +72,12 @@ export const EMPTY_MATRIX: {
     quiet_hours_end: string | null;
     source: string;
   };
+  email: {
+    digest_time: string | null;
+    digest_weekday: number | null;
+    source: string;
+  };
+  channels: never[];
 } = {
   events: [],
   general: {
@@ -51,6 +86,12 @@ export const EMPTY_MATRIX: {
     quiet_hours_end: null,
     source: "default",
   },
+  email: {
+    digest_time: null,
+    digest_weekday: null,
+    source: "default",
+  },
+  channels: [],
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -87,6 +128,20 @@ export function parseMatrixPayload(raw: FormDataEntryValue | null): MatrixWrite 
     });
   }
 
+  const emailEvents: MatrixEmailEventWrite[] = [];
+  if (Array.isArray(parsed.email_events)) {
+    for (const entry of parsed.email_events) {
+      if (!isPlainObject(entry) || typeof entry.event_type !== "string") continue;
+      const delay = Number(entry.delay_minutes);
+      emailEvents.push({
+        event_type: entry.event_type,
+        enabled: entry.enabled === true,
+        delay_minutes: Number.isFinite(delay) && delay >= 0 ? Math.trunc(delay) : 0,
+        digest: typeof entry.digest === "string" ? entry.digest : "immediate",
+      });
+    }
+  }
+
   let general: MatrixWrite["general"] = null;
   if (isPlainObject(parsed.general)) {
     const days = Number(parsed.general.due_soon_days);
@@ -97,5 +152,35 @@ export function parseMatrixPayload(raw: FormDataEntryValue | null): MatrixWrite 
     };
   }
 
-  return { events, general };
+  let email: MatrixWrite["email"] = null;
+  if (isPlainObject(parsed.email)) {
+    const weekday = Number(parsed.email.digest_weekday);
+    email = {
+      digest_time: asTime(parsed.email.digest_time),
+      digest_weekday: Number.isInteger(weekday) && weekday >= 0 && weekday <= 6 ? weekday : null,
+    };
+  }
+
+  const channels: MatrixChannelWrite[] = [];
+  if (Array.isArray(parsed.channels)) {
+    for (const block of parsed.channels) {
+      if (!isPlainObject(block) || typeof block.channel_config_id !== "string") continue;
+      const rows: MatrixChannelEventWrite[] = [];
+      if (Array.isArray(block.events)) {
+        for (const entry of block.events) {
+          if (!isPlainObject(entry) || typeof entry.event_type !== "string") continue;
+          const delay = Number(entry.delay_minutes);
+          rows.push({
+            event_type: entry.event_type,
+            enabled: entry.enabled === true,
+            delay_minutes: Number.isFinite(delay) && delay >= 0 ? Math.trunc(delay) : 0,
+            digest: typeof entry.digest === "string" ? entry.digest : "immediate",
+          });
+        }
+      }
+      channels.push({ channel_config_id: block.channel_config_id, events: rows });
+    }
+  }
+
+  return { events, email_events: emailEvents, general, email, channels };
 }

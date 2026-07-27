@@ -112,6 +112,22 @@ def decide_status(
 # --------------------------------------------------------------------------- #
 _TAG_RE = re.compile(r"<[^>]+>")
 _BLANK_RE = re.compile(r"\n{3,}")
+#: Zero-width joiners, BOMs, soft hyphens, bidi marks — a marketing preheader's invisible
+#: padding, which Gmail happily includes in the snippet it hands us.
+_INVISIBLE_RE = re.compile("[\u00ad\u200b-\u200f\u2028\u2029\u202a-\u202e\u2060\ufeff]")
+
+
+def clean_snippet(raw: str | None) -> str | None:
+    """Gmail's ``snippet``, made readable (#263).
+
+    It arrives **HTML-escaped** (``&#39;``, ``&amp;``, ``&nbsp;``) and padded with the
+    message's invisible preheader, so stored raw it reads as escape codes in every list
+    row — and matches nothing when someone searches the words they actually saw. Decoded
+    and single-spaced once here, at the seam, not in each of the surfaces that show it.
+    """
+    if not raw:
+        return None
+    return " ".join(_INVISIBLE_RE.sub("", unescape(raw)).split()) or None
 
 
 def _decode(data: str) -> str:

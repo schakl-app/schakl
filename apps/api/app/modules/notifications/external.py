@@ -10,7 +10,13 @@ Design rules honoured here:
   * ``deliver`` never does network I/O — it only writes delivery rows (CLAUDE.md channels seam);
   * generic webhook URLs are SSRF-guarded (private/link-local blocked unless explicitly allowed);
   * an *org* channel gets one message per event, not one per recipient (the digest/batching intent
-    of #16), while a *personal* channel gets its owner's notifications.
+    of #16), while a *personal* channel gets its owner's notifications;
+  * **every** transport batches (#283). A delivery row carries ``deliver_after`` from its
+    channel's cadence, and the worker sends everything due for one channel as a single message —
+    the digest machinery personal e-mail has had since #17, generalised to all of Apprise;
+  * **one channel, one routing table** (#295). Every channel — a shared ``#crm`` room as much as
+    someone's Slack DM — is routed per event from the matrix of the scope that owns it. The
+    ``event_filter`` + channel-level ``digest`` a shared room used to route by are no longer read.
 """
 
 from __future__ import annotations
@@ -30,7 +36,10 @@ from app.core.crypto import decrypt
 from app.core.events import EmitContext
 from app.core.net_guard import is_public_address
 from app.i18n import translate
-from app.modules.notifications.events import CHANNEL_EMAIL
+from app.modules.notifications.events import (
+    CHANNEL_EMAIL,
+    CHANNEL_EXTERNAL,
+)
 from app.modules.notifications.models import (
     Notification,
     NotificationChannelConfig,
@@ -39,8 +48,6 @@ from app.modules.notifications.models import (
 )
 
 logger = logging.getLogger("schakl.notifications")
-
-CHANNEL_EXTERNAL = "external"
 
 #: Transport families we expose in the UI. ``webhook`` (generic ``json://``/``xml://``) is the
 #: only one whose host is fully user-controlled, so it carries the SSRF guard. ``email`` is not
@@ -132,39 +139,28 @@ async def _actor_name(session, actor_user_id) -> str | None:  # noqa: ANN001
     return user.full_name or user.email
 
 
-async def render_message(
-    session,
-    org,
-    event: NotificationEvent,
-    locale: str,  # noqa: ANN001
-) -> RenderedMessage:
-    """A deep-linked, locale-aware message for one event (#236).
-
-    The body is the same sentence the in-app feed shows (``render.event_sentence`` — the
-    server twin of the web's ``format.ts``), prefixed with the actor, plus a deep link back
-    into the CRM. Chat transports send it as-is; e-mail also carries an HTML fragment that
-    the send seam wraps in the org's branding.
-    """
-    from app.core.email.branding import load_brand
-    from app.modules.notifications.render import email_fragment, event_path, event_sentence
-
-    brand = await load_brand(session, org)
-    actor = await _actor_name(session, event.actor_user_id)
-    sentence = event_sentence(event, actor, locale)
-    path = event_path(event)
-    link = brand.base_url + path if path else None
-    title = f"{brand.brand_name}: " + translate("notifications.email.title", locale)
-    body = f"{sentence}\n{link}" if link else sentence
-    html = email_fragment([(sentence, link)], brand.primary_color, locale)
-    return RenderedMessage(title=title, body=body, html=html)
-
-
 class ExternalChannel:
     """Push channel: enqueues one ``notification_deliveries`` row per matching configured channel.
 
     Runs inside the emit transaction — DB writes only, never a provider call. An org channel is
     written once per event (the batch is the event's whole audience, so the first row stands in
     for the room); a personal channel is written for its owner's notifications.
+
+    Every row carries ``deliver_after``. The worker holds it until the slot passes and then sends
+    everything due for that channel as **one** message — the same digest machinery personal
+    e-mail has had since #17, now for every Apprise transport. An ``immediate`` channel simply
+    lands a slot of "now" and leaves on the next tick.
+
+    **Routing and cadence come from one place for every channel** (#295): the per-event preference
+    row for *this* channel, in the matrix of the scope that owns it — the owner's for a personal
+    transport, the org's for a shared room. ``event_filter`` and the channel-level ``digest`` were
+    the shared room's separate answer to the same two questions and are no longer read; two
+    routing mechanisms on one table were two places to look when something did not arrive, and
+    only one of them could say "bundle Slack daily, like e-mail".
+
+    Which notification a delivery hangs off is the one thing that still differs, and it is not a
+    preference: a personal channel takes its owner's row, a shared room takes the first of the
+    batch, because the room's message stands in for the whole audience rather than one recipient.
     """
 
     key = CHANNEL_EXTERNAL
@@ -176,6 +172,11 @@ class ExternalChannel:
         event: NotificationEvent,
         notifications: Sequence[Notification],
     ) -> None:
+        from app.modules.notifications.prefs import (
+            compute_visible_at,
+            resolve_channel_prefs,
+        )
+
         if not notifications:
             return
         session = ctx.session
@@ -194,16 +195,19 @@ class ExternalChannel:
         )
         if not configs:
             return
+        now = datetime.now(UTC)
         by_user = {row.user_id: row for row in notifications}
+        # Every channel's rule for this event in one query — never one per channel.
+        channel_prefs = await resolve_channel_prefs(session, org_id, event.event_type, configs)
+
         for config in configs:
-            if config.event_filter and event.event_type not in config.event_filter:
+            pref = channel_prefs.get(config.id)
+            if pref is None or not pref.enabled:
                 continue
-            if config.user_id is not None:
-                # A personal channel only receives its owner's notifications.
-                target = by_user.get(config.user_id)
-            else:
-                # One message per event for a shared room, not one per recipient.
-                target = notifications[0]
+            # A personal channel only ever carries its owner's notifications.
+            target = (
+                notifications[0] if config.user_id is None else by_user.get(config.user_id)
+            )
             if target is None:
                 continue
             session.add(
@@ -213,17 +217,20 @@ class ExternalChannel:
                     channel=CHANNEL_EXTERNAL,
                     channel_config_id=config.id,
                     status="pending",
+                    deliver_after=compute_visible_at(pref, now),
                 )
             )
 
 
 class EmailChannel:
-    """Personal e-mail (#17): one delivery row per notification the recipient opted into.
+    """Personal e-mail (#245): one delivery row per notification the recipient opted into.
 
-    The recipient's *general* e-mail preference decides cadence: ``immediate`` rows are due
-    at once, digest rows carry ``deliver_after`` — the worker holds them and sends everything
-    due for a user as **one** mail. Same DB-only rule as every channel: no I/O here, and the
-    whole batch resolves its preferences in one query (never one per recipient).
+    The recipient's **per-event** e-mail preference decides whether this event mails and at
+    what cadence: ``immediate`` rows are due at once, digest rows carry ``deliver_after`` — the
+    worker holds them and sends everything due for a user as **one** mail. E-mail is a subset of
+    in-app: it fans out from the freshly-written inbox rows, so an event the recipient switched
+    off in-app never reaches this channel. Same DB-only rule as every channel: no I/O here, and
+    the whole batch resolves its preferences in one query (never one per recipient).
     """
 
     key = CHANNEL_EMAIL
@@ -235,12 +242,15 @@ class EmailChannel:
         event: NotificationEvent,
         notifications: Sequence[Notification],
     ) -> None:
-        from app.modules.notifications.prefs import compute_visible_at, email_prefs_for_recipients
+        from app.modules.notifications.prefs import (
+            compute_visible_at,
+            resolve_email_for_recipients,
+        )
 
         if not notifications:
             return
-        prefs = await email_prefs_for_recipients(
-            ctx.session, ctx.org.id, [row.user_id for row in notifications]
+        prefs = await resolve_email_for_recipients(
+            ctx.session, ctx.org.id, event.event_type, [row.user_id for row in notifications]
         )
         now = datetime.now(UTC)
         for row in notifications:
@@ -303,60 +313,84 @@ async def send_via_apprise(url: str, message: RenderedMessage) -> tuple[bool, st
     return False, records[-1] if records else "delivery failed"
 
 
-async def dispatch_delivery(session, delivery: NotificationDelivery) -> None:  # noqa: ANN001
-    """Attempt one pending delivery, updating its status/attempts/last_error in place."""
-    now = datetime.now(UTC)
-    if not _backoff_ready(delivery, now):
-        return
-    config = await session.get(NotificationChannelConfig, delivery.channel_config_id)
-    notification = await session.get(Notification, delivery.notification_id)
-    if config is None or notification is None:
-        delivery.status = "failed"
-        delivery.last_error = "channel or notification no longer exists"
-        return
-    event = await session.get(NotificationEvent, notification.event_id)
-    # Personal channel → the owner's locale; a shared room → the org default.
-    locale = settings.default_locale
-    if config.user_id is not None:
-        from app.core.auth.models import User
+async def build_digest_message(
+    session,  # noqa: ANN001
+    brand,  # noqa: ANN001
+    notifications: Sequence[Notification],
+    locale: str,
+) -> RenderedMessage | None:
+    """Bundle N notifications into **one** message in ``locale`` (#283).
 
-        owner = await session.get(User, config.user_id)
-        locale = owner.locale if owner and owner.locale else settings.default_locale
+    This is what makes a digest a digest, and it is deliberately transport-agnostic: chat
+    transports send ``body`` (``send_via_apprise`` accepts a multi-line body), e-mail sends
+    ``html`` wrapped in the org's chrome at the send seam. A single item keeps its own sentence
+    as the title — that is the best subject one notification can have; several fall back to the
+    counted digest subject.
 
-    from app.core.models import Org
+    ``None`` means every underlying event has since been deleted, so there is nothing to say.
+    """
+    from app.modules.notifications.render import email_fragment, event_path, event_sentence
 
-    org = await session.get(Org, delivery.org_id)
-    message = await render_message(session, org, event, locale)
+    rendered: list[tuple[str, str | None]] = []
+    for notification in notifications:
+        event = await session.get(NotificationEvent, notification.event_id)
+        if event is None:
+            continue
+        actor = await _actor_name(session, event.actor_user_id)
+        sentence = event_sentence(event, actor, locale)
+        path = event_path(event)
+        rendered.append((sentence, brand.base_url + path if path else None))
+    if not rendered:
+        return None
 
-    delivery.attempts += 1
-    try:
-        if config.kind == "email":
-            from app.core.email.senders import OutgoingEmail
-            from app.core.email.service import send_org_email
-
-            ok, error = await send_org_email(
-                session,
-                delivery.org_id,
-                OutgoingEmail(
-                    to=decrypt(config.url_enc),
-                    subject=message.title,
-                    text=message.body,
-                    html=message.html,
-                ),
-            )
-        else:
-            ok, error = await send_via_apprise(decrypt(config.url_enc), message)
-    except SsrfError as exc:
-        ok, error = False, f"blocked target: {exc}"
-    except Exception as exc:  # noqa: BLE001 - a provider hiccup must not kill the sweep
-        ok, error = False, str(exc)
-    if ok:
-        delivery.status = "sent"
-        delivery.sent_at = now
-        delivery.last_error = None
+    if len(rendered) == 1:
+        title = rendered[0][0]
     else:
-        delivery.last_error = error
-        delivery.status = "failed" if delivery.attempts >= MAX_ATTEMPTS else "pending"
+        title = translate("notifications.email.digest_subject", locale, count=len(rendered))
+    if not title.startswith(brand.brand_name):
+        title = f"{brand.brand_name}: {title}"
+    body = "\n\n".join(f"{sentence}\n{link}" if link else sentence for sentence, link in rendered)
+    return RenderedMessage(
+        title=title, body=body, html=email_fragment(rendered, brand.primary_color, locale)
+    )
+
+
+def _settle(
+    ready: Sequence[tuple[NotificationDelivery, Notification]],
+    *,
+    ok: bool,
+    error: str | None,
+    now: datetime,
+) -> None:
+    """Mark a whole bundle sent or failed together — they left as one message."""
+    for delivery, _ in ready:
+        if ok:
+            delivery.status = "sent"
+            delivery.sent_at = now
+            delivery.last_error = None
+        else:
+            delivery.last_error = error
+            delivery.status = "failed" if delivery.attempts >= MAX_ATTEMPTS else "pending"
+
+
+def _due(channel: str, org_id: uuid.UUID, now: datetime):  # noqa: ANN202
+    """Every pending, not-exhausted, past-its-slot delivery on one channel, oldest first."""
+    return (
+        select(NotificationDelivery, Notification)
+        .join(Notification, Notification.id == NotificationDelivery.notification_id)
+        .where(
+            NotificationDelivery.org_id == org_id,
+            NotificationDelivery.channel == channel,
+            NotificationDelivery.status == "pending",
+            NotificationDelivery.attempts < MAX_ATTEMPTS,
+            or_(
+                NotificationDelivery.deliver_after.is_(None),
+                NotificationDelivery.deliver_after <= now,
+            ),
+        )
+        .order_by(NotificationDelivery.created_at.asc())
+        .limit(200)
+    )
 
 
 async def dispatch_email_deliveries(session, org) -> None:  # noqa: ANN001
@@ -368,24 +402,7 @@ async def dispatch_email_deliveries(session, org) -> None:  # noqa: ANN001
     pending with the provider's error, riding the same backoff as every delivery.
     """
     now = datetime.now(UTC)
-    rows = (
-        await session.execute(
-            select(NotificationDelivery, Notification)
-            .join(Notification, Notification.id == NotificationDelivery.notification_id)
-            .where(
-                NotificationDelivery.org_id == org.id,
-                NotificationDelivery.channel == CHANNEL_EMAIL,
-                NotificationDelivery.status == "pending",
-                NotificationDelivery.attempts < MAX_ATTEMPTS,
-                or_(
-                    NotificationDelivery.deliver_after.is_(None),
-                    NotificationDelivery.deliver_after <= now,
-                ),
-            )
-            .order_by(NotificationDelivery.created_at.asc())
-            .limit(200)
-        )
-    ).all()
+    rows = (await session.execute(_due(CHANNEL_EMAIL, org.id, now))).all()
     if not rows:
         return
 
@@ -393,7 +410,6 @@ async def dispatch_email_deliveries(session, org) -> None:  # noqa: ANN001
     from app.core.email.branding import load_brand
     from app.core.email.senders import OutgoingEmail
     from app.core.email.service import send_org_email
-    from app.modules.notifications.render import email_fragment, event_path, event_sentence
 
     brand = await load_brand(session, org)
     groups: dict[uuid.UUID, list[tuple[NotificationDelivery, Notification]]] = {}
@@ -412,28 +428,14 @@ async def dispatch_email_deliveries(session, org) -> None:  # noqa: ANN001
             continue
         locale = user.locale if getattr(user, "locale", None) else settings.default_locale
 
-        rendered: list[tuple[str, str | None]] = []
-        for _, notification in ready:
-            event = await session.get(NotificationEvent, notification.event_id)
-            if event is None:
-                continue
-            actor = await _actor_name(session, event.actor_user_id)
-            sentence = event_sentence(event, actor, locale)
-            path = event_path(event)
-            rendered.append((sentence, brand.base_url + path if path else None))
-        if len(rendered) == 1:
-            # The sentence itself is the best subject a single notification can have.
-            subject = rendered[0][0]
-        else:
-            subject = translate(
-                "notifications.email.digest_subject", locale, count=len(rendered)
-            )
-        if not subject.startswith(brand.brand_name):
-            subject = f"{brand.brand_name}: {subject}"
-        text = "\n\n".join(
-            f"{sentence}\n{link}" if link else sentence for sentence, link in rendered
+        message = await build_digest_message(
+            session, brand, [notification for _, notification in ready], locale
         )
-        html = email_fragment(rendered, brand.primary_color, locale)
+        if message is None:
+            for delivery, _ in ready:
+                delivery.status = "failed"
+                delivery.last_error = "notification no longer exists"
+            continue
 
         for delivery, _ in ready:
             delivery.attempts += 1
@@ -441,16 +443,96 @@ async def dispatch_email_deliveries(session, org) -> None:  # noqa: ANN001
             ok, error = await send_org_email(
                 session,
                 org.id,
-                OutgoingEmail(to=user.email, subject=subject, text=text, html=html),
+                OutgoingEmail(
+                    to=user.email,
+                    subject=message.title,
+                    text=message.body,
+                    html=message.html,
+                ),
                 brand=brand,
             )
         except Exception as exc:  # noqa: BLE001 - one recipient must not kill the sweep
             ok, error = False, str(exc)
+        _settle(ready, ok=ok, error=error, now=now)
+
+
+async def dispatch_external_deliveries(session, org) -> None:  # noqa: ANN001
+    """Send every due external delivery, **one message per channel** (#283).
+
+    The e-mail sweep next door groups by recipient; this one groups by ``channel_config_id``,
+    because a shared room has no single recipient — the whole point of a room is that several
+    people's notifications land in it. One group is one message: a ``#crm`` channel on the daily
+    cadence gets the day's twelve events as twelve lines, not twelve pings.
+
+    An ``immediate`` channel bundles whatever accumulated within one cron tick, which is a group
+    of one in practice and exactly how personal e-mail has always behaved. Failures keep the
+    whole bundle pending with the provider's error and ride the shared backoff.
+    """
+    now = datetime.now(UTC)
+    rows = (await session.execute(_due(CHANNEL_EXTERNAL, org.id, now))).all()
+    if not rows:
+        return
+
+    from app.core.auth.models import User
+    from app.core.email.branding import load_brand
+
+    brand = await load_brand(session, org)
+    groups: dict[uuid.UUID | None, list[tuple[NotificationDelivery, Notification]]] = {}
+    for delivery, notification in rows:
+        groups.setdefault(delivery.channel_config_id, []).append((delivery, notification))
+
+    for config_id, items in groups.items():
+        ready = [pair for pair in items if _backoff_ready(pair[0], now)]
+        if not ready:
+            continue
+        config = (
+            await session.get(NotificationChannelConfig, config_id)
+            if config_id is not None
+            else None
+        )
+        if config is None:
+            for delivery, _ in ready:
+                delivery.status = "failed"
+                delivery.last_error = "channel no longer exists"
+            continue
+
+        # Personal channel → the owner's locale; a shared room → the org default.
+        locale = settings.default_locale
+        if config.user_id is not None:
+            owner = await session.get(User, config.user_id)
+            locale = owner.locale if owner and owner.locale else settings.default_locale
+
+        message = await build_digest_message(
+            session, brand, [notification for _, notification in ready], locale
+        )
+        if message is None:
+            for delivery, _ in ready:
+                delivery.status = "failed"
+                delivery.last_error = "notification no longer exists"
+            continue
+
         for delivery, _ in ready:
-            if ok:
-                delivery.status = "sent"
-                delivery.sent_at = now
-                delivery.last_error = None
+            delivery.attempts += 1
+        try:
+            if config.kind == "email":
+                from app.core.email.senders import OutgoingEmail
+                from app.core.email.service import send_org_email
+
+                ok, error = await send_org_email(
+                    session,
+                    org.id,
+                    OutgoingEmail(
+                        to=decrypt(config.url_enc),
+                        subject=message.title,
+                        text=message.body,
+                        html=message.html,
+                    ),
+                    brand=brand,
+                )
             else:
-                delivery.last_error = error
-                delivery.status = "failed" if delivery.attempts >= MAX_ATTEMPTS else "pending"
+                ok, error = await send_via_apprise(decrypt(config.url_enc), message)
+        except SsrfError as exc:
+            ok, error = False, f"blocked target: {exc}"
+        except Exception as exc:  # noqa: BLE001 - one channel must not kill the sweep
+            ok, error = False, str(exc)
+        _settle(ready, ok=ok, error=error, now=now)

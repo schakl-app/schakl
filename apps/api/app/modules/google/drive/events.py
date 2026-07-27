@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.events import EmitContext
-from app.modules.google.drive.service import queue_folder_job
+from app.modules.google.drive.service import drive_root, queue_folder_job
 from app.modules.google.oauth import google_settings_row
 
 
@@ -20,7 +20,10 @@ async def _provisioning_on(ctx: EmitContext) -> bool:
         and row.drive_enabled
         and row.drive_auto_provision
         and row.automation_connection_user_id
-        and row.drive_parent_folder_id
+        # Same parent-resolution rule as the manual button and the backfill (#149, #260):
+        # a shared drive alone is enough — its id is a valid root. Not ``drive_parent_folder_id``
+        # alone, which silently no-ops automatic provisioning for shared-drive-only orgs.
+        and drive_root(row) is not None
     )
 
 

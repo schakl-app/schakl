@@ -183,3 +183,51 @@ async def test_company_status_default_and_roundtrip(client_for) -> None:
 
         fetched = await c.get(f"/api/v1/companies/{company['id']}", headers=headers)
         assert fetched.json()["status"] == "offboarding"
+
+
+async def test_house_number_is_its_own_field(client_for) -> None:
+    """Street and house number store apart (#241); the trail records both like any billing edit."""
+    t = await make_tenant("housenr")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        created = await c.post(
+            "/api/v1/companies",
+            json={
+                "name": "Splitsing BV",
+                "address_line1": "Binnenhof",
+                "house_number": "1A",
+                "postal_code": "2513 AA",
+                "city": "Den Haag",
+                "country": "NL",
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        company = created.json()
+        assert company["address_line1"] == "Binnenhof"
+        assert company["house_number"] == "1A"
+
+        # The company hub panel carries the split fields for the details view to compose.
+        panels = (
+            await c.get(f"/api/v1/companies/{company['id']}/panels", headers=headers)
+        ).json()
+        details = next(p for p in panels if p["key"] == "companies.details")["data"]
+        assert details["address_line1"] == "Binnenhof"
+        assert details["house_number"] == "1A"
+
+        # A house-number edit is a billing-identity edit: tracked with before/after values.
+        r = await c.patch(
+            f"/api/v1/companies/{company['id']}",
+            json={"house_number": "1B"},
+            headers=headers,
+        )
+        assert r.status_code == 200
+        assert r.json()["house_number"] == "1B"
+        feed = (
+            await c.get(
+                "/api/v1/activity",
+                params={"entity_type": "company", "entity_id": company["id"]},
+                headers=headers,
+            )
+        ).json()
+        assert feed[0]["payload"]["changes"]["house_number"] == {"from": "1A", "to": "1B"}

@@ -16,4 +16,8 @@ COMPANY_PERMISSIONS: list[PermissionSpec] = [
     # visibility assignment are one administrative capability. Admin-only by default;
     # reaches existing orgs through the startup reconciler (§15).
     PermissionSpec("companies.group.manage", position=40, default_roles=(ROLE_ADMIN,)),
+    # Client numbering (klantnummer format + sequence). Admin-only: it decides what every
+    # future company is called in the tenant's books, and a rewound sequence is not a
+    # day-to-day edit. Reaches existing orgs through the startup reconciler (§15).
+    PermissionSpec("companies.settings.manage", position=50, default_roles=(ROLE_ADMIN,)),
 ]

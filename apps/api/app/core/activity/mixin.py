@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.activity.registry import register_auditable
+from app.core.scope import register_horizon_entity
 
 
 class AuditableMixin:
@@ -27,3 +28,6 @@ class AuditableMixin:
         entity_type = getattr(cls, "__entity_type__", None)
         if entity_type:
             register_auditable(entity_type, getattr(cls, "__activity_read_permission__", None))
+            # …and map the slug back to this model, so the feed can ask whether the record the
+            # caller named is inside their company horizon at all (#285).
+            register_horizon_entity(entity_type, cls)

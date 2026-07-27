@@ -242,7 +242,7 @@ async def _ingest_message(
         owner_name=await _owner_name(session, connection.user_id),  # snapshot rule (#64)
         occurred_at=occurred_at,
         subject=subject,
-        snippet=(message.get("snippet") or "").strip() or None,
+        snippet=matching.clean_snippet(message.get("snippet")),
         direction=matching.direction_of(label_ids),
         participants=participants,
         gmail_message_id=message_id,

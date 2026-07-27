@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from tests.conftest import auth_cookie, make_tenant
 
@@ -324,18 +324,33 @@ async def test_entry_types_tenant_configurable(client_for) -> None:
         ).status_code == 404
 
 
-async def test_entry_subscription_link(client_for) -> None:
-    """Owner request: an entry optionally links to the subscription the hours are worked
-    under. The link must stay within the entry's client — a missing client inherits the
-    subscription's — and subscription usage counts directly linked entries."""
+async def test_hours_reach_an_agreement_through_its_project(client_for) -> None:
+    """An entry can no longer be pinned to a subscription: included hours are consumed through
+    the **projects** the agreement covers (#225), so there is exactly one answer to "how many
+    hours are left" instead of two that can disagree.
+
+    A posted ``subscription_id`` is ignored rather than honoured — the field is gone from the
+    write schemas — and the same hours still land on the agreement via its linked project.
+    """
     t = await make_tenant("time-sub-link")
     headers = await auth_cookie(t.user)
+    # Both windows are "this month": the agreement's invoice period and the project's
+    # (subscription-backed ⇒ monthly) budget period. The 15th at 09:00 UTC sits inside the
+    # local month whatever the offset, so the test doesn't rot on the 1st.
+    now = datetime.now(UTC)
+    mid_month = now.replace(day=15, hour=9, minute=0, second=0, microsecond=0)
+    period_start = mid_month.replace(day=1).date()
+    period_end = (period_start.replace(day=28) + timedelta(days=7)).replace(day=1)
     async with client_for(t.host) as c:
         company = (
             await c.post("/api/v1/companies", json={"name": "Retainerklant"}, headers=headers)
         ).json()
-        other = (
-            await c.post("/api/v1/companies", json={"name": "Andere klant"}, headers=headers)
+        project = (
+            await c.post(
+                "/api/v1/projects",
+                json={"name": "Onderhoud", "company_id": company["id"]},
+                headers=headers,
+            )
         ).json()
         sub = (
             await c.post(
@@ -345,66 +360,45 @@ async def test_entry_subscription_link(client_for) -> None:
                     "name": "Onderhoud",
                     "status": "active",
                     "interval": "monthly",
-                    "start_date": "2026-06-01",
-                    "next_invoice_date": "2026-08-01",
+                    "start_date": period_start.isoformat(),
+                    "next_invoice_date": period_end.isoformat(),
                     "amount": "500.00",
                     "included_hours": "10",
+                    "links": [{"entity_type": "project", "entity_id": project["id"]}],
                 },
                 headers=headers,
             )
         ).json()
 
-        # No client picked: the entry inherits the subscription's client.
+        # The picker is gone: a client still sending the old field gets an unlinked entry, not
+        # a 422 and not a silent link.
         created = await c.post(
             "/api/v1/time/entries",
             json={
-                "started_at": "2026-07-16T09:00:00Z",
-                "ended_at": "2026-07-16T11:00:00Z",
+                "started_at": mid_month.isoformat(),
+                "ended_at": (mid_month + timedelta(hours=2)).isoformat(),
+                "company_id": company["id"],
+                "project_id": project["id"],
                 "subscription_id": sub["id"],
             },
             headers=headers,
         )
         assert created.status_code == 201, created.text
-        body = created.json()
-        assert body["subscription_id"] == sub["id"]
-        assert body["company_id"] == company["id"]
+        assert created.json()["subscription_id"] is None
 
-        # A subscription of a different client is refused, on create and on update.
-        mismatch = await c.post(
-            "/api/v1/time/entries",
-            json={
-                "started_at": "2026-07-16T12:00:00Z",
-                "ended_at": "2026-07-16T13:00:00Z",
-                "company_id": other["id"],
-                "subscription_id": sub["id"],
-            },
-            headers=headers,
-        )
-        assert mismatch.status_code == 422, mismatch.text
-        assert (
-            await c.patch(
-                f"/api/v1/time/entries/{body['id']}",
-                json={"company_id": other["id"]},
-                headers=headers,
-            )
-        ).status_code == 422
-        # A made-up subscription id is refused too.
-        assert (
-            await c.post(
-                "/api/v1/time/entries",
-                json={
-                    "started_at": "2026-07-16T14:00:00Z",
-                    "ended_at": "2026-07-16T15:00:00Z",
-                    "subscription_id": str(uuid.uuid4()),
-                },
-                headers=headers,
-            )
-        ).status_code == 422
-
-        # Usage counts the directly linked entry (2 h) without any project link.
+        # Usage counts those 2 h anyway — through the project the agreement covers.
         with_usage = (
             await c.get(
                 f"/api/v1/subscriptions/{sub['id']}", params={"usage": True}, headers=headers
             )
         ).json()
         assert float(with_usage["usage"]["used_hours"]) == 2.0
+        # And the project reports what is left of the agreement's included hours (#225).
+        hours = (
+            await c.get(
+                f"/api/v1/projects/{project['id']}", params={"hours": True}, headers=headers
+            )
+        ).json()["hours"]
+        assert hours["budget_hours"] == 10.0
+        assert hours["spent_hours"] == 2.0
+        assert hours["remaining_hours"] == 8.0

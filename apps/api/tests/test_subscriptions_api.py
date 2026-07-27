@@ -370,7 +370,8 @@ async def test_list_filters_by_linked_entity_with_usage(client_for) -> None:
 async def test_list_sorts_on_every_column(client_for) -> None:
     """Parity with the standards/types tables (#229): the overview sorts server-side on every
     column it prints — company by the name in the cell, type by the tenant's declared
-    position, amount by the *current* price — and the allow-list rejects anything else."""
+    position, interval by period length, amount by the *current* price — and the allow-list
+    rejects anything else."""
     t = await make_tenant("subs-sort")
     headers = await auth_cookie(t.user)
     today = datetime.now(UTC).date()
@@ -380,7 +381,12 @@ async def test_list_sorts_on_every_column(client_for) -> None:
         by_key = {row["key"]: row["id"] for row in types}
 
         async def create(
-            name: str, company_name: str, type_key: str | None, amount: str, hours: str | None
+            name: str,
+            company_name: str,
+            type_key: str | None,
+            amount: str,
+            hours: str | None,
+            interval: str = "monthly",
         ) -> dict:
             company = (
                 await c.post("/api/v1/companies", json={"name": company_name}, headers=headers)
@@ -391,7 +397,7 @@ async def test_list_sorts_on_every_column(client_for) -> None:
                     "company_id": company["id"],
                     "name": name,
                     "status": "active",
-                    "interval": "monthly",
+                    "interval": interval,
                     "start_date": _iso(today - timedelta(days=40)),
                     "amount": amount,
                     "subscription_type_id": by_key.get(type_key),
@@ -402,10 +408,10 @@ async def test_list_sorts_on_every_column(client_for) -> None:
             assert created.status_code == 201, created.text
             return created.json()
 
-        # Names, companies, types and amounts each order the three rows differently.
+        # Names, companies, types, intervals and amounts each order the three rows differently.
         middel = await create("Middel", "alfa BV", "support", "100.00", "10")
-        await create("Groot", "Beta BV", "hosting", "300.00", None)
-        await create("Klein", "Chroom BV", None, "50.00", "5")
+        await create("Groot", "Beta BV", "hosting", "300.00", None, interval="yearly")
+        await create("Klein", "Chroom BV", None, "50.00", "5", interval="quarterly")
         # A raise: the amount column must sort by the *current* price, not the opening one.
         assert (
             await c.patch(
@@ -424,6 +430,10 @@ async def test_list_sorts_on_every_column(client_for) -> None:
         # last in both directions (NULLS LAST).
         assert await names(sort="type") == ["Groot", "Middel", "Klein"]
         assert await names(sort="-type") == ["Middel", "Groot", "Klein"]
+        # Interval ranks by period length (#261), not by the stored word or its label: a Dutch
+        # user reads "jaarlijks, maandelijks, per kwartaal" alphabetically, which means nothing.
+        assert await names(sort="interval") == ["Middel", "Klein", "Groot"]
+        assert await names(sort="-interval") == ["Groot", "Klein", "Middel"]
         assert await names(sort="amount") == ["Klein", "Groot", "Middel"]
         assert await names(sort="-amount") == ["Middel", "Groot", "Klein"]
         assert await names(sort="included_hours") == ["Klein", "Middel", "Groot"]

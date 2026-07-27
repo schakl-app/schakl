@@ -6,10 +6,11 @@ import datetime as dt
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.modules.leave.models import LeaveRequestStatus
+from app.modules.leave.models import LeaveCalendarDisplay, LeaveRequestStatus
 from app.modules.leave.schedule import Clock, WorkSchedule
 
 # --- leave types ------------------------------------------------------------- #
@@ -26,14 +27,23 @@ class LeaveTypeBase(BaseModel):
     default_weeks: Decimal | None = Field(default=None, ge=0, le=52)
     # Months into the next year before carried-over hours expire (NL: 6 / 60). None = never.
     carry_over_months: int | None = Field(default=None, ge=0, le=120)
+    # Types sharing this present as one employee-facing balance (#265). None = standalone.
+    balance_group: str | None = Field(default=None, max_length=50, pattern=r"^[a-z0-9_]+$")
     # Roostervrij/ADV (#65): entitlement is the scheduled−contract hours gap, not default_weeks.
     accrues_schedule_gap: bool = False
+    # How the agenda draws this type's absences (#270): a full-day chip, or an hour block.
+    calendar_display: LeaveCalendarDisplay = LeaveCalendarDisplay.ALL_DAY
     position: int = 0
     active: bool = True
 
 
 class LeaveTypeCreate(LeaveTypeBase):
     pass
+
+
+#: The ``leave_types`` columns that are genuinely nullable, where an explicit ``null``
+#: *clears* the value and must keep working. Everything else on the table is ``NOT NULL``.
+_CLEARABLE_TYPE_FIELDS = frozenset({"default_weeks", "carry_over_months", "balance_group"})
 
 
 class LeaveTypeUpdate(BaseModel):
@@ -44,9 +54,33 @@ class LeaveTypeUpdate(BaseModel):
     requires_approval: bool | None = None
     default_weeks: Decimal | None = Field(default=None, ge=0, le=52)
     carry_over_months: int | None = Field(default=None, ge=0, le=120)
+    balance_group: str | None = Field(default=None, max_length=50, pattern=r"^[a-z0-9_]+$")
     accrues_schedule_gap: bool | None = None
+    calendar_display: LeaveCalendarDisplay | None = None
     position: int | None = None
     active: bool | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_explicit_nulls(cls, data: Any) -> Any:
+        """``None`` here means "not supplied", so an explicit ``null`` is a client error.
+
+        Every field above is ``| None`` because that is what makes it optional on the wire
+        (the generated client turns a defaulted, non-nullable property into a *required*
+        one). The cost is that a literal ``{"calendar_display": null}`` used to travel all
+        the way to a ``NOT NULL`` column and surface as a 500 — the shape ``exclude_unset``
+        already expresses by omission, so nothing is lost by refusing it at the edge and
+        answering 422 through the standard envelope instead.
+        """
+        if isinstance(data, dict):
+            offenders = [
+                key
+                for key, value in data.items()
+                if value is None and key in cls.model_fields and key not in _CLEARABLE_TYPE_FIELDS
+            ]
+            if offenders:
+                raise ValueError(f"errors.null_not_allowed: {', '.join(sorted(offenders))}")
+        return data
 
 
 class LeaveTypeRead(LeaveTypeBase):
@@ -191,8 +225,12 @@ class EmploymentContractBase(BaseModel):
     end_date: date | None = None
     #: The legal contract hours — entered, never derived from the schedule.
     contract_hours_per_week: Decimal = Field(gt=0, le=Decimal("80"))
-    #: An optional schedule on the contract itself; ``null`` follows the profile / org default.
+    #: This period's working week; ``null`` follows the profile (legacy) / org default.
     schedule: WorkSchedule | None = None
+    #: Free time accrued per week, or ``null`` to derive ``max(0, norm − contract hours)``.
+    #: ``0`` says the free time is already in the roster — see the model docstring for why that
+    #: has to be sayable per contract.
+    free_time_hours_per_week: Decimal | None = Field(default=None, ge=0, le=Decimal("80"))
     note: str | None = None
 
 
@@ -201,12 +239,18 @@ class EmploymentContractCreate(EmploymentContractBase):
 
 
 class EmploymentContractUpdate(BaseModel):
-    """Correcting or terminating a contract. A *changed* contract is a new row, not an edit."""
+    """Correcting or terminating a contract. A *changed* contract is a new row, not an edit.
+
+    Every field is optional, and the service reads ``model_fields_set`` rather than testing for
+    ``None``: on ``schedule`` and ``free_time_hours_per_week`` an explicit ``null`` is a value
+    ("inherit the week", "derive the free time"), not an omission.
+    """
 
     start_date: date | None = None
     end_date: date | None = None
     contract_hours_per_week: Decimal | None = Field(default=None, gt=0, le=Decimal("80"))
     schedule: WorkSchedule | None = None
+    free_time_hours_per_week: Decimal | None = Field(default=None, ge=0, le=Decimal("80"))
     note: str | None = None
 
 
@@ -219,9 +263,15 @@ class EmploymentContractRead(BaseModel):
     start_date: date
     end_date: date | None
     contract_hours_per_week: Decimal
-    #: Derived from the effective schedule — the number the ADV gap is measured against.
+    #: Derived from this period's week — the rostered hours the contract hours are read against.
     scheduled_hours_per_week: Decimal
     schedule: WorkSchedule | None
+    #: ``null`` = derived; see :attr:`EmploymentContractBase.free_time_hours_per_week`.
+    free_time_hours_per_week: Decimal | None
+    #: What this contract actually accrues per week, derived rule applied — so a client renders
+    #: the effective figure without re-implementing the fallback (the same shape as the hourly
+    #: rate's ``effective_hourly_rate``, #113).
+    effective_free_time_per_week: Decimal
     note: str | None
     created_at: datetime
     updated_at: datetime
@@ -234,8 +284,13 @@ class LeaveRecurringDayBase(BaseModel):
     #: The first free day; its weekday is the pattern's weekday.
     anchor_date: date
     #: Every week (1), every other week (2), … Bounded: a cadence past 8 weeks is a
-    #: hand-planned day, not a roster.
+    #: hand-planned day, not a roster. Ignored — and overwritten with the nearest equivalent —
+    #: when ``days_per_year`` is set.
     interval_weeks: int = Field(default=1, ge=1, le=8)
+    #: **Spread mode**: this many free days a year on the anchor's weekday, placed evenly, instead
+    #: of a fixed cadence. ``None`` = interval mode. Capped at 366: a "day per year" count beyond
+    #: the days in one is a typo, and the balance would refuse them anyway.
+    days_per_year: int | None = Field(default=None, ge=1, le=366)
     #: Part-day window ("off from 15:00"); ``None`` = the whole scheduled day (#48).
     start_time: Clock | None = None
     end_time: Clock | None = None
@@ -250,6 +305,8 @@ class LeaveRecurringDayCreate(LeaveRecurringDayBase):
 class LeaveRecurringDayUpdate(BaseModel):
     anchor_date: date | None = None
     interval_weeks: int | None = Field(default=None, ge=1, le=8)
+    #: Send ``null`` explicitly to go back to interval mode; omit to leave the mode alone.
+    days_per_year: int | None = Field(default=None, ge=1, le=366)
     leave_type_id: uuid.UUID | None = None
     start_time: Clock | None = None
     end_time: Clock | None = None
@@ -265,8 +322,17 @@ class LeaveRecurringDayRead(LeaveRecurringDayBase):
     user_id: uuid.UUID
     leave_type_id: uuid.UUID
     active: bool
+    #: Days this pattern still has standing from today on. Deleting a pattern is a decision about
+    #: these, so the count travels with the row rather than the UI having to go and count them.
+    upcoming_days: int = 0
     created_at: datetime
     updated_at: datetime
+
+
+class LeaveRecurringDeleteResult(BaseModel):
+    """What deleting a pattern did — the days it took back, if it was asked to."""
+
+    withdrawn: int = 0
 
 
 class LeaveRecurringDaySaved(LeaveRecurringDayRead):
@@ -313,6 +379,9 @@ class LeaveEntitlementRead(BaseModel):
     year: int
     hours: Decimal
     note: str | None
+    #: ``generated`` (re-derived on a contract change) or ``manual`` (an admin override the
+    #: recompute leaves alone, #264). Lets the admin UI flag which rows are hand-set.
+    source: str
 
 
 class EntitlementGenerate(BaseModel):
@@ -444,7 +513,13 @@ class LeavePreviewResult(BaseModel):
 
 
 class LeaveBalance(BaseModel):
-    """Balance per tracks_balance type: entitled + carried − approved − pending."""
+    """Balance per tracks_balance type: entitled + carried − approved − pending − lapsed (#265).
+
+    ``remaining_hours`` is expiry-aware: it reflects the FIFO-by-expiry pot ledger, so it already
+    excludes carried hours that have lapsed and includes prior-year hours still in their window.
+    ``balance_group`` echoes the type's group so a client can roll grouped rows into one figure —
+    group remaining is exactly the sum of its types' ``remaining_hours`` by construction.
+    """
 
     leave_type_id: uuid.UUID
     year: int
@@ -452,12 +527,134 @@ class LeaveBalance(BaseModel):
     approved_hours: Decimal
     pending_hours: Decimal
     remaining_hours: Decimal
+    #: The type's balance group (#265), or ``None`` for a standalone type.
+    balance_group: str | None = None
+
+
+class FreeTimeDay(BaseModel):
+    """One free day on the calendar, in the shape the free-time card and the wizard both read."""
+
+    request_id: uuid.UUID
+    date: date
+    hours: Decimal
+    #: The window it covers, resolved — ``None``/``None`` is a whole scheduled day.
+    start_time: Clock | None = None
+    end_time: Clock | None = None
+    #: Laid down by a pattern (as opposed to booked by hand). Only these are ever withdrawn
+    #: automatically: a day the employee entered themselves is theirs to keep.
+    from_pattern: bool
+
+
+class FreeTimeOverview(BaseModel):
+    """Everything the free-time surfaces need, in one read.
+
+    The per-type balance answers "how many hours are left", which for free time is the *wrong*
+    question and reads uselessly: once the generator has placed every day, entitled and approved
+    are equal and the balance says "0 h over" — true, and no help at all in answering "when is my
+    next day off". This adds the two facts that matter: which days are on the calendar, and
+    whether the pot still covers them.
+    """
+
+    user_id: uuid.UUID
+    year: int
+    #: The active free-time types rolled into these figures (usually exactly one). Empty when the
+    #: tenant deactivated free time altogether — every number below is then zero.
+    leave_type_ids: list[uuid.UUID]
+    entitled_hours: Decimal
+    #: Booked on the calendar this year (approved + pending), whether taken yet or not.
+    placed_hours: Decimal
+    #: Of ``placed_hours``, the part already in the past.
+    taken_hours: Decimal
+    upcoming_hours: Decimal
+    #: Earned but not yet on the calendar. Never negative — an excess is ``overhang_hours``.
+    unplaced_hours: Decimal
+    #: Placed beyond what the pot covers, which is what a contract change leaves behind (#264
+    #: reprorates the entitlement; the days already on the calendar stay). The wizard reports it
+    #: and offers to withdraw ``overhang`` rather than silently cancelling somebody's plans.
+    overhang_hours: Decimal
+    #: The employee's average scheduled day — what turns hours into "≈ 3 dagen" (§14: never
+    #: ``hours_per_week / 5``).
+    hours_per_day: Decimal
+    next_date: date | None
+    #: Upcoming free days, soonest first.
+    days: list[FreeTimeDay]
+    #: The future, pattern-generated subset the pot no longer covers, latest first — so
+    #: withdrawing them in order gives back the most recently planned days.
+    overhang: list[FreeTimeDay]
+
+
+class FreeTimeWithdraw(BaseModel):
+    """Withdraw specific free days. Ids, never "everything over the pot": the caller confirms a
+    list it was shown, so a balance that moved in between cannot cancel more than was agreed."""
+
+    request_ids: list[uuid.UUID] = Field(min_length=1, max_length=200)
+
+
+class FreeTimeWithdrawResult(BaseModel):
+    cancelled: int
+    #: Ids that were not cancellable (already gone, not free time, or not the caller's to touch).
+    #: Reported rather than raised: one stale id should not abandon the rest of the withdrawal.
+    skipped: list[uuid.UUID]
 
 
 class UserLeaveBalances(BaseModel):
     user_id: uuid.UUID
     hours_per_week: Decimal
     balances: list[LeaveBalance]
+
+
+# --- combined (grouped) balances (#265) ---------------------------------------- #
+
+
+class LeavePotBreakdown(BaseModel):
+    """One entitlement pot inside a group: which type/year it came from, and when it expires.
+
+    The per-pot detail behind a combined figure, so "why did my balance drop by X / what is
+    about to lapse" always has an answer even though the employee sees one number day to day.
+    """
+
+    leave_type_id: uuid.UUID
+    accrual_year: int
+    entitled_hours: Decimal
+    #: What is left in this pot after FIFO-by-expiry consumption (0 once fully drawn or lapsed).
+    remaining_hours: Decimal
+    #: First day this pot is no longer valid (NL statutory → 1 Jul next year), or ``None`` = never.
+    expires_on: dt.date | None = None
+    #: True when ``expires_on`` has already passed (org-local today): these hours have lapsed.
+    expired: bool = False
+
+
+class LeaveGroupBalance(BaseModel):
+    """The employee-facing balance for a group of pots rolled into one figure (#265).
+
+    ``vacation_statutory`` + ``vacation_extra`` present as a single "Vakantieverlof" balance; a
+    standalone type (free time, …) is its own singleton group. ``entitled/approved/pending/
+    remaining`` are the combined numbers; ``pots`` carries the per-pot breakdown for anyone who
+    needs it.
+    """
+
+    #: Whose balance this is — the employee the figures belong to. It matters most on the
+    #: ``all_users`` roster read (#282), where one response carries every member's balance and the
+    #: manager's team table keys each figure to its member. ``None`` only for a non-user-scoped
+    #: caller (kept optional so older clients that never sent it still validate).
+    user_id: uuid.UUID | None = None
+    #: The ``balance_group`` slug, or ``None`` for a standalone (single-type) group.
+    group: str | None
+    #: The type ids that roll into this figure (one for a standalone group).
+    leave_type_ids: list[uuid.UUID]
+    #: Combined display label (group ``vacation`` → Vakantieverlof/Vacation; else the group's
+    #: soonest-expiring type's own label). Per-locale, like a type's ``label_i18n``.
+    label_i18n: dict[str, str]
+    year: int
+    entitled_hours: Decimal
+    approved_hours: Decimal
+    pending_hours: Decimal
+    remaining_hours: Decimal
+    #: Carried hours that lapsed unused (expired as of org-local today), summed over the group.
+    lapsed_hours: Decimal
+    #: Still-valid hours whose pot expires within the coming half year — the "use it soon" nudge.
+    expiring_soon_hours: Decimal
+    pots: list[LeavePotBreakdown]
 
 
 # --- team calendar feed ------------------------------------------------------------ #
@@ -479,6 +676,20 @@ class TeamLeaveItem(BaseModel):
     #: ``None`` for whole-day absences, and for a bound on an unscheduled day.
     resolved_start_time: Clock | None = None
     resolved_end_time: Clock | None = None
+    #: The same window as an **instant pair**, for a calendar that positions blocks by hour
+    #: (#270). A leave time is local wall clock (#48), an agenda block is an instant, and the
+    #: org timezone that bridges them lives on the server — so the server does the conversion
+    #: rather than every client re-deriving it and disagreeing about the last Sunday in October.
+    #:
+    #: Populated for **single-day** absences only, and for whole-day ones too (the scheduled
+    #: day's own hours — which is the only thing an ADV day could ever be drawn at). ``None``
+    #: on a multi-day span: one instant pair cannot describe Monday-to-Friday without also
+    #: claiming the nights in between, and ``days`` is the honest answer for those.
+    #:
+    #: Reported whatever the type's ``calendar_display`` says — this is a fact about when the
+    #: absence falls, and *whether* to draw it by the hour stays the client's read of the type.
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
     hours: Decimal
     status: LeaveRequestStatus
     #: Hours per day, from the schedule (#48). The timesheet renders these rather than spreading

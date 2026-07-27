@@ -24,6 +24,7 @@ from app.modules.marketing.schemas import (
     LinkRead,
     MarketingSettingsRead,
     MarketingSettingsWrite,
+    MarketingSummary,
     OverviewResponse,
 )
 from app.modules.marketing.service import MarketingService, MarketingSettingsService
@@ -162,6 +163,23 @@ async def drilldown(
 ) -> DrilldownResponse:
     """A live tier-2 drill-down (top pages/queries/campaigns), Redis-cached ~1h."""
     return await MarketingService(ctx).drilldown(company_id, link_id, kind, range_days)
+
+
+# --- My Day widget digest (#254) ------------------------------------------------------------- #
+@router.get(
+    "/summary",
+    response_model=MarketingSummary,
+    dependencies=[require_permission("marketing.metrics.read")],
+)
+async def summary(
+    range_days: int = Query(30, ge=1, le=400),
+    limit: int = Query(5, ge=1, le=20),
+    ctx: RequestContext = Depends(require_context),
+) -> MarketingSummary:
+    """The dashboard widget's compact digest: top linked clients by their headline KPI, from
+    stored data. Horizon-scoped like the per-company metrics read it summarizes — never wider
+    than what the caller could fetch client-by-client."""
+    return await MarketingService(ctx).summary(range_days, limit)
 
 
 # --- cross-client overview (#133) ------------------------------------------------------------ #

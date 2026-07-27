@@ -1,7 +1,9 @@
 <script lang="ts">
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
+  import Button from "$lib/core/ui/Button.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
 
@@ -21,6 +23,7 @@
   let apiKey = $state("");
   let baseUrl = $state(data.ai?.base_url ?? "");
   let confirmRemove = $state(false);
+  const busy = new InFlight();
 
   // Live model suggestions (#126): fetched from the provider, so the picker never carries
   // a hardcoded list that rots. The field stays free text — the datalist only suggests.
@@ -86,7 +89,17 @@
     {t("settings.ai.privacy_note")}
   </p>
 
-  <form method="POST" action="?/save" use:enhance class="space-y-4">
+  <form
+    method="POST"
+    action="?/save"
+    use:enhance={busy.wrap(
+      "save",
+      () =>
+        ({ update }) =>
+          update({ reset: false }),
+    )}
+    class="space-y-4"
+  >
     <div class="grid gap-4 sm:grid-cols-2">
       <div>
         <label for="ai-provider" class="mb-1 block text-sm text-text"
@@ -228,15 +241,18 @@
         {t("settings.ai.saved")}
       </p>{/if}
 
-    <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-      >{t("common.save")}</button
-    >
+    <Button loading={busy.is("save")} disabled={busy.active}>{t("common.save")}</Button>
   </form>
 
   {#if ai}
-    <form method="POST" action="?/test" use:enhance class="mt-4 border-t border-border pt-4">
-      <button class="rounded-lg border border-border px-4 py-2 text-sm text-text hover:border-brand"
-        >{t("settings.ai.test")}</button
+    <form
+      method="POST"
+      action="?/test"
+      use:enhance={busy.wrap("test")}
+      class="mt-4 border-t border-border pt-4"
+    >
+      <Button variant="secondary" loading={busy.is("test")} disabled={busy.active}
+        >{t("settings.ai.test")}</Button
       >
       {#if form?.test}
         {#if form.test.ok}

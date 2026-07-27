@@ -14,7 +14,7 @@ export const load: PageServerLoad = async (event) => {
   const [{ data: groups }, { data: companies }, { data: members }] = await Promise.all([
     api.GET("/api/v1/companies/groups"),
     // A name-only lookup: no COUNT, no aggregates (docs/PERFORMANCE.md).
-    api.GET("/api/v1/companies", { params: { query: { limit: 200, count: false } } }),
+    api.GET("/api/v1/companies", { params: { query: { limit: 200, count: false, sort: "name" } } }),
     api.GET("/api/v1/members"),
   ]);
   return {

@@ -5,6 +5,7 @@
  */
 import { fail, type RequestEvent } from "@sveltejs/kit";
 
+import { apiBaseUrl } from "$lib/core/api/client";
 import { apiErrorKey } from "$lib/core/errors";
 import { apiFor } from "$lib/core/session";
 
@@ -79,6 +80,51 @@ export const interactionActions = {
     return { ok: true };
   },
 
+  /**
+   * Log an email from its `.eml` export (#262). Multipart through a plain fetch — the typed
+   * client has no multipart serializer (the file-upload actions do the same) — carrying the
+   * same cookie + tenant host the client would send.
+   *
+   * The API answers 409 when this `Message-ID` is already on the timeline; that is a question,
+   * not a refusal, so it comes back as `emlDuplicate` and the form offers "toch vastleggen".
+   */
+  uploadInteractionEml: async (event: RequestEvent) => {
+    const form = await event.request.formData();
+    const upload = form.get("file");
+    if (!(upload instanceof File) || upload.size === 0)
+      return fail(400, { error: "errors.required" });
+    const body = new FormData();
+    body.append("file", upload, upload.name);
+    for (const [field, value] of Object.entries(links(form))) body.append(field, value);
+    if (form.get("allow_duplicate") === "1") body.append("allow_duplicate", "true");
+    const res = await event.fetch(`${apiBaseUrl()}/api/v1/interactions/upload-eml`, {
+      method: "POST",
+      headers: {
+        cookie: event.request.headers.get("cookie") ?? "",
+        "x-forwarded-host": event.request.headers.get("host") ?? "",
+      },
+      body,
+    });
+    if (!res.ok) {
+      const envelope = await res.json().catch(() => null);
+      const parsed = apiErrorKey(envelope);
+      return fail(res.status === 413 ? 413 : 400, {
+        // A field-level key (bad type, unreadable message) is the specific one; fall back to
+        // the envelope's message so a 403/500 still says something true.
+        error: parsed.fields?.file ?? parsed.key,
+        emlDuplicate: res.status === 409,
+      });
+    }
+    const data = await res.json();
+    return {
+      ok: true,
+      emlUploaded: {
+        stored: Number(data?.attachments_stored ?? 0),
+        skipped: Number(data?.attachments_skipped ?? 0),
+      },
+    };
+  },
+
   updateInteraction: async (event: RequestEvent) => {
     const form = await event.request.formData();
     const id = String(form.get("id") ?? "");
@@ -90,10 +136,24 @@ export const interactionActions = {
         kind: String(form.get("kind") ?? "note"),
         ...(occurred ? { occurred_at: occurred } : {}),
         subject: String(form.get("subject") ?? "").trim(),
-        body_text: String(form.get("body_text") ?? "").trim() || null,
-        direction: String(form.get("direction") ?? "none") as "none",
-        // The form carries a contact picker now (#173): an edit may set or clear the link.
-        contact_id: String(form.get("contact_id") ?? "").trim() || null,
+        // Only fields the form actually rendered are sent (the API's PATCH is
+        // `exclude_unset`): editing an uploaded email (#262) offers neither the note editor
+        // nor the direction select, and an absent field must leave the received message
+        // alone rather than blanking its body or resetting its direction to "none".
+        ...(form.has("body_text")
+          ? { body_text: String(form.get("body_text") ?? "").trim() || null }
+          : {}),
+        ...(form.has("direction")
+          ? { direction: String(form.get("direction") ?? "none") as "none" }
+          : {}),
+        // The edit form carries all four link pickers now (#263, was contact-only since #173):
+        // an edit may set, repoint or clear any of them, the same explicit-null contract the
+        // move dialog's PATCH uses. The client rides along as the value the form derived from
+        // the project/task — `_resolve_links(partial=True)` does not derive over an explicit
+        // key, so posting a bare null here would drop the client the picker just showed.
+        ...Object.fromEntries(
+          LINK_FIELDS.map((field) => [field, String(form.get(field) ?? "").trim() || null]),
+        ),
       },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
@@ -292,6 +352,27 @@ export const interactionActions = {
       params: { path: { interaction_id: id } },
       body: { suppress_thread: form.get("suppress_thread") === "1" },
     });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { ok: true };
+  },
+
+  /**
+   * Manually glue this email onto another's conversation (#272): a reply Gmail didn't thread
+   * automatically is folded onto the target the user picked. Owner-only, gmail-only — the API
+   * enforces both on the row and the target.
+   */
+  addInteractionToConversation: async (event: RequestEvent) => {
+    const form = await event.request.formData();
+    const id = String(form.get("id") ?? "");
+    const target_interaction_id = String(form.get("target_interaction_id") ?? "");
+    if (!id || !target_interaction_id) return fail(400, { error: "errors.required" });
+    const { error } = await apiFor(event).POST(
+      "/api/v1/interactions/{interaction_id}/add-to-conversation",
+      {
+        params: { path: { interaction_id: id } },
+        body: { target_interaction_id },
+      },
+    );
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { ok: true };
   },

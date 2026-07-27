@@ -12,17 +12,28 @@
   import { fmtMoney } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
+  import Markdown from "$lib/core/ui/Markdown.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
+  import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import { SUBSCRIPTION_TEMPLATE_COLUMNS } from "$lib/modules/subscriptions/columns";
   import PriceIncreaseModal from "$lib/modules/subscriptions/PriceIncreaseModal.svelte";
   import { subscriptionTypeLabel } from "$lib/modules/subscriptions/types";
+  import {
+    hasNoteVariables,
+    noteVariableItems,
+    notePlaceholder,
+    resolveNoteVariables,
+    subscriptionNoteValues,
+  } from "$lib/modules/subscriptions/variables";
 
   let { data, form } = $props();
 
@@ -30,6 +41,7 @@
 
   const INTERVALS = ["monthly", "quarterly", "yearly"] as const;
 
+  const busy = new InFlight();
   let showModal = $state(false);
   let editing = $state<Template | null>(null);
   let deleteId = $state("");
@@ -59,10 +71,12 @@
 
   function openCreate() {
     editing = null;
+    seedTemplatePreview();
     showModal = true;
   }
   function openEdit(tpl: Template) {
     editing = tpl;
+    seedTemplatePreview();
     showModal = true;
   }
 
@@ -90,6 +104,48 @@
 
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm text-text outline-none focus:border-brand";
+  // The insert-a-variable menu items (issue #259): a preset's notes are authored with the
+  // placeholders that fill in when a subscription is made from it.
+  const variableItems = $derived(noteVariableItems(t));
+
+  // Live preview of a preset's notes (#259). A preset has no client, so the client-context
+  // variables (company name, start date) show as a `[label]` placeholder; the rest resolve from
+  // the preset's own fields, so the author sees the shape a subscription will get. (Re)seeded when
+  // the dialog opens; the notes stay tokens in storage — a preset is the definition, not a copy.
+  let tpv = $state({
+    name: "",
+    typeId: "",
+    amount: "",
+    interval: "monthly",
+    includedHours: "",
+    notes: "",
+  });
+  function seedTemplatePreview() {
+    tpv = {
+      name: editing?.name ?? "",
+      typeId: editing?.subscription_type_id ?? "",
+      amount: String(editing?.amount ?? ""),
+      interval: editing?.interval ?? "monthly",
+      includedHours: String(editing?.included_hours ?? ""),
+      notes: editing?.notes ?? "",
+    };
+  }
+  const templatePreview = $derived(
+    hasNoteVariables(tpv.notes)
+      ? resolveNoteVariables(
+          tpv.notes,
+          subscriptionNoteValues({
+            subscriptionName: tpv.name,
+            typeLabel: tpv.typeId ? typeLabel(tpv.typeId) : null,
+            amount: tpv.amount,
+            interval: tpv.interval,
+            includedHours: tpv.includedHours,
+            brandName: page.data.theme?.brandName ?? null,
+          }),
+          { placeholder: notePlaceholder(t) },
+        )
+      : "",
+  );
 </script>
 
 <svelte:head>
@@ -143,6 +199,12 @@
     onsort={table.onSort}
   />
 </div>
+
+{#if form?.renamed}
+  <p class="mb-4 rounded-lg border border-border bg-surface-raised px-4 py-2 text-sm text-text">
+    {t("settings.subscriptions.renamed_subscriptions", { count: form.renamed })}
+  </p>
+{/if}
 
 <PriceIncreaseModal
   bind:open={priceOpen}
@@ -251,30 +313,39 @@
       method="POST"
       action="?/saveTemplate"
       class="space-y-4"
-      use:enhance={() =>
-        ({ result, update }) => {
-          if (result.type === "success") showModal = false;
-          void update({ reset: false });
-        }}
+      use:enhance={busy.wrap("", () => ({ result, update }) => {
+        if (result.type === "success") showModal = false;
+        void update({ reset: false });
+      })}
     >
       {#if editing}<input type="hidden" name="id" value={editing.id} />{/if}
       <div>
         <label for="tpl-name" class="mb-1 block text-sm text-text"
           >{t("subscriptions.field.name")}</label
         >
-        <input id="tpl-name" name="name" required value={editing?.name ?? ""} class={inputClass} />
+        <input id="tpl-name" name="name" required bind:value={tpv.name} class={inputClass} />
+        <!-- The agreements made from this preset carry its name, so a rename here reaches
+             them. Said before saving, not after: it is a bulk change. -->
+        {#if editing}
+          <p class="mt-1 text-xs text-text-muted">
+            {t("settings.subscriptions.rename_propagates")}
+          </p>
+        {/if}
       </div>
       <div class="grid gap-3 sm:grid-cols-2">
         <div>
           <label for="tpl-type" class="mb-1 block text-sm text-text"
             >{t("subscriptions.field.type")}</label
           >
-          <select id="tpl-type" name="subscription_type_id" class={inputClass}>
+          <select
+            id="tpl-type"
+            name="subscription_type_id"
+            class={inputClass}
+            bind:value={tpv.typeId}
+          >
             <option value="">—</option>
             {#each activeTypes as st (st.id)}
-              <option value={st.id} selected={editing?.subscription_type_id === st.id}
-                >{subscriptionTypeLabel(st, data.locale)}</option
-              >
+              <option value={st.id}>{subscriptionTypeLabel(st, data.locale)}</option>
             {/each}
           </select>
         </div>
@@ -282,11 +353,9 @@
           <label for="tpl-interval" class="mb-1 block text-sm text-text"
             >{t("subscriptions.field.interval")}</label
           >
-          <select id="tpl-interval" name="interval" class={inputClass}>
+          <select id="tpl-interval" name="interval" class={inputClass} bind:value={tpv.interval}>
             {#each INTERVALS as interval (interval)}
-              <option value={interval} selected={(editing?.interval ?? "monthly") === interval}
-                >{t(`subscriptions.interval.${interval}`)}</option
-              >
+              <option value={interval}>{t(`subscriptions.interval.${interval}`)}</option>
             {/each}
           </select>
         </div>
@@ -300,7 +369,8 @@
             type="number"
             min="0"
             step="0.01"
-            value={editing?.amount ?? ""}
+            value={tpv.amount}
+            oninput={(e) => (tpv.amount = e.currentTarget.value)}
             class={inputClass}
           />
         </div>
@@ -314,7 +384,8 @@
             type="number"
             min="0"
             step="0.5"
-            value={editing?.included_hours ?? ""}
+            value={tpv.includedHours}
+            oninput={(e) => (tpv.includedHours = e.currentTarget.value)}
             class={inputClass}
           />
         </div>
@@ -337,9 +408,23 @@
         <label for="tpl-notes" class="mb-1 block text-sm text-text"
           >{t("subscriptions.field.notes")}</label
         >
-        <textarea id="tpl-notes" name="notes" rows="2" class={inputClass}
-          >{editing?.notes ?? ""}</textarea
-        >
+        <RichTextEditor
+          id="tpl-notes"
+          name="notes"
+          rows={2}
+          value={editing?.notes ?? ""}
+          variables={variableItems}
+          onchange={(v) => (tpv.notes = v)}
+        />
+        <p class="mt-1 text-xs text-text-muted">{t("subscriptions.variables.hint_template")}</p>
+        {#if hasNoteVariables(tpv.notes)}
+          <div class="mt-2 rounded-lg border border-border bg-surface p-3">
+            <p class="mb-1 text-xs font-medium text-text-muted">
+              {t("subscriptions.variables.preview")}
+            </p>
+            <Markdown value={templatePreview} />
+          </div>
+        {/if}
       </div>
       <input
         type="hidden"
@@ -353,9 +438,7 @@
           class="rounded-lg border border-border px-4 py-2 text-sm text-text"
           onclick={() => (showModal = false)}>{t("common.cancel")}</button
         >
-        <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
-          >{t("common.save")}</button
-        >
+        <Button loading={busy.active}>{t("common.save")}</Button>
       </div>
     </form>
   {/key}

@@ -5,9 +5,13 @@
   import { page } from "$app/state";
   import { editIntent } from "$lib/core/edit-intent";
   import { t } from "$lib/core/i18n";
+  import { formatPhone } from "$lib/core/phone";
+  import { can } from "$lib/core/permissions";
   import { entityPanelsFor } from "$lib/core/registry";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import CustomFieldsView from "$lib/core/customfields/CustomFieldsView.svelte";
@@ -15,6 +19,7 @@
   import LinkField from "$lib/core/ui/LinkField.svelte";
   import Markdown from "$lib/core/ui/Markdown.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
+  import PhoneInput from "$lib/core/ui/PhoneInput.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import CompanyForm from "$lib/modules/companies/CompanyForm.svelte";
 
@@ -22,6 +27,10 @@
 
   // Opened straight into edit when reached from the overview's ⋯ → Bewerken (#78).
   let editing = $state(editIntent());
+
+  // Header actions render only for holders of the matching permission (#253).
+  const canWrite = $derived(can(page.data.user, "contacts.contact.write"));
+  const canDelete = $derived(can(page.data.user, "contacts.contact.delete"));
   let confirmDelete = $state(false);
   const contact = $derived(data.contact);
   const custom = $derived((contact.custom ?? {}) as Record<string, unknown>);
@@ -66,6 +75,10 @@
     draftCompanyName = query.trim();
     showCreateCompany = true;
   }
+
+  // Submits in flight (#242): the firing button spins, its siblings freeze — the portal's
+  // enable/resend/disable all mutate the same portal, so only one may run at a time.
+  const busy = new InFlight();
 </script>
 
 <svelte:head>
@@ -76,30 +89,43 @@
   <div>
     <h1 class="mt-2 text-xl font-semibold text-text">{fullName}</h1>
   </div>
-  <ActionsMenu
-    items={[
-      {
-        label: editing ? t("common.cancel") : t("common.edit"),
-        icon: Pencil,
-        onclick: () => (editing = !editing),
-      },
-      {
-        label: t("common.delete"),
-        icon: Trash2,
-        danger: true,
-        onclick: () => (confirmDelete = true),
-      },
-    ]}
-  />
+  {#if canWrite || canDelete}
+    <ActionsMenu
+      items={[
+        ...(canWrite
+          ? [
+              {
+                label: editing ? t("common.cancel") : t("common.edit"),
+                icon: Pencil,
+                onclick: () => (editing = !editing),
+              },
+            ]
+          : []),
+        ...(canDelete
+          ? [
+              {
+                label: t("common.delete"),
+                icon: Trash2,
+                danger: true,
+                onclick: () => (confirmDelete = true),
+              },
+            ]
+          : []),
+      ]}
+    />
+  {/if}
 </div>
 
 <!-- Linked clients: chips navigate in use mode; attaching, detaching and promoting appear only
      under the header's ⋯ → Bewerken, like every other definition change (docs/UX.md §3). -->
 <section class="mb-4 rounded-xl border border-border bg-surface-raised p-5">
   <h2 class="mb-4 text-sm font-semibold text-text">{t("contacts.companies")}</h2>
+  <!-- `editing && canWrite`: read-mode chips stay navigable (a portal client may follow them to
+       /companies/{id}), but link/unlink/make-primary and the inline create-company modal — all
+       contacts.contact.write acts — never render for a read-only portal client (#244). -->
   <LinkField
     {links}
-    {editing}
+    editing={editing && canWrite}
     candidates={candidateCompanies}
     idField="company_id"
     linkAction="?/linkCompany"
@@ -117,14 +143,13 @@
   />
 </section>
 
-{#if editing}
+{#if editing && canWrite}
   <form
     method="POST"
     action="?/update"
-    use:enhance={() =>
-      ({ update }) => {
-        void update().then(() => (editing = false));
-      }}
+    use:enhance={busy.wrap("save", () => ({ update }) => {
+      void update({ reset: false }).then(() => (editing = false));
+    })}
     class="rounded-xl border border-border bg-surface-raised p-5"
   >
     <div class="grid gap-3 sm:grid-cols-2">
@@ -167,12 +192,7 @@
         <label for="phone" class="mb-1 block text-sm font-medium text-text"
           >{t("contacts.phone")}</label
         >
-        <input
-          id="phone"
-          name="phone"
-          value={contact.phone ?? ""}
-          class="w-full rounded-lg border border-border px-3 py-2 text-sm"
-        />
+        <PhoneInput id="phone" name="phone" value={contact.phone ?? ""} />
       </div>
       <div class="sm:col-span-2">
         <label for="job_title" class="mb-1 block text-sm font-medium text-text"
@@ -212,9 +232,7 @@
 
     {#if form?.error}<p class="mt-2 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
     <div class="mt-4 flex gap-2">
-      <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >{t("common.save")}</button
-      >
+      <Button loading={busy.is("save")}>{t("common.save")}</Button>
       <button
         type="button"
         class="rounded-lg border border-border px-4 py-2 text-sm"
@@ -236,7 +254,12 @@
           <dt class="text-xs font-medium uppercase tracking-wide text-text-muted">
             {t("contacts.phone")}
           </dt>
-          <dd class="mt-1 text-sm text-text">{contact.phone ?? "—"}</dd>
+          <dd class="mt-1 text-sm text-text">
+            {#if contact.phone}
+              <a href="tel:{contact.phone}" class="hover:text-brand">{formatPhone(contact.phone)}</a
+              >
+            {:else}—{/if}
+          </dd>
         </div>
         <div>
           <dt class="text-xs font-medium uppercase tracking-wide text-text-muted">
@@ -294,31 +317,35 @@
         {/if}
         <div class="flex flex-wrap gap-2">
           {#if data.portal.status === "none" || data.portal.status === "disabled"}
-            <form method="POST" action="?/portalEnable" use:enhance>
-              <button
-                class="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
-              >
+            <form method="POST" action="?/portalEnable" use:enhance={busy.wrap("enable")}>
+              <Button size="sm" loading={busy.is("enable")} disabled={busy.active}>
                 {data.portal.status === "disabled"
                   ? t("contacts.portal.reenable")
                   : t("contacts.portal.enable")}
-              </button>
+              </Button>
             </form>
           {:else}
             {#if data.portal.status === "invited"}
-              <form method="POST" action="?/portalResend" use:enhance>
-                <button
-                  class="rounded-lg border border-border px-3 py-1.5 text-sm text-text hover:border-brand"
+              <form method="POST" action="?/portalResend" use:enhance={busy.wrap("resend")}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  loading={busy.is("resend")}
+                  disabled={busy.active}
                 >
                   {t("contacts.portal.resend")}
-                </button>
+                </Button>
               </form>
             {/if}
-            <form method="POST" action="?/portalDisable" use:enhance>
-              <button
-                class="rounded-lg border border-border px-3 py-1.5 text-sm text-text hover:border-red-400 hover:text-red-500"
+            <form method="POST" action="?/portalDisable" use:enhance={busy.wrap("disable")}>
+              <Button
+                variant="danger-outline"
+                size="sm"
+                loading={busy.is("disable")}
+                disabled={busy.active}
               >
                 {t("contacts.portal.disable")}
-              </button>
+              </Button>
             </form>
           {/if}
         </div>
@@ -352,11 +379,10 @@
     <form
       method="POST"
       action="?/createCompany"
-      use:enhance={() =>
-        ({ update }) => {
-          showCreateCompany = false;
-          void update();
-        }}
+      use:enhance={busy.wrap("createCompany", () => ({ update }) => {
+        showCreateCompany = false;
+        void update();
+      })}
       class="space-y-3"
     >
       <!-- The full client form, prefilled with what was typed — never a name-only stub. -->
@@ -374,10 +400,7 @@
           class="rounded-lg border border-border px-4 py-2 text-sm"
           onclick={() => (showCreateCompany = false)}>{t("common.cancel")}</button
         >
-        <button
-          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-          >{t("common.create")}</button
-        >
+        <Button loading={busy.is("createCompany")}>{t("common.create")}</Button>
       </div>
     </form>
   {/key}

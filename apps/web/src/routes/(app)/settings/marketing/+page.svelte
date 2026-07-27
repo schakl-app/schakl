@@ -8,10 +8,14 @@
    */
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
+  import Button from "$lib/core/ui/Button.svelte";
 
   let { data, form } = $props();
   const settings = $derived(data.settings);
+
+  const busy = new InFlight();
 
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand";
@@ -25,7 +29,7 @@
 <p class="mb-6 text-sm text-text-muted">{t("settings.marketing.subtitle")}</p>
 
 <section class="max-w-2xl rounded-xl border border-border bg-surface-raised p-5">
-  <form method="POST" action="?/save" use:enhance class="space-y-5">
+  <form method="POST" action="?/save" use:enhance={busy.wrap()} class="space-y-5">
     <div>
       <label for="ads-developer-token" class="mb-1 block text-sm font-medium text-text">
         {t("settings.marketing.ads_developer_token")}
@@ -52,11 +56,8 @@
       <p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
     {/if}
 
-    <button
-      type="submit"
-      class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-    >
+    <Button type="submit" loading={busy.active}>
       {t("common.save")}
-    </button>
+    </Button>
   </form>
 </section>

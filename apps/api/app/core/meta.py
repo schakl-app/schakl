@@ -27,6 +27,7 @@ from app.core.entitlements.service import (
 )
 from app.core.models import OrgSettings, OrgStatus
 from app.core.permissions.deps import no_permission_required, require_permission
+from app.core.region import DEFAULT_COUNTRY, is_valid_country
 from app.core.tenancy import RequestContext, request_hostname, require_context, resolve_org
 from app.core.timezone import is_valid_timezone
 from app.db import async_session_maker, set_current_org
@@ -53,6 +54,10 @@ class TenantBranding(BaseModel):
     timezone: str
     # ISO 4217 code money renders in (#124) — per-org, like the timezone.
     currency: str
+    # ISO 3166-1 alpha-2 the org operates from: the country an ambiguous value is read in — a
+    # national phone number, a new company's country. Public alongside the timezone so the
+    # web's PhoneInput can default to it instead of guessing from the browser locale.
+    default_country: str = "NL"
     # Tab-title template (#97): free text with {page} / {brand} tokens; None = built-in format.
     tab_title_template: str | None = None
     enabled_modules: list[str]
@@ -83,6 +88,8 @@ class TenantBrandingUpdate(BaseModel):
     timezone: str | None = Field(default=None, max_length=64)
     # ISO 4217; validated against the known-codes list in the handler.
     currency: str | None = Field(default=None, min_length=3, max_length=3)
+    # ISO 3166-1 alpha-2; shape-validated in the handler (app/core/region.py).
+    default_country: str | None = Field(default=None, min_length=2, max_length=2)
     # Tab-title template (#97). Empty string clears it back to the built-in format.
     tab_title_template: str | None = Field(default=None, max_length=120)
     # Which modules this org runs; must stay a subset of the instance's mounted modules
@@ -266,6 +273,7 @@ async def tenant_branding(request: Request) -> TenantBranding:
             default_locale=s.default_locale if s else settings.default_locale,
             timezone=s.timezone if s else settings.default_timezone,
             currency=s.currency if s else DEFAULT_CURRENCY,
+            default_country=s.default_country if s else DEFAULT_COUNTRY,
             tab_title_template=s.tab_title_template if s else None,
             enabled_modules=list(s.enabled_modules)
             if s and s.enabled_modules
@@ -308,6 +316,15 @@ async def update_tenant_branding(
                 "errors.validation",
                 status_code=422,
                 fields={"currency": "errors.validation"},
+            )
+    if "default_country" in data and data["default_country"] is not None:
+        data["default_country"] = data["default_country"].upper()
+        if not is_valid_country(data["default_country"]):
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"default_country": "errors.validation"},
             )
     if data.get("tab_title_template"):
         template = data["tab_title_template"].strip()
@@ -364,6 +381,7 @@ async def update_tenant_branding(
         default_locale=s.default_locale,
         timezone=s.timezone,
         currency=s.currency,
+        default_country=s.default_country,
         tab_title_template=s.tab_title_template,
         enabled_modules=list(s.enabled_modules) if s.enabled_modules else [],
     )

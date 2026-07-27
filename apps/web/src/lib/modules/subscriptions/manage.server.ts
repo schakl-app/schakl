@@ -95,19 +95,34 @@ export const manageActions = {
       position: Number(form.get("position") ?? 0) || 0,
     };
     if (template_id) {
-      const { error } = await apiFor(event).PATCH("/api/v1/subscriptions/templates/{template_id}", {
-        params: { path: { template_id } },
-        body: body as never,
-      });
+      const { data, error } = await apiFor(event).PATCH(
+        "/api/v1/subscriptions/templates/{template_id}",
+        { params: { path: { template_id } }, body: body as never },
+      );
       if (error) return fail(400, { error: apiErrorKey(error).key });
+      // A rename follows through to the agreements made from this preset — say how many
+      // rather than letting a bulk change happen quietly.
+      const renamed = (data as { renamed_subscriptions?: number })?.renamed_subscriptions ?? 0;
+      return { saved: true, templateSaved: true, renamed };
     } else {
-      const { error } = await apiFor(event).POST("/api/v1/subscriptions/templates", {
+      const { data, error } = await apiFor(event).POST("/api/v1/subscriptions/templates", {
         body: body as never,
       });
       if (error) return fail(400, { error: apiErrorKey(error).key });
+      // "Opslaan als standaardabonnement" turns one agreement into the preset. That agreement
+      // is now an instance of it, so point it at the preset: renaming the standard
+      // subscription later renames it along with the others made from it. Best-effort — the
+      // preset itself is saved either way, and the row keeps its name regardless.
+      const link_subscription_id = String(form.get("link_subscription_id") ?? "").trim();
+      if (link_subscription_id && data?.id) {
+        await apiFor(event).PATCH("/api/v1/subscriptions/{subscription_id}", {
+          params: { path: { subscription_id: link_subscription_id } },
+          body: { subscription_template_id: data.id } as never,
+        });
+      }
     }
     // `templateSaved` keeps the subscriptions page's "opgeslagen als sjabloon" notice fed.
-    return { saved: true, templateSaved: true };
+    return { saved: true, templateSaved: true, renamed: 0 };
   },
 
   deleteTemplate: async (event: RequestEvent) => {

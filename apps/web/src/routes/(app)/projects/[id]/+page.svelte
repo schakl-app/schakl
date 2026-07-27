@@ -15,7 +15,7 @@
   import { entityPanelsFor } from "$lib/core/registry";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import AssigneePicker from "$lib/core/ui/AssigneePicker.svelte";
-  import AvatarStack from "$lib/core/ui/AvatarStack.svelte";
+  import Assignees from "$lib/core/ui/Assignees.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
@@ -44,6 +44,16 @@
   // Use mode vs edit mode (UX §3): the definition is edited behind the ⋯ → Bewerken toggle, or
   // opened straight into edit when reached from the overview's ⋯ → Bewerken (#78).
   let editing = $state(editIntent());
+
+  // Header actions render only for holders of the matching permission (#253).
+  const canWrite = $derived(can(page.data.user, "projects.project.write"));
+  const canDelete = $derived(can(page.data.user, "projects.project.delete"));
+  // The to-do list and the documents block are *task* and *file* writes, not project writes — a
+  // read-only portal client (#244) reaches this page for a readable project but holds none of
+  // these, so each control mirrors its own API permission.
+  const canCreateTask = $derived(can(page.data.user, "tasks.task.create"));
+  const canWriteTask = $derived(can(page.data.user, "tasks.task.write"));
+  const canWriteFile = $derived(can(page.data.user, "files.file.write"));
   let confirmDelete = $state(false);
 
   // Log a contactmoment from the header — quick-add where the user is (docs/UX.md), with the
@@ -137,7 +147,7 @@
       {/if}{t(`projects.status.${project.status}`)}
       {#if assignees.length > 0}
         · {t("projects.field.responsible")}:
-        <AvatarStack {assignees} members={data.members} />
+        <Assignees {assignees} members={data.members} max={6} />
       {/if}
     </p>
   </div>
@@ -151,21 +161,31 @@
         {t("interactions.add")}
       </button>
     {/if}
-    <ActionsMenu
-      items={[
-        {
-          label: editing ? t("common.cancel") : t("common.edit"),
-          icon: Pencil,
-          onclick: () => (editing = !editing),
-        },
-        {
-          label: t("common.delete"),
-          icon: Trash2,
-          danger: true,
-          onclick: () => (confirmDelete = true),
-        },
-      ]}
-    />
+    {#if canWrite || canDelete}
+      <ActionsMenu
+        items={[
+          ...(canWrite
+            ? [
+                {
+                  label: editing ? t("common.cancel") : t("common.edit"),
+                  icon: Pencil,
+                  onclick: () => (editing = !editing),
+                },
+              ]
+            : []),
+          ...(canDelete
+            ? [
+                {
+                  label: t("common.delete"),
+                  icon: Trash2,
+                  danger: true,
+                  onclick: () => (confirmDelete = true),
+                },
+              ]
+            : []),
+        ]}
+      />
+    {/if}
   </div>
 </div>
 
@@ -253,7 +273,7 @@
 
   <!-- Details (use mode) / Edit (edit mode) -->
   <section class="rounded-xl border border-border bg-surface-raised p-5">
-    {#if editing}
+    {#if editing && canWrite}
       <h2 class="mb-4 text-sm font-semibold text-text">{t("common.edit")}</h2>
       <form
         method="POST"
@@ -261,7 +281,7 @@
         use:enhance={() =>
           ({ update }) => {
             editing = false;
-            void update();
+            void update({ reset: false });
           }}
         class="space-y-3"
       >
@@ -426,7 +446,7 @@
           <dt class="text-text-muted">{t("projects.field.responsible")}</dt>
           <dd class="mt-0.5 font-medium text-text">
             {#if assignees.length > 0}
-              <AvatarStack {assignees} members={data.members} />
+              <Assignees {assignees} members={data.members} max={6} />
             {:else}
               —
             {/if}
@@ -491,18 +511,20 @@
     >
   </div>
 
-  <form method="POST" action="?/addTask" use:enhance class="mb-4 flex gap-2">
-    <input type="hidden" name="company_id" value={project.company_id ?? ""} />
-    <input name="title" placeholder={t("projects.add_todo")} required class={inputClass} />
-    <button
-      class="shrink-0 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-      >{t("common.create")}</button
-    >
-  </form>
+  {#if canCreateTask}
+    <form method="POST" action="?/addTask" use:enhance class="mb-4 flex gap-2">
+      <input type="hidden" name="company_id" value={project.company_id ?? ""} />
+      <input name="title" placeholder={t("projects.add_todo")} required class={inputClass} />
+      <button
+        class="shrink-0 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        >{t("common.create")}</button
+      >
+    </form>
+  {/if}
 
   {#if tasks.length === 0}
     <p class="text-sm text-text-muted">{t("tasks.empty")}</p>
-  {:else}
+  {:else if canWriteTask}
     <form method="POST" action="?/reorderTask" use:enhance bind:this={reorderForm} class="hidden">
       <input type="hidden" name="id" value={reorderId} />
       <input type="hidden" name="position" value={reorderPosition} />
@@ -529,6 +551,23 @@
         </div>
       {/each}
     </div>
+  {:else}
+    <!-- Read-only viewer (portal client, #244): a plain, non-reorderable list. TaskRow self-gates
+         its own complete-toggle, so the row shows a static status marker. -->
+    <div class="divide-y divide-border">
+      {#each tasks as task (task.id)}
+        <div class="flex items-center bg-surface-raised">
+          <div class="flex-1">
+            <TaskRow
+              {task}
+              toggleAction="?/toggleTask"
+              members={data.members}
+              statuses={data.statuses}
+            />
+          </div>
+        </div>
+      {/each}
+    </div>
   {/if}
 </section>
 
@@ -538,10 +577,13 @@
   {#if data.files.length === 0}
     <p class="mb-3 text-sm text-text-muted">{t("files.empty")}</p>
   {/if}
+  <!-- Upload / per-row delete both require files.file.write (POST/DELETE /api/v1/files); a
+       read-only portal client (#244) sees the download list only. -->
   <FileAttachments
     files={data.files}
     uploadAction="?/uploadFile"
     deleteAction="?/deleteFile"
+    readonly={!canWriteFile}
     error={form?.fileError ?? null}
   />
 </section>

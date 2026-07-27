@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
     from fastapi import APIRouter
 
-    from app.core.impex.spec import ImpexDescriptor
+    from app.core.impex.spec import ImpexDescriptor, ImpexExtension
     from app.core.permissions.spec import PermissionSpec
     from app.core.tenancy import RequestContext
 
@@ -81,6 +81,10 @@ class ModuleDescriptor:
     # each declaring that entity's own read/write permission — core owns the mechanics,
     # modules only describe shape (the custom-fields/panels pattern, CLAUDE.md §13/§6).
     impex: list[ImpexDescriptor] = field(default_factory=list)
+    # Columns this module contributes to *another* module's import/export shape (issue #77) —
+    # the same contribution model as `panels`, so a company import can carry its client's
+    # contact person without companies importing contacts' internals (CLAUDE.md §6, §17).
+    impex_extensions: list[ImpexExtension] = field(default_factory=list)
     # Actions this module contributes to the automation rule engine (issue #27).
     automation_actions: list[AutomationActionSpec] = field(default_factory=list)
 
@@ -118,6 +122,20 @@ class ModuleRegistry:
         for module in self.enabled(names):
             panels.extend(p for p in module.panels if p.entity_type == entity_type)
         return sorted(panels, key=lambda p: (p.position, p.key))
+
+    def impex_extensions_for(self, entity_type: str, names: list[str]) -> list[ImpexExtension]:
+        """Columns the enabled modules contribute to ``entity_type``'s import/export shape.
+
+        Disabling the contributing module removes its columns — which is the point of routing
+        this through the registry rather than letting the host descriptor name them.
+        """
+        extensions = [
+            extension
+            for module in self.enabled(names)
+            for extension in module.impex_extensions
+            if extension.entity_type == entity_type
+        ]
+        return sorted(extensions, key=lambda e: (e.position, e.module))
 
 
 registry = ModuleRegistry()

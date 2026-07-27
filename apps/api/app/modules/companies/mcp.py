@@ -13,7 +13,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from app.core.ai.tools import AIToolSpec, Source, ToolResult
 from app.core.customfields import CustomFieldsService
@@ -50,8 +50,12 @@ async def _find(ctx: RequestContext, args: dict[str, Any]) -> ToolResult:
     query = args.get("query")
     stmt = ctx.repo(Company).scoped_select()
     if isinstance(query, str) and query.strip():
-        # Name-only ilike, ranked by name — same case-insensitive ordering the list API uses.
-        stmt = stmt.where(Company.name.ilike(f"%{query.strip()}%"))
+        # Name or klantnummer, ranked by name — the same fields (and the same case-insensitive
+        # ordering) the list API searches, so "who is K0042" answers.
+        pattern = f"%{query.strip()}%"
+        stmt = stmt.where(
+            or_(Company.name.ilike(pattern), Company.client_number.ilike(pattern))
+        )
         stmt = stmt.order_by(func.lower(Company.name))
     else:
         stmt = stmt.order_by(Company.updated_at.desc())
@@ -59,7 +63,13 @@ async def _find(ctx: RequestContext, args: dict[str, Any]) -> ToolResult:
     return ToolResult(
         data={
             "companies": [
-                {"id": str(c.id), "name": c.name, "status": c.status} for c in companies
+                {
+                    "id": str(c.id),
+                    "name": c.name,
+                    "client_number": c.client_number,
+                    "status": c.status,
+                }
+                for c in companies
             ]
         },
         sources=tuple(Source(type="company", id=str(c.id), label=c.name) for c in companies),
@@ -77,6 +87,7 @@ async def _get(ctx: RequestContext, args: dict[str, Any]) -> ToolResult:
         data={
             "id": str(company.id),
             "name": company.name,
+            "client_number": company.client_number,
             "status": company.status,
             "website": company.website,
             "notes": company.notes,
@@ -90,9 +101,10 @@ COMPANY_MCP_TOOLS: list[AIToolSpec] = [
     AIToolSpec(
         name="companies.find",
         description=(
-            "Look up the tenant's client companies by name. Call this to resolve a client "
-            "name the user mentioned to its id, or with no query to list the most recently "
-            "updated clients. Returns at most 10 matches."
+            "Look up the tenant's client companies by name or klantnummer (client number). "
+            "Call this to resolve a client name or number the user mentioned to its id, or "
+            "with no query to list the most recently updated clients. Returns at most 10 "
+            "matches."
         ),
         input_schema={
             "type": "object",
@@ -100,7 +112,8 @@ COMPANY_MCP_TOOLS: list[AIToolSpec] = [
                 "query": {
                     "type": ["string", "null"],
                     "description": (
-                        "Case-insensitive name fragment; omit for the most recent companies."
+                        "Case-insensitive name or client-number fragment; omit for the "
+                        "most recent companies."
                     ),
                 }
             },

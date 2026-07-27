@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -40,14 +41,25 @@ class TimeEntryBase(BaseModel):
     company_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None
     task_id: uuid.UUID | None = None
-    #: Optional link to the subscription these hours are worked under; must belong to the
-    #: entry's client (the service derives the client from it when none is picked).
-    subscription_id: uuid.UUID | None = None
     description: str | None = None
     #: Optional key into the org's time-entry types (#176); NULL stays untyped.
     entry_type_key: str | None = Field(None, min_length=1, max_length=50, pattern=r"^[a-z0-9_]+$")
     billable: bool = True
     break_minutes: int = Field(default=0, ge=0, le=24 * 60)
+
+
+def _billable_from_project() -> Any:
+    """Left out, the project decides (issue #284). ``billable_default`` is what a project seeds
+    its entries with, and a project covered by a subscription seeds *not* billable — the
+    retainer already pays for that work. A client that states the flag still wins; only silence
+    defers. A fresh ``Field`` per model: a ``FieldInfo`` is not shareable between schemas.
+    """
+    return Field(
+        default=None,
+        description=(
+            "Omit to inherit the project's billable default (true when there is no project)."
+        ),
+    )
 
 
 class TimeEntryCreate(TimeEntryBase):
@@ -57,6 +69,7 @@ class TimeEntryCreate(TimeEntryBase):
     derived (start + minutes + break). Validated in the service.
     """
 
+    billable: bool | None = _billable_from_project()
     started_at: datetime
     ended_at: datetime | None = None
     minutes: int | None = Field(default=None, ge=0, le=24 * 60)
@@ -66,7 +79,6 @@ class TimeEntryUpdate(BaseModel):
     company_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None
     task_id: uuid.UUID | None = None
-    subscription_id: uuid.UUID | None = None
     description: str | None = None
     entry_type_key: str | None = Field(None, min_length=1, max_length=50, pattern=r"^[a-z0-9_]+$")
     billable: bool | None = None
@@ -78,6 +90,8 @@ class TimeEntryUpdate(BaseModel):
 
 class TimerStart(TimeEntryBase):
     """Start a running timer for the current user (no end / duration yet)."""
+
+    billable: bool | None = _billable_from_project()
 
 
 class TimeEntryRead(TimeEntryBase):
@@ -93,6 +107,10 @@ class TimeEntryRead(TimeEntryBase):
     approved_at: datetime | None
     approved_by_user_id: uuid.UUID | None
     invoiced_at: datetime | None
+    #: Legacy: hours used to be linkable straight to a subscription. That link is gone — an
+    #: agreement's included hours are consumed through the **projects** it covers (#225) — so
+    #: this is read-only history for rows written before, and NULL on everything new.
+    subscription_id: uuid.UUID | None = None
     #: The interaction this entry was logged from (#175), when it still exists.
     interaction_id: uuid.UUID | None = None
     created_at: datetime
@@ -205,7 +223,10 @@ class TimeEntryDraftPayload(BaseModel):
     company_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None
     task_id: uuid.UUID | None = None
-    subscription_id: uuid.UUID | None = None
+    #: The form has posted this since #176 and the whitelist never learned it, so *every*
+    #: autosave 422'd and the draft silently never saved. A closed shape has to mirror the
+    #: form field for field — that is the cost of ``extra="forbid"``, and the test below it.
+    entry_type_key: str | None = Field(default=None, max_length=50)
     description: str | None = Field(default=None, max_length=4000)
 
 

@@ -1,5 +1,6 @@
 <script lang="ts">
   /** Company-detail panel: projects attached to this company (CLAUDE.md §6). */
+  import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
@@ -37,11 +38,11 @@
   </ul>
 {/if}
 {#if can(page.data.user, "projects.project.write")}
-  <!-- Quick-create from the client page: opens the project form with this client set. -->
-  <a
-    href={`/projects?company=${companyId}&new=1`}
-    class="mt-3 inline-block text-xs text-brand hover:underline"
-  >
-    ＋ {t("projects.new")}
-  </a>
+  <!-- Quick-create from the client page (create-then-edit, same as tasks #230): a POST — never
+       a link, which would create on hover-preload — that makes a minimal project pre-linked to
+       this client, then lands on its detail page in edit mode. -->
+  <form method="POST" action="/projects?/create" use:enhance class="mt-3">
+    <input type="hidden" name="company_id" value={companyId} />
+    <button class="text-xs text-brand hover:underline">＋ {t("projects.new")}</button>
+  </form>
 {/if}

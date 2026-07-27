@@ -6,8 +6,8 @@ cases — these are those cases. Also pins the numbering format contract.
 
 from decimal import Decimal
 
+from app.core.numbering import format_number, format_valid
 from app.modules.invoicing.calc import LineInput, compute_totals, line_amount
-from app.modules.invoicing.numbering import format_number, format_valid
 
 
 def line(qty: str, price: str, pct: str = "21", category: str = "standard") -> LineInput:

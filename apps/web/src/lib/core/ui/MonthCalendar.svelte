@@ -10,7 +10,7 @@
    * keyboard/touch alternative, so dragging is an accelerator, never the only way (docs/UX.md).
    */
   import {
-    eventChipClass,
+    eventChipParts,
     eventLinkAttrs,
     eventsByDayMap,
     isoDiffDays,
@@ -56,9 +56,15 @@
     dragging = null;
   }
 
-  // The holiday/leave distinction lives in `eventChipClass`, not here (#47).
-  const chipClass = (e: CalendarEvent) =>
-    `block truncate rounded px-1.5 py-0.5 text-xs ${eventChipClass(e)}`;
+  // The holiday/leave distinction (and any personal custom hue) lives in `eventChipParts`, not
+  // here (#47, #281): it hands back a class + an inline style, and the chip spreads both.
+  const chipParts = (e: CalendarEvent) => {
+    const parts = eventChipParts(e);
+    return {
+      class: `block truncate rounded px-1.5 py-0.5 text-xs ${parts.class}`,
+      style: parts.style,
+    };
+  };
 </script>
 
 <!-- ≥sm: the month grid -->
@@ -99,11 +105,13 @@
         </p>
         <div class="space-y-0.5">
           {#each eventsByDay[day] ?? [] as event (event.id + day)}
+            {@const parts = chipParts(event)}
             {#if event.href}
               <a
                 href={event.href}
                 {...eventLinkAttrs(event.href)}
-                class="{chipClass(event)} {event.draggable && onmove ? 'cursor-grab' : ''}"
+                class="{parts.class} {event.draggable && onmove ? 'cursor-grab' : ''}"
+                style={parts.style}
                 title={event.title}
                 draggable={Boolean(event.draggable && onmove)}
                 ondragstart={(e) => dragStart(e, event, day)}
@@ -113,7 +121,7 @@
                 {event.title}
               </a>
             {:else}
-              <span class={chipClass(event)} title={event.title}>
+              <span class={parts.class} style={parts.style} title={event.title}>
                 {#if event.tentative}?{/if}
                 {event.title}
               </span>

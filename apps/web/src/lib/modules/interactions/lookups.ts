@@ -38,9 +38,9 @@ export async function loadLinkLookups(
       ? `&company_id=${scope.companyId}`
       : "";
   const [companiesPage, projectsPage, tasksPage] = await Promise.all([
-    get("/api/v1/companies?limit=200&count=false"),
+    get("/api/v1/companies?limit=200&count=false&sort=name"),
     get("/api/v1/projects?limit=200&count=false"),
-    get(`/api/v1/tasks?limit=200&count=false&meta=false${taskScope}`),
+    get(`/api/v1/tasks?limit=200&count=false&meta=false&sort=title${taskScope}`),
   ]);
   return {
     companies: (companiesPage.items ?? []).map((c: { id: string; name: string }) => ({

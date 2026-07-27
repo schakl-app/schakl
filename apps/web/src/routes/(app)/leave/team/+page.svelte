@@ -1,23 +1,38 @@
 <script lang="ts">
   import { enhance } from "$app/forms";
-  import { Ban, Check, Pencil, Plus, X } from "@lucide/svelte";
+  import { Ban, Check, ChevronDown, ChevronRight, Pencil, Plus, X } from "@lucide/svelte";
 
   import { page } from "$app/state";
   import { fmtPeriod } from "$lib/core/format";
   import { can } from "$lib/core/permissions";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import { labelDotClass } from "$lib/core/ui/colors";
   import { LEAVE_TEAM_COLUMNS } from "$lib/modules/leave/columns";
+  // Employment editors (schedule, contracts, recurring), shared with Instellingen → Gebruikers so
+  // a manager can fix a member's rooster or contract without leaving the leave overview.
+  import EmploymentModals, {
+    employmentMenuItems,
+    type OpenEmployment,
+  } from "$lib/modules/leave/EmploymentModals.svelte";
   import LeaveRequestForm from "$lib/modules/leave/LeaveRequestForm.svelte";
   import LeaveStatusPill from "$lib/modules/leave/LeaveStatusPill.svelte";
-  import { fmtHours, typeLabel, type LeaveTypeInfo } from "$lib/modules/leave/format";
+  import {
+    fmtHours,
+    typeLabel,
+    GROUP_LABEL_KEYS,
+    representativeType,
+    type LeaveTypeInfo,
+  } from "$lib/modules/leave/format";
+  import type { WorkSchedule } from "$lib/modules/leave/schedule";
 
   let { data, form } = $props();
 
@@ -49,55 +64,90 @@
     Object.fromEntries(data.profiles.map((p) => [p.user_id, Number(p.hours_per_week)])),
   );
 
-  // Team balances: entitled (entitlements) − approved − pending (year requests), per
-  // member × tracked type — computed here from the two lists already loaded, no extra calls.
-  interface Cell {
-    entitled: number;
-    used: number;
-    remaining: number;
+  type Group = (typeof data.groups)[number];
+
+  // One column per *balance group* (#282): statutory + extra vacation read as a single
+  // "Vakantieverlof" figure, free time and any other tracked type stay their own. Built from the
+  // type config (stable regardless of who has data), grouped exactly as the API groups so the
+  // column key lines up with each returned group balance's key below.
+  interface GroupColumn {
+    key: string;
+    typeIds: string[];
+    label: string;
+    color: string;
+    multi: boolean;
+    members: LeaveTypeInfo[];
+    position: number;
+    repKey: string;
   }
-  const balanceRows = $derived.by(() => {
-    const entitled: Record<string, number> = {};
-    for (const ent of data.entitlements) {
-      const key = `${ent.user_id}|${ent.leave_type_id}`;
-      entitled[key] = (entitled[key] ?? 0) + Number(ent.hours);
+  const groupColumns = $derived.by((): GroupColumn[] => {
+    const byGroup: Record<string, LeaveTypeInfo[]> = {};
+    for (const lt of trackedTypes) {
+      const key = lt.balance_group ?? `type:${lt.id}`;
+      (byGroup[key] ??= []).push(lt);
     }
-    const used: Record<string, number> = {};
-    for (const request of data.yearRequests) {
-      if (request.status !== "approved" && request.status !== "pending") continue;
-      const key = `${request.user_id}|${request.leave_type_id}`;
-      used[key] = (used[key] ?? 0) + Number(request.hours);
-    }
-    return data.members.map((member) => {
-      const cells: Record<string, Cell> = {};
-      for (const lt of trackedTypes) {
-        const key = `${member.user_id}|${lt.id}`;
-        const ent = entitled[key] ?? 0;
-        const use = used[key] ?? 0;
-        cells[lt.id] = { entitled: ent, used: use, remaining: ent - use };
-      }
-      return { member, cells };
+    const cols = Object.entries(byGroup).map(([key, members]) => {
+      const rep = representativeType(members) ?? members[0];
+      const known = rep.balance_group ? GROUP_LABEL_KEYS[rep.balance_group] : undefined;
+      return {
+        key,
+        typeIds: members.map((m) => m.id),
+        label: known ? t(known) : typeLabel(rep, data.locale),
+        color: members[0].color,
+        multi: members.length > 1,
+        members,
+        position: rep.position,
+        repKey: rep.key,
+      };
     });
+    // Mirror the API's grouped order (representative position, then key).
+    return cols.sort((a, b) => a.position - b.position || a.repKey.localeCompare(b.repKey));
   });
 
-  // Approving over-balance leave must be an informed choice (#109): pending already counts
-  // against the balance, so a negative remaining *is* "what approving leaves them at".
-  const cellByUserType = $derived.by(() => {
-    const map: Record<string, Cell> = {};
-    for (const row of balanceRows) {
-      for (const [typeId, cell] of Object.entries(row.cells)) {
-        map[`${row.member.user_id}|${typeId}`] = cell;
-      }
-    }
+  /** A group balance's stable key — its slug, or `type:<id>` for a standalone group — so it lines
+   *  up with the matching `GroupColumn`. */
+  function groupKey(g: Group): string {
+    return g.group ?? `type:${g.leave_type_ids[0]}`;
+  }
+  // Combined balances keyed by `${user_id}|${groupKey}` (#282). The same expiry-aware figures the
+  // employee sees on /leave; a member with no pots simply isn't here and reads 0.
+  const groupBalByUser = $derived.by(() => {
+    const map: Record<string, Group> = {};
+    for (const g of data.groups) map[`${g.user_id}|${groupKey(g)}`] = g;
+    return map;
+  });
+  // Which group column a tracked type belongs to, for the pending-list over-balance warning.
+  const columnByType = $derived.by(() => {
+    const map: Record<string, GroupColumn> = {};
+    for (const col of groupColumns) for (const id of col.typeIds) map[id] = col;
     return map;
   });
 
-  function balanceFor(request: Request): Cell | null {
+  /** The per-type split behind a combined figure, summed from its pots (expiry-aware). Falls back
+   *  to the column's own type ids so a member with no vacation pots still shows a 0/0 split. */
+  function groupSplit(
+    g: Group | undefined,
+    typeIds: string[],
+  ): { type: LeaveTypeInfo | undefined; remaining: number }[] {
+    const byType: Record<string, number> = {};
+    for (const pot of g?.pots ?? []) {
+      byType[pot.leave_type_id] = (byType[pot.leave_type_id] ?? 0) + Number(pot.remaining_hours);
+    }
+    return typeIds.map((id) => ({ type: typeById[id], remaining: byType[id] ?? 0 }));
+  }
+
+  // Approving over-balance leave must be an informed choice (#109): pending already counts against
+  // the balance, so a negative group remaining *is* "what approving leaves them at". A request
+  // draws on the pool of its type's group (#282, #265), not a lone type.
+  function balanceFor(request: Request): { remaining: number; entitled: number } | null {
     const type = typeById[request.leave_type_id];
     if (!type?.tracks_balance) return null;
-    // The loaded entitlements are year-scoped; a request outside the viewed year has no cell.
+    // The loaded balances are year-scoped; a request outside the viewed year has no figure.
     if (Number(request.start_date.slice(0, 4)) !== data.year) return null;
-    return cellByUserType[`${request.user_id}|${request.leave_type_id}`] ?? null;
+    const col = columnByType[request.leave_type_id];
+    if (!col) return null;
+    const g = groupBalByUser[`${request.user_id}|${col.key}`];
+    return { remaining: Number(g?.remaining_hours ?? 0), entitled: Number(g?.entitled_hours ?? 0) };
   }
 
   function overBalanceBy(request: Request): number {
@@ -105,7 +155,22 @@
     return cell && cell.remaining < 0 ? -cell.remaining : 0;
   }
 
+  // Which member rows have their vacation split expanded (#282); an array like the bulk selection,
+  // so a click toggles one row without reaching for a reactive Set.
+  let expandedRows = $state<string[]>([]);
+  function toggleRow(userId: string) {
+    expandedRows = expandedRows.includes(userId)
+      ? expandedRows.filter((id) => id !== userId)
+      : [...expandedRows, userId];
+  }
+  // Only multi-type groups (vacation) have a split worth expanding.
+  const hasSplit = $derived(groupColumns.some((c) => c.multi));
+  const balanceColCount = $derived(2 + groupColumns.length + (data.manageEmployment ? 1 : 0));
+
+  const busy = new InFlight();
   let registerOpen = $state(false);
+  // The opener the shared employment modals hand back; a roster ⋯ item calls it for a member.
+  let openEmployment = $state<OpenEmployment>();
   let rejectId = $state("");
   let rejectOpen = $state(false);
   let cancelId = $state("");
@@ -204,6 +269,19 @@
   </p>
 {/if}
 
+<!-- The Dienstverband wizard for the roster ⋯ menu. One instance; each row opens it through
+     `openEmployment`. No rate here — that stays a Gebruikers-only act. -->
+{#if data.manageEmployment}
+  <EmploymentModals
+    register={(open) => (openEmployment = open)}
+    contracts={data.contracts}
+    recurring={data.recurring}
+    leaveTypes={types}
+    orgDefaultSchedule={data.defaultSchedule as WorkSchedule}
+    {form}
+  />
+{/if}
+
 <!-- Pending approvals -->
 <section class="mb-6 overflow-hidden rounded-xl border border-border bg-surface-raised">
   <h2
@@ -261,15 +339,13 @@
             {/if}
           </div>
           <div class="flex items-center gap-2">
-            <form method="POST" action="?/decide" use:enhance>
+            <form method="POST" action="?/decide" use:enhance={busy.wrap(`approve:${request.id}`)}>
               <input type="hidden" name="id" value={request.id} />
               <input type="hidden" name="approved" value="true" />
-              <button
-                class="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
-              >
+              <Button variant="success" size="sm" loading={busy.is(`approve:${request.id}`)}>
                 <Check size={14} />
                 {t("leave.team.approve")}
-              </button>
+              </Button>
             </form>
             <button
               type="button"
@@ -302,34 +378,90 @@
         <tr class="border-b border-border text-left text-xs text-text-muted">
           <th class="px-4 py-2 font-medium">{t("leave.team.member")}</th>
           <th class="px-2 py-2 text-right font-medium">{t("leave.team.contract_hours")}</th>
-          {#each trackedTypes as lt (lt.id)}
-            <th class="px-2 py-2 text-right font-medium">{typeLabel(lt, data.locale)}</th>
+          {#each groupColumns as col (col.key)}
+            <th class="px-2 py-2 text-right font-medium">
+              <span class="inline-flex items-center gap-1.5">
+                <span class="h-2 w-2 rounded-full {labelDotClass(col.color)}"></span>
+                {col.label}
+              </span>
+            </th>
           {/each}
+          {#if data.manageEmployment}
+            <th class="w-10 px-2 py-2"><span class="sr-only">{t("common.actions")}</span></th>
+          {/if}
         </tr>
       </thead>
       <tbody class="divide-y divide-border">
-        {#each balanceRows as row (row.member.user_id)}
+        {#each data.members as member (member.user_id)}
+          {@const expanded = expandedRows.includes(member.user_id)}
           <tr>
             <td class="px-4 py-2 font-medium text-text">
-              {row.member.full_name || row.member.email}
+              {member.full_name || member.email}
             </td>
             <td class="px-2 py-2 text-right tabular-nums text-text-muted">
-              {fmtHours(hoursByUser[row.member.user_id] ?? 40)}
+              {fmtHours(hoursByUser[member.user_id] ?? 40)}
             </td>
-            {#each trackedTypes as lt (lt.id)}
-              {@const cell = row.cells[lt.id]}
+            {#each groupColumns as col (col.key)}
+              {@const g = groupBalByUser[`${member.user_id}|${col.key}`]}
+              {@const remaining = Number(g?.remaining_hours ?? 0)}
               <td class="px-2 py-2 text-right tabular-nums">
-                <span
-                  class={(cell?.remaining ?? 0) < 0
-                    ? "font-medium text-red-600 dark:text-red-400"
-                    : "text-text"}
-                >
-                  {fmtHours(cell?.remaining ?? 0)}
+                <span class="inline-flex items-center justify-end gap-1">
+                  {#if col.multi}
+                    <!-- Expand the combined figure into its statutory / extra split (#282). -->
+                    <button
+                      type="button"
+                      class="rounded p-0.5 text-text-muted hover:text-text"
+                      aria-expanded={expanded}
+                      title={t("leave.team.vacation_split")}
+                      aria-label={t("leave.team.vacation_split")}
+                      onclick={() => toggleRow(member.user_id)}
+                    >
+                      {#if expanded}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
+                    </button>
+                  {/if}
+                  <span
+                    class={remaining < 0
+                      ? "font-medium text-red-600 dark:text-red-400"
+                      : "text-text"}
+                  >
+                    {fmtHours(remaining)}
+                  </span>
+                  <span class="text-xs text-text-muted"
+                    >/ {fmtHours(Number(g?.entitled_hours ?? 0))}</span
+                  >
                 </span>
-                <span class="text-xs text-text-muted">/ {fmtHours(cell?.entitled ?? 0)}</span>
               </td>
             {/each}
+            {#if data.manageEmployment}
+              <!-- Fix this member's rooster/contract/free time without leaving the leave overview. -->
+              <td class="px-2 py-2 text-right">
+                <ActionsMenu
+                  compact
+                  items={employmentMenuItems(member, openEmployment, {
+                    schedules: true,
+                    rates: false,
+                  })}
+                />
+              </td>
+            {/if}
           </tr>
+          {#if expanded && hasSplit}
+            <!-- The split behind each combined figure: statutory vs extra vacation (#282, #265). -->
+            <tr class="bg-surface/60">
+              <td class="px-4 py-1.5 text-xs text-text-muted" colspan={balanceColCount}>
+                <span class="flex flex-wrap gap-x-4 gap-y-1">
+                  {#each groupColumns.filter((c) => c.multi) as col (col.key)}
+                    {@const g = groupBalByUser[`${member.user_id}|${col.key}`]}
+                    {#each groupSplit(g, col.typeIds) as part (part.type?.id)}
+                      <span class="tabular-nums">
+                        {typeLabel(part.type, data.locale)}: {fmtHours(part.remaining)}
+                      </span>
+                    {/each}
+                  {/each}
+                </span>
+              </td>
+            </tr>
+          {/if}
         {/each}
       </tbody>
     </table>
@@ -417,18 +549,20 @@
 
 {#snippet bulkBar(ids: string[])}
   <span class="text-xs font-medium text-text">{t("table.selected", { count: ids.length })}</span>
-  <form method="POST" action="?/bulkDecide" use:enhance>
+  <form method="POST" action="?/bulkDecide" use:enhance={busy.wrap("bulkApprove")}>
     {#each bulkPendingIds as id (id)}
       <input type="hidden" name="ids" value={id} />
     {/each}
     <input type="hidden" name="approved" value="true" />
-    <button
-      disabled={bulkPendingIds.length === 0}
-      class="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+    <Button
+      variant="success"
+      size="sm"
+      loading={busy.is("bulkApprove")}
+      disabled={bulkPendingIds.length === 0 || busy.active}
     >
       <Check size={13} />
       {t("leave.team.approve")}
-    </button>
+    </Button>
   </form>
   <button
     type="button"
@@ -560,20 +694,17 @@
         <form
           method="POST"
           action="?/decide"
-          use:enhance={() =>
-            ({ result, update }) => {
-              if (result.type === "success") reviewOpen = false;
-              void update();
-            }}
+          use:enhance={busy.wrap("review", () => ({ result, update }) => {
+            if (result.type === "success") reviewOpen = false;
+            void update();
+          })}
         >
           <input type="hidden" name="id" value={reviewRequest.id} />
           <input type="hidden" name="approved" value="true" />
-          <button
-            class="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
-          >
+          <Button variant="success" size="sm" loading={busy.is("review")} disabled={busy.active}>
             <Check size={14} />
             {t("leave.team.approve")}
-          </button>
+          </Button>
         </form>
       </div>
     </div>
@@ -603,11 +734,10 @@
     method="POST"
     action="?/decide"
     class="space-y-4"
-    use:enhance={() =>
-      ({ update }) => {
-        rejectOpen = false;
-        void update();
-      }}
+    use:enhance={busy.wrap("reject", () => ({ update }) => {
+      rejectOpen = false;
+      void update();
+    })}
   >
     <input type="hidden" name="id" value={rejectId} />
     <input type="hidden" name="approved" value="false" />
@@ -628,11 +758,9 @@
         class="rounded-lg border border-border px-4 py-2 text-sm"
         onclick={() => (rejectOpen = false)}>{t("common.cancel")}</button
       >
-      <button
-        class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-      >
+      <Button variant="danger" loading={busy.is("reject")} disabled={busy.active}>
         {t("leave.team.reject")}
-      </button>
+      </Button>
     </div>
   </form>
 </Modal>

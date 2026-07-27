@@ -160,3 +160,90 @@ def test_the_undeclared_router_allowlist_is_empty() -> None:
         "the allowlist is a migration aid, not an escape hatch: it was emptied by #52 and a "
         "new module declares its permissions on its ModuleDescriptor."
     )
+
+
+# --------------------------------------------------------------------------- #
+# The client role is read-only + own comments (issue #244)
+# --------------------------------------------------------------------------- #
+#: The domain modules a portal ``client`` can reach — its read horizon (#193). The role holds the
+#: read on each and must hold no write on any of them.
+_CLIENT_MODULE_PREFIXES = (
+    "/api/v1/companies",
+    "/api/v1/contacts",
+    "/api/v1/domains",
+    "/api/v1/hosting",
+    "/api/v1/websites",
+    "/api/v1/projects",
+    "/api/v1/tasks",
+)
+
+#: The ONLY write a ``client`` legitimately holds on those prefixes: its own comment on a
+#: client-visible task (``tasks.comment.write:own``). Its permission passes, so a random id answers
+#: 404/422 — never 403 — which is exactly why it must be excluded from the "everything else 403s"
+#: sweep rather than asserted 403.
+_CLIENT_ALLOWED_WRITES = frozenset(
+    {
+        ("post", "/api/v1/tasks/{task_id}/comments"),
+        ("patch", "/api/v1/tasks/{task_id}/comments/{comment_id}"),
+        ("delete", "/api/v1/tasks/{task_id}/comments/{comment_id}"),
+    }
+)
+
+#: Canonical list reads that prove the client genuinely holds the module reads, so the write sweep
+#: below cannot pass vacuously by 403-ing a role that turned out to hold nothing.
+_CLIENT_CANONICAL_READS = (
+    "/api/v1/companies",
+    "/api/v1/contacts",
+    "/api/v1/tasks",
+)
+
+
+async def test_client_role_is_read_only_except_own_comments(client_for) -> None:
+    """The portal is read-only + own task comments (issue #244).
+
+    A ``client``-role membership holds every client-reachable module's *read* and no *write* but
+    its own comment. This walks the live route table, so a new write route on a client-reachable
+    module ships covered. It is distinct from the zero-permission sweep above: a client is *not* an
+    empty-handed member — it holds the reads — so a write route that lost its ``require_permission``
+    or carried a too-loose ``:own`` scope would still 403 the empty-handed member (the row check
+    404s) yet leak to a client here. A failure is a real deny-by-default gap to escalate (issue
+    #244, step 4), not merely a UI affordance that renders a button the API refuses.
+    """
+    tenant = await make_tenant("client-readonly", role="client")
+    headers = await auth_cookie(tenant.user)
+
+    leaked_writes: list[str] = []
+    async with client_for(tenant.host) as client:
+        # Non-vacuous: the client can read. A directly-invited client is not a portal login, so no
+        # horizon narrows it — it reads the tenant's own rows (RLS only).
+        for path in _CLIENT_CANONICAL_READS:
+            read = await client.get(path, headers=headers)
+            assert read.status_code == 200, (
+                f"a client-role membership was refused a read it must hold: GET {path} "
+                f"-> {read.status_code}"
+            )
+
+        for method, path, _tags in _operations():
+            if method == "get" or not path.startswith(_CLIENT_MODULE_PREFIXES):
+                continue
+            if (method, path) in _EXEMPT_OPERATIONS or path.startswith(_EXEMPT_PREFIXES):
+                continue
+            response = await client.request(
+                method.upper(), _url(path), headers=headers, json={}
+            )
+            if (method, path) in _CLIENT_ALLOWED_WRITES:
+                # The comment permission passes, so this answers 404/422 on a random id, never 403.
+                # Pinning it keeps the allow-list honest: if this route ever starts 403-ing a
+                # client, the grant regressed and this assert catches it.
+                assert response.status_code != 403, (
+                    f"the client's own-comment write was refused: {method.upper()} {path}"
+                )
+                continue
+            if response.status_code != 403:
+                leaked_writes.append(f"{method.upper()} {path} -> {response.status_code}")
+
+    assert not leaked_writes, (
+        "a client-role membership reached a write outside its own comments — the portal must be "
+        "read-only (issue #244, step 4 — a deny-by-default gap, escalate):\n  "
+        + "\n  ".join(leaked_writes)
+    )

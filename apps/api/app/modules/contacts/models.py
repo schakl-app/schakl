@@ -12,7 +12,17 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import (
+    Boolean,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    select,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -74,6 +84,22 @@ class Contact(
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
+
+    @classmethod
+    def __company_horizon_clause__(cls, scope: frozenset[uuid.UUID]):  # noqa: ANN206
+        """A contact's client is whatever ``company_contacts`` links it to (#285).
+
+        There is no ``company_id`` column, so the repository's column-matched horizon did
+        nothing and a membership scoped to one company group read the agency's whole address
+        book. The rule mirrors the nullable-column one exactly: linked inside the horizon, **or**
+        linked to no company at all (an unattached person is not any client's data). A *client*
+        login is narrower still — it may not see unattached contacts either — and that stricter
+        rule stays where it was, on ``ContactService._PortalContactRepository`` (#193).
+        """
+        links = select(CompanyContact.id).where(
+            CompanyContact.contact_id == cls.id, CompanyContact.org_id == cls.org_id
+        )
+        return links.where(CompanyContact.company_id.in_(scope)).exists() | ~links.exists()
 
 
 class CompanyContact(

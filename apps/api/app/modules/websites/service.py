@@ -14,15 +14,70 @@ from collections.abc import Sequence
 from typing import Any
 
 from sqlalchemy import bindparam, func, select, text
+from sqlalchemy.sql.expression import column as sa_column
+from sqlalchemy.sql.expression import table as sa_table
 
 from app.core.customfields import CustomFieldsService
 from app.core.party import PartyService
+from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
 from app.errors import AppError
 from app.modules.websites.models import Website
 from app.modules.websites.schemas import WebsiteCreate, WebsiteUpdate
 
 ENTITY_TYPE = "website"
+
+# The parent domain, its company and the hosting account, as bare tables (§6): sorting by
+# them must not import another module's internals.
+_domains = sa_table(
+    "domains", sa_column("id"), sa_column("org_id"), sa_column("name"), sa_column("company_id")
+)
+_companies = sa_table("companies", sa_column("id"), sa_column("org_id"), sa_column("name"))
+_hosting = sa_table("hosting", sa_column("id"), sa_column("org_id"), sa_column("name"))
+
+
+def _domain_sort_name() -> Any:
+    """Order by the parent domain's name — the label the row prints (docs/UX.md), never the FK.
+    Correlated, so a row is never multiplied."""
+    return (
+        select(func.lower(_domains.c.name))
+        .where(_domains.c.org_id == Website.org_id, _domains.c.id == Website.domain_id)
+        .scalar_subquery()
+    )
+
+
+def _company_sort_name() -> Any:
+    """A website's client is its parent domain's company, so the sort walks the same bridge."""
+    return (
+        select(func.lower(_companies.c.name))
+        .where(
+            _domains.c.org_id == Website.org_id,
+            _domains.c.id == Website.domain_id,
+            _companies.c.org_id == Website.org_id,
+            _companies.c.id == _domains.c.company_id,
+        )
+        .scalar_subquery()
+    )
+
+
+def _hosting_sort_name() -> Any:
+    """Order by the hosting account's name; a site with none sorts last (``NULLS LAST``)."""
+    return (
+        select(func.lower(_hosting.c.name))
+        .where(_hosting.c.org_id == Website.org_id, _hosting.c.id == Website.hosting_id)
+        .scalar_subquery()
+    )
+
+
+# Sort keys a client may pass; anything else is rejected (app/core/sorting.py).
+SORTABLE = {
+    "name": _domain_sort_name(),
+    "company": _company_sort_name(),
+    "hosting": _hosting_sort_name(),
+    "uptime": Website.uptime_enabled,
+    "created_at": Website.created_at,
+    "updated_at": Website.updated_at,
+}
 
 
 class WebsiteService:
@@ -44,6 +99,7 @@ class WebsiteService:
         offset: int,
         domain_id: uuid.UUID | None = None,
         company_id: uuid.UUID | None = None,
+        sort: str | None = None,
     ) -> tuple[Sequence[Website], int]:
         conditions = []
         if domain_id is not None:
@@ -59,19 +115,13 @@ class WebsiteService:
             if not company_domains:
                 return [], 0
             conditions.append(Website.domain_id.in_(company_domains))
-        stmt = (
-            self.repo.scoped_select()
-            .where(*conditions)
-            .order_by(Website.created_at.desc())
-            .limit(limit)
-            .offset(offset)
-        )
+        stmt = self.repo.scoped_select().where(*conditions)
+        stmt = apply_sort(stmt, sort, SORTABLE, default=Website.created_at.desc())
+        stmt = stmt.limit(limit).offset(offset)
         items = list((await self.ctx.session.execute(stmt)).scalars().all())
         total = int(
             await self.ctx.session.scalar(
-                select(func.count())
-                .select_from(Website)
-                .where(Website.org_id == self._org_id, *conditions)
+                self.repo.scoped_count_select().where(*conditions)
             )
             or 0
         )
@@ -148,21 +198,38 @@ class WebsiteService:
 
     # --- internals ----------------------------------------------------------- #
     async def _ensure_domain(self, domain_id: uuid.UUID) -> None:
-        ok = await self.ctx.session.scalar(
-            text("SELECT 1 FROM domains WHERE id = :id AND org_id = :oid"),
-            {"id": domain_id, "oid": self._org_id},
-        )
-        if not ok:
+        """The parent domain exists in this tenant **and** inside the caller's horizon (#285).
+
+        A website carries no ``company_id``, so the repository's write guard has nothing to
+        refuse: without the horizon half here, a membership scoped to one company group could
+        create a website on an invisible client's domain — and then not see what it made.
+        """
+        rows = (
+            await self.ctx.session.execute(
+                text("SELECT company_id FROM domains WHERE id = :id AND org_id = :oid"),
+                {"id": domain_id, "oid": self._org_id},
+            )
+        ).all()
+        scope = self.ctx.company_scope
+        if not rows or (scope is not None and rows[0][0] not in scope):
             raise AppError("not_found", "errors.not_found", status_code=404)
 
     async def _ensure_hosting(self, hosting_id: uuid.UUID | None) -> uuid.UUID | None:
         if hosting_id is None:
             return None
-        ok = await self.ctx.session.scalar(
-            text("SELECT 1 FROM hosting WHERE id = :id AND org_id = :oid"),
-            {"id": hosting_id, "oid": self._org_id},
+        # Hosting *may* be company-less (shared infra), which the horizon leaves visible — so
+        # the check mirrors the nullable-column rule rather than demanding a company (#285).
+        rows = (
+            await self.ctx.session.execute(
+                text("SELECT company_id FROM hosting WHERE id = :id AND org_id = :oid"),
+                {"id": hosting_id, "oid": self._org_id},
+            )
+        ).all()
+        scope = self.ctx.company_scope
+        visible = bool(rows) and (
+            scope is None or rows[0][0] is None or rows[0][0] in scope
         )
-        if not ok:
+        if not visible:
             raise AppError("invalid_hosting", "errors.invalid_hosting", status_code=400)
         return hosting_id
 

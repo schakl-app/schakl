@@ -455,6 +455,78 @@ async def test_provisioning_falls_back_to_shared_drive_root(monkeypatch) -> None
         assert create_kwargs["json"]["parents"] == ["sd-1"]
 
 
+async def test_auto_provision_queues_with_shared_drive_only(monkeypatch) -> None:
+    """#260: automatic provisioning gated on ``drive_parent_folder_id`` alone, so an org with
+    only a shared drive (#149's exact config) silently queued nothing on client/project create.
+    ``_provisioning_on`` now uses ``drive_root`` like the manual button and backfill, so the
+    ``company.created`` / ``project.created`` handlers queue a job that the worker roots on the
+    shared drive."""
+    t = await make_tenant("gdrive-auto-sdroot")
+    await _seed(t, auto_provision=True, automation=True, parent_folder=None)
+
+    async def _quiet_enqueue(function: str, *args, **kwargs) -> None:  # noqa: ARG001
+        return None
+
+    monkeypatch.setattr("app.core.jobs.enqueue", _quiet_enqueue)
+
+    company_id, project_id = uuid.uuid4(), uuid.uuid4()
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        ctx = SystemContext(org=t.org, session=session)
+        await emit(
+            "company.created",
+            ctx,
+            {"company_id": company_id, "status": "active", "title": "Klant BV",
+             "_recipients": []},
+        )
+        await emit(
+            "project.created",
+            ctx,
+            {"project_id": project_id, "name": "Website", "company_id": company_id},
+        )
+        await session.commit()
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        from sqlalchemy import select
+
+        jobs = (await session.execute(select(DriveFolderJob))).scalars().all()
+        by_type = {j.entity_type: j for j in jobs}
+        assert by_type["company"].entity_id == company_id
+        assert by_type["company"].status == "pending"
+        assert by_type["project"].entity_id == project_id
+        assert by_type["project"].parent_entity_id == company_id
+
+
+async def test_auto_provision_skips_without_any_root(monkeypatch) -> None:
+    """#260: the gate still closes when Drive is genuinely unconfigured — no parent folder and
+    no shared drive means no job, not a job the worker can only skip."""
+    t = await make_tenant("gdrive-auto-noroot")
+    await _seed(t, auto_provision=True, automation=True, parent_folder=None, shared_drive=None)
+
+    async def _quiet_enqueue(function: str, *args, **kwargs) -> None:  # noqa: ARG001
+        return None
+
+    monkeypatch.setattr("app.core.jobs.enqueue", _quiet_enqueue)
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        ctx = SystemContext(org=t.org, session=session)
+        await emit(
+            "company.created",
+            ctx,
+            {"company_id": uuid.uuid4(), "status": "active", "title": "Klant BV",
+             "_recipients": []},
+        )
+        await session.commit()
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        from sqlalchemy import select
+
+        assert (await session.execute(select(DriveFolderJob))).scalars().all() == []
+
+
 async def test_provision_request_409s_without_any_root(client_for, monkeypatch) -> None:
     """#149: neither a parent folder nor a shared drive configured — the button must fail
     visibly with the existing error instead of accepting a job the worker can only skip."""

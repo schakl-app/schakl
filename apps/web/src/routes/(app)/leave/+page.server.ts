@@ -31,17 +31,24 @@ export const load: PageServerLoad = async (event) => {
   const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
 
   // Types + contract hours come from the /leave layout load; only the year data changes here.
-  const [balance, requests] = await Promise.all([
-    api.GET("/api/v1/leave/balance", { params: { query: { year } } }),
+  // #265: the combined per-group balances — statutory + extra-statutory vacation roll up into one
+  // "Vakantieverlof" figure, with each pot's expiry alongside.
+  // Free time gets its own read (#65): once the generator has placed every day, the balance card
+  // reads "0 u over" — true, and no answer at all to "when is my next day off". One call, in the
+  // same round trip as the other two (docs/PERFORMANCE.md).
+  const [groups, requests, freeTime] = await Promise.all([
+    api.GET("/api/v1/leave/balance/groups", { params: { query: { year } } }),
     api.GET("/api/v1/leave/requests", {
       params: { query: { year, limit: 100, offset: 0, sort } },
     }),
+    api.GET("/api/v1/leave/free-time", { params: { query: { year } } }),
   ]);
   return {
     year,
     currentYear: currentYear(),
-    balances: balance.data ?? [],
+    groups: groups.data ?? [],
     requests: requests.data?.items ?? [],
+    freeTime: freeTime.data ?? null,
     table: { pref, sort: sort ?? null, widths: resolved.widths },
   };
 };
@@ -129,7 +136,9 @@ export const actions: Actions = {
       },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
-    return { recurringSaved: true, recurringGenerated: data?.generated ?? 0 };
+    // `recurringAdded` separates the add from the toggle/delete: the add closes the modal
+    // (#271), so its confirmation is the page's to render, not the modal's.
+    return { recurringSaved: true, recurringAdded: true, recurringGenerated: data?.generated ?? 0 };
   },
 
   toggleRecurring: async (event) => {
@@ -141,18 +150,31 @@ export const actions: Actions = {
       body: { active: form.get("active") === "true" },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
-    return { recurringSaved: true, recurringGenerated: data?.generated ?? 0 };
+    return {
+      recurringSaved: true,
+      recurringAdded: false,
+      recurringGenerated: data?.generated ?? 0,
+    };
   },
 
+  /** Delete a pattern, and — when the dialog's checkbox says so — take back the days it placed. */
   deleteRecurring: async (event) => {
     const form = await event.request.formData();
     const id = String(form.get("id") ?? "");
-    if (id) {
-      const { error } = await apiFor(event).DELETE("/api/v1/leave/recurring/{recurring_id}", {
-        params: { path: { recurring_id: id } },
-      });
-      if (error) return fail(400, { error: apiErrorKey(error).key });
-    }
-    return { recurringSaved: true, recurringGenerated: 0 };
+    if (!id) return { recurringSaved: true, recurringAdded: false, recurringGenerated: 0 };
+    const { data, error } = await apiFor(event).DELETE("/api/v1/leave/recurring/{recurring_id}", {
+      params: {
+        path: { recurring_id: id },
+        query: { withdraw_days: form.get("withdraw_days") === "true" },
+      },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return {
+      recurringSaved: true,
+      recurringAdded: false,
+      recurringGenerated: 0,
+      patternDeleted: true,
+      withdrawn: data?.withdrawn ?? 0,
+    };
   },
 };

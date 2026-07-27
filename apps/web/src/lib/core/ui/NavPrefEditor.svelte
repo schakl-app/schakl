@@ -18,6 +18,8 @@
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
   import type { NavLabelMap, NavPrefItem } from "$lib/core/registry";
+  import { InFlight } from "$lib/core/submit.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
 
   let {
@@ -78,6 +80,10 @@
 
   // svelte-ignore state_referenced_locally — an editor seeds from its load, deliberately.
   let rows = $state<Row[]>(initialRows());
+
+  // One form, two submits (save / reset): the clicked one spins, both freeze (#279).
+  const busy = new InFlight();
+  let submitAction = $state<"save" | "reset">("save");
   const serialized = $derived(
     JSON.stringify(rows.map((row) => ({ key: row.key, hidden: row.hidden }))),
   );
@@ -98,7 +104,9 @@
 <form
   method="POST"
   {action}
-  use:enhance
+  use:enhance={busy.wrap("", (input) => {
+    submitAction = input.submitter?.hasAttribute("formaction") ? "reset" : "save";
+  })}
   class="max-w-lg rounded-xl border border-border bg-surface-raised p-5"
 >
   <input type="hidden" name="items" value={serialized} />
@@ -181,16 +189,18 @@
   {/if}
   <div class="mt-4 flex items-center justify-end gap-2">
     {#if resetAction && showReset}
-      <button
+      <Button
         type="submit"
         formaction={resetAction}
-        class="rounded-lg border border-border px-4 py-2 text-sm text-text-muted hover:text-text"
+        variant="secondary"
+        loading={busy.active && submitAction === "reset"}
+        disabled={busy.active}
       >
         {t("settings.navigation.reset")}
-      </button>
+      </Button>
     {/if}
-    <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+    <Button loading={busy.active && submitAction === "save"} disabled={busy.active}>
       {t("common.save")}
-    </button>
+    </Button>
   </div>
 </form>

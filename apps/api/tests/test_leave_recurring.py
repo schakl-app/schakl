@@ -387,7 +387,10 @@ async def test_member_plans_their_own_self_service_pattern(client_for) -> None:
         )
         assert res.status_code == 200, res.text
         res = await c.delete(f"/api/v1/leave/recurring/{pattern_id}", headers=mh)
-        assert res.status_code == 204, res.text
+        # 200 with a body, not 204: the delete reports how many placed days it took back, and
+        # "deleted" alone would not say whether a year of free days is still on the agenda.
+        assert res.status_code == 200, res.text
+        assert res.json()["withdrawn"] == 0, "days are kept unless the caller asks otherwise"
 
         # An approval-requiring type would batch-bypass the approval flow → manager only.
         res = await c.post(

@@ -87,7 +87,7 @@ registerWebModule({
       module: "tasks",
       labelKey: "tasks.calendar.scheduled",
       color: "sky",
-      load: async (api, { from, to, user, people }): Promise<CalendarEvent[]> => {
+      load: async (api, { from, to, user, people, color }): Promise<CalendarEvent[]> => {
         const writeOwn = hasPermission(user?.permissions, "tasks.schedule.write");
         const writeAny = hasPermission(user?.permissions, "tasks.schedule.write", "any");
         const [own, team] = await Promise.all([
@@ -114,7 +114,7 @@ registerWebModule({
             start: block.start,
             end: block.end,
             title: `${who}${block.task_title}`,
-            color: "sky",
+            color: color ?? "sky",
             href: `/tasks/${block.task_id}`,
             startsAt: block.starts_at,
             endsAt: block.ends_at,
@@ -153,7 +153,7 @@ registerWebModule({
       module: "tasks",
       labelKey: "tasks.calendar.deadlines",
       color: "red",
-      load: async (api, { from, to, user }): Promise<CalendarEvent[]> => {
+      load: async (api, { from, to, user, color }): Promise<CalendarEvent[]> => {
         if (!user?.id) return [];
         const { data } = await api.GET("/api/v1/tasks", {
           params: {
@@ -176,7 +176,8 @@ registerWebModule({
             start: task.due_date!,
             end: task.due_date!,
             title: t("tasks.calendar.deadline", { title: task.title }),
-            color: task.due_date! < today ? "red" : "amber",
+            // A personal override recolours the whole feed; without one, overdue stays red (#281).
+            color: color ?? (task.due_date! < today ? "red" : "amber"),
             href: `/tasks/${task.id}`,
           }));
       },

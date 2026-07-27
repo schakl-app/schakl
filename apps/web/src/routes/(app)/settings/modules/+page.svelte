@@ -1,10 +1,14 @@
 <script lang="ts">
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
+  import Button from "$lib/core/ui/Button.svelte";
   import { moduleLabel } from "$lib/core/registry";
 
   let { data, form } = $props();
+
+  const busy = new InFlight();
 
   // Component state via bind:group, never one-way checked={…} (docs/UX.md): a checkbox
   // rendered one-way loses its mark on hydration, and the next save then silently strips
@@ -24,12 +28,11 @@
 <form
   method="POST"
   action="?/update"
-  use:enhance={() =>
-    async ({ update }) => {
-      // Keep the ticked state after save (docs/UX.md): the default reset would wipe the
-      // checkboxes back to their SSR attributes.
-      await update({ reset: false });
-    }}
+  use:enhance={busy.wrap("", () => async ({ update }) => {
+    // Keep the ticked state after save (docs/UX.md): the default reset would wipe the
+    // checkboxes back to their SSR attributes.
+    await update({ reset: false });
+  })}
   class="max-w-lg rounded-xl border border-border bg-surface-raised p-5"
 >
   <ul class="space-y-2">
@@ -77,9 +80,7 @@
   <p class="mt-3 text-xs text-text-muted">{t("settings.modules.hint")}</p>
   {#if form?.error}<p class="mt-2 text-sm text-red-600">{t(form.error)}</p>{/if}
   {#if form?.updated}<p class="mt-2 text-sm text-green-600">{t("settings.account.saved")}</p>{/if}
-  <button
-    class="mt-4 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-  >
+  <Button class="mt-4" loading={busy.active}>
     {t("common.save")}
-  </button>
+  </Button>
 </form>

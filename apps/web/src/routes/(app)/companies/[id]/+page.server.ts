@@ -3,6 +3,7 @@ import { error, fail, redirect } from "@sveltejs/kit";
 import { parseAssignees } from "$lib/core/assignees";
 import { apiBaseUrl } from "$lib/core/api/client";
 import { apiErrorKey } from "$lib/core/errors";
+import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 import { interactionActions } from "$lib/modules/interactions/actions.server";
 import { driveActions } from "$lib/modules/google/drive-actions.server";
@@ -62,9 +63,15 @@ export const load: PageServerLoad = async (event) => {
       api.GET("/api/v1/custom-fields/definitions", {
         params: { query: { entity_type: "company" } },
       }),
-      api.GET("/api/v1/tasks/templates"),
+      // The template applier only renders for holders of the permission (#253), so a viewer
+      // who can't apply one shouldn't pay for the fetch either.
+      can(event.locals.user, "tasks.template.apply")
+        ? api.GET("/api/v1/tasks/templates").then((r) => r.data ?? [])
+        : [],
       api.GET("/api/v1/members/lookup"),
-      api.GET("/api/v1/contacts", { params: { query: { limit: 200, offset: 0 } } }),
+      api.GET("/api/v1/contacts", {
+        params: { query: { limit: 200, offset: 0, sort: "first_name" } },
+      }),
       api.GET("/api/v1/custom-fields/definitions", {
         params: { query: { entity_type: "contact" } },
       }),
@@ -75,7 +82,7 @@ export const load: PageServerLoad = async (event) => {
     company,
     panels: panels.data ?? [],
     definitions: definitions.data ?? [],
-    templates: templates.data ?? [],
+    templates,
     members: members.data ?? [],
     contacts: contacts.data?.items ?? [],
     contactDefinitions: contactDefinitions.data ?? [],
@@ -95,11 +102,14 @@ export const actions: Actions = {
       params: { path: { company_id } },
       body: {
         name,
+        client_number: String(form.get("client_number") ?? "").trim() || null,
         website: String(form.get("website") ?? "").trim() || null,
+        phone: String(form.get("phone") ?? "").trim() || null,
         invoice_email: String(form.get("invoice_email") ?? "").trim() || null,
         vat_number: String(form.get("vat_number") ?? "").trim() || null,
         coc_number: String(form.get("coc_number") ?? "").trim() || null,
         address_line1: String(form.get("address_line1") ?? "").trim() || null,
+        house_number: String(form.get("house_number") ?? "").trim() || null,
         address_line2: String(form.get("address_line2") ?? "").trim() || null,
         postal_code: String(form.get("postal_code") ?? "").trim() || null,
         city: String(form.get("city") ?? "").trim() || null,
@@ -121,17 +131,14 @@ export const actions: Actions = {
     if (logoFile instanceof File && logoFile.size > 0) {
       const body = new FormData();
       body.append("file", logoFile, logoFile.name);
-      const res = await event.fetch(
-        `${apiBaseUrl()}/api/v1/companies/${company_id}/logo`,
-        {
-          method: "POST",
-          headers: {
-            cookie: event.request.headers.get("cookie") ?? "",
-            "x-forwarded-host": event.request.headers.get("host") ?? "",
-          },
-          body,
+      const res = await event.fetch(`${apiBaseUrl()}/api/v1/companies/${company_id}/logo`, {
+        method: "POST",
+        headers: {
+          cookie: event.request.headers.get("cookie") ?? "",
+          "x-forwarded-host": event.request.headers.get("host") ?? "",
         },
-      );
+        body,
+      });
       if (!res.ok) {
         return fail(400, {
           error: res.status === 413 ? "errors.upload_too_large" : "errors.upload_type",

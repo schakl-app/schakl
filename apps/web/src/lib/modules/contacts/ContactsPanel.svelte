@@ -18,9 +18,12 @@
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
+  import { InFlight } from "$lib/core/submit.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import LinkField from "$lib/core/ui/LinkField.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
+  import PhoneInput from "$lib/core/ui/PhoneInput.svelte";
 
   let { data }: { companyId: string; data: Record<string, unknown> } = $props();
 
@@ -61,6 +64,8 @@
   let draftFirst = $state("");
   let draftLast = $state("");
 
+  const busy = new InFlight();
+
   function openCreate(query: string) {
     const parts = query.trim().split(/\s+/);
     draftFirst = parts.shift() ?? "";
@@ -72,19 +77,25 @@
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
 
-<!-- The panel's <h2> is rendered by the host page, so the toggle sits at the top of the body. -->
-<div class="mb-3 flex justify-end">
-  <ActionsMenu
-    compact
-    items={[
-      {
-        label: editing ? t("common.done") : t("common.edit"),
-        icon: editing ? Check : Pencil,
-        onclick: () => (editing = !editing),
-      },
-    ]}
-  />
-</div>
+<!-- The panel's <h2> is rendered by the host page, so the toggle sits at the top of the body.
+     The edit toggle is the *only* switch that reveals LinkField's link/unlink/promote and the
+     create-contact dialog — all `contacts.contact.write` acts — so it must carry the same gate as
+     the quick-add below, or a read-only portal client (#244) could enter edit mode. The company
+     detail page renders panels without an isPortal filter, so the panel self-gates (CLAUDE.md §15). -->
+{#if can(page.data.user, "contacts.contact.write")}
+  <div class="mb-3 flex justify-end">
+    <ActionsMenu
+      compact
+      items={[
+        {
+          label: editing ? t("common.done") : t("common.edit"),
+          icon: editing ? Check : Pencil,
+          onclick: () => (editing = !editing),
+        },
+      ]}
+    />
+  </div>
+{/if}
 
 {#if links.length === 0}
   <p class="mb-3 text-sm text-text-muted">{t("contacts.empty")}</p>
@@ -126,11 +137,10 @@
     <form
       method="POST"
       action="?/createContact"
-      use:enhance={() =>
-        ({ update }) => {
-          showCreate = false;
-          void update();
-        }}
+      use:enhance={busy.wrap("", () => ({ update }) => {
+        showCreate = false;
+        void update({ reset: true });
+      })}
       class="space-y-3"
     >
       <div class="grid gap-3 sm:grid-cols-2">
@@ -162,7 +172,7 @@
           <label for="qc-contact-phone" class="mb-1 block text-sm font-medium text-text"
             >{t("contacts.phone")}</label
           >
-          <input id="qc-contact-phone" name="phone" class={inputClass} />
+          <PhoneInput id="qc-contact-phone" name="phone" />
         </div>
         <div class="sm:col-span-2">
           <label for="qc-contact-job" class="mb-1 block text-sm font-medium text-text"
@@ -184,11 +194,9 @@
         >
           {t("common.cancel")}
         </button>
-        <button
-          class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
+        <Button loading={busy.active}>
           {t("common.create")}
-        </button>
+        </Button>
       </div>
     </form>
   {/key}

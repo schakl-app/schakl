@@ -13,6 +13,7 @@ change of *inputs*, not of every caller.
 
 from __future__ import annotations
 
+from datetime import date, datetime
 from functools import lru_cache
 from zoneinfo import ZoneInfo, available_timezones
 
@@ -63,3 +64,13 @@ async def org_timezone_name(session: AsyncSession, org_id) -> str:
 async def org_zoneinfo(session: AsyncSession, org_id) -> ZoneInfo:
     """The org's zone as a :class:`ZoneInfo`, for local-calendar math in a background job."""
     return resolve_zoneinfo(await org_timezone_name(session, org_id))
+
+
+async def org_today(session: AsyncSession, org_id) -> date:
+    """Today on the org's own calendar — which is the only "today" a tenant ever means.
+
+    "Which year does this number count in", "is this overdue": all local-calendar questions, and
+    UTC answers them wrong for several hours a day. (``invoicing``, ``domains`` and ``leave``
+    each grew a private copy of this before it lived here; new callers use this one.)
+    """
+    return datetime.now(await org_zoneinfo(session, org_id)).date()

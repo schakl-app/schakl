@@ -26,7 +26,7 @@ export const load: PageServerLoad = async (event) => {
         query: { limit: 200, offset: 0, sort, status: statusFilter, company_id: companyFilter, q },
       },
     }),
-    api.GET("/api/v1/companies", { params: { query: { limit: 200, count: false } } }),
+    api.GET("/api/v1/companies", { params: { query: { limit: 200, count: false, sort: "name" } } }),
   ]);
 
   return {

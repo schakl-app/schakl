@@ -58,7 +58,7 @@ apps/
   api/app/
     core/          # config, db session, tenancy, auth, i18n, module registry, RLS helpers
     modules/
-      companies/   # models.py schemas.py service.py router.py panels.py migrations/
+      companies/   # models.py schemas.py service.py router.py panels.py impex.py migrations/
       contacts/
       websites/
       hosting/
@@ -124,6 +124,8 @@ An **API module** is a package under `apps/api/app/modules/<name>/` exposing:
   `ModuleDescriptor` (see §15). Core holds no module permission list.
 - `panels.py` — optional: declares what this module attaches to a **company** (title +
   data provider) so the company detail view can compose it. This is the modular hub.
+- `impex.py` — optional: the entity's spreadsheet import/export shape, and any columns this
+  module contributes to *another* module's entity (see §17).
 - `mcp.py` — optional: the MCP tools/resources this module contributes (e.g.
   `companies.find`, `companies.recent_projects`), registered onto the MCP surface alongside
   the router. Read-only by default; each tool goes through the tenant-scoped service layer.
@@ -237,7 +239,11 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
 - Start each phase in **plan mode**; propose the plan and wait for approval before coding.
 - **Read `docs/UX.md` before building or changing any screen** — it records the product's
   design language (mobile-first, use-vs-edit modes, European dates, template patterns,
-  where admin config lives) and the UX mistakes already corrected once.
+  where admin config lives) and the UX mistakes already corrected once. One of them is
+  enforced rather than remembered: every `use:enhance`d form that the user types into states
+  what happens to it on success — `busy.keep()` to edit, `busy.clear()` to start something new
+  — because inheriting SvelteKit's default reset blanks the field the user just saved.
+  `pnpm forms:check` (CI + pre-commit) fails a form that says neither.
 - **Performance and lean code are first-class requirements.** Slow-feeling pages are bugs.
   Keep SSR loads minimal (shared lookups in layout loads, `meta=false`/`count=false` on
   pickers, no redundant API calls or queries), prefer fixing the data path over adding
@@ -325,15 +331,85 @@ apply as everywhere.
   tenant can model, for example, Dutch statutory vs extra-statutory (*bovenwettelijk*) days
   and their differing carry-over/expiry. Sick leave is a separate type, not deducted from
   vacation balance.
-- **Work schedules, not a weekly total** (#46). `leave_profiles.schedule` is a JSONB week: per
-  weekday a working block and **any number of break windows** inside it. Breaks are *windows*,
-  not durations — you cannot subtract "30 minutes" from `15:00–17:00`, there is no break in it.
-  A day is `(end − start) − Σ overlap(window, break_i)`. `NULL` follows
-  `leave_settings.default_schedule` (`08:30–17:00` with one `12:30–13:00` break → 8.0 h/day,
-  40 h/week). `hours_per_week` is **derived** from the schedule and rewritten on every save, never
-  entered — but it stays authoritative while a profile has no schedule, so a pre-#46 part-timer on
-  32 h is not silently regranted the default's 40. A schedule is employment data: it lives on the
-  person (Instellingen → Gebruikers), not buried in leave settings.
+- **How a type draws on the agenda is the type's own property** (#270). `leave_types.calendar_display`
+  is `all_day` (a full-width chip, the default) or `timed` (a positioned hour block in the day/week
+  grid), editable in Instellingen → Verlof. It is a *type-level* choice, not a per-request one:
+  whether an absence reads as "away today" or "away between 08:30 and 17:00" is a property of the
+  kind of leave. It is also the only way free time / vrije tijd can be drawn per hour at all —
+  its generated days carry no `start_time`/`end_time`, so nothing on the request implies a window
+  — which is why the seeded free-time type ships `timed`. The **API** turns the window into the instant
+  pair the grid positions by (`TeamLeaveItem.starts_at`/`ends_at`, resolved from the request's own
+  times or else the scheduled day, anchored in the org zone): a leave time is local wall clock and
+  a calendar block is an instant, and that conversion stays server-side so a block still starts at
+  08:30 on the two days a year the clocks move. **Single-day absences only** — one instant pair
+  from Monday morning to Friday evening would also claim every night in between, so a multi-day
+  span keeps its full-day chip and `days` stays the honest per-day answer. The **Google Calendar
+  mirror** (`google/calendar/push.py`) follows the same flag: a `timed` type pushes a timed event
+  (its scheduled window resolved for a whole-day request, in `_emit_leave` where the schedule
+  lives — the mirror never reads leave internals), an `all_day` type an all-day event, so one
+  absence never reads as an hour block in-app and an all-day banner in Google.
+- **Work schedules, not a weekly total** (#46). A JSONB week: per weekday a working block and
+  **any number of break windows** inside it. Breaks are *windows*, not durations — you cannot
+  subtract "30 minutes" from `15:00–17:00`, there is no break in it. A day is
+  `(end − start) − Σ overlap(window, break_i)`. `hours_per_week` is **derived** from the schedule
+  and rewritten on every save, never entered — but it stays authoritative while a profile has no
+  schedule, so a pre-#46 part-timer on 32 h is not silently regranted the default's 40.
+- **The week lives on the employment contract.** A schedule change usually *is* a contract change,
+  so `EmploymentContract.schedule` is the authority for a date and the effective week is resolved
+  **per date**: contract covering that day → `leave_profiles.schedule` (legacy) → the org's
+  `leave_settings.default_schedule` (`08:30–17:00` minus a `12:30–13:00` break → 8.0 h/day,
+  40 h/week). That is what keeps last year's leave priced at last year's roster, and why
+  `compute_hours` resolves day by day: a span can cross a contract boundary. `NULL` at any level
+  means *inherit*, not *unfilled* — which is why the backfill deliberately skipped employees who
+  follow the org default, and why saving a week through the profile endpoint pushes it onto every
+  contract that has not ended (an ended period keeps the week it ran under). Loops that price many
+  days for one employee build the `date → week` lookup once (`schedule_resolver`), never per day.
+  A schedule is employment data: it lives on the person (Instellingen → Gebruikers), not buried in
+  leave settings.
+- **Free time / vrije tijd is the full-time-norm shortfall** (#65, renamed from "ADV / roostervrije
+  tijd" in #282). A `leave_types` type flagged `accrues_schedule_gap` (seeded key `roostervrij`, and
+  the flag's column name, both **kept internal** to contain the rename) accrues, per contract period,
+  `(norm − contract_hours) × weeks`, where `norm = week_hours(default_schedule)` — the org's default
+  week, today 40 h, configurable. A full-timer (contract = norm) accrues **zero**; a reduced contract
+  a pot of free days, rounded to the nearest half day and placed on the calendar by the recurring
+  machinery (#107). This **replaced the old `scheduled − contract` basis**, which silently turned a
+  38-h-contract-on-a-40-h-schedule divergence into 2 h/week nobody asked for (surfaced verifying
+  #264). Only the *basis* changed: the recurring-free-day generator, the calendar feed, the Google
+  mirror, the FIFO/expiry ledger and the #264 recompute-on-contract-change all consume it unchanged.
+  **Two numbers stay** — `EmploymentContract.contract_hours_per_week` (the entered legal number,
+  drives vacation *and* free time) and the contract's own week (drives per-day pricing + the
+  days-equivalent) — because a spendable free-time *balance* needs a nominal schedule to place the
+  free days against.
+- **But the shortfall is only the default, and the choice is per contract.**
+  `EmploymentContract.free_time_hours_per_week` is `NULL` to derive `max(0, norm − contract)`, `0`
+  to say the free time is already in the roster, or an agreed figure no formula expresses
+  (`LeaveService._contract_free_time`). The derived rule alone is right for one arrangement and
+  wrong for the other: a 36-h contract worked as a nominal 40-h week takes the shortfall as movable
+  free days, while a 32-h part-timer already working four 8-hour days would be handed
+  `(40 − 32) × 52 ≈ 52 free days` on top of a roster that already gives them Friday off. **Both
+  arrangements are ordinary and an agency holds them at once**, so "deactivate the type" — the only
+  escape #282 left — is not an answer; per-org config cannot express a per-person fact. The
+  employment wizard makes the choice explicitly in its werkweek step, so neither arrangement is
+  ever inferred from a schedule the admin happened to enter. Never hardcoded CAO law (§14): a
+  tenant who wants none of it still deactivates the type.
+- **A free-time pattern says how many days, or how often** (#107, extended). `days_per_year` on
+  `leave_recurring_days` spreads that many days evenly across the year on the anchor's weekday and
+  **slides past** a holiday or a non-working day to the next candidate week, so the count the pot
+  bought actually lands; `NULL` keeps the original fixed `interval_weeks` cadence ("every Wednesday
+  afternoon"). Two modes because two different things are known: sometimes the arrangement *is* a
+  rhythm, sometimes only the day count is, and for most contracts no whole number of weeks fits
+  (38 h earns 13 days, which is almost but not every four weeks). A spread pattern also stores the
+  nearest equivalent cadence, so a rolled-back release still generates sensibly. `_occurrence_plan`
+  decides *which dates to attempt*; every rule about whether a day may be taken (balance, holiday,
+  overlap, spent occurrence) is shared by both modes.
+- **`GET /leave/free-time` is what the balance cannot say.** Free days are placed as *approved*
+  leave, so once the generator has laid them all down, entitled and approved are equal and the
+  per-type balance reads "0 h over" — true, and no answer to "when is my next day off" or "does the
+  pot still cover my calendar". The overview carries placed / taken / upcoming, the next date, the
+  days themselves, and the **overhang**: the future generated days a reprorated pot (#264) no
+  longer covers. Withdrawing them takes explicit ids the caller was shown and goes through the
+  ordinary `cancel` path, so the past stays locked and the Google mirror is told. Reported, never
+  cancelled as a side effect of a contract edit.
 - **A holiday costs no leave hours** (#47). `leave_holidays(org_id, date, name_i18n, active,
   source, key)` is tenant data seeded from a generator — the Dutch holidays *derived from Easter*,
   so 2028 needs no code change — and never law written in Python: Goede Vrijdag is worked at many
@@ -368,10 +444,37 @@ apply as everywhere.
   leave is the manager's call, so the form warns, the request goes through, the balance reads
   negative, and the approver sees the shortfall again on the pending list. Overlapping requests
   and zero-hour spans stay hard errors. Entitlement pots are **seeded automatically** (#105,
-  #108): a contract create/correct fills that user's missing entitlements for the years the
-  contract covers (same transaction, missing rows only), the first balance read of an
-  ungenerated current/next-year pot seeds it, and a December cron rolls next year forward for
-  the whole staff — the bulk "Genereer" stays for backfills.
+  #108) and **re-derived on any contract change** (#264): a contract create/correct/terminate
+  recomputes that user's `generated` pots for the current and every future year it touches, in the
+  same transaction — so terminating an open-ended contract mid-year (an employee who leaves early)
+  reprorates the balance down, a raise via terminate-old + add-new folds both periods in, and a
+  year the contract no longer covers loses its pot. A `manual` pot (`upsert_entitlement` — a
+  carry-over correction, an override a schedule can't express) is never touched by the recompute,
+  and the past is frozen: a closed year is never re-priced by a later correction (an approved
+  request is likewise never retroactively recalculated). The first balance read of an ungenerated
+  current/next-year pot still seeds it, and a December cron rolls next year forward for the whole
+  staff — the bulk "Genereer" stays for backfills.
+- **One balance from several pots** (#265). `leave_types.balance_group` lets types present as a
+  single **employee-facing** balance while staying separate rows: the Dutch `vacation_statutory`
+  + `vacation_extra` pots keep their own `default_weeks` and differing `carry_over_months` (so the
+  wettelijk / bovenwettelijk split — and its expiry — survives) but roll up into one
+  "Vakantieverlof" figure on My Day, `/leave`, the request form and the dossier. A `NULL`
+  `balance_group` is standalone (its own singleton group). The combined figure is computed live in
+  a **FIFO-by-expiry pot ledger** (`LeaveService._ledger`) — no data migration, no per-request pot
+  column. `carry_over_months` is now **actually enforced**: a pot accrued in year Y lapses
+  `carry_over_months` after Y ends (statutory → 1 Jul of Y+1; extra → 1 Jan of Y+6; `NULL` =
+  never), so unused hours carry into the next year and then expire instead of silently resetting.
+  Consumption **favours the employee** — a request draws from the soonest-to-expire valid pot
+  first, so short-lived statutory is spent before long-lived extra and nothing lapses that could
+  have been used. `GET /leave/balance/groups` returns the combined figure per group + the per-pot
+  breakdown (accrual year, remaining, `expires_on`, `expired`); the per-type `GET /leave/balance`
+  stays (its `remaining` is now expiry-aware and sums to the group's by construction, so
+  `preview`, `summary` and the recurring generator keep working). Free time (standalone, carry 0)
+  gains the same expiry — unused free-time hours lapse at year-end. The combined display is only
+  safe *because* expiry is real: hiding the split without it would quietly drop the legal distinction.
+  The **team roster** reads the same combined figures via `GET /leave/balance/groups?all_users=true`
+  (#282) — every member's groups in one batched call, each tagged with its `user_id` — so the
+  manager's table and the employee's own page can never show a different Vakantieverlof number.
 - **Unit:** track in **hours** (matches time tracking and part-time contracts); display as days
   using the employee's **average scheduled working day** — never `hours_per_week / 5`, which tells
   a three-day part-timer their working day is 4,8 hours long.
@@ -411,6 +514,24 @@ It is a **core, cross-cutting capability**, like custom fields (§13) — not pe
 - **Resolved once per request** in `require_context`, on the same statement as the membership
   lookup, and cached on `RequestContext` (`ctx.can` / `ctx.require`). No Redis cache — see
   `docs/PERFORMANCE.md`.
+- **A company-group assignment is complete isolation, and the horizon has exactly four ways to
+  leak** (#285). The repository enforces it whenever a model carries `company_id` *and* the read
+  rides `scoped_select()`; the failures are all one of these, so check all four when you add a
+  surface. **(1) No anchor** — the company link is indirect: a website belongs to its *domain's*
+  client, a contact to whatever `company_contacts` links it to. The column match then finds
+  nothing and filters *nothing at all*; such a model declares
+  `__company_horizon_clause__(scope)` and every repository path picks it up. **(2) A hand-built
+  count** — `total` computed with its own `select(count())` shows "2" above a list of one; use
+  `scoped_count_select()`, and for raw SQL splice a bound `IN`. **(3) A hand-built cross-client
+  read** — a window fold, a report, a summary tile: take the predicate from
+  `horizon_condition()`. **(4) An entity-addressed surface** — the activity trail and a file list
+  take `(entity_type, entity_id)` from the caller, so holding the type's read permission is not
+  the same as being able to see *that row*; ask `entity_visible(ctx, …)`, which loads the record
+  through its own repository. Rows attached to **no** client stay visible either way (they are not
+  company data), and org-wide configuration stays readable — each config surface already has its
+  own admin-only manage permission, which is what keeps a member from editing it.
+  `tests/test_company_groups.py` closes with a sweep over every parameterless `GET /api/v1`
+  plus a control run as the owner, so "nothing leaked" cannot quietly mean "nothing matched".
 - **Deny-by-default.** An `/api/v1` route with neither `require_permission(...)` nor an explicit
   `no_permission_required("reason")` is a build break. Two tests enforce it: an introspection
   lint and a behavioural sweep that calls every operation as a member holding nothing.
@@ -422,7 +543,32 @@ It is a **core, cross-cutting capability**, like custom fields (§13) — not pe
   `*` or `settings.roles.manage` is applied, flushed, re-counted, and rolled back with
   `409 errors.last_role_manager`.
 - **The frontend guard is UX, not security.** `can()` in the web mirrors the API's
-  `PermissionSet.has` exactly and decides what to *render*. The API is the boundary.
+  `PermissionSet.has` exactly and decides what to *render*. The API is the boundary. The
+  **client portal** (#193) is the hardest case: it renders the *same* components as staff, and
+  detail pages compose panels and shared rows without a portal filter — so every write control on
+  a client-reachable surface must self-gate on its API permission, including "use-mode" ones (a
+  checklist tick, a complete-toggle, a drag handle, an inline "＋ nieuw"). `!isPortal` is not the
+  gate; the API's own key is (`docs/UX.md`, the client-portal entry). The client's whole write
+  surface is its own task comments, dashboard/nav layout and notification inbox — nothing else.
+  A screen where *every* control writes is gated whole — the route load, and the tab or card that
+  links to it — and its **read** is gated too: the org-wide task-template and checklist
+  repositories sat behind `tasks.task.read`, which a client holds, so the portal reached the
+  agency's internal process library and its create form. They now read on `tasks.template.apply`
+  and `tasks.task.write`.
+- **"External login" is one fact, and it is the `client` role** (#274). `ctx.is_portal` is true for
+  a contact-linked portal membership (#193) *and* for any membership holding the seeded `client`
+  role — the definition #252 already adopted when it floored that role's company horizon to the
+  empty set. Every "what a client may see" narrowing hangs off it, so gating one on the contact
+  link alone silently exempts a directly-invited client: `contacts` carries no `company_id`, its
+  narrowing was portal-only, and such a login read the agency's whole address book. Resolved on the
+  membership statement (a `bool_or` beside the permission aggregate), never as a second query.
+- **A permission and a horizon fail identically, so the horizon must speak for itself.** Both gates
+  refuse; §15's 404 rule means the client sees `errors.not_found` either way, and the admin's only
+  lever — grant more permissions — cannot fix an empty horizon. So a client-role login scoped to no
+  company is told which piece is missing (`errors.no_company_scope`, 403 — it describes their own
+  account, not our rows, and leaks nothing), and Instellingen → Gebruikers badges the account
+  (`MemberRead.company_scope_empty`). Writes that would land outside a client's horizon are refused
+  *before* the row is written, never after.
 - **A module that ships later** brings its own permissions; a startup reconciler grants them to
   each org's system roles exactly once, tracked in `org_settings.applied_permission_defaults`.
   A migration must never import the catalog (`docs/WORKFLOW.md`).
@@ -451,3 +597,48 @@ This is a **core, cross-cutting capability** (issue #67), like custom fields (§
   gated on `activity.read`; *recording* is a side effect of a write the caller was already allowed to
   make, never its own grant. `payload` for an edit is `{changes: {field: {from, to}}}` — the record's
   own definition fields, not its freeform notes or custom JSONB.
+
+## 17. Spreadsheet import & export (core capability)
+
+Every entity a tenant can list, they can take out and bring back in — CSV, TSV, Excel or a block
+pasted from a spreadsheet. Core owns the mechanics (`app/core/impex/`); a module only **describes
+its shape**, exactly as it does for custom fields (§13) and panels (§6).
+
+- **A module opts an entity in with an `ImpexDescriptor`** in its `impex.py`, declared on its
+  `ModuleDescriptor`. It names the columns, the permissions, the module's own list service
+  (`fetch_page`) and its own write path (`create_row`/`update_row`) — an imported row fires the
+  same validation, events and side effects a form submit would. Import is not a backdoor around
+  the service layer. `importable=False` is export-only (approval-bearing records like leave must
+  be requested, never bulk-written).
+- **Headers are stable keys, never labels.** An export re-imports into the same org unchanged.
+  Labels are a display concern: `label_key` for built-ins, the tenant's own `label_i18n` for
+  custom fields — which the **client** resolves, because the API does not pick a locale for
+  someone else's content.
+- **Without a `mapping`, the header *is* the mapping** and must be exact keys; an unknown one is
+  fatal. **With one** (`{file column index: key}`), an unmapped column is skipped instead. Both
+  contracts are deliberate: the first is what makes a round-trip and an automated caller stable,
+  the second is what makes an arbitrary spreadsheet importable. `aliases` only ever feed
+  `/inspect`'s suggestions — they never widen the header-key contract.
+- **The mapping is positional, so it is fingerprinted.** `/inspect` returns a digest of the bytes
+  and `/import` refuses a mismatch (409): applying a mapping to a *different* file writes the
+  wrong columns into the right fields, with every row valid and every value wrong.
+- **A module contributes columns to another module's entity with an `ImpexExtension`** — the
+  panels pattern, applied to import/export, so the company import can carry the client's contact
+  person without companies importing contacts' internals. Keys are namespaced by the contributor,
+  a contributed column may never be `required`, and both are asserted at **mount** time. `apply`
+  runs in the import's own transaction through the contributing module's service, and **never on
+  a dry run** — so anything that could fail inside it must be expressible on the columns
+  themselves. `hydrate` batch-loads what its export getters read, or the export goes N+1.
+- **Both the column catalog and the export header are caller-dependent**: contributed columns are
+  filtered on the contributor's own permissions, so a caller who cannot write contacts never sees
+  them rather than hitting a mid-import 403 that rolls the whole file back.
+- **Reading the bytes is `parsing.py`, and it is defensive**: the format comes from the content
+  (a zip magic number), not the filename; every cap is checked *before* the work it bounds (the
+  byte cap before decoding, the zip's declared sizes before decompressing, the column cap while
+  reading); and over any limit is an error, never a truncation — silently importing the first
+  2000 rows of a 2500-row list is the worst outcome available, because it looks like it worked.
+- **Bulk is its own capability.** `impex.export` / `impex.import` are staff-only and sit *on top
+  of* each entity's own read/write permission: a client-portal login holds `companies.company.read`
+  for its own company and must never be able to download the client list.
+- Large imports as a background job are still deferred (issue #77); `MAX_IMPORT_ROWS` is what
+  keeps the synchronous path honest until that lands.

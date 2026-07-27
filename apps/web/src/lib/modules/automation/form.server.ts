@@ -53,7 +53,7 @@ export async function loadEditorLookups(event: ServerLoadEvent) {
   const [catalog, members, templates] = await Promise.all([
     api.GET("/api/v1/automation/catalog"),
     api.GET("/api/v1/members/lookup"),
-    // Task templates power task.create's template picker; someone without task read
+    // Task templates power task.create's template picker; someone without `tasks.template.apply`
     // simply gets the bare-title variant.
     api.GET("/api/v1/tasks/templates"),
   ]);

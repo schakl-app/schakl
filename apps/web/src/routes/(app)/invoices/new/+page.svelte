@@ -13,6 +13,8 @@
   // Inline-create from the contact picker (#115): "＋ … toevoegen" opens this dialog.
   let qcContactOpen = $state(false);
   let qcContactName = $state("");
+  // The invoice's client rides along (#247): the new contact links to it by default.
+  let qcContactCompany = $state<{ id: string; name: string } | null>(null);
 </script>
 
 <svelte:head>
@@ -36,8 +38,9 @@
     settings={data.settings}
     locale={data.locale}
     {form}
-    oncreatecontact={(name) => {
+    oncreatecontact={(name, company) => {
       qcContactName = name;
+      qcContactCompany = company;
       qcContactOpen = true;
     }}
     {initialCompanyId}
@@ -47,6 +50,7 @@
 <ContactQuickCreate
   bind:open={qcContactOpen}
   name={qcContactName}
+  linkCompany={qcContactCompany}
   pickerSlot="contact"
   definitions={data.contactDefinitions}
   locale={data.locale}

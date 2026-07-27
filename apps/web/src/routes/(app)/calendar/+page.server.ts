@@ -8,6 +8,7 @@ import {
 } from "$lib/core/calendar";
 import { calendarSourcesFor, type CalendarEvent, type CalendarPerson } from "$lib/core/registry";
 import { apiFor } from "$lib/core/session";
+import { isHexColor, LABEL_COLORS } from "$lib/core/ui/colors";
 import {
   createScheduleAction,
   deleteScheduleAction,
@@ -34,10 +35,34 @@ function isIsoDate(value: string): boolean {
  * shared link is authoritative and back/forward navigate correctly. The year view never
  * ships raw events to the client — only per-day aggregates (docs/PERFORMANCE.md).
  */
+/** The namespaced prefs key for one colleague's colour/hide on a split feed (#281). */
+function personKey(sourceKey: string, userId: string): string {
+  return `${sourceKey}:person:${userId}`;
+}
+
+/** Pull a source's per-colleague colour overrides out of the flat `calendar.colors` map (#281). */
+function personColorsFor(
+  sourceKey: string,
+  colors: Record<string, string>,
+): Record<string, string> {
+  const prefix = `${sourceKey}:person:`;
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(colors)) {
+    if (key.startsWith(prefix)) out[key.slice(prefix.length)] = value;
+  }
+  return out;
+}
+
+/** The colleagues this viewer hid from a split feed (#281), from the namespaced hidden keys. */
+function hiddenPeopleFor(sourceKey: string, hidden: Set<string>): string[] {
+  const prefix = `${sourceKey}:person:`;
+  return [...hidden].filter((k) => k.startsWith(prefix)).map((k) => k.slice(prefix.length));
+}
+
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const today = todayIso();
-  const { defaultView, hiddenSources, peopleBySource } = await event.parent();
+  const { defaultView, hiddenSources, peopleBySource, colors } = await event.parent();
 
   const rawDate = event.url.searchParams.get("date") ?? "";
   const date = isIsoDate(rawDate) ? rawDate : today;
@@ -55,36 +80,66 @@ export const load: PageServerLoad = async (event) => {
   const allSources = calendarSourcesFor(event.locals.theme?.enabledModules ?? []);
   // The visibility menu doubles as the legend (#121), so it lists every enabled feed —
   // hidden ones included — while only the visible ones are loaded: a hidden feed costs
-  // no API call (docs/PERFORMANCE.md).
+  // no API call (docs/PERFORMANCE.md). `hidden` also holds namespaced per-colleague hides (#281);
+  // those never match a top-level `source.key`, so this filter ignores them (the source drops
+  // the hidden colleague's items itself, from `hiddenPeople`).
   const hidden = new Set(hiddenSources);
   const sources = allSources.filter((source) => !hidden.has(source.key));
-  // A per-source range carries that source's own colleague overlay (#188).
+  // A per-source range carries that source's own colleague overlay (#188) and the viewer's
+  // personal colour overrides / per-colleague hides (#281).
   const results = await Promise.all(
     sources.map((source) =>
       source
-        .load(api, { ...baseRange, people: peopleBySource[source.key] ?? [] })
+        .load(api, {
+          ...baseRange,
+          people: peopleBySource[source.key] ?? [],
+          color: colors[source.key],
+          personColors: personColorsFor(source.key, colors),
+          hiddenPeople: hiddenPeopleFor(source.key, hidden),
+        })
         .catch(() => [] as CalendarEvent[]),
     ),
   );
   const events = results.flat();
 
-  // Rosters for the per-person feed menu (#188): only for sources that offer one, only when
-  // visible, and only if the viewer may overlay anyone (the source returns [] otherwise).
-  const rosters = await Promise.all(
-    allSources.map((source) =>
-      !hidden.has(source.key) && source.people
-        ? source.people(api, baseRange).catch(() => [] as CalendarPerson[])
-        : Promise.resolve([] as CalendarPerson[]),
+  // Rosters for the per-person feed menu: the overlay picker (#188) and the split-by-colleague
+  // rows (#281). Both only for visible sources that offer them, and only if the viewer may see
+  // anyone else (the source returns [] otherwise).
+  const [rosters, splitRosters] = await Promise.all([
+    Promise.all(
+      allSources.map((source) =>
+        !hidden.has(source.key) && source.people
+          ? source.people(api, baseRange).catch(() => [] as CalendarPerson[])
+          : Promise.resolve([] as CalendarPerson[]),
+      ),
     ),
-  );
+    Promise.all(
+      allSources.map((source) =>
+        !hidden.has(source.key) && source.splitPeople
+          ? source.splitPeople(api, baseRange).catch(() => [] as CalendarPerson[])
+          : Promise.resolve([] as CalendarPerson[]),
+      ),
+    ),
+  ]);
 
   const sourceOptions = allSources.map((source, index) => ({
     key: source.key,
     labelKey: source.labelKey,
-    color: source.color,
+    // Effective legend swatch: the viewer's override, else the module default (#281).
+    color: colors[source.key] ?? source.color,
+    defaultColor: source.color,
+    colorable: source.colorable !== false,
     hidden: hidden.has(source.key),
     people: rosters[index],
     selectedPeople: peopleBySource[source.key] ?? [],
+    // Split-by-colleague rows (#281): each with its own override (empty = auto, inherits the
+    // feed colour / leave-type colour) and its own hidden flag.
+    splitPeople: splitRosters[index].map((person) => ({
+      id: person.id,
+      name: person.name,
+      color: colors[personKey(source.key, person.id)] ?? "",
+      hidden: hidden.has(personKey(source.key, person.id)),
+    })),
   }));
 
   const base = { view, date, today, sourceOptions };
@@ -122,6 +177,32 @@ export const actions: Actions = {
       body: { prefs: { calendar: { people: { ...people, [sourceKey]: ids } } } },
     });
     return { peopleSaved: true };
+  },
+
+  /**
+   * The viewer's personal feed / per-colleague colours (#281) — the whole `calendar.colors` map
+   * per save, like `saveSources`. Each value must be a known token or a `#hex`; anything else is
+   * dropped, so a hand-crafted post can never wedge arbitrary text into a chip's inline style.
+   */
+  saveColors: async (event) => {
+    const form = await event.request.formData();
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(String(form.get("colors") ?? "{}"));
+    } catch {
+      return fail(400, { error: "errors.required" });
+    }
+    const tokens = new Set<string>(LABEL_COLORS);
+    const colors: Record<string, string> = {};
+    if (parsed && typeof parsed === "object") {
+      for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+        if (typeof value === "string" && (tokens.has(value) || isHexColor(value))) {
+          colors[key] = value;
+        }
+      }
+    }
+    await apiFor(event).PUT("/api/v1/prefs", { body: { prefs: { calendar: { colors } } } });
+    return { colorsSaved: true };
   },
 
   // Personal "last used view" preference (saved per user, never in org Settings).

@@ -71,6 +71,25 @@ class QuoteStatus(StrEnum):
     INVOICED = "invoiced"
 
 
+class LineKind(StrEnum):
+    """What a document line *is* — the three things this platform bills for.
+
+    An agency's invoice mixes worked hours, recurring agreements and one-off sales, and the
+    reader has to tell them apart: "24 uur × € 95" and "Hosting maart" answer different
+    questions. So the kind is a **property of the line**, carried from wherever it was built
+    (``from_time`` stamps hours, the subscription cycle stamps subscription, a product pick
+    stamps product) through to the rendered document, which groups and subtotals by it.
+
+    It is presentation and provenance, never money: totals are computed from quantity, price
+    and tax exactly as before, and a tenant who wants one flat table simply keeps every line
+    on the default.
+    """
+
+    PRODUCT = "product"
+    HOURS = "hours"
+    SUBSCRIPTION = "subscription"
+
+
 class TaxCategory(StrEnum):
     """How a rate behaves on a document — vocabulary, not law. ``REVERSE_CHARGE`` prints its
     mandatory notice and charges 0; ``EXEMPT`` charges nothing and reports nothing. What a
@@ -306,6 +325,15 @@ class Invoice(
             unique=True,
             postgresql_where=text("subscription_id IS NOT NULL"),
         ),
+        # Same guarantee for domain renewals (#250): one invoice per (domain, period).
+        Index(
+            "uq_invoices_domain_period",
+            "org_id",
+            "domain_id",
+            "period_end",
+            unique=True,
+            postgresql_where=text("domain_id IS NOT NULL"),
+        ),
     )
 
     company_id: Mapped[uuid.UUID] = mapped_column(
@@ -342,6 +370,10 @@ class Invoice(
     quote_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
     #: The agreement this bills a period of (#30) — cross-module, so no FK (§6).
     subscription_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), nullable=True, index=True
+    )
+    #: The domain this bills a renewal year of (#250) — cross-module, so no FK (§6).
+    domain_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True), nullable=True, index=True
     )
     period_start: Mapped[date | None] = mapped_column(Date, nullable=True)
@@ -427,6 +459,14 @@ class _LineColumns:
     document keeps saying what it said."""
 
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    #: Hours / subscription / product — what this line is, so the document can group and
+    #: subtotal by it (see :class:`LineKind`). Snapshotted like every other line column.
+    line_kind: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default=LineKind.PRODUCT.value,
+        server_default=text("'product'"),
+    )
     description: Mapped[str] = mapped_column(String(512), nullable=False)
     quantity: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=1)
     #: Free-form unit label ("uur", "stuk", "mnd") — printed, never computed with.
@@ -508,6 +548,43 @@ class InvoiceTimeEntry(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base
         index=True,
     )
     time_entry_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+
+
+class InvoiceSubscriptionPeriod(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """Which subscription periods an invoice already billed — ``invoice_time_entries`` for
+    agreements (owner: *"the cron should know it is already paid"*).
+
+    ``invoices.subscription_id`` answers the cycle cron's question only for the invoice the
+    cron itself raised: one column holds one agreement and one period, while a hand-built
+    invoice routinely carries three subscriptions plus some hours. So the claim on a period
+    moves here, one row per (subscription, period_end), and ``on_subscription_due`` consults
+    this table as well before drafting. The partial unique index on ``invoices`` stays as the
+    backstop for the cron's own path.
+
+    ``subscription_id`` is a bare UUID (§6): validated through the subscriptions service on
+    write, never FK-coupled to another module's table.
+    """
+
+    __tablename__ = "invoice_subscription_periods"
+    __table_args__ = (
+        # One agreement, one period, one invoice — the whole point of the table.
+        UniqueConstraint(
+            "org_id",
+            "subscription_id",
+            "period_end",
+            name="uq_invoice_subscription_periods_period",
+        ),
+    )
+
+    invoice_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("invoices.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    subscription_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    period_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    period_end: Mapped[date] = mapped_column(Date, nullable=False)
 
 
 class ExternalRef(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):

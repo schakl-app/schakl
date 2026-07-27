@@ -10,7 +10,7 @@ import type { LayoutServerLoad } from "./$types";
 export const load: LayoutServerLoad = async (event) => {
   const api = apiFor(event);
   const [companies, projects, labels, statuses, members] = await Promise.all([
-    api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0 } } }),
+    api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, sort: "name" } } }),
     api.GET("/api/v1/projects", { params: { query: { limit: 200, offset: 0 } } }),
     api.GET("/api/v1/tasks/labels"),
     // The tenant's configured status vocabulary (issue #62): board sections, the pill on each

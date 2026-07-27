@@ -17,7 +17,8 @@
   import { can } from "$lib/core/permissions";
   import { pageTitle } from "$lib/core/title";
   import type { CalendarEvent } from "$lib/core/registry";
-  import { labelDotClass } from "$lib/core/ui/colors";
+  import { labelDotParts } from "$lib/core/ui/colors";
+  import ColorPicker from "$lib/core/ui/ColorPicker.svelte";
   import DayCalendar from "$lib/core/ui/DayCalendar.svelte";
   import MonthCalendar from "$lib/core/ui/MonthCalendar.svelte";
   import WeekCalendar from "$lib/core/ui/WeekCalendar.svelte";
@@ -126,14 +127,35 @@
   let sourcesOpen = $state(false);
   let sourcesRoot: HTMLElement | undefined = $state();
   let sourcesForm: HTMLFormElement | undefined = $state();
-  // Writable derived: follows the stored pref until a toggle overwrites it mid-save.
-  let hiddenDraft = $derived(data.sourceOptions.filter((s) => s.hidden).map((s) => s.key));
+  // Writable derived: follows the stored pref until a toggle overwrites it mid-save. Seeded from
+  // the *full* hidden list (from the layout load), not just sourceOptions, so the namespaced
+  // per-colleague hides (`<sourceKey>:person:<userId>`, #281) survive a source toggle round-trip.
+  let hiddenDraft = $derived([...(data.hiddenSources ?? [])]);
   function toggleSource(key: string) {
     hiddenDraft = hiddenDraft.includes(key)
       ? hiddenDraft.filter((k) => k !== key)
       : [...hiddenDraft, key];
     // Submit on the next tick so the hidden inputs carry the fresh list.
     setTimeout(() => sourcesForm?.requestSubmit(), 0);
+  }
+
+  // Personal feed / per-colleague colours (#281): a writable draft of the whole `calendar.colors`
+  // map, posted whole (like `hiddenDraft`). `activeColorKey` is the prefs key whose inline picker
+  // is open (a source key, or `<sourceKey>:person:<userId>`).
+  let colorsForm: HTMLFormElement | undefined = $state();
+  let colorsDraft = $derived<Record<string, string>>({ ...(data.colors ?? {}) });
+  let activeColorKey = $state<string | null>(null);
+  const personKey = (sourceKey: string, userId: string) => `${sourceKey}:person:${userId}`;
+  function setColor(key: string, value: string) {
+    const next = { ...colorsDraft };
+    // An empty value is "reset to default": drop the key so the map never fills with blanks.
+    if (value) next[key] = value;
+    else delete next[key];
+    colorsDraft = next;
+    setTimeout(() => colorsForm?.requestSubmit(), 0);
+  }
+  function toggleColorKey(key: string) {
+    activeColorKey = activeColorKey === key ? null : key;
   }
 
   function onkeydown(e: KeyboardEvent) {
@@ -167,6 +189,7 @@
   onclick={(e) => {
     if (sourcesOpen && sourcesRoot && !sourcesRoot.contains(e.target as Node)) {
       sourcesOpen = false;
+      activeColorKey = null;
     }
     if (addOpen && addRoot && !addRoot.contains(e.target as Node)) {
       addOpen = false;
@@ -204,6 +227,12 @@
   {#each hiddenDraft as key (key)}
     <input type="hidden" name="hidden" value={key} />
   {/each}
+</form>
+
+<!-- Personal feed / per-colleague colours (#281). Default enhance: the reload recolours the feeds
+     (the override is applied server-side, in each source's load). -->
+<form method="POST" action="?/saveColors" bind:this={colorsForm} use:enhance class="hidden">
+  <input type="hidden" name="colors" value={JSON.stringify(colorsDraft)} />
 </form>
 
 <!-- Per-person feed overlay (#188): posts one source's whole colleague selection per toggle. -->
@@ -280,24 +309,51 @@
         </button>
         {#if sourcesOpen}
           <div
-            class="absolute right-0 z-30 mt-1 w-56 rounded-lg border border-border bg-surface-raised py-1 shadow-lg"
+            class="absolute right-0 z-30 mt-1 max-h-[70vh] w-64 overflow-y-auto rounded-lg border border-border bg-surface-raised py-1 shadow-lg"
           >
             <p class="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted">
               {t("calendar.sources.label")}
             </p>
             {#each data.sourceOptions as source (source.key)}
-              <label
-                class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-text hover:bg-surface"
-              >
-                <input
-                  type="checkbox"
-                  checked={!hiddenDraft.includes(source.key)}
-                  onchange={() => toggleSource(source.key)}
-                  class="h-3.5 w-3.5 rounded border-border"
-                />
-                <span class="h-2 w-2 rounded-full {labelDotClass(source.color)}"></span>
-                {t(source.labelKey)}
-              </label>
+              {@const swatch = labelDotParts(colorsDraft[source.key] ?? source.defaultColor)}
+              <!-- The checkbox toggles the feed; the swatch opens its colour picker (#281). They
+                   sit side by side (not one inside the other) so a colour click never also flips
+                   the checkbox. -->
+              <div class="flex items-center gap-2 px-3 py-1.5 text-sm text-text hover:bg-surface">
+                <label class="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={!hiddenDraft.includes(source.key)}
+                    onchange={() => toggleSource(source.key)}
+                    class="h-3.5 w-3.5 shrink-0 rounded border-border"
+                  />
+                  <span class="truncate">{t(source.labelKey)}</span>
+                </label>
+                {#if source.colorable}
+                  <button
+                    type="button"
+                    class="h-4 w-4 shrink-0 rounded-full ring-1 ring-border {swatch.class}"
+                    style={swatch.style}
+                    aria-label={t("calendar.color.label")}
+                    title={t("calendar.color.label")}
+                    aria-expanded={activeColorKey === source.key}
+                    onclick={() => toggleColorKey(source.key)}
+                  ></button>
+                {:else}
+                  <span
+                    class="h-2.5 w-2.5 shrink-0 rounded-full {swatch.class}"
+                    style={swatch.style}
+                  ></span>
+                {/if}
+              </div>
+              {#if source.colorable && activeColorKey === source.key}
+                <div class="border-y border-border bg-surface">
+                  <ColorPicker
+                    value={colorsDraft[source.key] ?? ""}
+                    onchange={(v) => setColor(source.key, v)}
+                  />
+                </div>
+              {/if}
               <!-- Per-person overlay (#188): a manager picks whose schedule to lay over their own. -->
               {#if source.people && source.people.length > 0 && !hiddenDraft.includes(source.key)}
                 <div class="ml-6 border-l border-border pl-1">
@@ -316,6 +372,51 @@
                       />
                       {person.name}
                     </label>
+                  {/each}
+                </div>
+              {/if}
+              <!-- Split a feed per colleague (#281): each shows and recolours on its own. Reuses
+                   the same hidden-list round-trip via a namespaced key (`toggleSource(pKey)`). -->
+              {#if source.splitPeople.length > 0 && !hiddenDraft.includes(source.key)}
+                <div class="ml-6 border-l border-border pl-1">
+                  <p class="px-2 py-0.5 text-[11px] uppercase tracking-wide text-text-muted">
+                    {t("calendar.people.split")}
+                  </p>
+                  {#each source.splitPeople as person (person.id)}
+                    {@const pKey = personKey(source.key, person.id)}
+                    {@const pSwatch = labelDotParts(
+                      colorsDraft[pKey] ?? colorsDraft[source.key] ?? source.defaultColor,
+                    )}
+                    <div
+                      class="flex items-center gap-2 px-2 py-1 text-sm text-text hover:bg-surface"
+                    >
+                      <label class="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={!hiddenDraft.includes(pKey)}
+                          onchange={() => toggleSource(pKey)}
+                          class="h-3.5 w-3.5 shrink-0 rounded border-border"
+                        />
+                        <span class="truncate">{person.name}</span>
+                      </label>
+                      <button
+                        type="button"
+                        class="h-4 w-4 shrink-0 rounded-full ring-1 ring-border {pSwatch.class}"
+                        style={pSwatch.style}
+                        aria-label={t("calendar.color.label")}
+                        title={t("calendar.color.label")}
+                        aria-expanded={activeColorKey === pKey}
+                        onclick={() => toggleColorKey(pKey)}
+                      ></button>
+                    </div>
+                    {#if activeColorKey === pKey}
+                      <div class="border-y border-border bg-surface">
+                        <ColorPicker
+                          value={colorsDraft[pKey] ?? ""}
+                          onchange={(v) => setColor(pKey, v)}
+                        />
+                      </div>
+                    {/if}
                   {/each}
                 </div>
               {/if}
@@ -378,7 +479,7 @@
     bind:open={scheduleOpen}
     pickerEndpoint="/calendar/schedulable"
     currentUserId={page.data.user?.id ?? ""}
-    canScheduleAny={canScheduleAny}
+    {canScheduleAny}
     defaultDate={data.date}
     action="?/scheduleTask"
   />
