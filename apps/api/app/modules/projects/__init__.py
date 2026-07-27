@@ -11,6 +11,7 @@ from arq import cron
 from app.core.events import subscribe
 from app.modules.projects.attachments import on_file_event
 from app.modules.projects.budget_watch import watch_project_budgets
+from app.modules.projects.coverage import on_subscription_project_linked
 from app.modules.projects.impex import PROJECT_IMPEX
 from app.modules.projects.mcp import PROJECT_MCP_TOOLS
 from app.modules.projects.panels import projects_company_panel
@@ -38,3 +39,7 @@ registry.register(module)
 # Document attachments (#123 follow-up): validate the target project, record on its trail.
 subscribe("file.attached", on_file_event)
 subscribe("file.removed", on_file_event)
+
+# A retainer already pays for the work (#284): a project an agreement covers stops defaulting
+# to billable — and with it, every new time entry logged against it.
+subscribe("subscription.project_linked", on_subscription_project_linked)

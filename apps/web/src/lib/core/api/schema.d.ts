@@ -15399,9 +15399,9 @@ export interface components {
         TimeEntryCreate: {
             /**
              * Billable
-             * @default true
+             * @description Omit to inherit the project's billable default (true when there is no project).
              */
-            billable: boolean;
+            billable?: boolean | null;
             /**
              * Break Minutes
              * @default 0
@@ -15747,9 +15747,9 @@ export interface components {
         TimerStart: {
             /**
              * Billable
-             * @default true
+             * @description Omit to inherit the project's billable default (true when there is no project).
              */
-            billable: boolean;
+            billable?: boolean | null;
             /**
              * Break Minutes
              * @default 0

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -47,6 +48,20 @@ class TimeEntryBase(BaseModel):
     break_minutes: int = Field(default=0, ge=0, le=24 * 60)
 
 
+def _billable_from_project() -> Any:
+    """Left out, the project decides (issue #284). ``billable_default`` is what a project seeds
+    its entries with, and a project covered by a subscription seeds *not* billable — the
+    retainer already pays for that work. A client that states the flag still wins; only silence
+    defers. A fresh ``Field`` per model: a ``FieldInfo`` is not shareable between schemas.
+    """
+    return Field(
+        default=None,
+        description=(
+            "Omit to inherit the project's billable default (true when there is no project)."
+        ),
+    )
+
+
 class TimeEntryCreate(TimeEntryBase):
     """Manual entry. Supply either an ``ended_at`` (start/end) **or** a ``minutes`` duration.
 
@@ -54,6 +69,7 @@ class TimeEntryCreate(TimeEntryBase):
     derived (start + minutes + break). Validated in the service.
     """
 
+    billable: bool | None = _billable_from_project()
     started_at: datetime
     ended_at: datetime | None = None
     minutes: int | None = Field(default=None, ge=0, le=24 * 60)
@@ -74,6 +90,8 @@ class TimeEntryUpdate(BaseModel):
 
 class TimerStart(TimeEntryBase):
     """Start a running timer for the current user (no end / duration yet)."""
+
+    billable: bool | None = _billable_from_project()
 
 
 class TimeEntryRead(TimeEntryBase):

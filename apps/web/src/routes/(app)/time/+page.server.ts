@@ -122,7 +122,10 @@ export const actions: Actions = {
         description: String(form.get("description") ?? "").trim() || null,
         company_id: String(form.get("company_id") ?? "").trim() || null,
         project_id: String(form.get("project_id") ?? "").trim() || null,
-        billable: form.get("billable") !== "false",
+        // The timer bar has no billable control, so it says nothing and the API seeds the
+        // flag from the project (#284) — a retainer project starts a non-billable timer.
+        // Hardcoding `true` here is what used to bill covered work twice.
+        billable: form.has("billable") ? form.get("billable") !== "false" : undefined,
         entry_type_key: String(form.get("entry_type_key") ?? "").trim() || null,
         break_minutes: 0,
       },
@@ -153,7 +156,9 @@ export const actions: Actions = {
         company_id: String(form.get("company_id") ?? "").trim() || null,
         project_id: String(form.get("project_id") ?? "").trim() || null,
         task_id: String(form.get("task_id") ?? "").trim() || null,
-        billable: form.get("billable") !== "false",
+        // Stated by the form's toggle; a caller that omits it gets the project's own
+        // default (#284) rather than a hardcoded "factureerbaar".
+        billable: form.has("billable") ? form.get("billable") !== "false" : undefined,
         entry_type_key: String(form.get("entry_type_key") ?? "").trim() || null,
       },
     });

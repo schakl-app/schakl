@@ -85,7 +85,9 @@ async def _create(ctx: RequestContext, values: dict[str, Any]) -> Any:
             else None,
             break_minutes=int(float(values.get("break_minutes") or 0)),
             description=values.get("description"),
-            billable=values.get("billable", True) is not False,
+            # A file without the column says nothing about billing, so the project answers
+            # (#284) — the same seam the form and MCP go through. A stated cell still wins.
+            billable=values.get("billable"),
             company_id=values.get("company_id"),
             project_id=values.get("project_id"),
         )

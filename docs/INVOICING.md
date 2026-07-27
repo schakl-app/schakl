@@ -96,6 +96,12 @@ for accounting packages.
   exactly which entries in `invoice_time_entries` — so deleting/cancelling the draft un-bills
   exactly those and nothing else. `GET /invoicing/unbilled` feeds the dialog. An entry can
   be on one invoice, ever (unique constraint).
+  **Where `billable` comes from (#284)**: the API resolves it, not the browser. A create or
+  timer-start that omits the flag inherits the project's `billable_default`, so the form, an
+  import and an MCP call all answer the same — and a project a subscription covers has that
+  default cleared the moment it is linked, because the retainer already pays for the work and
+  billing it again is double-billing the client. It stays a *default*: the project can be
+  ticked back, and any single entry's flag is the logger's call.
 - **The uninvoiced report (#277)**: `GET /invoicing/uninvoiced` is the same "to invoice"
   predicate **org-wide** — no company scope — bucketed server-side (`group=day | week |
   month | year | company | project | user`) so the per-group subtotals (hours + amount, the

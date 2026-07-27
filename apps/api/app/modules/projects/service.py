@@ -45,6 +45,7 @@ _AUDITED_FIELDS = (
     "budget_hours",
     "budget_amount",
     "budget_period",
+    "billable_default",
     "start_date",
     "end_date",
 )
@@ -208,6 +209,23 @@ class ProjectService:
                 )
             )
         return grouped
+
+    async def billable_default(self, project_id: uuid.UUID) -> bool:
+        """Does work on this project bill by default? Published so `time` never imports our
+        models (§6) — it is the seed for a new entry's ``billable`` (issue #284).
+
+        Deliberately ungated: it seeds a write the caller was already allowed to make, the way
+        recording activity does (§16), and it hands back nothing the caller could not infer
+        from the entry it just created. An unknown or foreign id answers ``True``, the
+        platform-wide default — this is a lookup for a value, not a tenancy check, and the
+        org-scoped statement cannot reach another tenant's row either way.
+        """
+        value = await self.ctx.session.scalar(
+            select(Project.billable_default).where(
+                Project.org_id == self.ctx.org.id, Project.id == project_id
+            )
+        )
+        return True if value is None else bool(value)
 
     async def list(
         self,

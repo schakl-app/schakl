@@ -795,12 +795,34 @@ class SubscriptionService:
     ) -> None:
         for link in links:
             await self._ensure_link_target(link)
-        for row in await self.ctx.session.scalars(
-            self.links.scoped_select().where(SubscriptionLink.subscription_id == subscription_id)
-        ):
+        # Delete-then-insert, so which project is *newly* covered has to be read before the
+        # write — a save that merely re-posts the same links must not re-announce them.
+        existing = list(
+            await self.ctx.session.scalars(
+                self.links.scoped_select().where(
+                    SubscriptionLink.subscription_id == subscription_id
+                )
+            )
+        )
+        before = {(row.entity_type, row.entity_id) for row in existing}
+        for row in existing:
             await self.links.delete(row)
         for link in links:
             await self.links.create(subscription_id=subscription_id, **link.model_dump())
+        added = [
+            link.entity_id
+            for link in links
+            if link.entity_type == "project" and ("project", link.entity_id) not in before
+        ]
+        if added:
+            # Work a retainer already pays for is not separately invoiceable (#284): the
+            # projects module reacts by clearing those projects' billable default. On the bus,
+            # never by reaching into another module's table (§6).
+            await emit(
+                "subscription.project_linked",
+                self.ctx,
+                {"subscription_id": subscription_id, "project_ids": added},
+            )
 
     async def _ensure_company(self, company_id: uuid.UUID) -> None:
         ok = await self.ctx.session.scalar(

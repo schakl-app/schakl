@@ -36,6 +36,9 @@
     company_id?: string | null;
     project_id?: string | null;
     allocated_minutes?: number | null;
+    // What a new entry on this project bills by default (#284): false on a project a
+    // subscription covers, so retainer work is never charged twice.
+    billable_default?: boolean;
     // Budget burn (#112): present when the caller's lookup asked the API for `hours=true`.
     hours?: {
       budget_hours?: number | null;
@@ -125,9 +128,24 @@
   let fStart = $state(entry ? entry.started_at.slice(11, 16) : (restored?.start ?? ""));
   let fEnd = $state(entry?.ended_at ? entry.ended_at.slice(11, 16) : (restored?.end ?? ""));
   let fBreak = $state(entry?.break_minutes ?? restored?.break_minutes ?? 0);
-  let fBillable = $state(entry?.billable ?? restored?.billable ?? true);
+  /** What a new entry on this project bills by default (#284) — false where a subscription
+   *  covers it, because the retainer already pays for that work. Mirrors what the API
+   *  resolves when a client sends no `billable` at all; no project means the old plain true. */
+  function projectBillable(projectId: string): boolean {
+    if (!projectId) return true;
+    return projects.find((p) => p.id === projectId)?.billable_default ?? true;
+  }
+  const initialProject = entry?.project_id ?? restored?.project_id ?? defaultProjectId;
+  let fBillable = $state(entry?.billable ?? restored?.billable ?? projectBillable(initialProject));
+  // An entry being edited, and a restored draft, both carry a billable the person already
+  // settled — picking a project must not quietly overwrite it (#284).
+  let billableTouched = Boolean(entry) || restored?.billable != null;
+  function setBillable(value: boolean) {
+    fBillable = value;
+    billableTouched = true;
+  }
   let fCompany = $state(entry?.company_id ?? restored?.company_id ?? defaultCompanyId);
-  let fProject = $state(entry?.project_id ?? restored?.project_id ?? defaultProjectId);
+  let fProject = $state(initialProject);
   let fTask = $state(entry?.task_id ?? restored?.task_id ?? "");
   let fDescription = $state(entry?.description ?? restored?.description ?? "");
   const locale = $derived((page.data.locale as string | undefined) ?? "nl");
@@ -190,6 +208,12 @@
   function onProjectPicked(projectId: string) {
     const project = projects.find((p) => p.id === projectId);
     if (project?.company_id) fCompany = project.company_id;
+    // The project seeds "is this billable" (#284) — and a project a subscription covers seeds
+    // *not* billable, because the retainer already pays for the work. Only until the person
+    // says otherwise: once they have touched the toggle themselves, switching projects never
+    // overrules them. The API resolves the same default when a client sends nothing, so this
+    // is the form showing the answer up front, not deciding it.
+    if (project && !billableTouched) fBillable = project.billable_default ?? true;
   }
 
   // Budget feedback where the hours are spent (#112): the person logging sees how much of the
@@ -247,7 +271,10 @@
     end: null,
     break_minutes: 0,
     duration_text: null,
-    billable: true,
+    // The seeded value, not a flat `true` (#284): with a retainer project pre-filled the form
+    // opens on "niet factureerbaar", and a baseline of `true` would read that as typed input
+    // and autosave a draft for a day nobody touched.
+    billable: projectBillable(defaultProjectId),
     company_id: defaultCompanyId || null,
     project_id: defaultProjectId || null,
     task_id: null,
@@ -454,7 +481,7 @@
   <div class="grid grid-cols-2 gap-2">
     <button
       type="button"
-      onclick={() => (fBillable = false)}
+      onclick={() => setBillable(false)}
       class="rounded-lg border px-3 py-2 text-sm font-medium {!fBillable
         ? 'border-brand bg-brand text-white'
         : 'border-border text-text-muted'}"
@@ -463,7 +490,7 @@
     </button>
     <button
       type="button"
-      onclick={() => (fBillable = true)}
+      onclick={() => setBillable(true)}
       class="rounded-lg border px-3 py-2 text-sm font-medium {fBillable
         ? 'border-brand bg-brand text-white'
         : 'border-border text-text-muted'}"

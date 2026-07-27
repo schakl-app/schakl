@@ -235,7 +235,10 @@ export const actions: Actions = {
         status: "active",
         budget_period: "total",
         currency: event.locals.theme.currency,
-        billable_default: true,
+        // Made for an agreement, so it starts non-billable (#284): the retainer already pays
+        // for this work. Saving the agreement links it and would clear the flag anyway — this
+        // is so the project reads right the moment it exists, not one save later.
+        billable_default: false,
         custom: {},
       },
     });

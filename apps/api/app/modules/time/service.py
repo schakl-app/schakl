@@ -177,10 +177,31 @@ class TimeService:
         )
         return (await self.ctx.session.execute(stmt)).scalars().first()
 
+    async def _billable(self, billable: bool | None, project_id: uuid.UUID | None) -> bool:
+        """Resolve a new entry's ``billable`` (issue #284). Stated by the client, it stands;
+        left out, the project answers — and a project a subscription covers answers *no*,
+        because the retainer already pays for that work.
+
+        The API decides, not the browser (§14's rule, generalised): an MCP call, an import and
+        the entry form all get the same answer. The projects module is reached through its
+        published service, imported here rather than at module scope — nothing outside this
+        branch should drag `projects` in (CLAUDE.md §6).
+        """
+        if billable is not None:
+            return billable
+        if project_id is None:
+            return True
+        from app.modules.projects.service import ProjectService
+
+        return await ProjectService(self.ctx).billable_default(project_id)
+
     async def start_timer(self, data: TimerStart) -> TimeEntry:
         self.ctx.require("time.entry.write")
         await self._valid_entry_type(data.entry_type_key)
         timer_values = data.model_dump()
+        timer_values["billable"] = await self._billable(
+            timer_values.get("billable"), timer_values.get("project_id")
+        )
         # Starting a new timer stops the current one (common time-tracker behaviour).
         current = await self.running()
         if current is not None:
@@ -221,6 +242,7 @@ class TimeService:
             ("task_id", "tasks"),
         ):
             await ensure_parent_in_tenant(self.ctx.session, _tbl, values.get(_fk), self.ctx.org.id)
+        values["billable"] = await self._billable(values.get("billable"), values.get("project_id"))
         started_at = values["started_at"]
         ended_at = values.get("ended_at")
         minutes = values.get("minutes")
