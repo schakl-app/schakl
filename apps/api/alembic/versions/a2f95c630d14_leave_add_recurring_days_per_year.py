@@ -26,7 +26,7 @@ Upgrade plan (docs/WORKFLOW.md → *Breaking database changes*):
   ignores the column and generates from ``interval_weeks``.
 
 Revision ID: a2f95c630d14
-Revises: f4d6b81e37ac
+Revises: e5b2d8fa4c39
 Create Date: 2026-07-27 12:00:00.000000
 """
 from __future__ import annotations
@@ -39,7 +39,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = 'a2f95c630d14'
-down_revision: str | None = 'f4d6b81e37ac'
+down_revision: str | None = 'e5b2d8fa4c39'
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
