@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import uuid
 
+from sqlalchemy import text
+
 from app.db import async_session_maker, set_current_org
 from tests.conftest import add_membership, auth_cookie, make_tenant
 
@@ -144,6 +146,136 @@ async def test_horizon_filters_company_rooted_modules(client_for) -> None:
             f"/api/v1/tasks/{mine.json()['id']}", json={"company_id": b["id"]}, headers=member_h
         )
         assert moved.status_code == 404
+
+
+async def test_horizon_filters_the_interactions_overview(client_for) -> None:
+    """The cross-client Interacties feed (#240).
+
+    It folds conversations in a window subquery and totals DISTINCT conversations, so it never
+    passed through ``scoped_select()`` and had no horizon at all: a membership scoped to one
+    group read every client's contact moments org-wide.
+    """
+    t, member, membership, owner_h, member_h, a, b, group = await _setup(client_for, "horiz-int")
+
+    async with client_for(t.host) as c:
+        for company, subject in ((a, "Alpha kick-off"), (b, "Beta kick-off"), (None, "Intern")):
+            body = {
+                "kind": "physical_meeting",
+                "occurred_at": "2026-07-10T14:30:00+00:00",
+                "subject": subject,
+            }
+            if company:
+                body["company_id"] = company["id"]
+            created = await c.post("/api/v1/interactions", json=body, headers=owner_h)
+            assert created.status_code == 201, created.text
+
+        # Unassigned, the member still sees all three — the horizon only bites once assigned.
+        before = (await c.get("/api/v1/interactions?limit=50", headers=member_h)).json()
+        assert {r["subject"] for r in before["items"]} == {
+            "Alpha kick-off",
+            "Beta kick-off",
+            "Intern",
+        }
+
+        assert (
+            await c.put(
+                f"/api/v1/companies/groups/{group['id']}/memberships",
+                json={"membership_ids": [str(membership.id)]},
+                headers=owner_h,
+            )
+        ).status_code == 204
+
+        # Alpha's row and the company-less one; never Beta's.
+        listed = (await c.get("/api/v1/interactions?limit=50", headers=member_h)).json()
+        assert {r["subject"] for r in listed["items"]} == {"Alpha kick-off", "Intern"}
+        # The total counts what the page could return, not the org's rows (#252's rule).
+        assert listed["total"] == 2
+
+        # An explicit filter on an invisible company yields nothing — not that client's timeline.
+        scoped = (
+            await c.get(
+                "/api/v1/interactions", params={"company_id": b["id"]}, headers=member_h
+            )
+        ).json()
+        assert scoped["items"] == [] and scoped["total"] == 0
+
+        # The owner is never restricted, and the company panel's own path is unchanged.
+        owner_view = (await c.get("/api/v1/interactions?limit=50", headers=owner_h)).json()
+        assert owner_view["total"] == 3
+        panel = (
+            await c.get("/api/v1/interactions", params={"company_id": b["id"]}, headers=owner_h)
+        ).json()
+        assert {r["subject"] for r in panel["items"]} == {"Beta kick-off"}
+
+
+async def test_horizon_filters_an_interaction_thread(client_for) -> None:
+    """Reaching one visible message must not open the rest of its conversation (#240).
+
+    A conversation is glued by ``conversation_id`` and its messages can be filed under
+    different clients, so the thread fetch — and the fold badge that promises its length —
+    carry the horizon exactly like the feed does.
+    """
+    t, member, membership, owner_h, member_h, a, b, group = await _setup(client_for, "horiz-thr")
+
+    async with client_for(t.host) as c:
+        ids = {}
+        for company, subject in ((a, "Alpha bericht"), (b, "Beta bericht")):
+            created = await c.post(
+                "/api/v1/interactions",
+                json={
+                    "kind": "physical_meeting",
+                    "occurred_at": "2026-07-10T14:30:00+00:00",
+                    "subject": subject,
+                    "company_id": company["id"],
+                },
+                headers=owner_h,
+            )
+            assert created.status_code == 201, created.text
+            ids[subject] = created.json()["id"]
+
+        # Glue the two into one conversation. Manual rows never fold on their own (#272), so
+        # the id is set directly — the state a remapped email thread reaches on its own.
+        conversation_id = uuid.uuid4()
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            await session.execute(
+                text("UPDATE interactions SET conversation_id = :c WHERE id = ANY(:ids)"),
+                {"c": conversation_id, "ids": [uuid.UUID(i) for i in ids.values()]},
+            )
+            await session.commit()
+
+        assert (
+            await c.put(
+                f"/api/v1/companies/groups/{group['id']}/memberships",
+                json={"membership_ids": [str(membership.id)]},
+                headers=owner_h,
+            )
+        ).status_code == 204
+
+        # The owner reads the whole thread; the scoped member only their group's message…
+        assert (
+            len(
+                (
+                    await c.get(
+                        f"/api/v1/interactions/{ids['Alpha bericht']}/thread", headers=owner_h
+                    )
+                ).json()
+            )
+            == 2
+        )
+        thread = (
+            await c.get(f"/api/v1/interactions/{ids['Alpha bericht']}/thread", headers=member_h)
+        ).json()
+        assert {r["subject"] for r in thread} == {"Alpha bericht"}
+
+        # …and the badge counts what that thread will actually open, not the hidden rows.
+        listed = (await c.get("/api/v1/interactions?limit=50", headers=member_h)).json()
+        assert [r["conversation_count"] for r in listed["items"]] == [1]
+
+        # Beta's own message stays unreachable by id, as 404 — existence must not leak.
+        assert (
+            await c.get(f"/api/v1/interactions/{ids['Beta bericht']}", headers=member_h)
+        ).status_code == 404
 
 
 async def test_membership_in_empty_group_sees_nothing(client_for) -> None:

@@ -300,16 +300,28 @@ class TenantScopedRepository(Generic[ModelT]):
         table_col = table_col.c.get(attr) if table_col is not None else None
         self._horizon_nullable = bool(table_col.nullable) if table_col is not None else False
 
-    def _horizon(self, stmt):
-        """AND the company horizon onto a statement (no-op when unrestricted, #191)."""
+    def horizon_condition(self):
+        """The company horizon as a standalone predicate, or ``None`` when unrestricted (#191).
+
+        ``scoped_select()`` is the normal path and already carries this. A read that *cannot*
+        be built from it — a window fold over a subquery, a hand-built ``count(DISTINCT …)`` —
+        takes the predicate from here and ANDs it onto its own statement, so the horizon is
+        still expressed in exactly one place. Interactions' folded feed re-derived nothing and
+        simply had no horizon at all (#240); this is the seam it was missing.
+        """
         if self.company_scope is None or self._horizon_col is None:
-            return stmt
+            return None
         col = self._horizon_col
         if self._horizon_nullable:
             # A row not attached to any company (a company-less task, shared-infra hosting)
             # is not company data; the horizon governs company rows only.
-            return stmt.where((col.is_(None)) | (col.in_(self.company_scope)))
-        return stmt.where(col.in_(self.company_scope))
+            return (col.is_(None)) | (col.in_(self.company_scope))
+        return col.in_(self.company_scope)
+
+    def _horizon(self, stmt):
+        """AND the company horizon onto a statement (no-op when unrestricted, #191)."""
+        condition = self.horizon_condition()
+        return stmt if condition is None else stmt.where(condition)
 
     def _guard_company_write(self, values: dict[str, Any]) -> None:
         """Refuse placing a row onto a company outside the horizon (#191) — as a 404, the

@@ -141,6 +141,18 @@ class InteractionService:
     def _org_id(self) -> uuid.UUID:
         return self.ctx.org.id
 
+    def _horizon(self, stmt):
+        """AND the caller's company data horizon (#191) onto a hand-built statement.
+
+        This module's reads are window folds, thread fetches and ``count(DISTINCT …)``
+        expressions, none of which can be built from ``scoped_select()`` — which is exactly how
+        the overview ended up with no horizon at all (#240). Everything reading or counting
+        ``Interaction`` rows goes through here instead. A no-op for an unrestricted membership,
+        which is every owner and everyone in no company group.
+        """
+        condition = self.repo.horizon_condition()
+        return stmt if condition is None else stmt.where(condition)
+
     # --- reads ---------------------------------------------------------------- #
     async def list(
         self,
@@ -172,6 +184,15 @@ class InteractionService:
                 Interaction.owner_user_id == self.ctx.user.id,
             )
         )
+        # The company data horizon (#191, #240) — as a plain condition rather than via
+        # ``_horizon``, because the fold subquery and the total each build their own statement
+        # from ``conditions``. That is the point: the rows the fold considers, the
+        # representative it picks and the total all describe the same horizon, so the page and
+        # its count can't disagree (#252's rule). An explicit ``company_id`` outside the
+        # horizon ANDs to nothing and returns an empty page, never another client's timeline.
+        horizon = self.repo.horizon_condition()
+        if horizon is not None:
+            conditions.append(horizon)
         if not self.ctx.can("interactions.interaction.read_all"):
             # Someone else's queue is not a filter you may use (#168).
             if owner_user_id is not None and owner_user_id != self.ctx.user.id:
@@ -301,15 +322,13 @@ class InteractionService:
         conv_ids = {row.conversation_id for row in rows if row.conversation_id is not None}
         if not conv_ids:
             return {}
-        stmt = (
-            select(Interaction.conversation_id, func.count())
-            .where(
+        stmt = self._horizon(
+            select(Interaction.conversation_id, func.count()).where(
                 Interaction.org_id == self._org_id,
                 Interaction.conversation_id.in_(conv_ids),
                 Interaction.status == InteractionStatus.LOGGED.value,
             )
-            .group_by(Interaction.conversation_id)
-        )
+        ).group_by(Interaction.conversation_id)
         return {cid: int(n) for cid, n in (await self.ctx.session.execute(stmt)).all()}
 
     async def get(self, interaction_id: uuid.UUID) -> dict[str, Any]:
@@ -328,7 +347,10 @@ class InteractionService:
         detail modal expands into. A row not in a conversation is its own one-message thread.
 
         No owner filter: a logged row is team-visible regardless of who owns it, exactly like
-        the plain list. The anchor still runs the pending-privacy check via ``get()``.
+        the plain list. The anchor still runs the pending-privacy check via ``get()``, and the
+        thread carries the company horizon like the feed does (#240) — a conversation can be
+        remapped message by message, so reaching one visible row must not hand a restricted
+        membership the messages filed under a client it cannot see.
         """
         anchor = await self.get(interaction_id)
         conversation_id = anchor["conversation_id"]
@@ -344,6 +366,7 @@ class InteractionService:
             )
             .order_by(Interaction.occurred_at.desc(), Interaction.id.desc())
         )
+        stmt = self._horizon(stmt)
         rows = (await self.ctx.session.execute(stmt)).all()
         plain_rows = [row for row, _, _ in rows]
         names = await self._link_names(plain_rows)
@@ -1024,12 +1047,14 @@ class InteractionService:
         if row.conversation_id is not None:
             conversation_count = int(
                 await self.ctx.session.scalar(
-                    select(func.count())
-                    .select_from(Interaction)
-                    .where(
-                        Interaction.org_id == self._org_id,
-                        Interaction.conversation_id == row.conversation_id,
-                        Interaction.status == InteractionStatus.LOGGED.value,
+                    self._horizon(
+                        select(func.count())
+                        .select_from(Interaction)
+                        .where(
+                            Interaction.org_id == self._org_id,
+                            Interaction.conversation_id == row.conversation_id,
+                            Interaction.status == InteractionStatus.LOGGED.value,
+                        )
                     )
                 )
                 or 1
