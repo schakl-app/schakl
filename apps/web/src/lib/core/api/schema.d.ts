@@ -13836,6 +13836,8 @@ export interface components {
             /** Start Date */
             start_date?: string | null;
             status?: components["schemas"]["SubscriptionStatus"] | null;
+            /** Subscription Template Id */
+            subscription_template_id?: string | null;
             /** Subscription Type Id */
             subscription_type_id?: string | null;
         };

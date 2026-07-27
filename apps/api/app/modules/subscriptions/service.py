@@ -395,6 +395,11 @@ class SubscriptionService:
             if data.subscription_type_id is not None:
                 await self._ensure_type(data.subscription_type_id)
             values["subscription_type_id"] = data.subscription_type_id
+        if "subscription_template_id" in sent:
+            # Same rule for the preset it follows; null stops it following one.
+            if data.subscription_template_id is not None:
+                await self._ensure_template(data.subscription_template_id)
+            values["subscription_template_id"] = data.subscription_template_id
         if "currency" in sent and data.currency is not None:
             values["currency"] = data.currency.upper()
         if "rollover" in sent and data.rollover is not None:

@@ -164,6 +164,11 @@ class SubscriptionUpdate(BaseModel):
     company_id: uuid.UUID | None = None
     #: Sent as ``null`` it clears the type (``exclude_unset`` keeps "absent" distinct).
     subscription_type_id: uuid.UUID | None = None
+    #: Point the agreement at a preset (or ``null`` to stop following one). Written by "save
+    #: as standard subscription", which turns this very agreement into the preset — from then
+    #: on it is an instance of it, so a rename of either keeps them in step. Same explicit-null
+    #: semantics as the type.
+    subscription_template_id: uuid.UUID | None = None
     status: SubscriptionStatus | None = None
     currency: str | None = Field(default=None, min_length=3, max_length=3)
     interval: SubscriptionInterval | None = None

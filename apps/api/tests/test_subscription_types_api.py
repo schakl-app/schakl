@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime
 
 from tests.conftest import auth_cookie, make_tenant
@@ -489,3 +490,61 @@ async def test_subscription_cannot_claim_another_tenants_template(client_for) ->
             headers=headers_b,
         )
         assert crossed.status_code == 400
+
+
+async def test_an_agreement_can_be_pointed_at_a_preset_after_the_fact(client_for) -> None:
+    """"Opslaan als standaardabonnement" makes an agreement the preset, then points that same
+    agreement at it — so a later rename of either keeps the two in step. Explicit ``null``
+    stops it following; a foreign preset is refused like on create."""
+    t = await make_tenant("subtpl-relink")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = await _company(c, headers)
+        sub = (
+            await c.post(
+                "/api/v1/subscriptions",
+                json=_subscription_body(company["id"], name="Onderhoud Basis"),
+                headers=headers,
+            )
+        ).json()
+        assert sub["subscription_template_id"] is None
+        template = (
+            await c.post(
+                "/api/v1/subscriptions/templates",
+                json={"name": "Onderhoud Basis", "amount": "25.00"},
+                headers=headers,
+            )
+        ).json()
+
+        linked = await c.patch(
+            f"/api/v1/subscriptions/{sub['id']}",
+            json={"subscription_template_id": template["id"]},
+            headers=headers,
+        )
+        assert linked.status_code == 200, linked.text
+        assert linked.json()["subscription_template_id"] == template["id"]
+
+        # It now follows the preset like any agreement created from it.
+        renamed = await c.patch(
+            f"/api/v1/subscriptions/templates/{template['id']}",
+            json={"name": "Onderhoud Compleet"},
+            headers=headers,
+        )
+        assert renamed.json()["renamed_subscriptions"] == 1
+        after = (await c.get(f"/api/v1/subscriptions/{sub['id']}", headers=headers)).json()
+        assert after["name"] == "Onderhoud Compleet"
+
+        cleared = await c.patch(
+            f"/api/v1/subscriptions/{sub['id']}",
+            json={"subscription_template_id": None},
+            headers=headers,
+        )
+        assert cleared.status_code == 200, cleared.text
+        assert cleared.json()["subscription_template_id"] is None
+
+        stranger = await c.patch(
+            f"/api/v1/subscriptions/{sub['id']}",
+            json={"subscription_template_id": str(uuid.uuid4())},
+            headers=headers,
+        )
+        assert stranger.status_code == 400

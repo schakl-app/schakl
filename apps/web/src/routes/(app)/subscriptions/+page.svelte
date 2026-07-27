@@ -943,6 +943,9 @@
   <input type="hidden" name="included_hours" value={tplDraft?.included_hours ?? ""} />
   <input type="hidden" name="notice_period_days" value={tplDraft?.notice_period_days ?? ""} />
   <input type="hidden" name="notes" value={tplDraft?.notes ?? ""} />
+  <!-- This agreement becomes an instance of the preset it just defined, so renaming the
+       standard subscription later renames it along with the rest. -->
+  <input type="hidden" name="link_subscription_id" value={tplDraft?.id ?? ""} />
 </form>
 
 <ConfirmDialog
