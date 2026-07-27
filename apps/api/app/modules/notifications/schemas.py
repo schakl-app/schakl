@@ -241,6 +241,11 @@ class ChannelCreate(BaseModel):
     event_filter: list[str] = Field(default_factory=list)
     #: A personal channel (my DM) when set to a member; ``None`` = an org channel.
     user_id: uuid.UUID | None = None
+    #: This channel's own cadence (#283): ``immediate`` sends on the next tick, a digest holds
+    #: everything until the slot and sends it as one message. Default keeps pre-#283 behaviour.
+    digest: str = "immediate"
+    digest_time: time | None = None
+    digest_weekday: Annotated[int | None, Field(ge=0, le=6)] = None
 
     @field_validator("event_filter")
     @classmethod
@@ -250,6 +255,13 @@ class ChannelCreate(BaseModel):
                 raise ValueError("errors.validation")
         return value
 
+    @field_validator("digest")
+    @classmethod
+    def _known_digest(cls, value: str) -> str:
+        if value not in DIGEST_CADENCES:
+            raise ValueError("errors.validation")
+        return value
+
 
 class ChannelUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=120)
@@ -257,6 +269,9 @@ class ChannelUpdate(BaseModel):
     url: str | None = None
     enabled: bool | None = None
     event_filter: list[str] | None = None
+    digest: str | None = None
+    digest_time: time | None = None
+    digest_weekday: Annotated[int | None, Field(ge=0, le=6)] = None
 
     @field_validator("event_filter")
     @classmethod
@@ -265,6 +280,13 @@ class ChannelUpdate(BaseModel):
             for event in value:
                 if event not in EVENT_TYPES:
                     raise ValueError("errors.validation")
+        return value
+
+    @field_validator("digest")
+    @classmethod
+    def _known_digest(cls, value: str | None) -> str | None:
+        if value is not None and value not in DIGEST_CADENCES:
+            raise ValueError("errors.validation")
         return value
 
 
@@ -278,6 +300,9 @@ class ChannelRead(BaseModel):
     enabled: bool
     event_filter: list[str]
     user_id: uuid.UUID | None
+    digest: str
+    digest_time: time | None = None
+    digest_weekday: int | None = None
     created_at: datetime
 
 

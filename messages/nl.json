@@ -939,6 +939,8 @@
   "settings.notifications.channel_events_all": "Alle gebeurtenissen",
   "settings.notifications.channel_events_selected": "Alleen geselecteerde",
   "settings.notifications.channel_events_count": "{count, plural, one {{count} gebeurtenistype} other {{count} gebeurtenistypen}}",
+  "settings.notifications.channel_cadence": "Bezorging",
+  "settings.notifications.channel_cadence_hint": "Direct stuurt elk event als een apart bericht; een digest houdt ze vast en stuurt er per moment één gebundeld bericht van.",
   "settings.notifications.channel_enabled": "Ingeschakeld",
   "settings.notifications.channel_test_failed": "Test mislukt: {error}",
   "settings.notification_defaults.title": "Standaardmeldingen",

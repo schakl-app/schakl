@@ -37,6 +37,28 @@ function parseChannelFilter(raw: FormDataEntryValue | null): string[] {
   return [];
 }
 
+const CADENCES = new Set(["immediate", "hourly", "daily", "weekly"]);
+
+/**
+ * The channel's own delivery cadence (#283). The time and weekday controls only render for the
+ * cadences that have one, so an absent field means "not applicable" and is posted as `null` —
+ * that is also what clears a stale 08:00 off a channel switched back to immediate.
+ */
+function parseChannelCadence(form: FormData): {
+  digest: string;
+  digest_time: string | null;
+  digest_weekday: number | null;
+} {
+  const digest = String(form.get("digest") ?? "immediate");
+  const time = String(form.get("digest_time") ?? "");
+  const weekday = Number(form.get("digest_weekday"));
+  return {
+    digest: CADENCES.has(digest) ? digest : "immediate",
+    digest_time: /^\d{2}:\d{2}$/.test(time) ? time : null,
+    digest_weekday: Number.isInteger(weekday) && weekday >= 0 && weekday <= 6 ? weekday : null,
+  };
+}
+
 export const actions: Actions = {
   save: async (event) => {
     const form = await event.request.formData();
@@ -77,6 +99,8 @@ export const actions: Actions = {
         enabled: true,
         // #245: which event types route here; [] = all events.
         event_filter: parseChannelFilter(form.get("event_filter")),
+        // #283: when they arrive — immediately, or bundled per digest slot.
+        ...parseChannelCadence(form),
       },
     });
     if (error) {
@@ -100,6 +124,7 @@ export const actions: Actions = {
         name: name || undefined,
         enabled: form.get("enabled") != null,
         event_filter: parseChannelFilter(form.get("event_filter")),
+        ...parseChannelCadence(form),
       },
     });
     if (error) {

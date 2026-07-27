@@ -8,16 +8,64 @@ worker's job and is not exercised.
 from __future__ import annotations
 
 import uuid
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
 from app.core.auth.models import User
+from app.core.models import Org
 from app.db import async_session_maker, set_current_org
+from app.modules.notifications import external
 from app.modules.notifications.models import NotificationChannelConfig, NotificationDelivery
 from tests.conftest import auth_cookie, leave_workday, make_tenant
 
 _SLACK = "slack://xoxb-abc-def/#crm"
+_DISCORD = "discord://123456/tok-en"
+
+
+async def _leave_request(client, headers, owner_headers, offset: int = 0) -> None:
+    """Fire one notifiable event: a member's leave request notifies the approver."""
+    types = (await client.get("/api/v1/leave/types", headers=owner_headers)).json()
+    special = next(x["id"] for x in types if x["key"] == "special")
+    start = leave_workday(offset)
+    res = await client.post(
+        "/api/v1/leave/requests",
+        json={
+            "leave_type_id": special,
+            "start_date": start.isoformat(),
+            "end_date": start.isoformat(),
+        },
+        headers=headers,
+    )
+    assert res.status_code == 201, res.text
+
+
+async def _sweep(org_id: uuid.UUID) -> None:
+    """Run the worker's external sweep for one org, exactly as the cron does."""
+    async with async_session_maker() as session:
+        await set_current_org(session, org_id)
+        org = await session.get(Org, org_id)
+        await external.dispatch_external_deliveries(session, org)
+        await session.commit()
+
+
+async def _deliveries(org_id: uuid.UUID) -> list[NotificationDelivery]:
+    async with async_session_maker() as session:
+        await set_current_org(session, org_id)
+        return list(
+            (
+                await session.execute(
+                    select(NotificationDelivery)
+                    .where(
+                        NotificationDelivery.org_id == org_id,
+                        NotificationDelivery.channel == "external",
+                    )
+                    .order_by(NotificationDelivery.created_at.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
 
 
 async def _member(client, headers, email: str) -> User:
@@ -233,6 +281,176 @@ async def test_event_filter_routes_only_listed_events(client_for) -> None:
             .all()
         )
         assert deliveries == []  # leave.requested is not in the channel's filter
+
+
+# --------------------------------------------------------------------------- #
+# Channel-level cadence + digest bundling (#283, Phase A)
+# --------------------------------------------------------------------------- #
+
+
+async def test_channel_cadence_roundtrip(client_for) -> None:
+    """A channel carries its own cadence; ``immediate`` is the default (pre-#283 behaviour)."""
+    t = await make_tenant("chan-cadence")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        plain = (
+            await c.post(
+                "/api/v1/notifications/channels",
+                json={"kind": "slack", "name": "Now", "url": _SLACK},
+                headers=headers,
+            )
+        ).json()
+        assert plain["digest"] == "immediate"
+        assert plain["digest_time"] is None and plain["digest_weekday"] is None
+
+        weekly = (
+            await c.post(
+                "/api/v1/notifications/channels",
+                json={
+                    "kind": "slack",
+                    "name": "Weekly",
+                    "url": _SLACK,
+                    "digest": "weekly",
+                    "digest_time": "09:30",
+                    "digest_weekday": 4,
+                },
+                headers=headers,
+            )
+        ).json()
+        assert weekly["digest"] == "weekly"
+        assert weekly["digest_time"] == "09:30:00" and weekly["digest_weekday"] == 4
+
+        patched = await c.patch(
+            f"/api/v1/notifications/channels/{weekly['id']}",
+            json={"digest": "daily", "digest_time": "08:00", "digest_weekday": None},
+            headers=headers,
+        )
+        assert patched.status_code == 200
+        assert patched.json()["digest"] == "daily"
+        assert patched.json()["digest_weekday"] is None
+
+        bad = await c.patch(
+            f"/api/v1/notifications/channels/{weekly['id']}",
+            json={"digest": "fortnightly"},
+            headers=headers,
+        )
+        assert bad.status_code == 422
+
+
+async def test_digest_channel_holds_delivery_until_its_slot(client_for) -> None:
+    """A daily channel's rows are written now but held for the slot, never sent immediately."""
+    t = await make_tenant("chan-digest-hold")
+    owner = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.post(
+            "/api/v1/notifications/channels",
+            json={"kind": "slack", "name": "Team", "url": _SLACK, "digest": "daily"},
+            headers=owner,
+        )
+        member = await _member(c, owner, "emp@digest-hold.example")
+        await _leave_request(c, await auth_cookie(member), owner)
+
+    rows = await _deliveries(t.org.id)
+    assert len(rows) == 1
+    assert rows[0].deliver_after is not None
+    assert rows[0].deliver_after > datetime.now(UTC)
+
+    # The sweep must respect the slot: nothing goes out yet.
+    await _sweep(t.org.id)
+    assert [r.status for r in await _deliveries(t.org.id)] == ["pending"]
+
+
+async def test_sweep_bundles_one_message_per_channel(client_for, monkeypatch) -> None:
+    """Two events, two channels → one message *each*, both events in each body (#283)."""
+    t = await make_tenant("chan-bundle")
+    owner = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        for name, url in (("Slack", _SLACK), ("Discord", _DISCORD)):
+            res = await c.post(
+                "/api/v1/notifications/channels",
+                json={"kind": name.lower(), "name": name, "url": url},
+                headers=owner,
+            )
+            assert res.status_code == 201, res.text
+        member = await _member(c, owner, "emp@bundle.example")
+        mh = await auth_cookie(member)
+        for offset in (0, 1):
+            await _leave_request(c, mh, owner, offset)
+
+    sent: list[tuple[str, str, str]] = []
+
+    async def fake_apprise(url, message):  # noqa: ANN001
+        sent.append((url, message.title, message.body))
+        return True, None
+
+    monkeypatch.setattr(external, "send_via_apprise", fake_apprise)
+    await _sweep(t.org.id)
+
+    # Four delivery rows (2 events × 2 channels) leave as exactly two messages.
+    assert len(sent) == 2
+    assert {url for url, _, _ in sent} == {_SLACK, _DISCORD}
+    for _, title, body in sent:
+        assert body.count("http") == 2  # both deep links in one message
+        assert "2" in title  # the counted digest subject, not a single sentence
+        # The message reads as sentences (#236), never as raw event types or i18n keys.
+        assert "leave.requested" not in body and "notifications.event" not in body
+
+    rows = await _deliveries(t.org.id)
+    assert len(rows) == 4
+    assert all(r.status == "sent" and r.sent_at is not None for r in rows)
+
+
+async def test_immediate_channel_fires_on_the_next_tick(client_for, monkeypatch) -> None:
+    """``immediate`` still means "the next sweep", the default every channel keeps (#283)."""
+    t = await make_tenant("chan-immediate")
+    owner = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.post(
+            "/api/v1/notifications/channels",
+            json={"kind": "slack", "name": "Team", "url": _SLACK, "digest": "immediate"},
+            headers=owner,
+        )
+        member = await _member(c, owner, "emp@immediate.example")
+        await _leave_request(c, await auth_cookie(member), owner)
+
+    sent: list[str] = []
+
+    async def fake_apprise(url, message):  # noqa: ANN001
+        sent.append(message.body)
+        return True, None
+
+    monkeypatch.setattr(external, "send_via_apprise", fake_apprise)
+    await _sweep(t.org.id)
+
+    assert len(sent) == 1
+    assert sent[0].count("http") == 1  # a group of one — no digest subject
+    assert [r.status for r in await _deliveries(t.org.id)] == ["sent"]
+
+
+async def test_failed_bundle_stays_pending_with_the_provider_error(client_for, monkeypatch) -> None:
+    """A provider failure keeps the whole bundle pending and records the real reason (#17)."""
+    t = await make_tenant("chan-fail")
+    owner = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.post(
+            "/api/v1/notifications/channels",
+            json={"kind": "slack", "name": "Team", "url": _SLACK},
+            headers=owner,
+        )
+        member = await _member(c, owner, "emp@fail.example")
+        await _leave_request(c, await auth_cookie(member), owner)
+
+    async def fake_apprise(url, message):  # noqa: ANN001
+        return False, "channel_not_found"
+
+    monkeypatch.setattr(external, "send_via_apprise", fake_apprise)
+    await _sweep(t.org.id)
+
+    rows = await _deliveries(t.org.id)
+    assert len(rows) == 1
+    assert rows[0].status == "pending"
+    assert rows[0].attempts == 1
+    assert rows[0].last_error == "channel_not_found"
 
 
 async def test_channels_are_tenant_isolated(client_for) -> None:

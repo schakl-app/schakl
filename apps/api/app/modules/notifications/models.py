@@ -230,9 +230,13 @@ class NotificationDelivery(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, 
 
     __tablename__ = "notification_deliveries"
     __table_args__ = (
+        # The sweep asks "which pending rows for this channel are due?" — grouped by
+        # ``channel_config_id``, filtered on ``channel`` + ``deliver_after`` (#283).
         Index(
             "ix_notification_deliveries_pending",
             "org_id",
+            "channel",
+            "deliver_after",
             "created_at",
             postgresql_where=text("status = 'pending'"),
         ),
@@ -275,6 +279,11 @@ class NotificationChannelConfig(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMi
     API, only a redacted preview. ``event_filter`` is the event types this channel receives
     (empty = all). ``user_id`` distinguishes a personal channel (my Slack DM) from an org channel
     (the team's ``#crm`` room); ``NULL`` = org-wide.
+
+    ``digest``/``digest_time``/``digest_weekday`` are the **channel-level** cadence (#283): a
+    shared room is not a personal preference, so *when* its events arrive is a property of the
+    room. They mirror the ``NotificationPreference`` columns exactly, so ``compute_visible_at``
+    places a channel's deliveries the same way it places a person's.
     """
 
     __tablename__ = "notification_channels"
@@ -285,6 +294,13 @@ class NotificationChannelConfig(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMi
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     #: Event types routed to this channel; ``[]`` means every event.
     event_filter: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    # immediate | hourly | daily | weekly — this channel's own cadence.
+    digest: Mapped[str] = mapped_column(
+        String(10), nullable=False, default="immediate", server_default="immediate"
+    )
+    digest_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    # 0 = Monday … 6 = Sunday (for the weekly digest).
+    digest_weekday: Mapped[int | None] = mapped_column(Integer, nullable=True)
     user_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
     )

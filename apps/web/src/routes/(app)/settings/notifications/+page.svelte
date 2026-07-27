@@ -4,6 +4,7 @@
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import Button from "$lib/core/ui/Button.svelte";
+  import ChannelCadenceFields from "$lib/modules/notifications/ChannelCadenceFields.svelte";
   import ChannelEventFilter from "$lib/modules/notifications/ChannelEventFilter.svelte";
   import PreferenceMatrixForm from "$lib/modules/notifications/PreferenceMatrixForm.svelte";
 
@@ -96,6 +97,7 @@
                     : t("settings.notifications.channel_events_count", {
                         count: channel.event_filter.length,
                       })}
+                  · {t(`notifications.digest.${channel.digest}`)}
                 </span>
               </div>
               <Button
@@ -170,6 +172,12 @@
                   type="hidden"
                   name="event_filter"
                   value={JSON.stringify(editFilter[channel.id] ?? [])}
+                />
+                <ChannelCadenceFields
+                  id={channel.id}
+                  digest={channel.digest}
+                  digestTime={channel.digest_time}
+                  digestWeekday={channel.digest_weekday}
                 />
                 {#if form?.updateError && form?.updateErrorId === channel.id}
                   <p class="text-sm text-red-600 dark:text-red-400">{t(form.updateError)}</p>
@@ -321,6 +329,8 @@
         onchange={(v) => (createFilter = v)}
       />
       <input type="hidden" name="event_filter" value={JSON.stringify(createFilter)} />
+
+      <ChannelCadenceFields id="new" />
 
       {#if form?.channelError}
         <p class="text-sm text-red-600 dark:text-red-400">{t(form.channelError)}</p>

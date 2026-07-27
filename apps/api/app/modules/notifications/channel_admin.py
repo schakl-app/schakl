@@ -124,6 +124,9 @@ class ChannelService:
             "enabled": channel.enabled,
             "event_filter": list(channel.event_filter),
             "user_id": channel.user_id,
+            "digest": channel.digest,
+            "digest_time": channel.digest_time,
+            "digest_weekday": channel.digest_weekday,
             "created_at": channel.created_at,
         }
 
@@ -166,6 +169,9 @@ class ChannelService:
             enabled=data.enabled,
             event_filter=data.event_filter,
             user_id=data.user_id,
+            digest=data.digest,
+            digest_time=data.digest_time,
+            digest_weekday=data.digest_weekday,
             created_by_user_id=self.ctx.user.id,
         )
         return self._read(channel)
@@ -174,6 +180,10 @@ class ChannelService:
         self.ctx.require("notifications.channels.manage")
         channel = await self.channels.get_or_404(channel_id)
         values = data.model_dump(exclude_unset=True, exclude={"url"})
+        # ``digest`` is NOT NULL with a default; an explicit ``null`` means "leave it", not
+        # "clear it" (``digest_time``/``digest_weekday`` *are* nullable and may be cleared).
+        if values.get("digest") is None:
+            values.pop("digest", None)
         if "url" in data.model_fields_set and data.url:
             stored = self._guard_url(values.get("kind", channel.kind), data.url)
             values["url_enc"] = encrypt(stored)

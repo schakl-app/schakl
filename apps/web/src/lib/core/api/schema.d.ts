@@ -6614,6 +6614,15 @@ export interface components {
         /** ChannelCreate */
         ChannelCreate: {
             /**
+             * Digest
+             * @default immediate
+             */
+            digest: string;
+            /** Digest Time */
+            digest_time?: string | null;
+            /** Digest Weekday */
+            digest_weekday?: number | null;
+            /**
              * Enabled
              * @default true
              */
@@ -6639,6 +6648,12 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Digest */
+            digest: string;
+            /** Digest Time */
+            digest_time?: string | null;
+            /** Digest Weekday */
+            digest_weekday?: number | null;
             /** Enabled */
             enabled: boolean;
             /** Event Filter */
@@ -6671,6 +6686,12 @@ export interface components {
         };
         /** ChannelUpdate */
         ChannelUpdate: {
+            /** Digest */
+            digest?: string | null;
+            /** Digest Time */
+            digest_time?: string | null;
+            /** Digest Weekday */
+            digest_weekday?: number | null;
             /** Enabled */
             enabled?: boolean | null;
             /** Event Filter */
