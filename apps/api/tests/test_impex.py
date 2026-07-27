@@ -17,6 +17,11 @@ COMPANY_HEADER = [
     "vat_number", "coc_number", "address_line1", "address_line2",
     "postal_code", "city", "country",
     "notes",
+    # Contributed by the contacts module (issue #77): the client's contact person, carried in
+    # the company's own row. Present because this caller holds contacts' write permissions —
+    # the header is deliberately caller-dependent (see test_contributed_columns_are_gated).
+    "contact_first_name", "contact_last_name", "contact_email", "contact_phone",
+    "contact_job_title",
 ]
 
 

@@ -1,30 +1,41 @@
 /**
- * Shared form action for the CSV import flow (issue #77).
+ * Shared form actions for the import wizard (issue #77).
  *
- * Both list pages post the same shape: a `file` plus a `mode` submit button — `preview` runs
- * the API's dry run (the default), `commit` applies all-or-nothing. The uploaded file is
- * forwarded to the API as multipart through the typed client (Golden Rule 6); the API is the
- * authority on validation, this action only relays its report.
+ * Three submits against one form, so the wizard needs no server-side session: the browser's
+ * own file input (or textarea) still holds the source, and each step re-posts it.
+ *
+ *   `inspect` — read the file, report its columns + samples and the suggested mapping
+ *   `preview` — the API's dry run, with the mapping the user confirmed
+ *   `commit`  — the same call, applied all-or-nothing
+ *
+ * The bytes travel with every step and nothing is staged server-side. The fingerprint from
+ * `inspect` rides along, so swapping the file between mapping and importing is a 409 rather
+ * than the wrong columns written into the right fields (a mapping is positional).
+ *
+ * The API is the authority on validation; these actions only relay its reports.
  */
 import { fail } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
 import { apiFor, type ApiEvent } from "$lib/core/session";
 
-import type { components } from "$lib/core/api/schema";
+import type { components, paths } from "$lib/core/api/schema";
 
 export type ImportReport = components["schemas"]["ImportReport"];
 export type ImportRowError = components["schemas"]["ImportRowError"];
+export type InspectReport = components["schemas"]["ImpexInspectReport"];
+export type ImpexColumns = components["schemas"]["ImpexColumnsResponse"];
+export type ImpexColumn = components["schemas"]["ImpexColumnInfo"];
 
-type ImportPath =
-  | "/api/v1/impex/company/import"
-  | "/api/v1/impex/contact/import"
-  | "/api/v1/impex/project/import"
-  | "/api/v1/impex/task/import"
-  | "/api/v1/impex/time_entry/import"
-  | "/api/v1/impex/subscription/import";
+/** Entity slugs with an import route — read off the generated client, never re-typed. */
+type EntityOf<T> = T extends `/api/v1/impex/${infer E}/import` ? E : never;
+export type ImportEntity = EntityOf<keyof paths>;
 
-/** The entity slugs the settings hub may import — mirrors the API's importable registry. */
+type ImportPath = `/api/v1/impex/${ImportEntity}/import`;
+type InspectPath = `/api/v1/impex/${ImportEntity}/inspect`;
+type ColumnsPath = `/api/v1/impex/${ImportEntity}/columns`;
+
+/** The entity slugs the settings hub may import. */
 export const IMPORTABLE_ENTITIES = [
   "company",
   "contact",
@@ -32,32 +43,110 @@ export const IMPORTABLE_ENTITIES = [
   "task",
   "time_entry",
   "subscription",
-] as const;
+] as const satisfies readonly ImportEntity[];
 
-/** The hub's per-entity variant: validates the slug, then delegates to the shared action. */
-export async function importCsvActionFor(event: ApiEvent, entity: string) {
-  if (!(IMPORTABLE_ENTITIES as readonly string[]).includes(entity)) {
-    return fail(400, { impexError: "errors.not_found" });
-  }
-  return importCsvAction(event, `/api/v1/impex/${entity}/import` as ImportPath);
+/**
+ * Compile-time drift guard, the direction `satisfies` cannot cover: adding an importable
+ * entity to the API without listing it here stops being a silently missing button and becomes
+ * a type error naming the slug.
+ */
+type NoneMissing =
+  Exclude<ImportEntity, (typeof IMPORTABLE_ENTITIES)[number]> extends never
+    ? true
+    : "impex: an importable entity is missing from IMPORTABLE_ENTITIES";
+const _noneMissing: NoneMissing = true;
+void _noneMissing;
+
+function isImportable(entity: string): entity is ImportEntity {
+  return (IMPORTABLE_ENTITIES as readonly string[]).includes(entity);
 }
 
-export async function importCsvAction(event: ApiEvent, path: ImportPath) {
-  const form = await event.request.formData();
-  const file = form.get("file");
-  if (!(file instanceof File) || file.size === 0) {
-    return fail(400, { impexError: "impex.errors.no_file" });
-  }
-  const commit = String(form.get("mode") ?? "") === "commit";
-
+/**
+ * The picked source, as multipart the API accepts either way.
+ *
+ * A file and a paste are one concept to the user and two very different things to the
+ * platform (a paste is capped far lower — Starlette truncates a large non-file part), so the
+ * decision is made once, here, rather than at each of the three call sites.
+ */
+function sourceBody(form: FormData): FormData | null {
   const body = new FormData();
-  body.append("file", file, file.name || "import.csv");
-  const { data, error } = await apiFor(event).POST(path, {
-    params: { query: { dry_run: !commit } },
-    // The generated schema types the multipart body as `{ file: string }` (binary); hand the
-    // real FormData straight to fetch so it sets the multipart boundary itself.
-    body: body as unknown as { file: string },
+  const file = form.get("file");
+  const text = String(form.get("text") ?? "");
+  if (file instanceof File && file.size > 0) {
+    body.append("file", file, file.name || "import.csv");
+  } else if (text.trim()) {
+    body.append("text", text);
+  } else {
+    return null;
+  }
+  const sheet = String(form.get("sheet") ?? "");
+  if (sheet) body.append("sheet", sheet);
+  // The checkbox is posted as a hidden "false" followed by the box's own "true", because an
+  // unchecked box posts nothing at all and "nothing" would read as the default. Last wins.
+  const header = form.getAll("has_header");
+  body.append("has_header", String(header[header.length - 1] ?? "true") === "true" ? "true" : "false");
+  return body;
+}
+
+/**
+ * `map_<index>` fields → the API's `{index: key}` object.
+ *
+ * Assembled server-side rather than posted as JSON the browser built: one hidden input per
+ * file column is what a `Combobox` already posts, and it keeps the wizard working without a
+ * second client-side representation of the same state to keep in sync.
+ */
+function mappingFrom(form: FormData): string {
+  const mapping: Record<string, string> = {};
+  for (const [name, value] of form.entries()) {
+    const match = /^map_(\d+)$/.exec(name);
+    if (match && typeof value === "string" && value) mapping[match[1]] = value;
+  }
+  return JSON.stringify(mapping);
+}
+
+/** Hub variant: validate the slug from the query string, then delegate. */
+export async function impexActionFor(event: ApiEvent, entity: string) {
+  if (!isImportable(entity)) return fail(400, { impexError: "errors.not_found" });
+  return impexAction(event, entity);
+}
+
+export async function impexAction(event: ApiEvent, entity: ImportEntity) {
+  const form = await event.request.formData();
+  const body = sourceBody(form);
+  if (!body) return fail(400, { impexError: "impex.errors.no_source" });
+
+  const mode = String(form.get("mode") ?? "inspect");
+  const api = apiFor(event);
+  // The generated schema types a multipart body as a flat record of strings; hand the real
+  // FormData straight to fetch so it sets the multipart boundary itself.
+  const multipart = {
+    body: body as unknown as { file: string; has_header: boolean },
     bodySerializer: (b: unknown) => b as FormData,
+  };
+
+  if (mode === "inspect") {
+    const [inspected, columns] = await Promise.all([
+      api.POST(`/api/v1/impex/${entity}/inspect` as InspectPath, multipart),
+      api.GET(`/api/v1/impex/${entity}/columns` as ColumnsPath),
+    ]);
+    if (inspected.error || !inspected.data) {
+      return fail(400, { impexError: apiErrorKey(inspected.error).key });
+    }
+    return {
+      impexInspect: inspected.data as InspectReport,
+      impexColumns: (columns.data ?? null) as ImpexColumns | null,
+    };
+  }
+
+  body.append("mapping", mappingFrom(form));
+  const matchKey = String(form.get("match_key") ?? "");
+  if (matchKey) body.append("match_key", matchKey);
+  const fingerprint = String(form.get("fingerprint") ?? "");
+  if (fingerprint) body.append("fingerprint", fingerprint);
+
+  const { data, error } = await api.POST(`/api/v1/impex/${entity}/import` as ImportPath, {
+    params: { query: { dry_run: mode !== "commit" } },
+    ...multipart,
   });
   if (error || !data) return fail(400, { impexError: apiErrorKey(error).key });
   return { impex: data as ImportReport };

@@ -101,15 +101,28 @@ COMPANY_IMPEX = ImpexDescriptor(
     natural_keys=("client_number", "name"),
     filters=("q", "status", "mine", "sort"),
     columns=(
-        ImpexColumn("name", required=True),
+        ImpexColumn("name", required=True, aliases=("naam", "bedrijf", "bedrijfsnaam",
+                                                    "company", "company name", "klant")),
         # Klantnummer — tried before ``name`` as the upsert key (a client can be renamed and
         # keep their number). Not clearable: an empty cell means "this file doesn't carry the
         # number", never "remove the number this client already has".
-        ImpexColumn("client_number", clearable=False),
-        ImpexColumn("website"),
+        ImpexColumn(
+            "client_number",
+            clearable=False,
+            aliases=("klantnummer", "klantnr", "klantcode", "client number", "debiteurnummer"),
+        ),
+        ImpexColumn("website", aliases=("site", "url", "webadres")),
         # Stored E.164; a national number needs the org's default country (see app/core/phone).
-        ImpexColumn("phone"),
-        ImpexColumn("invoice_email", data_type="email"),
+        ImpexColumn("phone", aliases=("telefoon", "telefoonnummer", "tel", "telephone")),
+        # Deliberately *not* aliased to a bare "e-mail"/"email": in a client list that column
+        # is far more often the contact person's address than the billing one, and a wrong
+        # suggestion the user accepts is worse than no suggestion at all. Verified in the
+        # browser — a pasted list with "Contactpersoon" + "E-mail" landed the address here.
+        ImpexColumn(
+            "invoice_email",
+            data_type="email",
+            aliases=("factuur e-mail", "factuuradres", "invoice email", "facturatie e-mail"),
+        ),
         # Not clearable: a company always has a status — an empty cell leaves it unchanged
         # (defaults to "active" on a create).
         ImpexColumn(
@@ -118,14 +131,14 @@ COMPANY_IMPEX = ImpexDescriptor(
             clearable=False,
             options=tuple(status.value for status in CompanyStatus),
         ),
-        ImpexColumn("vat_number"),
-        ImpexColumn("coc_number"),
-        ImpexColumn("address_line1"),
-        ImpexColumn("address_line2"),
-        ImpexColumn("postal_code"),
-        ImpexColumn("city"),
-        ImpexColumn("country"),
-        ImpexColumn("notes"),
+        ImpexColumn("vat_number", aliases=("btw", "btw-nummer", "vat", "vat number")),
+        ImpexColumn("coc_number", aliases=("kvk", "kvk-nummer", "kvknummer", "coc")),
+        ImpexColumn("address_line1", aliases=("adres", "straat", "address", "street")),
+        ImpexColumn("address_line2", aliases=("adres 2", "address 2", "toevoeging")),
+        ImpexColumn("postal_code", aliases=("postcode", "zip", "postal code", "pc")),
+        ImpexColumn("city", aliases=("plaats", "stad", "woonplaats", "town")),
+        ImpexColumn("country", aliases=("land", "landcode")),
+        ImpexColumn("notes", aliases=("notities", "opmerkingen", "toelichting")),
     ),
     fetch_page=_fetch_page,
     find_existing=_find_existing,

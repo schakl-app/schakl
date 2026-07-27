@@ -59,6 +59,10 @@ class ForwardCallerAuth(httpx.Auth):
 #: ``/users`` is fastapi-users' cookie-authenticated self-service — dead weight for a key.
 _ROUTE_MAPS = [
     RouteMap(pattern=r"^/api/v1/(auth|setup|instance|users)(/.*)?$", mcp_type=MCPType.EXCLUDE),
+    # A multipart upload is not a tool an LLM can call: the payload is a file it does not have,
+    # and the mapping it would have to invent is exactly the human judgement the wizard exists
+    # for. `/columns` and `/export` stay — reading a shape and taking data out are both useful.
+    RouteMap(pattern=r"^/api/v1/impex/[^/]+/(inspect|import)$", mcp_type=MCPType.EXCLUDE),
     RouteMap(pattern=r"^/api/v1/.*", mcp_type=MCPType.TOOL),
     RouteMap(pattern=r".*", mcp_type=MCPType.EXCLUDE),
 ]

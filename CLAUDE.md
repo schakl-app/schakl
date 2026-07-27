@@ -58,7 +58,7 @@ apps/
   api/app/
     core/          # config, db session, tenancy, auth, i18n, module registry, RLS helpers
     modules/
-      companies/   # models.py schemas.py service.py router.py panels.py migrations/
+      companies/   # models.py schemas.py service.py router.py panels.py impex.py migrations/
       contacts/
       websites/
       hosting/
@@ -124,6 +124,8 @@ An **API module** is a package under `apps/api/app/modules/<name>/` exposing:
   `ModuleDescriptor` (see §15). Core holds no module permission list.
 - `panels.py` — optional: declares what this module attaches to a **company** (title +
   data provider) so the company detail view can compose it. This is the modular hub.
+- `impex.py` — optional: the entity's spreadsheet import/export shape, and any columns this
+  module contributes to *another* module's entity (see §17).
 - `mcp.py` — optional: the MCP tools/resources this module contributes (e.g.
   `companies.find`, `companies.recent_projects`), registered onto the MCP surface alongside
   the router. Read-only by default; each tool goes through the tenant-scoped service layer.
@@ -573,3 +575,48 @@ This is a **core, cross-cutting capability** (issue #67), like custom fields (§
   gated on `activity.read`; *recording* is a side effect of a write the caller was already allowed to
   make, never its own grant. `payload` for an edit is `{changes: {field: {from, to}}}` — the record's
   own definition fields, not its freeform notes or custom JSONB.
+
+## 17. Spreadsheet import & export (core capability)
+
+Every entity a tenant can list, they can take out and bring back in — CSV, TSV, Excel or a block
+pasted from a spreadsheet. Core owns the mechanics (`app/core/impex/`); a module only **describes
+its shape**, exactly as it does for custom fields (§13) and panels (§6).
+
+- **A module opts an entity in with an `ImpexDescriptor`** in its `impex.py`, declared on its
+  `ModuleDescriptor`. It names the columns, the permissions, the module's own list service
+  (`fetch_page`) and its own write path (`create_row`/`update_row`) — an imported row fires the
+  same validation, events and side effects a form submit would. Import is not a backdoor around
+  the service layer. `importable=False` is export-only (approval-bearing records like leave must
+  be requested, never bulk-written).
+- **Headers are stable keys, never labels.** An export re-imports into the same org unchanged.
+  Labels are a display concern: `label_key` for built-ins, the tenant's own `label_i18n` for
+  custom fields — which the **client** resolves, because the API does not pick a locale for
+  someone else's content.
+- **Without a `mapping`, the header *is* the mapping** and must be exact keys; an unknown one is
+  fatal. **With one** (`{file column index: key}`), an unmapped column is skipped instead. Both
+  contracts are deliberate: the first is what makes a round-trip and an automated caller stable,
+  the second is what makes an arbitrary spreadsheet importable. `aliases` only ever feed
+  `/inspect`'s suggestions — they never widen the header-key contract.
+- **The mapping is positional, so it is fingerprinted.** `/inspect` returns a digest of the bytes
+  and `/import` refuses a mismatch (409): applying a mapping to a *different* file writes the
+  wrong columns into the right fields, with every row valid and every value wrong.
+- **A module contributes columns to another module's entity with an `ImpexExtension`** — the
+  panels pattern, applied to import/export, so the company import can carry the client's contact
+  person without companies importing contacts' internals. Keys are namespaced by the contributor,
+  a contributed column may never be `required`, and both are asserted at **mount** time. `apply`
+  runs in the import's own transaction through the contributing module's service, and **never on
+  a dry run** — so anything that could fail inside it must be expressible on the columns
+  themselves. `hydrate` batch-loads what its export getters read, or the export goes N+1.
+- **Both the column catalog and the export header are caller-dependent**: contributed columns are
+  filtered on the contributor's own permissions, so a caller who cannot write contacts never sees
+  them rather than hitting a mid-import 403 that rolls the whole file back.
+- **Reading the bytes is `parsing.py`, and it is defensive**: the format comes from the content
+  (a zip magic number), not the filename; every cap is checked *before* the work it bounds (the
+  byte cap before decoding, the zip's declared sizes before decompressing, the column cap while
+  reading); and over any limit is an error, never a truncation — silently importing the first
+  2000 rows of a 2500-row list is the worst outcome available, because it looks like it worked.
+- **Bulk is its own capability.** `impex.export` / `impex.import` are staff-only and sit *on top
+  of* each entity's own read/write permission: a client-portal login holds `companies.company.read`
+  for its own company and must never be able to download the client list.
+- Large imports as a background job are still deferred (issue #77); `MAX_IMPORT_ROWS` is what
+  keeps the synchronous path honest until that lands.

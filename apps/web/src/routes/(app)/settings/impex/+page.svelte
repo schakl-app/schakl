@@ -2,7 +2,7 @@
   import { Download, Upload } from "@lucide/svelte";
 
   import { t } from "$lib/core/i18n";
-  import ImportCsvModal from "$lib/core/impex/ImportCsvModal.svelte";
+  import ImportWizard from "$lib/core/impex/ImportWizard.svelte";
   import { pageTitle } from "$lib/core/title";
 
   let { data, form } = $props();
@@ -64,9 +64,12 @@
 </section>
 <p class="mt-3 max-w-2xl text-xs text-text-muted">{t("impex.settings.hint")}</p>
 
-<ImportCsvModal
+<ImportWizard
   bind:open={importOpen}
-  action={`?/importCsv&entity=${importEntity}`}
+  action={`?/impex&entity=${importEntity}`}
+  locale={data.locale}
   report={form?.impex ?? null}
+  inspect={form?.impexInspect ?? null}
+  columns={form?.impexColumns ?? null}
   error={form?.impexError ?? null}
 />

@@ -1,0 +1,84 @@
+---
+title: Import & export
+description: "Move clients, contacts, projects, tasks, timesheets and subscriptions in and out of schakl. as CSV, Excel or a pasted table."
+sidebar:
+  order: 2
+---
+
+You never have to retype anything. If your clients live in a spreadsheet, a bookkeeping package
+or an old system, you bring them across in one go: pick a file or paste a table, say what each
+column means, and see exactly what will happen before it happens.
+
+Everything sits together under *Settings → Import & export*. The client and contact lists carry
+the same buttons, where the export follows the filters you have applied.
+
+## What you can import
+
+- **CSV** (comma or semicolon separated)
+- **TSV** and tab-separated text
+- **Excel** (`.xlsx`), with a worksheet picker
+- **A pasted table** — copy the cells in Excel or Google Sheets and paste them straight into the
+  dialog
+
+The file type is recognised from the content, not the extension. So is the character encoding,
+so an export from a Dutch Excel with accented names is read rather than refused.
+
+Up to 2,000 rows at a time. Split anything larger; part of a file is never imported silently.
+
+## Mapping the columns
+
+Once the file is read you get one row per column **of your file**, with the first few real
+values from that column beside it. Next to those you pick what the column means in schakl.:
+name, client number, city, one of your own custom fields, or *do not import*.
+
+schakl. fills that choice in for you from your column headings, so "Klantnummer", "Company name"
+and "City" land correctly straight away. What it does not recognise it leaves blank, so you
+choose rather than inherit something wrong. Columns you leave unmapped are skipped — a file with
+ten columns of which three matter needs no cleaning up first.
+
+The sample values are what make a problem obvious: a shifted column or a misread file shows up
+before anything is saved.
+
+### The contact person in the same row
+
+A client list usually carries the contact person too. Those columns (first name, last name,
+e-mail, phone, job title) can be mapped in a client import. The contact is created, linked to
+the client, and the first one becomes that client's primary contact.
+
+## Updating or creating
+
+An import updates the records that already exist and creates the rest. What it matches on
+differs per type:
+
+| Type | Matched on |
+| --- | --- |
+| Clients | client number, otherwise the name |
+| Contacts | e-mail address |
+| Projects, subscriptions | name |
+| Tasks, timesheets | always created |
+
+For clients the number outranks the name: a client you renamed lands on itself instead of
+arriving as a second company. If your file carries both, you can choose which one is used.
+
+## Check first, then import
+
+**Check file** runs the whole import without saving anything: how many records are new, how many
+would be updated, and which rows contain an error — numbered the way you count rows in your
+spreadsheet. Only after a clean check does **Import** become available.
+
+An import is all or nothing. If anything is wrong, nothing is saved, not even the rows that were
+fine. You fix the file and try again rather than discovering half of it already landed.
+
+## Exporting
+
+An export carries the whole list as you have filtered it, not just the visible page, and
+includes your own custom fields. The column headings are stable keys, so an export you edit and
+put back is recognised and updates the existing records — the simplest way to change something
+in bulk.
+
+## Permissions
+
+Bulk import and export is a permission of its own, set per role under *Settings → Roles*, on top
+of the ordinary read or write permission for the type itself. A client with a portal login can
+therefore never pull a list. If some columns are missing for you, you do not have write
+permission on the module that contributes them.

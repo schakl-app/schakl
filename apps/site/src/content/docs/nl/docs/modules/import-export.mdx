@@ -1,0 +1,89 @@
+---
+title: Import & export
+description: "Klanten, contactpersonen, projecten, taken, uren en abonnementen in en uit schakl. met CSV, Excel of een geplakte tabel."
+sidebar:
+  order: 2
+---
+
+Je hoeft niets over te typen. Heb je je klanten in een spreadsheet, een boekhoudpakket of een
+oud systeem staan, dan breng je ze in één keer binnen: je kiest een bestand of plakt een tabel,
+je geeft aan wat elke kolom betekent, en je ziet vooraf precies wat er gaat gebeuren.
+
+Alles staat bij elkaar onder *Instellingen → Import & export*. Op de lijsten van klanten en
+contactpersonen zitten dezelfde knoppen, waarbij de export je huidige filters volgt.
+
+## Wat je kunt importeren
+
+- **CSV** (komma of puntkomma gescheiden)
+- **TSV** en tab-gescheiden tekst
+- **Excel** (`.xlsx`), met een keuze uit de werkbladen
+- **Een geplakte tabel**: kopieer de cellen in Excel of Google Spreadsheets en plak ze
+  rechtstreeks in het venster
+
+Het bestandstype wordt herkend aan de inhoud, niet aan de extensie. Ook de tekencodering wordt
+herkend, dus een export uit een Nederlandse Excel met accenten in de namen wordt gewoon gelezen.
+
+Maximaal 2.000 rijen per keer. Grotere bestanden splits je op; er wordt nooit stilzwijgend een
+deel geïmporteerd.
+
+## De kolommen toewijzen
+
+Na het inlezen zie je een regel per kolom **uit jouw bestand**, met de eerste voorbeeldwaarden
+uit die kolom erbij. Daarachter kies je wat die kolom in schakl. betekent: naam, klantnummer,
+plaats, een eigen veld, of *niet importeren*.
+
+schakl. vult die keuze alvast voor je in op basis van je kolomkoppen. "Klantnummer",
+"Bedrijfsnaam" en "Plaats" worden dus meteen goed gezet; wat het niet herkent laat het leeg,
+zodat je zelf kiest in plaats van iets verkeerds te erven. Kolommen die je niet toewijst worden
+overgeslagen. Een bestand met tien kolommen waarvan er drie relevant zijn hoef je dus niet
+eerst op te schonen.
+
+Door de voorbeeldwaarden zie je meteen of er iets niet klopt: een verschoven kolom of een
+verkeerd gelezen bestand valt op vóórdat er iets is opgeslagen.
+
+### De contactpersoon in dezelfde rij
+
+Een klantenlijst bevat vaak ook de contactpersoon. Die kolommen (voornaam, achternaam, e-mail,
+telefoon, functie) kun je gewoon toewijzen bij een klantimport. De contactpersoon wordt
+aangemaakt, aan de klant gekoppeld en als eerste contactpersoon de primaire.
+
+## Bijwerken of aanmaken
+
+Een import werkt records bij die er al zijn en maakt de rest aan. Waarop dat wordt herkend
+verschilt per soort:
+
+| Soort | Herkend aan |
+| --- | --- |
+| Klanten | klantnummer, anders de naam |
+| Contactpersonen | e-mailadres |
+| Projecten, abonnementen | naam |
+| Taken, uren | altijd nieuw |
+
+Bij klanten telt het klantnummer zwaarder dan de naam: een klant die je hebt hernoemd komt zo
+op zichzelf terecht en niet als tweede klant binnen. Bevat je bestand allebei, dan kun je zelf
+kiezen waarop er wordt herkend.
+
+## Eerst controleren, dan importeren
+
+**Controleren** rekent de hele import door zonder iets op te slaan: hoeveel records er nieuw
+zijn, hoeveel er worden bijgewerkt, en welke rijen een fout bevatten, met het rijnummer erbij
+zoals je het in je spreadsheet telt. Pas na een schone controle kun je op **Importeren**
+klikken.
+
+Een import is alles of niets. Zit er een fout in, dan wordt er niets opgeslagen, ook niet de
+rijen die wel klopten. Je repareert je bestand en probeert het opnieuw, zonder dat je de helft
+al binnen hebt staan.
+
+## Exporteren
+
+Elke export bevat de volledige lijst zoals je hem op dat moment gefilterd hebt, niet alleen de
+zichtbare pagina. Je eigen velden staan erbij. De kolomkoppen zijn vaste sleutels, dus een
+export die je bewerkt en terugzet wordt herkend en werkt de bestaande records bij: dat is de
+eenvoudigste manier om in bulk iets te wijzigen.
+
+## Rechten
+
+Importeren en exporteren in bulk is een apart recht, in te stellen per rol onder *Instellingen
+→ Rollen*, bovenop het gewone lees- of schrijfrecht op de soort zelf. Klanten met een
+portaallogin kunnen dus nooit een lijst uitdraaien. Zie je bepaalde kolommen niet, dan heb je
+geen schrijfrecht op de module die ze bijdraagt.

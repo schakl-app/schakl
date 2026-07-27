@@ -1792,6 +1792,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/impex/company/columns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Columns Company
+         * @description Every column a company import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+         */
+        get: operations["impex_columns_company_api_v1_impex_company_columns_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/impex/company/export": {
         parameters: {
             query?: never;
@@ -1826,6 +1846,46 @@ export interface paths {
          * @description Import company rows from a spreadsheet, upserting on the first of `client_number`, `name` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
          */
         post: operations["impex_import_company_api_v1_impex_company_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/company/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Inspect Company
+         * @description Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+         */
+        post: operations["impex_inspect_company_api_v1_impex_company_inspect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/contact/columns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Columns Contact
+         * @description Every column a contact import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+         */
+        get: operations["impex_columns_contact_api_v1_impex_contact_columns_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1872,6 +1932,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/impex/contact/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Inspect Contact
+         * @description Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+         */
+        post: operations["impex_inspect_contact_api_v1_impex_contact_inspect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/impex/entities": {
         parameters: {
             query?: never;
@@ -1884,6 +1964,26 @@ export interface paths {
          * @description The entity types with CSV support, for the Instellingen → Import & export screen.
          */
         get: operations["list_impex_entities_api_v1_impex_entities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/project/columns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Columns Project
+         * @description Every column a project import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+         */
+        get: operations["impex_columns_project_api_v1_impex_project_columns_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1932,6 +2032,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/impex/project/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Inspect Project
+         * @description Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+         */
+        post: operations["impex_inspect_project_api_v1_impex_project_inspect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/subscription/columns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Columns Subscription
+         * @description Every column a subscription import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+         */
+        get: operations["impex_columns_subscription_api_v1_impex_subscription_columns_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/impex/subscription/export": {
         parameters: {
             query?: never;
@@ -1966,6 +2106,46 @@ export interface paths {
          * @description Import subscription rows from a spreadsheet, upserting on the first of `name` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
          */
         post: operations["impex_import_subscription_api_v1_impex_subscription_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/subscription/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Inspect Subscription
+         * @description Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+         */
+        post: operations["impex_inspect_subscription_api_v1_impex_subscription_inspect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/task/columns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Columns Task
+         * @description Every column a task import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+         */
+        get: operations["impex_columns_task_api_v1_impex_task_columns_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2012,6 +2192,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/impex/task/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Inspect Task
+         * @description Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+         */
+        post: operations["impex_inspect_task_api_v1_impex_task_inspect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/time_entry/columns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Columns Time Entry
+         * @description Every column a time_entry import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+         */
+        get: operations["impex_columns_time_entry_api_v1_impex_time_entry_columns_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/impex/time_entry/export": {
         parameters: {
             query?: never;
@@ -2046,6 +2266,26 @@ export interface paths {
          * @description Import time_entry rows from a spreadsheet, create-only (no natural key) (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
          */
         post: operations["impex_import_time_entry_api_v1_impex_time_entry_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/time_entry/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Inspect Time Entry
+         * @description Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+         */
+        post: operations["impex_inspect_time_entry_api_v1_impex_time_entry_inspect_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6578,6 +6818,27 @@ export interface components {
              */
             file?: string | null;
             /**
+             * Fingerprint
+             * @description The fingerprint from `/inspect`. Supplied and mismatched is a 409 — a mapping is positional and must not be applied to a different file.
+             */
+            fingerprint?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Mapping
+             * @description JSON object mapping a file column **index** to a target column key, e.g. `{"0": "name", "3": "city"}`. Unmapped columns are skipped. Omit the field entirely to use the file's own header row as the mapping, where every header must be an exact column key.
+             */
+            mapping?: string | null;
+            /**
+             * Match Key
+             * @description Force the upsert to match on this column (must be one of the entity's natural keys). Default: the first natural key each row fills.
+             */
+            match_key?: string | null;
+            /**
              * Sheet
              * @description Which worksheet to read (.xlsx only; default the first).
              */
@@ -6595,6 +6856,27 @@ export interface components {
              * @description CSV, TSV or .xlsx file; headers are the export's keys
              */
             file?: string | null;
+            /**
+             * Fingerprint
+             * @description The fingerprint from `/inspect`. Supplied and mismatched is a 409 — a mapping is positional and must not be applied to a different file.
+             */
+            fingerprint?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Mapping
+             * @description JSON object mapping a file column **index** to a target column key, e.g. `{"0": "name", "3": "city"}`. Unmapped columns are skipped. Omit the field entirely to use the file's own header row as the mapping, where every header must be an exact column key.
+             */
+            mapping?: string | null;
+            /**
+             * Match Key
+             * @description Force the upsert to match on this column (must be one of the entity's natural keys). Default: the first natural key each row fills.
+             */
+            match_key?: string | null;
             /**
              * Sheet
              * @description Which worksheet to read (.xlsx only; default the first).
@@ -6614,6 +6896,27 @@ export interface components {
              */
             file?: string | null;
             /**
+             * Fingerprint
+             * @description The fingerprint from `/inspect`. Supplied and mismatched is a 409 — a mapping is positional and must not be applied to a different file.
+             */
+            fingerprint?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Mapping
+             * @description JSON object mapping a file column **index** to a target column key, e.g. `{"0": "name", "3": "city"}`. Unmapped columns are skipped. Omit the field entirely to use the file's own header row as the mapping, where every header must be an exact column key.
+             */
+            mapping?: string | null;
+            /**
+             * Match Key
+             * @description Force the upsert to match on this column (must be one of the entity's natural keys). Default: the first natural key each row fills.
+             */
+            match_key?: string | null;
+            /**
              * Sheet
              * @description Which worksheet to read (.xlsx only; default the first).
              */
@@ -6631,6 +6934,27 @@ export interface components {
              * @description CSV, TSV or .xlsx file; headers are the export's keys
              */
             file?: string | null;
+            /**
+             * Fingerprint
+             * @description The fingerprint from `/inspect`. Supplied and mismatched is a 409 — a mapping is positional and must not be applied to a different file.
+             */
+            fingerprint?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Mapping
+             * @description JSON object mapping a file column **index** to a target column key, e.g. `{"0": "name", "3": "city"}`. Unmapped columns are skipped. Omit the field entirely to use the file's own header row as the mapping, where every header must be an exact column key.
+             */
+            mapping?: string | null;
+            /**
+             * Match Key
+             * @description Force the upsert to match on this column (must be one of the entity's natural keys). Default: the first natural key each row fills.
+             */
+            match_key?: string | null;
             /**
              * Sheet
              * @description Which worksheet to read (.xlsx only; default the first).
@@ -6650,6 +6974,27 @@ export interface components {
              */
             file?: string | null;
             /**
+             * Fingerprint
+             * @description The fingerprint from `/inspect`. Supplied and mismatched is a 409 — a mapping is positional and must not be applied to a different file.
+             */
+            fingerprint?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Mapping
+             * @description JSON object mapping a file column **index** to a target column key, e.g. `{"0": "name", "3": "city"}`. Unmapped columns are skipped. Omit the field entirely to use the file's own header row as the mapping, where every header must be an exact column key.
+             */
+            mapping?: string | null;
+            /**
+             * Match Key
+             * @description Force the upsert to match on this column (must be one of the entity's natural keys). Default: the first natural key each row fills.
+             */
+            match_key?: string | null;
+            /**
              * Sheet
              * @description Which worksheet to read (.xlsx only; default the first).
              */
@@ -6668,6 +7013,27 @@ export interface components {
              */
             file?: string | null;
             /**
+             * Fingerprint
+             * @description The fingerprint from `/inspect`. Supplied and mismatched is a 409 — a mapping is positional and must not be applied to a different file.
+             */
+            fingerprint?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Mapping
+             * @description JSON object mapping a file column **index** to a target column key, e.g. `{"0": "name", "3": "city"}`. Unmapped columns are skipped. Omit the field entirely to use the file's own header row as the mapping, where every header must be an exact column key.
+             */
+            mapping?: string | null;
+            /**
+             * Match Key
+             * @description Force the upsert to match on this column (must be one of the entity's natural keys). Default: the first natural key each row fills.
+             */
+            match_key?: string | null;
+            /**
              * Sheet
              * @description Which worksheet to read (.xlsx only; default the first).
              */
@@ -6675,6 +7041,150 @@ export interface components {
             /**
              * Text
              * @description A pasted table instead of a file — tab, comma or semicolon separated, first line the header. Max 1 MiB.
+             */
+            text?: string | null;
+        };
+        /** Body_impex_inspect_company_api_v1_impex_company_inspect_post */
+        Body_impex_inspect_company_api_v1_impex_company_inspect_post: {
+            /**
+             * File
+             * @description CSV, TSV or .xlsx file
+             */
+            file?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Sheet
+             * @description Worksheet to read (.xlsx only)
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file
+             */
+            text?: string | null;
+        };
+        /** Body_impex_inspect_contact_api_v1_impex_contact_inspect_post */
+        Body_impex_inspect_contact_api_v1_impex_contact_inspect_post: {
+            /**
+             * File
+             * @description CSV, TSV or .xlsx file
+             */
+            file?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Sheet
+             * @description Worksheet to read (.xlsx only)
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file
+             */
+            text?: string | null;
+        };
+        /** Body_impex_inspect_project_api_v1_impex_project_inspect_post */
+        Body_impex_inspect_project_api_v1_impex_project_inspect_post: {
+            /**
+             * File
+             * @description CSV, TSV or .xlsx file
+             */
+            file?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Sheet
+             * @description Worksheet to read (.xlsx only)
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file
+             */
+            text?: string | null;
+        };
+        /** Body_impex_inspect_subscription_api_v1_impex_subscription_inspect_post */
+        Body_impex_inspect_subscription_api_v1_impex_subscription_inspect_post: {
+            /**
+             * File
+             * @description CSV, TSV or .xlsx file
+             */
+            file?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Sheet
+             * @description Worksheet to read (.xlsx only)
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file
+             */
+            text?: string | null;
+        };
+        /** Body_impex_inspect_task_api_v1_impex_task_inspect_post */
+        Body_impex_inspect_task_api_v1_impex_task_inspect_post: {
+            /**
+             * File
+             * @description CSV, TSV or .xlsx file
+             */
+            file?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Sheet
+             * @description Worksheet to read (.xlsx only)
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file
+             */
+            text?: string | null;
+        };
+        /** Body_impex_inspect_time_entry_api_v1_impex_time_entry_inspect_post */
+        Body_impex_inspect_time_entry_api_v1_impex_time_entry_inspect_post: {
+            /**
+             * File
+             * @description CSV, TSV or .xlsx file
+             */
+            file?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Sheet
+             * @description Worksheet to read (.xlsx only)
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file
              */
             text?: string | null;
         };
@@ -9062,6 +9572,60 @@ export interface components {
             token: string;
         };
         /**
+         * ImpexColumnInfo
+         * @description One target column an import may write into — the mapping step's vocabulary.
+         *
+         *     ``key`` is the stable header key and the only thing a mapping ever names. Labels are for
+         *     display: ``label_key`` is an i18n key for the built-in columns, ``label_i18n`` the tenant's
+         *     own per-locale labels for a custom field (§13 data, resolved by the client, never by the
+         *     API — the API has no business picking the caller's locale for tenant content).
+         */
+        ImpexColumnInfo: {
+            /** Aliases */
+            aliases?: string[];
+            /** Clearable */
+            clearable: boolean;
+            /** Data Type */
+            data_type: string;
+            /** Key */
+            key: string;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            } | null;
+            /** Label Key */
+            label_key?: string | null;
+            /** Module */
+            module?: string | null;
+            /**
+             * Natural Key
+             * @default false
+             */
+            natural_key: boolean;
+            /** Options */
+            options?: string[];
+            /** Readonly */
+            readonly: boolean;
+            /** Required */
+            required: boolean;
+            /** Source */
+            source: string;
+        };
+        /**
+         * ImpexColumnsResponse
+         * @description Everything a client needs to render a mapping UI for one entity, in one call.
+         */
+        ImpexColumnsResponse: {
+            /** Columns */
+            columns: components["schemas"]["ImpexColumnInfo"][];
+            /** Entity Type */
+            entity_type: string;
+            /** Importable */
+            importable: boolean;
+            /** Natural Keys */
+            natural_keys: string[];
+        };
+        /**
          * ImpexEntityInfo
          * @description One CSV-capable entity type — the Instellingen → Import & export screen's catalog.
          */
@@ -9078,6 +9642,64 @@ export interface components {
             read_permission: string;
             /** Write Permission */
             write_permission: string;
+        };
+        /**
+         * ImpexInspectReport
+         * @description What the file *is*, before anything is mapped or written.
+         *
+         *     Touches no tenant rows: this reads the upload and compares it with the entity's column
+         *     catalog. It is still write-gated — it is a step of an import, and the tighter gate is the
+         *     honest one for a route that accepts an arbitrary upload.
+         */
+        ImpexInspectReport: {
+            /** Columns */
+            columns: components["schemas"]["ImpexSourceColumn"][];
+            /** Delimiter */
+            delimiter?: string | null;
+            /** Encoding */
+            encoding?: string | null;
+            /** Fingerprint */
+            fingerprint: string;
+            /** Missing Required */
+            missing_required?: string[];
+            /**
+             * Rows
+             * @description Data rows (the header row excluded).
+             */
+            rows: number;
+            /** Sheet */
+            sheet?: string | null;
+            /** Sheets */
+            sheets?: string[];
+            /** Source Format */
+            source_format: string;
+            /** Suggested Match Key */
+            suggested_match_key?: string | null;
+            /**
+             * Uncalculated Formulas
+             * @default 0
+             */
+            uncalculated_formulas: number;
+        };
+        /**
+         * ImpexSourceColumn
+         * @description One column **of the uploaded file**, addressed by position.
+         *
+         *     Position, not header name: a spreadsheet export routinely carries duplicate headers and
+         *     empty ones, both of which a name-keyed mapping cannot express, and a header spelling drifts
+         *     while an index does not.
+         */
+        ImpexSourceColumn: {
+            /** Header */
+            header: string;
+            /** Index */
+            index: number;
+            /** Match */
+            match?: string | null;
+            /** Samples */
+            samples?: string[];
+            /** Suggested Key */
+            suggested_key?: string | null;
         };
         /**
          * ImportReport
@@ -20193,6 +20815,26 @@ export interface operations {
             };
         };
     };
+    impex_columns_company_api_v1_impex_company_columns_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexColumnsResponse"];
+                };
+            };
+        };
+    };
     impex_export_company_api_v1_impex_company_export_get: {
         parameters: {
             query?: {
@@ -20262,6 +20904,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_inspect_company_api_v1_impex_company_inspect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_inspect_company_api_v1_impex_company_inspect_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexInspectReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_columns_contact_api_v1_impex_contact_columns_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexColumnsResponse"];
                 };
             };
         };
@@ -20337,6 +21032,39 @@ export interface operations {
             };
         };
     };
+    impex_inspect_contact_api_v1_impex_contact_inspect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_inspect_contact_api_v1_impex_contact_inspect_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexInspectReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_impex_entities_api_v1_impex_entities_get: {
         parameters: {
             query?: never;
@@ -20353,6 +21081,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ImpexEntityInfo"][];
+                };
+            };
+        };
+    };
+    impex_columns_project_api_v1_impex_project_columns_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexColumnsResponse"];
                 };
             };
         };
@@ -20431,6 +21179,59 @@ export interface operations {
             };
         };
     };
+    impex_inspect_project_api_v1_impex_project_inspect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_inspect_project_api_v1_impex_project_inspect_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexInspectReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_columns_subscription_api_v1_impex_subscription_columns_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexColumnsResponse"];
+                };
+            };
+        };
+    };
     impex_export_subscription_api_v1_impex_subscription_export_get: {
         parameters: {
             query?: {
@@ -20497,6 +21298,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_inspect_subscription_api_v1_impex_subscription_inspect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_inspect_subscription_api_v1_impex_subscription_inspect_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexInspectReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_columns_task_api_v1_impex_task_columns_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexColumnsResponse"];
                 };
             };
         };
@@ -20576,6 +21430,59 @@ export interface operations {
             };
         };
     };
+    impex_inspect_task_api_v1_impex_task_inspect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_inspect_task_api_v1_impex_task_inspect_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexInspectReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_columns_time_entry_api_v1_impex_time_entry_columns_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexColumnsResponse"];
+                };
+            };
+        };
+    };
     impex_export_time_entry_api_v1_impex_time_entry_export_get: {
         parameters: {
             query?: {
@@ -20640,6 +21547,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ImportReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_inspect_time_entry_api_v1_impex_time_entry_inspect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_inspect_time_entry_api_v1_impex_time_entry_inspect_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexInspectReport"];
                 };
             };
             /** @description Validation Error */

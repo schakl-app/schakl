@@ -7,7 +7,7 @@
   import { editHref } from "$lib/core/edit-intent";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
-  import ImportCsvModal from "$lib/core/impex/ImportCsvModal.svelte";
+  import ImportWizard from "$lib/core/impex/ImportWizard.svelte";
   import { can } from "$lib/core/permissions";
   import { formatPhone } from "$lib/core/phone";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -298,9 +298,12 @@
   </div>
 </div>
 
-<ImportCsvModal
+<ImportWizard
   bind:open={showImport}
+  locale={data.locale}
   report={form?.impex ?? null}
+  inspect={form?.impexInspect ?? null}
+  columns={form?.impexColumns ?? null}
   error={form?.impexError ?? null}
 />
 

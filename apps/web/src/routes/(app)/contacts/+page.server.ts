@@ -1,7 +1,7 @@
 import { fail } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
-import { importCsvAction } from "$lib/core/impex/actions.server";
+import { impexAction } from "$lib/core/impex/actions.server";
 import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
@@ -83,7 +83,7 @@ export const actions: Actions = {
   },
 
   /** CSV import (issue #77): dry-run preview by default, all-or-nothing commit on demand. */
-  importCsv: (event) => importCsvAction(event, "/api/v1/impex/contact/import"),
+  impex: (event) => impexAction(event, "contact"),
 
   /** Inline company create from the "connected companies" picker (#115). */
   createCompany: createCompanyAction,

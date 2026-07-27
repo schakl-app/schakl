@@ -22,7 +22,9 @@ until that lands.
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
+import json
 import re
 import uuid
 from dataclasses import dataclass, field
@@ -33,11 +35,19 @@ from typing import Any
 from fastapi.responses import Response
 from pydantic import EmailStr, TypeAdapter, ValidationError
 
+from app.config import settings
 from app.core.customfields.models import CustomFieldDefinition
 from app.core.customfields.service import CustomFieldsService
-from app.core.impex.parsing import parse_source
-from app.core.impex.schemas import ImportReport, ImportRowError
-from app.core.impex.spec import ImpexColumn, ImpexDescriptor
+from app.core.impex.parsing import ParsedTable, parse_source
+from app.core.impex.schemas import (
+    ImpexColumnInfo,
+    ImpexColumnsResponse,
+    ImpexInspectReport,
+    ImpexSourceColumn,
+    ImportReport,
+    ImportRowError,
+)
+from app.core.impex.spec import ImpexColumn, ImpexDescriptor, ImpexExtension
 from app.core.tenancy import RequestContext
 from app.errors import AppError
 
@@ -47,6 +57,30 @@ EXPORT_PAGE_SIZE = 500
 ERRORS_RETURNED = 50
 #: Multi-select custom values join/split on this in a CSV cell.
 MULTI_VALUE_SEPARATOR = "|"
+#: Data rows scanned for the mapping step's sample cells, and samples kept per column. The
+#: samples are what make a wrong encoding or a shifted column obvious before anything is
+#: written — three from the first ten rows is enough to see, and cheap enough to always show.
+SAMPLE_ROWS = 10
+SAMPLE_VALUES = 3
+
+
+def _fingerprint(raw: bytes) -> str:
+    """Identify the inspected bytes so the import can refuse a *different* file.
+
+    A mapping addresses columns by position, so mapping one file and importing another writes
+    the wrong columns into the right fields — every row valid, every value wrong. Truncated:
+    this is a change detector, not a secret.
+    """
+    return hashlib.sha256(raw).hexdigest()[:32]
+
+
+def _normalise(header: str) -> str:
+    """Fold a header for alias matching: case, spacing and punctuation are not signal.
+
+    "Naam", "naam", "NAAM " and "Naam:" are one column to a human, and the mapping step is
+    only ever *suggesting* — the strict key contract lives in :meth:`_header_columns`.
+    """
+    return re.sub(r"[^a-z0-9]+", "", header.strip().lower())
 
 _email_adapter: TypeAdapter[str] = TypeAdapter(EmailStr)
 
@@ -90,6 +124,10 @@ class _Row:
     values: dict[str, Any] = field(default_factory=dict)
     fk: dict[str, tuple[ImpexColumn, str]] = field(default_factory=dict)
     custom: dict[str, str] = field(default_factory=dict)  # raw cells, "" = clear
+    #: Coerced values destined for a contributing module, keyed by extension module name.
+    #: Kept apart from ``values`` because they are written by a *different* service, after the
+    #: host row exists.
+    extension: dict[str, dict[str, Any]] = field(default_factory=dict)
     errors: list[tuple[str | None, str]] = field(default_factory=list)
     nk: str | None = None
     #: Which of the descriptor's ``natural_keys`` this row matched on — rows in one file may
@@ -97,6 +135,27 @@ class _Row:
     nk_key: str | None = None
     nk_duplicate: bool = False
     ambiguous: bool = False
+
+
+@dataclass(frozen=True)
+class _Target:
+    """One column an import can write into, whatever kind it is.
+
+    The point of this type is that everything upstream of the write — header checking, mapping
+    validation, coercion, FK resolution, the natural key — treats a tenant's custom field, a
+    contributed contact column and the entity's own ``name`` identically. The three only part
+    company at the moment a value is actually stored.
+    """
+
+    key: str
+    source: str                                   # builtin | extension | custom
+    column: ImpexColumn | None = None
+    definition: CustomFieldDefinition | None = None
+    extension: ImpexExtension | None = None
+
+    @property
+    def module(self) -> str | None:
+        return self.extension.module if self.extension else None
 
 
 class ImpexService:
@@ -118,7 +177,8 @@ class ImpexService:
         # entity's own read permission.
         self.ctx.require("impex.export")
         self.ctx.require(d.read_permission)
-        custom_defs = await self._custom_definitions(d)
+        targets = await self._targets(d)
+        extensions = self._extensions(d)
 
         rows: list[Any] = []
         offset = 0
@@ -131,17 +191,17 @@ class ImpexService:
                 break
             offset += EXPORT_PAGE_SIZE
 
+        for extension in extensions:
+            if extension.hydrate:
+                # Once for the whole export, never once per row: the host's list service has
+                # no idea the contributor's columns exist (docs/PERFORMANCE.md).
+                await extension.hydrate(self.ctx, rows)
+
         buffer = io.StringIO()
         writer = csv.writer(buffer)
-        writer.writerow([c.key for c in d.columns] + [cd.key for cd in custom_defs])
+        writer.writerow([target.key for target in targets])
         for row in rows:
-            cells = [
-                _cell(c.getter(row) if c.getter else getattr(row, c.target, None))
-                for c in d.columns
-            ]
-            custom = getattr(row, "custom", None) or {}
-            cells.extend(_cell(custom.get(cd.key)) for cd in custom_defs)
-            writer.writerow(cells)
+            writer.writerow(_cell(self._export_value(target, row)) for target in targets)
 
         return Response(
             content=("\ufeff" + buffer.getvalue()).encode("utf-8"),  # BOM: Excel-safe UTF-8
@@ -162,46 +222,64 @@ class ImpexService:
         dry_run: bool,
         sheet: str | None = None,
         pasted: bool = False,
+        has_header: bool = True,
+        mapping: str | None = None,
+        match_key: str | None = None,
+        fingerprint: str | None = None,
     ) -> ImportReport:
+        """Validate a file against the entity's shape, then (unless ``dry_run``) apply it.
+
+        **Without ``mapping`` this behaves exactly as it did before column mapping existed**:
+        the header must be the stable keys, an unknown one is a fatal header error, aliases are
+        not consulted. That is deliberate — it is what keeps an export round-tripping, keeps
+        the existing tests meaningful, and keeps the API surface a caller already automated
+        against from shifting under them. Mapping is opt-in, and opting in is explicit.
+        """
         self.ctx.require("impex.import")  # the route declares both too; defence-in-depth
         self.ctx.require(d.write_permission)
         if not d.importable:
             # Defensive: the router doesn't even mount an import route for these.
             raise AppError("not_found", "errors.not_found", status_code=404)
-        table = parse_source(raw, sheet=sheet, pasted=pasted)
-        header, data = table.header, table.rows
+        table = parse_source(raw, sheet=sheet, pasted=pasted, has_header=has_header)
+        if fingerprint and fingerprint != _fingerprint(raw):
+            # The mapping is by position: mapping one file and importing another writes the
+            # wrong columns into the right fields, with no error anywhere.
+            raise AppError("source_changed", "impex.errors.source_changed", status_code=409)
 
-        defs = list(await self.custom_fields.definitions(d.entity_type))
-        by_key = {c.key: c for c in d.columns}
-        # A custom field whose key shadows a built-in column is unreachable here on purpose:
-        # two columns with one header cannot round-trip.
-        custom_defs = {cd.key: cd for cd in defs if cd.key not in by_key}
+        targets = await self._targets(d)
+        by_key = {target.key: target for target in targets}
+        defs = [target.definition for target in targets if target.definition]
 
-        header_errors = self._check_header(d, header, by_key, custom_defs, defs)
-        if header_errors:
-            # A broken header makes per-row results meaningless (the typo'd column may be the
-            # natural key), so report it alone rather than 2000 misleading row errors.
+        # Before the mapping, so a nonsense ``match_key`` is a 422 in its own right rather than
+        # arriving as "that column is missing" — the caller asked for something impossible, and
+        # a row-level report would send them looking at their file for a bug in their request.
+        natural_keys = self._natural_keys(d, by_key, match_key)
+        columns, setup_errors = (
+            self._map_columns(table, mapping, by_key, match_key)
+            if mapping is not None
+            else self._header_columns(table, by_key)
+        )
+        if setup_errors:
+            # A broken header or mapping makes per-row results meaningless (the missing column
+            # may be the natural key), so report it alone rather than 2000 misleading rows.
             return ImportReport(
                 dry_run=dry_run,
-                rows=len(data),
+                rows=len(table.rows),
                 creates=0,
                 updates=0,
-                error_count=len(header_errors),
-                errors=header_errors[:ERRORS_RETURNED],
+                error_count=len(setup_errors),
+                errors=setup_errors[:ERRORS_RETURNED],
                 applied=False,
             )
 
-        columns = [
-            ("column", by_key[name])
-            if name in by_key
-            else ("custom", custom_defs[name])
-            for name in header
+        rows = [
+            self._parse_row(index, cells, columns)
+            for index, cells in enumerate(table.rows, 1)
         ]
-        rows = [self._parse_row(index, cells, columns) for index, cells in enumerate(data, 1)]
 
         existing: dict[str, dict[str, list[Any]]] = {}
-        if d.natural_keys:
-            self._mark_natural_keys(d, rows, by_key)
+        if natural_keys:
+            self._mark_natural_keys(natural_keys, rows, by_key)
             existing = await self._find_existing(d, rows)
         # else: create-only entity (no reliable natural key) — every valid row creates.
         fk_resolved = await self._resolve_fks(d, rows)
@@ -209,11 +287,12 @@ class ImpexService:
         resolved = [(row, self._plan_row(d, row, existing, fk_resolved)) for row in rows]
         self._mark_duplicate_targets(resolved)
 
+        custom_keys = {target.key for target in targets if target.source == "custom"}
         errors: list[ImportRowError] = []
-        plans: list[tuple[str, Any, dict[str, Any]]] = []
+        plans: list[tuple[str, Any, _Row]] = []
         creates = updates = 0
         for row, entity in resolved:
-            self._validate_custom(row, defs, set(custom_defs), entity)
+            self._validate_custom(row, defs, custom_keys, entity)
             if row.errors:
                 errors.extend(
                     ImportRowError(row=row.index, field=f, message_key=key)
@@ -221,25 +300,33 @@ class ImpexService:
                 )
             elif entity is not None:
                 updates += 1
-                plans.append(("update", entity, row.values))
+                plans.append(("update", entity, row))
             else:
                 creates += 1
-                plans.append(("create", None, row.values))
+                plans.append(("create", None, row))
 
         applied = False
         if not dry_run and not errors:
             # All-or-nothing: everything below runs in this request's transaction, so a failure
-            # anywhere (an event handler, a unique index) rolls the whole import back.
-            for mode, entity, values in plans:
+            # anywhere (an event handler, a unique index, a contributed write) rolls the whole
+            # import back.
+            extensions = {e.module: e for e in self._extensions(d)}
+            for mode, entity, row in plans:
                 if mode == "create":
-                    await d.create_row(self.ctx, values)
+                    entity = await d.create_row(self.ctx, row.values)
                 else:
-                    await d.update_row(self.ctx, entity, values)
+                    await d.update_row(self.ctx, entity, row.values)
+                for module, values in row.extension.items():
+                    if not values:
+                        continue  # the row carried nothing for this contributor
+                    # Only ever after the host row exists, and only through the contributing
+                    # module's own service — the host never learns the contributor's internals.
+                    await extensions[module].apply(self.ctx, entity, values)
             applied = True
 
         return ImportReport(
             dry_run=dry_run,
-            rows=len(data),
+            rows=len(table.rows),
             creates=creates,
             updates=updates,
             error_count=len(errors),
@@ -248,106 +335,383 @@ class ImpexService:
         )
 
     # ------------------------------------------------------------------ #
-    # Internals
+    # Columns & inspection
     # ------------------------------------------------------------------ #
-    async def _custom_definitions(self, d: ImpexDescriptor) -> list[CustomFieldDefinition]:
-        built_in = {c.key for c in d.columns}
-        defs = await self.custom_fields.definitions(d.entity_type)
-        return [cd for cd in defs if cd.key not in built_in]
+    async def columns_for(self, d: ImpexDescriptor) -> ImpexColumnsResponse:
+        """Every column this caller may map into, in the order the UI should offer them."""
+        self.ctx.require(d.read_permission)
+        targets = await self._targets(d)
+        return ImpexColumnsResponse(
+            entity_type=d.entity_type,
+            importable=d.importable,
+            natural_keys=[key for key in d.natural_keys if key in {t.key for t in targets}],
+            columns=[self._column_info(d, target) for target in targets],
+        )
 
-    def _check_header(
+    async def inspect(
         self,
         d: ImpexDescriptor,
-        header: list[str],
-        by_key: dict[str, ImpexColumn],
-        custom_defs: dict[str, CustomFieldDefinition],
-        defs: list[CustomFieldDefinition],
-    ) -> list[ImportRowError]:
+        raw: bytes,
+        *,
+        sheet: str | None = None,
+        pasted: bool = False,
+        has_header: bool = True,
+    ) -> ImpexInspectReport:
+        """What the uploaded file is, and which column probably goes where.
+
+        Reads the upload and compares it with the entity's column catalog; touches no tenant
+        rows. Suggestions are a convenience — nothing here decides what is written, and a
+        suggestion the user leaves alone still travels the same validation as one they typed.
+        """
+        self.ctx.require("impex.import")
+        self.ctx.require(d.write_permission)
+        table = parse_source(raw, sheet=sheet, pasted=pasted, has_header=has_header)
+        targets = await self._targets(d)
+        columns = self._suggest(table, targets)
+
+        suggested = {column.suggested_key for column in columns}
+        return ImpexInspectReport(
+            source_format=table.source_format,
+            delimiter=table.delimiter,
+            encoding=table.encoding,
+            sheet=table.sheet,
+            sheets=list(table.sheets),
+            rows=len(table.rows),
+            uncalculated_formulas=table.uncalculated_formulas,
+            fingerprint=_fingerprint(raw),
+            columns=columns,
+            missing_required=[
+                target.key
+                for target in targets
+                if self._required(target) and target.key not in suggested
+            ],
+            suggested_match_key=next(
+                (key for key in d.natural_keys if key in suggested), None
+            ),
+        )
+
+    # ------------------------------------------------------------------ #
+    # Internals
+    # ------------------------------------------------------------------ #
+    def _extensions(self, d: ImpexDescriptor) -> list[ImpexExtension]:
+        """Contributed column sets this caller may actually write.
+
+        Filtered on the contributor's **own** permissions, and filtered *here* rather than at
+        write time: a caller who cannot write contacts never sees the contact columns, instead
+        of discovering it as a 403 halfway through a commit that then rolls the file back.
+        The export header is caller-dependent for the same reason, and by the same rule.
+        """
+        from app.registry import registry
+
+        return [
+            extension
+            for extension in registry.impex_extensions_for(
+                d.entity_type, settings.enabled_modules
+            )
+            if all(self.ctx.can(permission) for permission in extension.write_permissions)
+        ]
+
+    async def _targets(self, d: ImpexDescriptor) -> list[_Target]:
+        """The entity's full column vocabulary: its own, contributed, then the tenant's.
+
+        One resolution point for both directions and every caller, so header checking,
+        coercion and FK resolution need no idea which kind a column is. A later key wins
+        nothing: a collision with a built-in key is dropped rather than shadowing it, because
+        two columns under one header cannot round-trip.
+        """
+        targets = [_Target(key=c.key, source="builtin", column=c) for c in d.columns]
+        seen = {target.key for target in targets}
+        for extension in self._extensions(d):
+            for column in extension.columns:
+                if column.key not in seen:
+                    targets.append(
+                        _Target(
+                            key=column.key,
+                            source="extension",
+                            column=column,
+                            extension=extension,
+                        )
+                    )
+                    seen.add(column.key)
+        for definition in await self.custom_fields.definitions(d.entity_type):
+            if definition.key not in seen:
+                targets.append(
+                    _Target(key=definition.key, source="custom", definition=definition)
+                )
+                seen.add(definition.key)
+        return targets
+
+    def _export_value(self, target: _Target, row: Any) -> Any:
+        if target.source == "custom":
+            return (getattr(row, "custom", None) or {}).get(target.key)
+        column = target.column
+        assert column is not None  # noqa: S101 — builtin/extension always carry one
+        return column.getter(row) if column.getter else getattr(row, column.target, None)
+
+    def _readonly(self, target: _Target) -> bool:
+        return bool(target.column and target.column.readonly)
+
+    def _required(self, target: _Target) -> bool:
+        if target.definition is not None:
+            return bool(target.definition.required)
+        # A contributed column is never required — asserted at mount time, so this is the
+        # single place the rule has to be read back.
+        return bool(target.column and target.column.required and target.source == "builtin")
+
+    def _column_info(self, d: ImpexDescriptor, target: _Target) -> ImpexColumnInfo:
+        column = target.column
+        definition = target.definition
+        return ImpexColumnInfo(
+            key=target.key,
+            source=target.source,
+            module=target.module,
+            label_key=(column.label_key if column else None)
+            or (f"impex.column.{d.entity_type}.{target.key}" if column else None),
+            # Tenant data: handed over as-is for the client to resolve, exactly as every other
+            # custom-field surface does. The API never picks a locale for tenant content.
+            label_i18n=dict(definition.label_i18n or {}) if definition else None,
+            data_type=column.data_type if column else str(definition.data_type),
+            required=self._required(target),
+            readonly=bool(column and column.readonly),
+            clearable=column.clearable if column else True,
+            options=list(column.options) if column else [],
+            natural_key=target.key in d.natural_keys,
+            aliases=list(column.aliases) if column else [],
+        )
+
+    def _natural_keys(
+        self, d: ImpexDescriptor, by_key: dict[str, _Target], match_key: str | None
+    ) -> tuple[str, ...]:
+        """The upsert keys to try, in priority order — narrowed to one if the caller said so.
+
+        Forcing the key is what lets a file that carries *both* a klantnummer and a name be
+        matched on the name deliberately (a first import of numbered rows whose numbers are the
+        old system's, say). Outside ``natural_keys`` it is a 422, not a silent fallback.
+        """
+        if match_key is None:
+            return tuple(key for key in d.natural_keys if key in by_key)
+        if match_key not in d.natural_keys:
+            raise AppError(
+                "invalid_match_key", "impex.errors.invalid_match_key", status_code=422
+            )
+        return (match_key,) if match_key in by_key else ()
+
+    def _header_columns(
+        self, table: ParsedTable, by_key: dict[str, _Target]
+    ) -> tuple[list[_Target | None], list[ImportRowError]]:
+        """The pre-mapping contract: the header **is** the mapping, and must be exact keys.
+
+        Unchanged on purpose (see :meth:`import_csv`) — aliases are not consulted here, so a
+        file that failed before fails identically and an export still round-trips.
+        """
         errors: list[ImportRowError] = []
         seen: set[str] = set()
-        for name in header:
+        for name in table.header:
             if name in seen:
                 errors.append(
                     ImportRowError(row=0, field=name, message_key="impex.errors.duplicate_column")
                 )
-            elif name not in by_key and name not in custom_defs:
+            elif name not in by_key:
                 errors.append(
                     ImportRowError(row=0, field=name, message_key="impex.errors.unknown_column")
                 )
             seen.add(name)
-        required = [c.key for c in d.columns if c.required] + [
-            cd.key for cd in defs if cd.required and cd.key in custom_defs
-        ]
         errors.extend(
-            ImportRowError(row=0, field=key, message_key="impex.errors.missing_column")
-            for key in required
-            if key not in seen
+            ImportRowError(row=0, field=target.key, message_key="impex.errors.missing_column")
+            for target in by_key.values()
+            if self._required(target) and target.key not in seen
         )
-        return errors
+        return [by_key.get(name) for name in table.header], errors
+
+    def _map_columns(
+        self,
+        table: ParsedTable,
+        mapping: str,
+        by_key: dict[str, _Target],
+        match_key: str | None,
+    ) -> tuple[list[_Target | None], list[ImportRowError]]:
+        """An explicit ``{file column index: target key}`` mapping.
+
+        Indices rather than header names: a spreadsheet export carries duplicate and empty
+        headers, neither of which a name-keyed mapping can express, and an index survives the
+        header-normalisation drift a name does not. **An unmapped column is skipped**, not an
+        error — the whole point is to accept a file with columns this system knows nothing
+        about, which is the direct inverse of the header path's rule.
+
+        Every problem is reported as a row-0 error rather than raised, so the preview shows all
+        of them at once instead of the user fixing one 422 at a time.
+        """
+        errors: list[ImportRowError] = []
+        try:
+            parsed = json.loads(mapping)
+            if not isinstance(parsed, dict):
+                raise ValueError
+            pairs = [(int(index), str(key)) for index, key in parsed.items()]
+        except (ValueError, TypeError):
+            return [], [ImportRowError(row=0, message_key="impex.errors.invalid_mapping")]
+
+        columns: list[_Target | None] = [None] * table.width
+        claimed: dict[str, int] = {}
+        for index, key in sorted(pairs):
+            header = table.header[index] if 0 <= index < len(table.header) else str(index)
+            if not 0 <= index < table.width:
+                errors.append(
+                    ImportRowError(
+                        row=0, field=key, message_key="impex.errors.invalid_mapping"
+                    )
+                )
+            elif key not in by_key:
+                errors.append(
+                    ImportRowError(
+                        row=0, field=header, message_key="impex.errors.unknown_column"
+                    )
+                )
+            elif key in claimed:
+                errors.append(
+                    ImportRowError(
+                        row=0, field=header, message_key="impex.errors.duplicate_column"
+                    )
+                )
+            else:
+                claimed[key] = index
+                columns[index] = by_key[key]
+
+        errors.extend(
+            ImportRowError(row=0, field=target.key, message_key="impex.errors.missing_column")
+            for target in by_key.values()
+            if self._required(target) and target.key not in claimed
+        )
+        if match_key and match_key not in claimed:
+            # Matching on a column the file does not carry would make every row a create.
+            errors.append(
+                ImportRowError(
+                    row=0, field=match_key, message_key="impex.errors.missing_column"
+                )
+            )
+        return columns, errors
+
+    def _suggest(
+        self, table: ParsedTable, targets: list[_Target]
+    ) -> list[ImpexSourceColumn]:
+        """Pre-fill each file column with the target it most likely means.
+
+        Exact key first, then an alias or a label spelling. A guess is never silently applied
+        to an import: it fills the mapping step, which the user sees next to real sample cells
+        from their own file, and confirms or corrects.
+        """
+        by_alias: dict[str, str] = {}
+        for target in targets:
+            if target.column and not target.column.readonly:
+                for alias in target.column.aliases:
+                    by_alias.setdefault(_normalise(alias), target.key)
+            if target.definition:
+                for label in (target.definition.label_i18n or {}).values():
+                    by_alias.setdefault(_normalise(str(label)), target.key)
+        by_key = {target.key: target for target in targets}
+
+        columns: list[ImpexSourceColumn] = []
+        claimed: set[str] = set()
+        for index in range(table.width):
+            header = table.header[index] if index < len(table.header) else ""
+            samples = [
+                row[index] for row in table.rows[:SAMPLE_ROWS] if index < len(row) and row[index]
+            ]
+            key: str | None = None
+            match: str | None = None
+            if header in by_key:
+                key, match = header, "key"
+            elif _normalise(header) in by_alias:
+                key, match = by_alias[_normalise(header)], "alias"
+            if key is not None and (key in claimed or self._readonly(by_key[key])):
+                # A second column claiming one target, or an export-only column: suggest
+                # nothing rather than a mapping that would have to be undone.
+                key, match = None, None
+            if key is not None:
+                claimed.add(key)
+            columns.append(
+                ImpexSourceColumn(
+                    index=index,
+                    header=header,
+                    samples=samples[:SAMPLE_VALUES],
+                    suggested_key=key,
+                    match=match,
+                )
+            )
+        return columns
 
     def _parse_row(
-        self, index: int, cells: list[str], columns: list[tuple[str, Any]]
+        self, index: int, cells: list[str], columns: list[_Target | None]
     ) -> _Row:
-        """Coerce one data row against the mapped header — every failure is a row error."""
+        """Coerce one data row against the mapped columns — every failure is a row error."""
         row = _Row(index=index)
-        for position, (kind, spec) in enumerate(columns):
+        for position, target in enumerate(columns):
+            if target is None:
+                continue  # an unmapped file column: skipped, never an error
             cell = (cells[position] if position < len(cells) else "").strip()
-            if kind == "custom":
+            if target.source == "custom":
                 # Kept verbatim (even "" — it means *clear* on update); the §13 validator
                 # coerces and checks it later, once the update target is known.
-                row.custom[spec.key] = cell
+                row.custom[target.key] = cell
                 continue
-            column: ImpexColumn = spec
+            column = target.column
+            assert column is not None  # noqa: S101
             if column.readonly:
                 continue  # exported-only (derived) — present for round-trip, never written
+            # Contributed values go to the contributing module, not into the host's own
+            # create/update payload — the only place in the pipeline the kinds differ.
+            values = (
+                row.extension.setdefault(target.module or "", {})
+                if target.source == "extension"
+                else row.values
+            )
             if cell == "":
                 if column.required:
                     row.errors.append((column.key, "errors.required"))
                 elif column.clearable and column.data_type != "fk":
-                    row.values[column.target] = None
+                    values[column.target] = None
                 # else: not clearable — leave the field (or the links) untouched.
             elif column.data_type == "fk":
                 row.fk[column.key] = (column, cell)
             elif column.data_type == "email":
                 try:
-                    row.values[column.target] = _email_adapter.validate_python(cell)
+                    values[column.target] = _email_adapter.validate_python(cell)
                 except ValidationError:
                     row.errors.append((column.key, "errors.invalid_email"))
             elif column.data_type == "select":
                 if cell in column.options:
-                    row.values[column.target] = cell
+                    values[column.target] = cell
                 else:
                     row.errors.append((column.key, "impex.errors.invalid_option"))
             elif column.data_type == "date":
                 try:
-                    row.values[column.target] = date.fromisoformat(cell).isoformat()
+                    values[column.target] = date.fromisoformat(cell).isoformat()
                 except ValueError:
                     row.errors.append((column.key, "impex.errors.invalid_date"))
             elif column.data_type == "time":
                 if _TIME_RE.match(cell):
                     hours, minutes = cell.split(":")
-                    row.values[column.target] = f"{int(hours):02d}:{minutes}"
+                    values[column.target] = f"{int(hours):02d}:{minutes}"
                 else:
                     row.errors.append((column.key, "impex.errors.invalid_time"))
             elif column.data_type == "number":
                 try:
-                    row.values[column.target] = str(Decimal(cell.replace(",", ".")))
+                    values[column.target] = str(Decimal(cell.replace(",", ".")))
                 except InvalidOperation:
                     row.errors.append((column.key, "impex.errors.invalid_number"))
             elif column.data_type == "bool":
                 lowered = cell.lower()
                 if lowered in _TRUE_WORDS:
-                    row.values[column.target] = True
+                    values[column.target] = True
                 elif lowered in _FALSE_WORDS:
-                    row.values[column.target] = False
+                    values[column.target] = False
                 else:
                     row.errors.append((column.key, "impex.errors.invalid_bool"))
             else:
-                row.values[column.target] = cell
+                values[column.target] = cell
         return row
 
     def _mark_natural_keys(
-        self, d: ImpexDescriptor, rows: list[_Row], by_key: dict[str, ImpexColumn]
+        self, natural_keys: tuple[str, ...], rows: list[_Row], by_key: dict[str, _Target]
     ) -> None:
         """Pick each row's match key — the first of ``natural_keys`` the row actually fills.
 
@@ -358,8 +722,9 @@ class ImpexService:
         """
         seen: dict[str, set[str]] = {}
         for row in rows:
-            for key in d.natural_keys:
-                value = row.values.get(by_key[key].target)
+            for key in natural_keys:
+                target = by_key[key].column
+                value = row.values.get(target.target if target else key)
                 if isinstance(value, str) and value.strip():
                     row.nk_key, row.nk = key, value
                     break
