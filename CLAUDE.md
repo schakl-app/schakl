@@ -386,6 +386,24 @@ apply as everywhere.
   employment wizard makes the choice explicitly in its werkweek step, so neither arrangement is
   ever inferred from a schedule the admin happened to enter. Never hardcoded CAO law (§14): a
   tenant who wants none of it still deactivates the type.
+- **A free-time pattern says how many days, or how often** (#107, extended). `days_per_year` on
+  `leave_recurring_days` spreads that many days evenly across the year on the anchor's weekday and
+  **slides past** a holiday or a non-working day to the next candidate week, so the count the pot
+  bought actually lands; `NULL` keeps the original fixed `interval_weeks` cadence ("every Wednesday
+  afternoon"). Two modes because two different things are known: sometimes the arrangement *is* a
+  rhythm, sometimes only the day count is, and for most contracts no whole number of weeks fits
+  (38 h earns 13 days, which is almost but not every four weeks). A spread pattern also stores the
+  nearest equivalent cadence, so a rolled-back release still generates sensibly. `_occurrence_plan`
+  decides *which dates to attempt*; every rule about whether a day may be taken (balance, holiday,
+  overlap, spent occurrence) is shared by both modes.
+- **`GET /leave/free-time` is what the balance cannot say.** Free days are placed as *approved*
+  leave, so once the generator has laid them all down, entitled and approved are equal and the
+  per-type balance reads "0 h over" — true, and no answer to "when is my next day off" or "does the
+  pot still cover my calendar". The overview carries placed / taken / upcoming, the next date, the
+  days themselves, and the **overhang**: the future generated days a reprorated pot (#264) no
+  longer covers. Withdrawing them takes explicit ids the caller was shown and goes through the
+  ordinary `cancel` path, so the past stays locked and the Google mirror is told. Reported, never
+  cancelled as a side effect of a contract edit.
 - **A holiday costs no leave hours** (#47). `leave_holidays(org_id, date, name_i18n, active,
   source, key)` is tenant data seeded from a generator — the Dutch holidays *derived from Easter*,
   so 2028 needs no code change — and never law written in Python: Goede Vrijdag is worked at many

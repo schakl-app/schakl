@@ -313,11 +313,24 @@
   (approve/reject are inline status actions; reject asks an optional reason) and register leave on
   someone's behalf (ziekmelding). Approved leave appears on the timesheet as its own teal row,
   never mixed into worked totals, and on the Agenda.
-- **A work schedule is employment data, so it lives on the person** (Instellingen → Gebruikers →
-  ⋯ → Werkrooster), not buried in Instellingen → Verlof. It is a weekly grid: per weekday a
-  working-day toggle, start/end, and the day's **breaks as a repeater** — a morning coffee break
-  next to lunch is an ordinary shape, so a second break is one click, and each day carries a
-  copy-to-other-days action. Times go through `TimeInput`, never a native `<input type="time">`.
+- **Contract, werkweek and vrije tijd are one wizard, not three modals** (Instellingen →
+  Gebruikers → ⋯ → **Dienstverband**, and the same item on the team leave roster). They used to be
+  three separate ⋯ entries, and that split is exactly why the relationship between contract hours
+  and working hours read as arbitrary: they were never three decisions. Contract hours only mean
+  something measured against the week that is actually worked, and free days exist *because* the
+  two differ. Three steps, one save: **contract** (period + hours) → **werkweek** (the grid, plus
+  the one question the system cannot infer: does this person take the hours below the full-time
+  norm as free time to schedule, built into their roster, or an agreed figure?) → **vrije tijd**
+  (the pattern, prefilled from what the pot buys). Every number is derived on screen as it is
+  typed — contract, rooster, vrije tijd on one line — because the previous design let a reduced
+  contract grow a pot of free days in silence, and a four-day part-timer grow one twice over. The
+  save reports what it did, and when a changed contract orphans already-placed free days it lists
+  them and offers to take them back; it never cancels them as a side effect.
+- **A work schedule is employment data, so it lives on the person**, not buried in Instellingen →
+  Verlof — and on the *contract*, because a schedule change usually is a contract change. It is a
+  weekly grid: per weekday a working-day toggle, start/end, and the day's **breaks as a repeater**
+  — a morning coffee break next to lunch is an ordinary shape, so a second break is one click, and
+  each day carries a copy-to-other-days action. Times go through `TimeInput`, never a native `<input type="time">`.
   Breaks are **not re-sorted while you type**: the API stores them sorted and hands them back that
   way, whereas reordering rows on every committed time yanks the field out from under the cursor.
   The grid renders *outside* its `<form>` and posts through `form="…"` — its `TimeInput`s each emit
@@ -333,8 +346,18 @@
   the normal schedule, and drawing it as a full-day bar makes one free afternoon look like a week of
   vakantie. A request spanning several days stays a full-day chip whatever the type says — a single
   block across Monday to Friday would claim the nights too. The maandweergave never draws by hour,
-  so the setting is invisible there. Note that drag-to-reschedule lives on full-day chips, so a
-  *Per uur* type is dragged from the maandweergave (or edited in the aanvraag) rather than the week.
+  so the setting is invisible there. Drag-to-reschedule works on *Per uur* blocks as well as
+  full-day chips, day-granular either way: a free-time day is drawn per hour and is the one absence
+  an employee is entitled to shift, so excluding blocks excluded exactly the thing people move.
+  Dropping a block on another day column keeps its window and lets the API re-price; dragging it
+  *vertically* to change the window is deliberately not offered — that edit lives in the aanvraag.
+- **Vrije tijd has its own card on Verlof, not a balance tile.** Free days are laid down as
+  approved leave, so once they are all placed, entitled and approved are equal and a balance tile
+  reads "0 u over" — true, and no answer to the only two questions anyone has: when is my next day
+  off, and can I move it. The card leads with the next date, lists the upcoming days with
+  Verplaatsen / Annuleren per row, and breaks the pot into dit jaar / opgenomen / nog in te
+  plannen. Its type is filtered out of the balance grid, because stating the same balance twice —
+  once uselessly — is worse than stating it once.
 - **A feestdag is nobody's working day, not somebody's absence.** So it never renders as one more
   coloured chip beside three people's vakantie: on the Agenda it is a quiet dashed marking that
   links nowhere and never counts toward a "busy day" heatmap; on the timesheet it marks the *day
