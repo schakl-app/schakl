@@ -148,7 +148,7 @@
     method="POST"
     action="?/update"
     use:enhance={busy.wrap("save", () => ({ update }) => {
-      void update().then(() => (editing = false));
+      void update({ reset: false }).then(() => (editing = false));
     })}
     class="rounded-xl border border-border bg-surface-raised p-5"
   >

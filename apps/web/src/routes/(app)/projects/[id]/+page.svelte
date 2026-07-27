@@ -281,7 +281,7 @@
         use:enhance={() =>
           ({ update }) => {
             editing = false;
-            void update();
+            void update({ reset: false });
           }}
         class="space-y-3"
       >

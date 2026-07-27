@@ -136,7 +136,7 @@
       {/if}
 
       {#if data.gmail_enabled}
-        <form method="POST" action="?/googleGmailPrefs" use:enhance={busy.wrap()} class="space-y-3">
+        <form method="POST" action="?/googleGmailPrefs" use:enhance={busy.keep()} class="space-y-3">
           <label class="flex items-start gap-2 text-sm text-text">
             <FormCheckbox
               name="gmail_sync_enabled"

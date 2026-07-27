@@ -329,6 +329,9 @@
               action="?/saveTemplate"
               use:enhance={busy.wrap(`tpl-${tpl.kind}-${tpl.locale}`, ({ action }) => {
                 tplSubmit = action.search.includes("testTemplate") ? "test" : "save";
+                // The editor stays open on both actions, so it must survive them: a reset
+                // would blank the subject and body you just saved (docs/UX.md).
+                return async ({ update }) => update({ reset: false });
               })}
               class="space-y-3 rounded-lg border border-border p-4 {tplLocale(kind) === tpl.locale
                 ? ''

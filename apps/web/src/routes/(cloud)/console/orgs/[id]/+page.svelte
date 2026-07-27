@@ -127,7 +127,7 @@
       {t("cloud.plan.trial_ends", { date: fmtNumericDate(summary.trial_ends_at) })}
     </p>
   {/if}
-  <form method="POST" action="?/plan" use:enhance={busy.wrap("plan")} class="mt-4 space-y-3">
+  <form method="POST" action="?/plan" use:enhance={busy.keep("plan")} class="mt-4 space-y-3">
     <select name="plan" bind:value={planChoice} class={inputClass}>
       <option value="trial">{t("cloud.plan.trial")}</option>
       <option value="standard">{t("cloud.plan.standard")}</option>

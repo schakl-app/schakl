@@ -43,7 +43,7 @@
                 action="?/update"
                 use:enhance={busy.wrap(label.id, () => ({ update }) => {
                   editingId = null;
-                  void update();
+                  void update({ reset: false });
                 })}
                 class="flex flex-1 items-center gap-2"
               >

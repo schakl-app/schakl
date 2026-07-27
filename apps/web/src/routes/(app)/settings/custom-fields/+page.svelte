@@ -152,7 +152,7 @@
 <form
   method="POST"
   action="?/create"
-  use:enhance={busy.wrap("create")}
+  use:enhance={busy.clear("create")}
   class="rounded-xl border border-border bg-surface-raised p-5"
 >
   <h2 class="mb-4 text-sm font-semibold text-text">{t("settings.custom_fields.new")}</h2>
@@ -230,7 +230,7 @@
         action="?/update"
         use:enhance={busy.wrap("update", () => ({ update }) => {
           showEdit = false;
-          void update();
+          void update({ reset: false });
         })}
         class="space-y-3"
       >

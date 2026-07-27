@@ -161,7 +161,7 @@
     <form
       method="POST"
       action="?/applyTemplate"
-      use:enhance={busy.wrap("apply-template")}
+      use:enhance={busy.clear("apply-template")}
       class="mt-3 flex items-center gap-2"
     >
       <select
@@ -225,7 +225,7 @@
       enctype="multipart/form-data"
       use:enhance={busy.wrap("update", () => ({ update }) => {
         showEdit = false;
-        void update();
+        void update({ reset: false });
       })}
       class="space-y-3"
     >

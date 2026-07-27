@@ -116,7 +116,7 @@
     method="POST"
     action="?/create"
     use:enhance={busy.wrap("", () => ({ update, result }) => {
-      void update().then(() => {
+      void update({ reset: true }).then(() => {
         if (result.type === "success") showCreate = false;
       });
     })}

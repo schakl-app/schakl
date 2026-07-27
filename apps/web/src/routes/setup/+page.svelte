@@ -46,7 +46,7 @@
       {data.cloud ? t("setup.cloud_subtitle") : t("setup.subtitle")}
     </p>
 
-    <form method="POST" use:enhance={busy.wrap()} class="mt-6 space-y-8">
+    <form method="POST" use:enhance={busy.clear()} class="mt-6 space-y-8">
       <input type="hidden" name="cloud" value={data.cloud ? "true" : "false"} />
       {#if !data.cloud}
         <section class="space-y-4">

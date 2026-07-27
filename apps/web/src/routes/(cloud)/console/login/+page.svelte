@@ -20,7 +20,7 @@
 <div class="mx-auto mt-16 max-w-sm rounded-xl border border-border bg-surface-raised p-6">
   <h1 class="text-lg font-semibold text-text">{t("cloud.console.sign_in")}</h1>
   <p class="mt-1 text-sm text-text-muted">{t("cloud.console.sign_in_hint")}</p>
-  <form method="POST" use:enhance={busy.wrap()} class="mt-5 space-y-4">
+  <form method="POST" use:enhance={busy.clear()} class="mt-5 space-y-4">
     <div>
       <label for="email" class="mb-1 block text-sm font-medium text-text">
         {t("auth.email")}

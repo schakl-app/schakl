@@ -100,7 +100,7 @@
     <form
       method="POST"
       action="?/modules"
-      use:enhance={busy.wrap("modules")}
+      use:enhance={busy.keep("modules")}
       class="mt-4 space-y-3"
     >
       <div class="grid grid-cols-2 gap-2">

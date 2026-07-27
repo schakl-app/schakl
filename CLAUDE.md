@@ -239,7 +239,11 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
 - Start each phase in **plan mode**; propose the plan and wait for approval before coding.
 - **Read `docs/UX.md` before building or changing any screen** — it records the product's
   design language (mobile-first, use-vs-edit modes, European dates, template patterns,
-  where admin config lives) and the UX mistakes already corrected once.
+  where admin config lives) and the UX mistakes already corrected once. One of them is
+  enforced rather than remembered: every `use:enhance`d form that the user types into states
+  what happens to it on success — `busy.keep()` to edit, `busy.clear()` to start something new
+  — because inheriting SvelteKit's default reset blanks the field the user just saved.
+  `pnpm forms:check` (CI + pre-commit) fails a form that says neither.
 - **Performance and lean code are first-class requirements.** Slow-feeling pages are bugs.
   Keep SSR loads minimal (shared lookups in layout loads, `meta=false`/`count=false` on
   pickers, no redundant API calls or queries), prefer fixing the data path over adding

@@ -276,9 +276,22 @@
     "I pressed save and my text disappeared", and they are describing data loss.
   - **The affordance: `busy.keep(key)`** (`core/submit.svelte.ts`) — `wrap()` with
     `reset: false`, named for the intent. Reach for `keep()` on any form that edits something
-    that already exists, and `wrap()` only when you actively want the form emptied for the next
-    entry. Choosing between two named methods is a decision; remembering to hand-write a
+    that already exists, and `busy.clear(key)` when you actively want the form emptied for the
+    next entry. Choosing between two named methods is a decision; remembering to hand-write a
     `reset: false` callback is a thing to forget, and twenty components had each re-derived it.
+  - **The affordance was not enough on its own, so the rule is now enforced**
+    (`scripts/forms-check.mjs`, `pnpm forms:check`, run in CI's web job and by the pre-commit
+    hook on any staged `.svelte`). It shipped a *third* time after the two above — Instellingen
+    → Facturatie again, where the page's defaults block had been given `keep()` and the seller
+    block one section above it had not, so editing the agency's own company name and pressing
+    Opslaan emptied all eleven fields at once. That is the tell: this bug is not a screen anyone
+    forgot, it is a *form* anyone forgets, and it hides next to forms that got it right. The
+    check reads every `use:enhance`d form, and if it carries a control the user types into it
+    demands the intent be **stated**: `keep()`, `clear()`, or an explicit `reset:` in your own
+    callback (`reset: !entry` — the time entry form, which creates *or* edits). `clear()` does
+    exactly what bare `use:enhance` already did; it exists so that emptying a form is something
+    someone chose rather than something everyone inherited. Nothing is exempt by naming or by
+    folder — a form that genuinely wants the reset takes one word to say so.
   - **The component guard for text is `defaultValue`.** A shared field that owns a `bind:value`
     input should also set `defaultValue={/* the value it mounted with */}`, so a reset restores
     the saved value instead of blank — the text-input analogue of what `FormCheckbox` does for

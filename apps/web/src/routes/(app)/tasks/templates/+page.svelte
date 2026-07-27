@@ -177,7 +177,7 @@
     action={editing.id ? "?/update" : "?/create"}
     use:enhance={busy.wrap("template", () => ({ update }) => {
       editing = null;
-      void update();
+      void update({ reset: false });
     })}
     class="mb-6 rounded-xl border border-border bg-surface-raised p-5"
   >
@@ -456,7 +456,7 @@
                     () =>
                       ({ update }) => {
                         editingChecklistId = null;
-                        void update();
+                        void update({ reset: false });
                       },
                   )}
                   class="space-y-2"

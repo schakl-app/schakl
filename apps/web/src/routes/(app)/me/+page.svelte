@@ -205,7 +205,7 @@
         method="POST"
         action="?/upload"
         enctype="multipart/form-data"
-        use:enhance={busy.wrap()}
+        use:enhance={busy.clear()}
         class="grid gap-3 sm:grid-cols-2"
       >
         <input type="hidden" name="user_id" value={data.viewedUserId} />

@@ -78,7 +78,7 @@
   {#each data.groups as group (group.id)}
     <section class="rounded-xl border border-border bg-surface-raised p-5">
       {#if editingId === group.id}
-        <form method="POST" action="?/save" use:enhance={busy.wrap(group.id)} class="space-y-4">
+        <form method="POST" action="?/save" use:enhance={busy.keep(group.id)} class="space-y-4">
           <input type="hidden" name="id" value={group.id} />
           <div class="max-w-md">
             <label for="name-{group.id}" class="mb-1 block text-sm font-medium text-text"

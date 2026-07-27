@@ -139,7 +139,7 @@
       action="?/createContact"
       use:enhance={busy.wrap("", () => ({ update }) => {
         showCreate = false;
-        void update();
+        void update({ reset: true });
       })}
       class="space-y-3"
     >

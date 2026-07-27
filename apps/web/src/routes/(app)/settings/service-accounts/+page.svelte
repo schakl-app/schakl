@@ -211,7 +211,7 @@
     class="space-y-4"
     use:enhance={busy.wrap("createKey", () => ({ result, update }) => {
       if (result.type === "success") keyOpen = false;
-      void update();
+      void update({ reset: true });
     })}
   >
     <input type="hidden" name="account_id" value={keyAccountId} />

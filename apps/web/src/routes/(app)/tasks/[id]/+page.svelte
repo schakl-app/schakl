@@ -668,7 +668,7 @@
                 action="?/editChecklist"
                 use:enhance={busy.wrap("editChecklist", () => ({ update }) => {
                   editingChecklistId = null;
-                  void update();
+                  void update({ reset: false });
                 })}
                 class="mb-2 space-y-2"
               >
@@ -783,7 +783,7 @@
                       action="?/editItem"
                       use:enhance={busy.wrap("editItem", () => ({ update }) => {
                         editingItemId = null;
-                        void update();
+                        void update({ reset: false });
                       })}
                       class="mt-1 space-y-2 pl-6"
                     >
@@ -860,7 +860,7 @@
             <form
               method="POST"
               action="?/addChecklist"
-              use:enhance={busy.wrap("addChecklistTpl")}
+              use:enhance={busy.clear("addChecklistTpl")}
               class="mt-2 flex gap-2"
             >
               <select
@@ -1056,7 +1056,7 @@
                   action="?/editComment"
                   use:enhance={busy.wrap("editComment", () => ({ update }) => {
                     editingCommentId = null;
-                    void update();
+                    void update({ reset: false });
                   })}
                 >
                   <input type="hidden" name="comment_id" value={comment.id} />
@@ -1158,7 +1158,7 @@
               {statuses.find((s) => s.key === task.status)?.name ?? task.status}
             </p>
           {:else}
-            <form method="POST" action="?/update" use:enhance>
+            <form method="POST" action="?/update" use:enhance={busy.keep("status")}>
               <select
                 id="status"
                 name="status"
@@ -1427,7 +1427,7 @@
             action="?/setLabels"
             use:enhance={busy.wrap("setLabels", () => ({ update }) => {
               showLabelPicker = false;
-              void update();
+              void update({ reset: false });
             })}
             class="space-y-1"
           >

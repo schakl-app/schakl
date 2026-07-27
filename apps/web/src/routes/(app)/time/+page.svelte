@@ -380,7 +380,7 @@
     <div class="w-32">
       <DateInput name="_jump" id="jump-date" value={data.selectedDate} onchange={jumpToDate} />
     </div>
-    <form method="POST" action="?/saveView" use:enhance bind:this={viewForm}>
+    <form method="POST" action="?/saveView" use:enhance={busy.keep("view")} bind:this={viewForm}>
       <select
         name="week_view"
         aria-label={t("time.view.label")}
@@ -413,7 +413,7 @@
       <form
         method="POST"
         action="?/startTimer"
-        use:enhance={busy.wrap("startTimer")}
+        use:enhance={busy.clear("startTimer")}
         class="flex flex-wrap items-center gap-2"
       >
         <input

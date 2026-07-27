@@ -147,7 +147,7 @@
     method="POST"
     action="?/invite"
     use:enhance={busy.wrap("invite", () => ({ update }) => {
-      void update().then(() => (showInvite = false));
+      void update({ reset: true }).then(() => (showInvite = false));
     })}
     class="mb-6 rounded-xl border border-border bg-surface-raised p-4"
   >

@@ -191,7 +191,7 @@
     <form
       method="POST"
       action="?/saveSeller"
-      use:enhance={busy.wrap("seller")}
+      use:enhance={busy.keep("seller")}
       class="grid gap-3 sm:grid-cols-2"
     >
       <div class="sm:col-span-2">
@@ -649,7 +649,7 @@
     <form
       method="POST"
       action="?/saveReminders"
-      use:enhance={busy.wrap("reminders")}
+      use:enhance={busy.keep("reminders")}
       class="space-y-3"
     >
       <label class="flex items-center gap-2 text-sm text-text">

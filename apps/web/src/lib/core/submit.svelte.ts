@@ -74,4 +74,20 @@ export class InFlight {
       await update({ reset: false });
     });
   }
+
+  /**
+   * The deliberate opposite of {@link keep}: a form that **starts something new** — a create
+   * form, a comment box, an invite — and should come back empty for the next entry.
+   *
+   * Behaviourally this is exactly `wrap()`, because emptying is what SvelteKit already does.
+   * It exists so the choice is written down: `scripts/forms-check.mjs` fails a form that
+   * carries typed-in controls and says neither `keep()` nor `clear()`, which is how the
+   * "pressing Save blanked my text" bug kept coming back — nobody *decided* to reset, they
+   * inherited it. See docs/UX.md, "Saving must never blank the form".
+   */
+  clear(key: string | ((input: Parameters<SubmitFunction>[0]) => string) = ""): SubmitFunction {
+    return this.wrap(key, () => async ({ update }) => {
+      await update({ reset: true });
+    });
+  }
 }

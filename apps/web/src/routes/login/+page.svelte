@@ -108,7 +108,7 @@
         </form>
       {/if}
     {:else if data.localLoginEnabled}
-      <form method="POST" action="?/login" use:enhance={busy.wrap("login")} class="space-y-4">
+      <form method="POST" action="?/login" use:enhance={busy.clear("login")} class="space-y-4">
         <div>
           <label for="email" class="mb-1 block text-sm font-medium text-text">
             {t("auth.email")}

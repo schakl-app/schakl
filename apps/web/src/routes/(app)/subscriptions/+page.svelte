@@ -529,7 +529,7 @@
   <form
     method="POST"
     action="?/bulkStatus"
-    use:enhance={busy.wrap("bulkStatus")}
+    use:enhance={busy.clear("bulkStatus")}
     class="flex items-center gap-1.5"
   >
     {#each ids as id (id)}
