@@ -269,12 +269,11 @@
   </p>
 {/if}
 
-<!-- Employment editors for the roster ⋯ menu (schedule, contracts, recurring). One instance;
-     each row opens it through `openEmployment`. No rate here — that stays a Gebruikers-only act. -->
+<!-- The Dienstverband wizard for the roster ⋯ menu. One instance; each row opens it through
+     `openEmployment`. No rate here — that stays a Gebruikers-only act. -->
 {#if data.manageEmployment}
   <EmploymentModals
     register={(open) => (openEmployment = open)}
-    profiles={data.profiles}
     contracts={data.contracts}
     recurring={data.recurring}
     leaveTypes={types}

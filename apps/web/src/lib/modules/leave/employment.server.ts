@@ -24,25 +24,123 @@ function parseSchedule(raw: FormDataEntryValue | null): WorkSchedule | null {
   }
 }
 
+/** `derive` = the norm shortfall, `roster` = already in the week, `custom` = an agreed figure. */
+function freeTimeHours(mode: string, raw: FormDataEntryValue | null): string | null {
+  if (mode === "roster") return "0";
+  if (mode !== "custom") return null;
+  return (
+    String(raw ?? "")
+      .trim()
+      .replace(",", ".") || null
+  );
+}
+
 export const employmentActions = {
   /**
-   * This person's week (#46), or `null` to follow the org default. `hours_per_week` is derived
-   * from it by the API and never posted from here.
+   * The whole employment arrangement in **one** save: the contract period, the week it is worked,
+   * how much free time it accrues, and optionally the pattern that places those free days.
+   *
+   * One action rather than the three the three old modals posted, because they were never three
+   * decisions — the contract hours only mean something against the week, and the free days only
+   * exist because the two differ. docs/UX.md: one save button per editing surface.
+   *
+   * `contract_id` present = adjust the arrangement in force; absent = a new period (a raise, a
+   * new hire). The API refuses an overlapping period either way, so "new" cannot silently
+   * rewrite history.
    */
-  saveSchedule: async (event) => {
+  saveEmployment: async (event) => {
     const form = await event.request.formData();
     const userId = String(form.get("user_id") ?? "");
     if (!userId) return fail(400, { error: "errors.required" });
+    const api = apiFor(event);
+
     const inherit = form.get("inherit") === "true";
     const schedule = inherit ? null : parseSchedule(form.get("schedule"));
     if (!inherit && !schedule) return fail(400, { error: "errors.required" });
+    const free_time_hours_per_week = freeTimeHours(
+      String(form.get("free_time_mode") ?? "derive"),
+      form.get("free_time_hours"),
+    );
 
-    const { error } = await apiFor(event).PUT("/api/v1/leave/profiles/{user_id}", {
-      params: { path: { user_id: userId } },
-      body: { schedule },
+    const contractId = String(form.get("contract_id") ?? "").trim();
+    if (contractId) {
+      const { error } = await api.PATCH("/api/v1/leave/contracts/{contract_id}", {
+        params: { path: { contract_id: contractId } },
+        body: { schedule, free_time_hours_per_week },
+      });
+      if (error) return fail(400, { error: apiErrorKey(error).key });
+    } else {
+      const start = String(form.get("start_date") ?? "");
+      const hours = String(form.get("contract_hours_per_week") ?? "")
+        .trim()
+        .replace(",", ".");
+      if (!start || !hours) return fail(400, { error: "errors.required" });
+      const { error } = await api.POST("/api/v1/leave/contracts", {
+        body: {
+          user_id: userId,
+          start_date: start,
+          end_date: String(form.get("end_date") ?? "").trim() || null,
+          contract_hours_per_week: hours,
+          schedule,
+          free_time_hours_per_week,
+          note: String(form.get("note") ?? "").trim() || null,
+        },
+      });
+      if (error) return fail(400, { error: apiErrorKey(error).key });
+    }
+
+    // The pattern is optional: plenty of arrangements accrue free time that the employee books
+    // by hand. A failure here is reported *with* `employmentSaved`, so the wizard does not offer
+    // to re-save a contract that already landed.
+    let generated = 0;
+    const patternMode = String(form.get("pattern_mode") ?? "none");
+    const typeId = String(form.get("leave_type_id") ?? "");
+    const anchor = String(form.get("anchor_date") ?? "");
+    if ((patternMode === "spread" || patternMode === "interval") && typeId && anchor) {
+      const { data, error } = await api.POST("/api/v1/leave/recurring", {
+        body: {
+          user_id: userId,
+          leave_type_id: typeId,
+          anchor_date: anchor,
+          // `interval_weeks` always travels: in spread mode the API overwrites it with the
+          // nearest equivalent cadence anyway, and the schema requires it.
+          interval_weeks: Number(form.get("interval_weeks") ?? 1) || 1,
+          days_per_year:
+            patternMode === "spread" ? Number(form.get("days_per_year") ?? 0) || null : null,
+          start_time: String(form.get("start_time") ?? "").trim() || null,
+          end_time: String(form.get("end_time") ?? "").trim() || null,
+        },
+      });
+      if (error) {
+        return fail(400, { error: apiErrorKey(error).key, employmentSaved: true });
+      }
+      generated = data?.generated ?? 0;
+    }
+
+    // What the save actually produced — days placed, and days a reprorated pot no longer covers
+    // (#264 moves the entitlement and leaves the calendar alone). Reported, never auto-cancelled.
+    const { data: freeTime } = await api.GET("/api/v1/leave/free-time", {
+      params: { query: { year: new Date().getFullYear(), user_id: userId } },
+    });
+    return {
+      employmentSaved: true,
+      employmentGenerated: generated,
+      freeTime: freeTime ?? null,
+    };
+  },
+
+  /** Give back free days the pot no longer covers — explicit ids the wizard just listed. */
+  withdrawFreeTime: async (event) => {
+    const form = await event.request.formData();
+    const ids = String(form.get("request_ids") ?? "")
+      .split(",")
+      .filter(Boolean);
+    if (ids.length === 0) return fail(400, { error: "errors.required" });
+    const { data, error } = await apiFor(event).POST("/api/v1/leave/free-time/withdraw", {
+      body: { request_ids: ids },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
-    return { scheduleSaved: true };
+    return { withdrawn: data?.cancelled ?? 0, withdrawSkipped: data?.skipped?.length ?? 0 };
   },
 
   /**
@@ -63,29 +161,6 @@ export const employmentActions = {
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { rateSaved: true };
-  },
-
-  /** A new employment contract (#65). A *changed* contract is a new row, never an in-place edit. */
-  saveContract: async (event) => {
-    const form = await event.request.formData();
-    const userId = String(form.get("user_id") ?? "");
-    const start = String(form.get("start_date") ?? "");
-    const hoursRaw = String(form.get("contract_hours_per_week") ?? "")
-      .trim()
-      .replace(",", ".");
-    if (!userId || !start || !hoursRaw) return fail(400, { error: "errors.required" });
-    const endRaw = String(form.get("end_date") ?? "").trim();
-    const { error } = await apiFor(event).POST("/api/v1/leave/contracts", {
-      body: {
-        user_id: userId,
-        start_date: start,
-        end_date: endRaw || null,
-        contract_hours_per_week: hoursRaw,
-        note: String(form.get("note") ?? "").trim() || null,
-      },
-    });
-    if (error) return fail(400, { error: apiErrorKey(error).key });
-    return { contractSaved: true };
   },
 
   /** Terminate a contract by setting its end date (the row survives — it's history). */

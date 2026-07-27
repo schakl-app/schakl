@@ -1,12 +1,12 @@
 <script lang="ts" module>
   import type { ActionItem } from "$lib/core/ui/ActionsMenu.svelte";
-  import { BadgeEuro, CalendarClock, FileText, Repeat } from "@lucide/svelte";
+  import { BadgeEuro, Briefcase } from "@lucide/svelte";
 
   import { t } from "$lib/core/i18n";
 
   /** The minimal member shape both `/members` and `/members/lookup` satisfy — a name and an id. */
   export type EmploymentMember = { user_id: string; full_name: string | null; email: string };
-  export type EmploymentKind = "schedule" | "contracts" | "recurring" | "rate";
+  export type EmploymentKind = "employment" | "rate";
   /** Handed to a host via `register`; a ⋯ item calls it to open the right modal for a member. */
   export type OpenEmployment = (member: EmploymentMember, kind: EmploymentKind) => void;
 
@@ -14,6 +14,11 @@
    * The employment actions for one member's ⋯ menu, shared by Instellingen → Gebruikers and the
    * team leave roster so the two can't drift. An action appears only when its capability flag is
    * passed: the team roster omits the salary-adjacent `rate`, which stays a Gebruikers-only act.
+   *
+   * **One item, not three.** Werkrooster / Contracten / Terugkerende vrije tijd used to be three
+   * separate entries, which is how the relationship between them became invisible: contract hours
+   * only mean something against the week that is worked, and free days exist because the two
+   * differ. They are one wizard now (see {@link EmploymentWizard}).
    */
   export function employmentMenuItems(
     member: EmploymentMember,
@@ -23,19 +28,9 @@
     const items: ActionItem[] = [];
     if (opts.schedules) {
       items.push({
-        label: t("settings.users.schedule"),
-        icon: CalendarClock,
-        onclick: () => open?.(member, "schedule"),
-      });
-      items.push({
-        label: t("settings.users.contracts"),
-        icon: FileText,
-        onclick: () => open?.(member, "contracts"),
-      });
-      items.push({
-        label: t("settings.users.recurring"),
-        icon: Repeat,
-        onclick: () => open?.(member, "recurring"),
+        label: t("settings.employment.title"),
+        icon: Briefcase,
+        onclick: () => open?.(member, "employment"),
       });
     }
     if (opts.rates) {
@@ -51,19 +46,19 @@
 
 <script lang="ts">
   /**
-   * Every employment-data editor for one member — work schedule (#46), contracts (#65),
-   * recurring free days (#107) and hourly rate (#82) — as one shared surface. The
-   * modals, their state and the "N days placed" line live here once; a host page mounts a single
-   * instance, receives the `open(member, kind)` opener through `register`, and wires it onto each
-   * row's ⋯ menu via {@link employmentMenuItems}. Both Instellingen → Gebruikers and the team
-   * leave roster drive it, so the two can never drift.
+   * Every employment-data editor for one member, as one shared surface: the **Dienstverband**
+   * wizard (contract + werkweek + vrije tijd, #46/#65/#107 merged) and the hourly rate (#82),
+   * which stays separate because it has its own permission and is nobody's idea of "employment
+   * terms you set up once".
    *
-   * The forms post to `?/saveSchedule`, `?/saveContract`, `?/terminateContract`,
-   * `?/deleteContract`, `?/saveRate` and the three `?/…Recurring` actions — every host declares
-   * them by spreading `employmentActions` (employment.server.ts).
+   * A host page mounts a single instance, receives the `open(member, kind)` opener through
+   * `register`, and wires it onto each row's ⋯ menu via {@link employmentMenuItems}. Both
+   * Instellingen → Gebruikers and the team leave roster drive it, so the two can never drift.
+   *
+   * The forms post to `?/saveEmployment`, `?/withdrawFreeTime`, `?/terminateContract`,
+   * `?/deleteContract` and `?/saveRate` — every host declares them by spreading
+   * `employmentActions` (employment.server.ts).
    */
-  import { Trash2 } from "@lucide/svelte";
-
   import { enhance } from "$app/forms";
   import { fmtNumericDate } from "$lib/core/format";
   // `t` is imported in the module script above and is in scope here and in the markup.
@@ -72,51 +67,16 @@
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
 
-  import { fmtHours, type LeaveTypeInfo } from "./format";
-  import RecurringDaysManager from "./RecurringDaysManager.svelte";
-  import {
-    cloneSchedule,
-    defaultSchedule as defaultScheduleFn,
-    weekHours,
-    type WorkSchedule,
-  } from "./schedule";
-  import WorkScheduleEditor from "./WorkScheduleEditor.svelte";
-
-  interface ProfileRow {
-    user_id: string;
-    // The generated client types weekdays as optional, so it is not a bare `WorkSchedule`;
-    // `openSchedule` casts on read, exactly as the page did before this was shared (#46).
-    schedule: unknown;
-  }
-  interface ContractRow {
-    id: string;
-    user_id: string;
-    contract_hours_per_week: string | number;
-    scheduled_hours_per_week: string | number;
-    start_date: string;
-    end_date: string | null;
-  }
-  interface RecurringRow {
-    id: string;
-    user_id: string;
-    leave_type_id: string;
-    anchor_date: string;
-    interval_weeks: number;
-    start_time?: string | null;
-    end_time?: string | null;
-    active: boolean;
-  }
-  /** Only the fields these modals read + the recurring "N placed for <name>" success line. */
-  interface EmploymentForm {
-    error?: string | null;
-    recurringAdded?: boolean;
-    recurringSaved?: boolean;
-    recurringGenerated?: number;
-  }
+  import EmploymentWizard, {
+    type WizardContract,
+    type WizardPattern,
+    type WizardResult,
+  } from "./EmploymentWizard.svelte";
+  import { type LeaveTypeInfo } from "./format";
+  import { type WorkSchedule } from "./schedule";
 
   let {
     register,
-    profiles = [],
     contracts = [],
     recurring = [],
     leaveTypes = [],
@@ -127,55 +87,44 @@
   }: {
     /** Called once with the opener so a host can trigger a modal from a ⋯ item. */
     register?: (open: OpenEmployment) => void;
-    profiles?: ProfileRow[];
-    contracts?: ContractRow[];
-    recurring?: RecurringRow[];
-    /** Active types the recurring planner may use (already the tenant's; filtered here to active). */
+    contracts?: WizardContract[];
+    recurring?: WizardPattern[];
+    /** Active types the free-time step may plan with. */
     leaveTypes?: LeaveTypeInfo[];
-    /** The org default week the schedule editor inherits from (Instellingen → Verlof). */
+    /** The org default week — the full-time norm, and what an inheriting contract follows. */
     orgDefaultSchedule: WorkSchedule;
     /** Personal hourly rate per user; only passed where the caller may see rates (#82). */
     rateByUser?: Record<string, unknown>;
     canEditRates?: boolean;
-    form?: EmploymentForm | null;
+    form?: WizardResult | null;
   } = $props();
 
   const busy = new InFlight();
   const todayIso = new Date().toISOString().slice(0, 10);
 
-  // One member is targeted at a time; the ⋯ item that opened a modal chose it. The four modals
-  // are a single instance each, so the returned `form` (page-level, no member id) still lands on
-  // the right person — the same reason this lived in the page before it was shared.
+  // One member is targeted at a time; the ⋯ item that opened a modal chose it. Both modals are a
+  // single instance, so the returned `form` (page-level, no member id) still lands on the right
+  // person — the same reason this lived in the page before it was shared.
   let member = $state<EmploymentMember | null>(null);
-  let scheduleOpen = $state(false);
-  let contractsOpen = $state(false);
-  let recurringOpen = $state(false);
+  let employmentOpen = $state(false);
   let rateOpen = $state(false);
+  // `form` survives until the next navigation, so a run's receipt would still be showing the next
+  // time the wizard opens. Whatever `form` holds at open is marked stale; a genuinely new action
+  // result is a new object and so reads as live.
+  let staleForm = $state<WizardResult | null>(null);
+  const liveForm = $derived(form && form !== staleForm ? form : null);
 
-  const profileByUser = $derived(Object.fromEntries(profiles.map((p) => [p.user_id, p])));
   const contractsByUser = $derived.by(() => {
-    const map: Record<string, ContractRow[]> = {};
+    const map: Record<string, WizardContract[]> = {};
     for (const c of contracts) (map[c.user_id] ??= []).push(c);
     return map;
   });
   const recurringByUser = $derived.by(() => {
-    const map: Record<string, RecurringRow[]> = {};
+    const map: Record<string, WizardPattern[]> = {};
     for (const p of recurring) (map[p.user_id] ??= []).push(p);
     return map;
   });
   const activeLeaveTypes = $derived(leaveTypes.filter((lt) => lt.active));
-
-  // --- work schedule (#46) --------------------------------------------------------
-  let inherit = $state(true);
-  // Filled by `openSchedule` before the modal is ever shown; the initial value is never rendered.
-  let draft = $state<WorkSchedule>(defaultScheduleFn());
-
-  function openSchedule(target: EmploymentMember) {
-    const own = profileByUser[target.user_id]?.schedule ?? null;
-    inherit = own === null;
-    draft = cloneSchedule((own ?? orgDefaultSchedule) as WorkSchedule);
-    scheduleOpen = true;
-  }
 
   // --- hourly rate (#82) ----------------------------------------------------------
   let rateDraft = $state("");
@@ -189,31 +138,19 @@
   // Asking *per which date* rather than assuming today: an open-ended ("doorlopend") contract can
   // be agreed to end on a specific future or past date; the row survives as history.
   let terminateOpen = $state(false);
-  let terminateFor = $state<ContractRow | null>(null);
+  let terminateFor = $state<WizardContract | null>(null);
   let terminateDate = $state(todayIso);
-  function openTerminate(contract: ContractRow) {
+  function openTerminate(contract: WizardContract) {
     terminateFor = contract;
     terminateDate = todayIso;
     terminateOpen = true;
   }
 
-  // --- free time preview on the contract-add form (#282) --------------------------
-  // The full-time norm is the org default week; a contract below it accrues the shortfall as free
-  // time. Surfaced live so a reduced contract never silently grows a free-time pot (the confusion
-  // #282 set out to end). Bound to the hours input; cleared when a successful add resets the form.
-  let contractHoursDraft = $state("");
-  const fullTimeNorm = $derived(weekHours(orgDefaultSchedule));
-  const contractFreeTime = $derived.by(() => {
-    const hours = Number(String(contractHoursDraft).replace(",", ".").trim());
-    return Number.isFinite(hours) && hours > 0 && hours < fullTimeNorm ? fullTimeNorm - hours : 0;
-  });
-
   const open: OpenEmployment = (target, kind) => {
     member = target;
-    if (kind === "schedule") openSchedule(target);
-    else if (kind === "contracts") contractsOpen = true;
-    else if (kind === "recurring") recurringOpen = true;
-    else openRate(target);
+    staleForm = form;
+    if (kind === "rate") openRate(target);
+    else employmentOpen = true;
   };
   // The host stores this to trigger a modal from a row's ⋯ menu — a callback prop, not an
   // imperative ref, so it fits how this codebase wires shared surfaces (ondone, oncreate, …).
@@ -223,203 +160,23 @@
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
 
-<!-- The free-time modal closes on a successful add (#271), so its "N days placed" line lands here,
-     where it outlives the surface that produced it. Named: a bare count would not say whose
-     calendar just filled up. -->
-{#if form?.recurringAdded && member}
-  <p class="mb-4 text-sm text-green-600 dark:text-green-400">
-    {t("settings.users.recurring_generated", {
-      count: form.recurringGenerated ?? 0,
-      name: member.full_name || member.email,
-    })}
-  </p>
-{/if}
-
-<!-- This person's working week (#46). One save; contract hours are derived from it. -->
-<Modal bind:open={scheduleOpen} title={t("settings.users.schedule")}>
+<!-- Contract, werkweek and vrije tijd in one flow. `2xl` because step 2 carries the seven-row
+     schedule grid; the steps themselves keep each screen short. -->
+<Modal bind:open={employmentOpen} title={t("settings.employment.title")} size="2xl">
   {#if member}
-    {#key member.user_id}
-      <div class="space-y-4">
-        <p class="text-sm text-text-muted">
-          {member.full_name || member.email}
-        </p>
-
-        <label class="flex items-center gap-2 text-sm text-text">
-          <input type="checkbox" bind:checked={inherit} class="h-4 w-4 rounded border-border" />
-          {t("settings.users.schedule_inherit")}
-        </label>
-
-        {#if inherit}
-          <p class="rounded-lg bg-surface px-3 py-2 text-xs text-text-muted">
-            {t("settings.users.schedule_inherited_hint", {
-              hours: fmtHours(weekHours(orgDefaultSchedule)),
-            })}
-          </p>
-        {/if}
-
-        <!-- Rendered outside the form on purpose: its TimeInputs post hidden fields of their own
-             and a form they are not inside is a form they cannot pollute. -->
-        <div class:opacity-50={inherit} class:pointer-events-none={inherit}>
-          <WorkScheduleEditor
-            bind:schedule={draft}
-            formId="user-schedule-form"
-            disabled={inherit}
-          />
-        </div>
-
-        {#if form?.error}<p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
-
-        <form
-          id="user-schedule-form"
-          method="POST"
-          action="?/saveSchedule"
-          class="flex justify-end"
-          use:enhance={busy.wrap("schedule", () => ({ result, update }) => {
-            if (result.type === "success") scheduleOpen = false;
-            void update({ reset: false });
-          })}
-        >
-          <input type="hidden" name="user_id" value={member.user_id} />
-          <input type="hidden" name="inherit" value={String(inherit)} />
-          <Button loading={busy.is("schedule")}>
-            {t("common.save")}
-          </Button>
-        </form>
-      </div>
-    {/key}
-  {/if}
-</Modal>
-
-<!-- Employment contracts (#65): contract hours, the legal number. A contract below the full-time
-     norm accrues the shortfall as free time (#282), previewed live under the hours field. A
-     changed contract is a new row, so this is add + terminate, never edit-in-place. -->
-<Modal bind:open={contractsOpen} title={t("settings.users.contracts")}>
-  {#if member}
-    {#key member.user_id}
-      {@const rows = contractsByUser[member.user_id] ?? []}
-      <div class="space-y-4">
-        <p class="text-sm text-text-muted">{member.full_name || member.email}</p>
-
-        {#if rows.length > 0}
-          <ul class="divide-y divide-border rounded-lg border border-border">
-            {#each rows as contract (contract.id)}
-              <li class="flex items-center gap-3 px-3 py-2 text-sm">
-                <div class="min-w-0 flex-1">
-                  <span class="font-medium text-text">
-                    {t("settings.users.contract_hours_value", {
-                      hours: fmtHours(contract.contract_hours_per_week),
-                    })}
-                  </span>
-                  <span class="block text-xs text-text-muted">
-                    <!-- Through the shared formatter, so the period honors the personal
-                         date-format preference like the rest of the app (#104). -->
-                    {fmtNumericDate(contract.start_date)} → {contract.end_date
-                      ? fmtNumericDate(contract.end_date)
-                      : t("settings.users.contract_open")}
-                    · {t("settings.users.contract_scheduled", {
-                      hours: fmtHours(contract.scheduled_hours_per_week),
-                    })}
-                  </span>
-                </div>
-                {#if !contract.end_date}
-                  <Button
-                    variant="secondary"
-                    size="xs"
-                    type="button"
-                    onclick={() => openTerminate(contract)}
-                    title={t("settings.users.contract_terminate")}
-                  >
-                    {t("settings.users.contract_terminate")}
-                  </Button>
-                {/if}
-                <form method="POST" action="?/deleteContract" use:enhance>
-                  <input type="hidden" name="contract_id" value={contract.id} />
-                  <button
-                    class="rounded-lg p-1 text-text-muted hover:text-red-600 dark:hover:text-red-400"
-                    title={t("common.delete")}
-                    aria-label={t("common.delete")}
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </form>
-              </li>
-            {/each}
-          </ul>
-        {:else}
-          <p class="rounded-lg bg-surface px-3 py-2 text-xs text-text-muted">
-            {t("settings.users.contract_empty")}
-          </p>
-        {/if}
-
-        <!-- Keyed on the row count: a successful add re-mounts the form, which is what clears
-             the DateInputs — their display text is component state a form reset cannot reach. -->
-        {#key rows.length}
-          <form
-            method="POST"
-            action="?/saveContract"
-            class="space-y-3 border-t border-border pt-4"
-            use:enhance={busy.wrap("saveContract", () => ({ result, update }) => {
-              if (result.type === "success") {
-                contractHoursDraft = "";
-                void update({ reset: true });
-              } else void update({ reset: false });
-            })}
-          >
-            <input type="hidden" name="user_id" value={member.user_id} />
-            <p class="text-xs font-semibold uppercase tracking-wide text-text-muted">
-              {t("settings.users.contract_add")}
-            </p>
-            <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <!-- Shared DateInput, never a native type="date": browsers render those after the
-                 browser locale, ignoring the personal date-format preference (#104, docs/UX.md). -->
-              <div>
-                <label for="c-start" class="mb-1 block text-xs text-text-muted"
-                  >{t("settings.users.contract_start")}</label
-                >
-                <DateInput id="c-start" name="start_date" required />
-              </div>
-              <div>
-                <label for="c-end" class="mb-1 block text-xs text-text-muted"
-                  >{t("settings.users.contract_end")}</label
-                >
-                <DateInput id="c-end" name="end_date" />
-              </div>
-              <div>
-                <label for="c-hours" class="mb-1 block text-xs text-text-muted"
-                  >{t("settings.users.contract_hours")}</label
-                >
-                <input
-                  id="c-hours"
-                  name="contract_hours_per_week"
-                  inputmode="decimal"
-                  required
-                  placeholder="38"
-                  bind:value={contractHoursDraft}
-                  class={inputClass}
-                />
-                <!-- No silent accrual (#282): a contract below the norm shows the free time it earns. -->
-                {#if contractFreeTime > 0}
-                  <p class="mt-1 text-xs text-brand">
-                    {t("settings.users.contract_free_time", {
-                      hours: fmtHours(contractFreeTime),
-                      norm: fmtHours(fullTimeNorm),
-                    })}
-                  </p>
-                {/if}
-              </div>
-            </div>
-            <p class="text-xs text-text-muted">{t("settings.users.contract_hint")}</p>
-            {#if form?.error}<p class="text-sm text-red-600 dark:text-red-400">
-                {t(form.error)}
-              </p>{/if}
-            <div class="flex justify-end">
-              <Button loading={busy.is("saveContract")}>
-                {t("settings.users.contract_add")}
-              </Button>
-            </div>
-          </form>
-        {/key}
-      </div>
+    <!-- Keyed on the member *and* on whether a save has landed: re-mounting is what rewinds the
+         wizard to step 1 for the next person, and what clears a finished run's receipt. -->
+    {#key `${member.user_id}:${liveForm?.employmentSaved ? "done" : "open"}`}
+      <EmploymentWizard
+        memberName={member.full_name || member.email}
+        userId={member.user_id}
+        contracts={contractsByUser[member.user_id] ?? []}
+        patterns={recurringByUser[member.user_id] ?? []}
+        leaveTypes={activeLeaveTypes}
+        {orgDefaultSchedule}
+        form={liveForm}
+        onterminate={openTerminate}
+      />
     {/key}
   {/if}
 </Modal>
@@ -464,29 +221,6 @@
           </Button>
         </div>
       </form>
-    {/key}
-  {/if}
-</Modal>
-
-<!-- Recurring free days / free time (#107): a schedule-derived pattern the generator lays
-     onto the calendar as pre-approved, individually movable free days. Shared surface with
-     the employee's own on /leave; here a manager may plan any active type. -->
-<Modal bind:open={recurringOpen} title={t("settings.users.recurring")}>
-  {#if member}
-    {#key member.user_id}
-      <div class="space-y-4">
-        <p class="text-sm text-text-muted">{member.full_name || member.email}</p>
-        <RecurringDaysManager
-          patterns={recurringByUser[member.user_id] ?? []}
-          types={activeLeaveTypes}
-          userId={member.user_id}
-          error={form?.error ?? null}
-          generated={form?.recurringSaved && !form.recurringAdded
-            ? (form.recurringGenerated ?? 0)
-            : null}
-          ondone={() => (recurringOpen = false)}
-        />
-      </div>
     {/key}
   {/if}
 </Modal>

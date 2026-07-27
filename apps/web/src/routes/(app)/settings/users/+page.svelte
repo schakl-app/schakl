@@ -127,13 +127,11 @@
   </button>
 </div>
 
-<!-- Every employment editor for a member (schedule, contracts, recurring, rate) + the free-time
-     "N days placed" line, shared with the team leave roster. One instance; each row's ⋯ menu
-     opens it through `openEmployment`. -->
+<!-- The Dienstverband wizard (contract + werkweek + vrije tijd) and the hourly rate, shared with
+     the team leave roster. One instance; each row's ⋯ menu opens it through `openEmployment`. -->
 {#if data.schedules || data.rates}
   <EmploymentModals
     register={(open) => (openEmployment = open)}
-    profiles={data.profiles}
     contracts={data.contracts}
     recurring={data.recurring}
     leaveTypes={data.leaveTypes as LeaveTypeInfo[]}
