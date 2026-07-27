@@ -12,9 +12,11 @@ Core owns every mechanic — modules only hand in an :class:`ImpexDescriptor`. T
   one transaction (``require_context`` commits or rolls back the lot), and a report with errors
   means nothing was applied.
 
-Imports are capped at :data:`MAX_IMPORT_ROWS` data rows per request. Larger files belong to a
-background ARQ job with progress + a result report — explicitly deferred (issue #77 phase note);
-the cap is what keeps the synchronous path honest until that lands.
+Reading the bytes — CSV, TSV, a pasted block, Excel — is :mod:`app.core.impex.parsing`, which
+also owns every size cap (:data:`~app.core.impex.parsing.MAX_IMPORT_ROWS` data rows per
+request). Larger files belong to a background ARQ job with progress + a result report —
+explicitly deferred (issue #77 phase note); the cap is what keeps the synchronous path honest
+until that lands.
 """
 
 from __future__ import annotations
@@ -33,6 +35,7 @@ from pydantic import EmailStr, TypeAdapter, ValidationError
 
 from app.core.customfields.models import CustomFieldDefinition
 from app.core.customfields.service import CustomFieldsService
+from app.core.impex.parsing import parse_source
 from app.core.impex.schemas import ImportReport, ImportRowError
 from app.core.impex.spec import ImpexColumn, ImpexDescriptor
 from app.core.tenancy import RequestContext
@@ -40,10 +43,6 @@ from app.errors import AppError
 
 #: Page size for the export's batched fetch through the module's list service.
 EXPORT_PAGE_SIZE = 500
-#: Synchronous import ceiling; row MAX+1 onward is a 413, never a silent truncation.
-MAX_IMPORT_ROWS = 2000
-#: Byte ceiling — a 2000-row CSV is well under this; anything bigger is not a CSV import.
-MAX_IMPORT_BYTES = 5 * 1024 * 1024
 #: Row errors returned per report; ``error_count`` always carries the full number.
 ERRORS_RETURNED = 50
 #: Multi-select custom values join/split on this in a CSV cell.
@@ -156,14 +155,21 @@ class ImpexService:
     # Import
     # ------------------------------------------------------------------ #
     async def import_csv(
-        self, d: ImpexDescriptor, raw: bytes, *, dry_run: bool
+        self,
+        d: ImpexDescriptor,
+        raw: bytes,
+        *,
+        dry_run: bool,
+        sheet: str | None = None,
+        pasted: bool = False,
     ) -> ImportReport:
         self.ctx.require("impex.import")  # the route declares both too; defence-in-depth
         self.ctx.require(d.write_permission)
         if not d.importable:
             # Defensive: the router doesn't even mount an import route for these.
             raise AppError("not_found", "errors.not_found", status_code=404)
-        header, data = self._parse(raw)
+        table = parse_source(raw, sheet=sheet, pasted=pasted)
+        header, data = table.header, table.rows
 
         defs = list(await self.custom_fields.definitions(d.entity_type))
         by_key = {c.key: c for c in d.columns}
@@ -248,35 +254,6 @@ class ImpexService:
         built_in = {c.key for c in d.columns}
         defs = await self.custom_fields.definitions(d.entity_type)
         return [cd for cd in defs if cd.key not in built_in]
-
-    def _parse(self, raw: bytes) -> tuple[list[str], list[list[str]]]:
-        """Bytes → (header, data rows). Tolerates a BOM and a `;` delimiter (Dutch Excel)."""
-        if len(raw) > MAX_IMPORT_BYTES:
-            raise AppError(
-                "file_too_large", "impex.errors.file_too_large", status_code=413
-            )
-        try:
-            text = raw.decode("utf-8-sig")
-        except UnicodeDecodeError as exc:
-            raise AppError("invalid_file", "impex.errors.invalid_file") from exc
-        try:
-            dialect: csv.Dialect | type[csv.Dialect] = csv.Sniffer().sniff(
-                text[:4096], delimiters=",;"
-            )
-        except csv.Error:
-            dialect = csv.excel
-        try:
-            parsed = [row for row in csv.reader(io.StringIO(text), dialect) if any(row)]
-        except csv.Error as exc:
-            raise AppError("invalid_file", "impex.errors.invalid_file") from exc
-        if not parsed:
-            raise AppError("empty_file", "impex.errors.empty_file")
-        header, data = [cell.strip() for cell in parsed[0]], parsed[1:]
-        if not data:
-            raise AppError("empty_file", "impex.errors.empty_file")
-        if len(data) > MAX_IMPORT_ROWS:
-            raise AppError("too_many_rows", "impex.errors.too_many_rows", status_code=413)
-        return header, data
 
     def _check_header(
         self,

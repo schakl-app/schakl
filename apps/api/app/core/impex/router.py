@@ -23,7 +23,7 @@ import inspect
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from fastapi.responses import Response
 
 from app.config import settings
@@ -32,6 +32,7 @@ from app.core.impex.service import ImpexService
 from app.core.impex.spec import ImpexDescriptor
 from app.core.permissions.deps import no_permission_required, require_permission
 from app.core.tenancy import RequestContext, require_context
+from app.errors import AppError
 
 #: The core filter vocabulary. A descriptor names a subset; these mirror the query params the
 #: entity's own list endpoint takes, so the export filters exactly like the list it exports.
@@ -82,9 +83,33 @@ def _export_endpoint(descriptor: ImpexDescriptor) -> Any:
     return export_csv
 
 
+async def _source_bytes(file: UploadFile | None, text: str | None) -> tuple[bytes, bool]:
+    """The uploaded bytes and whether they were **pasted** — the two differ in their cap.
+
+    A file may be 5 MiB; a paste may not, because Starlette caps a non-file multipart part at
+    1 MiB and truncates rather than erroring. Enforcing a larger paste limit here would be a
+    check running on bytes that were already cut.
+    """
+    if file is not None and file.filename:
+        return await file.read(), False
+    if text and text.strip():
+        return text.encode("utf-8"), True
+    raise AppError("no_source", "impex.errors.no_source")
+
+
 def _import_endpoint(descriptor: ImpexDescriptor) -> Any:
     async def import_csv(
-        file: UploadFile = File(..., description="CSV file; headers are the export's keys"),
+        file: UploadFile | None = File(
+            None, description="CSV, TSV or .xlsx file; headers are the export's keys"
+        ),
+        text: str | None = Form(
+            None,
+            description="A pasted table instead of a file — tab, comma or semicolon "
+            "separated, first line the header. Max 1 MiB.",
+        ),
+        sheet: str | None = Form(
+            None, description="Which worksheet to read (.xlsx only; default the first)."
+        ),
         dry_run: bool = Query(
             True,
             description="Validate and report creates/updates/errors without writing anything. "
@@ -92,8 +117,10 @@ def _import_endpoint(descriptor: ImpexDescriptor) -> Any:
         ),
         ctx: RequestContext = Depends(require_context),
     ) -> ImportReport:
-        raw = await file.read()
-        return await ImpexService(ctx).import_csv(descriptor, raw, dry_run=dry_run)
+        raw, pasted = await _source_bytes(file, text)
+        return await ImpexService(ctx).import_csv(
+            descriptor, raw, dry_run=dry_run, sheet=sheet, pasted=pasted
+        )
 
     import_csv.__name__ = f"import_{descriptor.entity_type}_csv"
     upsert = (
@@ -104,8 +131,9 @@ def _import_endpoint(descriptor: ImpexDescriptor) -> Any:
         else "create-only (no natural key)"
     )
     import_csv.__doc__ = (
-        f"Import {descriptor.entity_type} rows from CSV, {upsert} "
-        "(max 2000 data rows per request)."
+        f"Import {descriptor.entity_type} rows from a spreadsheet, {upsert} "
+        "(max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted "
+        "block; the format is read from the content, not the filename."
     )
     return import_csv
 

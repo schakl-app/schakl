@@ -1823,7 +1823,7 @@ export interface paths {
         put?: never;
         /**
          * Impex Import Company
-         * @description Import company rows from CSV, upserting on the first of `client_number`, `name` each row fills (max 2000 data rows per request).
+         * @description Import company rows from a spreadsheet, upserting on the first of `client_number`, `name` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
          */
         post: operations["impex_import_company_api_v1_impex_company_import_post"];
         delete?: never;
@@ -1863,7 +1863,7 @@ export interface paths {
         put?: never;
         /**
          * Impex Import Contact
-         * @description Import contact rows from CSV, upserting on the first of `email` each row fills (max 2000 data rows per request).
+         * @description Import contact rows from a spreadsheet, upserting on the first of `email` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
          */
         post: operations["impex_import_contact_api_v1_impex_contact_import_post"];
         delete?: never;
@@ -1923,7 +1923,7 @@ export interface paths {
         put?: never;
         /**
          * Impex Import Project
-         * @description Import project rows from CSV, upserting on the first of `name` each row fills (max 2000 data rows per request).
+         * @description Import project rows from a spreadsheet, upserting on the first of `name` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
          */
         post: operations["impex_import_project_api_v1_impex_project_import_post"];
         delete?: never;
@@ -1963,7 +1963,7 @@ export interface paths {
         put?: never;
         /**
          * Impex Import Subscription
-         * @description Import subscription rows from CSV, upserting on the first of `name` each row fills (max 2000 data rows per request).
+         * @description Import subscription rows from a spreadsheet, upserting on the first of `name` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
          */
         post: operations["impex_import_subscription_api_v1_impex_subscription_import_post"];
         delete?: never;
@@ -2003,7 +2003,7 @@ export interface paths {
         put?: never;
         /**
          * Impex Import Task
-         * @description Import task rows from CSV, create-only (no natural key) (max 2000 data rows per request).
+         * @description Import task rows from a spreadsheet, create-only (no natural key) (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
          */
         post: operations["impex_import_task_api_v1_impex_task_import_post"];
         delete?: never;
@@ -2043,7 +2043,7 @@ export interface paths {
         put?: never;
         /**
          * Impex Import Time Entry
-         * @description Import time_entry rows from CSV, create-only (no natural key) (max 2000 data rows per request).
+         * @description Import time_entry rows from a spreadsheet, create-only (no natural key) (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
          */
         post: operations["impex_import_time_entry_api_v1_impex_time_entry_import_post"];
         delete?: never;
@@ -6574,49 +6574,109 @@ export interface components {
         Body_impex_import_company_api_v1_impex_company_import_post: {
             /**
              * File
-             * @description CSV file; headers are the export's keys
+             * @description CSV, TSV or .xlsx file; headers are the export's keys
              */
-            file: string;
+            file?: string | null;
+            /**
+             * Sheet
+             * @description Which worksheet to read (.xlsx only; default the first).
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file — tab, comma or semicolon separated, first line the header. Max 1 MiB.
+             */
+            text?: string | null;
         };
         /** Body_impex_import_contact_api_v1_impex_contact_import_post */
         Body_impex_import_contact_api_v1_impex_contact_import_post: {
             /**
              * File
-             * @description CSV file; headers are the export's keys
+             * @description CSV, TSV or .xlsx file; headers are the export's keys
              */
-            file: string;
+            file?: string | null;
+            /**
+             * Sheet
+             * @description Which worksheet to read (.xlsx only; default the first).
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file — tab, comma or semicolon separated, first line the header. Max 1 MiB.
+             */
+            text?: string | null;
         };
         /** Body_impex_import_project_api_v1_impex_project_import_post */
         Body_impex_import_project_api_v1_impex_project_import_post: {
             /**
              * File
-             * @description CSV file; headers are the export's keys
+             * @description CSV, TSV or .xlsx file; headers are the export's keys
              */
-            file: string;
+            file?: string | null;
+            /**
+             * Sheet
+             * @description Which worksheet to read (.xlsx only; default the first).
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file — tab, comma or semicolon separated, first line the header. Max 1 MiB.
+             */
+            text?: string | null;
         };
         /** Body_impex_import_subscription_api_v1_impex_subscription_import_post */
         Body_impex_import_subscription_api_v1_impex_subscription_import_post: {
             /**
              * File
-             * @description CSV file; headers are the export's keys
+             * @description CSV, TSV or .xlsx file; headers are the export's keys
              */
-            file: string;
+            file?: string | null;
+            /**
+             * Sheet
+             * @description Which worksheet to read (.xlsx only; default the first).
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file — tab, comma or semicolon separated, first line the header. Max 1 MiB.
+             */
+            text?: string | null;
         };
         /** Body_impex_import_task_api_v1_impex_task_import_post */
         Body_impex_import_task_api_v1_impex_task_import_post: {
             /**
              * File
-             * @description CSV file; headers are the export's keys
+             * @description CSV, TSV or .xlsx file; headers are the export's keys
              */
-            file: string;
+            file?: string | null;
+            /**
+             * Sheet
+             * @description Which worksheet to read (.xlsx only; default the first).
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file — tab, comma or semicolon separated, first line the header. Max 1 MiB.
+             */
+            text?: string | null;
         };
         /** Body_impex_import_time_entry_api_v1_impex_time_entry_import_post */
         Body_impex_import_time_entry_api_v1_impex_time_entry_import_post: {
             /**
              * File
-             * @description CSV file; headers are the export's keys
+             * @description CSV, TSV or .xlsx file; headers are the export's keys
              */
-            file: string;
+            file?: string | null;
+            /**
+             * Sheet
+             * @description Which worksheet to read (.xlsx only; default the first).
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file — tab, comma or semicolon separated, first line the header. Max 1 MiB.
+             */
+            text?: string | null;
         };
         /** Body_reset_forgot_password_api_v1_auth_forgot_password_post */
         Body_reset_forgot_password_api_v1_auth_forgot_password_post: {
@@ -20180,7 +20240,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
+        requestBody?: {
             content: {
                 "multipart/form-data": components["schemas"]["Body_impex_import_company_api_v1_impex_company_import_post"];
             };
@@ -20251,7 +20311,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
+        requestBody?: {
             content: {
                 "multipart/form-data": components["schemas"]["Body_impex_import_contact_api_v1_impex_contact_import_post"];
             };
@@ -20345,7 +20405,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
+        requestBody?: {
             content: {
                 "multipart/form-data": components["schemas"]["Body_impex_import_project_api_v1_impex_project_import_post"];
             };
@@ -20415,7 +20475,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
+        requestBody?: {
             content: {
                 "multipart/form-data": components["schemas"]["Body_impex_import_subscription_api_v1_impex_subscription_import_post"];
             };
@@ -20490,7 +20550,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
+        requestBody?: {
             content: {
                 "multipart/form-data": components["schemas"]["Body_impex_import_task_api_v1_impex_task_import_post"];
             };
@@ -20567,7 +20627,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
+        requestBody?: {
             content: {
                 "multipart/form-data": components["schemas"]["Body_impex_import_time_entry_api_v1_impex_time_entry_import_post"];
             };

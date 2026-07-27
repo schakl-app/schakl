@@ -35,6 +35,9 @@ dependencies = [
     "segno>=1.6",
     "fpdf2>=2.8.7",
     "phonenumbers>=8.13",
+    # Excel import (issue #77): pure-Python, universal wheel, one dependency (et-xmlfile).
+    # Read-only + zip-vetted in app/core/impex/parsing.py — an uploaded workbook is untrusted.
+    "openpyxl>=3.1",
 ]
 
 [dependency-groups]
