@@ -499,7 +499,7 @@
     <form
       method="POST"
       action="?/saveDefaults"
-      use:enhance={busy.wrap("defaults")}
+      use:enhance={busy.keep("defaults")}
       class="grid gap-3 sm:grid-cols-2"
     >
       <NumberFormatField

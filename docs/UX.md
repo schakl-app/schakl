@@ -258,6 +258,24 @@
   re-asserts its own state after any form reset, so a forgotten callback can no longer strip
   checkbox marks — but radios and selects have no component guard; the form-level rule is the
   convention.
+  - **A `bind:value` text field is the worst case: pressing Save empties it in front of you.**
+    The rule above was written about *marks* (a checkbox rewinding, a select snapping back), which
+    undersold it and let the same bug ship again on Instellingen → Bedrijven and → Facturatie
+    (#77). A bound text input has no `value` **attribute** — Svelte sets the property — so its
+    `defaultValue` is `""`, and `form.reset()` blanks it. Svelte listens for `reset` to keep
+    bindings truthful, so it then writes that emptiness **back into your state**: the content is
+    destroyed, not just hidden, and the next submit posts the blank. The user's word for it is
+    "I pressed save and my text disappeared", and they are describing data loss.
+  - **The affordance: `busy.keep(key)`** (`core/submit.svelte.ts`) — `wrap()` with
+    `reset: false`, named for the intent. Reach for `keep()` on any form that edits something
+    that already exists, and `wrap()` only when you actively want the form emptied for the next
+    entry. Choosing between two named methods is a decision; remembering to hand-write a
+    `reset: false` callback is a thing to forget, and twenty components had each re-derived it.
+  - **The component guard for text is `defaultValue`.** A shared field that owns a `bind:value`
+    input should also set `defaultValue={/* the value it mounted with */}`, so a reset restores
+    the saved value instead of blank — the text-input analogue of what `FormCheckbox` does for
+    marks, and what makes the field safe in a form whose author forgot the rule. See
+    `core/ui/NumberFormatField.svelte`.
 - **Loading / in-flight state: a button whose request is under way says so** (#242, #279). A
   `use:enhance` submit with no feedback reads as broken on a slow connection and takes a
   double-click as a double-submit. The wiring is `core/submit.svelte.ts` (`InFlight`): one

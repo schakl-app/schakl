@@ -27,6 +27,12 @@
     class?: string;
   } = $props();
 
+  // What a form reset falls back to: the value this field was born with (i.e. what the server
+  // has). Without it `reset()` restores the empty `value` attribute a Svelte-bound input never
+  // sets, and Svelte writes that emptiness back into `value` — so saving blanks the field.
+  // Belt-and-braces with `InFlight.keep()`: this makes the field safe in *any* form.
+  const savedValue = value;
+
   const year = new Date().getFullYear();
   const valid = $derived(formatValid(value));
   const preview = $derived(
@@ -36,7 +42,15 @@
 
 <div>
   <label for={id} class="mb-1 block text-sm font-medium text-text">{label}</label>
-  <input {id} {name} bind:value class={inputClass} spellcheck="false" autocomplete="off" />
+  <input
+    {id}
+    {name}
+    bind:value
+    defaultValue={savedValue}
+    class={inputClass}
+    spellcheck="false"
+    autocomplete="off"
+  />
   {#if value.trim() && !valid}
     <p class="mt-1 text-xs text-red-600 dark:text-red-400">
       {t("errors.companies.invalid_number_format")}

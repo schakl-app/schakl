@@ -5,6 +5,7 @@
 
   let { data }: { companyId: string; data: Record<string, unknown> } = $props();
 
+  const clientNumber = $derived(data.client_number as string | null);
   const website = $derived(data.website as string | null);
   const phone = $derived(data.phone as string | null);
   const invoiceEmail = $derived(data.invoice_email as string | null);
@@ -18,6 +19,19 @@
       {t("companies.name")}
     </dt>
     <dd class="mt-1 text-sm text-neutral-900">{data.name}</dd>
+  </div>
+
+  <div>
+    <dt class="text-xs font-medium uppercase tracking-wide text-neutral-500">
+      {t("companies.client_number")}
+    </dt>
+    <dd class="mt-1 text-sm">
+      {#if clientNumber}
+        <span class="font-mono tabular-nums text-neutral-900">{clientNumber}</span>
+      {:else}
+        <span class="text-neutral-400">—</span>
+      {/if}
+    </dd>
   </div>
 
   <div>

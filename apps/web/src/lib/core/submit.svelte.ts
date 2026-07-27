@@ -53,4 +53,25 @@ export class InFlight {
       };
     };
   }
+
+  /**
+   * Like {@link wrap}, for a form that **edits what already exists** — settings, a detail
+   * view, anything reached by loading a record rather than starting a blank one.
+   *
+   * The difference is one flag: `update({ reset: false })`. A bare `use:enhance` resets the
+   * form on success, and `HTMLFormElement.reset()` puts every control back to its
+   * `defaultValue` — the `value` **attribute**, which a Svelte-managed input does not have.
+   * Svelte then reads those reset values *back into* the bound state (it listens for `reset`
+   * precisely so bindings stay truthful), so a `bind:value` field does not merely look blank:
+   * the value is gone. Pressing Save wipes the field you just saved.
+   *
+   * Resetting only makes sense for a form you want emptied for the *next* entry (a create
+   * form, a comment box). For an edit form there is nothing to reset to, so use this.
+   * See docs/UX.md, "Saving must never blank the form".
+   */
+  keep(key: string | ((input: Parameters<SubmitFunction>[0]) => string) = ""): SubmitFunction {
+    return this.wrap(key, () => async ({ update }) => {
+      await update({ reset: false });
+    });
+  }
 }

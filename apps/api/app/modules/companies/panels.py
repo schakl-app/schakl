@@ -18,6 +18,7 @@ async def _details_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
     company = await ctx.repo(Company).get_or_404(company_id)
     return {
         "name": company.name,
+        "client_number": company.client_number,
         "website": company.website,
         "phone": company.phone,
         "invoice_email": company.invoice_email,

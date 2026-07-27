@@ -17,12 +17,13 @@ export const HOURS_COLUMN = "hours";
 
 export const COMPANY_COLUMNS: ColumnMeta[] = [
   // Klantnummer first: on a list that carries one it is how people refer to the client, and
-  // it is short. Opt-in, because an org that never numbers its clients would get a column of
-  // blanks (Instellingen → Bedrijven turns numbering on).
+  // it is short. Shown by default because numbering is on by default — an org that turns it
+  // off in Instellingen → Bedrijven hides the column with the personal column picker.
   {
     key: "client_number",
     labelKey: "companies.client_number",
     sortKey: "client_number",
+    defaultVisible: true,
     width: 120,
   },
   { key: "name", labelKey: "companies.name", sortKey: "name", primary: true, width: 260 },

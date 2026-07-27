@@ -19,7 +19,10 @@
 
   const busy = new InFlight();
   let confirmBackfill = $state(false);
+  // Both bound, so the preview answers the question actually being asked: "what will my next
+  // client be called" — which depends on the counter as much as on the format.
   let numberFormat = $state(data.settings?.client_number_format ?? "{seq:4}");
+  let nextSeq = $state(String(data.settings?.client_number_next_seq ?? 1));
 
   const inputClass =
     "w-full rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
@@ -57,7 +60,7 @@
     <form
       method="POST"
       action="?/saveNumbering"
-      use:enhance={busy.wrap("numbering")}
+      use:enhance={busy.keep("numbering")}
       class="grid gap-4 sm:grid-cols-2"
     >
       <div class="sm:col-span-2">
@@ -66,7 +69,7 @@
           name="client_number_format"
           label={t("settings.companies.number_format")}
           bind:value={numberFormat}
-          nextSeq={data.settings?.client_number_next_seq ?? 1}
+          nextSeq={Number(nextSeq) || 1}
           class={inputClass}
         />
       </div>
@@ -80,7 +83,8 @@
           name="client_number_next_seq"
           type="number"
           min="1"
-          value={data.settings?.client_number_next_seq ?? 1}
+          bind:value={nextSeq}
+          defaultValue={String(data.settings?.client_number_next_seq ?? 1)}
           class={inputClass}
         />
         <p class="mt-1 text-xs text-text-muted">{t("settings.companies.next_seq_help")}</p>
