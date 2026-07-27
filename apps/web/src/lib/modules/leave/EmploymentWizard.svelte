@@ -263,19 +263,25 @@
         >
           <div>
             <dt class="text-xs text-text-muted">{t("settings.employment.result_entitled")}</dt>
-            <dd class="font-medium text-text">{fmtHours(result.freeTime.entitled_hours)}</dd>
+            <dd class="font-medium text-text">
+              {t("leave.form.hours_amount", { hours: fmtHours(result.freeTime.entitled_hours) })}
+            </dd>
           </div>
           <div>
             <dt class="text-xs text-text-muted">{t("settings.employment.result_placed")}</dt>
             <dd class="font-medium text-text">
-              {t("settings.employment.result_days", {
-                count: result.employmentGenerated ?? 0,
-              })}
+              <!-- This *year's* placed hours, not the generator's return value. The generator
+                   fills the whole 12-month horizon, so it happily reports 26 days next to a
+                   92-hour yearly pot and invites the reading that the two divide into each
+                   other. The honest total goes on its own line under the grid. -->
+              {t("leave.form.hours_amount", { hours: fmtHours(result.freeTime.placed_hours) })}
             </dd>
           </div>
           <div>
             <dt class="text-xs text-text-muted">{t("settings.employment.result_unplaced")}</dt>
-            <dd class="font-medium text-text">{fmtHours(result.freeTime.unplaced_hours)}</dd>
+            <dd class="font-medium text-text">
+              {t("leave.form.hours_amount", { hours: fmtHours(result.freeTime.unplaced_hours) })}
+            </dd>
           </div>
           <div>
             <dt class="text-xs text-text-muted">{t("settings.employment.result_next")}</dt>
@@ -284,6 +290,13 @@
             </dd>
           </div>
         </dl>
+      {/if}
+      {#if (result.employmentGenerated ?? 0) > 0}
+        <!-- Spelled out including the horizon, because the count runs past the current year and
+             a bare "26 dagen" beside a yearly balance reads as a contradiction. -->
+        <p class="text-sm text-text-muted">
+          {t("settings.employment.result_generated", { count: result.employmentGenerated ?? 0 })}
+        </p>
       {/if}
 
       {#if overhang.length > 0}
@@ -379,7 +392,7 @@
       {/if}
 
       <!-- ─── Step 1: the contract ─────────────────────────────────────────────── -->
-      {#if step === 1}
+      <div class:hidden={step !== 1} class="space-y-4">
         {#if contracts.length > 0}
           <ul class="divide-y divide-border rounded-lg border border-border">
             {#each contracts as contract (contract.id)}
@@ -463,12 +476,15 @@
                 <label for="e-start" class="mb-1 block text-xs text-text-muted"
                   >{t("settings.users.contract_start")}</label
                 >
+                <!-- Deliberately not `required`: the steps are hidden with CSS, not unmounted
+                     (the fields have to survive to the save on step 3), and a `required` control
+                     inside a `display:none` block blocks the submit with nothing on screen to
+                     explain it. `step1Ready` gates Volgende and the API validates again. -->
                 <DateInput
                   id="e-start"
                   name="start_date"
                   formId="employment-form"
                   bind:value={startDate}
-                  required
                 />
               </div>
               <div>
@@ -499,10 +515,10 @@
             <p class="text-xs text-text-muted">{t("settings.employment.contract_hint")}</p>
           </div>
         {/if}
-      {/if}
+      </div>
 
       <!-- ─── Step 2: the week, and what it earns ──────────────────────────────── -->
-      {#if step === 2}
+      <div class:hidden={step !== 2} class="space-y-4">
         <label class="flex items-center gap-2 text-sm text-text">
           <input type="checkbox" bind:checked={inherit} class="h-4 w-4 rounded border-border" />
           {t("settings.users.schedule_inherit")}
@@ -604,10 +620,10 @@
             })}
           </p>
         {/if}
-      {/if}
+      </div>
 
       <!-- ─── Step 3: placing the free days ───────────────────────────────────── -->
-      {#if step === 3}
+      <div class:hidden={step !== 3} class="space-y-4">
         {#if patterns.length > 0}
           <ul class="divide-y divide-border rounded-lg border border-border text-sm">
             {#each patterns as pattern (pattern.id)}
@@ -762,7 +778,7 @@
             </div>
           {/if}
         {/if}
-      {/if}
+      </div>
 
       {#if form?.error && (started || !form?.employmentSaved)}
         <p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>

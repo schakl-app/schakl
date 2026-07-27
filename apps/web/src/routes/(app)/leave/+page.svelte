@@ -55,6 +55,12 @@
 
   const types = $derived(data.leaveTypes as LeaveTypeInfo[]);
   const typeById = $derived(Object.fromEntries(types.map((lt) => [lt.id, lt])));
+  // Free time has its own card; showing its group tile as well means the page states the same
+  // balance twice, once uselessly (see the markup).
+  const freeTimeIds = $derived(new Set(data.freeTime?.leave_type_ids ?? []));
+  const balanceGroups = $derived(
+    data.groups.filter((g) => !g.leave_type_ids.some((id) => freeTimeIds.has(id))),
+  );
   // Remaining keyed by *every* type in a group → the group's combined remaining (#265), so the
   // request form's balance hint reads the combined pool whichever underlying type it posts to.
   const remainingByType = $derived(
@@ -189,9 +195,12 @@
 {/if}
 
 <!-- One balance per group: statutory + extra-statutory vacation read as one "Vakantieverlof"
-     figure (#265); each pot's expiry is folded into the lapsed / expiring-soon hints. -->
+     figure (#265); each pot's expiry is folded into the lapsed / expiring-soon hints.
+     Free time is deliberately **not** among them: its own card below answers the same question
+     properly, and the tile version ("4 u over" under a calendar full of placed days) is exactly
+     the useless number that card exists to replace. Two of them side by side is worse than one. -->
 <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-  {#each data.groups as group (group.leave_type_ids.join(","))}
+  {#each balanceGroups as group (group.leave_type_ids.join(","))}
     {@const color = typeById[group.leave_type_ids[0]]?.color ?? ""}
     <div class="rounded-xl border border-border bg-surface-raised p-5">
       <div class="mb-2 flex items-center gap-2">

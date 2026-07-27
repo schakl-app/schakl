@@ -3112,7 +3112,6 @@
   "settings.employment.saved": "Dienstverband opgeslagen.",
   "settings.employment.result_entitled": "Saldo dit jaar",
   "settings.employment.result_placed": "Nu ingepland",
-  "settings.employment.result_days": "{count} dagen",
   "settings.employment.result_unplaced": "Nog vrij te plannen",
   "settings.employment.result_next": "Eerstvolgende",
   "settings.employment.overhang_title": "{count} ingeplande vrije dagen passen niet meer in het saldo",
@@ -3131,5 +3130,6 @@
   "leave.free_time.day_hours": "{days} dag",
   "leave.free_time.move": "Verplaatsen",
   "leave.free_time.more": "Nog {count} verderop in het jaar.",
-  "leave.free_time.overhang": "{days} dagen passen niet meer in je saldo; je leidinggevende kan dit rechtzetten."
+  "leave.free_time.overhang": "{days} dagen passen niet meer in je saldo; je leidinggevende kan dit rechtzetten.",
+  "settings.employment.result_generated": "{count} vrije dagen op de agenda gezet, tot 12 maanden vooruit."
 }

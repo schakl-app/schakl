@@ -3112,7 +3112,6 @@
   "settings.employment.saved": "Employment saved.",
   "settings.employment.result_entitled": "Balance this year",
   "settings.employment.result_placed": "Scheduled now",
-  "settings.employment.result_days": "{count} days",
   "settings.employment.result_unplaced": "Still to schedule",
   "settings.employment.result_next": "Next one",
   "settings.employment.overhang_title": "{count} scheduled free days no longer fit the balance",
@@ -3131,5 +3130,6 @@
   "leave.free_time.day_hours": "{days} day",
   "leave.free_time.move": "Move",
   "leave.free_time.more": "{count} more later in the year.",
-  "leave.free_time.overhang": "{days} days no longer fit your balance; your manager can settle this."
+  "leave.free_time.overhang": "{days} days no longer fit your balance; your manager can settle this.",
+  "settings.employment.result_generated": "{count} free days placed on the calendar, up to 12 months ahead."
 }

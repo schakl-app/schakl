@@ -22,6 +22,8 @@
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import { labelDotClass } from "$lib/core/ui/colors";
 
+  import { fmtHours } from "./format";
+
   export interface FreeTimeDay {
     request_id: string;
     date: string;
@@ -58,8 +60,9 @@
   } = $props();
 
   const perDay = $derived(Number(freeTime?.hours_per_day ?? 0));
+  /** Hours as days, through the shared formatter: a raw JS number prints "11.5" in a Dutch UI. */
   const days = (hours: string | number) =>
-    perDay > 0 ? Math.round((Number(hours) / perDay) * 10) / 10 : 0;
+    fmtHours(perDay > 0 ? Math.round((Number(hours) / perDay) * 10) / 10 : 0);
   /** How many whole days are still on the calendar ahead — the figure the card leads with. */
   const upcomingCount = $derived(freeTime?.days.length ?? 0);
   const canWrite = $derived(can(page.data.user, "leave.request.write"));
