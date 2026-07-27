@@ -3310,6 +3310,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/leave/free-time": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Free Time Overview
+         * @description Everything the free-time card and the employment wizard need, in one call.
+         *
+         *     The per-type balance says "0 h over" as soon as the generator has placed every day — true,
+         *     and no help in answering "when is my next day off" or "does the pot still cover my calendar".
+         *     This carries the placed days, the next one, and the days a contract change orphaned.
+         *
+         *     Own by default; another employee's needs ``leave.request.read:any``, like every leave read.
+         */
+        get: operations["free_time_overview_api_v1_leave_free_time_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/free-time/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Withdraw Free Time
+         * @description Take back free days the pot no longer covers, after a contract change reprorated it (#264).
+         *
+         *     Explicit ids the caller was just shown, never "everything over the pot": a balance that moved
+         *     in between must not cancel more than was agreed to. Each goes through the ordinary cancel
+         *     path, so the past stays locked and the Google mirror is told; an id that will not cancel is
+         *     reported in ``skipped`` rather than abandoning the rest.
+         */
+        post: operations["withdraw_free_time_api_v1_leave_free_time_withdraw_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/leave/holidays": {
         parameters: {
             query?: never;
@@ -8354,6 +8405,87 @@ export interface components {
             /** Synced At */
             synced_at: string | null;
         };
+        /**
+         * FreeTimeDay
+         * @description One free day on the calendar, in the shape the free-time card and the wizard both read.
+         */
+        FreeTimeDay: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** End Time */
+            end_time?: string | null;
+            /** From Pattern */
+            from_pattern: boolean;
+            /** Hours */
+            hours: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Start Time */
+            start_time?: string | null;
+        };
+        /**
+         * FreeTimeOverview
+         * @description Everything the free-time surfaces need, in one read.
+         *
+         *     The per-type balance answers "how many hours are left", which for free time is the *wrong*
+         *     question and reads uselessly: once the generator has placed every day, entitled and approved
+         *     are equal and the balance says "0 h over" — true, and no help at all in answering "when is my
+         *     next day off". This adds the two facts that matter: which days are on the calendar, and
+         *     whether the pot still covers them.
+         */
+        FreeTimeOverview: {
+            /** Days */
+            days: components["schemas"]["FreeTimeDay"][];
+            /** Entitled Hours */
+            entitled_hours: string;
+            /** Hours Per Day */
+            hours_per_day: string;
+            /** Leave Type Ids */
+            leave_type_ids: string[];
+            /** Next Date */
+            next_date: string | null;
+            /** Overhang */
+            overhang: components["schemas"]["FreeTimeDay"][];
+            /** Overhang Hours */
+            overhang_hours: string;
+            /** Placed Hours */
+            placed_hours: string;
+            /** Taken Hours */
+            taken_hours: string;
+            /** Unplaced Hours */
+            unplaced_hours: string;
+            /** Upcoming Hours */
+            upcoming_hours: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Year */
+            year: number;
+        };
+        /**
+         * FreeTimeWithdraw
+         * @description Withdraw specific free days. Ids, never "everything over the pot": the caller confirms a
+         *     list it was shown, so a balance that moved in between cannot cancel more than was agreed.
+         */
+        FreeTimeWithdraw: {
+            /** Request Ids */
+            request_ids: string[];
+        };
+        /** FreeTimeWithdrawResult */
+        FreeTimeWithdrawResult: {
+            /** Cancelled */
+            cancelled: number;
+            /** Skipped */
+            skipped: string[];
+        };
         /** GeneralPreference */
         GeneralPreference: {
             /** Due Soon Days */
@@ -9836,6 +9968,8 @@ export interface components {
              * Format: date
              */
             anchor_date: string;
+            /** Days Per Year */
+            days_per_year?: number | null;
             /** End Time */
             end_time?: string | null;
             /**
@@ -9872,6 +10006,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Days Per Year */
+            days_per_year?: number | null;
             /** End Time */
             end_time?: string | null;
             /**
@@ -9927,6 +10063,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Days Per Year */
+            days_per_year?: number | null;
             /** End Time */
             end_time?: string | null;
             /**
@@ -9975,6 +10113,8 @@ export interface components {
             active?: boolean | null;
             /** Anchor Date */
             anchor_date?: string | null;
+            /** Days Per Year */
+            days_per_year?: number | null;
             /** End Time */
             end_time?: string | null;
             /** Interval Weeks */
@@ -23180,6 +23320,71 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GenerateResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    free_time_overview_api_v1_leave_free_time_get: {
+        parameters: {
+            query: {
+                year: number;
+                user_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FreeTimeOverview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    withdraw_free_time_api_v1_leave_free_time_withdraw_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FreeTimeWithdraw"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FreeTimeWithdrawResult"];
                 };
             };
             /** @description Validation Error */

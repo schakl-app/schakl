@@ -344,6 +344,18 @@ class LeaveRecurringDay(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Bas
     #: The first free day; its weekday *is* the pattern's weekday.
     anchor_date: Mapped[date] = mapped_column(Date, nullable=False)
     interval_weeks: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    #: **Spread mode**: place this many free days a year on the anchor's weekday, evenly, instead
+    #: of following ``interval_weeks``. ``NULL`` = interval mode (every pattern predating this).
+    #:
+    #: Two modes because two different things are known. Sometimes the arrangement *is* a cadence
+    #: ("every Wednesday afternoon") and the day count follows from it; sometimes the pot is the
+    #: known quantity ("26 free days") and no whole number of weeks expresses it — 13 days is
+    #: almost, but not, every four weeks. Spread mode also slides past holidays and non-working
+    #: days so the count actually lands, which a fixed cadence cannot do.
+    #:
+    #: ``interval_weeks`` is still written alongside it (the nearest equivalent cadence), so a
+    #: rolled-back image generates on a comparable rhythm rather than the column default of weekly.
+    days_per_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     #: Part-day patterns ("every Wednesday off from 15:00"): the window each occurrence
     #: covers, ``NULL`` = whole scheduled day — the same wall-clock ``TIME`` semantics as
     #: ``LeaveRequest`` (#48). Generated requests carry the window and the server prices it.

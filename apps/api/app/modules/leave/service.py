@@ -45,6 +45,8 @@ from app.modules.leave.models import (
 from app.modules.leave.schemas import (
     EmploymentContractCreate,
     EmploymentContractUpdate,
+    FreeTimeDay,
+    FreeTimeOverview,
     HolidayImport,
     HolidayImportResult,
     LeaveBalance,
@@ -925,6 +927,10 @@ class LeaveService:
         # for a TIME column — the ORM needs the actual time objects.
         values["start_time"] = data.start_time
         values["end_time"] = data.end_time
+        if data.days_per_year:
+            # The nearest equivalent cadence, so a rolled-back image (which reads only
+            # ``interval_weeks``) keeps a comparable rhythm — see the migration.
+            values["interval_weeks"] = self._interval_for(data.days_per_year)
         pattern = await self.recurring.create(**values)
         created = await self.generate_recurring_days(pattern_id=pattern.id)
         return pattern, created
@@ -939,6 +945,8 @@ class LeaveService:
             values["start_time"] = data.start_time
         if "end_time" in values:
             values["end_time"] = data.end_time
+        if values.get("days_per_year"):
+            values["interval_weeks"] = self._interval_for(values["days_per_year"])
         leave_type = await self.types.get_or_404(
             values.get("leave_type_id", pattern.leave_type_id)
         )
@@ -973,6 +981,92 @@ class LeaveService:
         last_day = monthrange(year, month)[1]
         return date(year, month, min(day.day, last_day))
 
+    @staticmethod
+    def _weekday_dates(weekday: int, start: date, end: date) -> list[date]:
+        """Every ``weekday`` in ``[start, end]``, in order (empty when the range holds none)."""
+        day = start + timedelta(days=(weekday - start.weekday()) % 7)
+        out: list[date] = []
+        while day <= end:
+            out.append(day)
+            day += timedelta(weeks=1)
+        return out
+
+    @staticmethod
+    def _round_half_up(value: Decimal) -> int:
+        """Round half **up**, not to even. ``round()`` turns 2,5 days into 2, which reads as an
+        off-by-one to everyone who did the arithmetic themselves."""
+        return int(value.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+    @classmethod
+    def _interval_for(cls, days_per_year: int) -> int:
+        """The cadence a spread pattern most nearly is, clamped to the schema's 1..8 weeks.
+
+        Written alongside ``days_per_year`` purely so a **rolled-back** image — which knows only
+        ``interval_weeks`` — keeps a comparable rhythm instead of falling to the column default of
+        every week (see the migration).
+        """
+        if days_per_year <= 0:
+            return 1
+        return max(1, min(8, cls._round_half_up(Decimal(52) / Decimal(days_per_year))))
+
+    def _occurrence_plan(
+        self, pattern: LeaveRecurringDay, today: date, horizon: date
+    ) -> list[tuple[date, int | None]]:
+        """The dates to attempt, each with the running per-year cap that applies after it.
+
+        Two shapes, because two different things are known (see the model docstring):
+
+        * **Interval** (``days_per_year`` is ``NULL``) — every ``interval_weeks`` from the anchor.
+          The cap is ``None``: the cadence *is* the answer, so every occurrence is attempted.
+        * **Spread** — every candidate weekday is offered, but a candidate may only be used while
+          the year's placed count is still under ``ceil((i + 1) × target / total)``. That is what
+          makes the days come out evenly *and* self-correcting: a candidate skipped for a holiday
+          consumes no quota, so the next week immediately becomes eligible and the year still ends
+          up with the number of days the pot bought. A fixed cadence cannot recover a lost day.
+
+        Never backfills either way — the first attempted date is on or after today.
+        """
+        weekday = pattern.anchor_date.weekday()
+        start = max(pattern.anchor_date, today)
+        if pattern.days_per_year is None:
+            step = timedelta(weeks=pattern.interval_weeks)
+            occurrence = pattern.anchor_date
+            if occurrence < today:
+                behind = (today - occurrence).days
+                occurrence += -(-behind // (pattern.interval_weeks * 7)) * step  # ceil
+            plan: list[tuple[date, int | None]] = []
+            while occurrence <= horizon:
+                plan.append((occurrence, None))
+                occurrence += step
+            return plan
+
+        plan = []
+        for year in range(start.year, horizon.year + 1):
+            candidates = self._weekday_dates(
+                weekday,
+                max(start, date(year, 1, 1)),
+                min(horizon, date(year, 12, 31)),
+            )
+            if not candidates:
+                continue
+            # Prorate to the part of the year actually in range: a pattern started in July buys
+            # half the days, which is also what the entitlement prorated to.
+            full_year = len(
+                self._weekday_dates(weekday, date(year, 1, 1), date(year, 12, 31))
+            )
+            target = self._round_half_up(
+                Decimal(pattern.days_per_year) * Decimal(len(candidates)) / Decimal(full_year)
+            )
+            if target <= 0:
+                continue
+            total = len(candidates)
+            for index, day in enumerate(candidates):
+                # Ceiling, so the **first** free day is the anchor the user picked rather than
+                # one cadence later.
+                cap = -(-(index + 1) * target // total)
+                plan.append((day, cap))
+        return plan
+
     async def _recurring_horizon(self, user_id: uuid.UUID, today: date) -> date:
         """How far this employee's free days are generated ahead (#107).
 
@@ -1003,6 +1097,10 @@ class LeaveService:
         contract earned (§14). A skipped-for-balance occurrence is retried on
         the next run, so a far-out day materializes the moment its year's pot is seeded.
         Runs from pattern saves and the monthly cron.
+
+        Which dates are attempted is :meth:`_occurrence_plan`'s business — a fixed cadence, or a
+        year's worth of days spread evenly. Everything below is identical either way: the plan
+        only decides *when* to try, never whether a day may be taken.
         """
         stmt = self.recurring.scoped_select().where(LeaveRecurringDay.active.is_(True))
         if pattern_id is not None:
@@ -1033,13 +1131,7 @@ class LeaveService:
                 pattern.anchor_date,
                 pattern.end_time,
             )
-            step = timedelta(weeks=pattern.interval_weeks)
-            occurrence = pattern.anchor_date
-            # Never backfill: the first generated day is the first occurrence from today on.
-            if occurrence < today:
-                behind = (today - occurrence).days
-                cycles = -(-behind // (pattern.interval_weeks * 7))  # ceil
-                occurrence += cycles * step
+            plan = self._occurrence_plan(pattern, today, horizon)
 
             spent = set(
                 (
@@ -1056,12 +1148,16 @@ class LeaveService:
             # One balance read per (year) the horizon touches, decremented locally as days
             # land — not one query per occurrence (docs/PERFORMANCE.md).
             remaining_by_year: dict[int, Decimal] = {}
+            placed_by_year: dict[int, int] = {}
 
-            while occurrence <= horizon:
-                day = occurrence
-                occurrence += step
+            for day, cap in plan:
                 if day in spent:
+                    # A spent occurrence still counts against the year's cap. Without this, a
+                    # second run would read the quota as unfilled and place the same days again.
+                    placed_by_year[day.year] = placed_by_year.get(day.year, 0) + 1
                     continue
+                if cap is not None and placed_by_year.get(day.year, 0) >= cap:
+                    continue  # spread mode: this year is far enough ahead already
                 hours, _ = await self.compute_hours(
                     pattern.user_id,
                     day,
@@ -1117,6 +1213,7 @@ class LeaveService:
                     recurring_day_id=pattern.id,
                     recurring_date=day,
                 )
+                placed_by_year[day.year] = placed_by_year.get(day.year, 0) + 1
                 created += 1
         return created
 
@@ -1779,6 +1876,140 @@ class LeaveService:
         uid = self._effective_user_id(user_id)
         per_type, _ = await self._ledger(year=year, uid=uid)
         return per_type
+
+    # --- free time overview (#65's card, and the wizard's reconciliation) ---------------- #
+    async def free_time_overview(
+        self, *, year: int, user_id: uuid.UUID | None = None
+    ) -> FreeTimeOverview:
+        """Pot, placed days and overhang for one employee's free time, in one read.
+
+        The per-type balance cannot answer the questions people actually ask of free time. Once
+        the generator has laid every day down, entitled and approved are equal and it reports
+        "0 h over" — true, and no use whatsoever for "when is my next day off" or "does the pot
+        still cover what is on my calendar". Both of those live here.
+
+        Five queries at most regardless of how many days are placed (docs/PERFORMANCE.md): the
+        types, the entitlement ledger, the requests, the contracts and the profile behind the
+        schedule. ``leave.request.read`` scoping comes from ``_effective_user_id``, so a member
+        reads their own and a manager anyone's — the same rule as every other leave read.
+        """
+        uid = self._effective_user_id(user_id)
+        types = [t for t in await self.list_types() if t.accrues_schedule_gap]
+        schedule = await self.effective_schedule(uid)
+        blank = FreeTimeOverview(
+            user_id=uid,
+            year=year,
+            leave_type_ids=[],
+            entitled_hours=Decimal("0.00"),
+            placed_hours=Decimal("0.00"),
+            taken_hours=Decimal("0.00"),
+            upcoming_hours=Decimal("0.00"),
+            unplaced_hours=Decimal("0.00"),
+            overhang_hours=Decimal("0.00"),
+            hours_per_day=sched.average_day_hours(schedule),
+            next_date=None,
+            days=[],
+            overhang=[],
+        )
+        if not types:
+            # The tenant deactivated free time. Zeroes, not an error: the card simply renders
+            # nothing, and the wizard's third step has nothing to offer.
+            return blank
+
+        type_ids = [t.id for t in types]
+        await self._ensure_entitlements(uid, year)
+        balances = {b.leave_type_id: b for b in await self.balances(year=year, user_id=uid)}
+        entitled = sum(
+            (balances[tid].entitled_hours for tid in type_ids if tid in balances), Decimal(0)
+        )
+
+        rows = (
+            (
+                await self.ctx.session.execute(
+                    self.requests.scoped_select()
+                    .where(
+                        LeaveRequest.user_id == uid,
+                        LeaveRequest.leave_type_id.in_(type_ids),
+                        LeaveRequest.status.in_(_OCCUPYING),
+                        LeaveRequest.start_date >= date(year, 1, 1),
+                        LeaveRequest.start_date <= date(year, 12, 31),
+                    )
+                    .order_by(LeaveRequest.start_date.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        today = await self._org_today()
+
+        def as_day(request: LeaveRequest) -> FreeTimeDay:
+            start, end = self._resolved_window(request, schedule)
+            return FreeTimeDay(
+                request_id=request.id,
+                date=request.start_date,
+                hours=request.hours,
+                start_time=start,
+                end_time=end,
+                from_pattern=request.recurring_day_id is not None,
+            )
+
+        placed = sum((Decimal(r.hours) for r in rows), Decimal(0))
+        taken = sum((Decimal(r.hours) for r in rows if r.end_date < today), Decimal(0))
+        upcoming_rows = [r for r in rows if r.end_date >= today]
+
+        overhang_hours = max(Decimal(0), placed - entitled)
+        # Peel the **latest** future pattern-generated days until the excess is covered: the most
+        # recently planned days are the least disruptive to withdraw, and a day the employee
+        # booked by hand is theirs — a contract correction must not silently eat it.
+        overhang: list[FreeTimeDay] = []
+        excess = overhang_hours
+        for request in sorted(
+            (r for r in upcoming_rows if r.recurring_day_id is not None),
+            key=lambda r: r.start_date,
+            reverse=True,
+        ):
+            if excess <= 0:
+                break
+            overhang.append(as_day(request))
+            excess -= Decimal(request.hours)
+
+        return blank.model_copy(
+            update={
+                "leave_type_ids": type_ids,
+                "entitled_hours": entitled.quantize(Decimal("0.01")),
+                "placed_hours": placed.quantize(Decimal("0.01")),
+                "taken_hours": taken.quantize(Decimal("0.01")),
+                "upcoming_hours": (placed - taken).quantize(Decimal("0.01")),
+                "unplaced_hours": max(Decimal(0), entitled - placed).quantize(Decimal("0.01")),
+                "overhang_hours": overhang_hours.quantize(Decimal("0.01")),
+                "next_date": upcoming_rows[0].start_date if upcoming_rows else None,
+                "days": [as_day(r) for r in upcoming_rows],
+                "overhang": overhang,
+            }
+        )
+
+    async def withdraw_free_time(
+        self, request_ids: Sequence[uuid.UUID]
+    ) -> tuple[int, list[uuid.UUID]]:
+        """Cancel free days the pot no longer covers, one by one through :meth:`cancel`.
+
+        Through ``cancel`` and not a bulk UPDATE, so every rule still holds: the past stays
+        locked, self-approval policy applies, and a cancelled day emits ``leave.cancelled`` so
+        the Google mirror removes its event. An id that cannot be cancelled is **skipped, not
+        raised** — the caller is confirming a list it was shown, and one stale row should not
+        abandon the rest of a withdrawal.
+        """
+        cancelled = 0
+        skipped: list[uuid.UUID] = []
+        for request_id in request_ids:
+            try:
+                await self.cancel(request_id)
+            except AppError:
+                skipped.append(request_id)
+            else:
+                cancelled += 1
+        return cancelled, skipped
 
     async def group_balances(
         self, *, year: int, user_id: uuid.UUID | None = None, all_users: bool = False

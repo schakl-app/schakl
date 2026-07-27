@@ -22,6 +22,9 @@ from app.modules.leave.schemas import (
     EmploymentContractRead,
     EmploymentContractUpdate,
     EntitlementGenerate,
+    FreeTimeOverview,
+    FreeTimeWithdraw,
+    FreeTimeWithdrawResult,
     GenerateResult,
     HolidayImport,
     HolidayImportResult,
@@ -584,6 +587,46 @@ async def group_balances(
     return await LeaveService(ctx).group_balances(
         year=year, user_id=user_id, all_users=all_users
     )
+
+
+# --- free time (#65): the pot, the days on the calendar, and the overhang ------------- #
+@router.get(
+    "/free-time",
+    response_model=FreeTimeOverview,
+    dependencies=[require_permission("leave.request.read")],
+)
+async def free_time_overview(
+    year: int = Query(..., ge=2000, le=2100),
+    user_id: uuid.UUID | None = Query(None),
+    ctx: RequestContext = Depends(require_context),
+) -> FreeTimeOverview:
+    """Everything the free-time card and the employment wizard need, in one call.
+
+    The per-type balance says "0 h over" as soon as the generator has placed every day — true,
+    and no help in answering "when is my next day off" or "does the pot still cover my calendar".
+    This carries the placed days, the next one, and the days a contract change orphaned.
+
+    Own by default; another employee's needs ``leave.request.read:any``, like every leave read."""
+    return await LeaveService(ctx).free_time_overview(year=year, user_id=user_id)
+
+
+@router.post(
+    "/free-time/withdraw",
+    response_model=FreeTimeWithdrawResult,
+    dependencies=[require_permission("leave.request.write")],
+)
+async def withdraw_free_time(
+    payload: FreeTimeWithdraw,
+    ctx: RequestContext = Depends(require_context),
+) -> FreeTimeWithdrawResult:
+    """Take back free days the pot no longer covers, after a contract change reprorated it (#264).
+
+    Explicit ids the caller was just shown, never "everything over the pot": a balance that moved
+    in between must not cancel more than was agreed to. Each goes through the ordinary cancel
+    path, so the past stays locked and the Google mirror is told; an id that will not cancel is
+    reported in ``skipped`` rather than abandoning the rest."""
+    cancelled, skipped = await LeaveService(ctx).withdraw_free_time(payload.request_ids)
+    return FreeTimeWithdrawResult(cancelled=cancelled, skipped=skipped)
 
 
 # --- dashboard widget --------------------------------------------------------------- #

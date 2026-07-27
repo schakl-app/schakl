@@ -284,8 +284,13 @@ class LeaveRecurringDayBase(BaseModel):
     #: The first free day; its weekday is the pattern's weekday.
     anchor_date: date
     #: Every week (1), every other week (2), … Bounded: a cadence past 8 weeks is a
-    #: hand-planned day, not a roster.
+    #: hand-planned day, not a roster. Ignored — and overwritten with the nearest equivalent —
+    #: when ``days_per_year`` is set.
     interval_weeks: int = Field(default=1, ge=1, le=8)
+    #: **Spread mode**: this many free days a year on the anchor's weekday, placed evenly, instead
+    #: of a fixed cadence. ``None`` = interval mode. Capped at 366: a "day per year" count beyond
+    #: the days in one is a typo, and the balance would refuse them anyway.
+    days_per_year: int | None = Field(default=None, ge=1, le=366)
     #: Part-day window ("off from 15:00"); ``None`` = the whole scheduled day (#48).
     start_time: Clock | None = None
     end_time: Clock | None = None
@@ -300,6 +305,8 @@ class LeaveRecurringDayCreate(LeaveRecurringDayBase):
 class LeaveRecurringDayUpdate(BaseModel):
     anchor_date: date | None = None
     interval_weeks: int | None = Field(default=None, ge=1, le=8)
+    #: Send ``null`` explicitly to go back to interval mode; omit to leave the mode alone.
+    days_per_year: int | None = Field(default=None, ge=1, le=366)
     leave_type_id: uuid.UUID | None = None
     start_time: Clock | None = None
     end_time: Clock | None = None
@@ -513,6 +520,72 @@ class LeaveBalance(BaseModel):
     remaining_hours: Decimal
     #: The type's balance group (#265), or ``None`` for a standalone type.
     balance_group: str | None = None
+
+
+class FreeTimeDay(BaseModel):
+    """One free day on the calendar, in the shape the free-time card and the wizard both read."""
+
+    request_id: uuid.UUID
+    date: date
+    hours: Decimal
+    #: The window it covers, resolved — ``None``/``None`` is a whole scheduled day.
+    start_time: Clock | None = None
+    end_time: Clock | None = None
+    #: Laid down by a pattern (as opposed to booked by hand). Only these are ever withdrawn
+    #: automatically: a day the employee entered themselves is theirs to keep.
+    from_pattern: bool
+
+
+class FreeTimeOverview(BaseModel):
+    """Everything the free-time surfaces need, in one read.
+
+    The per-type balance answers "how many hours are left", which for free time is the *wrong*
+    question and reads uselessly: once the generator has placed every day, entitled and approved
+    are equal and the balance says "0 h over" — true, and no help at all in answering "when is my
+    next day off". This adds the two facts that matter: which days are on the calendar, and
+    whether the pot still covers them.
+    """
+
+    user_id: uuid.UUID
+    year: int
+    #: The active free-time types rolled into these figures (usually exactly one). Empty when the
+    #: tenant deactivated free time altogether — every number below is then zero.
+    leave_type_ids: list[uuid.UUID]
+    entitled_hours: Decimal
+    #: Booked on the calendar this year (approved + pending), whether taken yet or not.
+    placed_hours: Decimal
+    #: Of ``placed_hours``, the part already in the past.
+    taken_hours: Decimal
+    upcoming_hours: Decimal
+    #: Earned but not yet on the calendar. Never negative — an excess is ``overhang_hours``.
+    unplaced_hours: Decimal
+    #: Placed beyond what the pot covers, which is what a contract change leaves behind (#264
+    #: reprorates the entitlement; the days already on the calendar stay). The wizard reports it
+    #: and offers to withdraw ``overhang`` rather than silently cancelling somebody's plans.
+    overhang_hours: Decimal
+    #: The employee's average scheduled day — what turns hours into "≈ 3 dagen" (§14: never
+    #: ``hours_per_week / 5``).
+    hours_per_day: Decimal
+    next_date: date | None
+    #: Upcoming free days, soonest first.
+    days: list[FreeTimeDay]
+    #: The future, pattern-generated subset the pot no longer covers, latest first — so
+    #: withdrawing them in order gives back the most recently planned days.
+    overhang: list[FreeTimeDay]
+
+
+class FreeTimeWithdraw(BaseModel):
+    """Withdraw specific free days. Ids, never "everything over the pot": the caller confirms a
+    list it was shown, so a balance that moved in between cannot cancel more than was agreed."""
+
+    request_ids: list[uuid.UUID] = Field(min_length=1, max_length=200)
+
+
+class FreeTimeWithdrawResult(BaseModel):
+    cancelled: int
+    #: Ids that were not cancellable (already gone, not free time, or not the caller's to touch).
+    #: Reported rather than raised: one stale id should not abandon the rest of the withdrawal.
+    skipped: list[uuid.UUID]
 
 
 class UserLeaveBalances(BaseModel):
