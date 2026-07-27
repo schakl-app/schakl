@@ -1,19 +1,28 @@
 <script lang="ts">
   /**
-   * The delivery matrix (issue #16, e-mail per event added in #245) — one surface, one save
-   * button (docs/UX.md).
+   * The delivery matrix (issue #16; e-mail per event in #245, personal external channels in
+   * #283) — one surface, one save button (docs/UX.md).
    *
-   * Every event is deliverable on two channels, resolved independently: the bell (in-app) and
-   * personal e-mail. Each channel has its own cadence per event and its own inheritance
-   * (default ← org row ← user row, **whole rows at a time**). A save must not quietly turn every
-   * inherited row into an override, or after one click nothing would inherit again and tomorrow's
-   * better default could never reach anyone. So this posts, per channel, only the events that
-   * already override at this scope plus the ones actually changed here; everything else keeps
-   * falling through, and the badge says where each value came from.
+   * Every event is deliverable on the bell (in-app), on personal e-mail, and on each external
+   * channel the user connected themselves — one column each, every one with its own cadence per
+   * event.
    *
-   * E-mail is a subset of in-app: an event only mails if it also notifies in-app (the fan-out
-   * writes e-mail deliveries off the bell rows). So the e-mail column is disabled where in-app is
-   * off — the stored value is kept, it simply cannot fire.
+   * The two **implicit** channels resolve in three layers (default ← org row ← user row, **whole
+   * rows at a time**). A save must not quietly turn every inherited row into an override, or
+   * after one click nothing would inherit again and tomorrow's better default could never reach
+   * anyone. So this posts, per channel, only the events that already override at this scope plus
+   * the ones actually changed here; everything else keeps falling through, and the badge says
+   * where each value came from.
+   *
+   * A **personal channel** has no such layering — nobody but its owner has an opinion about their
+   * own Slack DM — so its column is plain: a row exists (routed, at a cadence) or it does not
+   * (silent). Its block is posted wholesale, carrying only the events actually routed there. That
+   * is also why it needs no source badge.
+   *
+   * E-mail and every external channel are a subset of in-app: they fan out from the freshly
+   * written bell rows, so an event switched off in-app cannot reach them whatever their own
+   * column says. Those cells are therefore disabled where in-app is off — the stored value is
+   * kept, it simply cannot fire.
    *
    * Edits live in a sparse `edits` map layered over the loaded matrix, rather than a copy of it:
    * changing a control and changing it back leaves the row inherited instead of freezing today's
@@ -59,6 +68,21 @@
     digest_weekday?: number | null;
     source: string;
   }
+  /** One event's rule on one personal external channel (#283). */
+  interface ChannelEvent {
+    event_type: string;
+    enabled: boolean;
+    delay_minutes: number;
+    digest: string;
+  }
+  interface Channel {
+    id: string;
+    name: string;
+    kind: string;
+    digest_time?: string | null;
+    digest_weekday?: number | null;
+    events?: ChannelEvent[];
+  }
 
   let {
     matrix,
@@ -67,15 +91,19 @@
     error = null,
     saved = false,
   }: {
-    matrix: { events: Row[]; general: General; email: EmailSchedule };
+    matrix: { events: Row[]; general: General; email: EmailSchedule; channels?: Channel[] };
     scope: "user" | "org";
     error?: string | null;
     saved?: boolean;
   } = $props();
 
   const CADENCES = ["immediate", "hourly", "daily", "weekly"] as const;
-  // The e-mail column is a single select: "off" plus the four cadences.
+  // Every non-bell column is a single select: "off" plus the four cadences.
   const EMAIL_OPTIONS = ["off", ...CADENCES] as const;
+
+  // The org-default matrix has none by definition: routing to somebody's own Slack DM is not
+  // something a manager can pre-decide for them.
+  const channels = $derived(matrix.channels ?? []);
 
   // Monday-based weekday names in the UI locale (2024-01-01 was a Monday).
   const weekdayFmt = new Intl.DateTimeFormat(dateLocale(), { weekday: "long", timeZone: "UTC" });
@@ -86,6 +114,8 @@
   let edits = $state<Record<string, Partial<Row>>>({});
   let generalEdit = $state<Partial<General>>({});
   let emailEdit = $state<Partial<EmailSchedule>>({});
+  /** `{[channel id]: {[event type]: "off" | cadence}}` — sparse, layered over the loaded matrix. */
+  let channelEdits = $state<Record<string, Record<string, string>>>({});
 
   const busy = new InFlight();
   // Save and reset share the form (#279): key off the clicked button's formaction.
@@ -102,6 +132,7 @@
           edits = {}; // the reloaded matrix is now the truth; stale edits must not re-apply
           generalEdit = {};
           emailEdit = {};
+          channelEdits = {};
         },
     )(input);
 
@@ -148,6 +179,36 @@
       next[row.event_type] = { ...next[row.event_type], ...patch };
     }
     edits = next;
+  }
+
+  // --- personal external channels (#283) -------------------------------------------------- #
+  // One column each, all driven by the same three functions — adding a channel adds no code.
+
+  /** The loaded value of one cell: the cadence it is routed at, or "off". */
+  const channelBaseline = (channel: Channel, eventType: string): string => {
+    const row = (channel.events ?? []).find((e) => e.event_type === eventType);
+    return row?.enabled ? row.digest : "off";
+  };
+
+  /** What the cell shows now: the edit if there is one, else what loaded. */
+  const channelValue = (channel: Channel, eventType: string): string =>
+    channelEdits[channel.id]?.[eventType] ?? channelBaseline(channel, eventType);
+
+  function editChannel(channelId: string, eventType: string, value: string): void {
+    channelEdits = {
+      ...channelEdits,
+      [channelId]: { ...channelEdits[channelId], [eventType]: value },
+    };
+  }
+
+  /** Route every in-app-enabled event to one channel at once — 21 rows is a lot of clicks. */
+  function applyAllChannel(channel: Channel, value: string): void {
+    const patch: Record<string, string> = {};
+    for (const row of rows) {
+      if (!row.enabled) continue; // an external channel can't fire without an in-app row
+      patch[row.event_type] = value;
+    }
+    channelEdits = { ...channelEdits, [channel.id]: { ...channelEdits[channel.id], ...patch } };
   }
 
   function inAppChanged(row: Row): boolean {
@@ -220,6 +281,22 @@
             digest_weekday: emailSchedule.digest_weekday ?? null,
           }
         : null,
+      // Wholesale per channel, and only the events actually routed there: on a personal
+      // channel an absent row *is* "off", so writing the off ones would store 20 rows to say
+      // nothing. Every channel is always sent, or the ones left out would be cleared. A route
+      // whose in-app row is off is still kept — like the e-mail column, it holds its value and
+      // simply cannot fire until the bell is back on.
+      channels: channels.map((channel) => ({
+        channel_config_id: channel.id,
+        events: rows
+          .filter((row) => channelValue(channel, row.event_type) !== "off")
+          .map((row) => ({
+            event_type: row.event_type,
+            enabled: true,
+            delay_minutes: 0,
+            digest: channelValue(channel, row.event_type),
+          })),
+      })),
     }),
   );
 
@@ -339,7 +416,7 @@
     </div>
   </section>
 
-  <!-- Per-event delivery: in-app and e-mail, each with its own cadence and inheritance. -->
+  <!-- Per-event delivery: the bell, e-mail, and one column per personal channel. -->
   <section class="overflow-hidden rounded-xl border border-border bg-surface-raised">
     <div class="border-b border-border bg-surface px-4 py-2">
       <h2 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
@@ -363,6 +440,14 @@
             >
               {t("notifications.settings.channel_email")}
             </th>
+            {#each channels as channel (channel.id)}
+              <th class="border-l border-border px-2 py-1 text-center font-semibold">
+                <span class="block truncate uppercase tracking-wide">{channel.name}</span>
+                <span class="block font-normal normal-case text-text-muted">
+                  {t(`settings.notifications.kind.${channel.kind}`)}
+                </span>
+              </th>
+            {/each}
             <th class="border-l border-border px-4 py-2 font-medium" rowspan="2">
               {t("notifications.settings.source")}
             </th>
@@ -377,13 +462,39 @@
               {t("notifications.settings.delivery")}
             </th>
             <th class="px-2 py-1 font-medium">{t("notifications.settings.delay")}</th>
+            {#each channels as channel (channel.id)}
+              <th class="border-l border-border px-2 py-1 font-medium">
+                <!-- Setting 21 rows one by one is a lot of clicks; this is the same select,
+                     applied to the whole column at once. -->
+                <select
+                  class={controlClass}
+                  value=""
+                  aria-label={t("notifications.settings.apply_all_channel", {
+                    channel: channel.name,
+                  })}
+                  onchange={(e) => {
+                    if (e.currentTarget.value) applyAllChannel(channel, e.currentTarget.value);
+                    e.currentTarget.value = "";
+                  }}
+                >
+                  <option value="">{t("notifications.settings.apply_all_short")}</option>
+                  {#each EMAIL_OPTIONS as option (option)}
+                    <option value={option}>
+                      {option === "off"
+                        ? t("notifications.settings.off")
+                        : t(`notifications.digest.${option}`)}
+                    </option>
+                  {/each}
+                </select>
+              </th>
+            {/each}
           </tr>
         </thead>
         <tbody class="divide-y divide-border">
           {#each groups as group (group.key)}
             <tr class="bg-surface">
               <th
-                colspan="7"
+                colspan={7 + channels.length}
                 scope="colgroup"
                 class="px-4 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-text-muted"
               >
@@ -462,6 +573,27 @@
                       edit(row.event_type, { email_delay_minutes: +e.currentTarget.value })}
                   />
                 </td>
+                <!-- One column per personal external channel: same control, no inheritance. -->
+                {#each channels as channel (channel.id)}
+                  <td class="border-l border-border px-2 py-2">
+                    <select
+                      value={channelValue(channel, row.event_type)}
+                      class={controlClass}
+                      disabled={!row.enabled}
+                      aria-label={channel.name}
+                      onchange={(e) =>
+                        editChannel(channel.id, row.event_type, e.currentTarget.value)}
+                    >
+                      {#each EMAIL_OPTIONS as option (option)}
+                        <option value={option}>
+                          {option === "off"
+                            ? t("notifications.settings.off")
+                            : t(`notifications.digest.${option}`)}
+                        </option>
+                      {/each}
+                    </select>
+                  </td>
+                {/each}
                 <td class="whitespace-nowrap border-l border-border px-4 py-2">
                   <div class="space-y-0.5 text-xs">
                     <div>

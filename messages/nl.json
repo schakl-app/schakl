@@ -941,6 +941,10 @@
   "settings.notifications.channel_events_count": "{count, plural, one {{count} gebeurtenistype} other {{count} gebeurtenistypen}}",
   "settings.notifications.channel_cadence": "Bezorging",
   "settings.notifications.channel_cadence_hint": "Direct stuurt elk event als een apart bericht; een digest houdt ze vast en stuurt er per moment één gebundeld bericht van.",
+  "settings.notifications.my_channels": "Mijn kanalen",
+  "settings.notifications.my_channels_hint": "Koppel je eigen Slack, Telegram, e-mailadres of webhook. Welke gebeurtenissen daarheen gaan en hoe vaak, stel je per gebeurtenis in de tabel hierboven in.",
+  "settings.notifications.channel_routed_by_matrix": "Per gebeurtenis ingesteld in de tabel hierboven",
+  "settings.notifications.channel_schedule_hint": "Wanneer de digests van dit kanaal vertrekken. Geldt alleen voor gebeurtenissen die je op een dagelijkse of wekelijkse digest zet.",
   "settings.notifications.channel_enabled": "Ingeschakeld",
   "settings.notifications.channel_test_failed": "Test mislukt: {error}",
   "settings.notification_defaults.title": "Standaardmeldingen",
@@ -1526,7 +1530,6 @@
   "notifications.settings.apply_all_email": "Alle e-mail instellen op",
   "notifications.settings.digest_time": "Tijd",
   "notifications.settings.digest_weekday": "Dag",
-  "notifications.settings.email_requires_in_app": "E-mail wordt alleen verstuurd voor gebeurtenissen die je ook in-app ontvangt.",
   "notifications.settings.overridden": "Eigen instelling",
   "notifications.settings.inherited_default": "Standaard",
   "notifications.settings.inherited_org": "Organisatie",
@@ -1597,6 +1600,7 @@
   "permissions.notifications.notification.write": "Meldingen als gelezen markeren en eigen voorkeuren instellen",
   "permissions.notifications.defaults.manage": "Standaardmeldingen van de organisatie beheren",
   "permissions.notifications.channels.manage": "Meldingskanalen beheren",
+  "permissions.notifications.channels.manage_own": "Eigen meldingskanalen koppelen",
   "permissions.projects.project.read": "Projecten bekijken",
   "permissions.projects.project.write": "Projecten aanmaken en bewerken",
   "permissions.projects.project.delete": "Projecten verwijderen",
@@ -3072,5 +3076,8 @@
   "errors.invoicing.no_unbilled": "Geen ongefactureerde uren voor deze selectie.",
   "errors.invoicing.number_exhausted": "Kon geen vrij nummer toekennen; controleer de nummeringsinstellingen.",
   "errors.invoicing.provider_unknown": "Onbekende boekhoudkoppeling.",
-  "errors.invoicing.has_payments": "Verwijder eerst de geregistreerde betalingen."
+  "errors.invoicing.has_payments": "Verwijder eerst de geregistreerde betalingen.",
+  "notifications.settings.email_requires_in_app": "E-mail en je eigen kanalen dragen alleen gebeurtenissen die je ook in-app ontvangt.",
+  "notifications.settings.apply_all_channel": "Elke gebeurtenis instellen voor {channel}",
+  "notifications.settings.apply_all_short": "Alles instellen…"
 }

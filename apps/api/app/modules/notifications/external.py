@@ -35,7 +35,11 @@ from app.core.events import EmitContext
 from app.core.net_guard import is_public_address
 from app.i18n import translate
 from app.modules.notifications.defaults import ResolvedPref
-from app.modules.notifications.events import CHANNEL_EMAIL, DIGEST_IMMEDIATE
+from app.modules.notifications.events import (
+    CHANNEL_EMAIL,
+    CHANNEL_EXTERNAL,
+    DIGEST_IMMEDIATE,
+)
 from app.modules.notifications.models import (
     Notification,
     NotificationChannelConfig,
@@ -44,8 +48,6 @@ from app.modules.notifications.models import (
 )
 
 logger = logging.getLogger("schakl.notifications")
-
-CHANNEL_EXTERNAL = "external"
 
 #: Transport families we expose in the UI. ``webhook`` (generic ``json://``/``xml://``) is the
 #: only one whose host is fully user-controlled, so it carries the SSRF guard. ``email`` is not
@@ -161,10 +163,19 @@ class ExternalChannel:
     written once per event (the batch is the event's whole audience, so the first row stands in
     for the room); a personal channel is written for its owner's notifications.
 
-    Every row carries ``deliver_after`` from the channel's cadence (#283). The worker holds it
-    until the slot passes and then sends everything due for that channel as **one** message — the
-    same digest machinery personal e-mail has had since #17, now for every Apprise transport. An
-    ``immediate`` channel simply lands a slot of "now" and leaves on the next tick.
+    Every row carries ``deliver_after``. The worker holds it until the slot passes and then sends
+    everything due for that channel as **one** message — the same digest machinery personal
+    e-mail has had since #17, now for every Apprise transport. An ``immediate`` channel simply
+    lands a slot of "now" and leaves on the next tick.
+
+    **Where the cadence comes from is the one place org and personal channels differ** (#283),
+    and it is this branch:
+
+    * **org / shared** — ``event_filter`` routes, the channel's own ``digest`` sets the slot. A
+      room is not a personal preference; how noisy ``#crm`` is belongs to the room.
+    * **personal** — the owner's per-event preference for *this channel* both routes and sets
+      the slot; ``event_filter`` is not consulted. Two routing mechanisms on one channel would
+      be two places to look when something did not arrive.
     """
 
     key = CHANNEL_EXTERNAL
@@ -176,7 +187,10 @@ class ExternalChannel:
         event: NotificationEvent,
         notifications: Sequence[Notification],
     ) -> None:
-        from app.modules.notifications.prefs import compute_visible_at
+        from app.modules.notifications.prefs import (
+            compute_visible_at,
+            resolve_channel_prefs,
+        )
 
         if not notifications:
             return
@@ -198,17 +212,24 @@ class ExternalChannel:
             return
         now = datetime.now(UTC)
         by_user = {row.user_id: row for row in notifications}
+        # Every personal channel's rule for this event in one query — never one per channel.
+        personal = [c for c in configs if c.user_id is not None]
+        channel_prefs = await resolve_channel_prefs(session, org_id, event.event_type, personal)
+
         for config in configs:
-            if config.event_filter and event.event_type not in config.event_filter:
-                continue
             if config.user_id is not None:
-                # A personal channel only receives its owner's notifications.
+                # A personal channel only receives its owner's notifications, and only the
+                # events they routed here.
                 target = by_user.get(config.user_id)
+                pref = channel_prefs.get(config.id)
+                if target is None or pref is None or not pref.enabled:
+                    continue
             else:
+                if config.event_filter and event.event_type not in config.event_filter:
+                    continue
                 # One message per event for a shared room, not one per recipient.
                 target = notifications[0]
-            if target is None:
-                continue
+                pref = channel_cadence(config)
             session.add(
                 NotificationDelivery(
                     org_id=org_id,
@@ -216,7 +237,7 @@ class ExternalChannel:
                     channel=CHANNEL_EXTERNAL,
                     channel_config_id=config.id,
                     status="pending",
-                    deliver_after=compute_visible_at(channel_cadence(config), now),
+                    deliver_after=compute_visible_at(pref, now),
                 )
             )
 

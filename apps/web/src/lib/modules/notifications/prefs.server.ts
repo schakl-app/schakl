@@ -29,6 +29,19 @@ export interface MatrixEmailEventWrite {
   digest: string;
 }
 
+/** One event routed to one personal external channel (#283). Absent = not routed. */
+export interface MatrixChannelEventWrite {
+  event_type: string;
+  enabled: boolean;
+  delay_minutes: number;
+  digest: string;
+}
+
+export interface MatrixChannelWrite {
+  channel_config_id: string;
+  events: MatrixChannelEventWrite[];
+}
+
 export interface MatrixWrite {
   events: MatrixEventWrite[];
   email_events: MatrixEmailEventWrite[];
@@ -42,6 +55,8 @@ export interface MatrixWrite {
     digest_time: string | null;
     digest_weekday: number | null;
   } | null;
+  /** The caller's own external channels, each with its per-event routing (#283). */
+  channels: MatrixChannelWrite[];
 }
 
 /**
@@ -62,6 +77,7 @@ export const EMPTY_MATRIX: {
     digest_weekday: number | null;
     source: string;
   };
+  channels: never[];
 } = {
   events: [],
   general: {
@@ -75,6 +91,7 @@ export const EMPTY_MATRIX: {
     digest_weekday: null,
     source: "default",
   },
+  channels: [],
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -144,5 +161,26 @@ export function parseMatrixPayload(raw: FormDataEntryValue | null): MatrixWrite 
     };
   }
 
-  return { events, email_events: emailEvents, general, email };
+  const channels: MatrixChannelWrite[] = [];
+  if (Array.isArray(parsed.channels)) {
+    for (const block of parsed.channels) {
+      if (!isPlainObject(block) || typeof block.channel_config_id !== "string") continue;
+      const rows: MatrixChannelEventWrite[] = [];
+      if (Array.isArray(block.events)) {
+        for (const entry of block.events) {
+          if (!isPlainObject(entry) || typeof entry.event_type !== "string") continue;
+          const delay = Number(entry.delay_minutes);
+          rows.push({
+            event_type: entry.event_type,
+            enabled: entry.enabled === true,
+            delay_minutes: Number.isFinite(delay) && delay >= 0 ? Math.trunc(delay) : 0,
+            digest: typeof entry.digest === "string" ? entry.digest : "immediate",
+          });
+        }
+      }
+      channels.push({ channel_config_id: block.channel_config_id, events: rows });
+    }
+  }
+
+  return { events, email_events: emailEvents, general, email, channels };
 }

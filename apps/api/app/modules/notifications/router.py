@@ -8,27 +8,34 @@ preference matrix, which curates what a member inherits before they touch their 
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 
 from fastapi import APIRouter, Depends, Query
 
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
+from app.errors import AppError
 from app.modules.notifications.channel_admin import ChannelService
 from app.modules.notifications.defaults import ResolvedPref
 from app.modules.notifications.prefs import (
-    EmailScheduleWrite as EmailScheduleData,
-)
-from app.modules.notifications.prefs import (
+    ChannelWrite,
     EmailWrite,
     GeneralWrite,
     PrefWrite,
+    effective_channel_matrix,
     effective_email_matrix,
     effective_matrix,
+    personal_channels,
     replace_overrides,
+)
+from app.modules.notifications.prefs import (
+    EmailScheduleWrite as EmailScheduleData,
 )
 from app.modules.notifications.schemas import (
     ActivityItem,
     ChannelCreate,
+    ChannelPreference,
+    ChannelPreferenceEvent,
     ChannelRead,
     ChannelTestResult,
     ChannelUpdate,
@@ -55,11 +62,15 @@ def _matrix(
     in_app: dict[str, ResolvedPref],
     email: dict[str, ResolvedPref],
     schedule: object,
+    configs: Sequence[object] = (),
+    channel_events: dict[uuid.UUID, dict[str, ResolvedPref]] | None = None,
 ) -> PreferenceMatrix:
     """Every event, always — so the settings table renders complete and badges inheritance.
 
-    Each row carries both channels' resolved rules and their independent inheritance sources;
-    ``schedule`` is the scope's global e-mail digest schedule (a ``prefs.EmailSchedule``).
+    Each row carries both implicit channels' resolved rules and their independent inheritance
+    sources; ``schedule`` is the scope's global e-mail digest schedule (a ``prefs.EmailSchedule``).
+    ``configs`` are the caller's personal external channels (#283) — each becomes one more column,
+    with its own per-event cadence and its own digest schedule.
     """
     rows = [
         PreferenceRow(
@@ -84,6 +95,7 @@ def _matrix(
         quiet_hours_end=any_pref.quiet_hours_end,
         source=any_pref.general_source,
     )
+    resolved = channel_events or {}
     return PreferenceMatrix(
         events=rows,
         general=general,
@@ -92,14 +104,71 @@ def _matrix(
             digest_weekday=schedule.digest_weekday,
             source=schedule.source,
         ),
+        channels=[
+            ChannelPreference(
+                id=config.id,
+                name=config.name,
+                kind=config.kind,
+                digest_time=config.digest_time,
+                digest_weekday=config.digest_weekday,
+                events=[
+                    ChannelPreferenceEvent(
+                        event_type=event_type,
+                        enabled=pref.enabled,
+                        delay_minutes=pref.delay_minutes,
+                        digest=pref.digest,
+                    )
+                    for event_type, pref in resolved.get(config.id, {}).items()
+                ],
+            )
+            for config in configs
+        ],
     )
 
 
 async def _load_matrix(session, org_id, user_id) -> PreferenceMatrix:  # noqa: ANN001
-    """Resolve both channels' matrices + the e-mail schedule for one scope, then compose."""
+    """Resolve every channel's matrix for one scope, then compose.
+
+    Four queries flat, whatever the number of personal channels: the in-app rows, the e-mail
+    rows, the caller's channel configs, and every per-channel preference in one go
+    (docs/PERFORMANCE.md — never one query per channel).
+    """
     in_app = await effective_matrix(session, org_id, user_id)
     email, schedule = await effective_email_matrix(session, org_id, user_id)
-    return _matrix(in_app, email, schedule)
+    configs = await personal_channels(session, org_id, user_id)
+    channel_events = await effective_channel_matrix(session, org_id, configs)
+    return _matrix(in_app, email, schedule, configs, channel_events)
+
+
+async def _channel_writes(
+    ctx: RequestContext, payload: PreferenceUpdate
+) -> list[ChannelWrite]:
+    """Flatten the per-channel blocks, refusing any channel that is not the caller's own (#283).
+
+    The route's permission says "may set my own preferences"; only the row can say whether this
+    channel *is* mine. An unknown or foreign id is a 404, not a 403 — a 403 would confirm that
+    somebody else's channel exists (CLAUDE.md §15).
+    """
+    if not payload.channels:
+        return []
+    mine = {
+        config.id for config in await personal_channels(ctx.session, ctx.org.id, ctx.user.id)
+    }
+    writes: list[ChannelWrite] = []
+    for block in payload.channels:
+        if block.channel_config_id not in mine:
+            raise AppError("not_found", "errors.not_found", status_code=404)
+        writes.extend(
+            ChannelWrite(
+                channel_config_id=block.channel_config_id,
+                event_type=row.event_type,
+                enabled=row.enabled,
+                delay_minutes=row.delay_minutes,
+                digest=row.digest,
+            )
+            for row in block.events
+        )
+    return writes
 
 
 def _writes(
@@ -274,7 +343,14 @@ async def set_preferences(
 ) -> PreferenceMatrix:
     events, email_events, general, email_schedule = _writes(payload)
     await replace_overrides(
-        ctx.session, ctx.org.id, ctx.user.id, events, email_events, general, email_schedule
+        ctx.session,
+        ctx.org.id,
+        ctx.user.id,
+        events,
+        email_events,
+        general,
+        email_schedule,
+        await _channel_writes(ctx, payload),
     )
     return await _load_matrix(ctx.session, ctx.org.id, ctx.user.id)
 
@@ -306,11 +382,15 @@ async def set_default_preferences(
     return await _load_matrix(ctx.session, ctx.org.id, None)
 
 
-# --- external channels (#17): admin-only, declared before ``/{notification_id}`` ---------- #
+# --- external channels (#17, #283): declared before ``/{notification_id}`` ---------------- #
+# The route floor is ``manage_own`` — every member may connect a channel *of their own*. Which
+# channels a caller may see or touch is refined in the service, where the row is in hand: an org
+# channel or someone else's personal channel is a **404** to a member, never a 403 that would
+# confirm it exists (CLAUDE.md §15, the two-layer rule).
 @router.get(
     "/channels",
     response_model=list[ChannelRead],
-    dependencies=[require_permission("notifications.channels.manage")],
+    dependencies=[require_permission("notifications.channels.manage_own")],
 )
 async def list_channels(
     ctx: RequestContext = Depends(require_context),
@@ -322,7 +402,7 @@ async def list_channels(
     "/channels",
     response_model=ChannelRead,
     status_code=201,
-    dependencies=[require_permission("notifications.channels.manage")],
+    dependencies=[require_permission("notifications.channels.manage_own")],
 )
 async def create_channel(
     payload: ChannelCreate,
@@ -334,7 +414,7 @@ async def create_channel(
 @router.patch(
     "/channels/{channel_id}",
     response_model=ChannelRead,
-    dependencies=[require_permission("notifications.channels.manage")],
+    dependencies=[require_permission("notifications.channels.manage_own")],
 )
 async def update_channel(
     channel_id: uuid.UUID,
@@ -347,7 +427,7 @@ async def update_channel(
 @router.delete(
     "/channels/{channel_id}",
     status_code=204,
-    dependencies=[require_permission("notifications.channels.manage")],
+    dependencies=[require_permission("notifications.channels.manage_own")],
 )
 async def delete_channel(
     channel_id: uuid.UUID,
@@ -359,7 +439,7 @@ async def delete_channel(
 @router.post(
     "/channels/{channel_id}/test",
     response_model=ChannelTestResult,
-    dependencies=[require_permission("notifications.channels.manage")],
+    dependencies=[require_permission("notifications.channels.manage_own")],
 )
 async def test_channel(
     channel_id: uuid.UUID,

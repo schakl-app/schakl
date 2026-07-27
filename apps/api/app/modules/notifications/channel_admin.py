@@ -1,9 +1,21 @@
-"""Admin CRUD for external notification channels (#17).
+"""CRUD for external notification channels (#17, #283).
 
-Only ``notifications.channels.manage`` (admin) may configure channels — they embed bot tokens and
-can be pointed at arbitrary webhooks. The Apprise URL is SSRF-checked on write, encrypted at rest
-(:mod:`app.core.crypto`), and never returned; the API exposes only a redacted preview and a
-test-send that surfaces the provider's real error.
+Two capabilities, deliberately distinct:
+
+* ``notifications.channels.manage`` (admin) — the **org's** channels: the shared rooms everyone's
+  events land in. They embed bot tokens and can be pointed at arbitrary webhooks, so configuring
+  one is an administrative act.
+* ``notifications.channels.manage_own`` (admin + member) — **my own** channel: my Slack DM, my
+  ntfy topic. Connecting one is a personal setting, like my e-mail cadence, and every member has
+  it. The SSRF guard is the same either way, so a member cannot reach further than an admin can.
+
+The route declares the ``manage_own`` floor; this service refines it with the row in hand, which
+is the only place the distinction can be made (CLAUDE.md §15). A member never learns that an org
+channel or a colleague's channel exists: those are a **404**, not a 403.
+
+The Apprise URL is SSRF-checked on write, encrypted at rest (:mod:`app.core.crypto`), and never
+returned; the API exposes only a redacted preview and a test-send that surfaces the provider's
+real error.
 """
 
 from __future__ import annotations
@@ -130,9 +142,33 @@ class ChannelService:
             "created_at": channel.created_at,
         }
 
+    # --- access scoping (#283) ------------------------------------------------ #
+    @property
+    def _manages_org(self) -> bool:
+        """Admin: sees and edits the org's shared channels as well as their own."""
+        return self.ctx.can("notifications.channels.manage")
+
+    async def _visible_or_404(self, channel_id: uuid.UUID) -> NotificationChannelConfig:
+        """Load a channel the caller may act on, hiding the rest behind a 404.
+
+        A ``require(..., owner_id)`` style assertion would raise 403 here and thereby confirm,
+        to anyone who guesses an id, that the channel exists. Scope-aware *loading* is what
+        keeps that from leaking (issue #19, mirroring ``time.service._owned_or_404``).
+        """
+        channel = await self.channels.get_or_404(channel_id)
+        if not self._manages_org and channel.user_id != self.ctx.user.id:
+            raise AppError("not_found", "errors.not_found", status_code=404)
+        return channel
+
     async def list(self) -> list[dict]:
-        self.ctx.require("notifications.channels.manage")
-        rows = await self.channels.list(limit=200, order_by=NotificationChannelConfig.name)
+        """Every channel for an admin; only the caller's own for a plain member."""
+        self.ctx.require("notifications.channels.manage_own")
+        # Filter in the query, not after the fact: the 200-row page must not be spent on
+        # channels the caller may not see (docs/PERFORMANCE.md).
+        scope = {} if self._manages_org else {"user_id": self.ctx.user.id}
+        rows = await self.channels.list(
+            limit=200, order_by=NotificationChannelConfig.name, **scope
+        )
         return [self._read(c) for c in rows]
 
     def _guard_url(self, kind: str, url: str) -> str:
@@ -160,7 +196,13 @@ class ChannelService:
         return normalized
 
     async def create(self, data: ChannelCreate) -> dict:
-        self.ctx.require("notifications.channels.manage")
+        """A member may only ever create a channel that is **theirs**; an admin, any channel."""
+        self.ctx.require("notifications.channels.manage_own")
+        user_id = data.user_id
+        if not self._manages_org:
+            # Not a request to be refused — a member has no way to mean anything else, and the
+            # web form does not send the field. Forcing it is what makes "my channels" safe.
+            user_id = self.ctx.user.id
         stored = self._guard_url(data.kind, data.url)
         channel = await self.channels.create(
             kind=data.kind,
@@ -168,7 +210,7 @@ class ChannelService:
             url_enc=encrypt(stored),
             enabled=data.enabled,
             event_filter=data.event_filter,
-            user_id=data.user_id,
+            user_id=user_id,
             digest=data.digest,
             digest_time=data.digest_time,
             digest_weekday=data.digest_weekday,
@@ -177,8 +219,8 @@ class ChannelService:
         return self._read(channel)
 
     async def update(self, channel_id: uuid.UUID, data: ChannelUpdate) -> dict:
-        self.ctx.require("notifications.channels.manage")
-        channel = await self.channels.get_or_404(channel_id)
+        self.ctx.require("notifications.channels.manage_own")
+        channel = await self._visible_or_404(channel_id)
         values = data.model_dump(exclude_unset=True, exclude={"url"})
         # ``digest`` is NOT NULL with a default; an explicit ``null`` means "leave it", not
         # "clear it" (``digest_time``/``digest_weekday`` *are* nullable and may be cleared).
@@ -191,14 +233,14 @@ class ChannelService:
         return self._read(channel)
 
     async def delete(self, channel_id: uuid.UUID) -> None:
-        self.ctx.require("notifications.channels.manage")
-        await self.channels.delete(await self.channels.get_or_404(channel_id))
+        self.ctx.require("notifications.channels.manage_own")
+        await self.channels.delete(await self._visible_or_404(channel_id))
 
     async def test(self, channel_id: uuid.UUID) -> ChannelTestResult:
         """Send a test message now and report the provider's real result — the one place a channel
-        does synchronous network I/O, because it is an explicit admin action, not the hot path."""
-        self.ctx.require("notifications.channels.manage")
-        channel = await self.channels.get_or_404(channel_id)
+        does synchronous network I/O, because it is an explicit user action, not the hot path."""
+        self.ctx.require("notifications.channels.manage_own")
+        channel = await self._visible_or_404(channel_id)
         from app.core.email.branding import load_brand
         from app.i18n import resolve_locale, translate
 

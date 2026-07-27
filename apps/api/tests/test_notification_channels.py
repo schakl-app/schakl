@@ -130,19 +130,95 @@ async def test_ssrf_blocks_private_webhook(client_for) -> None:
         assert "notification_channel_blocked" in res.text
 
 
-async def test_only_admin_manages_channels(client_for) -> None:
+async def test_member_creating_a_channel_only_ever_gets_their_own(client_for) -> None:
+    """``manage_own`` (#283): a member connects their own transport, never an org one."""
     t = await make_tenant("chan-rbac")
     owner = await auth_cookie(t.user)
     async with client_for(t.host) as c:
         member = await _member(c, owner, "m@example.com")
         mh = await auth_cookie(member)
-        res = await c.post(
+        # No ``user_id`` in the body, and asking for an org channel outright: both land on
+        # the caller, because a member has no way to mean anything else.
+        mine = await c.post(
             "/api/v1/notifications/channels",
-            json={"kind": "slack", "name": "x", "url": _SLACK},
+            json={"kind": "slack", "name": "My DM", "url": _SLACK},
             headers=mh,
         )
-        assert res.status_code == 403
-        assert (await c.get("/api/v1/notifications/channels", headers=mh)).status_code == 403
+        assert mine.status_code == 201, mine.text
+        assert mine.json()["user_id"] == str(member.id)
+
+        forced = await c.post(
+            "/api/v1/notifications/channels",
+            json={"kind": "slack", "name": "Sneaky", "url": _SLACK, "user_id": None},
+            headers=mh,
+        )
+        assert forced.status_code == 201
+        assert forced.json()["user_id"] == str(member.id)
+
+        # An admin still owns the org's shared rooms.
+        shared = await c.post(
+            "/api/v1/notifications/channels",
+            json={"kind": "slack", "name": "#crm", "url": _SLACK},
+            headers=owner,
+        )
+        assert shared.status_code == 201 and shared.json()["user_id"] is None
+
+
+async def test_member_sees_and_touches_only_their_own_channels(client_for) -> None:
+    """An org channel, or a colleague's, is a **404** to a member — never a 403 (#283, §15)."""
+    t = await make_tenant("chan-scope")
+    owner = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        a = await _member(c, owner, "a@scope.example")
+        b = await _member(c, owner, "b@scope.example")
+        ah, bh = await auth_cookie(a), await auth_cookie(b)
+
+        org_id = (
+            await c.post(
+                "/api/v1/notifications/channels",
+                json={"kind": "slack", "name": "#crm", "url": _SLACK},
+                headers=owner,
+            )
+        ).json()["id"]
+        b_id = (
+            await c.post(
+                "/api/v1/notifications/channels",
+                json={"kind": "slack", "name": "B's DM", "url": _SLACK},
+                headers=bh,
+            )
+        ).json()["id"]
+        a_id = (
+            await c.post(
+                "/api/v1/notifications/channels",
+                json={"kind": "slack", "name": "A's DM", "url": _SLACK},
+                headers=ah,
+            )
+        ).json()["id"]
+
+        listed = (await c.get("/api/v1/notifications/channels", headers=ah)).json()
+        assert [row["id"] for row in listed] == [a_id]
+
+        for other in (org_id, b_id):
+            assert (
+                await c.patch(
+                    f"/api/v1/notifications/channels/{other}", json={"enabled": False}, headers=ah
+                )
+            ).status_code == 404
+            assert (
+                await c.delete(f"/api/v1/notifications/channels/{other}", headers=ah)
+            ).status_code == 404
+            assert (
+                await c.post(f"/api/v1/notifications/channels/{other}/test", headers=ah)
+            ).status_code == 404
+
+        # Their own is theirs to edit.
+        assert (
+            await c.patch(
+                f"/api/v1/notifications/channels/{a_id}", json={"name": "Mine"}, headers=ah
+            )
+        ).status_code == 200
+        # And the admin still sees every one of them.
+        assert len((await c.get("/api/v1/notifications/channels", headers=owner)).json()) == 3
 
 
 async def test_event_fanout_enqueues_a_delivery(client_for) -> None:

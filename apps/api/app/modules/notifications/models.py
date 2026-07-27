@@ -158,6 +158,12 @@ class NotificationPreference(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin
     ``user_id IS NULL`` → the org default row (managers curate it, dashboard_prefs pattern).
     ``event_type IS NULL`` → the "general" row for a scope: quiet hours + due-soon threshold,
     which are not per-event. Four partial unique indexes keep each quadrant single-valued.
+
+    ``channel_config_id`` names a **personal external channel** (#283): "my Slack, for
+    ``task.overdue``, immediately". Those rows live outside the four quadrants — hence the
+    ``channel_config_id IS NULL`` qualifier on each — and get one index of their own. They are
+    always user-scoped and always per-event: routing to *my* Slack is not an org default, and a
+    channel with no event on it is simply an unrouted channel.
     """
 
     __tablename__ = "notification_preferences"
@@ -167,34 +173,58 @@ class NotificationPreference(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin
             "uq_notif_pref_user_event",
             "org_id", "user_id", "event_type", "channel",
             unique=True,
-            postgresql_where=text("user_id IS NOT NULL AND event_type IS NOT NULL"),
+            postgresql_where=text(
+                "user_id IS NOT NULL AND event_type IS NOT NULL AND channel_config_id IS NULL"
+            ),
         ),
         # user + general (event_type NULL)
         Index(
             "uq_notif_pref_user_general",
             "org_id", "user_id", "channel",
             unique=True,
-            postgresql_where=text("user_id IS NOT NULL AND event_type IS NULL"),
+            postgresql_where=text(
+                "user_id IS NOT NULL AND event_type IS NULL AND channel_config_id IS NULL"
+            ),
         ),
         # org default + specific event
         Index(
             "uq_notif_pref_org_event",
             "org_id", "event_type", "channel",
             unique=True,
-            postgresql_where=text("user_id IS NULL AND event_type IS NOT NULL"),
+            postgresql_where=text(
+                "user_id IS NULL AND event_type IS NOT NULL AND channel_config_id IS NULL"
+            ),
         ),
         # org default + general
         Index(
             "uq_notif_pref_org_general",
             "org_id", "channel",
             unique=True,
-            postgresql_where=text("user_id IS NULL AND event_type IS NULL"),
+            postgresql_where=text(
+                "user_id IS NULL AND event_type IS NULL AND channel_config_id IS NULL"
+            ),
+        ),
+        # a personal external channel: one row per (user, channel, event)
+        Index(
+            "uq_notif_pref_user_channel_event",
+            "org_id", "user_id", "channel_config_id", "event_type",
+            unique=True,
+            postgresql_where=text(
+                "channel_config_id IS NOT NULL AND event_type IS NOT NULL"
+            ),
         ),
     )
 
     user_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    #: Set → this row is one event's rule for one *personal external channel* (#283).
+    channel_config_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("notification_channels.id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )

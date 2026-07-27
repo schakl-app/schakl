@@ -101,10 +101,37 @@ class EmailSchedule(BaseModel):
     source: PrefSource
 
 
+class ChannelPreferenceEvent(BaseModel):
+    """One event's rule on one personal external channel (#283). ``enabled=false`` = not routed."""
+
+    event_type: str
+    enabled: bool = False
+    delay_minutes: int = 0
+    digest: str = "immediate"
+
+
+class ChannelPreference(BaseModel):
+    """A personal external channel as the matrix renders it: one column, one row per event.
+
+    ``digest_time``/``digest_weekday`` are the channel's own digest schedule — not per event, so
+    they are edited on the channel (Instellingen → Meldingen → Mijn kanalen), not in the matrix.
+    """
+
+    id: uuid.UUID
+    name: str
+    kind: str
+    digest_time: time | None = None
+    digest_weekday: int | None = None
+    events: list[ChannelPreferenceEvent] = Field(default_factory=list)
+
+
 class PreferenceMatrix(BaseModel):
     events: list[PreferenceRow]
     general: GeneralPreference
     email: EmailSchedule
+    #: The caller's own external channels, each with its per-event rules (#283). Empty on the
+    #: org-default matrix: nobody can pre-decide the routing of someone else's Slack DM.
+    channels: list[ChannelPreference] = Field(default_factory=list)
 
 
 class PreferenceRowWrite(BaseModel):
@@ -164,6 +191,45 @@ class EmailScheduleWrite(BaseModel):
     digest_weekday: Annotated[int | None, Field(ge=0, le=6)] = None
 
 
+class ChannelPreferenceEventWrite(BaseModel):
+    """One event routed to one personal channel. Absent = not routed (#283)."""
+
+    event_type: str
+    enabled: bool = False
+    delay_minutes: Annotated[int, Field(ge=0, le=24 * 60)] = 0
+    digest: str = "immediate"
+
+    @field_validator("event_type")
+    @classmethod
+    def _known_event(cls, value: str) -> str:
+        if value not in EVENT_TYPES:
+            raise ValueError("unknown event_type")
+        return value
+
+    @field_validator("digest")
+    @classmethod
+    def _known_digest(cls, value: str) -> str:
+        if value not in DIGEST_CADENCES:
+            raise ValueError("unknown digest cadence")
+        return value
+
+
+class ChannelPreferenceWrite(BaseModel):
+    """This channel's whole per-event routing, wholesale like every other block."""
+
+    channel_config_id: uuid.UUID
+    events: list[ChannelPreferenceEventWrite] = Field(default_factory=list)
+
+    @field_validator("events")
+    @classmethod
+    def _no_duplicates(
+        cls, value: list[ChannelPreferenceEventWrite]
+    ) -> list[ChannelPreferenceEventWrite]:
+        if len({row.event_type for row in value}) != len(value):
+            raise ValueError("duplicate event_type")
+        return value
+
+
 class PreferenceUpdate(BaseModel):
     """A PUT replaces this scope's overrides **wholesale** — an omitted event inherits again.
 
@@ -181,6 +247,11 @@ class PreferenceUpdate(BaseModel):
     email_events: list[EmailPreferenceRowWrite] = Field(default_factory=list)
     general: GeneralPreferenceWrite | None = None
     email: EmailScheduleWrite | None = None
+    #: Per personal external channel (#283), wholesale like every other block: what this list
+    #: does not carry is cleared, so a caller that means to change one channel still sends the
+    #: others (the web form always posts every column). Ignored on the org-default endpoint,
+    #: where personal channels do not exist.
+    channels: list[ChannelPreferenceWrite] = Field(default_factory=list)
 
     @field_validator("events")
     @classmethod
@@ -204,6 +275,10 @@ class PreferenceUpdate(BaseModel):
 __all__ = [
     "ENTITY_TYPES",
     "ActivityItem",
+    "ChannelPreference",
+    "ChannelPreferenceEvent",
+    "ChannelPreferenceEventWrite",
+    "ChannelPreferenceWrite",
     "EmailPreferenceRowWrite",
     "EmailSchedule",
     "EmailScheduleWrite",

@@ -6641,6 +6641,89 @@ export interface components {
             /** User Id */
             user_id?: string | null;
         };
+        /**
+         * ChannelPreference
+         * @description A personal external channel as the matrix renders it: one column, one row per event.
+         *
+         *     ``digest_time``/``digest_weekday`` are the channel's own digest schedule — not per event, so
+         *     they are edited on the channel (Instellingen → Meldingen → Mijn kanalen), not in the matrix.
+         */
+        ChannelPreference: {
+            /** Digest Time */
+            digest_time?: string | null;
+            /** Digest Weekday */
+            digest_weekday?: number | null;
+            /** Events */
+            events?: components["schemas"]["ChannelPreferenceEvent"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * ChannelPreferenceEvent
+         * @description One event's rule on one personal external channel (#283). ``enabled=false`` = not routed.
+         */
+        ChannelPreferenceEvent: {
+            /**
+             * Delay Minutes
+             * @default 0
+             */
+            delay_minutes: number;
+            /**
+             * Digest
+             * @default immediate
+             */
+            digest: string;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /** Event Type */
+            event_type: string;
+        };
+        /**
+         * ChannelPreferenceEventWrite
+         * @description One event routed to one personal channel. Absent = not routed (#283).
+         */
+        ChannelPreferenceEventWrite: {
+            /**
+             * Delay Minutes
+             * @default 0
+             */
+            delay_minutes: number;
+            /**
+             * Digest
+             * @default immediate
+             */
+            digest: string;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /** Event Type */
+            event_type: string;
+        };
+        /**
+         * ChannelPreferenceWrite
+         * @description This channel's whole per-event routing, wholesale like every other block.
+         */
+        ChannelPreferenceWrite: {
+            /**
+             * Channel Config Id
+             * Format: uuid
+             */
+            channel_config_id: string;
+            /** Events */
+            events?: components["schemas"]["ChannelPreferenceEventWrite"][];
+        };
         /** ChannelRead */
         ChannelRead: {
             /**
@@ -11254,6 +11337,8 @@ export interface components {
         };
         /** PreferenceMatrix */
         PreferenceMatrix: {
+            /** Channels */
+            channels?: components["schemas"]["ChannelPreference"][];
             email: components["schemas"]["EmailSchedule"];
             /** Events */
             events: components["schemas"]["PreferenceRow"][];
@@ -11341,6 +11426,8 @@ export interface components {
          *     the same wholesale scope when its dedicated endpoint was folded in.
          */
         PreferenceUpdate: {
+            /** Channels */
+            channels?: components["schemas"]["ChannelPreferenceWrite"][];
             email?: components["schemas"]["EmailScheduleWrite"] | null;
             /** Email Events */
             email_events?: components["schemas"]["EmailPreferenceRowWrite"][];

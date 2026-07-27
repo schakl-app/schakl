@@ -11,6 +11,8 @@
    * The controls post themselves (`digest`, `digest_time`, `digest_weekday`) so both the create
    * form and each inline editor can drop this in without threading state back up.
    */
+  import { untrack } from "svelte";
+
   import { dateLocale } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import TimeInput from "$lib/core/ui/TimeInput.svelte";
@@ -39,9 +41,11 @@
   /** The API returns "HH:MM:SS"; `TimeInput` speaks "HH:MM". */
   const hhmm = (value: string | null | undefined) => (value ? value.slice(0, 5) : "");
 
-  let digest = $state(initialDigest);
-  let digestTime = $state(hhmm(initialTime) || "08:00");
-  let digestWeekday = $state(initialWeekday ?? 0);
+  // Seeded from the props, then owned here: these controls post themselves, so the parent
+  // has nothing to push back in. `untrack` says that out loud rather than leaving a warning.
+  let digest = $state(untrack(() => initialDigest));
+  let digestTime = $state(untrack(() => hhmm(initialTime) || "08:00"));
+  let digestWeekday = $state(untrack(() => initialWeekday ?? 0));
 
   const scheduled = $derived(digest === "daily" || digest === "weekly");
 

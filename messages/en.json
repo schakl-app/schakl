@@ -941,6 +941,10 @@
   "settings.notifications.channel_events_count": "{count, plural, one {{count} event type} other {{count} event types}}",
   "settings.notifications.channel_cadence": "Delivery",
   "settings.notifications.channel_cadence_hint": "Immediately sends every event as its own message. A digest holds them and sends one bundled message per slot.",
+  "settings.notifications.my_channels": "My channels",
+  "settings.notifications.my_channels_hint": "Connect your own Slack, Telegram, e-mail address or webhook. Which events go there, and how often, you set per event in the table above.",
+  "settings.notifications.channel_routed_by_matrix": "Set per event in the table above",
+  "settings.notifications.channel_schedule_hint": "When this channel's digests go out. Only applies to events you set to a daily or weekly digest.",
   "settings.notifications.channel_enabled": "Enabled",
   "settings.notifications.channel_test_failed": "Test failed: {error}",
   "settings.notification_defaults.title": "Notification defaults",
@@ -1526,7 +1530,6 @@
   "notifications.settings.apply_all_email": "Set all e-mail to",
   "notifications.settings.digest_time": "Time",
   "notifications.settings.digest_weekday": "Day",
-  "notifications.settings.email_requires_in_app": "E-mail is only sent for events you also receive in-app.",
   "notifications.settings.overridden": "Your setting",
   "notifications.settings.inherited_default": "Default",
   "notifications.settings.inherited_org": "Organisation",
@@ -1597,6 +1600,7 @@
   "permissions.notifications.notification.write": "Mark notifications read and set own preferences",
   "permissions.notifications.defaults.manage": "Manage the organisation's notification defaults",
   "permissions.notifications.channels.manage": "Manage notification channels",
+  "permissions.notifications.channels.manage_own": "Connect own notification channels",
   "permissions.projects.project.read": "View projects",
   "permissions.projects.project.write": "Create and edit projects",
   "permissions.projects.project.delete": "Delete projects",
@@ -3072,5 +3076,8 @@
   "errors.invoicing.no_unbilled": "No unbilled hours for this selection.",
   "errors.invoicing.number_exhausted": "Could not allocate a free number; check the numbering settings.",
   "errors.invoicing.provider_unknown": "Unknown accounting provider.",
-  "errors.invoicing.has_payments": "Remove the registered payments first."
+  "errors.invoicing.has_payments": "Remove the registered payments first.",
+  "notifications.settings.email_requires_in_app": "E-mail and your own channels only carry events you also receive in-app.",
+  "notifications.settings.apply_all_channel": "Set every event for {channel}",
+  "notifications.settings.apply_all_short": "Set all…"
 }

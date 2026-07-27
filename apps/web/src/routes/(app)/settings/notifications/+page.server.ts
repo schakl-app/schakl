@@ -9,19 +9,30 @@ import type { Actions, PageServerLoad } from "./$types";
 
 // Personal delivery preferences — reachable by every member (NOT manager-gated, unlike the org
 // defaults next door). Reached from the profile menu, because what reaches *me* is mine
-// (docs/UX.md §6). E-mail is now per event, inside the matrix (#245); external channels (#17)
-// are admin-only and shown below it.
+// (docs/UX.md §6). E-mail is now per event, inside the matrix (#245), and so is each of my own
+// external channels (#283); the org's *shared* channels stay admin-only, below.
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const canManageChannels = can(event.locals.user, "notifications.channels.manage");
+  const canManageOwnChannels = can(event.locals.user, "notifications.channels.manage_own");
   const [prefs, channels] = await Promise.all([
     api.GET("/api/v1/notifications/preferences"),
-    canManageChannels ? api.GET("/api/v1/notifications/channels") : Promise.resolve({ data: null }),
+    // One call for both sections: the API already scopes the list — an admin sees every
+    // channel, a member only their own — so asking twice would just be a second round trip.
+    canManageOwnChannels
+      ? api.GET("/api/v1/notifications/channels")
+      : Promise.resolve({ data: null }),
   ]);
+  const all = channels.data ?? [];
+  const me = event.locals.user?.id ?? "";
   return {
     matrix: prefs.data ?? EMPTY_MATRIX,
     canManageChannels,
-    channels: channels.data ?? [],
+    canManageOwnChannels,
+    /** The org's shared rooms — admin-configured, channel-level cadence. */
+    channels: all.filter((c) => c.user_id == null),
+    /** My own transports — routed per event from the matrix above. */
+    myChannels: all.filter((c) => c.user_id === me),
   };
 };
 
@@ -50,10 +61,24 @@ function parseChannelCadence(form: FormData): {
   digest_weekday: number | null;
 } {
   const digest = String(form.get("digest") ?? "immediate");
+  return {
+    digest: CADENCES.has(digest) ? digest : "immediate",
+    ...parseChannelSchedule(form),
+  };
+}
+
+/**
+ * Only the *schedule* — when this channel's digests land (#283). A personal channel has no
+ * channel-level cadence (the matrix sets one per event), but its daily and weekly digests still
+ * need an hour, and asking for it once per channel beats asking on every matrix row.
+ */
+function parseChannelSchedule(form: FormData): {
+  digest_time: string | null;
+  digest_weekday: number | null;
+} {
   const time = String(form.get("digest_time") ?? "");
   const weekday = Number(form.get("digest_weekday"));
   return {
-    digest: CADENCES.has(digest) ? digest : "immediate",
     digest_time: /^\d{2}:\d{2}$/.test(time) ? time : null,
     digest_weekday: Number.isInteger(weekday) && weekday >= 0 && weekday <= 6 ? weekday : null,
   };
@@ -79,38 +104,50 @@ export const actions: Actions = {
     return { saved: true };
   },
 
-  // --- external channels (#17), admin-only (the API re-enforces) ---------------------- #
+  // --- external channels (#17, #283) --------------------------------------------------- #
+  // Two kinds of channel share these actions. A **shared** one belongs to the org and needs
+  // `notifications.channels.manage`; a **personal** one is the caller's own and needs only
+  // `manage_own`, which every member holds. The `personal` field is what the form says it
+  // wants; the API decides what it may have (it forces `user_id` for a member either way).
   createChannel: async (event) => {
     const form = await event.request.formData();
     const kind = String(form.get("kind") ?? "").trim();
     const name = String(form.get("name") ?? "").trim();
+    const personal = form.get("personal") != null;
     // Telegram is the one guided form with two inputs; the API expects "<token>/<chat id>".
     const url =
       kind === "telegram"
         ? `${String(form.get("bot_token") ?? "").trim()}/${String(form.get("chat_id") ?? "").trim()}`
         : String(form.get("url") ?? "").trim();
     if (!kind || !name || !url || url === "/")
-      return fail(400, { channelError: "errors.required" });
+      return fail(400, { channelError: "errors.required", channelErrorPersonal: personal });
     const { error } = await apiFor(event).POST("/api/v1/notifications/channels", {
       body: {
         kind: kind as "slack",
         name,
         url,
         enabled: true,
-        // #245: which event types route here; [] = all events.
-        event_filter: parseChannelFilter(form.get("event_filter")),
-        // #283: when they arrive — immediately, or bundled per digest slot.
-        ...parseChannelCadence(form),
+        // A personal channel is routed per event from the matrix, so it carries no filter and
+        // no channel-level cadence — only the schedule its digests land on (#283). `digest`
+        // still goes along at its default: the column is NOT NULL and simply unread for a
+        // personal channel.
+        event_filter: personal ? [] : parseChannelFilter(form.get("event_filter")),
+        user_id: personal ? event.locals.user?.id : undefined,
+        digest: personal ? "immediate" : parseChannelCadence(form).digest,
+        ...parseChannelSchedule(form),
       },
     });
     if (error) {
       const e = apiErrorKey(error);
-      return fail(400, { channelError: e.fields?.url ?? e.key });
+      return fail(400, {
+        channelError: e.fields?.url ?? e.key,
+        channelErrorPersonal: personal,
+      });
     }
     return { channelSaved: true };
   },
 
-  /** Edit a channel's name, enabled state, and event filter (#245). The URL is never touched.
+  /** Edit a channel's name, enabled state, and routing (#245, #283). The URL is never touched.
    *  Errors surface as `updateError` (distinct from the create form's `channelError`) so a failed
    *  edit reports next to the inline editor, not under the create form far below. */
   updateChannel: async (event) => {
@@ -118,13 +155,17 @@ export const actions: Actions = {
     const id = String(form.get("channel_id") ?? "");
     if (!id) return fail(400, { updateError: "errors.required", updateErrorId: id });
     const name = String(form.get("name") ?? "").trim();
+    const personal = form.get("personal") != null;
     const { error } = await apiFor(event).PATCH("/api/v1/notifications/channels/{channel_id}", {
       params: { path: { channel_id: id } },
       body: {
         name: name || undefined,
         enabled: form.get("enabled") != null,
-        event_filter: parseChannelFilter(form.get("event_filter")),
-        ...parseChannelCadence(form),
+        // A personal channel's routing and cadence live in the matrix, so its editor only
+        // sends the schedule; leaving the other fields off keeps them untouched (#283).
+        event_filter: personal ? undefined : parseChannelFilter(form.get("event_filter")),
+        digest: personal ? undefined : parseChannelCadence(form).digest,
+        ...parseChannelSchedule(form),
       },
     });
     if (error) {
