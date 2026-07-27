@@ -172,26 +172,37 @@ async def test_portal_horizon_is_the_contacts_companies(client_for) -> None:
 
 
 async def test_portal_user_excluded_from_notification_fanout(client_for) -> None:
-    """A staff event must never land in a client's inbox (#193)."""
+    """A staff event must never land in a client's inbox (#193) — and "a client" is the role,
+    not the contact link (#274): a directly-invited client-role member passed the contact-link
+    test and received the staff fan-out."""
     from app.modules.notifications.service import NotificationService
 
     t, headers, contact, company_ids = await _tenant_with_contact(client_for, "portal-fan")
     async with client_for(t.host) as c:
         await c.post(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)
+        await c.post(
+            "/api/v1/members/invite",
+            json={"email": "extern-fan@example.com", "role": "client"},
+            headers=headers,
+        )
     class _Ctx:
         pass
 
     async with async_session_maker() as session:
         portal_user = await session.scalar(select(User).where(User.email == contact["email"]))
+        bare_client = await session.scalar(
+            select(User).where(User.email == "extern-fan@example.com")
+        )
         await set_current_org(session, t.org.id)
         emit_ctx = _Ctx()
         emit_ctx.org = t.org
         emit_ctx.session = session
         emit_ctx.user = None
         service = NotificationService(emit_ctx)
-        kept = await service._members_only({t.user.id, portal_user.id})
+        kept = await service._members_only({t.user.id, portal_user.id, bare_client.id})
     assert t.user.id in kept
     assert portal_user.id not in kept
+    assert bare_client.id not in kept
 
 
 async def test_portal_user_excluded_from_staff_pickers(client_for) -> None:
@@ -289,6 +300,173 @@ async def test_portal_reads_only_their_companies_contacts(client_for) -> None:
         assert r.status_code == 404
         # Staff reads are untouched: the owner still sees the whole address book.
         assert (await c.get("/api/v1/contacts", headers=headers)).json()["total"] == 3
+
+
+async def test_portal_contact_read_hides_out_of_horizon_links(client_for) -> None:
+    """A person visible to a client may also work for one of the agency's other clients. The
+    read may not say so: ``ContactRead.companies`` was org-scoped only, so the roster #252 took
+    away came back one colleague at a time — with names and ids."""
+    t, headers, contact, company_ids = await _tenant_with_contact(
+        client_for, "portal-crosslink", companies=2
+    )
+    mine, theirs = company_ids
+
+    async with client_for(t.host) as c:
+        # A colleague at the client's own company who also works for the agency's other client.
+        colleague = (
+            await c.post(
+                "/api/v1/contacts",
+                json={
+                    "first_name": "Dubbel",
+                    "last_name": "Verbonden",
+                    "company_ids": [mine, theirs],
+                },
+                headers=headers,
+            )
+        ).json()
+        await c.post(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)
+        async with async_session_maker() as session:
+            portal_user = await session.scalar(
+                select(User).where(User.email == contact["email"])
+            )
+        portal_headers = await auth_cookie(portal_user)
+
+        # The colleague is readable (linked to a company in the horizon) — but only that link
+        # is named. The other client's id and name are not the client's business.
+        seen = (
+            await c.get(f"/api/v1/contacts/{colleague['id']}", headers=portal_headers)
+        ).json()
+        assert [link["company_id"] for link in seen["companies"]] == [mine]
+        listed = (await c.get("/api/v1/contacts", headers=portal_headers)).json()["items"]
+        by_id = {row["id"]: row for row in listed}
+        assert [link["company_id"] for link in by_id[colleague["id"]]["companies"]] == [mine]
+
+        # Staff still see both links on the same record.
+        staff = (await c.get(f"/api/v1/contacts/{colleague['id']}", headers=headers)).json()
+        assert {link["company_id"] for link in staff["companies"]} == {mine, theirs}
+
+
+async def test_portal_can_add_a_contact_to_its_own_company(client_for) -> None:
+    """#274, the reported defect: granting a client role ``contacts.contact.write`` +
+    ``contacts.link.write`` still answered 404.
+
+    ``create`` wrote the contact and then called the *public* ``link``, which re-reads the
+    contact through the portal repo — and that repo demands an existing company link, which a
+    row created one statement ago cannot have. So the only contact a client could add was one
+    that already existed. Attaching to a company *outside* the horizon must still 404.
+    """
+    t, headers, contact, company_ids = await _tenant_with_contact(
+        client_for, "portal-addcontact", companies=2
+    )
+    mine, theirs = company_ids
+
+    async with client_for(t.host) as c:
+        await c.post(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)
+        roles = (await c.get("/api/v1/roles", headers=headers)).json()
+        client_role = next(r for r in roles if r["key"] == "client")
+        granted = await c.patch(
+            f"/api/v1/roles/{client_role['id']}",
+            json={
+                "permissions": sorted(
+                    set(client_role["permissions"])
+                    | {"contacts.contact.write", "contacts.link.write"}
+                )
+            },
+            headers=headers,
+        )
+        assert granted.status_code == 200, granted.text
+
+        async with async_session_maker() as session:
+            portal_user = await session.scalar(
+                select(User).where(User.email == contact["email"])
+            )
+        portal_headers = await auth_cookie(portal_user)
+
+        created = await c.post(
+            "/api/v1/contacts",
+            json={
+                "first_name": "Nieuwe",
+                "last_name": "Collega",
+                "email": "collega-274@example.com",
+                "company_ids": [mine],
+            },
+            headers=portal_headers,
+        )
+        assert created.status_code == 201, created.text
+        assert [link["company_id"] for link in created.json()["companies"]] == [mine]
+        # And they can read back what they just added — the link is what makes it theirs.
+        assert (
+            await c.get(f"/api/v1/contacts/{created.json()['id']}", headers=portal_headers)
+        ).status_code == 200
+
+        # A company outside the horizon is still 404, and nothing is written on the way there.
+        refused = await c.post(
+            "/api/v1/contacts",
+            json={"first_name": "Bij", "last_name": "Anderen", "company_ids": [theirs]},
+            headers=portal_headers,
+        )
+        assert refused.status_code == 404, refused.text
+        assert (await c.get("/api/v1/contacts", headers=headers)).json()["total"] == 2
+
+        # A contact attached to nothing would vanish on the next read, so it is refused too.
+        floating = await c.post(
+            "/api/v1/contacts", json={"first_name": "Zwevend"}, headers=portal_headers
+        )
+        assert floating.status_code == 422, floating.text
+        assert (
+            floating.json()["error"]["fields"]["company_ids"]
+            == "errors.contact_company_required"
+        )
+
+
+async def test_portal_link_mutations_respect_the_horizon(client_for) -> None:
+    """``set_primary`` and ``unlink`` take a company id straight from the caller and looked the
+    link up org-wide, so a scoped login could re-primary or detach a contact at a company it
+    cannot see (#191's write rule, missed on these two paths)."""
+    t, headers, contact, company_ids = await _tenant_with_contact(
+        client_for, "portal-linkguard", companies=2
+    )
+    mine, theirs = company_ids
+
+    async with client_for(t.host) as c:
+        other_contact = (
+            await c.post(
+                "/api/v1/contacts",
+                json={"first_name": "Truus", "last_name": "Anders", "company_ids": [theirs]},
+                headers=headers,
+            )
+        ).json()
+        await c.post(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)
+        roles = (await c.get("/api/v1/roles", headers=headers)).json()
+        client_role = next(r for r in roles if r["key"] == "client")
+        await c.patch(
+            f"/api/v1/roles/{client_role['id']}",
+            json={"permissions": sorted(set(client_role["permissions"]) | {"contacts.link.write"})},
+            headers=headers,
+        )
+        async with async_session_maker() as session:
+            portal_user = await session.scalar(
+                select(User).where(User.email == contact["email"])
+            )
+        portal_headers = await auth_cookie(portal_user)
+
+        assert (
+            await c.delete(
+                f"/api/v1/contacts/{other_contact['id']}/links/{theirs}", headers=portal_headers
+            )
+        ).status_code == 404
+        assert (
+            await c.patch(
+                f"/api/v1/contacts/{other_contact['id']}/links/{theirs}",
+                json={"is_primary": True},
+                headers=portal_headers,
+            )
+        ).status_code == 404
+        # The link is still there for staff.
+        staff = (
+            await c.get(f"/api/v1/contacts/{other_contact['id']}", headers=headers)
+        ).json()
+        assert [link["company_id"] for link in staff["companies"]] == [theirs]
 
 
 async def test_portal_state_is_tenant_scoped(client_for) -> None:

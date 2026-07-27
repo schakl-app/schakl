@@ -29,7 +29,8 @@ from app.config import settings
 from app.core.auth.models import User
 from app.core.auth.users import current_active_user_optional
 from app.core.models import Membership, Org, OrgStatus
-from app.core.permissions.models import MembershipRole, RolePermission
+from app.core.permissions.catalog import ROLE_CLIENT
+from app.core.permissions.models import MembershipRole, Role, RolePermission
 from app.core.permissions.permset import PermissionSet
 from app.db import async_session_maker, set_current_org
 from app.errors import AppError
@@ -97,8 +98,12 @@ class RequestContext:
     #: ``None`` = unrestricted (the default and the owner's guarantee); a set = this
     #: membership sees only those companies' rows. Enforced by the repository below.
     company_scope: frozenset[uuid.UUID] | None = None
-    #: A contact-linked (client-portal) login (#193). Services use it where "what a client
-    #: may see" is narrower than the horizon alone — e.g. only tasks ticked visible.
+    #: An **external** (client) login: a contact-linked portal membership (#193) *or* any
+    #: membership holding the seeded ``client`` role (#274). Services use it where "what a
+    #: client may see" is narrower than the horizon alone — e.g. only tasks ticked visible,
+    #: only their companies' contacts. Both are the same kind of login: #252 already decided
+    #: that "the client role marks a login as external", and gating these narrowings on the
+    #: contact link alone left a directly-invited client reading the whole address book.
     is_portal: bool = False
     # Set only during an instance-admin impersonation (issue #26): ``user`` is then the
     # impersonated member and ``impersonated_by`` the real, authenticated instance owner.
@@ -204,6 +209,10 @@ async def require_context(
         #
         # ``array_agg(...).filter(...)`` is load-bearing: a bare ``array_agg`` over the LEFT JOIN
         # of a role-less membership yields ``{NULL}``, not an empty array.
+        #
+        # "Does this membership hold the seeded ``client`` role?" rides the same statement as a
+        # ``bool_or`` (the ``roles`` join is 1:1 on ``membership_roles``, so it cannot fan the
+        # permission aggregate out) — one round-trip, whatever the role count.
         row = (
             await session.execute(
                 select(
@@ -211,8 +220,10 @@ async def require_context(
                     func.array_agg(RolePermission.permission).filter(
                         RolePermission.permission.is_not(None)
                     ),
+                    func.bool_or(Role.key == ROLE_CLIENT),
                 )
                 .outerjoin(MembershipRole, MembershipRole.membership_id == Membership.id)
+                .outerjoin(Role, Role.id == MembershipRole.role_id)
                 .outerjoin(RolePermission, RolePermission.role_id == MembershipRole.role_id)
                 .where(
                     Membership.user_id == user.id,
@@ -223,7 +234,7 @@ async def require_context(
         ).first()
         if row is None:
             raise AppError("forbidden", "errors.forbidden", status_code=403)
-        membership, granted = row
+        membership, granted, holds_client = row
         permissions = PermissionSet.of(granted)
 
         # Company data horizon (issue #191): one indexed query over the assignment tables,
@@ -238,10 +249,12 @@ async def require_context(
             if permissions.wildcard
             else await resolve_company_scope(session, org.id, membership.id)
         )
+        # External login (#193 + #274): the client role already marks one, so the contact-link
+        # lookup is skipped when it does — and a client with no contact link is external too.
         is_portal = (
             False
             if permissions.wildcard
-            else bool(await portal_user_ids(session, org.id, {user.id}))
+            else bool(holds_client) or bool(await portal_user_ids(session, org.id, {user.id}))
         )
 
         ctx = RequestContext(

@@ -23,7 +23,8 @@ from app.core.apikeys.models import PRINCIPAL_USER, ApiKey, ServiceAccount
 from app.core.auth.models import User
 from app.core.cache import get_redis
 from app.core.models import Membership, Org
-from app.core.permissions.models import MembershipRole, RolePermission
+from app.core.permissions.catalog import ROLE_CLIENT
+from app.core.permissions.models import MembershipRole, Role, RolePermission
 from app.core.permissions.permset import PermissionSet
 from app.errors import AppError
 
@@ -107,8 +108,10 @@ async def _personal_context(session, org, key, RequestContext):  # noqa: ANN001
                 func.array_agg(RolePermission.permission).filter(
                     RolePermission.permission.is_not(None)
                 ),
+                func.bool_or(Role.key == ROLE_CLIENT),
             )
             .outerjoin(MembershipRole, MembershipRole.membership_id == Membership.id)
+            .outerjoin(Role, Role.id == MembershipRole.role_id)
             .outerjoin(RolePermission, RolePermission.role_id == MembershipRole.role_id)
             .where(Membership.user_id == owner.id, Membership.org_id == org.id)
             .group_by(Membership.id)
@@ -117,7 +120,7 @@ async def _personal_context(session, org, key, RequestContext):  # noqa: ANN001
     if row is None:
         # The owner is no longer a member here — the key dies with the membership.
         raise _unauthorized()
-    membership, granted = row
+    membership, granted, holds_client = row
     owner_perms = PermissionSet.of(granted)
     # Effective = key.scopes ∩ owner's live permissions, re-evaluated every request: a demoted
     # member's key is demoted with them.
@@ -132,10 +135,12 @@ async def _personal_context(session, org, key, RequestContext):  # noqa: ANN001
         if owner_perms.wildcard
         else await resolve_company_scope(session, org.id, membership.id)
     )
+    # …and so does "is this an external (client) login" (#274) — a key can never widen its
+    # owner's audience.
     is_portal = (
         False
         if owner_perms.wildcard
-        else bool(await portal_user_ids(session, org.id, {owner.id}))
+        else bool(holds_client) or bool(await portal_user_ids(session, org.id, {owner.id}))
     )
     return RequestContext(
         user=owner,

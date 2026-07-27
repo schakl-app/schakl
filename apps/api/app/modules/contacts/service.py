@@ -106,10 +106,16 @@ def _linked_in_scope(scope: frozenset[uuid.UUID] | None):  # noqa: ANN202 — SQ
 
 class ContactService:
     class _PortalContactRepository(TenantScopedRepository):
-        """The contact repo a portal login gets (#193): every read demands a link to a company
-        inside the horizon, on the same ``_scoped()`` seam org filtering rides — a client reads
-        their companies' people, never the org's whole address book. Unlinked contacts are
-        invisible too: for a portal user they are someone else's drafts, not shared data."""
+        """The contact repo an external (client) login gets (#193): every read demands a link
+        to a company inside the horizon, on the same ``_scoped()`` seam org filtering rides — a
+        client reads their companies' people, never the org's whole address book. Unlinked
+        contacts are invisible too: for a client they are someone else's drafts, not shared
+        data.
+
+        It follows ``ctx.is_portal``, which since #274 means *any* client-role login, not only
+        a contact-linked one — a directly-invited client fell past this repo entirely and read
+        the whole address book, the leak #252 closed for companies but not for their people.
+        """
 
         def _scoped(self):  # noqa: ANN202 — mirrors the base signature
             return super()._scoped().where(_linked_in_scope(self.company_scope))
@@ -199,6 +205,12 @@ class ContactService:
         self, company_id: uuid.UUID
     ) -> list[tuple[Contact, bool]]:
         """Contacts linked to a company, primary-first then by creation time (panel order)."""
+        # The company hub reached this having already loaded the company through the horizon,
+        # but the `contacts.for_company` AI/MCP tool hands the id straight in — so the check
+        # belongs here, on the query, not on the one caller that happens to be safe. Free: the
+        # horizon is already resolved on the context.
+        if self.ctx.company_scope is not None and company_id not in self.ctx.company_scope:
+            raise AppError("not_found", "errors.not_found", status_code=404)
         rows = (
             await self.ctx.session.execute(
                 select(Contact, CompanyContact.is_primary)
@@ -262,10 +274,44 @@ class ContactService:
         """
         return await org_default_country(self.ctx.session, self.ctx.org.id)
 
+    def _guard_client_write(self, company_ids: Sequence[uuid.UUID]) -> None:
+        """What an external (client) login may write, and the honest reason when it may not.
+
+        A client's contacts repo only ever returns people linked to a company inside their
+        horizon, so two writes would land in a black hole — saved, then invisible on the very
+        next read. Both are refused *before* anything is created, and with a message that names
+        the missing piece rather than the generic ``errors.not_found`` #274 was filed about:
+
+        * **an empty horizon** — the login is scoped to no company at all (a directly-invited
+          client, or a portal contact attached to nothing). Nothing they add could ever be
+          theirs, and granting more permissions will never change that; only linking their
+          contact to a company, or assigning them a company group, will. ``403``: this is about
+          the caller's own account, so it leaks nothing.
+        * **no company on the contact** — a floating contact is invisible to them by design
+          (#193). ``422`` on the field, like any other missing required input.
+        """
+        if not self.ctx.is_portal:
+            return
+        if not self.ctx.company_scope:
+            raise AppError("forbidden", "errors.no_company_scope", status_code=403)
+        if not company_ids:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"company_ids": "errors.contact_company_required"},
+            )
+
     async def create(self, data: ContactCreate) -> Contact:
         self.ctx.require("contacts.contact.write")
         values = data.model_dump()
         company_ids = values.pop("company_ids", None) or []
+        # Attaching is its own capability (``contacts.link.write``), demanded up front rather
+        # than from inside the loop: a caller who lacks it must not get as far as writing the
+        # contact row and having it rolled back under them.
+        if company_ids:
+            self.ctx.require("contacts.link.write")
+        self._guard_client_write(company_ids)
         # Notes are markdown source (issue #66/#228): strip raw HTML on write.
         values["notes"] = sanitize_markdown(values.get("notes"))
         values["email"] = (values.get("email") or "").strip() or None
@@ -281,8 +327,13 @@ class ContactService:
         )
         contact = await self.repo.create(**values)
         await ActivityService(self.ctx).record_created(ENTITY_TYPE, contact.id)
+        # ``_link``, not ``link``: the public entry point re-reads the contact through the repo
+        # as an existence check, and for a client login that repo demands an *existing* company
+        # link — which a contact created one statement ago cannot have yet. That re-read is what
+        # made every client-side "add a contact" answer 404 (#274). The row is right here and
+        # already tenant-scoped; there is nothing left to check.
         for company_id in company_ids:
-            await self.link(contact.id, company_id, is_primary=None)
+            await self._link(contact.id, company_id, is_primary=None)
         await self._attach_companies([contact])
         return contact
 
@@ -336,8 +387,26 @@ class ContactService:
         link's existing type is left untouched.
         """
         self.ctx.require("contacts.link.write")
-        await self.repo.get_or_404(contact_id)  # tenant-scoped existence check
-        await self._ensure_company_in_tenant(company_id)
+        await self.repo.get_or_404(contact_id)  # tenant- and horizon-scoped existence check
+        return await self._link(
+            contact_id,
+            company_id,
+            is_primary=is_primary,
+            contact_type_id=contact_type_id,
+            set_type=set_type,
+        )
+
+    async def _link(
+        self,
+        contact_id: uuid.UUID,
+        company_id: uuid.UUID,
+        *,
+        is_primary: bool | None = None,
+        contact_type_id: uuid.UUID | None = None,
+        set_type: bool = False,
+    ) -> CompanyContact:
+        """``link`` minus the contact existence check — for a caller holding the row already."""
+        await self._ensure_company_visible(company_id)
         if set_type and contact_type_id is not None:
             await self._ensure_type_in_tenant(contact_type_id)
 
@@ -364,6 +433,7 @@ class ContactService:
 
     async def set_primary(self, contact_id: uuid.UUID, company_id: uuid.UUID) -> None:
         self.ctx.require("contacts.link.write")
+        await self._ensure_company_visible(company_id)
         link = await self._get_link(company_id, contact_id)
         if link is None:
             raise AppError("not_found", "errors.not_found", status_code=404)
@@ -371,6 +441,10 @@ class ContactService:
 
     async def unlink(self, contact_id: uuid.UUID, company_id: uuid.UUID) -> None:
         self.ctx.require("contacts.link.write")
+        # A company outside the horizon answers 404 here too, rather than the silent 204 an
+        # idempotent detach would otherwise give it: "there is nothing to unlink" and "you may
+        # not see that company" are different answers, and only the second is true (#191).
+        await self._ensure_company_visible(company_id)
         link = await self._get_link(company_id, contact_id)
         if link is not None:
             await self.links.delete(link)
@@ -379,9 +453,11 @@ class ContactService:
     async def _get_link(
         self, company_id: uuid.UUID, contact_id: uuid.UUID
     ) -> CompanyContact | None:
+        # Through the repo, so the company horizon (#191) rides along: ``set_primary`` and
+        # ``unlink`` take a company id straight from the caller, and a hand-built org-only
+        # query let a scoped login re-primary or detach a contact at a company it cannot see.
         return await self.ctx.session.scalar(
-            select(CompanyContact).where(
-                CompanyContact.org_id == self._org_id,
+            self.links.scoped_select().where(
                 CompanyContact.company_id == company_id,
                 CompanyContact.contact_id == contact_id,
             )
@@ -426,14 +502,23 @@ class ContactService:
         )
         await self.ctx.session.flush()
 
-    async def _ensure_company_in_tenant(self, company_id: uuid.UUID) -> None:
+    async def _ensure_company_visible(self, company_id: uuid.UUID) -> None:
+        """The company exists in this tenant **and** inside the caller's horizon (#191).
+
+        404 either way — the same answer reading that company gets — so a link never confirms a
+        company the caller may not see. The horizon half is not merely belt-and-braces: the
+        repository's write guard only fires on paths that *insert* a ``company_contacts`` row,
+        which left ``unlink`` and the primary flip taking a company id on trust.
+        """
         # RLS already scopes ``companies`` to the current org; the explicit filter is
         # defence-in-depth (Golden Rule 1).
         ok = await self.ctx.session.scalar(
             text("SELECT 1 FROM companies WHERE id = :cid AND org_id = :oid"),
             {"cid": company_id, "oid": self._org_id},
         )
-        if not ok:
+        if not ok or (
+            self.ctx.company_scope is not None and company_id not in self.ctx.company_scope
+        ):
             raise AppError("not_found", "errors.not_found", status_code=404)
 
     async def _ensure_type_in_tenant(self, contact_type_id: uuid.UUID) -> None:
@@ -462,19 +547,21 @@ class ContactService:
     ) -> dict[uuid.UUID, list[ContactCompanyLink]]:
         if not contact_ids:
             return {}
-        rows = (
-            await self.ctx.session.execute(
-                select(
-                    CompanyContact.contact_id,
-                    CompanyContact.company_id,
-                    CompanyContact.is_primary,
-                    CompanyContact.contact_type_id,
-                ).where(
-                    CompanyContact.org_id == self._org_id,
-                    CompanyContact.contact_id.in_(contact_ids),
-                )
-            )
-        ).all()
+        stmt = select(
+            CompanyContact.contact_id,
+            CompanyContact.company_id,
+            CompanyContact.is_primary,
+            CompanyContact.contact_type_id,
+        ).where(
+            CompanyContact.org_id == self._org_id,
+            CompanyContact.contact_id.in_(contact_ids),
+        )
+        if self.ctx.company_scope is not None:
+            # A contact reachable inside the horizon may also be linked to companies outside
+            # it — naming those on the read hands a client the roster #252 took away, one
+            # colleague at a time. They see the links they can see.
+            stmt = stmt.where(CompanyContact.company_id.in_(self.ctx.company_scope))
+        rows = (await self.ctx.session.execute(stmt)).all()
 
         company_ids = list({row.company_id for row in rows})
         names: dict[uuid.UUID, str] = {}

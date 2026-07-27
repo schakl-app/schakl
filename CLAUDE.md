@@ -531,6 +531,20 @@ It is a **core, cross-cutting capability**, like custom fields (§13) — not pe
   repositories sat behind `tasks.task.read`, which a client holds, so the portal reached the
   agency's internal process library and its create form. They now read on `tasks.template.apply`
   and `tasks.task.write`.
+- **"External login" is one fact, and it is the `client` role** (#274). `ctx.is_portal` is true for
+  a contact-linked portal membership (#193) *and* for any membership holding the seeded `client`
+  role — the definition #252 already adopted when it floored that role's company horizon to the
+  empty set. Every "what a client may see" narrowing hangs off it, so gating one on the contact
+  link alone silently exempts a directly-invited client: `contacts` carries no `company_id`, its
+  narrowing was portal-only, and such a login read the agency's whole address book. Resolved on the
+  membership statement (a `bool_or` beside the permission aggregate), never as a second query.
+- **A permission and a horizon fail identically, so the horizon must speak for itself.** Both gates
+  refuse; §15's 404 rule means the client sees `errors.not_found` either way, and the admin's only
+  lever — grant more permissions — cannot fix an empty horizon. So a client-role login scoped to no
+  company is told which piece is missing (`errors.no_company_scope`, 403 — it describes their own
+  account, not our rows, and leaks nothing), and Instellingen → Gebruikers badges the account
+  (`MemberRead.company_scope_empty`). Writes that would land outside a client's horizon are refused
+  *before* the row is written, never after.
 - **A module that ships later** brings its own permissions; a startup reconciler grants them to
   each org's system roles exactly once, tracked in `org_settings.applied_permission_defaults`.
   A migration must never import the catalog (`docs/WORKFLOW.md`).

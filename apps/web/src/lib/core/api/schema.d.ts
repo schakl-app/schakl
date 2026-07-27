@@ -10910,6 +10910,11 @@ export interface components {
         MemberRead: {
             /** Avatar Url */
             avatar_url?: string | null;
+            /**
+             * Company Scope Empty
+             * @default false
+             */
+            company_scope_empty: boolean;
             /** Email */
             email: string;
             /** Full Name */

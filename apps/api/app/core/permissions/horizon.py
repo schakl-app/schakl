@@ -13,6 +13,17 @@ touched (the resolver answers ``None``), and a wildcard owner never reaches reso
 all. Deliberate consequence: a membership holding ``client`` *alongside* a staff role is
 still floored — the client role marks a login as external; mixing it with staff roles is a
 configuration error, not a wider grant.
+
+That last sentence is now load-bearing beyond the horizon: since #274 ``RequestContext``
+resolves ``is_portal`` from the same fact (client role **or** contact link), so every
+"what a client may see" narrowing built on top of a contact link — the address book, the
+client-visible task filter — covers a directly-invited client too. The floor alone did not:
+``contacts`` carries no ``company_id``, so the repository's generic horizon filter never
+touched it and the roster leak #252 closed for companies stayed open for their people.
+
+The two answers are resolved separately (this resolver here, a ``bool_or`` on the membership
+statement in ``require_context``) because the seam takes no arguments beyond the membership;
+they must agree, and the ``client``-role key is the single fact both read.
 """
 
 from __future__ import annotations

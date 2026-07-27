@@ -550,6 +550,17 @@
   while its `GET` sits on a key the client holds. Those two lists now read as "you may edit a task"
   (`tasks.task.write`) and "you may apply a template" (`tasks.template.apply`), so a portal login
   cannot enumerate them at all, and the load skips the fetch it would 403 on.
+- **A refusal that hides which of the two gates fired.** Permissions say *may they*, the company
+  horizon says *which rows exist for them* (CLAUDE.md §15), and out-of-horizon deliberately answers
+  `404 errors.not_found` so a get-by-id can't leak existence. Correct — but a `client`-role login
+  scoped to no company at all gets that same "niet gevonden" on *everything*, and the admin's only
+  lever, granting permissions, can never fix it. #274 reached us as "we granted the right
+  permission and it still says not found". Two rules came out of it. Where the refusal is about
+  the **caller's own account** rather than a specific row, say so — `errors.no_company_scope` names
+  the missing link and leaks nothing, because it describes their login, not our data. And put the
+  same fact where the admin is already looking: Instellingen → Gebruikers badges such an account
+  "Ziet geen klanten" next to the existing "Beperkte zichtbaarheid" chip. A state that makes every
+  screen fail identically needs one place that explains it.
 - Taking `.date()` of a UTC instant to name a local day. Amsterdam's midnight is 22:00 UTC the day
   *before* in summer, so a monthly budget reported its period as starting 30 June. Half the year the
   bug is invisible, which is why it is pinned on a fixed date rather than on `today`.

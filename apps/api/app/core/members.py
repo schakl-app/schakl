@@ -48,6 +48,7 @@ from app.core.permissions.service import (
     set_membership_roles,
 )
 from app.core.portal import portal_user_ids
+from app.core.scope import resolve_company_scope
 from app.core.tenancy import RequestContext, require_context
 from app.errors import AppError
 
@@ -76,6 +77,12 @@ class MemberRead(BaseModel):
     #: The member's account demands a second factor at login — what makes the admin's
     #: "reset 2FA" action (a lost-phone escape hatch) appear only where it means something.
     two_factor_enabled: bool = False
+    #: A ``client``-role membership whose company horizon resolves to **nothing** (#274): they
+    #: can see no company, so every company-scoped read and write answers 404 no matter which
+    #: permissions their role carries. Without this the admin's only feedback is the customer
+    #: saying "not found", and granting more permissions looks like the fix. ``False`` for
+    #: staff — the horizon floor is the client role's alone (#252).
+    company_scope_empty: bool = False
     #: Set only on the invite response (#161): whether the welcome mail went out, and the
     #: i18n key saying why not (e.g. no transport configured) so the admin knows to act.
     invite_email_sent: bool | None = None
@@ -138,6 +145,7 @@ def _member_read(
     user: User,
     role_ids: list[uuid.UUID] | None = None,
     two_factor_enabled: bool = False,
+    company_scope_empty: bool = False,
 ) -> MemberRead:
     return MemberRead(
         membership_id=str(membership.id),
@@ -149,6 +157,7 @@ def _member_read(
         is_active=user.is_active,
         is_self=user.id == ctx.user.id,
         two_factor_enabled=two_factor_enabled,
+        company_scope_empty=company_scope_empty,
     )
 
 
@@ -212,8 +221,35 @@ async def list_members(ctx: RequestContext = Depends(require_context)) -> list[M
             )
         ).scalars()
     )
+    # Which client-role memberships see no company at all (#274). Resolved through the scope
+    # seam, so it is the *same* answer their own requests get — but only for the memberships
+    # that hold the client role, which is the only role the floor applies to and a handful of
+    # rows at most here (contact-linked portal logins were filtered out above). Staff are never
+    # resolved: that would be a query per member for an answer that is always ``False``.
+    client_role_ids = {
+        role_id
+        for role_id, in await ctx.session.execute(
+            select(RoleRow.id).where(RoleRow.org_id == ctx.org.id, RoleRow.key == ROLE_CLIENT)
+        )
+    }
+    scope_empty: set[uuid.UUID] = set()
+    for m, _ in rows:
+        if client_role_ids.isdisjoint(held.get(m.id, [])):
+            continue
+        scope = await resolve_company_scope(ctx.session, ctx.org.id, m.id)
+        # ``None`` is *unrestricted*, not empty — the two must never collapse into one falsy
+        # check (a client always resolves to a set, but the seam's contract is the seam's).
+        if scope is not None and not scope:
+            scope_empty.add(m.id)
     return [
-        _member_read(ctx, m, u, held.get(m.id, []), two_factor_enabled=u.id in secured)
+        _member_read(
+            ctx,
+            m,
+            u,
+            held.get(m.id, []),
+            two_factor_enabled=u.id in secured,
+            company_scope_empty=m.id in scope_empty,
+        )
         for m, u in rows
     ]
 

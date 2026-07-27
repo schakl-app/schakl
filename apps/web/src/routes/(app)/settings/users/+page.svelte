@@ -247,6 +247,17 @@
                 title={t("settings.users.restricted_hint")}>{t("settings.users.restricted")}</a
               >
             {/if}
+            {#if member.company_scope_empty}
+              <!-- #274: a client-role login scoped to no company gets "niet gevonden" on every
+                   company-scoped read and write, whatever permissions the role carries — so
+                   granting more looks like the fix and never is. Say what is actually missing,
+                   here, where the admin is already looking at the account. -->
+              <span
+                class="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                title={t("settings.users.no_company_scope_hint")}
+                >{t("settings.users.no_company_scope")}</span
+              >
+            {/if}
             {#if member.two_factor_enabled}
               <span
                 class="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-700 dark:bg-green-950 dark:text-green-300"
