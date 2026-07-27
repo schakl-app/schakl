@@ -63,6 +63,7 @@
   "assignees.make_primary": "Make responsible",
   "assignees.add": "Add employee",
   "assignees.remove": "Remove",
+  "assignees.unknown": "Unknown employee",
   "common.yes": "Yes",
   "common.no": "No",
   "common.language": "Language",

@@ -12,7 +12,7 @@
   import { customFieldColumns } from "$lib/core/table/columns";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
-  import AvatarStack from "$lib/core/ui/AvatarStack.svelte";
+  import Assignees from "$lib/core/ui/Assignees.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
@@ -104,7 +104,7 @@
 {/snippet}
 
 {#snippet assigneesCell(project: Project)}
-  <AvatarStack assignees={project.assignees ?? []} members={data.members} />
+  <Assignees assignees={project.assignees ?? []} members={data.members} />
 {/snippet}
 
 {#snippet hoursCell(project: Project)}

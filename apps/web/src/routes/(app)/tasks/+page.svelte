@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Trash2 } from "@lucide/svelte";
-  import Avatar from "$lib/core/ui/Avatar.svelte";
+  import PersonChip from "$lib/core/ui/PersonChip.svelte";
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
@@ -292,15 +292,11 @@
 {#snippet assigneeCell(task: Task)}
   {@const member = data.members.find((m) => m.user_id === task.assignee_user_id)}
   {#if member}
-    <span class="flex items-center gap-2">
-      <Avatar
-        name={member.full_name}
-        email={member.email}
-        avatarUrl={member.avatar_url ?? null}
-        size="sm"
-      />
-      <span class="truncate text-text">{member.full_name || member.email}</span>
-    </span>
+    <PersonChip
+      name={member.full_name}
+      email={member.email}
+      avatarUrl={member.avatar_url ?? null}
+    />
   {:else}
     <span class="text-text-muted">—</span>
   {/if}

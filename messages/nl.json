@@ -63,6 +63,7 @@
   "assignees.make_primary": "Als verantwoordelijke instellen",
   "assignees.add": "Medewerker toevoegen",
   "assignees.remove": "Verwijderen",
+  "assignees.unknown": "Onbekende medewerker",
   "common.yes": "Ja",
   "common.no": "Nee",
   "common.language": "Taal",

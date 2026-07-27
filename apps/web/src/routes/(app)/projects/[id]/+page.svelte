@@ -15,7 +15,7 @@
   import { entityPanelsFor } from "$lib/core/registry";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import AssigneePicker from "$lib/core/ui/AssigneePicker.svelte";
-  import AvatarStack from "$lib/core/ui/AvatarStack.svelte";
+  import Assignees from "$lib/core/ui/Assignees.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
@@ -147,7 +147,7 @@
       {/if}{t(`projects.status.${project.status}`)}
       {#if assignees.length > 0}
         · {t("projects.field.responsible")}:
-        <AvatarStack {assignees} members={data.members} />
+        <Assignees {assignees} members={data.members} max={6} />
       {/if}
     </p>
   </div>
@@ -446,7 +446,7 @@
           <dt class="text-text-muted">{t("projects.field.responsible")}</dt>
           <dd class="mt-0.5 font-medium text-text">
             {#if assignees.length > 0}
-              <AvatarStack {assignees} members={data.members} />
+              <Assignees {assignees} members={data.members} max={6} />
             {:else}
               —
             {/if}

@@ -15,7 +15,7 @@
   import { customFieldColumns } from "$lib/core/table/columns";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
-  import AvatarStack from "$lib/core/ui/AvatarStack.svelte";
+  import Assignees from "$lib/core/ui/Assignees.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
@@ -158,7 +158,7 @@
 {/snippet}
 
 {#snippet assigneesCell(company: Company)}
-  <AvatarStack assignees={company.assignees ?? []} members={data.members} />
+  <Assignees assignees={company.assignees ?? []} members={data.members} />
 {/snippet}
 
 {#snippet hoursCell(company: Company)}

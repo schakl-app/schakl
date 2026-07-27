@@ -12,7 +12,7 @@
   import { companyPanelComponent } from "$lib/core/registry";
   import { InFlight } from "$lib/core/submit.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
-  import AvatarStack from "$lib/core/ui/AvatarStack.svelte";
+  import Assignees from "$lib/core/ui/Assignees.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
@@ -95,7 +95,7 @@
       {#if assignees.length > 0}
         <p class="mt-1 flex flex-wrap items-center gap-2 text-sm text-text-muted">
           <span>{t("companies.field.responsible")}:</span>
-          <AvatarStack {assignees} members={data.members} />
+          <Assignees {assignees} members={data.members} max={6} />
         </p>
       {/if}
     </div>

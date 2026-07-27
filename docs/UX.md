@@ -99,9 +99,17 @@
   interactive, because the surface itself is already edit mode.
   `AssigneePicker` posts the whole roster in one hidden field (an edit surface has exactly one
   save button); `LinkField` posts per chip, because there each link is its own record.
-  Detail headers name the primary and render the rest as an `AvatarStack` of initials.
   **"Mine" filters match any assignee, never only the primary** — otherwise the feature is
   invisible to everyone but the owner.
+- **One person, one shape: `PersonChip` — avatar *and* name, together.** Read-only surfaces that
+  show people (list cells, detail headers) render every person the same way through `Assignees`:
+  the verantwoordelijke first in the plain text colour, the rest muted. Naming the first person in
+  full and degrading the rest to bare initials discs — what `AvatarStack` used to do — puts two
+  different renderings of a person in one row, and the second one reads as a badge rather than a
+  colleague. A cell that runs out of room drops *people* — a table cell names the verantwoordelijke
+  and counts the rest (`+3`, all of them named in the tooltip), so a row never grows a second line —
+  and never strips the names off the people it keeps. The bare `Avatar` disc stays the right call
+  where a surface shows **only** discs and nothing else: `TaskRow`'s meta strip, the profile menu.
 - **Show an inherited value, don't hide it behind a placeholder** (#81). When the API will
   auto-assign something on save — a new project inherits the client's verantwoordelijke — the
   form pre-fills that value the moment the client is picked, so the assignment is visible and
