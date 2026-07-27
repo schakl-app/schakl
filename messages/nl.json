@@ -3011,6 +3011,8 @@
   "invoicing.delete_confirm": "Dit concept verwijderen?",
   "invoicing.quote_delete_confirm": "Deze offerte verwijderen?",
   "invoicing.cancel_confirm": "Deze factuur annuleren? Gefactureerde uren worden weer factureerbaar.",
+  "invoicing.credit_confirm": "Een creditfactuur maken die deze factuur tegenboekt? Je krijgt een concept met dezelfde regels en negatieve bedragen.",
+  "invoicing.convert_confirm": "Van deze offerte een factuur maken? De regels komen mee met de prijzen en btw waarop de offerte is geaccepteerd.",
   "invoicing.send.title": "Document versturen",
   "invoicing.send.to": "Aan",
   "invoicing.send.message": "Bericht (optioneel)",

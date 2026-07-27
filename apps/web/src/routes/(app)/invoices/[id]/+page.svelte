@@ -358,12 +358,15 @@
   title={t("invoicing.action.issue")}
   message={t("invoicing.issue_confirm")}
   action="?/issue"
+  confirmLabel={t("invoicing.action.issue")}
+  variant="primary"
 />
 <ConfirmDialog
   bind:open={confirmCancel}
   title={t("invoicing.action.cancel")}
   message={t("invoicing.cancel_confirm")}
   action="?/cancel"
+  confirmLabel={t("invoicing.action.cancel")}
 />
 <ConfirmDialog
   bind:open={confirmDelete}
@@ -374,8 +377,10 @@
 <ConfirmDialog
   bind:open={confirmCredit}
   title={t("invoicing.action.credit")}
-  message={t("invoicing.issue_confirm")}
+  message={t("invoicing.credit_confirm")}
   action="?/credit"
+  confirmLabel={t("invoicing.action.credit")}
+  variant="primary"
 />
 <ConfirmDialog
   bind:open={confirmDeletePayment}

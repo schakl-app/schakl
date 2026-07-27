@@ -228,6 +228,8 @@
   title={t("invoicing.action.issue")}
   message={t("invoicing.issue_confirm")}
   action="?/issue"
+  confirmLabel={t("invoicing.action.issue")}
+  variant="primary"
 />
 <ConfirmDialog
   bind:open={confirmDelete}
@@ -238,8 +240,10 @@
 <ConfirmDialog
   bind:open={confirmConvert}
   title={t("invoicing.action.convert")}
-  message={t("invoicing.issue_confirm")}
+  message={t("invoicing.convert_confirm")}
   action="?/convert"
+  confirmLabel={t("invoicing.action.convert")}
+  variant="primary"
 />
 
 <Modal

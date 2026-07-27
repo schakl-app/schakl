@@ -86,5 +86,6 @@
   title={t("google.drive.unlink_title")}
   message={t("google.drive.unlink_message")}
   action="?/unlinkDriveFile"
+  confirmLabel={t("google.drive.unlink")}
   fields={{ link_id: unlinkId }}
 />

@@ -189,4 +189,5 @@
   title={t("google.account.disconnect_title")}
   message={t("google.account.disconnect_message")}
   action="?/googleDisconnect"
+  confirmLabel={t("google.account.disconnect_title")}
 />

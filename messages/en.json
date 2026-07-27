@@ -3011,6 +3011,8 @@
   "invoicing.delete_confirm": "Delete this draft?",
   "invoicing.quote_delete_confirm": "Delete this quote?",
   "invoicing.cancel_confirm": "Cancel this invoice? Invoiced hours become billable again.",
+  "invoicing.credit_confirm": "Create a credit note reversing this invoice? You get a draft with the same lines and negative amounts.",
+  "invoicing.convert_confirm": "Turn this quote into an invoice? The lines carry over with the prices and tax the quote was accepted at.",
   "invoicing.send.title": "Send document",
   "invoicing.send.to": "To",
   "invoicing.send.message": "Message (optional)",
