@@ -7765,6 +7765,8 @@ export interface components {
             custom?: {
                 [key: string]: unknown;
             };
+            /** House Number */
+            house_number?: string | null;
             /** Invoice Email */
             invoice_email?: string | null;
             /** Name */
@@ -7878,6 +7880,8 @@ export interface components {
                 [key: string]: unknown;
             };
             hours?: components["schemas"]["CompanyBudgetHours"] | null;
+            /** House Number */
+            house_number?: string | null;
             /**
              * Id
              * Format: uuid
@@ -7972,6 +7976,8 @@ export interface components {
             custom?: {
                 [key: string]: unknown;
             } | null;
+            /** House Number */
+            house_number?: string | null;
             /** Invoice Email */
             invoice_email?: string | null;
             /** Name */

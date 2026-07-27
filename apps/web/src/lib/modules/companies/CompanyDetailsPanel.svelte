@@ -81,7 +81,13 @@
     </dt>
     <dd class="mt-1 text-sm text-neutral-900">
       {#if data.address_line1 || data.city || data.vat_number || data.coc_number}
-        {#if data.address_line1}<span class="block">{data.address_line1}</span>{/if}
+        <!-- Street and house number are separate columns (#241); display recomposes the line,
+             so a pre-split record (number still inside the street field) reads unchanged. -->
+        {#if data.address_line1}
+          <span class="block">
+            {[data.address_line1, data.house_number].filter(Boolean).join(" ")}
+          </span>
+        {/if}
         {#if data.address_line2}<span class="block">{data.address_line2}</span>{/if}
         {#if data.postal_code || data.city}
           <span class="block"

@@ -157,6 +157,19 @@ _CUSTOMER_FIELDS = (
 )
 
 
+def street_line(street: str | None, house_number: str | None) -> str | None:
+    """The one address line a document prints: street + house number (#241).
+
+    The company stores them apart since the postcode lookup; a snapshot keeps the composed
+    line so every issued document — old and new — carries the same ``address_line1`` shape
+    and the PDF/UBL renderers never learn about the split. A pre-split row (house number
+    still inside ``address_line1``, ``house_number`` NULL) composes to itself.
+    """
+    if not street:
+        return house_number or None
+    return f"{street} {house_number}" if house_number else street
+
+
 def tax_label(label_i18n: dict, locale: str) -> str:
     """A tax rate's display name in a document's locale, falling back sanely."""
     for candidate in (locale, "en", "nl"):
@@ -464,7 +477,7 @@ async def _company_row(ctx: Any, company_id: uuid.UUID) -> Any:
         await ctx.session.execute(
             text(
                 "SELECT id, name, invoice_email, vat_number, coc_number, address_line1,"
-                " address_line2, postal_code, city, country"
+                " house_number, address_line2, postal_code, city, country"
                 " FROM companies WHERE id = :cid AND org_id = :oid"
             ),
             {"cid": company_id, "oid": ctx.org.id},
@@ -492,6 +505,7 @@ async def _contact_email(ctx: Any, contact_id: uuid.UUID) -> str | None:
 
 def _customer_snapshot(company: Any, *, email: str | None) -> dict[str, Any]:
     data = {field: company[field] for field in _CUSTOMER_FIELDS}
+    data["address_line1"] = street_line(company["address_line1"], company["house_number"])
     data["email"] = email or company["invoice_email"]
     return data
 

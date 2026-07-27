@@ -39,6 +39,7 @@ class CompanyBase(BaseModel):
     vat_number: str | None = Field(default=None, max_length=32)
     coc_number: str | None = Field(default=None, max_length=32)
     address_line1: str | None = Field(default=None, max_length=255)
+    house_number: str | None = Field(default=None, max_length=32)
     address_line2: str | None = Field(default=None, max_length=255)
     postal_code: str | None = Field(default=None, max_length=16)
     city: str | None = Field(default=None, max_length=120)
@@ -48,7 +49,7 @@ class CompanyBase(BaseModel):
 
     _normalize_invoice_email = field_validator("invoice_email", mode="before")(_blank_to_none)
     _normalize_billing = field_validator(
-        "vat_number", "coc_number", "address_line1", "address_line2",
+        "vat_number", "coc_number", "address_line1", "house_number", "address_line2",
         "postal_code", "city", "country", "phone", "client_number",
         mode="before",
     )(_blank_to_none)
@@ -73,6 +74,7 @@ class CompanyUpdate(BaseModel):
     vat_number: str | None = Field(default=None, max_length=32)
     coc_number: str | None = Field(default=None, max_length=32)
     address_line1: str | None = Field(default=None, max_length=255)
+    house_number: str | None = Field(default=None, max_length=32)
     address_line2: str | None = Field(default=None, max_length=255)
     postal_code: str | None = Field(default=None, max_length=16)
     city: str | None = Field(default=None, max_length=120)
@@ -81,7 +83,7 @@ class CompanyUpdate(BaseModel):
 
     _normalize_invoice_email = field_validator("invoice_email", mode="before")(_blank_to_none)
     _normalize_billing = field_validator(
-        "vat_number", "coc_number", "address_line1", "address_line2",
+        "vat_number", "coc_number", "address_line1", "house_number", "address_line2",
         "postal_code", "city", "country", "phone", "client_number",
         mode="before",
     )(_blank_to_none)

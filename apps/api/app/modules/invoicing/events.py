@@ -36,7 +36,7 @@ from app.modules.invoicing.models import (
     LineKind,
     TaxRate,
 )
-from app.modules.invoicing.service import tax_label
+from app.modules.invoicing.service import street_line, tax_label
 
 logger = logging.getLogger("schakl.invoicing")
 
@@ -85,7 +85,7 @@ async def _draft_period_invoice(
     company = (
         await ctx.session.execute(
             text("SELECT id, name, invoice_email, vat_number, coc_number, address_line1,"
-                 " address_line2, postal_code, city, country"
+                 " house_number, address_line2, postal_code, city, country"
                  " FROM companies WHERE id = :cid AND org_id = :oid"),
             {"cid": company_id, "oid": org_id},
         )
@@ -155,7 +155,7 @@ async def _draft_period_invoice(
 
     customer = {
         "name": company["name"],
-        "address_line1": company["address_line1"],
+        "address_line1": street_line(company["address_line1"], company["house_number"]),
         "address_line2": company["address_line2"],
         "postal_code": company["postal_code"],
         "city": company["city"],

@@ -36,6 +36,7 @@
     vat_number?: string | null;
     coc_number?: string | null;
     address_line1?: string | null;
+    house_number?: string | null;
     address_line2?: string | null;
     postal_code?: string | null;
     city?: string | null;
@@ -72,19 +73,20 @@
   // ---- postcode → address lookup (#241) --------------------------------- //
   // The address fields are bound so an accepted suggestion can fill them; each carries
   // `defaultValue` so a form reset restores the saved value, never blank (docs/UX.md).
-  // The house-number input is lookup-only (no `name`): option (a) of the issue — on accept
-  // it composes `address_line1`, so the schema keeps its single free-text address line.
+  // Street (`address_line1`) and house number are their own columns; a pre-split record
+  // still holds "Straatnaam 12" in the street field until someone normalises it here.
   // The initial-value capture is deliberate: `company` never changes while the form is
   // mounted (create passes `{}`, edit passes the loaded record once).
   // svelte-ignore state_referenced_locally
   let addressLine1 = $state(company.address_line1 ?? "");
+  // svelte-ignore state_referenced_locally
+  let houseNumber = $state(company.house_number ?? "");
   // svelte-ignore state_referenced_locally
   let postalCode = $state(company.postal_code ?? "");
   // svelte-ignore state_referenced_locally
   let city = $state(company.city ?? "");
   // svelte-ignore state_referenced_locally
   let country = $state(company.country ?? "");
-  let houseNumber = $state("");
 
   interface AddressSuggestion {
     street: string;
@@ -140,7 +142,12 @@
     }
     if (seq !== lookupSeq) return; // the input changed while we were looking
     // What's already filled in needs no "did you mean" — offer only a difference.
-    if (found && composedLine(found) === addressLine1.trim() && found.city === city.trim()) {
+    if (
+      found &&
+      found.street === addressLine1.trim() &&
+      found.house_number === houseNumber.trim() &&
+      found.city === city.trim()
+    ) {
       found = null;
     }
     suggestion = found;
@@ -148,7 +155,8 @@
 
   function applySuggestion() {
     if (!suggestion) return;
-    addressLine1 = composedLine(suggestion);
+    addressLine1 = suggestion.street;
+    houseNumber = suggestion.house_number;
     postalCode = formatPostal(suggestion.postal_code);
     city = suggestion.city;
     country = suggestion.country;
@@ -259,11 +267,13 @@
             for="{idPrefix}-house-number"
             class="mb-1 block text-sm font-medium text-neutral-700"
           >
-            {t("companies.address_lookup.house_number")}
+            {t("companies.house_number")}
           </label>
           <input
             id="{idPrefix}-house-number"
+            name="house_number"
             bind:value={houseNumber}
+            defaultValue={company.house_number ?? ""}
             oninput={scheduleLookup}
             class={inputClass}
           />

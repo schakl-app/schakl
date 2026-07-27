@@ -23,7 +23,7 @@ from app.modules.companies.service import CompanyService
 # column at the front silently shift every billing value one field along on create, with no
 # error anywhere. The duplication is the point.
 _BILLING_FIELDS = (
-    "vat_number", "coc_number", "address_line1", "address_line2",
+    "vat_number", "coc_number", "address_line1", "house_number", "address_line2",
     "postal_code", "city", "country",
 )
 _TEXT_FIELDS = (
@@ -134,6 +134,7 @@ COMPANY_IMPEX = ImpexDescriptor(
         ImpexColumn("vat_number", aliases=("btw", "btw-nummer", "vat", "vat number")),
         ImpexColumn("coc_number", aliases=("kvk", "kvk-nummer", "kvknummer", "coc")),
         ImpexColumn("address_line1", aliases=("adres", "straat", "address", "street")),
+        ImpexColumn("house_number", aliases=("huisnummer", "huisnr", "house number", "nr")),
         ImpexColumn("address_line2", aliases=("adres 2", "address 2", "toevoeging")),
         ImpexColumn("postal_code", aliases=("postcode", "zip", "postal code", "pc")),
         ImpexColumn("city", aliases=("plaats", "stad", "woonplaats", "town")),

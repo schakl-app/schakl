@@ -26,6 +26,7 @@ async def _details_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
         "vat_number": company.vat_number,
         "coc_number": company.coc_number,
         "address_line1": company.address_line1,
+        "house_number": company.house_number,
         "address_line2": company.address_line2,
         "postal_code": company.postal_code,
         "city": company.city,

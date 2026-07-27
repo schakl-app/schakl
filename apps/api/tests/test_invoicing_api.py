@@ -1028,3 +1028,49 @@ async def test_manual_subscription_line_claims_the_period_the_cron_would_bill(cl
 
 async def _invoice_count(client, headers) -> int:
     return (await client.get("/api/v1/invoicing/invoices", headers=headers)).json()["total"]
+
+
+async def test_bill_to_snapshot_composes_street_and_house_number(client_for) -> None:
+    """A document's bill-to keeps one composed address line (#241): the split lives on the
+    company, the snapshot shape never changes, and a pre-split company (number still inside
+    ``address_line1``) snapshots exactly what it stored."""
+    tenant: Tenant = await make_tenant("inv-housenr")
+    headers = await auth_cookie(tenant.user)
+    async with client_for(tenant.host) as client:
+        await _setup_org(client, headers)
+
+        split = await client.post(
+            "/api/v1/companies",
+            json={
+                "name": "Gesplitst BV",
+                "invoice_email": "f@klant.nl",
+                "address_line1": "Binnenhof",
+                "house_number": "1A",
+                "city": "Den Haag",
+            },
+            headers=headers,
+        )
+        legacy = await client.post(
+            "/api/v1/companies",
+            json={
+                "name": "Ongesplitst BV",
+                "invoice_email": "f@oud.nl",
+                "address_line1": "Kerkstraat 12",
+                "city": "Utrecht",
+            },
+            headers=headers,
+        )
+        line = [{"description": "Werk", "quantity": "1", "unit_price": "100"}]
+        for company, expected_line1 in (
+            (split.json(), "Binnenhof 1A"),
+            (legacy.json(), "Kerkstraat 12"),
+        ):
+            created = await client.post(
+                "/api/v1/invoicing/invoices",
+                json={"company_id": company["id"], "lines": line},
+                headers=headers,
+            )
+            assert created.status_code == 201, created.text
+            customer = created.json()["customer"]
+            assert customer["address_line1"] == expected_line1
+            assert "house_number" not in customer  # the snapshot shape is unchanged

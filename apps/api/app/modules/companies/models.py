@@ -88,7 +88,11 @@ class Company(
     # rewrite an invoice already sent.
     vat_number: Mapped[str | None] = mapped_column(String(32), nullable=True)
     coc_number: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Street name only since #241 (the postcode lookup writes street and number apart);
+    # pre-split rows still hold the composed "street 12" line here with ``house_number``
+    # NULL, which renders identically wherever the two are joined back together.
     address_line1: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    house_number: Mapped[str | None] = mapped_column(String(32), nullable=True)
     address_line2: Mapped[str | None] = mapped_column(String(255), nullable=True)
     postal_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
     city: Mapped[str | None] = mapped_column(String(120), nullable=True)

@@ -109,6 +109,7 @@ export const actions: Actions = {
         vat_number: String(form.get("vat_number") ?? "").trim() || null,
         coc_number: String(form.get("coc_number") ?? "").trim() || null,
         address_line1: String(form.get("address_line1") ?? "").trim() || null,
+        house_number: String(form.get("house_number") ?? "").trim() || null,
         address_line2: String(form.get("address_line2") ?? "").trim() || null,
         postal_code: String(form.get("postal_code") ?? "").trim() || null,
         city: String(form.get("city") ?? "").trim() || null,

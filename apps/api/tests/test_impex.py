@@ -14,7 +14,7 @@ from tests.conftest import auth_cookie, make_tenant
 COMPANY_HEADER = [
     "name", "client_number", "website", "phone", "invoice_email", "status",
     # Billing identity (issue #11, shipped with invoicing #207).
-    "vat_number", "coc_number", "address_line1", "address_line2",
+    "vat_number", "coc_number", "address_line1", "house_number", "address_line2",
     "postal_code", "city", "country",
     "notes",
     # Contributed by the contacts module (issue #77): the client's contact person, carried in
